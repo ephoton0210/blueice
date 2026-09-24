@@ -26,6 +26,7 @@ use crate::TabId;
 use blueice_ipc::gatekeeper::{
     read_gatekeeper_reply, write_gatekeeper_request, GatekeeperReply, GatekeeperRequest,
 };
+use blueice_ipc::extension::NetworkRedirectInfo;
 use std::collections::HashSet;
 use std::io;
 use std::os::unix::net::UnixStream;
@@ -56,6 +57,8 @@ pub(crate) enum NavOutcome {
         html: String,
         status: u16,
         content_type: Option<String>,
+        request_url: String,
+        redirects: Vec<NetworkRedirectInfo>,
     },
     /// Either gatekeeper stage rejected the navigation, or the
     /// gatekeeper itself was unreachable (fail-closed, see module
@@ -135,7 +138,9 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
     gatekeeper_socket: &Path,
     navigation_rules: HashSet<String>,
 ) -> NavOutcome {
+    let request_url = url.clone();
     let mut current_url = url;
+    let mut redirects = Vec::new();
     for redirects_followed in 0..=MAX_NAVIGATION_REDIRECTS {
         if extension_navigation_rules_block_url(&navigation_rules, &current_url) {
             return NavOutcome::ExtensionRuleBlocked { url: current_url };
@@ -163,7 +168,7 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
         };
 
         let fetched = match fetched {
-            blueice_net::FetchHop::Redirect { location } => {
+            blueice_net::FetchHop::Redirect { location, status } => {
                 if redirects_followed == MAX_NAVIGATION_REDIRECTS {
                     return NavOutcome::FetchFailed {
                         message: format!(
@@ -171,6 +176,11 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
                         ),
                     };
                 }
+                redirects.push(NetworkRedirectInfo {
+                    request_url: current_url,
+                    status,
+                    target_url: location.clone(),
+                });
                 current_url = location;
                 continue;
             }
@@ -200,6 +210,8 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
             html: fetched.body,
             status: fetched.status,
             content_type: fetched.content_type,
+            request_url,
+            redirects,
         };
     }
     unreachable!("the bounded redirect loop always returns or commits a page")
@@ -329,10 +341,18 @@ mod tests {
             NavOutcome::Cleared {
                 final_url: committed,
                 html,
+                request_url,
+                redirects,
                 ..
             } => {
                 assert_eq!(committed, final_url);
                 assert_eq!(html, "<p>final</p>");
+                assert_eq!(request_url, initial_url);
+                assert_eq!(redirects, vec![NetworkRedirectInfo {
+                    request_url: initial_url.clone(),
+                    status: 302,
+                    target_url: final_url.clone(),
+                }]);
             }
             _ => panic!("expected the reviewed redirect chain to commit"),
         }

@@ -61,7 +61,7 @@ pub use runtime::{
 
 use blueice_ipc::extension::{
     read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest,
-    ExtensionRuntimeEvent, NetworkResponseInfo, UnsupportedCapabilityVersion,
+    ExtensionRuntimeEvent, NetworkResponseInfo, NetworkTraceInfo, UnsupportedCapabilityVersion,
 };
 use blueice_ipc::gatekeeper::{
     default_gatekeeper_socket_path, read_gatekeeper_reply, write_gatekeeper_request,
@@ -331,7 +331,7 @@ impl ExtensionRegistry {
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v7);
         registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v3);
-        registry.register_capability_version_window(CAPABILITY_NETWORK_OBSERVE, v1);
+        registry.register_capability_version_window(CAPABILITY_NETWORK_OBSERVE, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_UI_INJECT, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_STORAGE, v1);
         registry
@@ -626,6 +626,7 @@ pub struct ExtensionActionDelegates<R, W, N, B, C> {
     register_network_block_url: B,
     clear_network_block_urls: C,
     observe_network: Box<dyn FnMut(u64) -> Result<Option<NetworkResponseInfo>, String> + Send>,
+    observe_network_trace: Box<dyn FnMut(u64) -> Result<Option<NetworkTraceInfo>, String> + Send>,
     set_toolbar_button: Box<dyn FnMut(String) -> Result<(), String> + Send>,
     clear_toolbar_button: Box<dyn FnMut() -> Result<(), String> + Send>,
     show_popup: Box<dyn FnMut(u64, String, String) -> Result<(), String> + Send>,
@@ -652,6 +653,9 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
             clear_network_block_urls,
             observe_network: Box::new(|_| {
                 Err("network:observe needs a core-backed response reader".to_string())
+            }),
+            observe_network_trace: Box::new(|_| {
+                Err("network:observe v2 needs a core-backed trace reader".to_string())
             }),
             set_toolbar_button: Box::new(|_| {
                 Err("ui:inject needs a core-backed native toolbar".to_string())
@@ -685,6 +689,15 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
         observer: impl FnMut(u64) -> Result<Option<NetworkResponseInfo>, String> + Send + 'static,
     ) -> Self {
         self.observe_network = Box::new(observer);
+        self
+    }
+
+    /// Binds v2 request/redirect observation to committed core-owned state.
+    pub fn with_network_trace_observer(
+        mut self,
+        observer: impl FnMut(u64) -> Result<Option<NetworkTraceInfo>, String> + Send + 'static,
+    ) -> Self {
+        self.observe_network_trace = Box::new(observer);
         self
     }
 
@@ -888,6 +901,7 @@ where
         mut register_network_block_url,
         mut clear_network_block_urls,
         mut observe_network,
+        mut observe_network_trace,
         mut set_toolbar_button,
         mut clear_toolbar_button,
         mut show_popup,
@@ -1097,6 +1111,36 @@ where
                                 .to_string(),
                         },
                         Ok(response) => ExtensionReply::NetworkResponseResult { response },
+                        Err(reason) => ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
+                            reason,
+                        },
+                    };
+                    write_extension_reply(stream, &reply)?;
+                }
+            }
+            ExtensionRequest::ReadNetworkTrace { tab_id } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_OBSERVE, 2)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
+                            reason,
+                        },
+                    )?;
+                } else {
+                    let reply = match observe_network_trace(tab_id) {
+                        Ok(trace) if trace.as_ref().is_some_and(|value| {
+                            serde_json::to_vec(value).is_ok_and(|bytes| {
+                                bytes.len() > blueice_ipc::extension::MAX_NETWORK_TRACE_BYTES
+                            })
+                        }) => ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
+                            reason: "network trace metadata exceeds the 32768-byte limit".to_string(),
+                        },
+                        Ok(trace) => ExtensionReply::NetworkTraceResult { trace },
                         Err(reason) => ExtensionReply::OperationUnavailable {
                             capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
                             reason,
@@ -2099,6 +2143,23 @@ mod tests {
                         status: 200,
                         content_type: Some("text/html".to_string()),
                     }))
+                })
+                .with_network_trace_observer(|tab_id| {
+                    assert_eq!(tab_id, 7);
+                    Ok(Some(NetworkTraceInfo {
+                        request_url: "https://example.test/start".to_string(),
+                        redirects: vec![blueice_ipc::extension::NetworkRedirectInfo {
+                            request_url: "https://example.test/start".to_string(),
+                            status: 302,
+                            target_url: "https://example.test/final".to_string(),
+                        }],
+                        response: NetworkResponseInfo {
+                            method: "GET".to_string(),
+                            final_url: "https://example.test/final".to_string(),
+                            status: 200,
+                            content_type: Some("text/html".to_string()),
+                        },
+                    }))
                 }),
             )
         });
@@ -2122,6 +2183,10 @@ mod tests {
                 })
             }
         );
+        write_extension_request(&mut client, &ExtensionRequest::ReadNetworkTrace { tab_id: 7 })
+            .unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_NETWORK_OBSERVE));
 
         write_extension_request(
             &mut client,
@@ -2140,6 +2205,19 @@ mod tests {
             &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_OBSERVE, 2)]),
         )
         .unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::ReadNetworkTrace { tab_id: 7 })
+            .unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::NetworkTraceResult { trace: Some(trace) }
+                if trace.request_url == "https://example.test/start"
+                    && trace.redirects.len() == 1
+                    && trace.redirects[0].status == 302));
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_OBSERVE, 3)]),
+        )
+        .unwrap();
         assert!(matches!(
             read_extension_reply(&mut client).unwrap(),
             ExtensionReply::HelloAck { unsupported_capabilities }
@@ -2147,11 +2225,11 @@ mod tests {
                     unsupported_capabilities.get(CAPABILITY_NETWORK_OBSERVE),
                     Some(UnsupportedCapabilityVersion::OutsideSupportedRange {
                         min_inclusive: 1,
-                        max_inclusive: 1,
+                        max_inclusive: 2,
                     })
                 )
         ));
-        write_extension_request(&mut client, &ExtensionRequest::ReadNetworkResponse { tab_id: 7 })
+        write_extension_request(&mut client, &ExtensionRequest::ReadNetworkTrace { tab_id: 7 })
             .unwrap();
         assert!(matches!(
             read_extension_reply(&mut client).unwrap(),

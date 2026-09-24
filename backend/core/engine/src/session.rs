@@ -103,6 +103,10 @@ pub enum ExtensionPageRequest {
         tab_id: u64,
         reply: mpsc::Sender<Result<Option<blueice_ipc::extension::NetworkResponseInfo>, String>>,
     },
+    ReadNetworkTrace {
+        tab_id: u64,
+        reply: mpsc::Sender<Result<Option<blueice_ipc::extension::NetworkTraceInfo>, String>>,
+    },
     SetToolbarButton {
         connection_id: u64,
         label: String,
@@ -1105,6 +1109,13 @@ fn handle_extension_page_request<S: Write>(
                 .map(|page| page.network_response().cloned());
             let _ = reply.send(result);
         }
+        ExtensionPageRequest::ReadNetworkTrace { tab_id, reply } => {
+            let result = tabs
+                .get(TabId::from_u64(tab_id))
+                .ok_or_else(|| format!("unknown tab {tab_id}"))
+                .map(|page| page.network_trace().cloned());
+            let _ = reply.send(result);
+        }
         ExtensionPageRequest::SetToolbarButton {
             connection_id,
             label,
@@ -1998,6 +2009,8 @@ fn apply_completion<S: Write>(
             html,
             status,
             content_type,
+            request_url,
+            redirects,
         } => {
             let response = blueice_ipc::extension::NetworkResponseInfo {
                 method: "GET".to_string(),
@@ -2005,12 +2018,17 @@ fn apply_completion<S: Write>(
                 status,
                 content_type,
             };
+            let trace = blueice_ipc::extension::NetworkTraceInfo {
+                request_url,
+                redirects,
+                response,
+            };
             let committed = match &kind {
                 PendingKind::History(direction) => tabs.apply_fetched_history_navigation(
-                    tab_id, *direction, clearance, &final_url, &html, response,
+                    tab_id, *direction, clearance, &final_url, &html, trace,
                 ),
                 PendingKind::Navigate | PendingKind::OpenTab => {
-                    tabs.apply_fetched_navigation(tab_id, clearance, &final_url, &html, response);
+                    tabs.apply_fetched_navigation(tab_id, clearance, &final_url, &html, trace);
                     true
                 }
             };
@@ -2456,10 +2474,18 @@ mod tests {
     fn extension_observes_only_the_committed_http_response_for_a_live_tab() {
         let gatekeeper = clearing_gatekeeper("extension-network-observe");
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}", listener.local_addr().unwrap());
+        let url = format!("http://{}/before", listener.local_addr().unwrap());
+        let final_url = format!("http://{}/after", listener.local_addr().unwrap());
         let http = thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut request = [0u8; 1024];
+            let _ = std::io::Read::read(&mut stream, &mut request);
+            std::io::Write::write_all(
+                &mut stream,
+                b"HTTP/1.1 302 Found\r\nLocation: /after\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            )
+            .unwrap();
+            let (mut stream, _) = listener.accept().unwrap();
             let _ = std::io::Read::read(&mut stream, &mut request);
             std::io::Write::write_all(
                 &mut stream,
@@ -2493,11 +2519,19 @@ mod tests {
             })
             .unwrap();
         assert_eq!(reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap(), None);
+        let (trace_tx, trace_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ReadNetworkTrace {
+                tab_id: 1,
+                reply: trace_tx,
+            })
+            .unwrap();
+        assert_eq!(trace_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap(), None);
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: url.clone() })
             .unwrap();
         assert_eq!(
             blueice_ipc::read_server_message(&mut client).unwrap(),
-            ServerMessage::Navigated { url: url.clone() }
+            ServerMessage::Navigated { url: final_url.clone() }
         );
         assert!(matches!(
             blueice_ipc::read_server_message(&mut client).unwrap(),
@@ -2512,10 +2546,26 @@ mod tests {
             .unwrap();
         let response = reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap().unwrap();
         assert_eq!(response.method, "GET");
-        assert_eq!(response.final_url, url);
+        assert_eq!(response.final_url, final_url);
         assert_eq!(response.status, 200);
         assert_eq!(response.content_type.as_deref(), Some("text/html; charset=utf-8"));
         assert!(!format!("{response:?}").contains("secret"));
+        let (trace_tx, trace_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ReadNetworkTrace {
+                tab_id: 1,
+                reply: trace_tx,
+            })
+            .unwrap();
+        let trace = trace_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap().unwrap();
+        assert_eq!(trace.request_url, url);
+        assert_eq!(trace.redirects, vec![blueice_ipc::extension::NetworkRedirectInfo {
+            request_url: url.clone(),
+            status: 302,
+            target_url: final_url.clone(),
+        }]);
+        assert_eq!(trace.response, response);
+        assert!(!format!("{trace:?}").contains("secret"));
 
         blueice_ipc::write_client_message(
             &mut client,
@@ -2538,6 +2588,14 @@ mod tests {
             })
             .unwrap();
         assert_eq!(reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap(), None);
+        let (trace_tx, trace_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ReadNetworkTrace {
+                tab_id: 1,
+                reply: trace_tx,
+            })
+            .unwrap();
+        assert_eq!(trace_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap(), None);
         let (reply_tx, reply_rx) = mpsc::channel();
         extension_tx
             .send(ExtensionPageRequest::ReadNetworkResponse {
@@ -2546,6 +2604,14 @@ mod tests {
             })
             .unwrap();
         assert!(reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().is_err());
+        let (trace_tx, trace_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ReadNetworkTrace {
+                tab_id: 99,
+                reply: trace_tx,
+            })
+            .unwrap();
+        assert!(trace_rx.recv_timeout(Duration::from_secs(1)).unwrap().is_err());
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         session.join().unwrap().unwrap();
         http.join().unwrap();

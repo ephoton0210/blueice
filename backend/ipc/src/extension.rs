@@ -47,6 +47,9 @@ pub const MAX_NETWORK_BLOCK_URL_BYTES: usize = 2 * 1024;
 
 /// Maximum serialized response metadata returned to an extension guest.
 pub const MAX_NETWORK_OBSERVATION_BYTES: usize = 4 * 1024;
+/// A redirect chain can contain up to ten URL pairs; keep the v2 trace
+/// independently bounded without changing v1's smaller response limit.
+pub const MAX_NETWORK_TRACE_BYTES: usize = 32 * 1024;
 
 /// Native chrome accepts one short label, never extension HTML or a guest
 /// selected coordinate. The host and core both enforce this bound.
@@ -65,6 +68,27 @@ pub struct NetworkResponseInfo {
     pub final_url: String,
     pub status: u16,
     pub content_type: Option<String>,
+}
+
+/// One response that redirected an already-reviewed navigation request.
+/// No arbitrary headers, body, or cookies are included (the v1 final response
+/// carries only its validated Content-Type). URL strings can themselves carry
+/// sensitive path/query data, so the capability needs an install-time grant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkRedirectInfo {
+    pub request_url: String,
+    pub status: u16,
+    pub target_url: String,
+}
+
+/// Version 2 of `network:observe`: committed GET request and redirect-hop
+/// metadata plus the unchanged v1 final response. An incomplete or rejected
+/// navigation must never publish this record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkTraceInfo {
+    pub request_url: String,
+    pub redirects: Vec<NetworkRedirectInfo>,
+    pub response: NetworkResponseInfo,
 }
 
 /// Maximum UTF-8 key for the first bounded extension storage API. Keys use a
@@ -150,6 +174,9 @@ pub enum ExtensionRequest {
     /// associated with the currently committed page in an explicit tab.
     /// `None` means this page did not come from an HTTP fetch.
     ReadNetworkResponse { tab_id: u64 },
+    /// Version 2 of `network:observe`: the committed navigation's initial
+    /// request, redirect hops, and final response, without headers or bodies.
+    ReadNetworkTrace { tab_id: u64 },
     /// Version 1 of `ui:inject`: show one core-owned native toolbar button.
     /// The label is validated as short printable ASCII before publication.
     SetToolbarButton { label: String },
@@ -361,6 +388,8 @@ pub enum ExtensionReply {
     DomReadResult { value: String },
     /// Reply to a granted [`ExtensionRequest::ReadNetworkResponse`].
     NetworkResponseResult { response: Option<NetworkResponseInfo> },
+    /// Reply to a granted [`ExtensionRequest::ReadNetworkTrace`].
+    NetworkTraceResult { trace: Option<NetworkTraceInfo> },
     /// A bounded native toolbar update or clear was applied by core.
     UiInjectAck,
     /// Reply to a granted [`ExtensionRequest::DomWrite`].
@@ -494,6 +523,8 @@ mod tests {
             ExtensionRequest::NextRuntimeEvent,
             ExtensionRequest::DomRead,
             ExtensionRequest::DomReadTab { tab_id: 42 },
+            ExtensionRequest::ReadNetworkResponse { tab_id: 42 },
+            ExtensionRequest::ReadNetworkTrace { tab_id: 42 },
             ExtensionRequest::DomWrite {
                 value: "new content".to_string(),
                 target: DomWriteTarget::Document,
@@ -581,6 +612,31 @@ mod tests {
             ExtensionReply::DomReadResult {
                 value: "placeholder".to_string(),
             },
+            ExtensionReply::NetworkResponseResult {
+                response: Some(NetworkResponseInfo {
+                    method: "GET".to_string(),
+                    final_url: "https://example.test/final".to_string(),
+                    status: 200,
+                    content_type: Some("text/html".to_string()),
+                }),
+            },
+            ExtensionReply::NetworkTraceResult {
+                trace: Some(NetworkTraceInfo {
+                    request_url: "https://example.test/start".to_string(),
+                    redirects: vec![NetworkRedirectInfo {
+                        request_url: "https://example.test/start".to_string(),
+                        status: 302,
+                        target_url: "https://example.test/final".to_string(),
+                    }],
+                    response: NetworkResponseInfo {
+                        method: "GET".to_string(),
+                        final_url: "https://example.test/final".to_string(),
+                        status: 200,
+                        content_type: Some("text/html".to_string()),
+                    },
+                }),
+            },
+            ExtensionReply::NetworkTraceResult { trace: None },
             ExtensionReply::DomWriteAck,
             ExtensionReply::NetworkInterceptAck,
             ExtensionReply::StorageGetResult {

@@ -513,6 +513,111 @@ fn installed_extension_reads_a_real_core_owned_representation_over_private_socke
 }
 
 #[test]
+fn installed_extension_v2_observes_only_a_committed_redirect_trace() {
+    use blueice_ipc::extension::{
+        read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
+    };
+    use std::collections::BTreeMap;
+
+    let core_socket = unique_socket_path("ext-network-trace");
+    let extension_socket = unique_private_extension_socket_path("trace");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-extension-trace-frames-{}", std::process::id()
+    ));
+    let (package_root, manifest, extension_id) =
+        extension_manifest_package("network-trace", &["network:observe"]);
+    let gatekeeper_socket = clearing_gatekeeper("ent");
+    let _ = std::fs::remove_file(&core_socket);
+    let _ = std::fs::remove_file(&extension_socket);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+
+    let final_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let final_url = format!("http://{}/final", final_listener.local_addr().unwrap());
+    let final_server = thread::spawn(move || {
+        let (mut stream, _) = final_listener.accept().unwrap();
+        let mut request = [0u8; 1024];
+        let _ = stream.read(&mut request);
+        stream.write_all(
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nSet-Cookie: private=never-expose\r\nContent-Length: 12\r\nConnection: close\r\n\r\n<p>final</p>",
+        ).unwrap();
+    });
+    let redirect_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let request_url = format!("http://{}/start", redirect_listener.local_addr().unwrap());
+    let redirect_server = thread::spawn({
+        let final_url = final_url.clone();
+        move || {
+            let (mut stream, _) = redirect_listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request);
+            stream.write_all(format!(
+                "HTTP/1.1 302 Found\r\nLocation: {final_url}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            ).as_bytes()).unwrap();
+        }
+    });
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket", core_socket.to_str().unwrap(),
+            "--extension-socket", extension_socket.to_str().unwrap(),
+            "--extension-manifest", manifest.to_str().unwrap(),
+            "--gatekeeper-socket", gatekeeper_socket.to_str().unwrap(),
+            "--frame-dir", frame_dir.to_str().unwrap(),
+        ])
+        .spawn()
+        .expect("failed to spawn core for committed network trace test");
+    assert!(wait_for(&core_socket, Duration::from_secs(5)));
+    assert!(wait_for(&extension_socket, Duration::from_secs(5)));
+    let mut frontend = UnixStream::connect(&core_socket).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    let mut extension = UnixStream::connect(&extension_socket).unwrap();
+    write_extension_request(&mut extension, &ExtensionRequest::Hello {
+        extension_id,
+        capability_versions: BTreeMap::from([("network:observe".to_string(), 2)]),
+    }).unwrap();
+    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::HelloAck {
+        unsupported_capabilities: BTreeMap::new(),
+    });
+    write_extension_request(&mut extension, &ExtensionRequest::ReadNetworkTrace { tab_id: 1 }).unwrap();
+    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::NetworkTraceResult { trace: None });
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
+        url: request_url.clone(),
+    }).unwrap();
+    assert_eq!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url: final_url.clone() });
+    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }));
+    write_extension_request(&mut extension, &ExtensionRequest::ReadNetworkTrace { tab_id: 1 }).unwrap();
+    let ExtensionReply::NetworkTraceResult { trace: Some(trace) } =
+        read_extension_reply(&mut extension).unwrap() else {
+            panic!("the committed page must expose its reviewed redirect trace")
+        };
+    assert_eq!(trace.request_url, request_url);
+    assert_eq!(trace.redirects, vec![blueice_ipc::extension::NetworkRedirectInfo {
+        request_url,
+        status: 302,
+        target_url: final_url.clone(),
+    }]);
+    assert_eq!(trace.response.final_url, final_url);
+    assert_eq!(trace.response.status, 200);
+    assert_eq!(trace.response.content_type.as_deref(), Some("text/html"));
+    assert!(!format!("{trace:?}").contains("private=never-expose"));
+    write_extension_request(&mut extension, &ExtensionRequest::ReadNetworkResponse { tab_id: 1 }).unwrap();
+    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::NetworkResponseResult {
+        response: Some(trace.response),
+    });
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    assert!(core.wait().unwrap().success());
+    redirect_server.join().unwrap();
+    final_server.join().unwrap();
+    assert!(!core_socket.exists());
+    assert!(!extension_socket.exists());
+    let _ = std::fs::remove_file(gatekeeper_socket);
+    let _ = std::fs::remove_dir_all(package_root);
+}
+
+#[test]
 fn installed_extension_v3_network_rule_clear_restores_navigation_after_a_redirect_block() {
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,

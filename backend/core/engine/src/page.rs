@@ -55,6 +55,7 @@ pub struct Page {
     scroll_y: f64,
     url: Option<String>,
     network_response: Option<blueice_ipc::extension::NetworkResponseInfo>,
+    network_trace: Option<blueice_ipc::extension::NetworkTraceInfo>,
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     highlighted: Option<NodeId>,
@@ -98,6 +99,7 @@ impl Page {
             scroll_y: 0.0,
             url: None,
             network_response: None,
+            network_trace: None,
             hovered: None,
             focused: None,
             highlighted: None,
@@ -119,6 +121,7 @@ impl Page {
         // recycled ID (plan §1's stable-ID-across-mutations requirement).
         self.doc = blueice_html::parse_continuing_from(html, self.doc.next_node_id());
         self.network_response = None;
+        self.network_trace = None;
         self.scroll_y = 0.0;
         // A fresh document invalidates every NodeId a prior interaction
         // might have recorded -- holding onto a stale ID here would let
@@ -286,6 +289,14 @@ impl Page {
 
     pub(crate) fn network_response(&self) -> Option<&blueice_ipc::extension::NetworkResponseInfo> {
         self.network_response.as_ref()
+    }
+
+    pub(crate) fn set_network_trace(&mut self, trace: blueice_ipc::extension::NetworkTraceInfo) {
+        self.network_trace = Some(trace);
+    }
+
+    pub(crate) fn network_trace(&self) -> Option<&blueice_ipc::extension::NetworkTraceInfo> {
+        self.network_trace.as_ref()
     }
 
     pub fn resize(&mut self, width: f64, height: f64) {

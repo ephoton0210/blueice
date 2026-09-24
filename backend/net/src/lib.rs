@@ -72,7 +72,7 @@ pub enum FetchHop {
     /// A non-redirect response body, ready for normal content review.
     Page(FetchedPage),
     /// A resolved, validated HTTP(S) target from one redirect response.
-    Redirect { location: String },
+    Redirect { location: String, status: u16 },
 }
 
 /// Rejects a non-`http(s)` scheme before any network I/O -- split out
@@ -141,6 +141,7 @@ pub fn fetch_navigation_hop(url: &str) -> Result<FetchHop, FetchError> {
         validate_url_scheme(location.as_str())?;
         return Ok(FetchHop::Redirect {
             location: location.to_string(),
+            status: response.status().as_u16(),
         });
     }
     let status = response.status().as_u16();
@@ -243,8 +244,9 @@ mod tests {
         let url = format!("http://{addr}/before");
 
         match fetch_navigation_hop(&url).unwrap() {
-            FetchHop::Redirect { location } => {
+            FetchHop::Redirect { location, status } => {
                 assert_eq!(location, format!("http://{addr}/after"));
+                assert_eq!(status, 302);
             }
             FetchHop::Page(_) => panic!("a 302 must remain a policy-visible redirect hop"),
         }

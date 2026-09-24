@@ -27,7 +27,7 @@ use blueice_extension_host::{
     load_installed_extension, registry_for_installed_extension, ExtensionActionDelegates,
     ExtensionConnectionAuthentication, ExtensionRegistry, ExtensionStorage,
 };
-use blueice_ipc::extension::{ExtensionRuntimeEvent, NetworkResponseInfo};
+use blueice_ipc::extension::{ExtensionRuntimeEvent, NetworkResponseInfo, NetworkTraceInfo};
 use std::io::Read;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
@@ -253,6 +253,21 @@ fn request_network_response(
 ) -> Result<Option<NetworkResponseInfo>, String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::ReadNetworkResponse {
+        tab_id,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
+fn request_network_trace(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    tab_id: u64,
+) -> Result<Option<NetworkTraceInfo>, String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::ReadNetworkTrace {
         tab_id,
         reply: reply_tx,
     })
@@ -508,6 +523,7 @@ fn spawn_extension_listener(
                 };
                 let read_tx = request_tx.clone();
                 let observe_tx = request_tx.clone();
+                let observe_trace_tx = request_tx.clone();
                 let write_tx = request_tx.clone();
                 let rule_tx = request_tx.clone();
                 let clear_tx = request_tx.clone();
@@ -582,6 +598,9 @@ fn spawn_extension_listener(
                         .with_storage(storage)
                         .with_network_observer(move |tab_id| {
                             request_network_response(&observe_tx, tab_id)
+                        })
+                        .with_network_trace_observer(move |tab_id| {
+                            request_network_trace(&observe_trace_tx, tab_id)
                         })
                         .with_toolbar_button(move |label| {
                             request_toolbar_button(&toolbar_tx, connection_id, label)

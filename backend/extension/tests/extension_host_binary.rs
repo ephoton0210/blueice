@@ -248,6 +248,36 @@ fn storage_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
     (root, manifest, extension_id)
 }
 
+fn network_trace_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "blueice-extension-host-trace-package-{label}-{}-{id}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let manifest = root.join("extension.json");
+    std::fs::write(
+        &manifest,
+        r#"{"name":"Trace","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["network:observe"]}}"#,
+    ).unwrap();
+    std::fs::write(root.join("extension.wasm"), wat::parse_str(
+        r#"(module
+            (import "blueice" "network_trace_utf8" (func $trace (param i64 i32 i32) (result i32)))
+            (memory (export "memory") 1)
+            (func (export "blueice_start")
+                i64.const 1
+                i32.const 0
+                i32.const 1024
+                call $trace
+                i32.const 0
+                i32.le_s
+                if unreachable end))"#,
+    ).unwrap()).unwrap();
+    let extension_id = load_installed_extension(&manifest).unwrap().extension_id().to_string();
+    (root, manifest, extension_id)
+}
+
 fn range_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
@@ -528,6 +558,57 @@ fn core_connection_mode_negotiates_v3_and_runs_network_rule_clear_over_real_ipc(
         &ExtensionReply::RuntimeEventStreamClosed,
     )
     .unwrap();
+    drop(listener);
+    assert!(host.wait().unwrap().success());
+    let _ = std::fs::remove_file(socket);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn core_connection_mode_negotiates_network_observe_v2_and_runs_trace_import() {
+    let (root, manifest, extension_id) = network_trace_manifest_package("core-connect");
+    let socket = unique_socket_path("core-trace");
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
+    let authentication = "test-only-network-trace-credential";
+    let mut host = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
+        .args(["--connect", socket.to_str().unwrap(), "--manifest", manifest.to_str().unwrap()])
+        .env("BLUEICE_EXTENSION_AUTH_TOKEN", authentication)
+        .spawn()
+        .expect("failed to launch blueice-extension-host for network trace");
+
+    let (mut stream, _) = listener.accept().unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::HelloAuthenticated {
+            extension_id,
+            capability_versions: BTreeMap::from([("network:observe".to_string(), 2)]),
+            authentication: authentication.to_string(),
+        });
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::HelloAck {
+        unsupported_capabilities: BTreeMap::new(),
+    }).unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::RuntimeReady);
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeStart).unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::ReadNetworkTrace { tab_id: 1 });
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::NetworkTraceResult {
+        trace: Some(blueice_ipc::extension::NetworkTraceInfo {
+            request_url: "https://example.test/start".to_string(),
+            redirects: vec![],
+            response: blueice_ipc::extension::NetworkResponseInfo {
+                method: "GET".to_string(),
+                final_url: "https://example.test/start".to_string(),
+                status: 200,
+                content_type: Some("text/html".to_string()),
+            },
+        }),
+    }).unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent);
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream, &ExtensionReply::RuntimeEventStreamClosed,
+    ).unwrap();
     drop(listener);
     assert!(host.wait().unwrap().success());
     let _ = std::fs::remove_file(socket);
