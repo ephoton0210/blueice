@@ -256,6 +256,10 @@ Keep check read-only and owner registration sealed before listeners.
 
 - [ ] Pin canonical input/config/output roots and a closed source graph;
   client requests cannot add paths, resolver edges, options, or plugins.
+  Partial: the owner-only startup catalog now rejects lexical path aliases,
+  config/entry/source identities outside the declared project root, and
+  output roots colliding with any catalog input or another output. Physical
+  filesystem canonicalization and output-write authority remain open.
 - [ ] Admit only owner-exposed projects to each client inventory; deny a
   guessed or private project before reaching the compiler cache.
 

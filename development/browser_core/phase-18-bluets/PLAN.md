@@ -231,6 +231,16 @@ visible through the separately authorized `DescribeProject` query, so an owner
 must not put a sensitive filesystem path there. Output-write elevation is
 still open.
 
+**Owner catalog path-identity hardening:** The version-2 startup catalog now
+rejects lexical aliases (dot segments, ambiguous slashes, encoded or
+backslash separators, query/fragment suffixes), requires its config, entry,
+and ordinary source modules to lie under the declared project root, and
+rejects an output root that overlaps any catalog input or another output.
+Containment is segment-aware, so `/app` does not capture `/app2`. This check
+is source-free and runs before core registration; it neither resolves
+filesystem symlinks nor grants build/write authority. A future output adapter
+must still canonicalize real paths and enforce its own transaction boundary.
+
 **Atomic source-position arm update:** Debugger v29 adds
 `ArmStaticMetadataSourceBreakpoint` without changing the child-private
 page-host v29 protocol or metadata manifest v3. One core session turn requires

@@ -137,6 +137,8 @@ impl CompilerCatalogBootstrap {
         }
         let mut decoded_bytes = 0usize;
         let mut project_roots = BTreeSet::new();
+        let mut input_identities = Vec::new();
+        let mut output_roots = Vec::new();
         for project in &self.projects {
             if !project_roots.insert(project.canonical_project_root.as_str()) {
                 return Err(invalid("duplicate compiler catalog project root"));
@@ -150,6 +152,25 @@ impl CompilerCatalogBootstrap {
             ] {
                 validate_identity(identity, &mut decoded_bytes)?;
             }
+            for identity in [
+                &project.canonical_project_root,
+                &project.canonical_config_root,
+                &project.canonical_output_root,
+                &project.entry_module,
+            ] {
+                validate_path_identity(identity)?;
+            }
+            if !is_descendant(
+                &project.canonical_config_root,
+                &project.canonical_project_root,
+            ) || !is_descendant(&project.entry_module, &project.canonical_project_root)
+            {
+                return Err(invalid(
+                    "compiler catalog config or entry escapes its project root",
+                ));
+            }
+            input_identities.push(project.canonical_config_root.as_str());
+            output_roots.push(project.canonical_output_root.as_str());
             if project.modules.is_empty()
                 || project.modules.len() > MAX_COMPILER_CATALOG_MODULES_PER_PROJECT
                 || project.resolutions.len() > MAX_COMPILER_CATALOG_RESOLUTIONS_PER_PROJECT
@@ -163,6 +184,10 @@ impl CompilerCatalogBootstrap {
             let mut module_ids = BTreeSet::new();
             for module in &project.modules {
                 validate_identity(&module.canonical_id, &mut decoded_bytes)?;
+                validate_path_identity(&module.canonical_id)?;
+                if !is_descendant(&module.canonical_id, &project.canonical_project_root) {
+                    return Err(invalid("compiler catalog module escapes its project root"));
+                }
                 if !module_ids.insert(module.canonical_id.as_str()) {
                     return Err(invalid("duplicate compiler catalog module"));
                 }
@@ -172,6 +197,7 @@ impl CompilerCatalogBootstrap {
                     ));
                 }
                 add_bytes(&mut decoded_bytes, module.text.len())?;
+                input_identities.push(module.canonical_id.as_str());
             }
             if !module_ids.contains(project.entry_module.as_str()) {
                 return Err(invalid("compiler catalog entry module is missing"));
@@ -179,6 +205,7 @@ impl CompilerCatalogBootstrap {
             let mut ambient_ids = BTreeSet::new();
             for module in &project.options.ambient_declaration_modules {
                 validate_identity(&module.canonical_id, &mut decoded_bytes)?;
+                validate_path_identity(&module.canonical_id)?;
                 if module_ids.contains(module.canonical_id.as_str())
                     || !ambient_ids.insert(module.canonical_id.as_str())
                 {
@@ -190,6 +217,7 @@ impl CompilerCatalogBootstrap {
                     ));
                 }
                 add_bytes(&mut decoded_bytes, module.text.len())?;
+                input_identities.push(module.canonical_id.as_str());
             }
             let mut resolution_keys = BTreeSet::new();
             for resolution in &project.resolutions {
@@ -210,6 +238,19 @@ impl CompilerCatalogBootstrap {
                     return Err(invalid("duplicate compiler catalog resolution"));
                 }
             }
+        }
+        if output_roots.iter().any(|output| {
+            input_identities
+                .iter()
+                .any(|input| paths_overlap(output, input))
+        }) || output_roots.iter().enumerate().any(|(index, output)| {
+            output_roots[index + 1..]
+                .iter()
+                .any(|other| paths_overlap(output, other))
+        }) {
+            return Err(invalid(
+                "compiler catalog output overlaps an input or another output",
+            ));
         }
         Ok(())
     }
@@ -293,6 +334,34 @@ fn validate_identity(value: &str, decoded_bytes: &mut usize) -> io::Result<()> {
         ));
     }
     add_bytes(decoded_bytes, value.len())
+}
+
+/// Treat owner-supplied path identities as opaque names, but reject lexical
+/// aliases before their equality or containment can authorize future output.
+/// This does not resolve a host filesystem path or grant write access.
+fn validate_path_identity(value: &str) -> io::Result<()> {
+    let path = value.split_once("://").map_or(value, |(_, path)| path);
+    if path.is_empty()
+        || path.ends_with('/')
+        || path.contains("//")
+        || value.contains(['\\', '?', '#', '%'])
+        || value.chars().any(char::is_control)
+        || path
+            .split('/')
+            .any(|component| matches!(component, "." | ".."))
+    {
+        return Err(invalid("compiler catalog path identity is not canonical"));
+    }
+    Ok(())
+}
+
+fn is_descendant(path: &str, root: &str) -> bool {
+    path.strip_prefix(root)
+        .is_some_and(|remainder| remainder.starts_with('/') && remainder.len() > 1)
+}
+
+fn paths_overlap(left: &str, right: &str) -> bool {
+    left == right || is_descendant(left, right) || is_descendant(right, left)
 }
 
 fn add_bytes(total: &mut usize, bytes: usize) -> io::Result<()> {
@@ -397,5 +466,68 @@ mod tests {
         write_compiler_catalog(&mut encoded, &fixture_catalog()).unwrap();
         encoded.push(1);
         assert!(read_compiler_catalog(&mut encoded.as_slice()).is_err());
+    }
+
+    #[test]
+    fn owner_catalog_rejects_aliased_inputs_and_output_collisions() {
+        for aliased_root in [
+            "project:///app/../app",
+            "project:///app/./nested",
+            "project:////app",
+            "project:///app/",
+            "project:///app%2fhidden",
+            "project:///app\\hidden",
+            "project:///app?version=1",
+        ] {
+            let mut catalog = fixture_catalog();
+            catalog.projects[0].canonical_project_root = aliased_root.into();
+            assert!(catalog.validate().is_err(), "accepted {aliased_root}");
+        }
+
+        let mut catalog = fixture_catalog();
+        catalog.projects[0].canonical_config_root = "project:///outside/blue-ts.json".into();
+        assert!(catalog.validate().is_err());
+
+        let mut catalog = fixture_catalog();
+        catalog.projects[0].modules.push(CompilerCatalogModule {
+            canonical_id: "project:///outside/extra.ts".into(),
+            text: "export const extra = 1;".into(),
+        });
+        assert!(catalog.validate().is_err());
+
+        let mut catalog = fixture_catalog();
+        catalog.projects[0].canonical_output_root = "project:///app".into();
+        assert!(catalog.validate().is_err());
+
+        let mut catalog = fixture_catalog();
+        catalog.projects[0].canonical_output_root = "project:///app/main.ts".into();
+        assert!(catalog.validate().is_err());
+
+        let mut catalog = fixture_catalog();
+        catalog.projects[0].canonical_output_root = "project:///app/dist".into();
+        assert!(catalog.validate().is_ok());
+
+        let mut catalog = fixture_catalog();
+        catalog.projects[0].canonical_output_root = "project:///app2".into();
+        assert!(
+            catalog.validate().is_ok(),
+            "root containment must be segment-aware"
+        );
+
+        let mut catalog = fixture_catalog();
+        let mut second = catalog.projects[0].clone();
+        second.canonical_project_root = "project:///second".into();
+        second.canonical_config_root = "project:///second/blue-ts.json".into();
+        second.entry_module = "project:///second/main.ts".into();
+        second.modules[0].canonical_id = second.entry_module.clone();
+        second.canonical_output_root = "project:///app".into();
+        catalog.projects.push(second);
+        assert!(catalog.validate().is_err());
+
+        catalog.projects[1].canonical_output_root = "project:///dist/second".into();
+        assert!(catalog.validate().is_err());
+
+        catalog.projects[1].canonical_output_root = "project:///second-dist".into();
+        assert!(catalog.validate().is_ok());
     }
 }
