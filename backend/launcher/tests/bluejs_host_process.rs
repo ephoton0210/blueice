@@ -10,8 +10,8 @@
 //! document generation lifecycle, source-free responses, and cleanup path.
 
 use blueice_ipc::page_host::{
-    PageHostDocument, PageHostDocumentSnapshot, PageHostModuleGraph, PageHostReply,
-    PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
+    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
+    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
     PageHostScriptOutcome, PageHostScriptReport, PageHostSource, PageHostStaticResolution,
 };
 use blueice_launcher::bluejs_host::{BlueJsHostRuntimeLimits, SpawnedBlueJsHost};
@@ -173,6 +173,9 @@ fn launcher_owner_runtime_limits_reach_the_real_child_before_program_admission()
         max_programs_per_realm: 1,
         max_bytecode_bytes_per_realm: 1,
         max_heap_bytes_per_realm: BlueJsHostRuntimeLimits::default().max_heap_bytes_per_realm,
+        max_reserved_programs: 1,
+        max_reserved_bytecode_bytes: 1,
+        max_reserved_heap_bytes: BlueJsHostRuntimeLimits::default().max_heap_bytes_per_realm,
     };
     let mut host = SpawnedBlueJsHost::spawn_with_runtime_limits(limits)
         .expect("the launcher must bootstrap the child with owner limits");
@@ -213,6 +216,62 @@ fn launcher_owner_runtime_limits_reach_the_real_child_before_program_admission()
     ));
     host.shutdown()
         .expect("the owner must cleanly stop the bounded child");
+}
+
+#[test]
+fn launcher_child_reserves_aggregate_capacity_before_admitting_a_second_tab() {
+    assert!(std::path::Path::new(CHILD_BINARY).exists());
+    let per_realm_heap = BlueJsHostRuntimeLimits::default().max_heap_bytes_per_realm;
+    let limits = BlueJsHostRuntimeLimits {
+        max_realms: 2,
+        max_programs_per_realm: 1,
+        max_bytecode_bytes_per_realm: 4096,
+        max_heap_bytes_per_realm: per_realm_heap,
+        max_reserved_programs: 1,
+        max_reserved_bytecode_bytes: 8192,
+        max_reserved_heap_bytes: per_realm_heap.saturating_mul(2),
+    };
+    let mut host = SpawnedBlueJsHost::spawn_with_runtime_limits(limits)
+        .expect("launcher must pass the aggregate envelope to the real child");
+    let first = document(1, vec![blue_ts_classic(0, "let answer: number = 42;")]);
+    assert!(matches!(
+        host.synchronize_document(first).unwrap(),
+        PageHostReply::Synchronized { reports, .. }
+            if matches!(reports.as_slice(), [PageHostScriptReport {
+                outcome: PageHostScriptOutcome::Executed,
+                ..
+            }])
+    ));
+
+    let mut second = document(1, vec![blue_ts_classic(0, "let other: number = 7;")]);
+    second.tab_id = 42;
+    assert!(matches!(
+        host.synchronize_document(second.clone()).unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::ResourceLimit,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::GetRealmStats {
+            tab_id: 41,
+            document_generation: 1,
+        }).unwrap(),
+        PageHostReply::RealmStats(stats) if stats.program_count == 1
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::CloseRealm {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap(),
+        PageHostReply::RealmClosed { .. }
+    ));
+    assert!(matches!(
+        host.synchronize_document(second).unwrap(),
+        PageHostReply::Synchronized { .. }
+    ));
+    host.shutdown().unwrap();
 }
 
 #[test]

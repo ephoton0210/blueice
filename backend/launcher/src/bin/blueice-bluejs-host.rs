@@ -32,6 +32,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut max_programs_per_realm = None;
     let mut max_bytecode_bytes_per_realm = None;
     let mut max_heap_bytes_per_realm = None;
+    let mut max_reserved_programs = None;
+    let mut max_reserved_bytecode_bytes = None;
+    let mut max_reserved_heap_bytes = None;
     let mut args = args;
     while let Some(flag) = args.next() {
         let mut value = || {
@@ -69,6 +72,27 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 max_heap_bytes_per_realm =
                     Some(parse_limit("--max-heap-bytes-per-realm", value()?)?)
             }
+            "--max-reserved-programs" => {
+                if max_reserved_programs.is_some() {
+                    return Err("--max-reserved-programs may be supplied only once".to_string());
+                }
+                max_reserved_programs = Some(parse_limit("--max-reserved-programs", value()?)?)
+            }
+            "--max-reserved-bytecode-bytes" => {
+                if max_reserved_bytecode_bytes.is_some() {
+                    return Err(
+                        "--max-reserved-bytecode-bytes may be supplied only once".to_string()
+                    );
+                }
+                max_reserved_bytecode_bytes =
+                    Some(parse_limit("--max-reserved-bytecode-bytes", value()?)?)
+            }
+            "--max-reserved-heap-bytes" => {
+                if max_reserved_heap_bytes.is_some() {
+                    return Err("--max-reserved-heap-bytes may be supplied only once".to_string());
+                }
+                max_reserved_heap_bytes = Some(parse_limit("--max-reserved-heap-bytes", value()?)?)
+            }
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
@@ -83,18 +107,27 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         max_programs_per_realm,
         max_bytecode_bytes_per_realm,
         max_heap_bytes_per_realm,
+        max_reserved_programs,
+        max_reserved_bytecode_bytes,
+        max_reserved_heap_bytes,
     ) {
-        (None, None, None, None) => BlueJsHostRuntimeLimits::default(),
+        (None, None, None, None, None, None, None) => BlueJsHostRuntimeLimits::default(),
         (
             Some(max_realms),
             Some(max_programs_per_realm),
             Some(max_bytecode_bytes_per_realm),
             Some(max_heap_bytes_per_realm),
+            Some(max_reserved_programs),
+            Some(max_reserved_bytecode_bytes),
+            Some(max_reserved_heap_bytes),
         ) => BlueJsHostRuntimeLimits {
             max_realms,
             max_programs_per_realm,
             max_bytecode_bytes_per_realm,
             max_heap_bytes_per_realm,
+            max_reserved_programs,
+            max_reserved_bytecode_bytes,
+            max_reserved_heap_bytes,
         },
         _ => {
             return Err("all BlueJS page-host runtime limits must be supplied together".to_string())
@@ -128,17 +161,10 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let runtime_config = match args.runtime_limits.runtime_config() {
-        Ok(runtime_config) => runtime_config,
-        Err(message) => {
-            eprintln!("blueice-bluejs-host: {message}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let mut host = match BlueJsChildHost::with_runtime_config(runtime_config) {
+    let mut host = match BlueJsChildHost::with_runtime_limits(args.runtime_limits) {
         Ok(host) => host,
         Err(error) => {
-            eprintln!("blueice-bluejs-host: invalid runtime configuration: {error}");
+            eprintln!("blueice-bluejs-host: {error}");
             return ExitCode::FAILURE;
         }
     };
@@ -219,6 +245,12 @@ mod tests {
             "4096",
             "--max-heap-bytes-per-realm",
             "8192",
+            "--max-reserved-programs",
+            "3",
+            "--max-reserved-bytecode-bytes",
+            "4096",
+            "--max-reserved-heap-bytes",
+            "8192",
         ])
         .expect("a complete valid runtime envelope must parse");
         assert_eq!(
@@ -228,6 +260,9 @@ mod tests {
                 max_programs_per_realm: 3,
                 max_bytecode_bytes_per_realm: 4096,
                 max_heap_bytes_per_realm: 8192,
+                max_reserved_programs: 3,
+                max_reserved_bytecode_bytes: 4096,
+                max_reserved_heap_bytes: 8192,
             }
         );
         assert_eq!(
@@ -240,6 +275,47 @@ mod tests {
                 "2",
             ]),
             Err("all BlueJS page-host runtime limits must be supplied together".to_string())
+        );
+        let missing_reservation = args(&[
+            "--socket",
+            "/tmp/host.sock",
+            "--session-token",
+            token,
+            "--max-realms",
+            "2",
+            "--max-programs-per-realm",
+            "3",
+            "--max-bytecode-bytes-per-realm",
+            "4096",
+            "--max-heap-bytes-per-realm",
+            "8192",
+        ]);
+        assert_eq!(
+            missing_reservation,
+            Err("all BlueJS page-host runtime limits must be supplied together".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/host.sock",
+                "--session-token",
+                token,
+                "--max-realms",
+                "2",
+                "--max-programs-per-realm",
+                "3",
+                "--max-bytecode-bytes-per-realm",
+                "4096",
+                "--max-heap-bytes-per-realm",
+                "8192",
+                "--max-reserved-programs",
+                "2",
+                "--max-reserved-bytecode-bytes",
+                "4096",
+                "--max-reserved-heap-bytes",
+                "8192",
+            ]),
+            Err("BlueJS child-wide reservations must cover one full realm".to_string())
         );
         assert_eq!(
             args(&[

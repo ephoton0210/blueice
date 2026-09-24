@@ -89,32 +89,48 @@ const CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START: u64 = 1 << 63;
 
 /// Immutable launcher-owner limits for one isolated page-host child.
 ///
-/// These are per-realm envelopes, not a child-process RSS or aggregate memory
-/// limit: VM managed-heap accounting deliberately excludes allocator, Rust,
-/// registry, source, and operating-system overhead. The launcher may select
-/// this value only while starting a core generation; page, frontend, and
-/// page-host IPC contain no operation that can inspect or modify it.
+/// Per-realm envelopes and conservative child-wide reservations. Each live
+/// realm reserves its full program, root-bytecode, and VM-managed-heap budget
+/// before admission. This is not an RSS or fleet memory limit: VM accounting
+/// excludes allocator, Rust, registry, source, and operating-system overhead.
+/// Only the launcher may select these values before starting a core generation;
+/// page, frontend, and page-host IPC cannot inspect or modify them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BlueJsHostRuntimeLimits {
     pub max_realms: usize,
     pub max_programs_per_realm: usize,
     pub max_bytecode_bytes_per_realm: usize,
     pub max_heap_bytes_per_realm: usize,
+    pub max_reserved_programs: usize,
+    pub max_reserved_bytecode_bytes: usize,
+    pub max_reserved_heap_bytes: usize,
 }
 
 impl Default for BlueJsHostRuntimeLimits {
     fn default() -> Self {
-        let runtime = BlueJsPageRuntimeConfig::default();
+        Self::from_runtime_config(BlueJsPageRuntimeConfig::default())
+    }
+}
+
+impl BlueJsHostRuntimeLimits {
+    fn from_runtime_config(runtime: BlueJsPageRuntimeConfig) -> Self {
         Self {
             max_realms: runtime.max_realms,
             max_programs_per_realm: runtime.max_programs_per_realm,
             max_bytecode_bytes_per_realm: runtime.max_bytecode_bytes_per_realm,
             max_heap_bytes_per_realm: runtime.vm.heap.max_heap_bytes,
+            max_reserved_programs: runtime
+                .max_realms
+                .saturating_mul(runtime.max_programs_per_realm),
+            max_reserved_bytecode_bytes: runtime
+                .max_realms
+                .saturating_mul(runtime.max_bytecode_bytes_per_realm),
+            max_reserved_heap_bytes: runtime
+                .max_realms
+                .saturating_mul(runtime.vm.heap.max_heap_bytes),
         }
     }
-}
 
-impl BlueJsHostRuntimeLimits {
     /// Rebuilds the one narrow policy surface into the full BlueJS runtime
     /// configuration. All non-resource VM configuration remains the child
     /// default rather than becoming an embedding/deployment API.
@@ -123,8 +139,17 @@ impl BlueJsHostRuntimeLimits {
             || self.max_programs_per_realm == 0
             || self.max_bytecode_bytes_per_realm == 0
             || self.max_heap_bytes_per_realm == 0
+            || self.max_reserved_programs == 0
+            || self.max_reserved_bytecode_bytes == 0
+            || self.max_reserved_heap_bytes == 0
         {
             return Err("BlueJS page-host runtime limits must be non-zero");
+        }
+        if self.max_reserved_programs < self.max_programs_per_realm
+            || self.max_reserved_bytecode_bytes < self.max_bytecode_bytes_per_realm
+            || self.max_reserved_heap_bytes < self.max_heap_bytes_per_realm
+        {
+            return Err("BlueJS child-wide reservations must cover one full realm");
         }
         let defaults = BlueJsPageRuntimeConfig::default();
         let heap = HeapConfig {
@@ -227,6 +252,7 @@ struct PendingDebuggerExecution {
 /// during document admission.
 pub struct BlueJsChildHost {
     runtime: BlueJsPageRuntime,
+    limits: BlueJsHostRuntimeLimits,
     /// Static BlueTS metadata paired with the exact child-local BlueJS
     /// generation that direct lowering admitted. This remains entirely in the
     /// child: the page-host protocol has no source, symbol, type, contract,
@@ -246,14 +272,16 @@ impl BlueJsChildHost {
         Self::with_runtime_config(BlueJsPageRuntimeConfig::default())
     }
 
-    /// Creates a host with launcher-selected runtime limits. This is exposed
-    /// for deterministic tests and future launcher policy wiring; the page
-    /// protocol contains no operation for a caller to modify it.
+    /// Creates a host with a runtime configuration and enough child-wide
+    /// capacity to admit every permitted realm. The launcher-selected
+    /// aggregate envelope uses `with_runtime_limits` instead.
     pub fn with_runtime_config(
         config: BlueJsPageRuntimeConfig,
     ) -> Result<Self, BlueJsPageRuntimeError> {
+        let limits = BlueJsHostRuntimeLimits::from_runtime_config(config);
         Ok(Self {
             runtime: BlueJsPageRuntime::new(config)?,
+            limits,
             debug_registry: DirectDebugRegistry::default(),
             documents: BTreeMap::new(),
             next_debugger_program_handle: 1,
@@ -261,6 +289,15 @@ impl BlueJsChildHost {
             next_debugger_metadata_handle: CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
             next_debugger_metadata_generation: CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
         })
+    }
+
+    /// Creates a child using the complete, immutable launcher-owner envelope.
+    pub fn with_runtime_limits(limits: BlueJsHostRuntimeLimits) -> Result<Self, &'static str> {
+        let config = limits.runtime_config()?;
+        let mut host = Self::with_runtime_config(config)
+            .map_err(|_| "BlueJS page-host runtime limits are invalid")?;
+        host.limits = limits;
+        Ok(host)
     }
 
     /// Handles one post-handshake request. The connection boundary performs
@@ -568,6 +605,10 @@ impl BlueJsChildHost {
             }
         }
 
+        if !self.documents.contains_key(&document.tab_id) && !self.can_reserve_new_realm() {
+            return resource_limit();
+        }
+
         // Parse/compile every independent declaration first. A graph that
         // cannot be structurally admitted becomes one source-free rejection,
         // while a later declaration remains eligible exactly as browser
@@ -736,6 +777,35 @@ impl BlueJsChildHost {
             already_current: false,
             reports,
         }
+    }
+
+    fn can_reserve_new_realm(&self) -> bool {
+        let Some(realm_count) = self.documents.len().checked_add(1) else {
+            return false;
+        };
+        if realm_count > self.limits.max_realms {
+            return false;
+        }
+        [
+            (
+                self.limits.max_programs_per_realm,
+                self.limits.max_reserved_programs,
+            ),
+            (
+                self.limits.max_bytecode_bytes_per_realm,
+                self.limits.max_reserved_bytecode_bytes,
+            ),
+            (
+                self.limits.max_heap_bytes_per_realm,
+                self.limits.max_reserved_heap_bytes,
+            ),
+        ]
+        .into_iter()
+        .all(|(per_realm, reserved)| {
+            realm_count
+                .checked_mul(per_realm)
+                .is_some_and(|needed| needed <= reserved)
+        })
     }
 
     /// Retains an explicitly core-selected document in child-owned document
@@ -3608,6 +3678,12 @@ impl SpawnedBlueJsHost {
             .arg(limits.max_bytecode_bytes_per_realm.to_string())
             .arg("--max-heap-bytes-per-realm")
             .arg(limits.max_heap_bytes_per_realm.to_string())
+            .arg("--max-reserved-programs")
+            .arg(limits.max_reserved_programs.to_string())
+            .arg("--max-reserved-bytecode-bytes")
+            .arg(limits.max_reserved_bytecode_bytes.to_string())
+            .arg("--max-reserved-heap-bytes")
+            .arg(limits.max_reserved_heap_bytes.to_string())
             .spawn()?;
 
         let started = wait_for_child_socket(&mut child, &socket_path, STARTUP_TIMEOUT);
@@ -3843,6 +3919,99 @@ mod tests {
             kind: PageHostScriptKind::Classic,
             graph: graph(&id, vec![PageHostSource::new(id.clone(), source)]),
         }
+    }
+
+    #[test]
+    fn child_wide_reservations_reject_new_tabs_but_allow_replacement_and_release() {
+        for constrained_resource in ["programs", "bytecode", "heap"] {
+            let heap_per_realm = BlueJsHostRuntimeLimits::default().max_heap_bytes_per_realm;
+            let mut limits = BlueJsHostRuntimeLimits {
+                max_realms: 2,
+                max_programs_per_realm: 2,
+                max_bytecode_bytes_per_realm: 4096,
+                max_heap_bytes_per_realm: heap_per_realm,
+                max_reserved_programs: 4,
+                max_reserved_bytecode_bytes: 8192,
+                max_reserved_heap_bytes: heap_per_realm.saturating_mul(2),
+            };
+            match constrained_resource {
+                "programs" => limits.max_reserved_programs = limits.max_programs_per_realm,
+                "bytecode" => {
+                    limits.max_reserved_bytecode_bytes = limits.max_bytecode_bytes_per_realm;
+                }
+                "heap" => limits.max_reserved_heap_bytes = limits.max_heap_bytes_per_realm,
+                _ => unreachable!(),
+            }
+            let mut host = BlueJsChildHost::with_runtime_limits(limits).unwrap();
+            let first = document(1, vec![classic(0, "globalThis.answer = 42;")]);
+            assert!(matches!(
+                host.handle_request(PageHostRequest::SynchronizeDocument { document: first }),
+                PageHostReply::Synchronized { reports, .. }
+                    if matches!(reports.as_slice(), [PageHostScriptReport {
+                        outcome: PageHostScriptOutcome::Executed,
+                        ..
+                    }])
+            ));
+
+            let mut second = document(1, vec![classic(0, "globalThis.other = 7;")]);
+            second.tab_id = 8;
+            assert!(
+                matches!(
+                    host.handle_request(PageHostRequest::SynchronizeDocument {
+                        document: second.clone()
+                    }),
+                    PageHostReply::Error {
+                        code: PageHostErrorCode::ResourceLimit,
+                        ..
+                    }
+                ),
+                "{constrained_resource}"
+            );
+            assert!(
+                matches!(
+                    host.handle_request(PageHostRequest::SynchronizeDocument {
+                        document: document(2, vec![classic(0, "globalThis.answer = 43;")])
+                    }),
+                    PageHostReply::Synchronized { reports, .. }
+                        if matches!(reports.as_slice(), [PageHostScriptReport {
+                            outcome: PageHostScriptOutcome::Executed,
+                            ..
+                        }])
+                ),
+                "{constrained_resource}"
+            );
+            assert!(matches!(
+                host.handle_request(PageHostRequest::CloseRealm {
+                    tab_id: 7,
+                    document_generation: 2,
+                }),
+                PageHostReply::RealmClosed { .. }
+            ));
+            assert!(
+                matches!(
+                    host.handle_request(PageHostRequest::SynchronizeDocument { document: second }),
+                    PageHostReply::Synchronized { reports, .. }
+                        if matches!(reports.as_slice(), [PageHostScriptReport {
+                            outcome: PageHostScriptOutcome::Executed,
+                            ..
+                        }])
+                ),
+                "{constrained_resource}"
+            );
+        }
+    }
+
+    #[test]
+    fn child_wide_reservation_must_cover_one_full_realm() {
+        let mut limits = BlueJsHostRuntimeLimits::default();
+        limits.max_reserved_programs = limits.max_programs_per_realm - 1;
+        assert!(limits.runtime_config().is_err());
+        limits = BlueJsHostRuntimeLimits::default();
+        limits.max_reserved_bytecode_bytes = limits.max_bytecode_bytes_per_realm - 1;
+        assert!(limits.runtime_config().is_err());
+        limits = BlueJsHostRuntimeLimits::default();
+        limits.max_reserved_heap_bytes = limits.max_heap_bytes_per_realm - 1;
+        assert!(limits.runtime_config().is_err());
     }
 
     #[test]

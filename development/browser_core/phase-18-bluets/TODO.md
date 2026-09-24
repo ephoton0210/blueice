@@ -257,14 +257,18 @@ or second module resolver to bypass them.
   or a malformed/mismatched reply; it is never reflected to a page, frontend,
   debugger, or MCP client. A trusted launcher embedding can now select one
   immutable child-bootstrap envelope for realm count, programs/root-bytecode
-  per realm, and VM managed heap per realm; both ordinary startup and cutover
-  pass the same envelope to each fresh child before it binds its private
-  socket. The public launcher CLI, page, frontend, core, and page-host IPC
-  cannot inspect or widen it. This is not host-wide accounting or an RSS cap:
-  VM heap accounting excludes allocator/Rust/source/registry/OS overhead and
-  no aggregate child/fleet reservation exists. Those host-wide limits, native
-  debugger attachment, and general JavaScript DOM-object/event binding remain
-  open, so the prerequisite remains open.
+  per realm, VM managed heap per realm, and child-wide worst-case reservations
+  for those three resources. Both ordinary startup and cutover pass the same
+  envelope to each fresh child before it binds its private socket. A new tab
+  reserves its full per-realm budget before realm creation; navigation keeps
+  that reservation, and close or post-creation binding failure releases it. The public
+  launcher CLI, page, frontend, core, and page-host IPC cannot inspect or
+  widen the envelope. This is not actual aggregate usage accounting, an RSS
+  cap, or a fleet budget: VM heap accounting excludes allocator/Rust/source/
+  registry/OS overhead, and reservations conservatively count full realm
+  budgets even when little is used. Those limits, native debugger attachment,
+  and general JavaScript DOM-object/event binding remain open, so the
+  prerequisite remains open.
 
   Acceptance: a page fixture can run a supported JavaScript classic script and
   module in its own realm; navigation/reload invalidates old program handles;
