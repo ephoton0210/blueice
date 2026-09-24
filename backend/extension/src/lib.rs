@@ -173,15 +173,18 @@ impl ExtensionStorage {
             .lock()
             .map_err(|_| "extension storage state was poisoned".to_string())?;
         let bucket = buckets.entry(extension_id.to_string()).or_default();
-        if !bucket.contains_key(&key) && bucket.len() >= MAX_STORAGE_ENTRIES_PER_EXTENSION {
+        let new_key = !bucket.contains_key(&key);
+        if new_key && bucket.len() >= MAX_STORAGE_ENTRIES_PER_EXTENSION {
             return Err(format!(
                 "an extension may store at most {MAX_STORAGE_ENTRIES_PER_EXTENSION} keys"
             ));
         }
+        let new_key_bytes = if new_key { key.len() } else { 0 };
         let existing_value_bytes = bucket.get(&key).map_or(0, String::len);
         let current_bytes = bucket_storage_bytes(bucket)?;
         let prospective_bytes = current_bytes
             .checked_sub(existing_value_bytes)
+            .and_then(|bytes| bytes.checked_add(new_key_bytes))
             .and_then(|bytes| bytes.checked_add(value.len()))
             .ok_or_else(|| "extension storage size overflowed".to_string())?;
         if prospective_bytes > MAX_STORAGE_BYTES_PER_EXTENSION {
@@ -2718,6 +2721,54 @@ mod tests {
                 "x".repeat(blueice_ipc::extension::MAX_STORAGE_VALUE_BYTES),
             )
             .is_err());
+    }
+
+    #[test]
+    fn extension_storage_aggregate_quota_counts_every_new_key_byte() {
+        let storage = ExtensionStorage::default();
+        let identity = "sha256:key-byte-quota";
+        for index in 0..15 {
+            storage
+                .set(
+                    identity,
+                    format!("k{index}"),
+                    "x".repeat(blueice_ipc::extension::MAX_STORAGE_VALUE_BYTES),
+                )
+                .unwrap();
+        }
+        let current_bytes = {
+            let buckets = storage.buckets.lock().unwrap();
+            bucket_storage_bytes(buckets.get(identity).unwrap()).unwrap()
+        };
+        let remaining = MAX_STORAGE_BYTES_PER_EXTENSION - current_bytes;
+        let long_key = "k".repeat(blueice_ipc::extension::MAX_STORAGE_KEY_BYTES);
+        assert!(remaining <= blueice_ipc::extension::MAX_STORAGE_VALUE_BYTES);
+        assert!(storage
+            .set(identity, long_key.clone(), "x".repeat(remaining))
+            .is_err());
+        assert_eq!(storage.get(identity, &long_key).unwrap(), None);
+
+        storage
+            .set(identity, long_key.clone(), "x".repeat(remaining - long_key.len()))
+            .unwrap();
+        let buckets = storage.buckets.lock().unwrap();
+        assert_eq!(
+            bucket_storage_bytes(buckets.get(identity).unwrap()).unwrap(),
+            MAX_STORAGE_BYTES_PER_EXTENSION
+        );
+        drop(buckets);
+
+        let full_value_len = remaining - long_key.len();
+        storage
+            .set(identity, long_key.clone(), "y".repeat(full_value_len))
+            .unwrap();
+        assert!(storage
+            .set(identity, long_key.clone(), "z".repeat(full_value_len + 1))
+            .is_err());
+        assert_eq!(
+            storage.get(identity, &long_key).unwrap(),
+            Some("y".repeat(full_value_len))
+        );
     }
 
     #[test]

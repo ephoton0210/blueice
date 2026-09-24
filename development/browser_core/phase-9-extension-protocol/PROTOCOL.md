@@ -127,8 +127,10 @@ effect in the guest.
 | `storage_remove_utf8(key_ptr:i32, key_len:i32) -> i32` | `storage` v1 | Returns `1` removed / `0` absent. |
 
 The storage key is 1–256 ASCII bytes from `[A-Za-z0-9._-]`. Each derived
-identity has at most 128 entries and 256 KiB total key/value bytes; its bucket
-is lost when that core process exits. No guest can supply a bucket ID or host
+identity has at most 128 entries and 256 KiB total key/value bytes, including
+every newly inserted key's bytes. An over-limit write is rejected without
+changing the prior value; the bucket is lost when that core process exits.
+No guest can supply a bucket ID or host
 path. All implemented `dom:write` effects and declarative rule registration receive
 mandatory, fail-closed gatekeeper review after ordinary capability checks;
 publishing popup text is also reviewed. A reviewer outage is **not** clearance.
