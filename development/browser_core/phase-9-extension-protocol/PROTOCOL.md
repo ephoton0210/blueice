@@ -65,7 +65,7 @@ is separate from the independently negotiated **capability API versions**:
 | `network:observe` | 1–2 | 2 | Committed main-frame final response (v1) and initial request/redirect trace (v2). |
 | `network:intercept` | 1–5 | 5 | Exact navigation URL block (v2), clearing own rules (v3), ASCII host/subdomain block (v4), and literal host/path-prefix block (v5); legacy v1 registration has no core effect. |
 | `ui:inject` | 1–2 | 2 | Native toolbar button (v1) and fixed-text native popup (v2). |
-| `storage` | 1 | 1 | Core-owned, process-lifetime key/value bucket for the derived extension ID. |
+| `storage` | 1–2 | 2 | Core-owned, process-lifetime v1 bucket and separate durable v2 bucket for the derived extension ID. |
 
 An unsupported capability version is reported for that capability without
 invalidating compatible declarations. All guest imports are linked, but a
@@ -99,7 +99,7 @@ count (`0` is a valid empty value), `-2` for a too-small destination, `-3` for
 an invalid argument, `-4` only for a documented missing-value case, and `-1`
 for a denied/unavailable core operation (including an unknown tab). Mutations return `0` on success,
 `-3` for malformed guest arguments, and `-1` for rejection or unavailability.
-`storage_remove_utf8` instead returns `1` if a key was removed and `0` if it
+Both `storage_remove_utf8` and `durable_storage_remove_utf8` instead return `1` if a key was removed and `0` if it
 was already absent. A negative result never authorizes an optimistic side
 effect in the guest.
 
@@ -125,12 +125,21 @@ effect in the guest.
 | `storage_get_utf8(key_ptr:i32, key_len:i32, dst:i32, cap:i32) -> i32` | `storage` v1 | Copies at most 16 KiB UTF-8, or `-4` for an absent key. |
 | `storage_set_utf8(key_ptr:i32, key_len:i32, value_ptr:i32, value_len:i32) -> i32` | `storage` v1 | Sets one bounded UTF-8 value. |
 | `storage_remove_utf8(key_ptr:i32, key_len:i32) -> i32` | `storage` v1 | Returns `1` removed / `0` absent. |
+| `durable_storage_get_utf8(key_ptr:i32, key_len:i32, dst:i32, cap:i32) -> i32` | `storage` v2 | Reads the separate durable bucket; at most 16 KiB UTF-8, or `-4` for an absent key. |
+| `durable_storage_set_utf8(key_ptr:i32, key_len:i32, value_ptr:i32, value_len:i32) -> i32` | `storage` v2 | Persists one bounded UTF-8 value in the separate durable bucket. |
+| `durable_storage_remove_utf8(key_ptr:i32, key_len:i32) -> i32` | `storage` v2 | Returns `1` removed / `0` absent in the durable bucket. |
 
 The storage key is 1–256 ASCII bytes from `[A-Za-z0-9._-]`. Each derived
 identity has at most 128 entries and 256 KiB total key/value bytes, including
 every newly inserted key's bytes. An over-limit write is rejected without
-changing the prior value; the bucket is lost when that core process exits.
-No guest can supply a bucket ID or host
+changing the prior value. These limits apply independently to the v1 and v2
+buckets. The v1 bucket is lost when that core process exits, including after
+a v2 handshake. V2 persists under a core-selected private user-data directory,
+using a hashed manifest-derived identity, private files, a per-bucket OS lock,
+and atomic replace plus filesystem sync. A missing, busy, corrupt, or unsafe
+durable store returns `-1`; it never falls back to v1. An updated extension
+package has a different derived identity and cannot read the old package's
+bucket without a future migration mechanism. No guest can supply a bucket ID or host
 path. All implemented `dom:write` effects and declarative rule registration receive
 mandatory, fail-closed gatekeeper review after ordinary capability checks;
 publishing popup text is also reviewed. A reviewer outage is **not** clearance.

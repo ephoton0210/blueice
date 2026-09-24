@@ -252,6 +252,7 @@ name = "blueice-extension-host"
 version = "0.1.0"
 dependencies = [
  "blueice-ipc",
+ "libc",
  "serde",
  "serde_json",
  "sha2",

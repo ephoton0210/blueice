@@ -373,6 +373,33 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
     linker
         .func_wrap(
             "blueice",
+            "durable_storage_get_utf8",
+            |mut caller: Caller<'_, RuntimeState>, key_ptr: i32, key_len: i32, destination: i32, capacity: i32| {
+                storage_get(&mut caller, key_ptr, key_len, destination, capacity, true)
+            },
+        )
+        .map_err(|error| format!("could not define the durable_storage_get_utf8 ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
+            "durable_storage_set_utf8",
+            |mut caller: Caller<'_, RuntimeState>, key_ptr: i32, key_len: i32, value_ptr: i32, value_len: i32| {
+                storage_set(&mut caller, key_ptr, key_len, value_ptr, value_len, true)
+            },
+        )
+        .map_err(|error| format!("could not define the durable_storage_set_utf8 ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
+            "durable_storage_remove_utf8",
+            |mut caller: Caller<'_, RuntimeState>, key_ptr: i32, key_len: i32| {
+                storage_remove(&mut caller, key_ptr, key_len, true)
+            },
+        )
+        .map_err(|error| format!("could not define the durable_storage_remove_utf8 ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
             "runtime_event_kind",
             |caller: Caller<'_, RuntimeState>| runtime_event_kind(&caller),
         )
@@ -790,6 +817,17 @@ fn storage_get_utf8(
     destination: i32,
     capacity: i32,
 ) -> i32 {
+    storage_get(caller, key_ptr, key_len, destination, capacity, false)
+}
+
+fn storage_get(
+    caller: &mut Caller<'_, RuntimeState>,
+    key_ptr: i32,
+    key_len: i32,
+    destination: i32,
+    capacity: i32,
+    durable: bool,
+) -> i32 {
     let Ok(key) = read_storage_key(caller, key_ptr, key_len) else {
         return RESULT_INVALID_ARGUMENT;
     };
@@ -797,7 +835,12 @@ fn storage_get_utf8(
     else {
         return RESULT_INVALID_ARGUMENT;
     };
-    let value = match request_core(caller, ExtensionRequest::StorageGet { key }) {
+    let request = if durable {
+        ExtensionRequest::DurableStorageGet { key }
+    } else {
+        ExtensionRequest::StorageGet { key }
+    };
+    let value = match request_core(caller, request) {
         Ok(ExtensionReply::StorageGetResult { value: Some(value) }) => value,
         Ok(ExtensionReply::StorageGetResult { value: None }) => return RESULT_NOT_FOUND,
         Ok(_) | Err(()) => return RESULT_ERROR,
@@ -822,6 +865,17 @@ fn storage_set_utf8(
     value_ptr: i32,
     value_len: i32,
 ) -> i32 {
+    storage_set(caller, key_ptr, key_len, value_ptr, value_len, false)
+}
+
+fn storage_set(
+    caller: &mut Caller<'_, RuntimeState>,
+    key_ptr: i32,
+    key_len: i32,
+    value_ptr: i32,
+    value_len: i32,
+    durable: bool,
+) -> i32 {
     let Ok(key) = read_storage_key(caller, key_ptr, key_len) else {
         return RESULT_INVALID_ARGUMENT;
     };
@@ -835,7 +889,12 @@ fn storage_set_utf8(
     let Ok(value) = String::from_utf8(value) else {
         return RESULT_INVALID_ARGUMENT;
     };
-    match request_core(caller, ExtensionRequest::StorageSet { key, value }) {
+    let request = if durable {
+        ExtensionRequest::DurableStorageSet { key, value }
+    } else {
+        ExtensionRequest::StorageSet { key, value }
+    };
+    match request_core(caller, request) {
         Ok(ExtensionReply::StorageSetAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
@@ -845,10 +904,24 @@ fn storage_set_utf8(
 /// `1` when a value existed, `0` when it was already absent, and a negative
 /// ABI error for malformed input or an unavailable core operation.
 fn storage_remove_utf8(caller: &mut Caller<'_, RuntimeState>, key_ptr: i32, key_len: i32) -> i32 {
+    storage_remove(caller, key_ptr, key_len, false)
+}
+
+fn storage_remove(
+    caller: &mut Caller<'_, RuntimeState>,
+    key_ptr: i32,
+    key_len: i32,
+    durable: bool,
+) -> i32 {
     let Ok(key) = read_storage_key(caller, key_ptr, key_len) else {
         return RESULT_INVALID_ARGUMENT;
     };
-    match request_core(caller, ExtensionRequest::StorageRemove { key }) {
+    let request = if durable {
+        ExtensionRequest::DurableStorageRemove { key }
+    } else {
+        ExtensionRequest::StorageRemove { key }
+    };
+    match request_core(caller, request) {
         Ok(ExtensionReply::StorageRemoveAck { removed: true }) => 1,
         Ok(ExtensionReply::StorageRemoveAck { removed: false }) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
@@ -1503,6 +1576,62 @@ mod tests {
             blueice_ipc::extension::write_extension_reply(
                 &mut core,
                 &ExtensionReply::StorageGetResult { value: None },
+            )
+            .unwrap();
+        });
+
+        execute_installed_extension(&extension, guest).unwrap();
+        core_thread.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reactor_forwards_separate_durable_storage_v2_imports() {
+        let (root, extension) = installed_extension(
+            "durable-storage",
+            r#"(module
+                (import "blueice" "durable_storage_set_utf8" (func $set (param i32 i32 i32 i32) (result i32)))
+                (import "blueice" "durable_storage_get_utf8" (func $get (param i32 i32 i32 i32) (result i32)))
+                (import "blueice" "durable_storage_remove_utf8" (func $remove (param i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (data (i32.const 0) "key")
+                (data (i32.const 16) "value")
+                (func (export "blueice_start")
+                    i32.const 0 i32.const 3 i32.const 16 i32.const 5 call $set
+                    i32.const 0 i32.ne if unreachable end
+                    i32.const 0 i32.const 3 i32.const 64 i32.const 16 call $get
+                    i32.const 5 i32.ne if unreachable end
+                    i32.const 64 i32.load8_u i32.const 118 i32.ne if unreachable end
+                    i32.const 0 i32.const 3 call $remove
+                    i32.const 1 i32.ne if unreachable end))"#,
+        );
+        let (guest, mut core) = UnixStream::pair().unwrap();
+        let core_thread = thread::spawn(move || {
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::DurableStorageSet {
+                    key: "key".to_string(),
+                    value: "value".to_string(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::StorageSetAck)
+                .unwrap();
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::DurableStorageGet { key: "key".to_string() }
+            );
+            blueice_ipc::extension::write_extension_reply(
+                &mut core,
+                &ExtensionReply::StorageGetResult { value: Some("value".to_string()) },
+            )
+            .unwrap();
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::DurableStorageRemove { key: "key".to_string() }
+            );
+            blueice_ipc::extension::write_extension_reply(
+                &mut core,
+                &ExtensionReply::StorageRemoveAck { removed: true },
             )
             .unwrap();
         });

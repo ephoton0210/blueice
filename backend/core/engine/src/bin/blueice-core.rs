@@ -23,6 +23,7 @@ use blueice_engine::script::ScriptSession;
 use blueice_engine::session::ExtensionPageRequest;
 use blueice_engine::{session, HistorySnapshotMode, TabManager};
 use blueice_extension_host::{
+    default_durable_storage_root,
     handle_extension_connection_with_actions_and_authentication_and_network_rules,
     load_installed_extension, registry_for_installed_extension, ExtensionActionDelegates,
     ExtensionConnectionAuthentication, ExtensionRegistry, ExtensionStorage,
@@ -754,7 +755,13 @@ fn main() -> ExitCode {
                     socket: socket.clone(),
                     listener,
                     registry: Arc::new(registry_for_installed_extension(&installed)),
-                    storage: ExtensionStorage::default(),
+                    storage: match default_durable_storage_root() {
+                        Ok(root) => ExtensionStorage::default().with_durable_root(root),
+                        Err(reason) => {
+                            eprintln!("blueice-core: durable extension storage unavailable: {reason}");
+                            ExtensionStorage::default()
+                        }
+                    },
                     required_authentication,
                     runtime_start: runtime_start_receiver,
                     runtime_events: runtime_event_receiver,

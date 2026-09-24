@@ -299,6 +299,16 @@ pub enum ExtensionRequest {
     /// bucket. The reply says whether the key existed, making removal
     /// idempotent without a preceding read.
     StorageRemove { key: String },
+    /// Version 2 of `storage`: the same bounded point read, but from a
+    /// separate durable namespace keyed only by the handshake identity.
+    /// Version-one operations retain their process-lifetime semantics.
+    DurableStorageGet { key: String },
+    /// Version 2 of `storage`: atomically persist a bounded key/value pair
+    /// under a core-selected private directory. No guest path is accepted.
+    DurableStorageSet { key: String, value: String },
+    /// Version 2 of `storage`: remove one durable value; this does not touch
+    /// the version-one process-lifetime bucket.
+    DurableStorageRemove { key: String },
     /// Registers a network interception rule -- requires the
     /// `network:intercept` capability. Registering interception at all
     /// is high-risk, so the host always routes this request through the
@@ -598,6 +608,16 @@ mod tests {
                 value: "complete".to_string(),
             },
             ExtensionRequest::StorageRemove {
+                key: "task-state".to_string(),
+            },
+            ExtensionRequest::DurableStorageGet {
+                key: "task-state".to_string(),
+            },
+            ExtensionRequest::DurableStorageSet {
+                key: "task-state".to_string(),
+                value: "complete".to_string(),
+            },
+            ExtensionRequest::DurableStorageRemove {
                 key: "task-state".to_string(),
             },
             ExtensionRequest::NetworkIntercept,

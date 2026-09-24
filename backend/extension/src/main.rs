@@ -177,7 +177,7 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
     // A package declares only the APIs it needs. The one-shot Wasm ABI uses
     // explicit tab reads (v2), every currently bounded DOM write (v7), and
     // declarative rule registration/clearing (v3), committed navigation trace
-    // observation (v2), and scoped storage (v1).
+    // observation (v2), and separate ephemeral/durable storage (v2).
     // Negotiate the highest safe version per declared capability before guest
     // code can invoke an import. Core remains free to reject an unsupported
     // declaration without granting it any authority.
@@ -193,7 +193,7 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
                 CAPABILITY_NETWORK_INTERCEPT => 5,
                 CAPABILITY_NETWORK_OBSERVE => 2,
                 CAPABILITY_UI_INJECT => 2,
-                CAPABILITY_STORAGE => 1,
+                CAPABILITY_STORAGE => 2,
                 _ => 1,
             };
             (capability.clone(), version)

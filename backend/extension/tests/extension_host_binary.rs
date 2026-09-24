@@ -289,15 +289,25 @@ fn storage_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
         wat::parse_str(
             r#"(module
                 (import "blueice" "storage_set_utf8" (func $set (param i32 i32 i32 i32) (result i32)))
+                (import "blueice" "durable_storage_set_utf8" (func $durable_set (param i32 i32 i32 i32) (result i32)))
                 (memory (export "memory") 1)
                 (data (i32.const 0) "task-state")
                 (data (i32.const 16) "complete")
+                (data (i32.const 32) "saved")
                 (func (export "blueice_start")
                     i32.const 0
                     i32.const 10
                     i32.const 16
                     i32.const 8
                     call $set
+                    i32.const 0
+                    i32.ne
+                    if unreachable end
+                    i32.const 0
+                    i32.const 10
+                    i32.const 32
+                    i32.const 5
+                    call $durable_set
                     i32.const 0
                     i32.ne
                     if unreachable end))"#,
@@ -775,7 +785,7 @@ fn core_connection_mode_negotiates_network_observe_v2_and_runs_trace_import() {
 }
 
 #[test]
-fn core_connection_mode_negotiates_storage_v1_and_runs_a_bounded_write_over_real_ipc() {
+fn core_connection_mode_negotiates_storage_v2_and_keeps_v1_import_compatible() {
     let (root, manifest, extension_id) = storage_manifest_package("core-connect");
     let socket = unique_socket_path("core-storage");
     let _ = std::fs::remove_file(&socket);
@@ -797,7 +807,7 @@ fn core_connection_mode_negotiates_storage_v1_and_runs_a_bounded_write_over_real
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::HelloAuthenticated {
             extension_id,
-            capability_versions: BTreeMap::from([("storage".to_string(), 1)]),
+            capability_versions: BTreeMap::from([("storage".to_string(), 2)]),
             authentication: authentication.to_string(),
         }
     );
@@ -819,6 +829,15 @@ fn core_connection_mode_negotiates_storage_v1_and_runs_a_bounded_write_over_real
         ExtensionRequest::StorageSet {
             key: "task-state".to_string(),
             value: "complete".to_string(),
+        }
+    );
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::StorageSetAck)
+        .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::DurableStorageSet {
+            key: "task-state".to_string(),
+            value: "saved".to_string(),
         }
     );
     blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::StorageSetAck)

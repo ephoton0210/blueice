@@ -48,9 +48,11 @@
 //! deliberately retain the bearer [`blueice_ipc::extension::ExtensionRequest::Hello`]
 //! form for protocol development; a derived identity alone is not credentials.
 
+mod durable_storage;
 mod manifest;
 mod runtime;
 
+pub use durable_storage::default_durable_storage_root;
 pub use manifest::{
     load_installed_extension, registry_for_installed_extension, ExtensionManifest,
     InstalledExtension, ManifestCapabilities, ManifestError, MANIFEST_API_VERSION,
@@ -120,10 +122,9 @@ pub fn validate_popup_text(title: &str, body: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// A per-extension key-value bucket owned by core, never by the guest's
-/// ambient filesystem or process. Version 1 deliberately lasts only for the
-/// core process lifetime; durable storage needs its own reviewed crash and
-/// filesystem-confinement design rather than silently inheriting host paths.
+/// A per-extension key-value capability owned by core, never by the guest's
+/// ambient filesystem or process. Version 1 is process-lifetime; version 2
+/// uses a separate durable bucket under a core-selected private data root.
 pub const CAPABILITY_STORAGE: &str = "storage";
 
 /// A storage bucket has a bounded number of key/value pairs even when its
@@ -134,16 +135,44 @@ pub const MAX_STORAGE_ENTRIES_PER_EXTENSION: usize = 128;
 /// Includes UTF-8 key and value bytes across one extension identity's bucket.
 pub const MAX_STORAGE_BYTES_PER_EXTENSION: usize = 256 * 1024;
 
-/// Core-owned, process-lifetime storage isolated by manifest-derived extension
-/// identity. It is cloneable only as a shared handle for independent extension
-/// connection workers; its map and quota checks remain in one mutex-protected
-/// owner, never in guest memory or a guest-selected file path.
+/// Core-owned storage isolated by manifest-derived extension identity. V1 is
+/// a shared in-memory map with mutex-protected quota checks; v2 is a separate
+/// disk bucket with a per-identity OS lock. Neither accepts a guest path.
 #[derive(Clone, Default)]
 pub struct ExtensionStorage {
     buckets: Arc<Mutex<HashMap<String, BTreeMap<String, String>>>>,
+    durable: Option<durable_storage::DurableExtensionStorage>,
 }
 
 impl ExtensionStorage {
+    /// Adds a separate version-two durable namespace. Version-one operations
+    /// keep using only the process-lifetime map above.
+    pub fn with_durable_root(mut self, root: std::path::PathBuf) -> Self {
+        self.durable = Some(durable_storage::DurableExtensionStorage::new(root));
+        self
+    }
+
+    pub fn durable_get(&self, extension_id: &str, key: &str) -> Result<Option<String>, String> {
+        self.durable
+            .as_ref()
+            .ok_or_else(|| "durable extension storage is not configured".to_string())?
+            .get(extension_id, key)
+    }
+
+    pub fn durable_set(&self, extension_id: &str, key: String, value: String) -> Result<(), String> {
+        self.durable
+            .as_ref()
+            .ok_or_else(|| "durable extension storage is not configured".to_string())?
+            .set(extension_id, key, value)
+    }
+
+    pub fn durable_remove(&self, extension_id: &str, key: &str) -> Result<bool, String> {
+        self.durable
+            .as_ref()
+            .ok_or_else(|| "durable extension storage is not configured".to_string())?
+            .remove(extension_id, key)
+    }
+
     /// Reads a value from exactly `extension_id`'s bucket after validating the
     /// bounded identifier syntax shared by all storage operations.
     pub fn get(&self, extension_id: &str, key: &str) -> Result<Option<String>, String> {
@@ -161,6 +190,8 @@ impl ExtensionStorage {
     /// Stores one bounded UTF-8 value in the caller's bucket. Replacement is
     /// atomic under the same lock as the aggregate byte/entry quotas.
     pub fn set(&self, extension_id: &str, key: String, value: String) -> Result<(), String> {
+        // Preserve v1's no-allocation behavior for malformed inputs: an
+        // invalid write must not create an empty identity bucket.
         validate_storage_key(&key)?;
         if value.len() > blueice_ipc::extension::MAX_STORAGE_VALUE_BYTES {
             return Err(format!(
@@ -173,27 +204,7 @@ impl ExtensionStorage {
             .lock()
             .map_err(|_| "extension storage state was poisoned".to_string())?;
         let bucket = buckets.entry(extension_id.to_string()).or_default();
-        let new_key = !bucket.contains_key(&key);
-        if new_key && bucket.len() >= MAX_STORAGE_ENTRIES_PER_EXTENSION {
-            return Err(format!(
-                "an extension may store at most {MAX_STORAGE_ENTRIES_PER_EXTENSION} keys"
-            ));
-        }
-        let new_key_bytes = if new_key { key.len() } else { 0 };
-        let existing_value_bytes = bucket.get(&key).map_or(0, String::len);
-        let current_bytes = bucket_storage_bytes(bucket)?;
-        let prospective_bytes = current_bytes
-            .checked_sub(existing_value_bytes)
-            .and_then(|bytes| bytes.checked_add(new_key_bytes))
-            .and_then(|bytes| bytes.checked_add(value.len()))
-            .ok_or_else(|| "extension storage size overflowed".to_string())?;
-        if prospective_bytes > MAX_STORAGE_BYTES_PER_EXTENSION {
-            return Err(format!(
-                "an extension storage bucket cannot exceed {MAX_STORAGE_BYTES_PER_EXTENSION} bytes"
-            ));
-        }
-        bucket.insert(key, value);
-        Ok(())
+        set_bounded_storage_value(bucket, key, value)
     }
 
     /// Removes only the identified extension's own key, returning whether it
@@ -216,7 +227,7 @@ impl ExtensionStorage {
     }
 }
 
-fn validate_storage_key(key: &str) -> Result<(), String> {
+pub(crate) fn validate_storage_key(key: &str) -> Result<(), String> {
     if key.is_empty() {
         return Err("storage keys must not be empty".to_string());
     }
@@ -237,13 +248,48 @@ fn validate_storage_key(key: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn bucket_storage_bytes(bucket: &BTreeMap<String, String>) -> Result<usize, String> {
+pub(crate) fn bucket_storage_bytes(bucket: &BTreeMap<String, String>) -> Result<usize, String> {
     bucket.iter().try_fold(0_usize, |total, (key, value)| {
         total
             .checked_add(key.len())
             .and_then(|bytes| bytes.checked_add(value.len()))
             .ok_or_else(|| "extension storage size overflowed".to_string())
     })
+}
+
+pub(crate) fn set_bounded_storage_value(
+    bucket: &mut BTreeMap<String, String>,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    validate_storage_key(&key)?;
+    if value.len() > blueice_ipc::extension::MAX_STORAGE_VALUE_BYTES {
+        return Err(format!(
+            "storage values cannot exceed {} bytes",
+            blueice_ipc::extension::MAX_STORAGE_VALUE_BYTES
+        ));
+    }
+    let new_key = !bucket.contains_key(&key);
+    if new_key && bucket.len() >= MAX_STORAGE_ENTRIES_PER_EXTENSION {
+        return Err(format!(
+            "an extension may store at most {MAX_STORAGE_ENTRIES_PER_EXTENSION} keys"
+        ));
+    }
+    let new_key_bytes = if new_key { key.len() } else { 0 };
+    let existing_value_bytes = bucket.get(&key).map_or(0, String::len);
+    let current_bytes = bucket_storage_bytes(bucket)?;
+    let prospective_bytes = current_bytes
+        .checked_sub(existing_value_bytes)
+        .and_then(|bytes| bytes.checked_add(new_key_bytes))
+        .and_then(|bytes| bytes.checked_add(value.len()))
+        .ok_or_else(|| "extension storage size overflowed".to_string())?;
+    if prospective_bytes > MAX_STORAGE_BYTES_PER_EXTENSION {
+        return Err(format!(
+            "an extension storage bucket cannot exceed {MAX_STORAGE_BYTES_PER_EXTENSION} bytes"
+        ));
+    }
+    bucket.insert(key, value);
+    Ok(())
 }
 
 /// An inclusive API-version interval a host supports for one capability.
@@ -327,7 +373,6 @@ impl ExtensionRegistry {
     /// capability in its manifest or handshake.
     pub fn with_supported_capabilities() -> Self {
         let mut registry = Self::new();
-        let v1 = CapabilityVersionWindow::new(1, 1).expect("literal version window is valid");
         let v1_to_v2 = CapabilityVersionWindow::new(1, 2).expect("literal version window is valid");
         let v1_to_v5 = CapabilityVersionWindow::new(1, 5).expect("literal version window is valid");
         let v1_to_v7 = CapabilityVersionWindow::new(1, 7).expect("literal version window is valid");
@@ -336,7 +381,7 @@ impl ExtensionRegistry {
         registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v5);
         registry.register_capability_version_window(CAPABILITY_NETWORK_OBSERVE, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_UI_INJECT, v1_to_v2);
-        registry.register_capability_version_window(CAPABILITY_STORAGE, v1);
+        registry.register_capability_version_window(CAPABILITY_STORAGE, v1_to_v2);
         registry
     }
 
@@ -2087,6 +2132,48 @@ where
                     )?,
                 }
             }
+            ExtensionRequest::DurableStorageGet { key } => {
+                if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 2) {
+                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_STORAGE.to_string(), reason,
+                    })?;
+                    continue;
+                }
+                match storage.durable_get(&identity.extension_id, &key) {
+                    Ok(value) => write_extension_reply(stream, &ExtensionReply::StorageGetResult { value })?,
+                    Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+                        capability: CAPABILITY_STORAGE.to_string(), reason,
+                    })?,
+                }
+            }
+            ExtensionRequest::DurableStorageSet { key, value } => {
+                if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 2) {
+                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_STORAGE.to_string(), reason,
+                    })?;
+                    continue;
+                }
+                match storage.durable_set(&identity.extension_id, key, value) {
+                    Ok(()) => write_extension_reply(stream, &ExtensionReply::StorageSetAck)?,
+                    Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+                        capability: CAPABILITY_STORAGE.to_string(), reason,
+                    })?,
+                }
+            }
+            ExtensionRequest::DurableStorageRemove { key } => {
+                if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 2) {
+                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_STORAGE.to_string(), reason,
+                    })?;
+                    continue;
+                }
+                match storage.durable_remove(&identity.extension_id, &key) {
+                    Ok(removed) => write_extension_reply(stream, &ExtensionReply::StorageRemoveAck { removed })?,
+                    Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+                        capability: CAPABILITY_STORAGE.to_string(), reason,
+                    })?,
+                }
+            }
             ExtensionRequest::NetworkIntercept => {
                 if let Some(reason) =
                     capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 1)
@@ -2842,6 +2929,85 @@ mod tests {
 
         drop(client);
         handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn durable_storage_v2_requires_its_grant_and_version_and_survives_a_new_service() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NEXT_ROOT: AtomicU64 = AtomicU64::new(1);
+        const ID: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const OTHER_ID: &str = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let root = std::env::temp_dir().join(format!(
+            "blueice-storage-v2-test-{}-{}",
+            std::process::id(),
+            NEXT_ROOT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let spawn = |storage: ExtensionStorage| {
+            let mut registry = ExtensionRegistry::with_supported_capabilities();
+            registry.grant(ID, CAPABILITY_STORAGE);
+            let (client, mut server) = UnixStream::pair().unwrap();
+            let worker = thread::spawn(move || {
+                handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                    &registry,
+                    Path::new("/not-reached-for-storage-only-operation.sock"),
+                    &mut server,
+                    ExtensionConnectionAuthentication::unauthenticated(),
+                    ExtensionActionDelegates::new(
+                        |_| Ok(String::new()),
+                        unused_write_delegate,
+                        || Ok(()),
+                        |_| Ok(()),
+                        || Ok(()),
+                    )
+                    .with_storage(storage),
+                )
+            });
+            (client, worker)
+        };
+        let exchange = |client: &mut UnixStream, request: ExtensionRequest| {
+            write_extension_request(client, &request).unwrap();
+            read_extension_reply(client).unwrap()
+        };
+
+        let (mut client, worker) = spawn(ExtensionStorage::default().with_durable_root(root.clone()));
+        assert_eq!(exchange(&mut client, hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 1)])), empty_hello_ack());
+        assert!(matches!(
+            exchange(&mut client, ExtensionRequest::DurableStorageSet {
+                key: "task".into(), value: "persistent".into(),
+            }),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_STORAGE
+        ));
+        assert_eq!(exchange(&mut client, ExtensionRequest::StorageSet {
+            key: "task".into(), value: "ephemeral".into(),
+        }), ExtensionReply::StorageSetAck);
+        assert_eq!(exchange(&mut client, hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 2)])), empty_hello_ack());
+        assert_eq!(exchange(&mut client, ExtensionRequest::DurableStorageSet {
+            key: "task".into(), value: "persistent".into(),
+        }), ExtensionReply::StorageSetAck);
+        assert_eq!(exchange(&mut client, ExtensionRequest::DurableStorageGet { key: "task".into() }),
+            ExtensionReply::StorageGetResult { value: Some("persistent".into()) });
+        assert_eq!(exchange(&mut client, ExtensionRequest::StorageGet { key: "task".into() }),
+            ExtensionReply::StorageGetResult { value: Some("ephemeral".into()) });
+        assert_eq!(exchange(&mut client, hello_with_capabilities(OTHER_ID, [(CAPABILITY_STORAGE, 2)])), empty_hello_ack());
+        assert!(matches!(
+            exchange(&mut client, ExtensionRequest::DurableStorageGet { key: "task".into() }),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_STORAGE
+        ));
+        drop(client);
+        worker.join().unwrap().unwrap();
+
+        let (mut restarted, worker) = spawn(ExtensionStorage::default().with_durable_root(root.clone()));
+        assert_eq!(exchange(&mut restarted, hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 2)])), empty_hello_ack());
+        assert_eq!(exchange(&mut restarted, ExtensionRequest::DurableStorageGet { key: "task".into() }),
+            ExtensionReply::StorageGetResult { value: Some("persistent".into()) });
+        assert_eq!(exchange(&mut restarted, ExtensionRequest::StorageGet { key: "task".into() }),
+            ExtensionReply::StorageGetResult { value: None });
+        assert_eq!(exchange(&mut restarted, ExtensionRequest::DurableStorageRemove { key: "task".into() }),
+            ExtensionReply::StorageRemoveAck { removed: true });
+        drop(restarted);
+        worker.join().unwrap().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
