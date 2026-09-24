@@ -536,7 +536,77 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
         )
     ));
     assert!(!format!("{validation:?}").contains(secret));
+    blueice_ipc::compiler::write_compiler_request(
+        &mut compiler,
+        &blueice_ipc::compiler::CompilerRequest::ListStaticMetadata {
+            generation: check.generation,
+            kind: blueice_ipc::compiler::CompilerStaticMetadataKind::Symbols,
+            cursor: None,
+            limit: Some(1),
+        },
+    )
+    .unwrap();
+    let blueice_ipc::compiler::CompilerReply::StaticMetadataPage(first_page) =
+        blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap()
+    else {
+        panic!("the first stream must receive a bounded symbol page")
+    };
+    let old_cursor = first_page
+        .next_cursor
+        .expect("the closed fixture has multiple symbols");
     drop(compiler);
+
+    // The listener accepts only one stream at a time, but a cursor abandoned
+    // by that stream must not become usable (or retain a cursor slot) on the
+    // next accepted, separately attested stream.
+    let mut successor = UnixStream::connect(&compiler_socket_path).unwrap();
+    blueice_ipc::compiler::write_compiler_request(
+        &mut successor,
+        &blueice_ipc::compiler::CompilerRequest::Hello {
+            protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
+        },
+    )
+    .unwrap();
+    let blueice_ipc::compiler::CompilerReply::HelloAck {
+        session_attestation: successor_attestation,
+        ..
+    } = blueice_ipc::compiler::read_compiler_reply(&mut successor).unwrap()
+    else {
+        panic!("the successor stream must receive its own core attestation")
+    };
+    assert_ne!(successor_attestation, session_attestation);
+    blueice_ipc::compiler::write_compiler_request(
+        &mut successor,
+        &blueice_ipc::compiler::CompilerRequest::ListStaticMetadata {
+            generation: check.generation,
+            kind: blueice_ipc::compiler::CompilerStaticMetadataKind::Symbols,
+            cursor: Some(old_cursor),
+            limit: Some(1),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::compiler::read_compiler_reply(&mut successor).unwrap(),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::InvalidMetadataCursor,
+            ..
+        }
+    ));
+    blueice_ipc::compiler::write_compiler_request(
+        &mut successor,
+        &blueice_ipc::compiler::CompilerRequest::ListStaticMetadata {
+            generation: check.generation,
+            kind: blueice_ipc::compiler::CompilerStaticMetadataKind::Symbols,
+            cursor: None,
+            limit: Some(1),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::compiler::read_compiler_reply(&mut successor).unwrap(),
+        blueice_ipc::compiler::CompilerReply::StaticMetadataPage(_)
+    ));
+    drop(successor);
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
         .unwrap();

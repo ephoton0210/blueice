@@ -30,11 +30,11 @@ use blueice_ipc::compiler::{
     CompilerContractValue, CompilerDiagnostic, CompilerDiagnosticCursor, CompilerDiagnosticPage,
     CompilerDiagnosticSeverity, CompilerDiagnostics, CompilerErrorCode, CompilerGeneration,
     CompilerModuleList, CompilerProject, CompilerProjectIdentity, CompilerReply, CompilerRequest,
-    CompilerStaticContract, CompilerStaticMetadataCursor, CompilerStaticMetadataKind,
-    CompilerStaticMetadataPage, CompilerStaticMetadataSummary, CompilerStaticProvenance,
-    CompilerStaticSymbol, CompilerStaticType, CompilerSymbolKind,
+    CompilerSessionAttestation, CompilerStaticContract, CompilerStaticMetadataCursor,
+    CompilerStaticMetadataKind, CompilerStaticMetadataPage, CompilerStaticMetadataSummary,
+    CompilerStaticProvenance, CompilerStaticSymbol, CompilerStaticType, CompilerSymbolKind,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::io;
 use std::sync::mpsc;
@@ -62,6 +62,10 @@ pub struct CompilerServiceIpcLimits {
     /// request may ask for fewer entries but cannot raise this core-selected
     /// cap or use a cursor as an offset.
     pub max_static_metadata_page_entries: usize,
+    /// Maximum outstanding cursor receipts retained across all accepted
+    /// compiler streams. This independently bounds session bookkeeping even
+    /// if a service cursor was consumed before a later response-policy error.
+    pub max_stream_cursor_receipts: usize,
 }
 
 impl Default for CompilerServiceIpcLimits {
@@ -73,6 +77,7 @@ impl Default for CompilerServiceIpcLimits {
             max_diagnostics: 256,
             max_diagnostic_page_entries: 128,
             max_static_metadata_page_entries: 128,
+            max_stream_cursor_receipts: 2_048,
         }
     }
 }
@@ -87,6 +92,7 @@ pub enum CompilerServiceIpcConfigurationError {
     ZeroFieldBytes,
     ZeroDiagnosticPageEntries,
     ZeroStaticMetadataPageEntries,
+    ZeroStreamCursorReceipts,
 }
 
 impl fmt::Display for CompilerServiceIpcConfigurationError {
@@ -106,6 +112,9 @@ impl fmt::Display for CompilerServiceIpcConfigurationError {
             Self::ZeroStaticMetadataPageEntries => {
                 formatter.write_str("compiler IPC static metadata page cap must be nonzero")
             }
+            Self::ZeroStreamCursorReceipts => {
+                formatter.write_str("compiler IPC stream cursor receipt cap must be nonzero")
+            }
         }
     }
 }
@@ -118,6 +127,49 @@ impl std::error::Error for CompilerServiceIpcConfigurationError {}
 pub struct CompilerServiceIpcAdapter {
     service: RegisteredProjectCompilerService,
     limits: CompilerServiceIpcLimits,
+    /// Cursor receipts belong to the accepted compiler stream that saw the
+    /// preceding page. Numeric cursor IDs alone cannot grant a second stream
+    /// continuation authority, even when it knows the project/generation.
+    session_cursors: BTreeMap<String, BTreeSet<CompilerSessionCursorReceipt>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum CompilerSessionCursorKind {
+    Diagnostics,
+    Sources,
+    Types,
+    Symbols,
+    Contracts,
+}
+
+impl CompilerSessionCursorKind {
+    fn from_static_kind(kind: CompilerStaticMetadataKind) -> Self {
+        match kind {
+            CompilerStaticMetadataKind::Sources => Self::Sources,
+            CompilerStaticMetadataKind::Types => Self::Types,
+            CompilerStaticMetadataKind::Symbols => Self::Symbols,
+            CompilerStaticMetadataKind::Contracts => Self::Contracts,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct CompilerSessionCursorReceipt {
+    project_id: u64,
+    generation: u64,
+    kind: CompilerSessionCursorKind,
+    id: u64,
+}
+
+impl CompilerSessionCursorReceipt {
+    fn new(generation: CompilerGeneration, kind: CompilerSessionCursorKind, id: u64) -> Self {
+        Self {
+            project_id: generation.project.id,
+            generation: generation.sequence,
+            kind,
+            id,
+        }
+    }
 }
 
 impl Default for CompilerServiceIpcAdapter {
@@ -139,7 +191,11 @@ impl CompilerServiceIpcAdapter {
         limits: CompilerServiceIpcLimits,
     ) -> Result<Self, CompilerServiceIpcConfigurationError> {
         validate_limits(limits)?;
-        Ok(Self { service, limits })
+        Ok(Self {
+            service,
+            limits,
+            session_cursors: BTreeMap::new(),
+        })
     }
 
     /// Creates an empty core-owned service with the supplied service and IPC
@@ -215,6 +271,176 @@ impl CompilerServiceIpcAdapter {
                     .to_string(),
             },
         }
+    }
+
+    /// Applies a decoded request under the exact accepted compiler stream's
+    /// core-minted attestation. A cursor is usable only if this stream
+    /// previously received it as `next_cursor` for the same generation and
+    /// collection. The attestation is internal hand-off data, not an IPC
+    /// request field that a remote client can choose.
+    fn handle_session_request(
+        &mut self,
+        session_id: &str,
+        request: CompilerRequest,
+    ) -> CompilerReply {
+        let pagination = match &request {
+            CompilerRequest::ListDiagnostics {
+                generation, cursor, ..
+            } => Some((
+                *generation,
+                CompilerSessionCursorKind::Diagnostics,
+                cursor.map(|cursor| cursor.id),
+            )),
+            CompilerRequest::ListStaticMetadata {
+                generation,
+                kind,
+                cursor,
+                ..
+            } => Some((
+                *generation,
+                CompilerSessionCursorKind::from_static_kind(*kind),
+                cursor.map(|cursor| cursor.id),
+            )),
+            _ => None,
+        };
+        let checked_project = match &request {
+            CompilerRequest::Check { project } => Some(project.id),
+            _ => None,
+        };
+        let presented_cursor = pagination.and_then(|(generation, kind, id)| {
+            id.map(|id| CompilerSessionCursorReceipt::new(generation, kind, id))
+        });
+        if let Some(cursor) = presented_cursor {
+            if !self
+                .session_cursors
+                .get(session_id)
+                .is_some_and(|receipts| receipts.contains(&cursor))
+            {
+                let (code, message) = if cursor.kind == CompilerSessionCursorKind::Diagnostics {
+                    (
+                        CompilerErrorCode::InvalidDiagnosticCursor,
+                        "compiler diagnostic cursor was not returned on this stream",
+                    )
+                } else {
+                    (
+                        CompilerErrorCode::InvalidMetadataCursor,
+                        "static metadata cursor was not returned on this stream",
+                    )
+                };
+                return CompilerReply::Error {
+                    code,
+                    message: message.to_string(),
+                };
+            }
+        }
+        let reply = self.handle(request);
+        if let Some(project_id) = checked_project {
+            // A check may advance the generation before a response-budget
+            // error is reported. Conservatively revoke every old cursor for
+            // that project, including cursors held by another stream.
+            self.revoke_project_session_cursors(project_id);
+        }
+        let next_cursor = match (pagination, &reply) {
+            (
+                Some((generation, CompilerSessionCursorKind::Diagnostics, _)),
+                CompilerReply::DiagnosticPage(page),
+            ) if page.generation == generation => page.next_cursor.map(|cursor| {
+                CompilerSessionCursorReceipt::new(
+                    generation,
+                    CompilerSessionCursorKind::Diagnostics,
+                    cursor.id,
+                )
+            }),
+            (Some((generation, kind, _)), CompilerReply::StaticMetadataPage(page))
+                if page.generation == generation
+                    && CompilerSessionCursorKind::from_static_kind(page.kind) == kind =>
+            {
+                page.next_cursor
+                    .map(|cursor| CompilerSessionCursorReceipt::new(generation, kind, cursor.id))
+            }
+            _ => None,
+        };
+        if matches!(
+            &reply,
+            CompilerReply::DiagnosticPage(_) | CompilerReply::StaticMetadataPage(_)
+        ) {
+            let receipts = self
+                .session_cursors
+                .entry(session_id.to_string())
+                .or_default();
+            if let Some(cursor) = presented_cursor {
+                receipts.remove(&cursor);
+            }
+            if let Some(cursor) = next_cursor {
+                receipts.insert(cursor);
+            }
+            if receipts.is_empty() {
+                self.session_cursors.remove(session_id);
+            }
+            if let Some(next_cursor) = next_cursor {
+                let total = self
+                    .session_cursors
+                    .values()
+                    .map(BTreeSet::len)
+                    .sum::<usize>();
+                if total > self.limits.max_stream_cursor_receipts {
+                    let receipts = self
+                        .session_cursors
+                        .get_mut(session_id)
+                        .expect("the newly minted cursor was just recorded on this stream");
+                    receipts.remove(&next_cursor);
+                    if receipts.is_empty() {
+                        self.session_cursors.remove(session_id);
+                    }
+                    self.release_session_cursors(BTreeSet::from([next_cursor]));
+                    return CompilerReply::Error {
+                        code: CompilerErrorCode::ResourceLimit,
+                        message: "compiler stream cursor receipt limit exceeded".to_string(),
+                    };
+                }
+            }
+        }
+        reply
+    }
+
+    /// Releases unconsumed cursor slots when the accepted stream ends. This
+    /// prevents a client from exhausting the core's fixed cursor budget by
+    /// repeatedly abandoning first pages and reconnecting.
+    fn end_session(&mut self, session_id: &str) {
+        let Some(receipts) = self.session_cursors.remove(session_id) else {
+            return;
+        };
+        self.release_session_cursors(receipts);
+    }
+
+    fn revoke_project_session_cursors(&mut self, project_id: u64) {
+        let mut revoked = BTreeSet::new();
+        self.session_cursors.retain(|_, receipts| {
+            receipts.retain(|receipt| {
+                if receipt.project_id == project_id {
+                    revoked.insert(*receipt);
+                    false
+                } else {
+                    true
+                }
+            });
+            !receipts.is_empty()
+        });
+        self.release_session_cursors(revoked);
+    }
+
+    fn release_session_cursors(&mut self, receipts: BTreeSet<CompilerSessionCursorReceipt>) {
+        let mut metadata = Vec::new();
+        let mut diagnostics = Vec::new();
+        for receipt in receipts {
+            if receipt.kind == CompilerSessionCursorKind::Diagnostics {
+                diagnostics.push(receipt.id);
+            } else {
+                metadata.push(receipt.id);
+            }
+        }
+        self.service
+            .revoke_inventory_cursors(&metadata, &diagnostics);
     }
 
     fn describe_project(&self, project: CompilerProject) -> CompilerReply {
@@ -332,12 +558,20 @@ impl CompilerServiceIpcAdapter {
         };
         let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
         if !budget.reserve_fixed(PAGE_FIXED_BYTES) {
+            if let Some(id) = page.next_cursor {
+                self.service.revoke_inventory_cursors(&[], &[id]);
+            }
             return response_limit_reply();
         }
         let entries = match diagnostic_page_entries_to_wire(&page.entries, self.limits, &mut budget)
         {
             Ok(entries) => entries,
-            Err(()) => return response_limit_reply(),
+            Err(()) => {
+                if let Some(id) = page.next_cursor {
+                    self.service.revoke_inventory_cursors(&[], &[id]);
+                }
+                return response_limit_reply();
+            }
         };
         CompilerReply::DiagnosticPage(CompilerDiagnosticPage {
             generation: generation_to_wire(generation),
@@ -476,6 +710,9 @@ impl CompilerServiceIpcAdapter {
                 .iter()
                 .any(|_| !budget.reserve_optional_fixed(PAGE_ID_BYTES))
         {
+            if let Some(id) = page.next_cursor {
+                self.service.revoke_inventory_cursors(&[id], &[]);
+            }
             return response_limit_reply();
         }
         CompilerReply::StaticMetadataPage(CompilerStaticMetadataPage {
@@ -776,6 +1013,9 @@ fn validate_limits(
     }
     if limits.max_static_metadata_page_entries == 0 {
         return Err(CompilerServiceIpcConfigurationError::ZeroStaticMetadataPageEntries);
+    }
+    if limits.max_stream_cursor_receipts == 0 {
+        return Err(CompilerServiceIpcConfigurationError::ZeroStreamCursorReceipts);
     }
     Ok(())
 }
@@ -1182,16 +1422,31 @@ impl ResponseBudget {
 #[derive(Clone)]
 pub struct CompilerServiceIpcRequestSender(mpsc::Sender<CompilerServiceIpcRequestEnvelope>);
 
+/// An accepted compiler stream's private hand-off handle. The core listener
+/// binds it only after a valid Hello minted a unique attestation; the remote
+/// request has no field with which to choose or replace this identity. Drop
+/// queues cursor cleanup even when the peer disconnects mid-pagination.
+pub struct CompilerServiceIpcSessionSender {
+    sender: CompilerServiceIpcRequestSender,
+    session_id: String,
+}
+
 /// Session-owner receiver for the compiler adapter. Only this side obtains a
 /// mutable adapter and therefore the mutable incremental compiler cache.
 pub struct CompilerServiceIpcRequestReceiver(mpsc::Receiver<CompilerServiceIpcRequestEnvelope>);
 
-struct CompilerServiceIpcRequestEnvelope {
-    request: CompilerRequest,
-    reply: mpsc::SyncSender<CompilerReply>,
+enum CompilerServiceIpcRequestEnvelope {
+    Request {
+        session_id: String,
+        request: CompilerRequest,
+        reply: mpsc::SyncSender<CompilerReply>,
+    },
+    EndSession {
+        session_id: String,
+    },
 }
 
-/// Builds the worker-to-owner hand-off used by a future compiler socket.
+/// Builds the worker-to-owner hand-off used by the core compiler socket.
 pub fn compiler_service_ipc_request_channel() -> (
     CompilerServiceIpcRequestSender,
     CompilerServiceIpcRequestReceiver,
@@ -1204,12 +1459,35 @@ pub fn compiler_service_ipc_request_channel() -> (
 }
 
 impl CompilerServiceIpcRequestSender {
-    /// Routes one already-negotiated request to the compiler owner. A stopped
-    /// core session is a transport failure, not an invented compiler reply.
+    /// Binds one accepted worker stream to the core-minted Hello attestation.
+    /// Only this internal handle can present a pagination cursor receipt.
+    pub fn bind_session(
+        &self,
+        attestation: CompilerSessionAttestation,
+    ) -> io::Result<CompilerServiceIpcSessionSender> {
+        if !attestation.is_well_formed() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "invalid core compiler session attestation",
+            ));
+        }
+        Ok(CompilerServiceIpcSessionSender {
+            sender: self.clone(),
+            session_id: attestation.id,
+        })
+    }
+}
+
+impl CompilerServiceIpcSessionSender {
+    /// Routes one request through the exact accepted stream's core-side
+    /// cursor ledger. A stopped owner is a transport failure, not an invented
+    /// compiler reply.
     pub fn request(&self, request: CompilerRequest) -> io::Result<CompilerReply> {
         let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
-        self.0
-            .send(CompilerServiceIpcRequestEnvelope {
+        self.sender
+            .0
+            .send(CompilerServiceIpcRequestEnvelope::Request {
+                session_id: self.session_id.clone(),
                 request,
                 reply: reply_sender,
             })
@@ -1219,6 +1497,17 @@ impl CompilerServiceIpcRequestSender {
         reply_receiver.recv().map_err(|_| {
             io::Error::new(io::ErrorKind::BrokenPipe, "core compiler reply unavailable")
         })
+    }
+}
+
+impl Drop for CompilerServiceIpcSessionSender {
+    fn drop(&mut self) {
+        let _ = self
+            .sender
+            .0
+            .send(CompilerServiceIpcRequestEnvelope::EndSession {
+                session_id: self.session_id.clone(),
+            });
     }
 }
 
@@ -1232,8 +1521,19 @@ impl CompilerServiceIpcRequestReceiver {
             let Ok(envelope) = self.0.try_recv() else {
                 break;
             };
-            let reply = adapter.handle(envelope.request);
-            let _ = envelope.reply.send(reply);
+            match envelope {
+                CompilerServiceIpcRequestEnvelope::Request {
+                    session_id,
+                    request,
+                    reply,
+                } => {
+                    let result = adapter.handle_session_request(&session_id, request);
+                    let _ = reply.send(result);
+                }
+                CompilerServiceIpcRequestEnvelope::EndSession { session_id } => {
+                    adapter.end_session(&session_id);
+                }
+            }
             dispatched += 1;
         }
         dispatched
@@ -1595,10 +1895,174 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_cursors_are_bound_to_the_receiving_compiler_stream() {
+        let mut adapter = CompilerServiceIpcAdapter::new(
+            RegisteredProjectCompilerService::new(CompilerServiceLimits {
+                max_diagnostic_cursors: 1,
+                ..CompilerServiceLimits::default()
+            }),
+            CompilerServiceIpcLimits {
+                max_diagnostic_page_entries: 1,
+                ..CompilerServiceIpcLimits::default()
+            },
+        )
+        .unwrap();
+        let project = adapter
+            .register_core_project(registration(
+                "const first: number = 'one'; \
+                 const second: number = 'two'; \
+                 const third: number = 'three';",
+            ))
+            .unwrap();
+        let first_stream = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
+        let second_stream = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
+        let CompilerReply::Check(check) =
+            adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
+        else {
+            panic!("the invalid fixture must yield a bounded check")
+        };
+        let CompilerReply::DiagnosticPage(first) = adapter.handle_session_request(
+            &first_stream,
+            CompilerRequest::ListDiagnostics {
+                generation: check.generation,
+                cursor: None,
+                limit: Some(1),
+            },
+        ) else {
+            panic!("the first stream must receive a diagnostic page")
+        };
+        let cursor = first
+            .next_cursor
+            .expect("three diagnostics need continuation");
+        let continuation = CompilerRequest::ListDiagnostics {
+            generation: check.generation,
+            cursor: Some(cursor),
+            limit: Some(1),
+        };
+        assert!(matches!(
+            adapter.handle_session_request(&second_stream, continuation.clone()),
+            CompilerReply::Error {
+                code: CompilerErrorCode::InvalidDiagnosticCursor,
+                ..
+            }
+        ));
+        assert!(matches!(
+            adapter.handle_session_request(
+                &first_stream,
+                CompilerRequest::ListDiagnostics {
+                    generation: check.generation,
+                    cursor: Some(cursor),
+                    limit: Some(0),
+                },
+            ),
+            CompilerReply::Error {
+                code: CompilerErrorCode::InvalidDiagnosticPage,
+                ..
+            }
+        ));
+        adapter.end_session(&first_stream);
+        assert!(matches!(
+            adapter.handle_session_request(&second_stream, continuation),
+            CompilerReply::Error {
+                code: CompilerErrorCode::InvalidDiagnosticCursor,
+                ..
+            }
+        ));
+        let CompilerReply::DiagnosticPage(second) = adapter.handle_session_request(
+            &second_stream,
+            CompilerRequest::ListDiagnostics {
+                generation: check.generation,
+                cursor: None,
+                limit: Some(1),
+            },
+        ) else {
+            panic!("disconnect must release the sole diagnostic cursor slot")
+        };
+        let second_cursor = second.next_cursor.expect("a fresh stream can paginate");
+        assert_ne!(second_cursor, cursor);
+        let CompilerReply::Check(later) =
+            adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
+        else {
+            panic!("a later check must advance the project generation")
+        };
+        assert_ne!(later.generation, check.generation);
+        assert!(matches!(
+            adapter.handle_session_request(
+                &second_stream,
+                CompilerRequest::ListDiagnostics {
+                    generation: check.generation,
+                    cursor: Some(second_cursor),
+                    limit: Some(1),
+                },
+            ),
+            CompilerReply::Error {
+                code: CompilerErrorCode::InvalidDiagnosticCursor,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn rejected_diagnostic_wire_page_does_not_leak_a_core_cursor_slot() {
+        let mut adapter = CompilerServiceIpcAdapter::new(
+            RegisteredProjectCompilerService::new(CompilerServiceLimits {
+                max_diagnostic_cursors: 1,
+                ..CompilerServiceLimits::default()
+            }),
+            CompilerServiceIpcLimits {
+                max_field_bytes: 4,
+                max_diagnostic_page_entries: 1,
+                ..CompilerServiceIpcLimits::default()
+            },
+        )
+        .unwrap();
+        let project = adapter
+            .register_core_project(registration(
+                "const first: number = 'one'; \
+                 const second: number = 'two'; \
+                 const third: number = 'three';",
+            ))
+            .unwrap();
+        assert_eq!(
+            adapter.handle(CompilerRequest::Check { project }),
+            response_limit_reply(),
+            "the tiny wire-field budget must not disclose a check generation"
+        );
+        // An untrusted raw IPC peer may guess a generation number even after
+        // the check reply was rejected. Both attempts must fail at the wire
+        // budget, not because the first undisclosed page exhausted the sole
+        // service cursor slot.
+        let generation = CompilerGeneration {
+            project,
+            sequence: 1,
+        };
+        for _ in 0..2 {
+            assert_eq!(
+                adapter.handle(CompilerRequest::ListDiagnostics {
+                    generation,
+                    cursor: None,
+                    limit: Some(1),
+                }),
+                response_limit_reply(),
+            );
+        }
+    }
+
+    #[test]
     fn queued_requests_are_applied_only_by_the_adapter_owner() {
         let (mut adapter, project) = adapter();
         let (sender, receiver) = compiler_service_ipc_request_channel();
-        let worker = std::thread::spawn(move || sender.request(CompilerRequest::Check { project }));
+        assert!(sender
+            .bind_session(CompilerSessionAttestation {
+                id: "caller-chosen-short-token".to_string(),
+            })
+            .is_err());
+        let bound = sender
+            .bind_session(CompilerSessionAttestation {
+                id: "a".repeat(CompilerSessionAttestation::ID_LENGTH),
+            })
+            .unwrap();
+        let worker = std::thread::spawn(move || bound.request(CompilerRequest::Check { project }));
         while receiver.dispatch_pending(&mut adapter) == 0 {
             std::thread::yield_now();
         }
@@ -1621,9 +2085,13 @@ mod tests {
         let mut session = catalog.seal();
         assert_eq!(session.registered_project_count(), 1);
         let (sender, receiver) = compiler_service_ipc_request_channel();
-        let worker = std::thread::spawn(move || {
-            sender.request(CompilerRequest::DescribeProject { project })
-        });
+        let bound = sender
+            .bind_session(CompilerSessionAttestation {
+                id: "b".repeat(CompilerSessionAttestation::ID_LENGTH),
+            })
+            .unwrap();
+        let worker =
+            std::thread::spawn(move || bound.request(CompilerRequest::DescribeProject { project }));
         while session.dispatch_pending(&receiver) == 0 {
             std::thread::yield_now();
         }
@@ -1636,6 +2104,17 @@ mod tests {
 
     #[test]
     fn invalid_ipc_limits_fail_before_an_adapter_is_available() {
+        assert_eq!(
+            CompilerServiceIpcAdapter::new(
+                RegisteredProjectCompilerService::default(),
+                CompilerServiceIpcLimits {
+                    max_stream_cursor_receipts: 0,
+                    ..CompilerServiceIpcLimits::default()
+                },
+            )
+            .unwrap_err(),
+            CompilerServiceIpcConfigurationError::ZeroStreamCursorReceipts
+        );
         assert_eq!(
             CompilerServiceIpcAdapter::new(
                 RegisteredProjectCompilerService::default(),

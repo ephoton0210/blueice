@@ -319,13 +319,17 @@ mod tests {
         let (client, mut server) = UnixStream::pair().unwrap();
         let listener = thread::spawn(move || {
             let hello = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
+            let evidence = session_evidence();
+            let bound = request_sender
+                .bind_session(evidence.session_attestation.clone())
+                .unwrap();
             blueice_ipc::compiler::write_compiler_reply(
                 &mut server,
-                &blueice_ipc::compiler::negotiate(&hello, Some(session_evidence())),
+                &blueice_ipc::compiler::negotiate(&hello, Some(evidence)),
             )
             .unwrap();
             let request = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
-            let reply = request_sender.request(request).unwrap();
+            let reply = bound.request(request).unwrap();
             blueice_ipc::compiler::write_compiler_reply(&mut server, &reply).unwrap();
         });
 
@@ -379,14 +383,18 @@ mod tests {
         let (client, mut server) = UnixStream::pair().unwrap();
         let listener = thread::spawn(move || {
             let hello = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
+            let evidence = session_evidence();
+            let bound = request_sender
+                .bind_session(evidence.session_attestation.clone())
+                .unwrap();
             blueice_ipc::compiler::write_compiler_reply(
                 &mut server,
-                &blueice_ipc::compiler::negotiate(&hello, Some(session_evidence())),
+                &blueice_ipc::compiler::negotiate(&hello, Some(evidence)),
             )
             .unwrap();
             for _ in 0..6 {
                 let request = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
-                let reply = request_sender.request(request).unwrap();
+                let reply = bound.request(request).unwrap();
                 blueice_ipc::compiler::write_compiler_reply(&mut server, &reply).unwrap();
             }
         });

@@ -1011,10 +1011,17 @@ or second module resolver to bypass them.
   never-inventoried type/symbol/source/contract ID before forwarding a
   dereference or validation to core. A later successful check revokes that
   project's old receipts, and a fixed per-session receipt budget prevents
-  cross-project inventory from accumulating without bound. A core-minted cursor is one-shot, bound to
-  exactly one generation and collection, capped by service and response policy,
-  invalidated on a later check, and rejects malformed, replayed, stale, or
-  mismatched uses without falling back to another page. Provenance returns only
+  cross-project inventory from accumulating without bound. A core-minted
+  cursor is one-shot, bound to exactly one generation, collection, and accepted
+  compiler stream, capped by service and response policy, invalidated on a
+  later check or stream close, and rejects malformed, cross-stream, replayed,
+  stale, or mismatched uses without falling back to another page. Closing a
+  stream releases its unused cursor slots, so abandoned first pages cannot
+  exhaust the fixed service budget across connections. A separate core-owner
+  receipt cap also bounds stream bookkeeping if a response fails after a
+  service cursor has been consumed; an encoded-page rejection revokes any
+  undisclosed next cursor before returning a budget error. Provenance returns
+  only
   a static module identity and
   content hash, never text. Contract reads expose a bounded static summary;
   validation accepts a bounded data-only tree under immutable core-selected

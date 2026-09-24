@@ -15,7 +15,10 @@
 //! check, individual static type/symbol queries, compiler-minted provenance
 //! hashes, deliberately bounded reifiable static-contract
 //! inspection/validation, generation-bound pages of opaque metadata IDs, and
-//! source-free one-shot pages of retained compiler diagnostics.
+//! source-free one-shot pages of retained compiler diagnostics. Core also
+//! binds pagination cursors to the accepted, attested compiler stream that
+//! received them and releases unused cursor slots when that stream closes;
+//! a client cannot carry a numeric cursor to a later stream.
 //! The attestation binds an MCP-side receipt to the core that accepted its
 //! relay stream; the manifest makes that receipt's exact fixed operation set
 //! independently verifiable. Neither grants additional authority. Build
@@ -217,9 +220,10 @@ pub struct CompilerDiagnostics {
 }
 
 /// An opaque, one-shot pagination cursor minted by the core service for the
-/// exact diagnostics retained by one compiler generation. It is neither an
-/// offset nor a source position, and cannot be repurposed for static metadata
-/// or a later check generation.
+/// exact diagnostics retained by one compiler generation and the accepted
+/// stream that received it. It is neither an offset nor a source position,
+/// and cannot be repurposed for static metadata, a later stream, or a later
+/// check generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CompilerDiagnosticCursor {
     pub id: u64,
@@ -270,7 +274,8 @@ pub enum CompilerStaticMetadataKind {
 
 /// An opaque, one-shot pagination cursor minted by the core service. A
 /// client must not construct it: the core binds it to one exact generation
-/// and metadata kind, consumes it once, and invalidates it on a later check.
+/// and metadata kind, the stream that received it, consumes it once, and
+/// invalidates it on a later check or stream close.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CompilerStaticMetadataCursor {
     pub id: u64,

@@ -659,8 +659,9 @@ fn serve_debugger_listener(
 /// Serves one query-only registered-project compiler peer. Its `Hello`
 /// negotiation is intentionally completed on the listener side, while every
 /// later decoded request is synchronously handed to the sealed core catalog on
-/// the session thread. The worker owns no source, project registration, or
-/// incremental compiler cache.
+/// the session thread under its core-minted stream attestation. Abandoned
+/// pagination cursors are revoked when this stream closes. The worker owns no
+/// source, project registration, or incremental compiler cache.
 #[cfg(unix)]
 fn serve_compiler_connection(
     mut stream: UnixStream,
@@ -676,11 +677,16 @@ fn serve_compiler_connection(
     let session_evidence = accepted
         .then(mint_compiler_session_hello_evidence)
         .transpose()?;
+    let session_sender = session_evidence
+        .as_ref()
+        .map(|evidence| sender.bind_session(evidence.session_attestation.clone()))
+        .transpose()?;
     let reply = blueice_ipc::compiler::negotiate(&first, session_evidence);
     blueice_ipc::compiler::write_compiler_reply(&mut stream, &reply)?;
     if !accepted {
         return Ok(());
     }
+    let session_sender = session_sender.expect("an accepted Hello mints a bound compiler stream");
 
     loop {
         let request = match blueice_ipc::compiler::read_compiler_request(&mut stream) {
@@ -688,7 +694,7 @@ fn serve_compiler_connection(
             Err(error) if matches!(error.kind(), io::ErrorKind::UnexpectedEof) => return Ok(()),
             Err(error) => return Err(error),
         };
-        let reply = sender.request(request)?;
+        let reply = session_sender.request(request)?;
         blueice_ipc::compiler::write_compiler_reply(&mut stream, &reply)?;
     }
 }

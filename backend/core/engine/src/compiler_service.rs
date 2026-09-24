@@ -708,6 +708,23 @@ impl RegisteredProjectCompilerService {
         })
     }
 
+    /// Releases cursors that an accepted compiler IPC stream received but
+    /// abandoned on disconnect. The adapter supplies only IDs from that
+    /// stream's private receipt ledger; this is not a protocol operation and
+    /// cannot change a project, generation, compiler cache, or artifact.
+    pub(crate) fn revoke_inventory_cursors(
+        &mut self,
+        static_metadata_ids: &[u64],
+        diagnostic_ids: &[u64],
+    ) {
+        for id in static_metadata_ids {
+            self.static_metadata_cursors.remove(id);
+        }
+        for id in diagnostic_ids {
+            self.diagnostic_cursors.remove(id);
+        }
+    }
+
     /// Looks up one static type by its compiler-minted ID. This never attempts
     /// to inspect a BlueJS runtime value.
     pub fn static_type(

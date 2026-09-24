@@ -82,6 +82,185 @@ fn metadata_inventory_clamps_pages_and_rejects_malformed_or_replayed_cursors() {
 }
 
 #[test]
+fn compiler_stream_receipts_reject_cross_stream_cursors_and_release_abandoned_slots() {
+    let mut adapter = CompilerServiceIpcAdapter::new(
+        RegisteredProjectCompilerService::new(CompilerServiceLimits {
+            max_static_metadata_cursors: 1,
+            ..CompilerServiceLimits::default()
+        }),
+        CompilerServiceIpcLimits {
+            max_static_metadata_page_entries: 1,
+            ..CompilerServiceIpcLimits::default()
+        },
+    )
+    .unwrap();
+    let project = adapter
+        .register_core_project(registration("export const value: number = answer;"))
+        .unwrap();
+    let first_stream = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
+    let second_stream = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
+    let CompilerReply::Check(check) =
+        adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
+    else {
+        panic!("the first accepted stream must check the registered project")
+    };
+    let first_page = CompilerRequest::ListStaticMetadata {
+        generation: check.generation,
+        kind: CompilerStaticMetadataKind::Symbols,
+        cursor: None,
+        limit: Some(1),
+    };
+    let CompilerReply::StaticMetadataPage(page) =
+        adapter.handle_session_request(&first_stream, first_page.clone())
+    else {
+        panic!("the first stream must receive its own cursor")
+    };
+    let cursor = page.next_cursor.expect("the fixture has more than one symbol");
+    let continuation = CompilerRequest::ListStaticMetadata {
+        generation: check.generation,
+        kind: CompilerStaticMetadataKind::Symbols,
+        cursor: Some(cursor),
+        limit: Some(1),
+    };
+    assert!(matches!(
+        adapter.handle_session_request(&second_stream, continuation.clone()),
+        CompilerReply::Error {
+            code: CompilerErrorCode::InvalidMetadataCursor,
+            ..
+        }
+    ));
+    assert!(matches!(
+        adapter.handle_session_request(
+            &first_stream,
+            CompilerRequest::ListStaticMetadata {
+                generation: check.generation,
+                kind: CompilerStaticMetadataKind::Contracts,
+                cursor: Some(cursor),
+                limit: Some(1),
+            },
+        ),
+        CompilerReply::Error {
+            code: CompilerErrorCode::InvalidMetadataCursor,
+            ..
+        }
+    ));
+    assert!(matches!(
+        adapter.handle_session_request(
+            &first_stream,
+            CompilerRequest::ListStaticMetadata {
+                generation: check.generation,
+                kind: CompilerStaticMetadataKind::Symbols,
+                cursor: Some(cursor),
+                limit: Some(0),
+            },
+        ),
+        CompilerReply::Error {
+            code: CompilerErrorCode::InvalidMetadataPage,
+            ..
+        }
+    ));
+
+    // Dropping the bound sender queues a session-end event on the same owner
+    // channel. The next stream can mint a cursor despite the service cap of 1.
+    let (sender, receiver) = compiler_service_ipc_request_channel();
+    let bound = sender
+        .bind_session(CompilerSessionAttestation {
+            id: first_stream.clone(),
+        })
+        .unwrap();
+    drop(bound);
+    assert_eq!(receiver.dispatch_pending(&mut adapter), 1);
+    assert!(adapter.session_cursors.is_empty());
+    assert!(matches!(
+        adapter.handle_session_request(&second_stream, continuation),
+        CompilerReply::Error {
+            code: CompilerErrorCode::InvalidMetadataCursor,
+            ..
+        }
+    ));
+    let CompilerReply::StaticMetadataPage(next_page) =
+        adapter.handle_session_request(&second_stream, first_page)
+    else {
+        panic!("session cleanup must return the sole static cursor slot")
+    };
+    let next_cursor = next_page.next_cursor.expect("the second stream can page");
+    assert_ne!(next_cursor, cursor);
+    assert!(matches!(
+        adapter.handle_session_request(
+            &second_stream,
+            CompilerRequest::ListStaticMetadata {
+                generation: check.generation,
+                kind: CompilerStaticMetadataKind::Symbols,
+                cursor: Some(next_cursor),
+                limit: Some(1),
+            },
+        ),
+        CompilerReply::StaticMetadataPage(_)
+    ));
+}
+
+#[test]
+fn compiler_stream_cursor_receipt_budget_releases_an_undisclosed_new_cursor() {
+    let mut adapter = CompilerServiceIpcAdapter::new(
+        RegisteredProjectCompilerService::new(CompilerServiceLimits {
+            max_static_metadata_cursors: 2,
+            ..CompilerServiceLimits::default()
+        }),
+        CompilerServiceIpcLimits {
+            max_static_metadata_page_entries: 1,
+            max_stream_cursor_receipts: 1,
+            ..CompilerServiceIpcLimits::default()
+        },
+    )
+    .unwrap();
+    let project = adapter
+        .register_core_project(registration("export const value: number = answer;"))
+        .unwrap();
+    let session = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
+    let CompilerReply::Check(check) =
+        adapter.handle_session_request(&session, CompilerRequest::Check { project })
+    else {
+        panic!("the registered fixture must check")
+    };
+    let first_page = CompilerRequest::ListStaticMetadata {
+        generation: check.generation,
+        kind: CompilerStaticMetadataKind::Symbols,
+        cursor: None,
+        limit: Some(1),
+    };
+    let CompilerReply::StaticMetadataPage(first) =
+        adapter.handle_session_request(&session, first_page.clone())
+    else {
+        panic!("the first page must mint the one permitted receipt")
+    };
+    let first_cursor = first.next_cursor.expect("the fixture needs continuation");
+    assert!(matches!(
+        adapter.handle_session_request(&session, first_page),
+        CompilerReply::Error {
+            code: CompilerErrorCode::ResourceLimit,
+            ..
+        }
+    ));
+    assert_eq!(adapter.session_cursors.get(&session).unwrap().len(), 1);
+    assert!(matches!(
+        adapter.handle_session_request(
+            &session,
+            CompilerRequest::ListStaticMetadata {
+                generation: check.generation,
+                kind: CompilerStaticMetadataKind::Symbols,
+                cursor: Some(first_cursor),
+                limit: Some(1),
+            },
+        ),
+        CompilerReply::StaticMetadataPage(_)
+    ));
+    assert!(adapter
+        .session_cursors
+        .get(&session)
+        .is_none_or(|receipts| receipts.len() <= 1));
+}
+
+#[test]
 fn adapter_exposes_only_exact_generation_contracts_and_source_hashes() {
     let mut adapter = CompilerServiceIpcAdapter::default();
     let project = adapter
