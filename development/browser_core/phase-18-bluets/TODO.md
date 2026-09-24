@@ -1,1569 +1,238 @@
-# Phase 18 — BlueTS / BlueTSC TODO
+# Phase 18 — BlueTS / BlueTSC completion worklist
 
-[← Phase 18 plan](PLAN.md) · [BlueTS ↔ BlueJS integration contract](INTEGRATION_CONTRACT.md) · [test interface](TEST_INTERFACE.md)
+[← Plan](PLAN.md) · [integration contract](INTEGRATION_CONTRACT.md) · [test interface](TEST_INTERFACE.md) · [DOM/event decision](../phase-13-bluejs-engine/DOM_EVENT_BINDINGS.md)
 
-This is the prioritized completion worklist for making BlueTS a usable BlueIce
-page language, rather than merely a standalone compiler. `PLAN.md` remains the
-source of truth for scope and completed checklist items; update it and this
-file together when an item closes. A check mark requires the stated acceptance
-evidence, not just an API, design document, or unit test.
+The goal is a supported BlueTS page that runs, interacts, debugs, and enforces
+its declared boundaries through the real BlueIce processes. [PLAN.md](PLAN.md)
+holds design history and delivered evidence. This file holds the ordered work
+and its acceptance checks; checked leaves show prerequisites for the next step.
+
+Work one leaf at a time, in the order below. Finish its implementation and
+public-boundary test, commit it, then check it off before starting the next
+leaf. A design-only leaf needs a reviewable decision instead of a runtime test.
+Headings show dependencies; they are not tasks to finish in one commit.
+Keep design history in PLAN.md and defer capabilities or syntax that do not
+close the current leaf.
+
+**Current leaf: A1.2.** Require a per-core child capability at the script
+socket handshake. A real socket test must show that wrong and predecessor
+capabilities are rejected before any DOM dispatch. A1.3 follows only after
+that test passes.
 
 ## Current boundary
 
-The standalone front end, BlueTSC emitter, VM-independent debug metadata,
-bounded contract validator, incremental cache, and the host-neutral direct
-BlueTS-to-BlueJS structured-program bridge are complete for `blue-ts-0.1`.
-They do not yet make a general TypeScript page executable or debuggable. The
-bridge now has a limited, in-memory mapping from a single direct module's
-top-level lowering spans to verified BlueJS safe points, plus an in-process
-page host with two read-only document-oriented profiles. `blueice-core` can
-now opt into one such profile for inline declarations, and expose only
-source-free per-tab outcomes through its control plane. The opt-in JavaScript
-host now also supports a bounded private debugger program-location inventory,
-exact live safe-point validation, lifecycle-bound breakpoint configuration, and
-an opt-in root-code-unit pause/resume seam. It can stop a pending classic
-declaration at a verified non-entry root instruction while retaining its VM
-root frame and step one root instruction; it is not arbitrary interpreter
-suspension. A separately authorized out-of-process BlueTS route now steps one
-compiler-bound classic-root source span under exact same-stream receipts; it
-does not cover modules, nested frames, stack, scope, or values.
-A launcher-supervised, capability-authenticated out-of-process BlueJS child
-can execute caller-authorized inline JavaScript and explicit BlueTS declarations
-in one bounded realm and DOM order. Its default core route rejects external
-`src`; an explicitly selected immutable core-owned
-`OutOfProcessPageScriptSourceAuthorizer` can instead admit a complete existing
-typed JavaScript or BlueTS graph for the exact live declaration tuple. Core
-copies that graph's canonical IDs, static edges, source bytes, and resolver
-fingerprint to the child, which independently validates it and has no resolver
-or source-loading fallback. For each core-verified document it also
-installs immutable `blueiceDocumentText()` and
-`blueiceDocumentOrigin()` copied snapshots: core validates their matching
-1 MiB/4 KiB string contracts before serialization and the child repeats both
-budgets plus canonical HTTP(S)-origin spelling before creating a realm. BlueTS
-receives only the closed supplied graph and a child-fixed checked compiler
-policy, then lowers directly into that realm without emitted-JavaScript
-reparse. A shared generated and exact-inventory-verified
-`core-script-document-context-v1` declaration admits calls only to those two
-snapshot functions; page code cannot select, alter, or extend it. The core route keeps its
-outcomes in the existing separate source-free JavaScript and BlueTS report
-lanes, and closes child realms on navigation/tab removal. `blueice-launcher
---out-of-process-bluejs` creates that child/capability pair itself for each
-core generation and reaps it on ordinary shutdown or cutover; the default
-launcher leaves the mode disabled. An immutable core-owned startup authorizer
-may additionally supply one exact closed external JavaScript or BlueTS graph;
-the child still does not fetch, resolve, or fall back itself. Its private
-page-host v5 transport permits source-free debugger location discovery plus
-an exact bounded breakpoint-configuration table: after core verifies the
-authenticated child owns the exact live
-tab/document realm, it lists bounded child-private program/safe-point IDs and
-revalidates one exact tuple. Core remints every public debugger program
-handle/generation in a disjoint namespace and rejects any child reply whose
-tab, document generation, private program, or safe point does not exactly
-match that mapping; it checks exact child echoes for set/clear and revalidates
-every listed private record before re-minting it. The child table is capped at
-256 idempotent records and is discarded on realm replacement or close. The
-ordinary child route without debugger selection has no pause/resume, stepping,
-stack/scope/value/source/bytecode operation. When the same trusted core also
-owns a debugger socket, it selects only the bounded root-classic lifecycle;
-the child route also has a concrete but deliberately narrow
-startup-only `HttpOutOfProcessPageScriptSourceAuthorizer`: core fixes a
-same-document-origin or one canonical exact-origin rule, owner
-URL-to-SHA-256 manifest, and module/depth/per-module/graph byte limits before
-an executor exists. It admits only direct `200`, identity-encoded UTF-8
-JavaScript/BlueTS MIME responses with matching bounded `Content-Length` and
-integrity, disallows redirects, and parses only manifest-covered static edges.
-Its verified private cache uses deterministic URL/integrity/language keys and
-now retains at most 4 MiB of verified source payload using deterministic LRU
-eviction. Evicted resources are fetched and integrity-checked again; the
-`core-page-http-resource-authorizer-v2` graph fingerprint covers that fixed
-cache budget as well as the rest of the policy. Cache-key/allocator overhead,
-finished graph copies, VM memory, and process RSS are not included in this
-payload cap. The page, child,
-frontend, and MCP receive neither that authority nor its cache/manifest—only
-a completed graph. The real core-to-child route can now also select one fixed
-compiled `core-page-http-fixture-v1` profile at trusted startup: it permits
-only one classic JavaScript path with one baked SHA-256 value below the live
-document's canonical origin. The public launcher CLI has no switch for that
-profile, and the private startup selector carries only its fixed name—not a
-URL, manifest, resolver, source, path, or fetch setting. A real core
-subprocess/HTTP/child-host regression proves that core builds the closed graph
-before its private handoff. This is an integration fixture, not general
-application-resource distribution. The trusted launcher owner can now supply
-its own bounded canonical HTTP(S) URL/SHA-256 policy from an absolute JSON file
-or embedding API; it crosses only a one-shot core stdin bootstrap, optionally
-with the compiler catalog. Core validates it and constructs the existing
-closed-graph authorizer before binding listeners. A real launcher/core/HTTP/
-child test proves admitted external JavaScript and a BlueTS static-import graph,
-unfetched unlisted URLs, and rejected bad hashes. The policy also starts with
-both an owner compiler catalog and the default fixed compiler fixture. This
-closes the owner-distribution seam, not per-client resource authorization or
-a page-accessible network API. The remaining boundary has no general DOM
-or event surface
-beyond the copied strings, arbitrary debugger interruption/pause/runtime
-control, or MCP project-registration path.
-
-The critical path is intentionally ordered below. Do not grow the TypeScript
-syntax matrix while an earlier item prevents an already-supported program from
-running safely through a real page.
-
-```text
-Phase 13 page-script host + initial bindings
-  -> BlueJS source IDs / safe points + Phase 17 debugger IPC
-  -> generated host typings + direct-page BlueTS integration
-  -> source-level debugger, strict contracts, and MCP adapter
-  -> real-process regression suite and carefully gated language growth
-```
-
-## P0 — prerequisite page runtime and source locations
-
-These items are owned jointly with the listed phases. Phase 18 must consume
-their public interfaces; it must not create a private host, debugger protocol,
-or second module resolver to bypass them.
-
-- [ ] **Provide a real BlueJS page-script host (Phase 13).** Wire
-  `blueice_ipc::script` through `core` to a long-lived BlueJS host, with
-  document/tab/realm lifecycle, origin/policy checks, per-tab compilation and
-  memory accounting, and a JavaScript `<script>` fixture that executes through
-  the normal page pipeline. The host must accept caller-authorized source and
-  resolver records rather than granting BlueTS filesystem, network, DOM, or
-  capability authority.
-
-  Foundation delivered: `blueice_engine::script::handle_script_request` is the
-  core-owned dispatcher for the existing narrow script IPC vocabulary. It
-  scopes DOM lookup/mutation to one live tab, validates raw node IDs before
-  mutation, relayouts after changes, and rejects stale/cross-tab handles after
-  navigation. `blueice_bluejs::BlueJsPageRuntime` now also provides a
-  host-neutral, in-process realm foundation: caller-owned opaque tab IDs and
-  origin identities, one VM per tab, bounded root-bytecode/program retention,
-  generation-owned program handles, and fail-closed invalidation on
-  navigation/reload/close. It runs an already-authorized structured classic
-  script or module, but it opens no URL and installs no DOM or IPC capability.
-  `blueice-core --script-socket <path>` now binds the initial long-lived core
-  listener: it requires `Hello` before a request, decodes the script protocol
-  on a worker, and routes each request synchronously to the session thread that
-  exclusively owns the live `TabManager`. This proves real-process DOM
-  dispatch without exposing a cross-thread DOM reference. The opt-in
-  launcher-managed out-of-process BlueJS host is now wired through core; the
-  JavaScript DOM bindings and host-wide source-fetch/cache accounting are
-  still absent, so this prerequisite remains open. A core owner can now
-  construct the in-process direct host with a
-  caller-selected `DirectPageRealmOwner`, whose validated VM, realm,
-  program-count, bytecode, and static-debug retention limits apply before a
-  direct program executes. `DirectPageInlineExecutor` can receive the same
-  owner for its explicitly enabled lifecycle seam, so inline declarations do
-  not silently fall back to default resource limits. The host exposes only its
-  live realm's per-tab
-  program count, retained root-bytecode charge, and VM heap statistics;
-  navigation/close releases old-realm charges before a successor is observed.
-  This remains a per-host in-process policy, not a substitute for the process
-  host's overall resource policy.
-
-  `blueice-core --inline-bluets-profile <known-profile>` is an additional,
-  explicitly configured process seam for the narrow inline executor. The core,
-  not page content, selects the profile and fixed default compiler options.
-  After a normal successful navigation, a client may send
-  `GetBlueTsScriptReports` for its tab and receive a bounded ordered drain of
-  tab/document generation, declaration ordinal/kind, and either `Executed` or
-  a fixed rejection category. Reports contain no script source, diagnostics,
-  runtime values, bytecode, or object handles; querying does not enable
-  execution, and a core started without the flag rejects the query. A
-  subprocess HTTP fixture now proves one classic and one module declaration
-  execute under `core-script-document-text-v1`, while an invalid static call
-  is reported source-free. This does not make the script-socket dispatcher a
-  JavaScript binding or close the real out-of-process host acceptance.
-
-  `blueice_engine::script::javascript::JavaScriptPageExecutor` now supplies
-  the first bounded standard-JavaScript page-pipeline seam. It recognizes
-  classic `<script>` declarations (missing/empty or common JavaScript MIME
-  `type`) and `type="module"` separately from BlueTS, runs them only when its
-  core owner explicitly synchronizes it, and uses the public `BlueJsPageRuntime`
-  for an HTTP(S)-origin-bound realm per tab/document generation. Inline source
-  receives a core-minted canonical identity and deterministic content hash;
-  source is capped at 1 MiB per module, graphs at 128 modules, and BlueJS's
-  fixed realm/program/bytecode limits apply before execution. Replacement,
-  close, an unsupported origin, parse/compile/runtime failure, and an
-  over-budget source leave source-free fixed outcome categories; one rejected
-  declaration does not suppress a later declaration. External `src` fails
-  closed by default. The only opt-in external authority is a core-owned
-  `JavaScriptPageSourceAuthorizer`, which returns a closed graph of canonical
-  source records plus every static `(from, specifier) -> canonical target`
-  record; before compiling, the executor rewrites each static request to that
-  canonical target and rejects a missing edge before admitting any graph
-  program. It never fetches, performs URL/import-map lookup, or falls back to
-  relative resolution. `blueice-core --inline-bluejs` is disabled by default,
-  cannot be combined with the separate experimental BlueTS executor (so one
-  page cannot receive two independent VMs), and exposes a tab-addressed drain
-  of bounded source-free `GetBlueJsScriptReports` records; a normal session
-  rejects that query without an enabled executor, so observation cannot enable
-  JavaScript execution. A real subprocess
-  HTTP fixture proves classic and module scripts execute in document order and
-  that a parse rejection is redacted. A separate two-navigation subprocess
-  fixture makes each document assert its own canonical origin snapshot and
-  observes a new source-free execution report generation after both navigations;
-  a stale first-document realm or callback would reject the second assertion.
-  A two-tab session HTTP regression further proves that draining one tab's
-  JavaScript reports neither exposes nor discards the other tab's report.
-  A fixed one-byte bytecode realm budget unit fixture proves a compilation
-  rejection retains neither a partial program nor a bytecode charge. This is an
-  in-process,
-  no-general-DOM-object-or-event-binding
-  foundation. A separate launcher-owned process foundation now also exists:
-  `blueice_ipc::page_host` defines a private v5 capability-authenticated
-  launcher-to-child transport, and the `blueice-bluejs-host` child owns its
-  own `BlueJsPageRuntime`, tab/document-generation table, program registry,
-  and fixed realm/program/bytecode limits. A private frame is capped at
-  12 MiB before payload allocation; a document is capped at 8 MiB source,
-  each module at 1 MiB, and each graph at eight modules. It accepts only a complete
-  caller-authorized document record containing canonical source IDs, exact
-  source bytes and hashes, a non-empty resolver-policy fingerprint, and all
-  static `(from, specifier) -> canonical-target` records. It recomputes each
-  source hash, rejects duplicate/dangling/missing resolution records, and
-  rewrites static ESM requests only to the supplied canonical targets; it
-  never fetches, opens a URL/file, performs relative/import-map/package
-  resolution, or receives DOM/IPC callbacks. The launcher creates an owner-
-  only private socket plus per-spawn `/dev/urandom` capability token,
-  authenticates before dispatch, supervises/reaps the child, and removes its
-  socket on clean or forced teardown. The child returns bounded source-free
-  reports, aggregate realm accounting, and the core-proxied location-only
-  debugger inventory plus a 256-record exact breakpoint-configuration table;
-  same-generation sync is
-  idempotent, a stale generation cannot close or inspect a successor, and a
-  missing module edge is rejected before any graph program is retained. Unit
-  tests cover those rules, and a real launcher-spawned child regression proves
-  the authenticated classic-plus-static-ESM route and clean shutdown.
-  `blueice-launcher --out-of-process-bluejs` now creates a fresh child and
-  private capability pair for each core generation, passes it only to that
-  core's startup boundary, forwards loaded HTTP(S) inline declarations and,
-  only when the startup-selected immutable core authorizer supplies a complete
-  typed closed graph, external declarations through the core adapter, and
-  reaps the child/socket on shutdown or cutover. Version 3 has no page-selected
-  binding profile or capability field: core supplies
-  exactly a copied document-text snapshot and canonical tuple-origin snapshot
-  only after its existing `dom.document-text`/`dom.document-origin` pure
-  contracts accept them. The child repeats the same 1 MiB/4 KiB byte limits
-  and rejects a non-canonical or missing origin before it replaces a realm,
-  then installs only immutable JavaScript callbacks
-  `blueiceDocumentText()`/`blueiceDocumentOrigin()` through the restricted
-  BlueJS registrar. Navigation, failed replacement, and close discard that VM
-  and both captured strings. No DOM object, URL object, resolver, fetch,
-  network, IPC, source/result value, or capability crosses that boundary. The
-  launcher-to-core-to-child regression proves inline classic and module
-  execution, explicit BlueTS direct lowering in the same realm and DOM order,
-  source-free default/denied/invalid external-`src` rejection, immutable
-  core-authorized JavaScript and BlueTS graphs, no static-edge fallback, no
-  injected DOM/fetch binding, no endpoint reflection through the frontend
-  broker, and both generations' cleanup. Its shared `blueice-bluets-bluejs` fixed typing
-  artifact is generated from the exact two-callback runtime inventory and
-  provides BlueTS only `blueiceDocumentText(): string` and
-  `blueiceDocumentOrigin(): string`; unit and real-child regressions prove a
-  typed call executes through direct lowering and `fetch` is a source-free
-  rejection, while the unit regression also rejects invalid callback arity.
-  The launcher-to-core-to-child regression now separately observes classic
-  and ESM BlueTS execution reports in their shared realm and a wrong callback
-  arity as the fixed source-free compilation-rejection category.
-  It does not grant the child fetch, URL/import-map resolution, a filesystem,
-  or external graph authority beyond the supplied graph. The concrete
-  startup-selected child HTTP(S) authority now verifies a URL/SHA-256
-  manifest, direct response policy, and a parsed closed static graph; the same
-  core-owned implementation is the direct BlueTS external-source authorizer,
-  not a duplicate loader. Its child process and direct core-session loopback
-  regressions cover cache/integrity/MIME/redirect/cross-origin boundaries
-  without source reflection. Core now caps its retained verified HTTP source
-  payload at 4 MiB with deterministic LRU eviction; an evicted URL is
-  refetched and must pass the same integrity check before reuse. Focused tests
-  prove the byte cap, eviction order, and changed-response rejection. This is
-  not an allocator, graph-copy, VM, or process-RSS bound. Core separately
-  caches each accepted child realm's
-  source-free `(tab, document_generation)` program/bytecode/heap totals, then
-  drops that record on replacement, tab removal, child error, transport loss,
-  or a malformed/mismatched reply; it is never reflected to a page, frontend,
-  debugger, or MCP client. A trusted launcher embedding can now select one
-  immutable child-bootstrap envelope for realm count, programs/root-bytecode
-  per realm, VM managed heap per realm, and child-wide worst-case reservations
-  for those three resources. Both ordinary startup and cutover pass the same
-  envelope to each fresh child before it binds its private socket. A new tab
-  reserves its full per-realm budget before realm creation; navigation keeps
-  that reservation, and close or post-creation binding failure releases it. The public
-  launcher CLI, page, frontend, core, and page-host IPC cannot inspect or
-  widen the envelope. Page-host v31 now adds an authenticated core-only query
-  for actual program/root-bytecode/VM-managed-heap totals across the live
-  child realms; the child recomputes checked sums under the owner envelope,
-  and core validates the source-free reply against its validated per-realm
-  receipts rather than the table of attempted documents retained to suppress
-  retries. If a successor admission returns an error or malformed acknowledgement,
-  core best-effort closes both old and candidate generations: the child's
-  exact-generation rule rejects the stale close and removes the live one.
-  Replacement and close remove predecessor usage, while a malformed reply
-  fails closed. This remains neither an RSS cap nor a fleet budget: VM heap
-  accounting excludes allocator/Rust/source/registry/OS overhead, and
-  reservations conservatively count full realm budgets even when little is
-  used. Those limits, native debugger attachment,
-  and general JavaScript DOM-object/event binding remain open, so the
-  prerequisite remains open.
-
-  Acceptance: a page fixture can run a supported JavaScript classic script and
-  module in its own realm; navigation/reload invalidates old program handles;
-  an over-budget compilation fails without executing a partial program.
-
-- [ ] **Expose minimal, truthful host bindings (Phases 2/13).** Define the
-  first DOM/event binding surface and its policy/origin rules before declaring
-  it in TypeScript. Do not expose a broad `lib.dom.d.ts` or add bindings merely
-  to satisfy a checker fixture.
-
-  Design decision delivered: [the first page DOM/event boundary](../phase-13-bluejs-engine/DOM_EVENT_BINDINGS.md)
-  fixes a narrow `document`/node text and tree vocabulary plus click listeners,
-  separates `dom-read`, `dom-write`, and `dom-event`, and requires exact live
-  document identity, child authentication, bounded synchronous DOM calls,
-  VM-owned event callbacks, and real-page tests before the generated typings
-  can advertise it. The Phase 13 design checklist is complete; this runtime
-  item remains open until the listed operations and click behavior work
-  through the launcher/core/child page route.
-  The existing proof-of-mechanism script IPC is now v2: every DOM operation
-  carries an exact core document generation, with version negotiation and
-  fixed frame/name/text bounds. A real core subprocess rejects a still-open
-  script socket's old-generation mutation after navigation. This is not yet
-  the authenticated launcher-child route, reentrant session wait, VM-owned
-  wrapper/callback layer, or a BlueTS-visible host profile.
-
-  Foundation delivered: `blueice_bluejs::Vm` now has a realm-local host
-  callback ABI. An embedder can install an opaque global host object and
-  non-constructable methods, backed by a VM-private callback registry. The
-  boundary accepts and returns only `undefined`, `null`, booleans, numbers and
-  `JsString`; object identities, `Symbol`, and `BigInt` fail before a callback
-  can retain them outside the garbage collector. Callback failures become a
-  host-controlled JavaScript `TypeError`, and installation rejects invalid or
-  colliding global/member names. The ABI can install a global function as well
-  as an object member, without exposing a VM or heap reference.
-
-  The first actual binding is deliberately read-only and non-standard:
-  `core-script-document-text-v1` declares exactly
-  `blueiceDocumentText(): string`, with stable ID `dom.document-text`, runtime
-  ID `global.blueiceDocumentText`, and `dom-read` capability. The direct page
-  host accepts this non-empty profile only when it byte-for-byte matches the
-  built-in typing artifact and runtime inventory. It snapshots the current
-  document's recursive text into the realm-local callback; no DOM reference,
-  node handle, mutable operation, event API, network API, or general
-  `document` object enters BlueJS. A replacement document gets a replacement
-  realm and snapshot. A non-empty profile with no matching installer fails
-  closed before compilation/admission, and a realm cannot switch profiles.
-
-  `core-script-document-context-v1` is the only broader composition currently
-  accepted. It retains the same copied text snapshot and adds exactly
-  `blueiceDocumentOrigin(): string` (`dom.document-origin`,
-  `global.blueiceDocumentOrigin`, `dom-read`). The value is the core-derived,
-  canonical tuple origin for the current document, never its path, query,
-  fragment, URL object, or a capability-bearing DOM object. Navigation creates
-  a new realm and therefore a new text/origin snapshot.
-
-  The page runtime now exposes this substrate only through a temporary,
-  realm-scoped registrar. It permits global-function/object/method registration
-  but not VM execution, heap access, source inspection, or object inspection,
-  and its callbacks disappear with navigation/reload/close when the realm VM
-  is replaced. Direct-page tests prove the declared function returns the
-  current document snapshot, rebinds after a same-origin document replacement,
-  and rejects an uninstalled non-empty profile; an opt-in inline-executor
-  lifecycle fixture executes the profile through discovered page declarations.
-  Direct-page compilation enables the fingerprinted
-  `require_declared_global_calls` policy, so a top-level direct call must be a
-  local function or a supplied ambient host declaration. Consequently,
-  `blueiceDocumentText()` and `blueiceDocumentOrigin()` under
-  `core-script-empty-v1` fail with `UnknownName` before VM admission; a raw
-  BlueJS realm with no registration rejects either global with `ReferenceError`.
-  The declared profile also rejects an incorrect argument count statically.
-  The bounded standard-JavaScript executor now installs those same exact
-  `dom.document-text` and `dom.document-origin` bindings in every successfully
-  admitted realm without exposing a `document` object. Before opening a realm,
-  it validates the copied recursive text and core-derived canonical tuple origin
-  against their identical core-selected reifiable string contracts; it then
-  installs only zero-argument realm-local callbacks that capture those validated
-  snapshots. A classic JavaScript page-level test proves the canonical origin
-  value is returned and that a supplied argument becomes a host-controlled
-  runtime failure; an oversized copied document fails before a JavaScript
-  program or realm is retained. The `--inline-bluejs` subprocess fixture now
-  invokes both bindings through ordinary HTML script execution. These remain
-  immutable primitive snapshots, not a general DOM object, node handle, event,
-  mutation,
-  network, storage, or URL API.
-  The first bindings do not yet satisfy the full DOM/event surface, so this
-  item remains open.
-
-  Acceptance: each initial binding has an implementation, capability policy,
-  stable binding ID, and JavaScript page-level behavior test; an unimplemented
-  API is absent and fails both static and runtime access tests.
-
-- [x] **Give BlueJS generation-bound source identities and executable safe
-  points (Phases 13/17).** Publish tested AST node IDs, code-unit IDs,
-  instruction-safe-point enumeration, and validation APIs for the page/module
-  AST surface. IDs must be validated against the exact generated program and
-  never guessed from a bytecode offset.
-
-  Foundation delivered: `bluejs-program-debug-v1` now gives a host an opaque,
-  monotonically generated program handle, immutable canonical-module/source-hash
-  identity, deterministic root-first executable AST/code-unit IDs,
-  instruction-boundary enumeration, and fail-closed validation. The
-  host-neutral direct bridge installs its structured program and checked source
-  identity without a JS-text round trip, pairing each top-level lowering span
-  with its verified generated AST statement. The BlueJS compiler records the
-  exact root-statement instruction start (or an explicit unbound result), and
-  the registry resolves that AST statement only to this verified safe point.
-  Replacement, navigation-style invalidation, and malformed offsets are
-  tested. This source-identity and safe-point prerequisite is complete.
-  Complete nested-expression provenance, a process-owned page host, and
-  debugger pause mechanics remain distinct open work below.
-
-  Acceptance: a bytecode instruction can be named by `(code_unit, offset)` and
-  verified by BlueJS; a program replacement invalidates its old IDs; malformed
-  or stale IDs fail closed.
-
-- [ ] **Implement the native debugger channel (Phase 17).** Add the versioned
-  `blueice_ipc::debugger` path and native breakpoint, pause/resume, step,
-  stack, scope, exception, and bounded-value operations. It must target one
-  page realm and remain separate from script/DOM and network IPC.
-
-  Foundation delivered: `blueice_ipc::debugger` now owns an independently
-  framed v8 handshake, capability, bounded program-location vocabulary, and
-  source-free root-frame execution-control vocabulary.
-  Its page-realm, program, and safe-point identities include
-  browser-context/tab/realm and program generations, reject zero placeholder
-  handles, and require a host to validate an exact BlueJS instruction boundary
-  rather than remap an offset. `ListPrograms`, `ListSafePoints`, and
-  `ValidateSafePoint` are now real operations, not planned strings: they
-  return only core-minted opaque program IDs and bounded `(code-unit, offset)`
-  tuples, never canonical source IDs, source text, bytecode bytes, VM objects,
-  or completion values. These additive request/reply and capability shapes
-  advance the independent debugger protocol to v8, so a v1/v2/v3/v4/v5/v6/v7 peer fails its
-  `Hello` negotiation rather than attempting to deserialize an incompatible
-  capability report. `blueice_engine::debugger` routes post-handshake
-  requests from a socket worker to the one session thread that owns live tabs;
-  when that session selected `--inline-bluejs`, it resolves these opaque IDs
-  through the current `JavaScriptPageExecutor` and BlueJS page-runtime registry.
-  `blueice-core --debugger-socket <path>` binds that separate listener,
-  negotiates `Hello` at its transport boundary, and validates the default
-  browser-context ID, live tab, and exact private document generation before
-  performing either discovery or location work.
-  `ListPageRealms` first returns at most 128 currently loaded
-  `(browser-context, tab, document-generation)` identities with no URL,
-  source, program, bytecode, or runtime value; exceeding that cap fails with
-  `ResourceLimit`. A stale realm returns `StaleRealm`; malformed/unknown
-  targets return `InvalidTarget`; an obsolete program generation returns
-  `StaleProgram`; and a non-boundary tuple returns `InvalidSafePoint`.
-  `ProgramLocations` is `available` only for an enabled, live JavaScript page
-  realm; it remains `planned` otherwise. v5 additionally exposes
-  `ArmRootSafePointBreakpoint`, `GetExecutionState`, and `ResumeExecution`
-  only when `--inline-bluejs` or the trusted out-of-process child route is
-  paired with the private debugger socket.
-  `ArmEntryBreakpoint` remains the zero-offset compatibility operation. The
-  admission turn never immediately executes the new declaration; each
-  handshaken bounded discovery/configuration request keeps it pending through
-  one further session turn, so a peer can learn and arm an exact root-code-unit
-  boundary. The out-of-process route caps those deferrals at 64 session turns
-  per document, so discovery is not an execution lease. A successful
-  `ResumeExecution` similarly exposes the source-free
-  `Resuming` state for one bounded session turn before an idle scheduler turn
-  resumes the retained frame; this is observability, not an execution lease.
-  `ArmRootSafePointBreakpoint` starts a pending classic script and
-  returns `Paused` only when BlueJS has reached that exact verified root
-  instruction. Its continuation retains the root operand stack,
-  bindings/cells, scopes, handler records, iterator records, completion state,
-  and their GC roots; the paused VM rejects another execution until
-  `ResumeExecution` completes the same frame. The reply contains no source,
-  bytecode, stack, scope, object, or completion value. Modules, top-level
-  await, child function code units, re-arming/loop hits, source-level stepping, arbitrary
-  nested-frame interruption, stack, scopes, exception policy, and bounded
-  values remain planned. Unit coverage proves malformed-boundary rejection,
-  same-document cross-tab rejection, realm replacement discarding a paused
-  continuation, GC rooting of paused iterator records, and real BlueJS
-  execution only after same-frame resume. A separate real `blueice-core`
-  subprocess regression drives `Hello` through opaque discovery and the exact
-  `Pending` → non-entry classic-root `Paused` → `Resuming` → `Completed`
-  transition on the debugger socket. It proves cross-program and invalid-state
-  resume failures leave a pending declaration pending; child code units,
-  modules, repeated root arms, and stale-realm targets fail closed; and every
-  raw framed debugger reply is checked not to reflect fixture
-  source/completion data, a VM value, or a BlueJS opcode. The pre-existing
-  `ArmEntryBreakpoint` subprocess route remains the v4 compatibility
-  acceptance.
-
-  The launcher-supervised child has a distinct v9 private page-host
-  proxy for the public `ProgramLocations` and `BreakpointConfiguration`
-  families. Core first
-  resolves the public browser-context/tab/document generation, then requires
-  its authenticated child to acknowledge that exact realm before advertising
-  the capability. The child returns only its own bounded opaque program IDs
-  and compiler-recorded `(code-unit, offset)` tuples; core remints disjoint
-  public IDs and retains the exact private mapping. For `SetBreakpoint` and
-  `ClearBreakpoint`, the child must echo the complete private tab/document/
-  program/safe-point tuple; `ListBreakpoints` is capped and core independently
-  revalidates every returned tuple before it re-mints the public reply. Any
-  reply with another tab, document generation, program, or safe point is
-  rejected. A core-owned debugger socket selects the otherwise default-off v7
-  document lifecycle, which may defer document-order declarations for one
-  turn, then arm only a pending
-  classic program at an exact root-code-unit safe point. The child returns
-  only `Pending`/`Paused`/`Stepping`/`Resuming`/`Completed`; core validates the paused
-  private tuple again before publishing its reminted public tuple, and only a
-  later core-owned advance turn can resume or step the same root frame. It does not
-  let polling a non-`Pending` state renew that hold; the OOP route additionally
-  has the fixed 64-turn per-document discovery/configuration budget. It does
-  not proxy `ArmEntryBreakpoint`, generic interruption, modules, child code
-  units, re-arms/loop hits, nested/source-level stepping, stacks, scopes, exception policy, or
-  values. Real Unix-socket child/core tests cover location discovery, exact
-  validation, configuration lifecycle, non-entry root pause/resume, cross-tab
-  rejection, malformed response rejection, and navigation-stale rejection
-  without source, bytecode, or runtime-value leaks. `blueice-launcher
-  --debugger-socket <absolute-path>` now owns an optional stable public `0600`
-  debugger listener. It validates the public endpoint before child spawn,
-  passes only a launcher-generated private debugger socket to each core
-  generation, and shares the browser/compiler handoff gate. Each accepted
-  debugger stream remains pinned to one private peer: a stream accepted for
-  v1 fails closed when v1 ends rather than being retargeted to v2, while a new
-  stream accepted after the committed cutover reaches v2. Realm, program, and
-  safe-point handles therefore remain generation-bound.
-  The supervised child now also attaches a BlueTS classic declaration's
-  bounded static metadata before running its generated BlueJS program. Under
-  debugger control it enters the same document-order pending queue as a
-  JavaScript classic declaration, may pause at one exact non-entry root
-  safe point, and resumes that same retained BlueJS frame. Its authorized
-  opaque metadata handle and summary remain available while execution is
-  `Pending` or `Paused`; neither operation exposes source text or runtime
-  values. The child regression proves a following JavaScript declaration
-  cannot overtake the paused BlueTS declaration, and a real launcher/public
-  debugger regression proves metadata publication, pause/resume, and stale
-  handle rejection after HTTP reload. BlueTS modules, nested frames, stack,
-  scopes, and values remain outside this execution seam.
-
-  BlueJS VM and `BlueJsPageRuntime` now have the next stepping foundation:
-  one paused classic-root continuation can execute exactly one root
-  instruction and suspend before its actual successor, including branch or
-  loop destinations. The same frame and GC roots survive repeated steps;
-  terminal instructions complete without fabricating a pause, and a later
-  ordinary resume still finishes that frame. Cross-tab and replaced-realm
-  attempts fail. Nested calls run as one root instruction, with no stack,
-  operands, source, or completion value disclosed. Debugger v26 now routes
-  that seam through the direct in-process page executor: a paused classic
-  program can request one root instruction using its exact opaque program
-  handle, observe a one-turn `Stepping` state, and then see the real successor
-  safe point or `Completed`. Entry-only pauses first create a real VM
-  continuation; duplicate requests and stale handles fail before execution.
-  Page-host v27 now carries the same exact-program step across the
-  launcher-supervised child boundary. The child accepts only a paused
-  document-order classic at the queue head, verifies each successor against
-  its private compiler safe-point inventory, and keeps any attached BlueTS
-  static metadata live through each step until realm replacement or close.
-  Core remints the private program identity into the public opaque handle,
-  checks the exact reply and live generation, and advertises `Stepping` only
-  for an execution-controlled transport that actually implements the request. A real child
-  and debugger socket regression covers `Paused` → `Stepping` → successor
-  `Paused` → resumed completion. No nested-frame, module, source-level,
-  stack, scope, or value step is exposed.
-
-  The isolated child has a v30 source-span step for a
-  paused BlueTS classic root. It requires the exact live metadata attachment,
-  compiler source ID, and current verified safe point; it derives the span
-  internally, then executes one root instruction per core-owned turn until a
-  different compiler-bound span or completion. After 256 instructions it yields
-  an explicit source-free limit state with the continuation intact. Unit and
-  real child-socket regressions cover a bound-span transition, wrong receipt,
-  stale document, redaction, and the fixed budget. Debugger v30 and metadata
-  manifest v4 now expose it only under independent owner/client source-step
-  and safe-point-span grants, same-stream metadata/source receipts, an exact
-  core-reminted paused root, and a verified child reply. The public limit stop
-  reason remains distinct and source-free. A real launcher/debugger socket
-  regression covers cross-span pause, denied owner or cross-stream access,
-  resumed completion, and stale generation. Modules, nested frames, stack,
-  scope, and values remain outside the seam.
-  Core accepts compiler-minted source ID zero for this operation when the
-  same-stream receipt and verified child echo match; zero is not a missing
-  source sentinel.
-
-  Acceptance for the delivered seam: a classic JS page fixture pauses at a
-  verified root-code-unit safe point and resumes its same frame; realm
-  replacement discards that continuation, and it cannot pause another tab or
-  render transport. Root-classic stepping is bounded to one verified
-  instruction per owner turn; frame/value handles remain outside this
-  capability and therefore have no acceptance claim yet.
-  A separate launcher subprocess regression selects both
-  `--out-of-process-bluejs` and `--debugger-socket`, drives the public
-  debugger through `Pending` → non-entry-root-safe-point `Paused` →
-  `Resuming` → `Completed`, then performs two local HTTP classic-script
-  documents through only public sockets and proves that the original
-  realm/program/safe-point tuple rejects as `StaleRealm` after reload.
-  The test neither receives nor configures the private child endpoint or its
-  capability.
-
-## P0 — direct BlueTS page integration
-
-- [x] **Generate and verify `lib.blueice.d.ts`.** Implement the
-  host-adjacent `HostTypeSurfaceV1` schema and deterministic generator for
-  `lib.blueice.d.ts` and `lib.blueice.manifest.json`. Sort by stable binding ID,
-  normalize output, include the host API/profile/schema identities, and make
-  the direct-page compiler reject unavailable profiles, schema mismatches, or
-  declaration-byte mismatches.
-
-  Foundation delivered: `blueice_engine::script::host_typings` now owns
-  `HostTypeSurfaceV1`, deterministic declaration/manifest generation, a
-  profile catalog, and a runtime-binding inventory derived from the same
-  schema. Generated artifacts have sorted binding IDs, normalized LF
-  declarations, fixed-order JSON, and schema/declaration hashes; a supplied
-  manifest or source with a wrong profile, identity, schema, binding inventory,
-  or declaration bytes is rejected without fallback. The generated artifact
-  also validates a host's runtime registrations as an order-independent but
-  exact inventory, rejecting missing, duplicate, extra, or drifted bindings.
-  The checked-in `core-script-empty-v1` fixture remains deliberately empty:
-  core's narrow IPC dispatcher alone is not a BlueJS object binding. The
-  checked-in `core-script-document-text-v1` fixture is the first non-empty
-  artifact; it declares only `blueiceDocumentText(): string` and matches the
-  direct host's `dom.document-text` snapshot binding. The checked-in
-  `core-script-document-context-v1` artifact composes that same binding with
-  `blueiceDocumentOrigin(): string`; the latter receives only the core's
-  canonical tuple origin, never a URL or DOM object. No broad `document` or
-  DOM node type is claimed. `GeneratedHostTypingsV1::verify_for_direct_compiler`
-  now checks the selected manifest, exact declaration bytes, and complete
-  runtime registration inventory before returning the one `.d.ts` source that
-  a direct compiler may place in `CompilerOptions::ambient_declaration_modules`.
-  BlueTS parses that declaration under its ordinary module/source limits,
-  includes its exact bytes in the compiler fingerprint and static source
-  metadata, exposes its declarations only as static ambient names, and emits
-  no declaration code. Direct-page admission additionally enables the
-  fingerprinted `require_declared_global_calls` policy, rejecting a direct
-  call whose global function is neither local nor present in the verified
-  ambient declaration root. The standalone `bluetsc` intentionally cannot set
-  either host-only facility. Regression coverage proves the declared
-  document-text/context bindings execute only in their matching profiles, the
-  empty profile rejects both globals statically without admitting VM bytecode,
-  an unconfigured BlueJS realm rejects either at runtime, and artifact
-  mismatches execute nothing. New bindings must retain the same exact inventory,
-  static-absence, and runtime-absence guarantees.
-
-  Acceptance: a checked-in fixture generates byte-identical typing artifacts;
-  every declared binding can be invoked in the matching host profile; an absent
-  binding is rejected by both BlueTS and the host; a profile/schema mismatch
-  executes nothing.
-
-- [x] **Connect the direct bridge to the page loader.** Teach the page-script
-  host to recognize only the opted-in BlueIce TypeScript script kinds, pass its
-  authorized canonical modules and resolver fingerprint to `blueice-bluets`,
-  and submit the resulting `BlueJsProgramV1` to BlueJS without an emitted-JS
-  text round trip. Preserve canonical module IDs, source hashes, ordering,
-  policy, language version, and all compiler-limit fingerprints.
-
-  Foundation delivered: `blueice_bluets::AuthorizedModuleLoader` represents a
-  closed host-supplied graph of canonical module records and exact
-  `(from-module, specifier) -> canonical-target` records. It validates duplicate
-  and dangling records before compilation, performs no filesystem/URL/import-map
-  lookup, and rejects an absent edge rather than falling back to relative
-  resolution. The direct BlueTS-to-BlueJS graph bridge preserves these canonical
-  targets through module requests and executes the supplied graph without a
-  JavaScript-text reparse. `DirectPageScriptHost` performs the host-typing,
-  script-kind, origin/policy/resolver/compiler-fingerprint, page-realm, and
-  lifecycle-invalidation checks for its supplied closed request. Automatic
-  production page loading remains a separate host responsibility.
-
-  The first classic-script realm seam is now available as
-  `DirectScript::attach_in_page_realm` (or its static-metadata variant): it
-  submits the existing `BlueJsProgramV1` to the owned `BlueJsPageRuntime`,
-  checks that the resulting live generation retains the artifact's exact source
-  identity and bytecode, then attaches lowering provenance and verified safe
-  points. A provenance or metadata failure discards the just-installed program
-  and returns its bytecode charge before it can execute. `DirectModuleGraph`
-  now applies the same all-or-cleaned-up admission rule to every closed runtime
-  ESM module and executes only those attached canonical module IDs in the tab
-  realm; navigation makes its handles unusable. `DirectPageRealmOwner` now
-  combines either seam with its static metadata registry and prunes invalid
-  records after its own navigation/reload or close operation. A realm reserves
-  a canonical ESM ID after its first execution attempt, so no later artifact
-  can reuse BlueJS's linked module cells until navigation/reload creates a
-  replacement realm. `blueice_engine::script::direct_page::DirectPageScriptHost`
-  now gives a core/page-host caller one admission boundary: it requires an
-  explicitly selected verified host profile, accepts only an
-  `AuthorizedModuleLoader`, rejects caller-supplied ambient declarations and
-  `transpile-only`, injects only the verified host declaration, and drives the
-  owned realm admission/execution path for opted-in classic/module kinds. Its
-  request now contains a typed core `TabId`, not an origin string or raw tab
-  number: it reads the current `TabManager` page, derives a canonical HTTP(S)
-  origin from its loaded URL, and tracks a core-private document generation.
-  An execution therefore opens a realm only for a live document and recreates
-  it on a same-origin replacement; `synchronize_tabs` also prunes a realm when
-  its tab is gone. Blank and built-in pages fail closed until they receive an
-  explicit origin policy. This remains an in-process core API, not the
-  launcher-managed BlueJS process or an HTML script loader. The optional
-  `run_session_with_script_requests_and_direct_page_host` entry point now
-  accepts a core-owned host and synchronizes only realms that have already
-  admitted a direct script after every frontend/session lifecycle batch. The
-  parsed `Page` now also reports `application/x-blueice-typescript` and
-  `application/x-blueice-typescript-module` declarations in document order,
-  preserving either inline text or an external `src` without reinterpreting
-  ordinary JavaScript or `text/typescript`. `DirectPageScriptHost::execute_inline`
-  can now take one such inline declaration, mint its tab/document-generation/
-  ordinal-scoped source identity, form exactly one closed source module, and
-  submit it through verified direct admission. It rejects external `src`
-  instead of fetching it, and an import remains unresolved without a future
-  authorized graph loader. `DirectPageInlineExecutor` now adds a deliberately
-  opt-in in-process page-pipeline seam: a core owner selects a known verified
-  profile and compiler options once, the executor generates that profile's
-  artifact itself, rejects `transpile-only` and caller-supplied ambient
-  declarations, and runs each document's inline opted-in declarations once in
-  document order after session lifecycle batches; a successfully fetched
-  document runs them before its success reply and first frame. Each declaration has an
-  independent result; without further authority, an external `src` is reported
-  as a bounded source-free rejection and later declarations still run.
-  `PageScriptSourceAuthorizer` is now the sole core-owned opt-in source seam:
-  it receives a tab/document/ordinal plus raw document URL and `src`, and can
-  return one already-authorized closed graph with a canonical entry and
-  non-empty resolver fingerprint. The executor copies that exact fingerprint
-  into compiler options and never fetches, resolves, or falls back on its own.
-  Unit and real-session HTTP fixtures cover an authorized external ESM graph
-  with a dependency. The explicit
-  `run_session_with_script_requests_and_inline_page_executor` entry point has a
-  regression fixture that fetches a real HTTP page through the normal core
-  session pipeline and executes both an inline classic and inline module
-  declaration. `blueice-core` retains that disabled default, but its explicit
-  `--inline-bluets-profile <known-profile>` startup switch can construct the
-  executor with a core-owned profile and default compiler policy. The source-
-  free `GetBlueTsScriptReports` control-plane query drains only the addressed
-  tab's bounded execution outcomes; it cannot enable the executor or expose
-  page source, diagnostics, bytecode, or runtime values. The binary subprocess
-  regression covers that opt-in mode across real HTTP navigation, a classic
-  declaration, a module declaration, and a static rejection. The separate
-  launcher-managed host now shares one BlueTS/JavaScript realm for its fixed
-  snapshot profile and, only with an immutable core-owned startup authorizer,
-  supplied closed external graphs. It also has only the core-proxied,
-  source-free debugger location attachment described above: no debugger
-  control or general DOM surface. The concrete narrowly scoped HTTP(S)
-  fetch/cache/integrity policy is also the direct BlueTS external-source
-  authorizer, so the in-process path does not duplicate network policy. There
-  is still no general external graph policy, redirect/credential/import-map
-  support, or deployment configuration. The closed-graph
-  direct bridge
-  integration is complete; those broader page-host responsibilities remain
-  separate open prerequisites.
-
-  Acceptance: one typed classic script and one typed ESM module graph execute
-  in a real page with no generated `.js` input; parse/resolution/type/lowering
-  failures execute neither the entry nor an affected dependent module; a
-  runtime import cannot be re-resolved under a different host policy.
-
-- [x] **Publish the TS-to-safe-point map.** Combine BlueTS lowering provenance
-  with BlueJS's verified safe points into the generation-bound
-  `bluejs-safe-point-map-v1` format defined by the integration contract.
-  Preserve UTF-8 byte spans at this boundary and require explicit conversion
-  from BlueTSC Source Map v3's UTF-16 columns.
-
-  Foundation delivered: the direct bridge now publishes an in-memory
-  `bluejs-safe-point-map-v1` for a single directly attached source module. It
-  retains the program ABI/generation, compiler-options fingerprint, canonical
-  source-set hash, UTF-8 lowering span, and lowering kind. Its bound entries
-  are deterministically sorted, unique by instruction tuple, and revalidated
-  against the live BlueJS generation; a no-output top-level statement remains
-  explicitly unbound in the attachment rather than being remapped. The map is
-  intentionally limited to direct top-level lowering spans. Page-realm ESM
-  admission now gives every closed runtime module its own exact map and static
-  metadata record. `DirectProgramAttachment::breakpoint_at_or_after` now
-  resolves a same-canonical-module UTF-8 byte position to its containing
-  top-level span or nearest following span, returning that exact verified safe
-  point or the span's explicit `Unbound`; it never remaps an unbound span to a
-  later instruction. The retained-map bound-only counterpart has the same
-  deterministic search policy. This published direct-map item is complete.
-  Page-host map aggregation, nested-expression locations, host-request
-  fingerprint checks, full breakpoint search policy, and debugger IPC remain
-  separate open work.
-
-  Acceptance: entries are deterministic, sorted, unique and validated against
-  BlueJS code units; a TS breakpoint binds to the nearest permitted following
-  safe point or returns an explicit unbound result; wrong generation, ABI,
-  fingerprint, source set, code unit, or offset is rejected without heuristic
-  remapping.
-
-- [ ] **Attach `BlueTsDebugInfo` to page lifetime safely.** Retain static
-  types, symbols, diagnostics, source hashes, provenance, and contract plans
-  only for the corresponding live program generation. Enforce source/privacy
-  policy and bounded retention; static types must always be distinguished from
-  a BlueJS runtime value.
-
-  Foundation delivered: direct scripts/modules now preserve their compiler
-  produced `BlueTsDebugInfo`, and `DirectDebugRegistry` attaches it only after
-  validating the exact live BlueJS generation, safe-point map, language
-  version, compiler-options fingerprint, and canonical source hash set. It
-  retains no source text or runtime values, bounds programs/sources/symbols/
-  types, rejects mismatched or over-limit attachments before exposing metadata,
-  and can prune records after the owning BlueJS generation is invalidated.
-  Its compiler-options hash includes the direct-page
-  `require_declared_global_calls` policy, so static metadata checked under an
-  empty or verified host profile cannot be mistaken for metadata compiled
-  under the standalone policy.
-  The compiler now retains zero-based UTF-16 start/end coordinates for each
-  symbol and reifiable contract alongside its original half-open UTF-8 byte
-  span. It computes only declaration boundaries in one temporary linear
-  source scan; the retained metadata has no source text or general line-map
-  oracle. CRLF, supplementary-plane Unicode, and Unicode block comments have
-  regressions. The independently authorized debugger location replies and
-  separately receipted, generation-bound compiler/MCP location queries now
-  carry these positions.
-  `DirectModuleGraph::attach_debug_in_page_realm` now derives a module-local
-  static subset (one source, that module's symbols, and their referenced type
-  IDs) for every graph generation and rolls back all retained records/programs
-  if any module fails the limit or identity checks. `DirectPageRealmOwner`
-  prunes the registry automatically after its navigation/reload and close
-  operations. The isolated page-host child now applies that same bounded
-  registry directly to its BlueTS classic and ESM graph admission, retaining
-  only the exact child-local BlueJS program generation; replacement, binding
-  setup failure, debugger inventory failure, and explicit close prune it
-  before a successor can be observed. Private page-host protocol v9 may now
-  enumerate at most one freshly child-minted opaque metadata handle for one
-  exact live BlueTS program after its authenticated core requests it. That
-  handle is in a namespace distinct from the child program ID and carries no
-  source/module/name/type/span/contract/count/value payload; JavaScript,
-  missing attachments, stale generations, replacement, and close produce no
-  usable handle. No static record itself crosses page-host IPC, except the
-  dependent bounded summary available only after the handle has been minted:
-  it carries a fixed language label, compiler-options fingerprint, and four
-  aggregate counts, never a source/module/name/type/span/symbol/contract
-  record, bytecode, VM object, or value. Debugger v8 now has separately
-  negotiated `OpaqueInventory`, dependent `OpaqueSummary`, and dependent
-  `OpaqueSourceInventory` manifest capabilities: core policy defaults to an
-  empty grant, an owner must opt in with
-  `--debugger-static-metadata-inventory` and independently select
-  `--debugger-static-metadata-summary` and/or
-  `--debugger-static-metadata-source-inventory`; the socket peer must request
-  the matching canonical capabilities in `Hello`, and the exact live child
-  realm must advertise them before core remints at most one public opaque
-  handle and returns its summary or only parent-bound compiler-minted source
-  IDs for that program. The public handle is generation-bound
-  and numerically disjoint from both child and public-program IDs; the summary
-  validates its exact realm/program/handle generation and is not a
-  dereference/read operation. Page-host v9 and debugger v8 additionally make
-  the next, still non-dereferenceable layer explicit: `OpaqueSourceInventory`
-  is a separate canonical manifest capability, requiring both the parent
-  `OpaqueInventory` grant and
-  `--debugger-static-metadata-source-inventory`. It returns only a bounded
-  list of compiler-minted numeric `source_id` values returned only under the exact
-  public metadata handle. The core validates the live realm/program/handle
-  mapping, child reply tuple, fixed source limit, and duplicate IDs before
-  returning that parent-bound list. It returns no module name/URL, source or
-  content hash (including the non-cryptographic private transport fingerprint),
-  source text, span, symbol, type, contract, bytecode, VM object, value, or
-  source-record dereference. Summary and source-ID inventory may be enabled
-  together only through their full canonical manifest; neither is inferred
-  from the other or from protocol version. Real launcher-supervised public
-  debugger coverage requests both, proves the source IDs remain payload-free,
-  and proves reload makes the prior metadata parent and source IDs stale.
-  Page-host v10/debugger v9 now add that separately authorized provenance
-  policy: `OpaqueSourceProvenance` requires both the inventory and
-  source-inventory grants, its own owner flag
-  `--debugger-static-metadata-source-provenance`, a source ID actually
-  returned by that stream's bounded source inventory, and the same exact live
-  parent tuple. It discloses only a
-  non-filesystem canonical module identity and compiler labeled SHA-256
-  digest; it never carries source text, spans, names, types, symbols,
-  contracts, bytecode, VM objects, values, or a source-read operation. The
-  debugger now also stores a bounded per-stream receipt for each opaque parent
-  handle returned by `ListStaticMetadata`: `DescribeStaticMetadata` and
-  `ListStaticMetadataSources` fail closed until that exact handle was actually
-  returned under the stream's negotiated session. This prevents a guessed
-  handle from becoming either a summary or source-ID target-probing oracle;
-  source provenance remains indirectly bound by its source receipt.
-  Page-host v11/debugger v10 additionally expose only compiler-minted
-  type-record IDs through the independently default-denied
-  `OpaqueTypeInventory` capability and
-  `--debugger-static-metadata-type-inventory` owner flag. IDs are bounded,
-  parent-handle-bound, same-stream-receipted, and source/type-display-free;
-  a later type-display operation must require those exact receipts rather
-  than accepting a caller-guessed ID.
-  Page-host v12/debugger v11 now exposes that next type-display layer through
-  independently default-denied `OpaqueTypeDisplay` and the owner-only
-  `--debugger-static-metadata-type-display` flag. It requires the parent
-  inventory, type-ID inventory, exact same-stream type-ID receipt, live realm
-  tuple, and child capability report before one bounded compiler-produced
-  display may cross the public debugger socket. The fixed 4 KiB display cap
-  rejects malformed child replies; displays can contain project-authored type
-  identifiers but carry no source text, span, source/module/hash, symbol,
-  contract, bytecode, VM object, value, or general record read. The real
-  launcher-supervised integration test proves the complete opt-in flow and
-  reload invalidates a prior type target.
-  Page-host v13/debugger v12 now add independently default-denied
-  `OpaqueSymbolInventory` and
-  `--debugger-static-metadata-symbol-inventory`. It requires the parent
-  inventory, live realm tuple, child capability report, and the exact
-  same-stream parent-handle receipt before it returns bounded
-  compiler-minted symbol IDs. IDs remain payload-free and are separately
-  receipted at the fixed 65,536-symbol ceiling, so a future symbol-detail
-  operation cannot turn a caller-guessed ID into a child probing target. No
-  symbol name, source span, declared type, contract, bytecode, VM object,
-  value, or general metadata record crosses this layer.
-  Page-host v14/debugger v13 now add independently default-denied
-  `OpaqueContractInventory` and
-  `--debugger-static-metadata-contract-inventory`. It requires the parent
-  inventory, live realm tuple, child capability report, and the exact
-  same-stream parent-handle receipt before it returns bounded
-  compiler-minted contract IDs. IDs remain payload-free and are separately
-  receipted at the fixed 65,536-contract ceiling, so a future contract-plan
-  or validation operation cannot turn a caller-guessed ID into a child
-  probing target. No contract name, source span, plan, validation result,
-  bytecode, VM object, value, or general metadata record crosses this layer.
-  Page-host v15/debugger v14 now add independently default-denied
-  `OpaqueSymbolDisplay` and the owner-only
-  `--debugger-static-metadata-symbol-display` flag. It requires the parent
-  inventory, symbol-ID inventory, exact same-stream symbol-ID receipt, live
-  realm tuple, and child capability report before returning one
-  compiler-produced display capped at 4 KiB. The core verifies that the child
-  echoed the exact requested symbol ID before re-minting the public reply.
-  A display may contain a project-authored identifier, but it carries no
-  source text, source/module identity, span, type, contract, bytecode, VM
-  object, value, or general static-record read. Named
-  `DebuggerMetadataCapabilitySelection` now constructs the canonical owner
-  manifest, so new capabilities no longer extend a positional boolean list.
-  Page-host v16/debugger v15 now add independently default-denied
-  `OpaqueContractDisplay` and the owner-only
-  `--debugger-static-metadata-contract-display` flag. It requires the parent
-  inventory, contract-ID inventory, exact same-stream contract-ID receipt,
-  live realm tuple, and child capability report before returning one
-  compiler-produced contract name capped at 4 KiB. Core verifies the child
-  echoed the exact requested contract ID before re-minting the public reply.
-  The display may contain a project-authored contract identifier, but carries
-  no source text, source/module identity, span, contract plan, validation
-  behavior/result, type, bytecode, VM object, value, or general static-record
-  read. The real supervised-child test now retains an actual reifiable
-  interface contract and proves negotiated disclosure plus reload staleness.
-  Page-host v17/debugger v16 add the tenth independently default-denied
-  `OpaqueContractValidation` capability and owner-only
-  `--debugger-static-metadata-contract-validation` flag. It requires the
-  parent inventory, contract-ID inventory, exact same-stream contract-ID
-  receipt, live realm tuple, and child report. Core rejects inputs exceeding
-  fixed depth (64), collection-entry (4,096), node (32,768), string/key
-  (256 KiB), or finite-number policy before forwarding; the child repeats
-  those limits before its pure `ContractPlan` validator runs. It echoes the
-  exact contract ID before core re-mints only `valid: true|false`; input,
-  plan, failure path, expected/observed category, source/span/type, bytecode,
-  VM object, runtime value, and static-record read remain unavailable. The
-  public supervised-child regression proves receipt rejection, valid/invalid
-  results without detail reflection, and reload staleness.
-  Page-host v18/debugger v17 add the eleventh independently default-denied
-  `OpaqueLoweringSummary` capability and the owner-only
-  `--debugger-static-metadata-lowering-summary` flag. It requires the exact
-  same-stream parent metadata receipt, a live realm/program/metadata tuple,
-  and a child capability report before it returns only the canonical direct
-  safe-point-map ABI, canonical BlueJS program ABI, an aggregate lower-case
-  source-set fingerprint, and a bounded safe-point count. Core rejects a
-  child-controlled ABI label, malformed fingerprint, over-limit count, or any
-  stale/mismatched child tuple before reminting the public reply. No source or
-  module identity, source span, map entry, AST node, code-unit identity,
-  bytecode offset, VM object, value, or general metadata read crosses this
-  layer. The real launcher-supervised regression proves default denial,
-  receipt rejection, canonical disclosure, and reload staleness.
-  Page-host v19/debugger v18 add the twelfth independently default-denied
-  `OpaqueSymbolLocation` capability and the owner-only
-  `--debugger-static-metadata-symbol-location` flag. It requires the parent
-  inventory plus source-ID and symbol-ID inventories, exact same-stream
-  receipts for both IDs under the same opaque metadata handle, a live
-  realm/program/metadata tuple, and a child capability report. The public
-  request contains only that receipted symbol/source pair; it returns only
-  the same opaque IDs and a non-empty half-open UTF-8 byte range capped at
-  1 MiB. Core verifies the child's echoed pair and range before re-minting
-  it. This initial v19 reply had no line/column mapping. No source text,
-  module/path identity, symbol
-  name, type, contract, bytecode, runtime value, source-map translation, or
-  general static-record read crosses this layer. The private child regression
-  proves source-free disclosure plus unknown-target and reload rejection.
-  Page-host v20/debugger v19 add the thirteenth independently default-denied
-  `OpaqueSymbolType` capability and the owner-only
-  `--debugger-static-metadata-symbol-type` flag. It requires parent, type-ID,
-  and symbol-ID inventories; exact same-stream receipts for both IDs under
-  the same opaque metadata handle; a live realm/program/metadata tuple; and a
-  child capability report. The public request supplies only the receipted
-  symbol/type pair. The child verifies that the retained BlueTS symbol's
-  static type is exactly that type ID, and core verifies the child's echoed
-  pair before returning only the two opaque IDs. Guessed or mismatched IDs,
-  absent static types, cross-parent pairs, and stale generations fail closed.
-  No type display, symbol name, source identity, span, static record, runtime
-  value, or general metadata read crosses this boundary. IPC, core-policy,
-  private-child, and launcher-supervised regressions cover the relation.
-  Page-host v21/debugger v20 add the fourteenth independently default-denied
-  `OpaqueSymbolContract` capability and the owner-only
-  `--debugger-static-metadata-symbol-contract` flag. It requires parent,
-  symbol-ID, and contract-ID inventories plus exact same-stream receipts for
-  both IDs under one live opaque metadata handle. The public request supplies
-  only that pair; the child confirms that the retained BlueTS symbol has
-  precisely the requested reifiable contract and that its contract record
-  exists. Core checks the child's echoed pair before returning only those
-  IDs. A missing or mismatched relation is `InvalidTarget`, not a false lost-
-  realm report; guessed IDs, cross-parent pairs, and stale generations fail
-  closed. No contract name, plan, validation result, source/span, static
-  record, or runtime value crosses this operation. IPC, core-policy, private-
-  child, and launcher-supervised regressions cover the boundary.
-  Page-host v22/debugger v21 extend the already independently default-denied
-  `OpaqueSymbolDisplay` reply with the compiler's bounded declaration kind:
-  import, type alias, interface, variable, or function. The operation still
-  requires the same exact-stream parent and symbol-ID receipts, live tuple,
-  owner grant, and child capability report. It adds no new target or
-  authority, and still discloses no source text, module identity, span,
-  static type, contract plan, bytecode, VM object, or runtime value. The
-  launcher-supervised test checks interface and variable kinds from a real
-  BlueTS page while keeping guessed and stale symbol targets closed.
-  Page-host v23/debugger v22 add the fifteenth separately default-denied
-  `OpaqueContractLocation` capability and owner-only
-  `--debugger-static-metadata-contract-location` flag. It requires opaque
-  parent, source-ID, and contract-ID inventories plus exact same-stream
-  receipts for both IDs, a live realm/program/metadata tuple, and a child
-  capability report. The child validates the retained reifiable contract's
-  source ownership and declaration span; core rejects a changed child tuple,
-  unrequested source ID, empty range, or end offset above 1 MiB. The v23 reply
-  carried only the two opaque IDs and half-open UTF-8 byte range. The
-  private-child and launcher-supervised tests cover valid disclosure,
-  guessed targets, and reload staleness without exposing source text, module
-  identity, contract name/plan, validation result, or runtime values.
-  Page-host v24/debugger v23 extend the existing opt-in, same-stream-receipted
-  `OpaqueContractDisplay` reply with one fixed compiler contract root-kind
-  category after bounded local-reference resolution. The owner must still
-  grant contract display independently; the child returns no plan edges,
-  field names, definitions, validation result, source text, or runtime value.
-  A cyclic or unresolved reference is reported only as `Reference`.
-  Page-host v25/debugger v24 now extend the same independently default-denied,
-  receipt-bound `OpaqueSymbolDisplay` with the checker's exact exported/not-
-  exported classification. It shares the existing owner grant and live child
-  symbol target, and adds no new handle, source read, or symbol-inventory
-  payload. The compiler and real launcher-supervised regressions distinguish
-  an exported interface from a local variable without revealing either
-  declaration's source text or runtime value.
-  Page-host v26/debugger v25 now extend only the separately default-denied,
-  same-stream-receipted `OpaqueSymbolLocation` and `OpaqueContractLocation`
-  replies with bounded, zero-based UTF-16 start/end coordinates from the
-  original BlueTS declaration. The child derives them from the exact retained
-  compiler metadata; the core checks ordering and range consistency before
-  reminting the public tuple. There is no arbitrary byte-offset conversion,
-  source text, module identity, source-map read, runtime value, or new grant.
-  Real launcher-supervised coverage checks CRLF and Unicode columns, exact
-  source ownership, and reload staleness.
-  Page-host v28 now adds a child-private prerequisite for source-level
-  debugger locations: given one exact live child program safe point and its
-  separately minted BlueTS metadata handle, the child revalidates the
-  instruction and returns only the compiler source ID plus the original
-  half-open byte span from its retained direct-lowering map. Unbound
-  instructions have no nearest-span fallback; cross-program handles, forged
-  offsets, and old document generations reject.
-  The core page-executor adapter now translates its reminted program and
-  metadata identities back to the exact child tuple for this query, requires
-  a caller-selected compiler source ID, and rejects a mismatched reply tuple,
-  source ID, malformed range, or stale generation. Debugger v27 now exposes
-  this as the independently default-denied `OpaqueSafePointSpan` capability:
-  the trusted owner must explicitly enable the operation and its opaque
-  parent/source inventories, the client must negotiate the same grants in
-  `Hello`, and the exact metadata and source IDs must already have crossed
-  that debugger stream. The public reply repeats only the core-reminted
-  safe-point/metadata/source tuple and bounded original byte range. A second
-  stream, guessed source ID, unbound instruction, and stale navigation cannot
-  reuse the original receipt; no source text, module identity, arbitrary
-  offset conversion, nearest-match mapping, stack frame, or execution
-  control is added by this capability.
-  A real launcher-supervised regression now takes only a separately receipted
-  exact span for the original BlueTS declaration, arms that verified non-entry
-  root safe point through the existing execution capability, observes the
-  actual BlueJS frame paused there, reads the same original span while paused,
-  resumes to completion, and confirms reload and a new debugger stream cannot
-  reuse the old tuple. This proves the current bounded source-to-pause path
-  without adding an arbitrary source-byte-position oracle at that stage.
-  Page-host v29 now retains bounded lowering spans, including spans with no
-  emitted instruction, and resolves one bounded original byte position under
-  the exact live child program/metadata/source tuple to a verified safe point
-  or explicit unbound result. Core checks every echoed private identity,
-  remints the bound safe point, and validates it again against the live child.
-  Debugger v28 and metadata manifest v3 expose that position binding only
-  through the new independently default-denied `OpaqueSourceBreakpoint`
-  capability: both the trusted owner flag and client `Hello` grant are
-  required, and the metadata parent plus source ID must already have crossed
-  the same debugger stream. The reply contains neither source text nor module
-  identity and does not install, arm, or execute a breakpoint. Real-process
-  coverage follows the bound result into the existing root-classic pause and
-  resume path, proves unbound/end-of-source behavior, and rejects guessed,
-  cross-stream, and stale tuples. General non-root/module interruption and
-  stack/scope mapping remain open before general TS breakpoints can be claimed.
-  Debugger v29 now composes that exact position binding and the existing
-  root-classic arm within one owning core session request. The caller still
-  needs the separate owner/client `OpaqueSourceBreakpoint` grant and exact
-  metadata/source receipts; core revalidates the child binding and requires
-  live execution control before arming. An unbound original byte position,
-  guessed source ID, stale tuple, different debugger stream, non-root point,
-  or already-running program cannot start the pending declaration. The reply
-  acknowledges only the verified root safe point. This requires no new child
-  protocol operation or metadata grant and does not imply general TypeScript
-  breakpoint or general source-level stepping support. The separate,
-  receipt-bound classic-root source-span step described above is available;
-  module and nested-frame source stepping are still absent.
-  Core now rejects page-host realm
-  accounting with zero ownership fields, the child conversion sentinels, or
-  more programs than the fixed 256-declaration × 8-module document envelope
-  before it can enter either the core accounting cache or debugger liveness
-  path. The page host still must route
-  cache/hibernation events through the same invariant and add source policy,
-  diagnostics/contracts, stack locations, and runtime-value inspection before
-  this item can close.
-
-  Acceptance: TS breakpoints, stack locations, scopes, symbol navigation, and
-  static type display point to original source; navigation, reload, cache
-  eviction, and hibernation make old metadata unavailable rather than
-  misattributing it to a successor page.
-
-## P1 — strict runtime contracts
-
-- [ ] **Define the first live boundary inventory.** For every initially
-  available ingress/egress (starting with any implemented JSON/Fetch/XHR
-  surface, then URL/query, storage, `postMessage`, foreign modules, and
-  extension/native IPC), record the boundary owner, source span, contract ID,
-  validation limits, failure schema, and policy requirements. Do not claim a
-  boundary before its underlying host API exists.
-
-  Foundation delivered: the current inventory intentionally names only the two
-  installed core host-to-script result boundaries: stable binding
-  `dom.document-text` / contract
-  `core-script-document-text-result-v1`, and `dom.document-origin` / contract
-  `core-script-document-origin-result-v1`. Both are `dom-read`, return one
-  copied primitive string snapshot, accept no data from script, and have no
-  source span because they are core-created host values rather than lowered
-  TypeScript calls. Both bindings are installed by the verified direct BlueTS
-  host and the bounded standard-JavaScript executor. The catalog exposes their
-  stable runtime binding IDs,
-  direction, capability, contract IDs, and independent validation limits. It
-  explicitly contains no speculative JSON, Fetch/XHR, URL/query, storage,
-  messaging, foreign-module, extension, or DOM-object boundary.
-
-  Acceptance: `strict-runtime` rejects a supported boundary with no reifiable
-  contract, unreifiable type, or unchecked `any` unless an authorized reviewed
-  contract is supplied; `checked` and `transpile-only` remain visibly distinct
-  policies.
-
-- [ ] **Enforce contract plans at live boundaries.** Invoke the existing pure,
-  bounded validator on data crossing each declared boundary, with no getter,
-  proxy, user callback, fetch, or capability acquisition during validation.
-  Attribute validator/cache/debug allocations and failures to the initiating
-  tab and include the lowered behavior in the gatekeeper summary.
-
-  Foundation delivered: before a document-text or document-origin snapshot can
-  be captured in a direct realm callback, or either immutable snapshot in the
-  bounded JavaScript executor, the core constructs its exact
-  reifiable string `ContractPlan` and validates the copied value with
-  core-selected `ValidationLimits`. The default text budget is the validator's
-  one-mebibyte string limit and the canonical-origin budget is 4 KiB; a page
-  request cannot loosen either. A violation rejects profile installation before
-  BlueTS/BlueJS program admission, retains no program/bytecode/debug record,
-  and becomes a source-free inline-executor result. The JavaScript executor
-  likewise validates both snapshots before opening a realm or admitting any
-  script, and rejects an oversized copied document or a canonical origin when
-  its core-selected origin budget is tightened below the tuple string size.
-  Both rejection fixtures retain no JavaScript realm. This covers only immutable
-  primitive host results; it
-  does not yet provide declared boundary source
-  spans, strict-runtime coverage checks, validator/cache/debug allocation
-  attribution, diagnostics retention, gatekeeper summaries, or any mutable or
-  foreign-data boundary. A `blueice-core` subprocess regression now serves an
-  HTTP document whose copied text exceeds the fixed one-mebibyte budget and
-  verifies normal navigation still completes while the inline declaration is
-  rejected before BlueTS/BlueJS admission. The only frontend observation is
-  the fixed `host binding contract rejected the page script` category; neither
-  the oversized content nor compiler/runtime diagnostics cross the IPC reply.
-
-  Acceptance: malformed, recursive, cyclic, deep, oversized, and
-  resource-exhausting values fail at a bounded path and budget; valid data
-  reaches BlueJS without repeated local checks; failure diagnostics identify
-  the policy and original source location without leaking protected content.
-
-- [ ] **Preserve strict contracts in BlueTSC output.** Emit or import the
-  deterministic versioned contract helper required by a `strict-runtime`
-  build, record its identity in output metadata, and reject targets that would
-  erase a required validation.
-
-  Safety foundation delivered: standalone `bluetsc build` now fails closed for
-  `strict-runtime` rather than publishing an artifact/manifest that merely
-  names a stronger policy without its versioned runtime boundary helper.
-  `bluetsc check` may still validate the static policy, but cannot claim an
-  emitted enforcement boundary. Direct-page contracts remain a separately
-  core-owned route. The helper, its output identity, and equivalent direct-page
-  / emitted-ESM malformed-boundary behavior are still required before this item
-  can close.
-
-  Acceptance: direct-page and emitted-ESM executions reject the same malformed
-  fixture at the same declared boundary; an artifact built with a weaker policy
-  cannot be presented as strict-runtime output.
-
-## P1 — native compiler and MCP integration
-
-- [ ] **Define the native registered-project compiler service.** Expose
-  check/build, diagnostics, artifacts, incremental-cache state, static type,
-  symbol, contract, and provenance queries through the core-owned compiler and
-  debugger capability layer. Registration must pin canonical project/config/
-  output roots; a client may not extend them using a path, import map, plugin,
-  or compiler option.
-
-  Foundation delivered: `blueice_engine::compiler_service` now provides the
-  core-owned in-memory `RegisteredProjectCompilerService`. Registration accepts
-  one closed `AuthorizedModuleLoader`, fixed `CompilerOptions`, and the
-  core-selected canonical project/config/output identities exactly once. Its
-  opaque project and generation handles leave later check/build callers no
-  path, resolver, plugin, source-graph, or compiler-option parameter to
-  extend. `check` returns capped diagnostics, observable incremental-cache
-  sets, a successful artifact fingerprint, and source-text-free static debug
-  metadata; static type/symbol lookup requires the exact latest generation.
-  Successful static metadata also retains core-minted source-hash provenance
-  identities and only those local, non-generic declarations whose existing
-  `ContractPlan` lowering is exact; imported, generic, erased, or otherwise
-  unreifiable types deliberately have no contract ID.
-  `build` returns only bounded in-memory `BuildOutput` and preserves no output
-  on compiler errors, so this layer performs no filesystem writes. Registration,
-  static metadata, and build-response limits fail closed.
-
-  IPC foundation delivered: `blueice_ipc::compiler` defines a separately
-  versioned, one-mebibyte-framed native compiler query protocol, and
-  `blueice_engine::compiler_ipc::CompilerServiceIpcAdapter` owns the mapping
-  to the registered service. Its `DescribeProject`, `Check`,
-  `GetStaticType`, `GetStaticSymbol`, `ListStaticMetadata`, `GetStaticProvenance`,
-  `GetStaticContract`, and `ValidateStaticContract` requests carry only opaque
-  core-minted project/generation/metadata handles. `Check` returns capped work
-  sets, diagnostics, fingerprints, and metadata counts; every static query is
-  exact-generation-bound. `ListStaticMetadata` turns those counts into capped
-  pages of opaque source/type/symbol/contract IDs, so a client can discover a
-  `debug_get_symbol` ID before following its returned provenance/contract IDs
-  rather than guessing an ordinal. The public MCP adapter now treats those
-  pages as capability receipts: it rejects a guessed, wrong-category, or
-  never-inventoried type/symbol/source/contract ID before forwarding a
-  dereference or validation to core. A later successful check revokes that
-  project's old receipts, and a fixed per-session receipt budget prevents
-  cross-project inventory from accumulating without bound. A core-minted
-  cursor is one-shot, bound to exactly one generation, collection, and accepted
-  compiler stream, capped by service and response policy, invalidated on a
-  later check or stream close, and rejects malformed, cross-stream, replayed,
-  stale, or mismatched uses without falling back to another page. Closing a
-  stream releases its unused cursor slots, so abandoned first pages cannot
-  exhaust the fixed service budget across connections. A separate core-owner
-  receipt cap also bounds stream bookkeeping if a response fails after a
-  service cursor has been consumed; an encoded-page rejection revokes any
-  undisclosed next cursor before returning a budget error. Provenance returns
-  only
-  a static module identity and
-  content hash, never text. Contract reads expose a bounded static summary;
-  validation accepts a bounded data-only tree under immutable core-selected
-  limits and never echoes it. Canonical project/config/output roots are never
-  returned, no source or emitted artifact crosses this protocol, and malformed
-  handles, stale generations, v1 negotiation, oversized frames, over-budget
-  fields, and invalid contract values fail closed. A worker may only forward
-  decoded requests over the bounded channel; the adapter owner alone mutates
-  the incremental compiler cache. There is no IPC registration/update request,
-  filesystem loader, resolver/plugin/options extension or output write. At
-  this adapter layer the launcher originally distributed only its compiled-in
-  closed fixture profile; the later owner-only startup catalog bootstrap below
-  now supports multiple complete sealed projects without adding an IPC write.
-  Explicit artifact-write elevation remains a separate required capability.
-  Compiler IPC v7 now includes the BlueTS checker's exported/not-exported
-  classification in the existing generation-bound `GetStaticSymbol` reply.
-  The v3 fixed query-only operation manifest is unchanged, and MCP still
-  requires an exact same-session symbol-ID inventory receipt before forwarding
-  `debug_get_symbol`. Real core/MCP coverage distinguishes a local interface
-  from exported declarations without reading source or granting a write path.
-
-  Core lifecycle foundation delivered: a trusted core startup owner now builds
-  `CoreCompilerProjectCatalog`, registers complete closed projects through its
-  Rust-only `register_startup_project` seam, then consumes it with `seal`
-  before the listener/session begins. The sealed
-  `CoreCompilerServiceSession` has no registration/update API; its bounded
-  request receiver is the only route from an independently handshaken
-  `blueice-core --compiler-socket` worker to the mutable adapter/cache on the
-  core session thread. The reference process originally admitted only the
-  compiled-in `core-closed-fixture-v1` integration profile; it now also
-  accepts one bounded private stdin catalog from the trusted launcher before
-  listeners are bound. Neither its public compiler socket nor MCP accepts a
-  project path, source text, graph, resolver, plugin, option, output root, or
-  write flag. Real-process
-  coverage proves rejected pre-`Hello` traffic cannot reach the catalog and a
-  handshaken opaque `DescribeProject`/`Check` receives source-free,
-  generation-bound metadata from the core-registered closed fixture. Its v5
-  process regression also proves v1/v2/v3 rejection, a fresh core-minted
-  per-accepted-stream session attestation and exact fixed query-only capability
-  manifest, plus exact source-hash
-  provenance/contract lookup and redacted invalid-data validation. The
-  launcher now has one explicit `--compiler-mcp-socket <absolute-path>` seam:
-  it validates and owns that stable public `0600` endpoint before spawning a
-  child, passes the fixed `core-closed-fixture-v1` profile by default or an
-  owner-selected bounded catalog via private stdin, gives each core a fresh
-  launcher-generated private compiler socket, and reaps
-  socket-only state on final shutdown. A live/non-socket public endpoint fails
-  closed. During cutover it starts and health-checks v2's private sealed
-  listener before changing the public relay for future accepts. Each accepted
-  compiler connection remains pinned to the one private core peer selected at
-  accept time; after v1 ends it fails closed rather than being retargeted to
-  v2, so opaque cursors cannot cross catalog generations. Real launcher/core
-  and paired MCP `tools/call` coverage verifies those lifetime rules as well
-  as the fixed profile. Compiler IPC v10 now provides a source-free, capped
-  `ListProjects` response containing only the exposed catalog's sorted opaque
-  IDs. Each accepted stream must receive this inventory before any project
-  query; core records the exact IDs returned to that stream and revokes them
-  on disconnect. A guessed ID or a receipt from another stream fails before
-  the compiler cache. Owner-only catalog distribution is now available as
-  described below; independent input authorization and all update/write
-  capabilities remain deliberately open.
-
-  MCP read foundation delivered: `blueice-mcp-server` now has a distinct
-  `CompilerConnection` client and explicit
-  `BlueIceMcpServer::connect_with_compiler_socket` and paired
-  `connect_with_core_and_compiler_sockets` construction paths. The paired
-  path attaches both adapters to one already-running core and never falls
-  back to an unrelated browser process. The MCP tool router is split into a
-  browser-facing router plus dedicated compiler capability/session and
-  ECMA-402 report modules, keeping the former below the 1,500-line maintenance
-  boundary without widening any internal or public capability surface. After
-  the separate compiler `Hello` negotiation,
-  `bluetsc_list_projects`, `bluetsc_describe_project`, `bluetsc_check`,
-  `bluetsc_list_diagnostics`, `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
-  `debug_get_symbol_location`, `debug_get_provenance`, `debug_get_contract`,
-  `debug_get_contract_location`, and
-  `debug_validate_contract` forward only opaque project/generation/metadata
-  handles to the core service. `bluetsc_describe_project` accepts only a
-  same-session `bluetsc_list_projects` receipt and returns that handle plus its
-  canonical entry-module identity. The inventory contains only sorted opaque
-  IDs, never source/project/config/output roots, and MCP rejects guessed IDs
-  locally before forwarding. Contract validation accepts only bounded JSON
-  data (not JavaScript values or JSON-inexpressible `undefined`) and never
-  echoes it. Their JSON output is source-text-free and wraps project-controlled
-  diagnostic prose, identifiers, and static displays as untrusted data. The
-  ordinary browser-only `BlueIceMcpServer::spawn` path has no compiler
-  connection: these tools report a fixed unavailable result and cannot
-  manufacture a local registration or invoke BlueTSC. An end-to-end fixture
-  now proves through the actual MCP `tools/call` boundary that the paired
-  connection reaches a sealed core-owned catalog only through its
-  worker-to-session hand-off after a separate compiler `Hello`, pages every
-  source/type/symbol/contract ID collection, follows every ID through its
-  exact query, and rejects cross-kind, replayed, and stale cursors without
-  source text. It cannot use the connection to re-open startup registration.
-  `bluetsc_session_capabilities` truthfully reports whether the compiler
-  adapter is attached and, when it is, returns the exact opaque receipt minted
-  by the core listener for that accepted relay stream together with the complete
-  core-authored fixed query-only manifest (v5 now contains thirteen operations).
-  MCP accepts neither
-  a missing, malformed, subset, reordered, nor locally derived manifest. Every
-  compiler tool echoes and requires that receipt;
-  static queries additionally require the exact generation first observed by
-  `bluetsc_check` under the same receipt and the individual ID first returned
-  from the matching `debug_list_static_metadata` category. A malformed core
-  attestation, mismatched/unobserved generation, guessed/wrong-category ID,
-  or exhausted receipt budget fails source-free, and receipt/session state is
-  never retargeted on launcher cutover.
-  Compiler IPC v5 now adds `ListDiagnostics` and MCP's
-  `bluetsc_list_diagnostics` as a ninth read-only operation. A successful
-  `bluetsc_check` retains at most 4,096 source-free diagnostics for that exact
-  generation while its immediate reply remains capped; the MCP tool requires
-  the same session receipt and observed generation, then accepts only a
-  core-minted one-shot diagnostic cursor. Compiler IPC v9 also gives immediate
-  and paged diagnostics optional original-source zero-based UTF-16 coordinates
-  only when the exact authorized source and valid UTF-8 span boundaries are
-  available; missing/invalid source positions remain absent. A page contains
-  only code, severity, canonical module identity, byte range, those optional
-  coordinates, and untrusted compiler prose. It
-  never returns source text or a source-read path, and malformed/replayed
-  cursors or a later check's stale generation fail closed. The real MCP/core
-  regression exercises receipt mismatch, unobserved generation, and stale
-  diagnostic-page rejection; service and adapter coverage exercise
-  continuation/replay and response bounds. MCP now revokes a project's old
-  generation/metadata receipts before any new check and accepts replacement
-  evidence only if the core reply names that exact project and all published
-  diagnostic ranges/optional coordinates are structurally valid. Diagnostic
-  pages must match the requested generation, contain no malformed positions,
-  and cannot advertise an empty continuation or zero cursor; a wrong reply
-  variant fails as a structured source-free error.
-  Compiler IPC v6 and its v3 fixed manifest now add `ListWorkSet` as a tenth
-  read-only operation. Core retains each of the four compiler-produced
-  incremental work-sets at a fixed owner cap and pages canonical module
-  identities with one-shot cursors bound to generation, kind, and accepted
-  compiler stream. Replacement and disconnect revoke outstanding receipts;
-  a fixed service/IPC/stream budget prevents cursor accumulation. MCP's
-  `bluetsc_list_work_set` requires the exact session attestation and a
-  previously observed check generation, forwards only the fixed category,
-  cursor, and clamped limit, and rejects a mismatched core page. No source
-  text, registration, resolver, option, build, artifact, or output-write
-  authority crosses this operation.
-  Compiler IPC v8 adds separate `GetStaticSymbolLocation` and
-  `GetStaticContractLocation` requests under fixed manifest v4. The matching
-  MCP tools require both the declaration ID and its source ID to have been
-  observed in their own inventory categories on this exact compiler stream
-  and checked generation. Core verifies source ownership and a bounded
-  compiler-retained half-open UTF-8 range with original zero-based UTF-16
-  start/end coordinates before returning only IDs and positions. Wrong-source,
-  guessed-ID, stale-generation, and malformed-location cases fail closed;
-  there is no arbitrary offset query, source read, source-map read, runtime
-  inspection, project mutation, build, or output write.
-  Compiler query-only capability manifest v5 declares `ListProjects` as its
-  thirteenth operation. The MCP adapter clears prior project/generation/ID
-  evidence before refreshing the inventory and accepts only a structurally
-  valid, core-authored bounded response. Real core, launcher relay, and MCP
-  `tools/call` tests cover denied pre-inventory queries and successful
-  same-stream inventory-to-check routing. The launcher now supports a
-  bounded owner-selected sealed catalog as a separate startup path.
-  There is still
-  no independently verified project-input authorization, no remote
-  registration/update/source/filesystem/
-  resolver/plugin/options authority, no `bluetsc_build`, no artifact/
-  declaration/source-map/source response, and no output write or elevation.
-  The delivered `bluetsc_session_capabilities` receipt/generation gate covers
-  this adapter's current connection lifecycle, including core-side
-  per-accepted-stream attestation and exact capability manifest. Lowering/bytecode provenance, broader MCP
-  negotiation, and the full MCP tool set remain open.
-
-  Owner-only multi-project startup distribution delivered: the trusted
-  launcher may read one absolute, regular, non-symlink JSON catalog file via
-  `--compiler-catalog-file` alongside `--compiler-mcp-socket`, or receive the
-  same typed catalog through its embedding API. The version-2 private format
-  caps frame, project, module, import-edge, identity, ambient, and source
-  sizes and rejects duplicate/missing graph records. The launcher sends it
-  once through the new core generation's inherited stdin pipe, then closes
-  the pipe; the core validates and registers every project before any listener
-  is bound and seals registration for that generation. The public compiler
-  socket remains query-only and exposes only inventoried opaque IDs. Real
-  launcher/core coverage checks two independently compilable projects and a
-  denied private third ID. A catalog project's
-  `expose_to_compiler_ipc` flag is now explicitly default-denied: a trusted
-  owner must set it to true before that registration enters public inventory.
-  Version-1 manifests are rejected rather than silently reinterpreted.
-  A guessed private ID fails with `UnobservedProject` before it can reach the
-  compiler cache. The fixed compiled-in profile remains exposed for existing
-  integration clients. This grants no per-client authorization, independent
-  canonicalization or audit of owner-selected identities/sources, dynamic
-  project updates, peer path/source access, or build/artifact-write authority.
-
-  Acceptance: `check` performs no writes; `build` keeps BlueTSC's atomic
-  no-emit-on-error guarantee; responses are generation/fingerprint bound,
-  capped, redacted where needed, and reject stale project state.
-
-- [ ] **Complete the negotiated MCP BlueTS/BlueTSC adapter (Phase 12).**
-  `bluetsc_describe_project`, `bluetsc_check`, `bluetsc_list_diagnostics`,
-  `bluetsc_list_work_set`, `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
-  `debug_get_provenance`, `debug_get_contract`, and
-  `debug_validate_contract` now adapt the native query service, not shell
-  endpoints or a second compiler. Still add `bluetsc_build` only alongside an
-  explicit output-write capability, then complete core-owned capability/session
-  negotiation across adapters, authorization, broader result pagination,
-  untrusted-content handling, and build-write elevation. Static metadata ID
-  pagination is already bounded and generation-bound; its returned JSON is
-  framed as untrusted project-controlled metadata.
-
-  Acceptance: a real MCP client can inspect a page TS diagnostic/static type/
-  contract failure and run check/build for an authorized registered project;
-  arbitrary paths, stale handles, oversized artifacts, unauthorized control,
-  and untrusted page strings fail safely and observably.
-
-## P1 — evidence and release gate
-
-- [ ] **Add real-process direct-page regression coverage.** Cover classic and
-  ESM TypeScript pages, compile failures, type-only import elision, resolver
-  identity, source-map/provenance/safe-point mapping, breakpoints, stepping,
-  exception locations, contracts, tab resource attribution, policy isolation,
-  navigation/reload invalidation, and multi-tab isolation.
-
-  Acceptance: the tests exercise `core`, IPC, BlueJS host, BlueTS, and the
-  public debugger/MCP boundary as applicable; no assertion is satisfied solely
-  by a host-neutral unit test.
-
-  Foundation delivered: `backend/core/engine/tests/core_binary.rs` now starts
-  the compiled `blueice-core` binary with an explicit
-  `--inline-bluets-profile core-script-document-text-v1`, serves an actual HTTP
-  document, and verifies the framed frontend IPC sequence for a classic
-  declaration, module declaration, and rejected typed call. It observes only
-  source-free outcome records after navigation. A second fixture opens and
-  navigates a second tab in that same core process, drains each tab's reports
-  through tab-addressed IPC, and proves the first drain neither leaks nor
-  discards the second tab's record. A third fixture replaces one tab's document
-  through two real navigations and observes one newly executed report at each
-  distinct document generation. A fourth fixture drives a document-text
-  contract violation through the same process path and observes only its fixed
-  source-free rejection category. Full stale-handle invalidation, debugger,
-  contracts beyond the two immutable snapshots, resource/policy isolation, and
-  additional multi-tab cases remain required before this item can close.
-
-- [x] **Make the TypeScript 5.9.3 compatibility oracle a reproducible CI
-  gate.** The `typescript-oracle` CI job provisions the exact pinned compiler
-  with `npm exec --package typescript@5.9.3`, passes it explicitly through
-  `BLUEICE_BLUETSC_ORACLE`, and runs the ignored oracle test. The test verifies
-  the compiler version before execution, then runs the supported fixture
-  matrix with accepted and rejected cases checked by diagnostic
-  code/count/source line. Node/BlueJS behavioral differentials remain limited
-  to features that the direct bridge executes.
-
-  Evidence: `.github/workflows/ci.yml` makes `typescript-oracle` a dependency
-  of the required `ci-gate`; the job cannot pass by silently skipping the
-  ignored test.
-
-  Verified acceptance: the oracle job is selected by the normal CI triggers,
-  runs the otherwise-ignored test explicitly, and is required for the final
-  CI gate. Fixtures identify parser/checker/emitter/direct-lowering/runtime/
-  source-location/declaration expectations in the test's case matrix.
-
-- [ ] **Restore the relevant quality gates before declaring Phase 18 ready.**
-  Run formatting, `clippy -D warnings`, focused crate tests, the applicable
-  real-process suite, and the oracle job. Resolve or separately track blocking
-  warnings/formatting failures in BlueJS dependencies rather than hiding them
-  with an allow in BlueTS.
-
-  Local gate evidence (2026-09-21): following the checked-in reference README,
-  the gitignored Test262 corpus was checked out at pinned revision
-  `72faf8ec1445c55149615e8b35187830783aba1a`. With that required input present,
-  `cargo test --workspace`, `cargo fmt --all -- --check`, and
-  `cargo clippy --workspace --all-targets -- -D warnings` all passed. The
-  focused engine library and real `blueice-core` subprocess suites also pass.
-  No BlueJS warning allow, test exclusion, or corpus-free fallback was added.
-  The local ignored TypeScript-oracle test remains intentionally dependent on
-  `BLUEICE_BLUETSC_ORACLE`; its pinned 5.9.3 execution is still enforced by the
-  required CI job, so this release item remains open pending the complete CI
-  evidence rather than being marked complete from a local proxy.
-
-  Latest local repeat (2026-09-23): after merging the remaining Test262
-  failures and the current page-host/debugger/compiler integration work,
-  `cargo test --workspace`, `cargo fmt --all -- --check`, and
-  `cargo clippy --workspace --all-targets -- -D warnings` passed again. The
-  TypeScript oracle remains CI-owned and is not claimed as locally executed
-  without its explicitly provisioned `BLUEICE_BLUETSC_ORACLE` input.
-
-  Acceptance: Phase 18's required CI jobs are green with no ignored required
-  oracle/integration test and no suppressed cross-crate warning that masks a
-  release gate.
-
-## P2 — compatibility growth, only after the direct-page gate
-
-Every new feature must be an explicit `blue-ts-*` matrix change. It needs a
-parser/binder/checker/emitter test, a direct-bridge/BlueJS runtime decision, a
-provenance and debugger expectation, contract behavior at any new boundary,
-and external-oracle evidence. A syntax form that happens to erase must remain
-rejected until this evidence exists.
-
-- [ ] **Control flow and function semantics.** Specify and implement the
-  supported subset of loops, `try`/`catch`/`finally`, control-flow narrowing,
-  return-path analysis, and callback/method overload resolution, gated on the
-  matching BlueJS semantics and safe-point behavior.
-
-  Foundation delivered: explicit functions whose return annotation excludes
-  `undefined` now require every recognized `return`/`throw` or braced
-  `if`/`else if`/`else` path to terminate; a bare return is diagnosed as
-  `undefined`. Opaque control flow, loops, exception handlers, narrowing, and
-  callback/method resolution remain open.
-
-- [ ] **Broaden expression/runtime lowering deliberately.** Assess optional
-  chaining/calls, nested templates, object methods/accessors, array holes,
-  member constructors, general iterable spread, and structural/union/`any`
-  operand rules one at a time. Each item must define rejection/fallback rules;
-  there is no emitted-JS reparsing fallback.
-
-  Foundation delivered: the direct bridge preserves holes in a non-spread
-  array literal as BlueJS AST holes, with parser/checker/emitter/direct-runtime
-  and TypeScript-oracle coverage. A literal that combines a hole and spread
-  remains explicitly rejected because the current BlueJS spread construction
-  path would materialize the hole as an `undefined` property. All other items
-  in this compatibility-growth task remain open.
-
-- [ ] **Make separate product decisions for large TypeScript features.**
-  Classes, enums, decorators, namespaces, parameter properties, CommonJS,
-  generic arrow functions, TSX/JSX, custom transformers, package-manager
-  resolution, remote declarations, and full web-platform typings are not
-  automatic backlog items. Propose each only with its runtime lowering, host
-  capability/policy impact, debugger mapping, contract behavior, and
-  differential/conformance plan.
-
-## Out of scope for closure
-
-Phase 18 does not close Phase 13's remaining general ECMAScript conformance,
-Phase 17's complete automation/AJAX/SOAP product, or Phase 12's unrelated MCP
-families. Those phases own their broader backlogs. Their listed prerequisites
-above are tracked here only because they gate an honest BlueTS direct-page
-claim.
+The supervised child runs authorized JavaScript and supported BlueTS classic
+and module graphs. It exposes copied document text and origin, with no live
+DOM or event API. Classic-root pause/resume and bounded BlueTS source-span
+stepping work; nested/module debugging, stack, scope, and values do not. The
+compiler/MCP route supports sealed projects and read-only queries, with no
+client registration, build output, or write authority.
+
+## P0 — interactive and debuggable pages
+
+### A. Connect the child to the live core DOM (Phase 13).
+
+#### A1. Authenticate and identify every DOM request.
+
+- [x] Require the exact document generation on every existing request;
+  reject a stale create-node request before mutation.
+  Script IPC v2 also rejects obsolete/repeated Hello messages, bounds frames
+  and DOM name/text fields, and proves through a real core subprocess that a
+  still-open socket cannot mutate a replacement document with its old target.
+  This remains a proof-of-mechanism channel, not child authentication.
+- [ ] Require a launcher-issued, per-core child capability at the script
+  socket handshake; reject a foreign or predecessor child before dispatch.
+- [ ] Verify wrong-tab, stale-generation, and old-core denial through a
+  real socket; denied requests must leave the DOM unchanged.
+
+#### A2. Serve DOM calls during script execution.
+
+- [ ] Let the session thread answer bounded calls from the executing child
+  while it waits for that child's result; keep TabManager on that thread.
+- [ ] Cap calls and wait time; never process unrelated frontend/debugger
+  work in the nested wait. Test timeout and child disconnect.
+- [ ] Prove a child script completes one synchronous DOM lookup through a
+  real launcher/core/child HTTP fixture without deadlock.
+
+#### A3. Preserve the child-to-core realm boundary.
+
+- [ ] Bind each child request/reply to the exact live tab and document;
+  provide no child fetch, resolver, or direct core-DOM reference.
+- [ ] Revoke that route on reload, tab close, and core cutover; test that
+  an old reply cannot attach to a successor.
+
+### B. Install the first DOM and event profile (Phases 2/13).
+
+Follow the [binding decision](../phase-13-bluejs-engine/DOM_EVENT_BINDINGS.md).
+Keep per-tab VM, program, source, bytecode, and child-wide budgets.
+
+#### B1. Give JavaScript safe node identity.
+
+- [ ] Keep node wrappers and their collector-visible roots in the child;
+  never expose raw numeric node IDs to page code.
+- [ ] Reject a wrapper after node removal, reload, or realm close.
+
+#### B2. Read and change live DOM text.
+
+- [ ] Implement document.getElementById and node.textContent get/set
+  through A; a real page must render the changed text.
+- [ ] Implement createElement, createTextNode, and appendChild; a real
+  page must render the new subtree and reject a cross-document child.
+
+#### B3. Deliver a real click.
+
+- [ ] Root and remove click listeners in the child VM; removed and
+  old-document listeners must never run.
+- [ ] Dispatch a core click before default navigation; a real listener
+  must run, and preventDefault must suppress link navigation.
+
+#### B4. Publish only implemented host typings.
+
+- [ ] Generate the exact BlueTS declaration/capability profile only after
+  its runtime installer exists; do not add broad lib.dom declarations.
+- [ ] Execute a supported BlueTS page through B2/B3; unsupported members
+  must fail both static checking and JavaScript runtime access.
+
+### C. Complete source debugging and metadata lifetime (Phases 17/18).
+
+The exact classic-root pause/resume, instruction step, and bounded BlueTS
+source-span step are delivered. Later control stays on the native debugger
+channel with explicit owner/client grants.
+
+#### C1. Extend execution control.
+
+- [ ] Pause/resume and step a module root in a real page.
+- [ ] Pause/step a nested frame and resume that same frame; reject stale
+  or cross-tab targets.
+
+#### C2. Inspect execution within fixed budgets.
+
+- [ ] Return a bounded stack and scope for the paused frame.
+- [ ] Return authorized values without guessed handles, excess depth,
+  source text, or cross-realm references.
+- [ ] Report an exception at its original BlueTS source position.
+
+#### C3. Preserve original static metadata.
+
+- [ ] Map nested/module locations, breakpoints, symbols, and type
+  displays to the exact original source set; distinguish static types
+  from runtime values.
+- [ ] On reload, close, cache eviction, or hibernation, invalidate or
+  restore the same checked generation; never attach old metadata to a
+  successor.
+
+#### C4. Verify the public debugger route.
+
+- [ ] Through launcher/core/child, test source pause, stepping, stack,
+  scope, values, exception, and stale/unauthorized/over-budget rejection.
+
+### D. Close direct-page acceptance.
+
+- [ ] A real classic and ESM BlueTS fixture covers type-only import
+  elision, authorized resolver identity, and original source mapping.
+- [ ] A real page exercises a declared contract and shows its bounded
+  failure without exposing protected content.
+- [ ] Public-boundary tests cover multiple tabs, reload, policy isolation,
+  and tab/child resource attribution; no required result depends only on a
+  host-neutral unit test.
+
+## P1 — strict contracts and compiler service
+
+### E. Enforce live runtime contracts.
+
+#### E1. Inventory only implemented boundaries.
+
+- [x] Name and validate the copied document-text and origin results.
+- [ ] For each new ingress/egress, record owner, source position when
+  available, contract ID, limits, failure category, and capability.
+- [ ] Make strict-runtime reject a missing, unreifiable, or unchecked
+  boundary unless a reviewed contract is authorized.
+
+#### E2. Validate at the crossing.
+
+- [ ] Run the pure bounded validator before data enters the VM; invoke
+  no getter, proxy, page callback, or fetch during validation.
+- [ ] Attribute validation/cache cost to the initiating tab and report
+  policy plus source position without protected content.
+- [ ] Test valid, malformed, cyclic, deep, oversized, and exhausting
+  values at a live boundary.
+
+#### E3. Preserve strict policy in emitted output.
+
+- [x] Reject standalone strict-runtime build while its helper is absent.
+- [ ] Emit a versioned helper and bind its identity to the artifact
+  manifest; reject any target that erases a required check.
+- [ ] Make direct-page and emitted ESM reject the same malformed value;
+  a weaker artifact must never claim strict-runtime.
+
+### F. Finish registered-project compilation and MCP (Phase 12).
+
+Keep check read-only and owner registration sealed before listeners.
+
+#### F1. Authorize projects independently of query receipts.
+
+- [ ] Pin canonical input/config/output roots and a closed source graph;
+  client requests cannot add paths, resolver edges, options, or plugins.
+- [ ] Admit only owner-exposed projects to each client inventory; deny a
+  guessed or private project before reaching the compiler cache.
+
+#### F2. Produce bounded build artifacts.
+
+- [ ] Bind results to project generation and fingerprint; cap artifact,
+  diagnostic, and incremental-work-set responses.
+- [ ] Stage output atomically and emit nothing on compiler error; reject
+  paths outside the authorized output root.
+
+#### F3. Complete the MCP adapter.
+
+- [ ] Negotiate exact session/project/generation capabilities; keep
+  pagination cursors one-shot and treat project strings as untrusted.
+- [ ] Expose build only with explicit output-write authority; a query
+  receipt must never imply write access.
+- [ ] Through a real MCP client, inspect a diagnostic/type/contract
+  failure and check/build an authorized project; reject stale, guessed,
+  oversized, private, and unauthorized requests.
+
+## Release gate
+
+- [x] Generated host typings, the direct BlueTS-to-BlueJS bridge, exact
+  safe-point mapping, and the pinned TypeScript 5.9.3 CI oracle exist.
+
+### G. Verify closure without exclusions.
+
+- [ ] Run workspace tests and applicable real-process suites.
+- [ ] Pass formatting and all-target Clippy with warnings as errors.
+- [ ] Pass the pinned oracle and workspace coverage gate in CI; no
+  ignored required test or suppressed warning may substitute for evidence.
+
+## P2 — compatibility after the page gate
+
+### H. Grow control flow and function semantics.
+
+- [ ] Define one supported loop form, then test checker, direct execution,
+  safe points, and oracle before selecting another.
+- [ ] Define try/catch/finally with matching BlueJS execution and safe points.
+- [ ] Define control-flow narrowing and return paths through checker, emitter,
+  direct execution, and oracle.
+- [ ] Define callback/method overload resolution with the same four gates.
+
+### I. Grow expressions one form at a time.
+
+- [ ] Choose the next single form from optional calls/chaining, templates,
+  object methods/accessors, member constructors, iterable spread, or
+  structural/union/any operands; state its unsupported behavior.
+- [ ] For that form, test parser/checker/emitter and direct runtime without
+  reparsing emitted JavaScript.
+- [ ] Verify its provenance, debugger behavior, contracts, and TypeScript
+  oracle evidence before choosing another form.
+
+### J. Decide large features only when requested.
+
+- [ ] For each proposed class/enum/decorator/namespace/JSX/CommonJS or
+  package/remote-declaration feature, record its runtime lowering and
+  host authority impact before adding it to the implementation backlog.
+- [ ] Require a debugger map, contract policy, and conformance plan for
+  each accepted proposal; defer features without that evidence.
+
+Phase 18 does not close general Phase 13 ECMAScript conformance, all Phase 17
+automation/AJAX, or unrelated Phase 12 MCP families.

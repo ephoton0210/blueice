@@ -29,6 +29,11 @@
 //! the launcher does not supply a child-only token or service reentrant calls
 //! during page-host execution yet. Do not expose it to a page VM as authority.
 //!
+//! Each DOM request names the exact core-owned document generation as well as
+//! its tab. A request from a predecessor document fails before lookup or
+//! mutation, including operations that create new nodes and carry no old
+//! `NodeId`. The current socket's `Hello` is not yet child authentication.
+//!
 //! **Scope of this minimal slice.** [`ScriptRequest`] covers only
 //! enough DOM operations to prove the mechanism end to end and to
 //! satisfy `phase-2-mvp-scope/PLAN.md`'s interactive-JS acceptance bar
@@ -321,6 +326,19 @@ mod tests {
         buf.extend_from_slice(bad_payload);
         let mut cursor = std::io::Cursor::new(buf);
         assert!(read_script_request(&mut cursor).is_err());
+    }
+
+    #[test]
+    fn legacy_dom_request_without_document_generation_is_rejected() {
+        let mut frame = Vec::new();
+        crate::write_framed(
+            &mut frame,
+            &serde_json::json!({
+                "CreateTextNode": { "tab_id": 1, "data": "stale" }
+            }),
+        )
+        .unwrap();
+        assert!(read_script_request(&mut std::io::Cursor::new(frame)).is_err());
     }
 
     #[test]

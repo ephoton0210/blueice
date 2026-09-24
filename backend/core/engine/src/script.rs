@@ -114,9 +114,9 @@ fn dispatch_script_request(tabs: &mut TabManager, envelope: ScriptRequestEnvelop
 /// Applies one decoded page-script request to the addressed live tab.
 ///
 /// The dispatcher never creates a tab, reads a URL, opens a file, grants a
-/// capability, or selects a default tab for a caller. An unknown tab or node
-/// produces the protocol's structured error reply, including after navigation
-/// replaced the old document and invalidated its node IDs.
+/// capability, or selects a default tab for a caller. An unknown tab, stale
+/// document generation, or invalid node produces the protocol's structured
+/// error reply before an operation can touch a successor document.
 pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> ScriptReply {
     match request {
         ScriptRequest::Hello { protocol_version }
@@ -237,6 +237,7 @@ mod tests {
     #[test]
     fn hello_and_lookup_are_scoped_to_the_current_tab_document() {
         let (mut tabs, tab) = loaded_tabs();
+        let generation = tabs.get(tab).unwrap().document_generation();
         assert_eq!(
             handle_script_request(
                 &mut tabs,
@@ -251,7 +252,7 @@ mod tests {
         let ScriptReply::Node { node: Some(label) } = handle_script_request(
             &mut tabs,
             ScriptRequest::GetElementById {
-                target: target(tab, 1),
+                target: target(tab, generation),
                 id: "label".to_string(),
             },
         ) else {
@@ -261,7 +262,7 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::GetTextContent {
-                    target: target(tab, 1),
+                    target: target(tab, generation),
                     node: label,
                 },
             ),
@@ -274,10 +275,11 @@ mod tests {
     #[test]
     fn creation_append_and_text_replacement_mutate_only_the_addressed_tab() {
         let (mut tabs, tab) = loaded_tabs();
+        let generation = tabs.get(tab).unwrap().document_generation();
         let ScriptReply::Node { node: Some(app) } = handle_script_request(
             &mut tabs,
             ScriptRequest::GetElementById {
-                target: target(tab, 1),
+                target: target(tab, generation),
                 id: "app".to_string(),
             },
         ) else {
@@ -286,7 +288,7 @@ mod tests {
         let ScriptReply::NodeCreated { node: child } = handle_script_request(
             &mut tabs,
             ScriptRequest::CreateElement {
-                target: target(tab, 1),
+                target: target(tab, generation),
                 tag_name: "p".to_string(),
             },
         ) else {
@@ -296,7 +298,7 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::AppendChild {
-                    target: target(tab, 1),
+                    target: target(tab, generation),
                     parent: app,
                     child,
                 },
@@ -307,7 +309,7 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::SetTextContent {
-                    target: target(tab, 1),
+                    target: target(tab, generation),
                     node: child,
                     value: "new".to_string(),
                 },
@@ -318,7 +320,7 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::GetTextContent {
-                    target: target(tab, 1),
+                    target: target(tab, generation),
                     node: app,
                 },
             ),
@@ -333,10 +335,12 @@ mod tests {
     fn stale_or_cross_tab_handles_fail_without_mutation() {
         let (mut tabs, first) = loaded_tabs();
         let second = tabs.open_tab();
+        let old_generation = tabs.get(first).unwrap().document_generation();
+        let second_generation = tabs.get(second).unwrap().document_generation();
         let ScriptReply::Node { node: Some(label) } = handle_script_request(
             &mut tabs,
             ScriptRequest::GetElementById {
-                target: target(first, 1),
+                target: target(first, old_generation),
                 id: "label".to_string(),
             },
         ) else {
@@ -346,7 +350,7 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::GetTextContent {
-                    target: target(second, 0),
+                    target: target(second, second_generation),
                     node: label,
                 },
             ),
@@ -361,7 +365,7 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::GetTextContent {
-                    target: target(first, 1),
+                    target: target(first, old_generation),
                     node: label,
                 },
             ),
@@ -371,7 +375,7 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::CreateTextNode {
-                    target: target(first, 1),
+                    target: target(first, old_generation),
                     data: "must not enter successor".to_string(),
                 },
             ),
@@ -381,7 +385,7 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::SetTextContent {
-                    target: target(first, 1),
+                    target: target(first, old_generation),
                     node: label,
                     value: "must not replace successor".to_string(),
                 },
@@ -393,7 +397,7 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::GetElementById {
-                    target: target(first, 2),
+                    target: target(first, old_generation + 1),
                     id: "fresh".to_string(),
                 },
             ),
@@ -474,6 +478,28 @@ mod tests {
             ),
             ScriptReply::Error { .. }
         ));
+    }
+
+    #[test]
+    fn stale_document_generation_cannot_create_a_node_in_its_successor() {
+        let (mut tabs, tab) = loaded_tabs();
+        let old_generation = tabs.get(tab).unwrap().document_generation();
+        tabs.get_mut(tab).unwrap().load_html_str(
+            "<p>replacement</p>",
+            Some("https://example.test/new".to_string()),
+        );
+        let before = tabs.get(tab).unwrap().dom_dump();
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::CreateTextNode {
+                    target: target(tab, old_generation),
+                    data: "old document".to_string(),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(tab).unwrap().dom_dump(), before);
     }
 
     #[test]

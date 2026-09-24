@@ -4430,7 +4430,36 @@ impl SpawnedBlueJsHost {
     }
 
     fn connect_as_launcher(&mut self) -> io::Result<()> {
-        let mut stream = UnixStream::connect(&self.socket_path)?;
+        // A Unix socket pathname becomes visible at bind(2), before listen(2)
+        // has completed. Under load, the launcher can observe the path in
+        // `spawn_unconnected` and race that small interval. Only retry those
+        // transient startup errors; never retry a rejected handshake.
+        let deadline = Instant::now() + STARTUP_TIMEOUT;
+        let mut stream = loop {
+            match UnixStream::connect(&self.socket_path) {
+                Ok(stream) => break stream,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
+                    ) =>
+                {
+                    if let Some(status) = self.child.try_wait()? {
+                        return Err(io::Error::other(format!(
+                            "BlueJS page-host child exited before accepting its connection: {status}"
+                        )));
+                    }
+                    if Instant::now() >= deadline {
+                        return Err(io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            "BlueJS page-host child never accepted its private connection",
+                        ));
+                    }
+                    thread::sleep(Duration::from_millis(20));
+                }
+                Err(error) => return Err(error),
+            }
+        };
         let hello = PageHostRequest::Hello {
             protocol_version: page_host::PAGE_HOST_PROTOCOL_VERSION,
             session_token: self.session_token.clone(),
