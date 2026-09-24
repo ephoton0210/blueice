@@ -978,7 +978,15 @@ or second module resolver to bypass them.
   offsets, and old document generations reject. The core-owned transport can
   issue this request, but it is not yet a public debugger operation or grant:
   public source-ID receipts, explicit owner/client capability policy, core
-  tuple revalidation, and safe-point-to-source reminting still must be added.
+  tuple revalidation, and safe-point-to-source reminting were the remaining
+  work after the child-only protocol landed.
+  The core page-executor adapter now translates its reminted program and
+  metadata identities back to the exact child tuple for this query, requires
+  a caller-selected compiler source ID, and rejects a mismatched reply tuple,
+  source ID, malformed range, or stale generation. This is an internal
+  prerequisite only: the debugger socket still has no request or capability
+  for safe-point source spans, and the same-stream source receipt plus
+  owner/client grants remain to be wired before public disclosure.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

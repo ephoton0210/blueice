@@ -34,6 +34,8 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerStaticMetadataContractTarget,
     JavaScriptPageDebuggerStaticMetadataContractValidation,
     JavaScriptPageDebuggerStaticMetadataLoweringSummary,
+    JavaScriptPageDebuggerStaticMetadataSafePointSpan,
+    JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
     JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
@@ -1835,6 +1837,12 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                 .debugger_bluets_metadata_symbol_location_available()
     }
 
+    fn debugger_static_metadata_safe_point_span_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_sources_available()
+            && self.child.debugger_bluets_safe_point_span_available()
+    }
+
     fn debugger_static_metadata_contract_location_available(&self) -> bool {
         self.child.debugger_bluets_metadata_available()
             && self.child.debugger_bluets_metadata_sources_available()
@@ -2738,6 +2746,72 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             start_byte: location.start_byte,
             end_byte: location.end_byte,
             coordinates: location.coordinates,
+        })
+    }
+
+    fn debugger_static_metadata_safe_point_span(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSafePointSpan, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_safe_point_span_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let safe_point = PageHostDebuggerSafePoint {
+            program: child_program,
+            code_unit_ordinal: target.code_unit_ordinal,
+            bytecode_offset: target.bytecode_offset,
+        };
+        let reply = self
+            .child
+            .debugger_bluets_safe_point_span(
+                tab_id.as_u64(),
+                document_generation,
+                child_metadata,
+                safe_point,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsSafePointSpan {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            metadata,
+            safe_point: echoed_safe_point,
+            span,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || metadata != child_metadata
+            || echoed_safe_point != safe_point
+            || span.start_byte >= span.end_byte
+            || span.end_byte > DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        if span.source_id != target.source_id {
+            return Err(JavaScriptPageDebuggerError::UnknownProgram);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataSafePointSpan {
+            source_id: span.source_id,
+            start_byte: span.start_byte,
+            end_byte: span.end_byte,
         })
     }
 
@@ -5793,11 +5867,90 @@ mod tests {
         assert!(span.start_byte < span.end_byte);
         assert!(!format!("{span:?}").contains("mapped"));
 
+        let public_program = executor.debugger_programs(tab_id, 1).unwrap()[0];
+        let public_metadata = executor
+            .debugger_static_metadata(
+                tab_id,
+                1,
+                public_program.program_handle,
+                public_program.program_generation,
+            )
+            .unwrap()[0];
+        let public_sources = executor
+            .debugger_static_metadata_sources(
+                tab_id,
+                1,
+                public_program.program_handle,
+                public_program.program_generation,
+                public_metadata.metadata_handle,
+                public_metadata.metadata_generation,
+            )
+            .unwrap();
+        assert!(public_sources
+            .iter()
+            .any(|source| source.source_id == span.source_id));
+        let target = JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+            program_handle: public_program.program_handle,
+            program_generation: public_program.program_generation,
+            metadata_handle: public_metadata.metadata_handle,
+            metadata_generation: public_metadata.metadata_generation,
+            source_id: span.source_id,
+            code_unit_ordinal: safe_point.code_unit_ordinal,
+            bytecode_offset: safe_point.bytecode_offset,
+        };
+        assert_eq!(
+            executor
+                .debugger_static_metadata_safe_point_span(tab_id, 1, target)
+                .unwrap(),
+            JavaScriptPageDebuggerStaticMetadataSafePointSpan {
+                source_id: span.source_id,
+                start_byte: span.start_byte,
+                end_byte: span.end_byte,
+            }
+        );
+        assert_eq!(
+            executor.debugger_static_metadata_safe_point_span(
+                tab_id,
+                1,
+                JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+                    source_id: u32::MAX,
+                    ..target
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
+        assert_eq!(
+            executor.debugger_static_metadata_safe_point_span(
+                tab_id,
+                1,
+                JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+                    metadata_generation: target.metadata_generation + 1,
+                    ..target
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
+        assert_eq!(
+            executor.debugger_static_metadata_safe_point_span(
+                tab_id,
+                1,
+                JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+                    bytecode_offset: u32::MAX,
+                    ..target
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+
         tabs.get_mut(tab_id).unwrap().load_html_str(
             "<script>const successor = true;</script>",
             Some("https://example.test/successor.html".to_string()),
         );
         executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.debugger_static_metadata_safe_point_span(tab_id, 1, target),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
         assert!(matches!(
             executor
                 .child
@@ -5813,6 +5966,210 @@ mod tests {
         shutdown_child(&path, &token);
         child.join().unwrap();
         let _ = std::fs::remove_file(path);
+    }
+
+    struct MalformedSafePointSpanChild {
+        lifecycle: RecordingChild,
+        reply: PageHostReply,
+    }
+
+    impl PageHostClient for MalformedSafePointSpanChild {
+        fn synchronize_document(
+            &mut self,
+            document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            self.lifecycle.synchronize_document(document)
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            self.lifecycle.close_realm(tab_id, document_generation)
+        }
+
+        fn debugger_realm_stats(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            self.lifecycle
+                .debugger_realm_stats(tab_id, document_generation)
+        }
+
+        fn debugger_bluets_metadata_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_bluets_metadata_sources_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_bluets_safe_point_span_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_bluets_safe_point_span(
+            &mut self,
+            _tab_id: u64,
+            _document_generation: u64,
+            _metadata: PageHostDebuggerMetadataHandle,
+            _safe_point: PageHostDebuggerSafePoint,
+        ) -> io::Result<PageHostReply> {
+            Ok(self.reply.clone())
+        }
+    }
+
+    #[test]
+    fn core_rejects_mismatched_child_safe_point_span_envelopes() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script type=\"application/x-blueice-typescript\">const mapped: number = 42;</script>",
+            "https://example.test/forged-span.html",
+        );
+        let child_program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let child_metadata = PageHostDebuggerMetadataHandle {
+            metadata_handle: 17,
+            metadata_generation: 19,
+        };
+        let child_safe_point = PageHostDebuggerSafePoint {
+            program: child_program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 4,
+        };
+        let span = page_host::PageHostDebuggerBlueTsSafePointSpan {
+            source_id: 3,
+            start_byte: 0,
+            end_byte: 5,
+        };
+        let span_reply = |reply_tab_id, reply_generation, metadata, safe_point, span| {
+            PageHostReply::DebuggerBlueTsSafePointSpan {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                metadata,
+                safe_point,
+                span,
+            }
+        };
+        let reply = span_reply(tab_id.as_u64(), 1, child_metadata, child_safe_point, span);
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new(MalformedSafePointSpanChild {
+            lifecycle: RecordingChild::default(),
+            reply: reply.clone(),
+        });
+        executor.synchronize_and_execute(&tabs).unwrap();
+        executor.debugger_programs.insert(
+            tab_id,
+            BTreeMap::from([(
+                child_program,
+                CoreDebuggerProgram {
+                    program_handle: 101,
+                    program_generation: 103,
+                },
+            )]),
+        );
+        executor.debugger_static_metadata.insert(
+            tab_id,
+            BTreeMap::from([(
+                child_metadata,
+                CoreDebuggerStaticMetadata {
+                    program: child_program,
+                    metadata_handle: 107,
+                    metadata_generation: 109,
+                },
+            )]),
+        );
+        let target = JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+            program_handle: 101,
+            program_generation: 103,
+            metadata_handle: 107,
+            metadata_generation: 109,
+            source_id: 3,
+            code_unit_ordinal: 0,
+            bytecode_offset: 4,
+        };
+        assert_eq!(
+            executor
+                .debugger_static_metadata_safe_point_span(tab_id, 1, target)
+                .unwrap(),
+            JavaScriptPageDebuggerStaticMetadataSafePointSpan {
+                source_id: 3,
+                start_byte: 0,
+                end_byte: 5,
+            }
+        );
+        for malformed in [
+            span_reply(
+                tab_id.as_u64() + 1,
+                1,
+                child_metadata,
+                child_safe_point,
+                span,
+            ),
+            span_reply(tab_id.as_u64(), 2, child_metadata, child_safe_point, span),
+            span_reply(
+                tab_id.as_u64(),
+                1,
+                PageHostDebuggerMetadataHandle {
+                    metadata_generation: 20,
+                    ..child_metadata
+                },
+                child_safe_point,
+                span,
+            ),
+            span_reply(
+                tab_id.as_u64(),
+                1,
+                child_metadata,
+                PageHostDebuggerSafePoint {
+                    bytecode_offset: 5,
+                    ..child_safe_point
+                },
+                span,
+            ),
+            span_reply(
+                tab_id.as_u64(),
+                1,
+                child_metadata,
+                child_safe_point,
+                page_host::PageHostDebuggerBlueTsSafePointSpan {
+                    end_byte: span.start_byte,
+                    ..span
+                },
+            ),
+            span_reply(
+                tab_id.as_u64(),
+                1,
+                child_metadata,
+                child_safe_point,
+                page_host::PageHostDebuggerBlueTsSafePointSpan {
+                    end_byte: DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES + 1,
+                    ..span
+                },
+            ),
+        ] {
+            executor.child.reply = malformed;
+            assert_eq!(
+                executor.debugger_static_metadata_safe_point_span(tab_id, 1, target),
+                Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            );
+        }
+        executor.child.reply = span_reply(
+            tab_id.as_u64(),
+            1,
+            child_metadata,
+            child_safe_point,
+            page_host::PageHostDebuggerBlueTsSafePointSpan {
+                source_id: 4,
+                ..span
+            },
+        );
+        assert_eq!(
+            executor.debugger_static_metadata_safe_point_span(tab_id, 1, target),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
     }
 
     #[test]

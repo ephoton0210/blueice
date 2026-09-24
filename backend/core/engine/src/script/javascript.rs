@@ -45,6 +45,8 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataContractTarget,
     JavaScriptPageDebuggerStaticMetadataContractValidation,
     JavaScriptPageDebuggerStaticMetadataLoweringSummary,
+    JavaScriptPageDebuggerStaticMetadataSafePointSpan,
+    JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
     JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
@@ -153,6 +155,13 @@ pub trait PageJavaScriptDebuggerLocations {
     /// This is separate from symbol names and source provenance because it
     /// exposes source structure.
     fn debugger_static_metadata_symbol_location_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can bind an exact verified BlueTS safe point to a
+    /// separately receipted source ID under one opaque metadata attachment.
+    /// This is not a public grant by itself.
+    fn debugger_static_metadata_safe_point_span_available(&self) -> bool {
         false
     }
 
@@ -392,6 +401,19 @@ pub trait PageJavaScriptDebuggerLocations {
         _document_generation: u64,
         _target: JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
     ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolLocation, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Resolves only the exact safe point and source ID presented under the
+    /// live, core-reminted metadata identity. An unbound instruction has no
+    /// nearest-source fallback.
+    fn debugger_static_metadata_safe_point_span(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSafePointSpan, JavaScriptPageDebuggerError>
     {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }

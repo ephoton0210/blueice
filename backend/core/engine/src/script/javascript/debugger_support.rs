@@ -156,6 +156,29 @@ pub struct JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
     pub source_id: u32,
 }
 
+/// One exact direct-BlueTS lowering span after core has translated its
+/// public program and metadata identities to child-private handles. The
+/// source ID is checked against a separately inventoried public target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSafePointSpan {
+    pub source_id: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+}
+
+/// The exact public tuple accepted by core only after the debugger stream
+/// has independently inventoried the metadata parent and source ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub source_id: u32,
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+}
+
 /// One child-validated contract declaration range with no source text,
 /// module identity, plan, or runtime value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
