@@ -108,7 +108,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 32;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 33;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -575,6 +575,13 @@ pub enum PageHostRequest {
     /// current child-owned generation. Repeating the current generation is
     /// idempotent and never re-runs page code.
     SynchronizeDocument { document: PageHostDocument },
+    /// Delivers one core-hit-tested node to the exact live child document.
+    /// The child returns only whether a listener canceled default navigation.
+    DispatchClick {
+        tab_id: u64,
+        document_generation: u64,
+        node_id: u64,
+    },
     /// Releases one exact live realm. A stale generation cannot close its
     /// successor after navigation.
     CloseRealm {
@@ -867,6 +874,11 @@ pub enum PageHostReply {
         /// not execute any declaration again.
         already_current: bool,
         reports: Vec<PageHostScriptReport>,
+    },
+    ClickDispatched {
+        tab_id: u64,
+        document_generation: u64,
+        default_prevented: bool,
     },
     RealmClosed {
         tab_id: u64,
@@ -1228,6 +1240,15 @@ mod tests {
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &reply).unwrap();
         assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+
+        let click_reply = PageHostReply::ClickDispatched {
+            tab_id: 7,
+            document_generation: 3,
+            default_prevented: true,
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &click_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), click_reply);
     }
 
     #[test]
@@ -1302,6 +1323,11 @@ mod tests {
             },
             PageHostRequest::SynchronizeDocument {
                 document: document(),
+            },
+            PageHostRequest::DispatchClick {
+                tab_id: 7,
+                document_generation: 3,
+                node_id: 42,
             },
             PageHostRequest::CloseRealm {
                 tab_id: 7,

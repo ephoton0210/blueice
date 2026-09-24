@@ -106,6 +106,9 @@ mod unix {
         /// Separate owner-selected live DOM creation/append profile. It does
         /// not mutate the immutable text-v1 typing or callback inventory.
         core_dom_mutation_fixture: bool,
+        /// Separate owner-selected click-event profile. It includes bounded
+        /// live DOM mutation and exact VM-owned listener registration.
+        core_dom_event_fixture: bool,
         /// A caller-selected Unix endpoint for a sealed core compiler catalog.
         /// The default builder selects the fixed compiled-in fixture; the
         /// separate trusted-owner builder may supply a complete closed graph.
@@ -261,6 +264,12 @@ mod unix {
         pub fn supervise_out_of_process_bluejs_with_dom_mutation_fixture(mut self) -> Self {
             self.supervise_out_of_process_bluejs = true;
             self.core_dom_mutation_fixture = true;
+            self
+        }
+
+        pub fn supervise_out_of_process_bluejs_with_dom_event_fixture(mut self) -> Self {
+            self.supervise_out_of_process_bluejs = true;
+            self.core_dom_event_fixture = true;
             self
         }
 
@@ -1695,6 +1704,7 @@ mod unix {
                     options.core_dom_lookup_probe_fixture,
                     options.core_dom_text_fixture,
                     options.core_dom_mutation_fixture,
+                    options.core_dom_event_fixture,
                 )?;
             Ok(Some(Self {
                 host,

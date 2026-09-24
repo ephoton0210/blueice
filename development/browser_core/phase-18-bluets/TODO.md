@@ -164,18 +164,29 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
 
 #### B3. Deliver a real click.
 
-- [ ] Root and remove click listeners in the child VM; removed and
-  old-document listeners must never run. Partial: BlueJS VM and page-runtime
-  APIs now root, deduplicate, remove, and synchronously dispatch exact-wrapper
-  click callbacks with realm-expiry and GC tests. The launcher child profile
-  and core-to-child click delivery remain to be connected.
-- [ ] Dispatch a core click before default navigation; a real listener
-  must run, and preventDefault must suppress link navigation.
+- [x] Root and remove click listeners in the child VM; removed and
+  old-document listeners must never run. The owner-selected event profile
+  installs VM-rooted listeners, and child tests cover removal, GC, stale
+  generation rejection, and successor-realm isolation.
+- [x] Dispatch a core click before default navigation; a real listener
+  must run, and preventDefault must suppress link navigation. A real
+  launcher/core/child test covers coordinate Click and ActOn, JavaScript and
+  BlueTS callbacks, synchronous DOM writes, and navigation suppression.
+- [ ] Complete the first event-loop semantics from the Phase 13 binding
+  decision: queue the click as a bounded child task, run its microtask
+  checkpoint before the default action, and retain the cancellation bit even
+  when a listener throws. The current delivery is synchronous and source-free
+  failures keep the core session alive, but it has no explicit task queue.
 
 #### B4. Publish only implemented host typings.
 
-- [ ] Generate the exact BlueTS declaration/capability profile only after
-  its runtime installer exists; do not add broad lib.dom declarations.
+- [x] Generate the exact BlueTS declaration/capability profile only after
+  its runtime installer exists; do not add broad lib.dom declarations. The
+  owner-selected event-v1 profile has the exact 10-binding installer inventory
+  and the BlueTS checker verifies the click callback type and literal name.
+- [ ] Enforce the event object's `readonly` type, target, and currentTarget
+  qualifiers in BlueTS checking; the child already exposes these properties
+  as non-writable, but BlueTS currently erases the qualifier while parsing.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members
   must fail both static checking and JavaScript runtime access.
 

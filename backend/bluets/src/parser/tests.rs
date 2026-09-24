@@ -37,6 +37,30 @@ fn parses_interface_method_signatures_as_static_function_members() {
 }
 
 #[test]
+fn parses_keyword_named_event_field_and_bounded_function_type() {
+    let module = parse_module(
+        "memory:///events.d.ts",
+        "interface Event { type: 'click'; }\n\
+         interface Node { addEventListener(eventType: 'click', listener: (event: Event) => void): void; }",
+    )
+    .unwrap();
+    let Declaration::Interface(event) = &module.declarations[0] else {
+        panic!("expected event interface");
+    };
+    assert_eq!(event.fields[0].name, "type");
+    let Declaration::Interface(node) = &module.declarations[1] else {
+        panic!("expected node interface");
+    };
+    let Type::Function { parameters, .. } = &node.fields[0].value else {
+        panic!("expected addEventListener method");
+    };
+    assert!(matches!(
+        parameters[1].annotation,
+        Some(Type::Function { .. })
+    ));
+}
+
+#[test]
 fn parses_typed_exports_and_marks_only_type_syntax_for_erasure() {
     let module = parse_module(
             "memory:///app.ts",

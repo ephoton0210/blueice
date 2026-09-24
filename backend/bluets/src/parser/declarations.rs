@@ -502,7 +502,7 @@ impl Parser {
                 // itself in this first checker.
             }
             let field_start = self.current().start;
-            let name = self.require_identifier("expected an interface field name");
+            let name = self.require_property_name("expected an interface field name");
             let optional = self.consume("?");
             let value = if self.peek("(") {
                 self.parse_method_signature(&[";", ",", "}"])

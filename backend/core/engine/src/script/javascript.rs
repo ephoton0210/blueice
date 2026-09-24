@@ -709,6 +709,20 @@ pub trait PageJavaScriptExecutor {
         self.synchronize_and_execute(tabs)
     }
 
+    /// Delivers a core-hit-tested click before default navigation. The
+    /// default is inert; only an explicitly selected child event profile may
+    /// return a cancellation decision. A child may synchronously call back
+    /// into core DOM, so the session supplies its mutable tab owner.
+    fn dispatch_click_serving_script(
+        &mut self,
+        _tabs: &mut TabManager,
+        _tab_id: TabId,
+        _node_id: u64,
+        _script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<Option<bool>> {
+        Ok(None)
+    }
+
     /// Drains one tab's reports without exposing or consuming another tab's
     /// records.
     fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport>;

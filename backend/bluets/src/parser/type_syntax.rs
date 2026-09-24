@@ -151,7 +151,7 @@ impl Parser {
             while !self.at_eof() && !self.consume("}") {
                 let start = self.current().start;
                 self.consume("readonly");
-                let name = self.require_identifier("expected a record field name");
+                let name = self.require_property_name("expected a record field name");
                 let optional = self.consume("?");
                 let value = if self.peek("(") {
                     self.parse_method_signature(&[";", ",", "}"])
@@ -170,6 +170,33 @@ impl Parser {
                 self.consume(",");
             }
             Type::Record(fields)
+        } else if self.consume("(") {
+            let mut parameters = Vec::new();
+            while !self.at_eof() && !self.consume(")") {
+                let start = self.current().start;
+                let name = self.require_identifier("expected a function type parameter name");
+                let optional = self.consume("?");
+                self.expect(":");
+                let annotation = self.parse_type_until(&[",", ")"]);
+                let end = self.previous().end;
+                parameters.push(Parameter {
+                    name,
+                    rest: false,
+                    optional,
+                    annotation: Some(annotation),
+                    default: None,
+                    span: SourceSpan::new(&self.id, start, end),
+                });
+                if !self.consume(",") {
+                    self.expect(")");
+                    break;
+                }
+            }
+            self.expect("=>");
+            Type::Function {
+                parameters,
+                result: Box::new(self.parse_type_until(_stop)),
+            }
         } else if self.current().kind == TokenKind::String
             || self.current().kind == TokenKind::Number
             || self.peek("true")
@@ -282,6 +309,13 @@ impl Parser {
 
     pub(super) fn require_identifier(&mut self, message: impl Into<String>) -> String {
         self.consume_identifier().unwrap_or_else(|| {
+            self.error_here(DiagnosticCode::ParseError, message);
+            "<error>".to_string()
+        })
+    }
+
+    pub(super) fn require_property_name(&mut self, message: impl Into<String>) -> String {
+        self.consume_identifier_or_keyword().unwrap_or_else(|| {
             self.error_here(DiagnosticCode::ParseError, message);
             "<error>".to_string()
         })

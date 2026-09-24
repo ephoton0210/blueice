@@ -6,6 +6,47 @@ use super::*;
 use crate::compiler::{CompilerOptions, MapLoader, ModuleSource};
 
 #[test]
+fn checks_named_callbacks_against_function_type_and_literal_event_name() {
+    let ambient = ModuleSource::new(
+        "memory:///events.d.ts",
+        "interface ClickEvent { preventDefault(): void; }\n\
+         interface Node { addEventListener(eventType: 'click', listener: (event: ClickEvent) => void): void; }\n\
+         declare const node: Node;",
+    );
+    let check = |source| {
+        crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+            CompilerOptions {
+                ambient_declaration_modules: vec![ambient.clone()],
+                require_declared_global_calls: true,
+                ..CompilerOptions::default()
+            },
+        )
+    };
+    let valid = check(
+        "function onClick(event: ClickEvent): void { event.preventDefault(); }\n\
+         node.addEventListener('click', onClick);",
+    );
+    assert!(!valid.has_errors(), "{:#?}", valid.diagnostics);
+    for source in [
+        "node.addEventListener('change', onClick);",
+        "node.addEventListener('click', 'not callable');",
+        "function wrong(event: string): void {} node.addEventListener('click', wrong);",
+    ] {
+        let invalid = check(source);
+        assert!(
+            invalid
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch),
+            "{source}: {:#?}",
+            invalid.diagnostics
+        );
+    }
+}
+
+#[test]
 fn ambient_interface_methods_check_member_call_arguments_and_return_types() {
     let ambient = ModuleSource::new(
         "memory:///lib.blueice.d.ts",

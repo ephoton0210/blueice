@@ -191,6 +191,18 @@ impl<'a> ModuleChecker<'a> {
             "[" => infer_array(tokens, scope),
             "{" => infer_record(tokens, scope),
             _ if first.kind == TokenKind::Identifier => {
+                if tokens.len() == 1 {
+                    if let Some(signature) =
+                        self.functions.get(&first.text).and_then(|set| set.first())
+                    {
+                        if signature.type_parameters.is_empty() {
+                            return Type::Function {
+                                parameters: signature.parameters.clone(),
+                                result: Box::new(signature.return_type.clone()),
+                            };
+                        }
+                    }
+                }
                 if tokens.get(1).is_some_and(|token| token.is("."))
                     && tokens
                         .get(2)
@@ -572,7 +584,12 @@ impl<'a> ModuleChecker<'a> {
                 };
                 actuals.extend(values);
             } else {
-                actuals.push(self.infer_expression(argument, scope));
+                actuals.push(match *argument {
+                    [literal] if literal.kind == TokenKind::String => {
+                        Type::Literal(literal.text.clone())
+                    }
+                    _ => self.infer_expression(argument, scope),
+                });
             }
         }
         Ok(actuals)

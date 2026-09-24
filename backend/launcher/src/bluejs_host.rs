@@ -16,16 +16,17 @@
 use blueice_bluejs::{
     parse, parse_module, BlueJsPageDebuggerExecutionState, BlueJsPageOrigin, BlueJsPageRuntime,
     BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BlueJsProgramHandle, BlueJsProgramV1,
-    BlueJsSourceIdentity, CompileError, HeapConfig, HostFunctionError, HostObjectKey, HostValue,
-    Module, ParseError, RuntimeError, Value, Vm, VmConfig,
+    BlueJsSourceIdentity, CompileError, HeapConfig, HostFunctionError, HostObjectFamily,
+    HostObjectKey, HostValue, Module, ParseError, RuntimeError, Value, Vm, VmConfig,
 };
 use blueice_bluets::{
     AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
     Contract, ContractPlan, ContractValue, RuntimePolicy, ValidationLimits,
 };
 use blueice_bluets_bluejs::page_host_typings::{
-    page_host_document_runtime_bindings_v1, page_host_dom_mutation_runtime_bindings_v1,
-    page_host_dom_text_runtime_bindings_v1, PageHostDocumentTypingsV1,
+    page_host_document_runtime_bindings_v1, page_host_dom_event_runtime_bindings_v1,
+    page_host_dom_mutation_runtime_bindings_v1, page_host_dom_text_runtime_bindings_v1,
+    PageHostDocumentTypingsV1,
 };
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
@@ -195,6 +196,7 @@ impl BlueJsHostRuntimeLimits {
 struct LiveDocument {
     generation: u64,
     origin: BlueJsPageOrigin,
+    click_event_family: Option<HostObjectFamily>,
     debugger_execution_control: bool,
     debugger_programs: BTreeMap<u64, ChildDebuggerProgram>,
     /// Exact child-private breakpoint configuration records. These are not a
@@ -282,6 +284,7 @@ struct ScriptDomCapability {
     enable_lookup_probe: bool,
     enable_dom_text_profile: bool,
     enable_dom_mutation_profile: bool,
+    enable_dom_event_profile: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -289,11 +292,14 @@ enum PageDomProfile {
     Snapshot,
     Text,
     Mutation,
+    Event,
 }
 
 impl ScriptDomCapability {
     fn profile(&self) -> PageDomProfile {
-        if self.enable_dom_mutation_profile {
+        if self.enable_dom_event_profile {
+            PageDomProfile::Event
+        } else if self.enable_dom_mutation_profile {
             PageDomProfile::Mutation
         } else if self.enable_dom_text_profile {
             PageDomProfile::Text
@@ -647,6 +653,7 @@ impl BlueJsChildHost {
         enable_lookup_probe: bool,
         enable_dom_text_profile: bool,
         enable_dom_mutation_profile: bool,
+        enable_dom_event_profile: bool,
     ) -> io::Result<()> {
         if !self.documents.is_empty()
             || self.script_dom_capability.is_some()
@@ -656,6 +663,7 @@ impl BlueJsChildHost {
                 enable_lookup_probe,
                 enable_dom_text_profile,
                 enable_dom_mutation_profile,
+                enable_dom_event_profile,
             ]
             .into_iter()
             .filter(|enabled| *enabled)
@@ -673,6 +681,7 @@ impl BlueJsChildHost {
             enable_lookup_probe,
             enable_dom_text_profile,
             enable_dom_mutation_profile,
+            enable_dom_event_profile,
         });
         Ok(())
     }
@@ -692,6 +701,11 @@ impl BlueJsChildHost {
     pub fn handle_request(&mut self, request: PageHostRequest) -> PageHostReply {
         match request {
             PageHostRequest::SynchronizeDocument { document } => self.synchronize(document),
+            PageHostRequest::DispatchClick {
+                tab_id,
+                document_generation,
+                node_id,
+            } => self.dispatch_click(tab_id, document_generation, node_id),
             PageHostRequest::CloseRealm {
                 tab_id,
                 document_generation,
@@ -1068,29 +1082,31 @@ impl BlueJsChildHost {
         // record cannot survive the navigation window in the child.
         self.debug_registry
             .prune_invalid(self.runtime.program_registry());
-        if install_document_snapshot_bindings(
+        let click_event_family = match install_document_snapshot_bindings(
             &mut self.runtime,
             document.tab_id,
             document.document_generation,
             &document.snapshot,
             self.script_dom_capability.clone(),
-        )
-        .is_err()
-        {
-            // A replacement document whose fixed bindings cannot be installed
-            // must not leave a partially initialized successor realm. Closing
-            // this fresh VM also drops every copied snapshot immediately.
-            self.runtime.close_realm(document.tab_id);
-            self.debug_registry
-                .prune_invalid(self.runtime.program_registry());
-            self.documents.remove(&document.tab_id);
-            return host_failure();
-        }
+        ) {
+            Ok(family) => family,
+            Err(_) => {
+                // A replacement document whose fixed bindings cannot be installed
+                // must not leave a partially initialized successor realm. Closing
+                // this fresh VM also drops every copied snapshot immediately.
+                self.runtime.close_realm(document.tab_id);
+                self.debug_registry
+                    .prune_invalid(self.runtime.program_registry());
+                self.documents.remove(&document.tab_id);
+                return host_failure();
+            }
+        };
         self.documents.insert(
             document.tab_id,
             LiveDocument {
                 generation: document.document_generation,
                 origin: origin.clone(),
+                click_event_family,
                 debugger_execution_control: document.debugger_execution_control,
                 debugger_programs: BTreeMap::new(),
                 debugger_breakpoints: BTreeSet::new(),
@@ -1217,6 +1233,37 @@ impl BlueJsChildHost {
             document_generation: document.document_generation,
             already_current: false,
             reports,
+        }
+    }
+
+    fn dispatch_click(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        node_id: u64,
+    ) -> PageHostReply {
+        let Some(document) = self.documents.get(&tab_id) else {
+            return stale_document();
+        };
+        if document.generation != document_generation {
+            return stale_document();
+        }
+        let default_prevented = if let Some(family) = document.click_event_family {
+            match self.runtime.dispatch_host_click(
+                tab_id,
+                family,
+                HostObjectKey::new(tab_id, document_generation, node_id),
+            ) {
+                Ok(prevented) => prevented,
+                Err(_) => return host_failure(),
+            }
+        } else {
+            false
+        };
+        PageHostReply::ClickDispatched {
+            tab_id,
+            document_generation,
+            default_prevented,
         }
     }
 
@@ -3927,7 +3974,7 @@ fn install_document_snapshot_bindings(
     document_generation: u64,
     snapshot: &PageHostDocumentSnapshot,
     script_dom_capability: Option<ScriptDomCapability>,
-) -> Result<(), BlueJsPageRuntimeError> {
+) -> Result<Option<HostObjectFamily>, BlueJsPageRuntimeError> {
     let page_dom_profile = script_dom_capability
         .as_ref()
         .map_or(PageDomProfile::Snapshot, ScriptDomCapability::profile);
@@ -3935,11 +3982,13 @@ fn install_document_snapshot_bindings(
         PageDomProfile::Snapshot => PageHostDocumentTypingsV1::generate(),
         PageDomProfile::Text => PageHostDocumentTypingsV1::generate_dom_text(),
         PageDomProfile::Mutation => PageHostDocumentTypingsV1::generate_dom_mutation(),
+        PageDomProfile::Event => PageHostDocumentTypingsV1::generate_dom_event(),
     };
     let expected_bindings = match page_dom_profile {
         PageDomProfile::Snapshot => page_host_document_runtime_bindings_v1().to_vec(),
         PageDomProfile::Text => page_host_dom_text_runtime_bindings_v1().to_vec(),
         PageDomProfile::Mutation => page_host_dom_mutation_runtime_bindings_v1().to_vec(),
+        PageDomProfile::Event => page_host_dom_event_runtime_bindings_v1().to_vec(),
     };
     artifact
         .verify_runtime_bindings(&expected_bindings)
@@ -3947,6 +3996,8 @@ fn install_document_snapshot_bindings(
     let binding_inventory = page_host_document_runtime_bindings_v1();
     let document_text = snapshot.document_text.clone();
     let document_origin = snapshot.document_origin.clone();
+    let click_event_family = Rc::new(RefCell::new(None));
+    let installed_click_event_family = Rc::clone(&click_event_family);
     runtime.configure_realm_bindings(tab_id, move |bindings| {
         let mut installed_bindings = Vec::from(binding_inventory);
         for binding in binding_inventory {
@@ -4102,7 +4153,10 @@ fn install_document_snapshot_bindings(
                     Ok(HostValue::Undefined)
                 },
             )?;
-            if page_dom_profile == PageDomProfile::Mutation {
+            if matches!(
+                page_dom_profile,
+                PageDomProfile::Mutation | PageDomProfile::Event
+            ) {
                 let element_client = Rc::clone(&client);
                 bindings.install_host_object_factory_method(
                     document,
@@ -4157,6 +4211,12 @@ fn install_document_snapshot_bindings(
                 )?;
                 installed_bindings
                     .extend_from_slice(&page_host_dom_mutation_runtime_bindings_v1()[2..]);
+                if page_dom_profile == PageDomProfile::Event {
+                    bindings.install_host_click_event_methods(family)?;
+                    *installed_click_event_family.borrow_mut() = Some(family);
+                    let event_bindings = page_host_dom_event_runtime_bindings_v1();
+                    installed_bindings.extend([event_bindings[6], event_bindings[8]]);
+                }
             } else {
                 installed_bindings
                     .extend_from_slice(&page_host_dom_text_runtime_bindings_v1()[2..]);
@@ -4166,7 +4226,9 @@ fn install_document_snapshot_bindings(
             .verify_runtime_bindings(&installed_bindings)
             .map_err(|_| RuntimeError::TypeError("host binding inventory mismatch".into()))?;
         Ok(())
-    })
+    })?;
+    let family = *click_event_family.borrow();
+    Ok(family)
 }
 
 fn dom_lookup_id(arguments: &[HostValue], function: &str) -> Result<String, HostFunctionError> {
@@ -4382,6 +4444,8 @@ fn bluets_compiler_options(
             .verified_dom_text_ambient_module(&page_host_dom_text_runtime_bindings_v1()),
         PageDomProfile::Mutation => PageHostDocumentTypingsV1::generate_dom_mutation()
             .verified_dom_mutation_ambient_module(&page_host_dom_mutation_runtime_bindings_v1()),
+        PageDomProfile::Event => PageHostDocumentTypingsV1::generate_dom_event()
+            .verified_dom_event_ambient_module(&page_host_dom_event_runtime_bindings_v1()),
     }
     .map_err(|_| "verified page-host BlueTS typings are unavailable")?;
     let mut options = CompilerOptions {
@@ -5022,12 +5086,14 @@ impl SpawnedBlueJsHost {
         enable_dom_lookup_probe: bool,
         enable_dom_text_profile: bool,
         enable_dom_mutation_profile: bool,
+        enable_dom_event_profile: bool,
     ) -> io::Result<(Self, BlueJsHostCoreConfig)> {
         if !script_socket.is_absolute()
             || [
                 enable_dom_lookup_probe,
                 enable_dom_text_profile,
                 enable_dom_mutation_profile,
+                enable_dom_event_profile,
             ]
             .into_iter()
             .filter(|enabled| *enabled)
@@ -5046,6 +5112,7 @@ impl SpawnedBlueJsHost {
                 enable_dom_lookup_probe,
                 enable_dom_text_profile,
                 enable_dom_mutation_profile,
+                enable_dom_event_profile,
             )),
         )?;
         let config = BlueJsHostCoreConfig {
@@ -5057,7 +5124,7 @@ impl SpawnedBlueJsHost {
 
     fn spawn_unconnected(
         limits: BlueJsHostRuntimeLimits,
-        script_socket: Option<(&Path, bool, bool, bool)>,
+        script_socket: Option<(&Path, bool, bool, bool, bool)>,
     ) -> io::Result<Self> {
         limits
             .runtime_config()
@@ -5092,6 +5159,7 @@ impl SpawnedBlueJsHost {
             enable_dom_lookup_probe,
             enable_dom_text_profile,
             enable_dom_mutation_profile,
+            enable_dom_event_profile,
         )) = script_socket
         {
             command.arg("--script-socket").arg(script_socket);
@@ -5103,6 +5171,9 @@ impl SpawnedBlueJsHost {
             }
             if enable_dom_mutation_profile {
                 command.arg("--enable-dom-mutation-profile");
+            }
+            if enable_dom_event_profile {
+                command.arg("--enable-dom-event-profile");
             }
         }
         let mut child = command.spawn()?;
@@ -5387,8 +5458,15 @@ mod tests {
         });
 
         let mut host = BlueJsChildHost::default();
-        host.configure_script_dom_capability(socket_path.clone(), capability, true, false, false)
-            .unwrap();
+        host.configure_script_dom_capability(
+            socket_path.clone(),
+            capability,
+            true,
+            false,
+            false,
+            false,
+        )
+        .unwrap();
         let outcomes = |reply: PageHostReply| match reply {
             PageHostReply::Synchronized { reports, .. } => reports
                 .into_iter()
@@ -5551,8 +5629,15 @@ mod tests {
         });
 
         let mut host = BlueJsChildHost::default();
-        host.configure_script_dom_capability(socket_path.clone(), capability, false, false, true)
-            .unwrap();
+        host.configure_script_dom_capability(
+            socket_path.clone(),
+            capability,
+            false,
+            false,
+            true,
+            false,
+        )
+        .unwrap();
         let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
             document: document(
                 1,
@@ -5574,6 +5659,147 @@ mod tests {
         };
         assert_eq!(reports.len(), 1);
         assert_eq!(reports[0].outcome, PageHostScriptOutcome::Executed);
+        drop(host);
+        server.join().unwrap();
+        std::fs::remove_file(socket_path).unwrap();
+    }
+
+    #[test]
+    fn event_profile_dispatches_only_live_unremoved_exact_document_listeners() {
+        let socket_path =
+            std::env::temp_dir().join(format!("bi-dom-event-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&socket_path);
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        let capability = "c".repeat(script::SCRIPT_SESSION_TOKEN_HEX_BYTES);
+        let server_capability = capability.clone();
+        let server = std::thread::spawn(move || {
+            let (mut peer, _) = listener.accept().unwrap();
+            peer.set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            assert_eq!(
+                script::read_script_request(&mut peer).unwrap(),
+                ScriptRequest::Hello {
+                    protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+                    session_token: server_capability,
+                }
+            );
+            script::write_script_reply(
+                &mut peer,
+                &ScriptReply::HelloAck {
+                    protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+                },
+            )
+            .unwrap();
+            let target = ScriptDocumentTarget {
+                tab_id: 7,
+                document_generation: 1,
+            };
+            for (request_id, id, node) in [(1, "live", 11), (2, "removed", 12)] {
+                assert_eq!(
+                    script::read_script_request(&mut peer).unwrap(),
+                    ScriptRequest::Call {
+                        request_id,
+                        request: Box::new(ScriptRequest::GetElementById {
+                            target,
+                            id: id.to_string(),
+                        }),
+                    }
+                );
+                script::write_script_reply(
+                    &mut peer,
+                    &ScriptReply::CallResult {
+                        request_id,
+                        target,
+                        reply: Box::new(ScriptReply::Node { node: Some(node) }),
+                    },
+                )
+                .unwrap();
+            }
+            assert_eq!(
+                script::read_script_request(&mut peer).unwrap_err().kind(),
+                io::ErrorKind::UnexpectedEof
+            );
+        });
+
+        let mut host = BlueJsChildHost::default();
+        host.configure_script_dom_capability(
+            socket_path.clone(),
+            capability,
+            false,
+            false,
+            false,
+            true,
+        )
+        .unwrap();
+        let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(
+                1,
+                vec![classic(
+                    0,
+                    "let live = document.getElementById('live'); \
+                     let removed = document.getElementById('removed'); \
+                     function cancel(event) { event.preventDefault(); } \
+                     live.addEventListener('click', cancel); \
+                     removed.addEventListener('click', cancel); \
+                     removed.removeEventListener('click', cancel);",
+                )],
+            ),
+        });
+        let PageHostReply::Synchronized { reports, .. } = reply else {
+            panic!("expected synchronized event document");
+        };
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].outcome, PageHostScriptOutcome::Executed);
+        assert_eq!(
+            host.handle_request(PageHostRequest::DispatchClick {
+                tab_id: 7,
+                document_generation: 1,
+                node_id: 11,
+            }),
+            PageHostReply::ClickDispatched {
+                tab_id: 7,
+                document_generation: 1,
+                default_prevented: true,
+            }
+        );
+        assert_eq!(
+            host.handle_request(PageHostRequest::DispatchClick {
+                tab_id: 7,
+                document_generation: 1,
+                node_id: 12,
+            }),
+            PageHostReply::ClickDispatched {
+                tab_id: 7,
+                document_generation: 1,
+                default_prevented: false,
+            }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(2, vec![]),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert_eq!(
+            host.handle_request(PageHostRequest::DispatchClick {
+                tab_id: 7,
+                document_generation: 1,
+                node_id: 11,
+            }),
+            stale_document()
+        );
+        assert_eq!(
+            host.handle_request(PageHostRequest::DispatchClick {
+                tab_id: 7,
+                document_generation: 2,
+                node_id: 11,
+            }),
+            PageHostReply::ClickDispatched {
+                tab_id: 7,
+                document_generation: 2,
+                default_prevented: false,
+            }
+        );
         drop(host);
         server.join().unwrap();
         std::fs::remove_file(socket_path).unwrap();
@@ -5655,8 +5881,15 @@ mod tests {
         });
 
         let mut host = BlueJsChildHost::default();
-        host.configure_script_dom_capability(socket_path.clone(), capability, true, false, false)
-            .unwrap();
+        host.configure_script_dom_capability(
+            socket_path.clone(),
+            capability,
+            true,
+            false,
+            false,
+            false,
+        )
+        .unwrap();
         let script = |ordinal| {
             classic(
                 ordinal,
@@ -5759,6 +5992,7 @@ mod tests {
                     enable_lookup_probe: true,
                     enable_dom_text_profile: false,
                     enable_dom_mutation_profile: false,
+                    enable_dom_event_profile: false,
                 },
                 stream: Some(client_stream),
                 next_call_id: 1,

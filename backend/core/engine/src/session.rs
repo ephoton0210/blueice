@@ -538,27 +538,64 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                             None => write_unknown_tab_error(stream, request_id, target)?,
                         }
                     }
-                    ClientMessage::Click { x, y } => match tabs.get_mut(target) {
-                        Some(page) => {
-                            if let Some(href) = page.click(x, y) {
-                                begin_gated_navigation(
-                                    page,
+                    ClientMessage::Click { x, y } => {
+                        if let Some((node, clicked_generation)) =
+                            tabs.get(target).and_then(|page| {
+                                page.click_event_target(x, y)
+                                    .map(|node| (node, page.document_generation()))
+                            })
+                        {
+                            let dispatch = dispatch_click_before_default(
+                                &mut page_script_runtime.javascript_executor,
+                                tabs,
+                                target,
+                                node,
+                                requests.script,
+                            );
+                            match dispatch {
+                                Err(_) => write_error(
                                     stream,
-                                    frame_dir,
-                                    generation,
                                     reply_tab,
                                     request_id,
-                                    target,
-                                    href,
-                                    PendingKind::Navigate,
-                                    &mut pending_nav_seq,
-                                    &completion_tx,
-                                    gatekeeper_socket,
-                                )?;
+                                    "page click listener unavailable".to_string(),
+                                )?,
+                                Ok(prevented) => {
+                                    let page =
+                                        tabs.get_mut(target).expect("hit-tested tab is live");
+                                    if page.document_generation() != clicked_generation
+                                        || prevented == Some(true)
+                                    {
+                                        send_frame(
+                                            page, stream, frame_dir, generation, reply_tab,
+                                            request_id,
+                                        )?;
+                                    } else if let Some(href) = page.act(node, NodeAction::Click) {
+                                        begin_gated_navigation(
+                                            page,
+                                            stream,
+                                            frame_dir,
+                                            generation,
+                                            reply_tab,
+                                            request_id,
+                                            target,
+                                            href,
+                                            PendingKind::Navigate,
+                                            &mut pending_nav_seq,
+                                            &completion_tx,
+                                            gatekeeper_socket,
+                                        )?;
+                                    } else if prevented.is_some() {
+                                        send_frame(
+                                            page, stream, frame_dir, generation, reply_tab,
+                                            request_id,
+                                        )?;
+                                    }
+                                }
                             }
+                        } else if tabs.get(target).is_none() {
+                            write_unknown_tab_error(stream, request_id, target)?;
                         }
-                        None => write_unknown_tab_error(stream, request_id, target)?,
-                    },
+                    }
                     ClientMessage::Scroll { delta_y } => match tabs.get_mut(target) {
                         Some(page) => {
                             page.scroll_by(delta_y);
@@ -661,35 +698,76 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                         },
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
-                    ClientMessage::ActOn { id, action } => match tabs.get_mut(target) {
-                        Some(page) => {
-                            let is_click = matches!(action, NodeAction::Click);
-                            match page.act(NodeId::from_u64(id), action) {
-                                Some(href) => begin_gated_navigation(
-                                    page,
-                                    stream,
-                                    frame_dir,
-                                    generation,
-                                    reply_tab,
-                                    request_id,
-                                    target,
-                                    href,
-                                    PendingKind::Navigate,
-                                    &mut pending_nav_seq,
-                                    &completion_tx,
-                                    gatekeeper_socket,
-                                )?,
-                                // A Click that didn't land on a link is a
-                                // no-op, same as a coordinate Click
-                                // elsewhere -- no reply.
-                                None if is_click => {}
-                                None => send_frame(
+                    ClientMessage::ActOn { id, action } => {
+                        let node = NodeId::from_u64(id);
+                        let is_click = matches!(action, NodeAction::Click);
+                        let clicked_generation = if is_click {
+                            tabs.get(target).map(Page::document_generation)
+                        } else {
+                            None
+                        };
+                        let dispatch = if is_click {
+                            tabs.get(target)
+                                .and_then(|page| page.event_element_target(node))
+                                .map(|event_node| {
+                                    dispatch_click_before_default(
+                                        &mut page_script_runtime.javascript_executor,
+                                        tabs,
+                                        target,
+                                        event_node,
+                                        requests.script,
+                                    )
+                                })
+                        } else {
+                            None
+                        };
+                        if matches!(dispatch, Some(Err(_))) {
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "page click listener unavailable".to_string(),
+                            )?;
+                        } else if let Some(page) = tabs.get_mut(target) {
+                            let prevented = dispatch.and_then(Result::ok).flatten();
+                            if (is_click && clicked_generation != Some(page.document_generation()))
+                                || prevented == Some(true)
+                            {
+                                send_frame(
                                     page, stream, frame_dir, generation, reply_tab, request_id,
-                                )?,
+                                )?;
+                            } else {
+                                match page.act(node, action) {
+                                    Some(href) => begin_gated_navigation(
+                                        page,
+                                        stream,
+                                        frame_dir,
+                                        generation,
+                                        reply_tab,
+                                        request_id,
+                                        target,
+                                        href,
+                                        PendingKind::Navigate,
+                                        &mut pending_nav_seq,
+                                        &completion_tx,
+                                        gatekeeper_socket,
+                                    )?,
+                                    // A Click that didn't land on a link is a
+                                    // no-op, same as a coordinate Click
+                                    // elsewhere -- no reply.
+                                    None if is_click && prevented.is_none() => {}
+                                    None if is_click => send_frame(
+                                        page, stream, frame_dir, generation, reply_tab, request_id,
+                                    )?,
+                                    None => send_frame(
+                                        page, stream, frame_dir, generation, reply_tab, request_id,
+                                    )?,
+                                }
                             }
+                        } else {
+                            write_unknown_tab_error(stream, request_id, target)?;
                         }
-                        None => write_unknown_tab_error(stream, request_id, target)?,
-                    },
+                    }
                     ClientMessage::Highlight { id } => match tabs.get_mut(target) {
                         Some(page) => {
                             page.set_highlight(id.map(NodeId::from_u64));
@@ -957,6 +1035,21 @@ fn synchronize_javascript_executor(
         javascript_executor.synchronize_and_execute_serving_script(tabs, script_requests)?;
     }
     Ok(())
+}
+
+fn dispatch_click_before_default(
+    javascript_executor: &mut Option<&mut dyn PageJavaScriptExecutor>,
+    tabs: &mut TabManager,
+    tab_id: TabId,
+    node: NodeId,
+    script_requests: Option<&ScriptRequestReceiver>,
+) -> io::Result<Option<bool>> {
+    match javascript_executor.as_deref_mut() {
+        Some(executor) => {
+            executor.dispatch_click_serving_script(tabs, tab_id, node.as_u64(), script_requests)
+        }
+        None => Ok(None),
+    }
 }
 
 fn synchronize_inline_page_executor(

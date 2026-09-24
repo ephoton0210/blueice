@@ -552,6 +552,8 @@ fn host_click_listeners_are_vm_rooted_and_prevent_default_only_during_dispatch()
     .unwrap();
     vm.install_host_click_event_methods(family).unwrap();
     let source = "globalThis.calls = 0; findNode().addEventListener('click', function(event) { \
+                  if (event.type !== 'click' || event.target !== this || \
+                      event.currentTarget !== this) throw 'event target'; \
                   globalThis.calls += 1; event.preventDefault(); globalThis.savedEvent = event; });";
     vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap())
         .unwrap();

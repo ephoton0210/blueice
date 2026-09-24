@@ -1325,6 +1325,31 @@ fn is_assignable(
         (Type::Array(actual), Type::Array(expected)) => {
             is_assignable(actual, expected, aliases, visited, budget)
         }
+        (
+            Type::Function {
+                parameters: actual_parameters,
+                result: actual_result,
+            },
+            Type::Function {
+                parameters: expected_parameters,
+                result: expected_result,
+            },
+        ) if actual_parameters.len() == expected_parameters.len() => {
+            expected_parameters
+                .iter()
+                .zip(actual_parameters)
+                .all(|(expected, actual)| {
+                    expected.optional == actual.optional
+                        && is_assignable(
+                            expected.annotation.as_ref().unwrap_or(&Type::Unknown),
+                            actual.annotation.as_ref().unwrap_or(&Type::Unknown),
+                            aliases,
+                            &mut visited.clone(),
+                            budget,
+                        )
+                })
+                && is_assignable(actual_result, expected_result, aliases, visited, budget)
+        }
         (Type::Tuple(actual), Type::Tuple(expected)) if actual.len() == expected.len() => {
             actual.iter().zip(expected).all(|(actual, expected)| {
                 is_assignable(actual, expected, aliases, &mut visited.clone(), budget)

@@ -286,6 +286,18 @@ impl PageHostConnection {
 /// process boundary and lets focused tests use a recording child peer.
 pub trait PageHostClient {
     fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply>;
+    fn dispatch_click_with_script_pump(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _node_id: u64,
+        _pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement click dispatch",
+        ))
+    }
     /// Test transports can keep a simple request/reply path. The real socket
     /// transport overrides this to release the session thread for DOM calls.
     fn synchronize_document_with_script_pump(
@@ -890,6 +902,23 @@ impl PageHostClient for PageHostConnection {
         pump: &mut dyn FnMut() -> io::Result<()>,
     ) -> io::Result<PageHostReply> {
         self.request_while_pumping_script(PageHostRequest::SynchronizeDocument { document }, pump)
+    }
+
+    fn dispatch_click_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        node_id: u64,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script(
+            PageHostRequest::DispatchClick {
+                tab_id,
+                document_generation,
+                node_id,
+            },
+            pump,
+        )
     }
 
     fn close_realm(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply> {
@@ -2151,6 +2180,52 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
                 Self::synchronize_and_execute_serving_script(self, tabs, script_requests)
             }
             None => Self::synchronize_and_execute(self, tabs),
+        }
+    }
+
+    fn dispatch_click_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        tab_id: TabId,
+        node_id: u64,
+        script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<Option<bool>> {
+        let Some(page) = tabs.get(tab_id) else {
+            return Ok(None);
+        };
+        let Some(identity) = live_page_identity(page) else {
+            return Ok(None);
+        };
+        if self.live_documents.get(&tab_id) != Some(&identity) {
+            return Ok(None);
+        }
+        let Some(script_requests) = script_requests else {
+            return Ok(None);
+        };
+        let target = ScriptDocumentTarget {
+            tab_id: tab_id.as_u64(),
+            document_generation: identity.document_generation,
+        };
+        let mut remaining = MAX_NESTED_SCRIPT_REQUESTS_PER_WAIT;
+        let mut pump = || {
+            pump_script_requests_during_child_wait(script_requests, tabs, target, &mut remaining)
+        };
+        match self.child.dispatch_click_with_script_pump(
+            target.tab_id,
+            target.document_generation,
+            node_id,
+            &mut pump,
+        )? {
+            PageHostReply::ClickDispatched {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                default_prevented,
+            } if reply_tab_id == target.tab_id
+                && reply_generation == target.document_generation =>
+            {
+                Ok(Some(default_prevented))
+            }
+            _ => Err(io::Error::other("page-host click response invalid")),
         }
     }
 

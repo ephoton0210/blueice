@@ -178,6 +178,26 @@ impl Page {
         nearest_link_href(&self.doc, node)
     }
 
+    /// The live element receiving an owner-originated click. Text fragments
+    /// hit-test to text nodes, but the first event profile exposes element
+    /// listeners, so route to their nearest element ancestor.
+    pub(crate) fn click_event_target(&self, x: f64, y: f64) -> Option<NodeId> {
+        let node = hit_test(&self.fragment, x, y + self.scroll_y)?;
+        self.event_element_target(node)
+    }
+
+    pub(crate) fn event_element_target(&self, mut node: NodeId) -> Option<NodeId> {
+        if !self.doc.contains(node) {
+            return None;
+        }
+        loop {
+            if matches!(self.doc.data(node), NodeData::Element { .. }) {
+                return Some(node);
+            }
+            node = self.doc.parent(node)?;
+        }
+    }
+
     /// Hit-tests a pointer move the same way [`Page::click`] hit-tests
     /// a click, becoming the single source of truth for "what's
     /// hovered" -- see `phase-1-ai-representation-layer/PLAN.md` §4.

@@ -40,6 +40,12 @@ pub const PAGE_HOST_DOM_MUTATION_DECLARATION_MODULE_ID_V1: &str =
     "blueice:///profiles/core-script-dom-mutation-v1/lib.blueice.d.ts";
 pub const PAGE_HOST_DOM_MUTATION_HOST_API_VERSION_V1: &str = "blueice-core-script-v3";
 
+/// An owner-selected superset with VM-rooted, exact-node click listeners.
+pub const PAGE_HOST_DOM_EVENT_PROFILE_V1: &str = "core-script-dom-event-v1";
+pub const PAGE_HOST_DOM_EVENT_DECLARATION_MODULE_ID_V1: &str =
+    "blueice:///profiles/core-script-dom-event-v1/lib.blueice.d.ts";
+pub const PAGE_HOST_DOM_EVENT_HOST_API_VERSION_V1: &str = "blueice-core-script-v4";
+
 const DECLARATION_HEADER: &str = "// Generated from the BlueIce host type surface. Do not edit.\n";
 
 /// One runtime global represented by the fixed page-host profile.
@@ -178,6 +184,43 @@ const PAGE_HOST_DOM_MUTATION_BINDINGS_V1: [PageHostDocumentBindingV1; 8] = [
     },
 ];
 
+const PAGE_HOST_DOM_EVENT_BINDINGS_V1: [PageHostDocumentBindingV1; 10] = [
+    PAGE_HOST_DOM_MUTATION_BINDINGS_V1[0],
+    PAGE_HOST_DOM_MUTATION_BINDINGS_V1[1],
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-document",
+        declaration: "interface BlueIceNode extends BlueIceNodeAppend, BlueIceNodeText, BlueIceNodeClickAdd, BlueIceNodeClickRemove {}\ninterface BlueIceDocument extends BlueIceDocumentCreateElement, BlueIceDocumentCreateTextNode, BlueIceDocumentLookup {}\ndeclare const document: BlueIceDocument;",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.document",
+        capability: "dom-read",
+        feature_flag: "live-dom-click",
+        first_host_api_version: PAGE_HOST_DOM_EVENT_HOST_API_VERSION_V1,
+    },
+    PAGE_HOST_DOM_MUTATION_BINDINGS_V1[3],
+    PAGE_HOST_DOM_MUTATION_BINDINGS_V1[4],
+    PAGE_HOST_DOM_MUTATION_BINDINGS_V1[5],
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-node-add-click-listener",
+        declaration: "interface BlueIceNodeClickAdd { addEventListener(eventType: 'click', listener: (event: BlueIceClickEvent) => void): void; }\ninterface BlueIceClickEvent { readonly type: 'click'; readonly target: BlueIceNode; readonly currentTarget: BlueIceNode; preventDefault(): void; }",
+        role: PageHostBindingRoleV1::Type,
+        runtime_binding_id: "node.addEventListener",
+        capability: "dom-event",
+        feature_flag: "live-dom-click",
+        first_host_api_version: PAGE_HOST_DOM_EVENT_HOST_API_VERSION_V1,
+    },
+    PAGE_HOST_DOM_MUTATION_BINDINGS_V1[6],
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-node-remove-click-listener",
+        declaration: "interface BlueIceNodeClickRemove { removeEventListener(eventType: 'click', listener: (event: BlueIceClickEvent) => void): void; }",
+        role: PageHostBindingRoleV1::Type,
+        runtime_binding_id: "node.removeEventListener",
+        capability: "dom-event",
+        feature_flag: "live-dom-click",
+        first_host_api_version: PAGE_HOST_DOM_EVENT_HOST_API_VERSION_V1,
+    },
+    PAGE_HOST_DOM_MUTATION_BINDINGS_V1[7],
+];
+
 /// Returns the complete fixed binding inventory in deterministic stable-ID
 /// order.  There is no API to add, remove, or select records for one page.
 pub fn page_host_document_context_bindings_v1() -> &'static [PageHostDocumentBindingV1] {
@@ -201,6 +244,17 @@ pub fn page_host_dom_mutation_bindings_v1() -> &'static [PageHostDocumentBinding
 
 pub fn page_host_dom_mutation_runtime_bindings_v1() -> [PageHostRuntimeBindingV1; 8] {
     PAGE_HOST_DOM_MUTATION_BINDINGS_V1.map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
+pub fn page_host_dom_event_bindings_v1() -> &'static [PageHostDocumentBindingV1] {
+    &PAGE_HOST_DOM_EVENT_BINDINGS_V1
+}
+
+pub fn page_host_dom_event_runtime_bindings_v1() -> [PageHostRuntimeBindingV1; 10] {
+    PAGE_HOST_DOM_EVENT_BINDINGS_V1.map(|binding| PageHostRuntimeBindingV1 {
         stable_id: binding.stable_id,
         runtime_binding_id: binding.runtime_binding_id,
     })
@@ -257,6 +311,13 @@ impl PageHostDocumentTypingsV1 {
         Self::generate_from(
             PAGE_HOST_DOM_MUTATION_PROFILE_V1,
             page_host_dom_mutation_bindings_v1(),
+        )
+    }
+
+    pub fn generate_dom_event() -> Self {
+        Self::generate_from(
+            PAGE_HOST_DOM_EVENT_PROFILE_V1,
+            page_host_dom_event_bindings_v1(),
         )
     }
 
@@ -335,6 +396,17 @@ impl PageHostDocumentTypingsV1 {
         self.verified_module_for(
             Self::generate_dom_mutation(),
             PAGE_HOST_DOM_MUTATION_DECLARATION_MODULE_ID_V1,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_event_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_event(),
+            PAGE_HOST_DOM_EVENT_DECLARATION_MODULE_ID_V1,
             installed_bindings,
         )
     }
@@ -537,5 +609,42 @@ mod tests {
         ] {
             assert!(compile(source).is_err(), "{source}");
         }
+    }
+
+    #[test]
+    fn click_event_profile_types_only_the_installed_listener_pair() {
+        use blueice_bluets::{CompilerOptions, MapLoader, RuntimePolicy};
+
+        let artifact = PageHostDocumentTypingsV1::generate_dom_event();
+        let bindings = page_host_dom_event_runtime_bindings_v1();
+        assert_eq!(artifact.profile, PAGE_HOST_DOM_EVENT_PROFILE_V1);
+        assert_eq!(bindings.len(), 10);
+        assert!(artifact.verify_runtime_bindings(&bindings[..9]).is_err());
+        let ambient = artifact
+            .verified_dom_event_ambient_module(&bindings)
+            .unwrap();
+        assert_eq!(ambient.id, PAGE_HOST_DOM_EVENT_DECLARATION_MODULE_ID_V1);
+        let compile = |source| {
+            crate::compile_direct_script(
+                "memory:///click.ts",
+                &MapLoader::from([ModuleSource::new("memory:///click.ts", source)]),
+                CompilerOptions {
+                    runtime_policy: RuntimePolicy::Checked,
+                    require_declared_global_calls: true,
+                    ambient_declaration_modules: vec![ambient.clone()],
+                    ..CompilerOptions::default()
+                },
+            )
+        };
+        compile("function onClick(event: BlueIceClickEvent): void { event.preventDefault(); } document.getElementById('link')!.addEventListener('click', onClick);").unwrap();
+        assert!(
+            compile("document.getElementById('link')!.addEventListener('change', () => {});")
+                .is_err()
+        );
+        assert!(
+            compile("document.getElementById('link')!.addEventListener('click', 'wrong');")
+                .is_err()
+        );
+        assert!(compile("document.getElementById('link')!.dispatchEvent('click');").is_err());
     }
 }

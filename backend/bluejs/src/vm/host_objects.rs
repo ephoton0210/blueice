@@ -277,6 +277,14 @@ impl Vm {
                 false,
             )?;
             self.define_data(event, "target", Value::Object(wrapper), false, true, false)?;
+            self.define_data(
+                event,
+                "currentTarget",
+                Value::Object(wrapper),
+                false,
+                true,
+                false,
+            )?;
             self.define_data(event, "cancelable", Value::Bool(true), false, true, false)?;
             self.install_host_callable_native(
                 event,

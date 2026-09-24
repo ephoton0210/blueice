@@ -141,17 +141,21 @@ open because ordinary realms cannot transfer wrappers. BlueTS now recursively
 infers chained call-result receivers and validates their method arguments;
 the real-page rejected script exercises this path before execution.
 
-**Click callback VM foundation (B3 in progress):** The BlueJS host-object
-family can now opt into exact-wrapper `addEventListener('click', callback)`
-and `removeEventListener` methods. BlueJS itself roots callable identities,
-deduplicates and caps registrations, and releases roots on removal; no
-function object or numeric callback handle enters primitive host callbacks
-or IPC. A host-owned synchronous dispatch creates a short-lived click event
-whose `preventDefault()` works only during that dispatch and returns a
-cancellation bit to the embedding host. Per-realm page runtime routing rejects
-cross-tab and successor-realm families, with GC and lifecycle regressions.
-The launcher child has not installed this profile, and core has not yet
-ordered hit-test dispatch before default link navigation; B3 remains open.
+**Click delivery and event profile (B3 partially complete):** The BlueJS
+host-object family roots, deduplicates, caps, and removes exact-wrapper
+`click` callbacks without passing a function or callback handle through
+primitive host callbacks or IPC. The launcher now selects a separate event-v1
+profile, installs its exact 10-binding inventory, and keeps the node family
+with the exact child document. Page-host v33 accepts only a core-hit-tested
+node and returns a cancellation bit after the synchronous child dispatch.
+Core serves same-document DOM calls during that wait and applies link
+navigation only when `preventDefault()` did not run. A real process test
+exercises coordinate Click and ActOn with JavaScript and BlueTS listeners,
+visible DOM mutation, and canceled navigation. Child tests prove removed and
+old-document callbacks do not run. The BlueTS checker now parses bounded
+callback function types and distinguishes string literals for exact `click`
+typing; the older mutation-v1 artifact remains unchanged. The Phase 13
+task-queue and microtask-checkpoint semantics remain an explicit B3 gap.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
