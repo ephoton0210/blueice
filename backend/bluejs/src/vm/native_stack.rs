@@ -130,6 +130,15 @@ mod tests {
         }
 
         #[test]
+        fn reports_nothing_once_the_lower_bound_is_unknown() {
+            let remaining = on_thread_with_stack(1024 * 1024, || {
+                super::super::LOWEST_STACK_ADDRESS.with(|lowest| lowest.set(None));
+                remaining_stack()
+            });
+            assert_eq!(remaining, None);
+        }
+
+        #[test]
         fn reports_about_the_stack_the_thread_was_given() {
             const STACK: usize = 1024 * 1024;
             let remaining = on_thread_with_stack(STACK, || remaining_stack().expect("supported"));

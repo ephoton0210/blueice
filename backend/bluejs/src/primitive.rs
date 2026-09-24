@@ -242,9 +242,8 @@ fn compare_bigint_number(bigint: &BigInt, number: f64) -> Result<Option<Ordering
     if number == f64::NEG_INFINITY {
         return Ok(Some(Ordering::Greater));
     }
-    let integer = BigInt::from_f64(number.trunc()).ok_or_else(|| {
-        RuntimeError::RangeError("cannot compare a BigInt with this Number".into())
-    })?;
+    let integer = BigInt::from_f64(number.trunc())
+        .expect("a finite Number truncates to an integer a BigInt can hold");
     let ordering = bigint.cmp(&integer);
     if ordering == Ordering::Equal && number.fract() != 0.0 {
         return Ok(Some(if number.is_sign_positive() {
@@ -341,7 +340,8 @@ pub(crate) fn string_to_bigint(s: &str) -> Option<BigInt> {
     if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
-    let value = BigInt::parse_bytes(digits.as_bytes(), 10)?;
+    let value = BigInt::parse_bytes(digits.as_bytes(), 10)
+        .expect("digits validated as ASCII decimal always parse");
     Some(if negative { -value } else { value })
 }
 

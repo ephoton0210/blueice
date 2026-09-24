@@ -12,7 +12,9 @@ impl Vm {
         receiver: &Value,
         time_like: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("native_call brand-checks every Temporal.PlainDate/PlainDateTime receiver");
         let time = if *time_like == Value::Undefined {
             (0, 0, 0, 0, 0, 0)
         } else {
@@ -36,8 +38,12 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
-        let fields = self.temporal_calendar_fields(&existing)?;
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("native_call brand-checks every Temporal.PlainDate/PlainDateTime receiver");
+        let fields = self
+            .temporal_calendar_fields(&existing)
+            .expect("reading a Temporal value's calendar fields cannot fail");
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let ym_fields = plain_year_month::YearMonthFields {
@@ -48,7 +54,7 @@ impl Vm {
             ordinal_month: None,
         };
         let date = plain_year_month::year_month_from_fields(calendar_kind, &ym_fields, false)
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
+            .expect("the year-month fields of an existing date are valid");
         let value =
             Self::temporal_date_value(TemporalKind::PlainYearMonth, existing.calendar, date);
         self.alloc_temporal_value(value, false)
@@ -63,7 +69,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("native_call brand-checks every Temporal.PlainDate/PlainDateTime receiver");
         // `CalendarMonthDayFromFields` on the ISO calendar always uses the
         // reference ISO year 1972: the date's own year plays no part, since
         // `ISODateToFields(month-day)` carries just `monthCode` and `day`
@@ -75,12 +83,14 @@ impl Vm {
                 1972,
                 false,
             )
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar month-day".into()))?;
+            .expect("the month-day fields of an existing date are valid");
             let value =
                 Self::temporal_date_value(TemporalKind::PlainMonthDay, existing.calendar, date);
             return self.alloc_temporal_value(value, false);
         }
-        let fields = self.temporal_calendar_fields(&existing)?;
+        let fields = self
+            .temporal_calendar_fields(&existing)
+            .expect("reading a Temporal value's calendar fields cannot fail");
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let md_fields = plain_month_day::MonthDayFields {
@@ -91,7 +101,7 @@ impl Vm {
             ..Default::default()
         };
         let date = plain_month_day::month_day_from_fields(calendar_kind, &md_fields, false)
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar month-day".into()))?;
+            .expect("the month-day fields of an existing date are valid");
         let value = Self::temporal_date_value(TemporalKind::PlainMonthDay, existing.calendar, date);
         self.alloc_temporal_value(value, false)
     }

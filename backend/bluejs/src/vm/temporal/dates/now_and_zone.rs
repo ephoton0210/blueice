@@ -33,7 +33,11 @@ impl Vm {
             return Ok(time_zone_id::SYSTEM.into());
         }
         if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("a Value::Object is a live heap object")
+            {
                 if temporal.kind == TemporalKind::ZonedDateTime {
                     return Ok(temporal.time_zone);
                 }
@@ -161,10 +165,14 @@ impl Vm {
             RuntimeError::RangeError(format!("invalid Temporal time zone: {source}"))
         };
         if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("a Value::Object is a live heap object")
+            {
                 if temporal.kind == TemporalKind::ZonedDateTime {
-                    return time_zone::parse_identifier(&temporal.time_zone)
-                        .ok_or_else(|| invalid(&temporal.time_zone));
+                    return Ok(time_zone::parse_identifier(&temporal.time_zone)
+                        .expect("a ZonedDateTime stores a valid time zone"));
                 }
             }
         }
@@ -251,7 +259,9 @@ impl Vm {
         receiver: &Value,
         time_zone: &Value,
     ) -> Result<Value, RuntimeError> {
-        let epoch_nanoseconds = self.temporal_instant_epoch(receiver)?;
+        let epoch_nanoseconds = self
+            .temporal_instant_epoch(receiver)
+            .expect("native_call brand-checks every Temporal.Instant receiver");
         let zone = self.temporal_time_zone(time_zone)?;
         let mut value = TemporalValue {
             kind: TemporalKind::ZonedDateTime,

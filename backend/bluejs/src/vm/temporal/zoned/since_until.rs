@@ -55,7 +55,9 @@ impl Vm {
         options: &Value,
         since: bool,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native_call brand-checks every Temporal.ZonedDateTime receiver");
         let other = self.temporal_to_zoned_date_time(other_value, &Value::Undefined)?;
         if existing.calendar != other.calendar {
             return Err(RuntimeError::RangeError(
@@ -191,7 +193,8 @@ impl Vm {
         // before its range check (`temporal_duration_record`): a difference
         // too large for a double to hold exactly is observably rounded
         // (`prototype/{since,until}/float64-representable-integer.js`).
-        let record = Self::temporal_duration_record(fields.map(i128::from))?;
+        let record = Self::temporal_duration_record(fields.map(i128::from))
+            .expect("the difference of two supported instants is a valid Duration");
         self.alloc_temporal_value(Self::temporal_duration_value(record), false)
     }
 
@@ -200,7 +203,9 @@ impl Vm {
         receiver: &Value,
         other_value: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native_call brand-checks every Temporal.ZonedDateTime receiver");
         let other = self.temporal_to_zoned_date_time(other_value, &Value::Undefined)?;
         // `TimeZoneEquals`: compares primary-zone identity, not raw stored
         // spelling -- an IANA alias and its target (`Asia/Calcutta` /

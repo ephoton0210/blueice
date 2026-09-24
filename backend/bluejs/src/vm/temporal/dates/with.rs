@@ -17,11 +17,18 @@ impl Vm {
         like: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("native_call brand-checks every Temporal.PlainDate/PlainDateTime receiver");
         let like_object = like
             .object_id()
             .ok_or_else(|| RuntimeError::TypeError("Temporal.with requires an object".into()))?;
-        if self.heap.temporal_value(like_object)?.is_some() {
+        if self
+            .heap
+            .temporal_value(like_object)
+            .expect("a Value::Object is a live heap object")
+            .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "Temporal.with does not accept a Temporal-like object".into(),
             ));
@@ -33,7 +40,9 @@ impl Vm {
                 )));
             }
         }
-        let existing_fields = self.temporal_calendar_fields(&existing)?;
+        let existing_fields = self
+            .temporal_calendar_fields(&existing)
+            .expect("reading a Temporal value's calendar fields cannot fail");
         let is_date_time = existing.kind == TemporalKind::PlainDateTime;
 
         // `PrepareCalendarFields`/`PreparePartialCalendarFields` read and

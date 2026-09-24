@@ -152,7 +152,11 @@ impl Vm {
         options: &Value,
     ) -> Result<TemporalValue, RuntimeError> {
         if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("a Value::Object is a live heap object")
+            {
                 let resolved = match temporal.kind {
                     TemporalKind::PlainDate | TemporalKind::PlainDateTime => Some((
                         (temporal.year, temporal.month, temporal.day),
@@ -186,13 +190,12 @@ impl Vm {
                 OverflowInput::Options(options),
             );
         }
-        if !matches!(value, Value::String(_)) {
+        let Value::String(text) = value else {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainDate-like value must be an object or a string".into(),
             ));
-        }
-        let source = self
-            .coerce_string(value)?
+        };
+        let source = text
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid Temporal.PlainDate string".into()))?;
         // The string is parsed strictly before `options` is read: an invalid
@@ -211,7 +214,11 @@ impl Vm {
         options: &Value,
     ) -> Result<TemporalValue, RuntimeError> {
         if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("a Value::Object is a live heap object")
+            {
                 let resolved = match temporal.kind {
                     TemporalKind::PlainDateTime => Some((
                         (temporal.year, temporal.month, temporal.day),
@@ -264,12 +271,12 @@ impl Vm {
                 OverflowInput::Options(options),
             );
         }
-        if !matches!(value, Value::String(_)) {
+        let Value::String(text) = value else {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainDateTime-like value must be an object or a string".into(),
             ));
-        }
-        let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
+        };
+        let source = text.to_utf8().map_err(|_| {
             RuntimeError::RangeError("invalid Temporal.PlainDateTime string".into())
         })?;
         // Parse first, read `options` second -- see `temporal_to_plain_date`.
@@ -290,5 +297,52 @@ impl Vm {
         } else {
             self.temporal_to_plain_date_time(value, options)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MISMATCH: &str = "Temporal.PlainDate/PlainDateTime method requires a matching receiver";
+
+    #[test]
+    fn a_date_receiver_must_be_a_plain_date_or_plain_date_time() {
+        let mut vm = Vm::default();
+        let receivers = vm
+            .execute(
+                &crate::compile(
+                    &crate::parse(
+                        "[Temporal.PlainDate.from('2020-01-02'), Temporal.PlainDateTime.from('2020-01-02T03:04'),
+                          {}, new Temporal.Instant(0n)]",
+                    )
+                    .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+            .object_id()
+            .unwrap();
+        vm.stack.push(Value::Object(receivers));
+        let receiver = |vm: &Vm, index: &str| vm.heap().get(receivers, index).unwrap();
+        for index in ["0", "1"] {
+            let value = vm.temporal_date_receiver(&receiver(&vm, index)).unwrap();
+            assert_eq!((value.year, value.month, value.day), (2020, 1, 2));
+        }
+        for value in [Value::Undefined, receiver(&vm, "2"), receiver(&vm, "3")] {
+            assert_eq!(
+                vm.temporal_date_receiver(&value).unwrap_err(),
+                RuntimeError::TypeError(MISMATCH.into())
+            );
+        }
+    }
+
+    #[test]
+    fn only_year_month_and_week_units_map_to_date_units_and_the_rest_to_days() {
+        use rounding::TemporalUnit::*;
+        let mapped = [Year, Month, Week, Day, Hour]
+            .map(Vm::temporal_unit_to_date_unit)
+            .map(|unit| format!("{unit:?}"));
+        assert_eq!(mapped, ["Year", "Month", "Week", "Day", "Day"]);
     }
 }

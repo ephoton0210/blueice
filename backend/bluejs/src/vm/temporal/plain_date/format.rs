@@ -47,3 +47,23 @@ pub(crate) fn format_calendar_annotation(calendar: &str, show: ShowCalendar) -> 
         ShowCalendar::Auto | ShowCalendar::Always => format!("[u-ca={calendar}]"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_four_calendar_name_values_parse() {
+        let parsed = ["auto", "always", "never", "critical", "bogus"].map(parse_show_calendar);
+        assert_eq!(
+            parsed,
+            [
+                Some(ShowCalendar::Auto),
+                Some(ShowCalendar::Always),
+                Some(ShowCalendar::Never),
+                Some(ShowCalendar::Critical),
+                None
+            ]
+        );
+    }
+}
