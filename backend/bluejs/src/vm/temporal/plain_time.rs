@@ -234,34 +234,28 @@ impl Vm {
         }
     }
 
-    /// Reads a validated `Temporal.PlainTime` receiver's time of day.
+    /// Reads a validated `Temporal.PlainTime` receiver's time of day. The
+    /// native dispatcher has already required a PlainTime receiver.
     pub(in super::super) fn temporal_plain_time_fields(
         &mut self,
         receiver: &Value,
-    ) -> Result<(u8, u8, u8, u16, u16, u16), RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError(
-                "Temporal.PlainTime method requires a PlainTime receiver".into(),
-            )
-        })?;
-        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError(
-                "Temporal.PlainTime method requires a PlainTime receiver".into(),
-            )
-        })?;
-        if value.kind != TemporalKind::PlainTime {
-            return Err(RuntimeError::TypeError(
-                "Temporal.PlainTime method requires a PlainTime receiver".into(),
-            ));
-        }
-        Ok((
+    ) -> (u8, u8, u8, u16, u16, u16) {
+        let object = receiver
+            .object_id()
+            .expect("a PlainTime receiver is an object");
+        let value = self
+            .heap
+            .temporal_value(object)
+            .expect("a PlainTime receiver is a live heap object")
+            .expect("a PlainTime receiver carries a Temporal slot");
+        (
             value.hour,
             value.minute,
             value.second,
             value.millisecond,
             value.microsecond,
             value.nanosecond,
-        ))
+        )
     }
 
     /// `ToTemporalTime`: a `PlainTime`/`PlainDateTime`/`ZonedDateTime` carries
@@ -273,7 +267,11 @@ impl Vm {
         options: &Value,
     ) -> Result<(u8, u8, u8, u16, u16, u16), RuntimeError> {
         if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("a script-visible value is a live heap object")
+            {
                 let carried = match temporal.kind {
                     // A `ZonedDateTime`'s stored ISO fields are its local
                     // wall-clock ones in any zone -- named (transition rules
@@ -344,7 +342,7 @@ impl Vm {
         duration_value: &Value,
         negate: bool,
     ) -> Result<Value, RuntimeError> {
-        let fields = self.temporal_plain_time_fields(receiver)?;
+        let fields = self.temporal_plain_time_fields(receiver);
         let duration = self.temporal_duration_from_value(duration_value)?;
         let time = duration_math::TimeDuration::from_fields(
             duration.hours,
@@ -371,7 +369,7 @@ impl Vm {
         receiver: &Value,
         round_to: &Value,
     ) -> Result<Value, RuntimeError> {
-        let fields = self.temporal_plain_time_fields(receiver)?;
+        let fields = self.temporal_plain_time_fields(receiver);
         if *round_to == Value::Undefined {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainTime.round requires a smallestUnit or options argument".into(),
@@ -437,7 +435,7 @@ impl Vm {
         options: &Value,
         since: bool,
     ) -> Result<Value, RuntimeError> {
-        let fields = self.temporal_plain_time_fields(receiver)?;
+        let fields = self.temporal_plain_time_fields(receiver);
         let other_fields = self.temporal_to_plain_time(other, &Value::Undefined)?;
         let base = self.stack.len();
         let result = (|| {
@@ -518,7 +516,7 @@ impl Vm {
         receiver: &Value,
         other: &Value,
     ) -> Result<Value, RuntimeError> {
-        let fields = self.temporal_plain_time_fields(receiver)?;
+        let fields = self.temporal_plain_time_fields(receiver);
         let other = self.temporal_to_plain_time(other, &Value::Undefined)?;
         Ok(Value::Bool(fields == other))
     }
@@ -547,11 +545,16 @@ impl Vm {
         like: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let fields = self.temporal_plain_time_fields(receiver)?;
+        let fields = self.temporal_plain_time_fields(receiver);
         let object = like.object_id().ok_or_else(|| {
             RuntimeError::TypeError("Temporal.PlainTime.with requires a property bag".into())
         })?;
-        if self.heap.temporal_value(object)?.is_some() {
+        if self
+            .heap
+            .temporal_value(object)
+            .expect("a script-visible value is a live heap object")
+            .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainTime.with does not accept a Temporal value".into(),
             ));
@@ -620,7 +623,7 @@ impl Vm {
         receiver: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let fields = self.temporal_plain_time_fields(receiver)?;
+        let fields = self.temporal_plain_time_fields(receiver);
         let base = self.stack.len();
         let result = (|| {
             let options = self.temporal_options(options)?;
@@ -703,13 +706,12 @@ impl Vm {
                     1,
                     PlainTimePrecision::Seconds(Some(6)),
                 ),
-                Some(rounding::TimeUnit::Nanosecond) => (
+                // `hour` is rejected by the option list above, so only
+                // `nanosecond` reaches this arm.
+                Some(rounding::TimeUnit::Nanosecond | rounding::TimeUnit::Hour) => (
                     rounding::TimeUnit::Nanosecond,
                     1,
                     PlainTimePrecision::Seconds(Some(9)),
-                ),
-                Some(rounding::TimeUnit::Hour) => unreachable!(
-                    "the smallestUnit option list above excludes hour for serialization"
                 ),
                 None => match digits {
                     None => (
@@ -791,8 +793,6 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        // Brand check before any observable option read.
-        self.temporal_plain_time_fields(receiver)?;
         let stack_base = self.stack.len();
         let result = (|| {
             let formatter = self.create_date_time_format(

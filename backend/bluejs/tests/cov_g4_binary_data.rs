@@ -298,6 +298,7 @@ ops.forEach(function (name) {
     th(name + ' on a bigint array with a number', function () { Atomics[name](big, 0, 1, 1) }, TypeError);
   }
 });
+eq('compareExchange replacement conversion', throwsBoom(function () { Atomics.compareExchange(i32, 0, 0, thrower) }), true);
 var detached = new Int32Array(4);
 detach(detached.buffer);
 th('load from a detached array', function () { Atomics.load(detached, 0) }, TypeError);
@@ -415,6 +416,29 @@ var realm = $262.createRealm();
 eq('foreign buffer', new Int16Array(new realm.global.ArrayBuffer(8)).length, 4);
 eq('foreign typed array', new Uint8Array(new realm.global.Uint8Array([1, 2])).join(), '1,2');
 eq('subclass', new (class extends Uint8Array {})(2).length, 2);
+"#),
+        ""
+    );
+}
+
+#[test]
+fn buffer_slice_reports_a_foreign_species_result_that_is_not_a_plain_buffer() {
+    assert_eq!(
+        run(r#"
+var realm = $262.createRealm();
+var other = realm.global;
+var b = new ArrayBuffer(8);
+b.constructor = { [Symbol.species]: other.SharedArrayBuffer };
+th('foreign shared result', function () { b.slice(0) }, Error);
+b.constructor = { [Symbol.species]: realm.evalScript('(function (n) { return {} })') };
+th('foreign object that is not a buffer', function () { b.slice(0) }, TypeError);
+var s = new SharedArrayBuffer(8);
+s.constructor = { [Symbol.species]: realm.evalScript('(function (n) { return {} })') };
+th('foreign object that is not a shared buffer', function () { s.slice(0) }, TypeError);
+s.constructor = { [Symbol.species]: other.SharedArrayBuffer };
+eq('foreign shared species', s.slice(2, 6).byteLength, 4);
+b.constructor = { [Symbol.species]: other.ArrayBuffer };
+eq('foreign species', b.slice(2, 6).byteLength, 4);
 "#),
         ""
     );

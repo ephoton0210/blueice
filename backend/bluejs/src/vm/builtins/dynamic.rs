@@ -4,6 +4,11 @@
 
 use super::*;
 
+/// The heap accesses so marked run on objects the caller just created or was
+/// handed by running script, so the only failure the heap can report, a
+/// handle it does not own, cannot happen.
+const LIVE: &str = "a script-visible value is a live heap object";
+
 /// Internal name of the wrapper declaration `dynamic_function_constructor`
 /// compiles; it is not a valid identifier, so no source can refer to it.
 const DYNAMIC_FUNCTION_BINDING: &str = "*anonymous*";
@@ -355,9 +360,6 @@ impl Vm {
         };
         self.stack.push(Value::Object(object));
         match method {
-            Is => unreachable!("Object.is returns before object coercion"),
-            FromEntries => unreachable!("Object.fromEntries creates its result before coercion"),
-            GroupBy => unreachable!("Object.groupBy creates its result before object coercion"),
             Assign => {
                 let base = self.stack.len();
                 let result = (|| {
@@ -365,7 +367,10 @@ impl Vm {
                         if matches!(source, Value::Undefined | Value::Null) {
                             continue;
                         }
-                        let source = self.coerce_object(source)?;
+                        // Nullish sources were skipped above, so this cannot fail.
+                        let source = self
+                            .coerce_object(source)
+                            .expect("a non-nullish value has an object wrapper");
                         self.stack.push(Value::Object(source));
                         for key in self.object_own_property_keys(source)? {
                             let Some(descriptor) = self.object_get_own_property(source, &key)?
@@ -442,11 +447,8 @@ impl Vm {
                             true,
                         ),
                     )?;
-                    if !defined {
-                        return Err(RuntimeError::TypeError(
-                            "cannot define descriptor property".into(),
-                        ));
-                    }
+                    // A data property on a fresh ordinary object always defines.
+                    assert!(defined, "a fresh descriptors object accepts the property");
                     self.stack.pop();
                 }
                 Ok(Value::Object(descriptors))
@@ -467,7 +469,7 @@ impl Vm {
                     descriptors.push((key, self.read_descriptor(&descriptor_object)?));
                 }
                 for (key, mut descriptor) in descriptors {
-                    if key == "length" && self.heap.is_array(object)? {
+                    if key == "length" && self.heap.is_array(object).expect(LIVE) {
                         if let Some(value) = &descriptor.value {
                             descriptor.value = Some(self.array_length_value(value)?);
                         }
@@ -490,7 +492,7 @@ impl Vm {
                 let key = self.coerce_property_key(native::argument(args, 1))?;
                 if matches!(method, DefineProperty | ReflectDefineProperty) {
                     let mut descriptor = self.read_descriptor(native::argument(args, 2))?;
-                    if key == "length" && self.heap.is_array(object)? {
+                    if key == "length" && self.heap.is_array(object).expect(LIVE) {
                         if let Some(value) = &descriptor.value {
                             descriptor.value = Some(self.array_length_value(value)?);
                         }
@@ -637,9 +639,10 @@ impl Vm {
                         }
                     }
                     for (key, descriptor) in descriptors {
-                        if !self.object_define_own_property(object, key, descriptor)? {
-                            return Err(RuntimeError::TypeError("cannot define property".into()));
-                        }
+                        // The descriptor was validated by `read_descriptor` and
+                        // `object` is a fresh ordinary object, which accepts it.
+                        let defined = self.object_define_own_property(object, key, descriptor)?;
+                        assert!(defined, "a fresh object accepts a valid descriptor");
                     }
                 }
                 Ok(Value::Object(object))
@@ -702,7 +705,10 @@ impl Vm {
                 }
                 Ok(first.clone())
             }
-            IsSealed | IsFrozen => {
+            // `IsSealed` and `IsFrozen`, the last two methods. `Is`,
+            // `FromEntries` and `GroupBy` returned above, before any object
+            // coercion.
+            _ => {
                 if self.object_is_extensible(object)? {
                     return Ok(Value::Bool(false));
                 }
@@ -750,12 +756,19 @@ impl Vm {
                 // Later descriptor getters may allocate and collect earlier values.
                 self.stack.push(property.clone());
                 match name {
-                    "enumerable" => descriptor.enumerable = Some(self.to_boolean(&property)?),
-                    "configurable" => descriptor.configurable = Some(self.to_boolean(&property)?),
-                    "writable" => descriptor.writable = Some(self.to_boolean(&property)?),
+                    "enumerable" => {
+                        descriptor.enumerable = Some(self.to_boolean(&property).expect(LIVE))
+                    }
+                    "configurable" => {
+                        descriptor.configurable = Some(self.to_boolean(&property).expect(LIVE))
+                    }
+                    "writable" => {
+                        descriptor.writable = Some(self.to_boolean(&property).expect(LIVE))
+                    }
                     "value" => descriptor.value = Some(property),
                     _ => {
-                        if property != Value::Undefined && !self.is_callable(&property)? {
+                        if property != Value::Undefined && !self.is_callable(&property).expect(LIVE)
+                        {
                             return Err(RuntimeError::TypeError(
                                 "accessor must be callable or undefined".into(),
                             ));
@@ -786,10 +799,10 @@ impl Vm {
             return Ok(prototype);
         }
         let constructor = self.string_intrinsics()?.0;
-        let function_prototype = self.heap.prototype(constructor)?.unwrap();
+        let function_prototype = self.heap.prototype(constructor).expect(LIVE).unwrap();
         let iterator_base = self.base_iterator_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(iterator_base)))?;
-        let root = self.heap.root(prototype)?;
+        let root = self.heap.root(prototype).expect(LIVE);
         let result = (|| {
             self.install_native(
                 prototype,
@@ -809,7 +822,7 @@ impl Vm {
             Ok(prototype)
         })();
         if result.is_err() {
-            self.heap.unroot(root)?;
+            self.heap.unroot(root).expect(LIVE);
         } else {
             self.iterator_prototype = Some(prototype);
         }

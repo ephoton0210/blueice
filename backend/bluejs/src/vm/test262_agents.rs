@@ -288,27 +288,16 @@ impl Vm {
                 false,
                 true,
             )?;
-            for (name, length) in [
-                ("start", 1),
-                ("broadcast", 1),
-                ("receiveBroadcast", 1),
-                ("report", 1),
-                ("getReport", 0),
-                ("sleep", 1),
-                ("monotonicNow", 0),
-                ("leaving", 0),
+            for (name, length, native) in [
+                ("start", 1, "agentStart"),
+                ("broadcast", 1, "agentBroadcast"),
+                ("receiveBroadcast", 1, "agentReceiveBroadcast"),
+                ("report", 1, "agentReport"),
+                ("getReport", 0, "agentGetReport"),
+                ("sleep", 1, "agentSleep"),
+                ("monotonicNow", 0, "agentMonotonicNow"),
+                ("leaving", 0, "agentLeaving"),
             ] {
-                let native = match name {
-                    "start" => "agentStart",
-                    "broadcast" => "agentBroadcast",
-                    "receiveBroadcast" => "agentReceiveBroadcast",
-                    "report" => "agentReport",
-                    "getReport" => "agentGetReport",
-                    "sleep" => "agentSleep",
-                    "monotonicNow" => "agentMonotonicNow",
-                    "leaving" => "agentLeaving",
-                    _ => unreachable!(),
-                };
                 self.install_native(
                     agent,
                     function_prototype,
@@ -354,11 +343,13 @@ impl Vm {
         Some(result)
     }
 
-    fn agent_host(&self) -> Result<Arc<Test262AgentHost>, RuntimeError> {
+    /// The natives that call this are installed together with the host, so it
+    /// is always there.
+    fn agent_host(&self) -> Arc<Test262AgentHost> {
         self.test262_agent_host
             .as_ref()
             .cloned()
-            .ok_or_else(|| RuntimeError::TypeError("Test262 agent host is unavailable".into()))
+            .expect("the agent natives are installed with their host")
     }
 
     fn test262_agent_start(&mut self, source: &Value) -> Result<Value, RuntimeError> {
@@ -366,7 +357,7 @@ impl Vm {
             .coerce_string(source)?
             .to_utf8()
             .map_err(|_| RuntimeError::TypeError("agent source is not UTF-8".into()))?;
-        let host = self.agent_host()?;
+        let host = self.agent_host();
         let control = host.register();
         let config = self.config;
         let thread_host = Arc::clone(&host);
@@ -419,7 +410,7 @@ impl Vm {
         let backing = self.heap.shared_buffer_backing(buffer)?;
         let maximum = self.heap.buffer_max_byte_length(buffer)?;
         let byte_length = self.heap.buffer_byte_length(buffer)?;
-        self.agent_host()?.broadcast(Broadcast {
+        self.agent_host().broadcast(Broadcast {
             backing,
             max_byte_length: (maximum != byte_length).then_some(maximum),
         });
@@ -432,7 +423,7 @@ impl Vm {
                 "agent.receiveBroadcast callback must be callable".into(),
             ));
         }
-        let host = self.agent_host()?;
+        let host = self.agent_host();
         let control = self
             .test262_agent_control
             .as_ref()
@@ -465,13 +456,13 @@ impl Vm {
     }
 
     fn test262_agent_report(&mut self, value: &Value) -> Result<Value, RuntimeError> {
-        self.agent_host()?.report(self.coerce_string(value)?);
+        self.agent_host().report(self.coerce_string(value)?);
         Ok(Value::Undefined)
     }
 
     fn test262_agent_get_report(&self) -> Result<Value, RuntimeError> {
         Ok(self
-            .agent_host()?
+            .agent_host()
             .get_report()
             .map_or(Value::Null, Value::String))
     }
@@ -486,7 +477,7 @@ impl Vm {
 
     fn test262_agent_monotonic_now(&self) -> Result<Value, RuntimeError> {
         Ok(Value::Number(
-            self.agent_host()?.started.elapsed().as_secs_f64() * 1_000.0,
+            self.agent_host().started.elapsed().as_secs_f64() * 1_000.0,
         ))
     }
 

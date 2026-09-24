@@ -197,6 +197,35 @@ pub fn sweep_heap_bare(script: &str, max_runs: u64) {
     }
 }
 
+/// Runs each of `sources` in order as its own classic script on one shared VM
+/// (the Test262 harness installed) and returns how each one ended: `ok`
+/// followed by its completion value, or the error it reported.
+pub fn scripts(sources: &[&str]) -> Vec<String> {
+    let mut vm = Vm::new(VmConfig::default()).unwrap();
+    vm.install_test262_harness().unwrap();
+    sources
+        .iter()
+        .map(|source| {
+            let program = match parse(source) {
+                Ok(program) => program,
+                Err(error) => return format!("SyntaxError: {}", error.message),
+            };
+            let code = match compile(&program) {
+                Ok(code) => code,
+                Err(error) => return format!("SyntaxError: {error}"),
+            };
+            match vm.execute_script(&code) {
+                Ok(Value::String(text)) => format!("ok {}", text.to_utf8().unwrap_or_default()),
+                Ok(Value::Number(number)) => format!("ok {number}"),
+                Ok(Value::Bool(flag)) => format!("ok {flag}"),
+                Ok(Value::Undefined) => "ok undefined".into(),
+                Ok(other) => format!("ok {other:?}"),
+                Err(error) => error.to_string(),
+            }
+        })
+        .collect()
+}
+
 /// Exhausts the instruction budget at every step `body` takes after `setup`.
 pub fn sweep_fuel_after(setup: &str, body: &str) {
     let script = format!("{setup}\n{body}");

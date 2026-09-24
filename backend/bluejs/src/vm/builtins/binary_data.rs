@@ -31,7 +31,11 @@ impl Vm {
         &mut self,
         constructor: &str,
     ) -> Result<ObjectId, RuntimeError> {
-        let default = self.buffer_prototype(constructor)?;
+        // Only the constructor of this name calls in here, and reaching it
+        // materialized its global.
+        let default = self
+            .buffer_prototype(constructor)
+            .expect("a constructor that is running was materialized");
         self.constructor_prototype(default)
     }
 
@@ -44,7 +48,10 @@ impl Vm {
             return Ok(intrinsics);
         }
         let object_prototype = self.object_prototype;
-        let function_prototype = self.function_prototype()?;
+        // `global` materializes the String intrinsics before it builds this.
+        let function_prototype = self
+            .function_prototype()
+            .expect("the String intrinsics are materialized");
         let typed_prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let root = self.heap.root(typed_prototype).expect(LIVE);
         let base = self.stack.len();
@@ -414,7 +421,10 @@ impl Vm {
                 "transfer length exceeds ArrayBuffer maxByteLength".into(),
             ));
         }
-        let prototype = self.buffer_prototype("ArrayBuffer")?;
+        // The receiver is an ArrayBuffer, so the constructor is materialized.
+        let prototype = self
+            .buffer_prototype("ArrayBuffer")
+            .expect("ArrayBuffer was materialized");
         let target = self.with_roots(|heap| {
             if resizable {
                 heap.alloc_resizable_array_buffer(length, maximum, Some(prototype))
@@ -550,7 +560,14 @@ impl Vm {
         {
             return Err(RuntimeError::TypeError("ArrayBuffer is detached".into()));
         }
-        if self.heap.array_buffer_byte_length(result_buffer)? < width {
+        // The reads above already refused any buffer that is not a plain
+        // ArrayBuffer.
+        if self
+            .heap
+            .array_buffer_byte_length(result_buffer)
+            .expect(LIVE)
+            < width
+        {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer species result is too small".into(),
             ));
@@ -953,11 +970,8 @@ impl Vm {
                 "Atomics.wait requires a shared Int32Array or BigInt64Array".into(),
             ));
         }
-        if self.heap.typed_array_is_out_of_bounds(object).expect(LIVE) {
-            return Err(RuntimeError::TypeError(
-                "TypedArray is out of bounds".into(),
-            ));
-        }
+        // A shared buffer never shrinks and cannot be detached, so this view
+        // is never out of bounds.
         let index = self.buffer_index(native::argument(args, 1))?;
         if index >= length {
             return Err(RuntimeError::RangeError(
@@ -1486,14 +1500,14 @@ impl Vm {
         this: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        if !self.is_constructor(this)? {
+        if !self.is_constructor(this).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "TypedArray.from requires a constructor this value".into(),
             ));
         }
         let mapfn = native::argument(args, 1).clone();
         let mapping = mapfn != Value::Undefined;
-        if mapping && !self.is_callable(&mapfn)? {
+        if mapping && !self.is_callable(&mapfn).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "TypedArray.from mapfn must be callable".into(),
             ));
@@ -1610,7 +1624,7 @@ impl Vm {
         this: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        if !self.is_constructor(this)? {
+        if !self.is_constructor(this).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "TypedArray.of requires a constructor this value".into(),
             ));
@@ -1655,14 +1669,8 @@ impl Vm {
                 "TypedArray is out of bounds".into(),
             ));
         }
-        self.heap
-            .typed_array_info(object)
-            .map_err(|error| match error {
-                HeapError::InvalidObject(_) => RuntimeError::TypeError(
-                    "TypedArray method requires a TypedArray receiver".into(),
-                ),
-                error => error.into(),
-            })
+        // The bounds check above already refused anything but a TypedArray.
+        Ok(self.heap.typed_array_info(object).expect(LIVE))
     }
 
     pub(super) fn typed_array_set(
@@ -1677,7 +1685,7 @@ impl Vm {
         // it starts, but its detached/out-of-bounds validation occurs only
         // after ToIntegerOrInfinity(offset). That conversion is observable
         // and may therefore throw even for an already-detached receiver.
-        if !self.heap.is_typed_array(target)? {
+        if !self.heap.is_typed_array(target).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "TypedArray method requires a TypedArray receiver".into(),
             ));
@@ -1774,15 +1782,19 @@ impl Vm {
             length
         };
         let length_tracking = args.get(1).is_none_or(|value| *value == Value::Undefined)
-            && self.heap.typed_array_is_length_tracking(source)?
-            && (self.heap.buffer_resizable(buffer)? || self.heap.buffer_growable(buffer)?);
+            && self
+                .heap
+                .typed_array_is_length_tracking(source)
+                .expect(LIVE)
+            && (self.heap.buffer_resizable(buffer).expect(LIVE)
+                || self.heap.buffer_growable(buffer).expect(LIVE));
         let view_length = end.saturating_sub(start);
         let view_offset = byte_offset
             .checked_add(start * kind.byte_width())
             .ok_or_else(|| RuntimeError::RangeError("TypedArray offset is too large".into()))?;
         let fallback = self.global(kind.name())?;
         let constructor = self.typed_array_species_constructor(receiver, fallback)?;
-        if !self.is_constructor(&constructor)? {
+        if !self.is_constructor(&constructor).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "TypedArray constructor must be a constructor".into(),
             ));
@@ -1800,5 +1812,74 @@ impl Vm {
         )?;
         self.typed_array_receiver(&result)?;
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn number(value: f64) -> Value {
+        Value::Number(value)
+    }
+
+    fn bigint(value: i64) -> Value {
+        Value::BigInt(value.into())
+    }
+
+    #[test]
+    fn numeric_atomic_operations_wrap_at_the_element_width() {
+        let apply = |operation| {
+            Vm::atomics_binary_value(
+                TypedArrayKind::Int32,
+                &number(12.0),
+                &number(10.0),
+                operation,
+            )
+        };
+        assert_eq!(apply(AtomicOp::Add), number(22.0));
+        assert_eq!(apply(AtomicOp::And), number(8.0));
+        assert_eq!(apply(AtomicOp::Or), number(14.0));
+        assert_eq!(apply(AtomicOp::Sub), number(2.0));
+        assert_eq!(apply(AtomicOp::Xor), number(6.0));
+    }
+
+    #[test]
+    fn bigint_atomic_operations_are_exact() {
+        let apply = |operation| {
+            Vm::atomics_binary_value(
+                TypedArrayKind::BigInt64,
+                &bigint(12),
+                &bigint(10),
+                operation,
+            )
+        };
+        assert_eq!(apply(AtomicOp::Add), bigint(22));
+        assert_eq!(apply(AtomicOp::And), bigint(8));
+        assert_eq!(apply(AtomicOp::Or), bigint(14));
+        assert_eq!(apply(AtomicOp::Sub), bigint(2));
+        assert_eq!(apply(AtomicOp::Xor), bigint(6));
+    }
+
+    #[test]
+    #[should_panic(expected = "BigInt atomic operations have BigInt operands")]
+    fn a_bigint_element_never_meets_a_number_operand() {
+        Vm::atomics_binary_value(
+            TypedArrayKind::BigInt64,
+            &bigint(1),
+            &number(1.0),
+            AtomicOp::Add,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "numeric atomic operations have Number operands")]
+    fn a_numeric_element_never_meets_a_bigint_operand() {
+        Vm::atomics_binary_value(
+            TypedArrayKind::Int32,
+            &number(1.0),
+            &bigint(1),
+            AtomicOp::Add,
+        );
     }
 }

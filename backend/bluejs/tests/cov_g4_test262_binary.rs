@@ -60,3 +60,22 @@ fn atomics_operations() {
         check(&format!("built-ins/Atomics/{operation}"));
     }
 }
+
+#[test]
+fn typed_array_statics_and_views() {
+    for directory in [
+        "from",
+        "of",
+        "prototype/set",
+        "prototype/subarray",
+        "prototype/buffer",
+        "prototype/byteLength",
+        "prototype/byteOffset",
+        "prototype/length",
+        "prototype/entries",
+        "prototype/keys",
+        "prototype/values",
+    ] {
+        check(&format!("built-ins/TypedArray/{directory}"));
+    }
+}

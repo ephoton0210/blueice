@@ -551,10 +551,13 @@ impl Parser {
             if is_await {
                 return Err(self.syntax_error("for await requires an of clause"));
             }
-            let left = match (pattern, expr) {
-                (Some(pattern), None) => ForHead::Assignment(pattern),
-                (None, Some(expr)) => expr_to_for_head(expr).map_err(known_syntax)?,
-                _ => unreachable!("for head is parsed as exactly one form"),
+            // The head is a pattern or an expression, never both.
+            let left = match pattern {
+                Some(pattern) => ForHead::Assignment(pattern),
+                None => {
+                    expr_to_for_head(expr.expect("a head that is not a pattern is an expression"))
+                        .map_err(known_syntax)?
+                }
             };
             let right = self.parse_expression()?;
             self.expect_punct(Punct::RParen).map_err(known_syntax)?;
@@ -563,10 +566,13 @@ impl Parser {
         }
         if self.is_contextual_of() {
             self.advance();
-            let left = match (pattern, expr) {
-                (Some(pattern), None) => ForHead::Assignment(pattern),
-                (None, Some(expr)) => expr_to_for_head(expr).map_err(known_syntax)?,
-                _ => unreachable!("for head is parsed as exactly one form"),
+            // The head is a pattern or an expression, never both.
+            let left = match pattern {
+                Some(pattern) => ForHead::Assignment(pattern),
+                None => {
+                    expr_to_for_head(expr.expect("a head that is not a pattern is an expression"))
+                        .map_err(known_syntax)?
+                }
             };
             let right = self.parse_assignment()?;
             self.expect_punct(Punct::RParen).map_err(known_syntax)?;
@@ -599,8 +605,9 @@ impl Parser {
         };
         let mut delimiters = vec![close];
         let mut index = self.pos + 1;
-        while let Some(token) = self.tokens.get(index) {
-            match token.token {
+        // The token stream always ends in `Eof`, which returns.
+        loop {
+            match self.tokens[index].token {
                 Token::Punct(Punct::LParen) => delimiters.push(Punct::RParen),
                 Token::Punct(Punct::LBracket) => delimiters.push(Punct::RBracket),
                 Token::Punct(Punct::LBrace) => delimiters.push(Punct::RBrace),
@@ -617,7 +624,6 @@ impl Parser {
             }
             index += 1;
         }
-        false
     }
 
     /// `= <assignment expr>` with `in` disabled, or nothing -- shared by

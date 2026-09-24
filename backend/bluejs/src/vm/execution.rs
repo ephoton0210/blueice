@@ -6,6 +6,11 @@
 
 use super::*;
 
+/// The heap accesses so marked run on a cell, environment or global object
+/// the VM itself created and still roots, so the only failure the heap can
+/// report, a handle it does not own, cannot happen.
+const LIVE: &str = "the VM's own bindings are live heap objects";
+
 /// Appends the object ids among `values`, skipping every primitive.
 /// The heap values a reaction target keeps alive. A native target's promise is
 /// already rooted through `Vm::promises`, so only a capability adds any.
@@ -119,7 +124,7 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         self.ensure_no_debugger_continuation()?;
         if let Some(root) = self.result_root.take() {
-            self.heap.unroot(root)?;
+            self.heap.unroot(root).expect(LIVE);
         }
         // ClearKeptObjects runs at the end of the preceding ECMAScript job.
         // The next job's initial collection must not retain its WeakRef
@@ -128,7 +133,8 @@ impl Vm {
         self.with_roots(|heap| {
             heap.collect_major();
             Ok(())
-        })?;
+        })
+        .expect("a collection cannot fail");
         self.enqueue_finalization_cleanup_jobs();
         self.bindings.resize(code.bindings.len(), None);
         self.binding_metadata = code.bindings.clone();
@@ -159,14 +165,13 @@ impl Vm {
         &mut self,
         result: Result<Value, RuntimeError>,
     ) -> Result<Value, RuntimeError> {
-        let result = result.and_then(|value| {
+        let result = result.inspect(|value| {
             if let Value::Object(id) = value {
-                self.result_root = Some(self.heap.root(id)?);
+                self.result_root = Some(self.heap.root(*id).expect(LIVE));
             }
-            Ok(value)
         });
         if let Err(RuntimeError::Thrown(Value::Object(id))) = &result {
-            self.result_root = Some(self.heap.root(*id)?);
+            self.result_root = Some(self.heap.root(*id).expect(LIVE));
         }
         self.stack.clear();
         self.bindings.clear();
@@ -192,7 +197,8 @@ impl Vm {
         self.with_roots(|heap| {
             heap.collect_major();
             Ok(())
-        })?;
+        })
+        .expect("a collection cannot fail");
         self.enqueue_finalization_cleanup_jobs();
         result
     }
@@ -234,7 +240,8 @@ impl Vm {
                 if existing.is_some_and(|binding| !binding.property)
                     || self
                         .heap
-                        .get_own_property_descriptor(global, binding.name.as_str())?
+                        .get_own_property_descriptor(global, binding.name.as_str())
+                        .expect(LIVE)
                         .is_some_and(|descriptor| descriptor.configurable == Some(false))
                 {
                     return Err(RuntimeError::SyntaxError(format!(
@@ -266,7 +273,7 @@ impl Vm {
             let binding = &code.bindings[slot as usize];
             let function = code.global_function_names.contains(&binding.name);
             if !self.global_bindings.contains_key(&binding.name) {
-                if self.global_var_is_accessor(global, binding, function)? {
+                if self.global_var_is_accessor(global, binding, function) {
                     continue;
                 }
                 self.create_global_binding(global, binding, function, false)?;
@@ -283,19 +290,14 @@ impl Vm {
     /// so it can neither read through the getter nor forward to the setter:
     /// such a `var` gets no global binding at all. Name lookups and
     /// assignments then reach the accessor through the global object itself.
-    fn global_var_is_accessor(
-        &self,
-        global: ObjectId,
-        binding: &Binding,
-        function: bool,
-    ) -> Result<bool, RuntimeError> {
-        if function || binding.lexical {
-            return Ok(false);
-        }
-        Ok(self
-            .heap
-            .get_own_property_descriptor(global, binding.name.as_str())?
-            .is_some_and(|descriptor| descriptor.accessor()))
+    fn global_var_is_accessor(&self, global: ObjectId, binding: &Binding, function: bool) -> bool {
+        !function
+            && !binding.lexical
+            && self
+                .heap
+                .get_own_property_descriptor(global, binding.name.as_str())
+                .expect(LIVE)
+                .is_some_and(|descriptor| descriptor.accessor())
     }
 
     /// Standard global properties exist independently of a script lexical
@@ -316,7 +318,8 @@ impl Vm {
         if let Some(value) = constant {
             if self
                 .heap
-                .get_own_property_descriptor(global, name)?
+                .get_own_property_descriptor(global, name)
+                .expect(LIVE)
                 .is_none()
             {
                 self.define_data(global, name, value, false, false, false)?;
@@ -357,9 +360,10 @@ impl Vm {
         self.materialize_lexical_global(global, name)?;
         Ok(self
             .heap
-            .get_own_property_descriptor(global, name)?
+            .get_own_property_descriptor(global, name)
+            .expect(LIVE)
             .is_some()
-            || self.heap.is_extensible(global)?)
+            || self.heap.is_extensible(global).expect(LIVE))
     }
 
     pub(super) fn can_declare_global_function(
@@ -368,8 +372,12 @@ impl Vm {
         name: &str,
     ) -> Result<bool, RuntimeError> {
         self.materialize_lexical_global(global, name)?;
-        let Some(descriptor) = self.heap.get_own_property_descriptor(global, name)? else {
-            return Ok(self.heap.is_extensible(global)?);
+        let Some(descriptor) = self
+            .heap
+            .get_own_property_descriptor(global, name)
+            .expect(LIVE)
+        else {
+            return Ok(self.heap.is_extensible(global).expect(LIVE));
         };
         Ok(descriptor.configurable == Some(true)
             || (descriptor.value.is_some()
@@ -387,7 +395,8 @@ impl Vm {
         let property = !binding.lexical;
         let descriptor = self
             .heap
-            .get_own_property_descriptor(global, binding.name.as_str())?;
+            .get_own_property_descriptor(global, binding.name.as_str())
+            .expect(LIVE);
         let initial = if property && !function {
             descriptor
                 .as_ref()
@@ -397,7 +406,7 @@ impl Vm {
             Value::Undefined
         };
         let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-        let root = self.heap.root(cell)?;
+        let root = self.heap.root(cell).expect(LIVE);
         let result = (|| {
             if property {
                 if function
@@ -413,11 +422,10 @@ impl Vm {
                             PropertyDescriptor::data(Value::Undefined, true, true, configurable),
                         )
                     })?;
-                    if !defined {
-                        return Err(RuntimeError::TypeError(
-                            "cannot create global binding".into(),
-                        ));
-                    }
+                    // `can_declare_global_function`/`var` already established
+                    // that the property is absent from an extensible global
+                    // object or configurable, which is what makes it definable.
+                    assert!(defined, "a declarable global binding is definable");
                 } else if function {
                     self.with_roots(|heap| {
                         heap.set(global, binding.name.as_str(), Value::Undefined)
@@ -430,7 +438,7 @@ impl Vm {
             Ok(())
         })();
         if let Err(error) = result {
-            self.heap.unroot(root)?;
+            self.heap.unroot(root).expect(LIVE);
             return Err(error);
         }
         self.global_bindings.insert(
@@ -463,17 +471,16 @@ impl Vm {
             .collect();
         for name in stale {
             if let Some(binding) = self.global_bindings.remove(&name) {
-                self.heap.unroot(binding._root)?;
+                self.heap.unroot(binding._root).expect(LIVE);
             }
         }
         Ok(())
     }
 
     pub(super) fn global_binding_value(&self, name: &str) -> Result<Option<Value>, RuntimeError> {
-        let Some(binding) = self.global_bindings.get(name) else {
-            return Ok(None);
-        };
-        self.heap.get_own(binding.cell, "value").map_err(Into::into)
+        self.global_bindings.get(name).map_or(Ok(None), |binding| {
+            self.heap.get_own(binding.cell, "value").map_err(Into::into)
+        })
     }
 
     pub(super) fn set_global_binding(
@@ -487,7 +494,7 @@ impl Vm {
         let cell = binding.cell;
         let mutable = binding.mutable;
         let strict_immutable = binding.strict_immutable;
-        if self.heap.get_own(cell, "value")?.is_none() {
+        if self.heap.get_own(cell, "value").expect(LIVE).is_none() {
             return Err(RuntimeError::ReferenceError(name.into()));
         }
         if !mutable && strict_immutable {
@@ -512,10 +519,9 @@ impl Vm {
                 .rev()
                 .find_map(|bindings| bindings.get(name))
         });
-        match binding {
-            Some(binding) => self.heap.get_own(binding.cell, "value").map_err(Into::into),
-            None => Ok(None),
-        }
+        binding.map_or(Ok(None), |binding| {
+            self.heap.get_own(binding.cell, "value").map_err(Into::into)
+        })
     }
 
     /// Returns the dynamic eval cell that shadows this exact statically
@@ -588,7 +594,7 @@ impl Vm {
         let Some(&cell) = self.cells.get(&slot) else {
             return Ok(false);
         };
-        Ok(self.heap.get_own(cell, "value")?.is_none())
+        Ok(self.heap.get_own(cell, "value").expect(LIVE).is_none())
     }
 
     /// PutValue for a reference that resolved to binding slot `slot`.
@@ -717,7 +723,7 @@ impl Vm {
         let Some(&cell) = self.cells.get(&slot) else {
             return self.delete_unbound_name(&name);
         };
-        if self.heap.get_own(cell, "value")?.is_none() {
+        if self.heap.get_own(cell, "value").expect(LIVE).is_none() {
             return self.delete_unbound_name(&name);
         }
         let global_binding = self
@@ -757,12 +763,12 @@ impl Vm {
                 continue;
             };
             if self.is_parameter_eval_env(id)
-                && self.heap.get_own(id, name)? == Some(Value::Object(cell))
+                && self.heap.get_own(id, name).expect(LIVE) == Some(Value::Object(cell))
             {
-                self.heap.delete(id, name)?;
+                self.heap.delete(id, name).expect(LIVE);
             }
         }
-        self.heap.delete(cell, "value")?;
+        self.heap.delete(cell, "value").expect(LIVE);
         Ok(())
     }
 
@@ -776,7 +782,8 @@ impl Vm {
     ) -> Result<bool, RuntimeError> {
         let Some(cell) = self
             .heap
-            .get_own(env, name)?
+            .get_own(env, name)
+            .expect(LIVE)
             .and_then(|value| value.object_id())
         else {
             return Ok(true);
@@ -784,7 +791,7 @@ impl Vm {
         self.remove_eval_binding(name, cell)?;
         // The binding may be missing from the environment of the frame that
         // is running (a closure), so drop this record of it in any case.
-        self.heap.delete(env, name)?;
+        self.heap.delete(env, name).expect(LIVE);
         Ok(true)
     }
 
@@ -875,8 +882,8 @@ impl Vm {
             if let Some(binding) = self.global_bindings.remove(name) {
                 // Closures that captured the cell see the name resolve
                 // outward, not the stale value.
-                self.heap.delete(binding.cell, "value")?;
-                self.heap.unroot(binding._root)?;
+                self.heap.delete(binding.cell, "value").expect(LIVE);
+                self.heap.unroot(binding._root).expect(LIVE);
             }
         }
         Ok(deleted)
@@ -900,7 +907,8 @@ impl Vm {
                 .expect("globalThis is an object");
             if self
                 .heap
-                .get_own_property_descriptor(global, name.as_str())?
+                .get_own_property_descriptor(global, name.as_str())
+                .expect(LIVE)
                 .is_some_and(|descriptor| descriptor.writable == Some(false))
             {
                 return if self.strict {
@@ -1736,7 +1744,7 @@ impl Vm {
             }
             let function = code.global_function_names.contains(&binding.name);
             if !self.global_bindings.contains_key(&binding.name) {
-                if self.global_var_is_accessor(global, binding, function)? {
+                if self.global_var_is_accessor(global, binding, function) {
                     continue;
                 }
                 self.create_global_binding(global, binding, function, true)?;
