@@ -368,7 +368,7 @@ fn importing_a_foreign_array_prototype_can_hit_the_heap_limit() {
         let source = format!(
             "var m = $262.createRealm().global.eval('Array.prototype.{method}'); m.call({{ length: 2, 0: 1, 1: 2 }}, function (x) {{ return x; }}, 1);"
         );
-        stopped += heap_sweep_with(&source, 30_000, 8, true);
+        stopped += heap_sweep_with(&source, 300_000, 32, true);
     }
     assert!(stopped > 0, "{stopped}");
 }

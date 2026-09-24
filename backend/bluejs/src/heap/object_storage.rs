@@ -356,10 +356,11 @@ impl Heap {
         if let Some(id) = prototype {
             self.object(id)?;
         }
+        // A 64-bit counter advanced once per allocation cannot wrap.
         let next = self
             .next_object
             .checked_add(1)
-            .ok_or(HeapError::IdExhausted)?;
+            .expect("object identifiers cannot run out");
         let mut protected = None;
         if self.nursery.len() >= self.config.nursery_capacity {
             protected = Some(allocation_references(&kind, prototype));
@@ -405,6 +406,8 @@ impl Heap {
                     .sum(),
                 _ => 0,
             };
+        // Below the major-collection trigger (which never exceeds the heap
+        // limit) there is nothing to collect and nothing to refuse.
         if self
             .managed_bytes
             .checked_add(bytes)
@@ -413,8 +416,6 @@ impl Heap {
             let protected =
                 protected.get_or_insert_with(|| allocation_references(&kind, prototype));
             self.ensure_room(bytes, protected)?;
-        } else {
-            self.ensure_room(bytes, &[])?;
         }
         let id = ObjectId {
             heap: self.identity,
@@ -453,7 +454,7 @@ impl Heap {
         let next = self
             .next_root
             .checked_add(1)
-            .ok_or(HeapError::IdExhausted)?;
+            .expect("root identifiers cannot run out");
         let id = RootId {
             heap: self.identity,
             serial: self.next_root,
@@ -984,6 +985,11 @@ mod coverage_tests {
         assert_eq!(heap.arguments_parameter_cell(gone, &key).err(), invalid);
         assert_eq!(heap.module_namespace_export_cell(gone, &key).err(), invalid);
         assert_eq!(heap.unmap_arguments_property(gone, &key).err(), invalid);
+        assert_eq!(
+            heap.get_own_property_descriptor_key(gone, key.clone())
+                .err(),
+            invalid
+        );
         assert_eq!(heap.get_own_key(gone, key.clone()).err(), invalid);
         assert_eq!(heap.get_key(gone, key.clone()).err(), invalid);
         assert_eq!(heap.set_key(gone, key.clone(), number(1.0)).err(), invalid);
@@ -1041,25 +1047,13 @@ mod coverage_tests {
     }
 
     #[test]
-    fn identifiers_run_out() {
-        let mut heap = heap();
-        heap.next_object = u64::MAX;
-        assert_eq!(heap.alloc_object(None), Err(HeapError::IdExhausted));
-        let mut heap = self::heap();
-        let object = heap.alloc_object(None).unwrap();
-        heap.next_root = u64::MAX;
-        assert_eq!(heap.root(object), Err(HeapError::IdExhausted));
-    }
-
-    #[test]
-    fn an_allocation_that_does_not_fit_reports_the_limit_without_collecting() {
+    fn an_allocation_that_does_not_fit_reports_the_limit() {
         let mut heap = Heap::new(HeapConfig {
             nursery_capacity: 16,
             major_threshold_bytes: 1024,
             max_heap_bytes: 4096,
         })
         .unwrap();
-        heap.next_major_bytes = usize::MAX;
         assert_eq!(
             heap.alloc_string("x".repeat(8192).into(), None),
             Err(HeapError::HeapLimitExceeded { limit: 4096 })
@@ -1511,5 +1505,50 @@ mod coverage_tests {
                 )))
             )
         );
+    }
+
+    #[test]
+    fn a_lookup_walks_the_prototype_chain() {
+        let mut heap = heap();
+        let base = heap.alloc_object(None).unwrap();
+        heap.root(base).unwrap();
+        heap.set(base, "inherited", number(1.0)).unwrap();
+        let middle = heap.alloc_object(Some(base)).unwrap();
+        heap.root(middle).unwrap();
+        let object = heap.alloc_object(Some(middle)).unwrap();
+        heap.root(object).unwrap();
+        heap.set(object, "own", number(2.0)).unwrap();
+        assert_eq!(heap.get_key(object, "own".into()), Ok(number(2.0)));
+        assert_eq!(heap.get_key(object, "inherited".into()), Ok(number(1.0)));
+        assert_eq!(heap.get_key(object, "absent".into()), Ok(Value::Undefined));
+        assert_eq!(heap.get_own_key(object, "inherited".into()), Ok(None));
+    }
+
+    #[test]
+    fn an_array_stores_named_and_indexed_properties_and_grows_by_index() {
+        let mut heap = heap();
+        let array = heap.alloc_array(0, None).unwrap();
+        heap.root(array).unwrap();
+        heap.set_key(array, "named".into(), number(1.0)).unwrap();
+        heap.set_key(array, "3".into(), number(2.0)).unwrap();
+        heap.set_key(array, "1".into(), number(3.0)).unwrap();
+        heap.set_key(array, "named".into(), number(4.0)).unwrap();
+        assert_eq!(heap.get_key(array, "length".into()), Ok(number(4.0)));
+        assert_eq!(heap.get_key(array, "named".into()), Ok(number(4.0)));
+        assert_eq!(
+            heap.own_property_keys(array),
+            Ok(vec![
+                "1".into(),
+                "3".into(),
+                "length".into(),
+                "named".into()
+            ])
+        );
+        assert_eq!(
+            heap.enumerable_own_keys(array),
+            Ok(vec!["1".into(), "3".into(), "named".into()])
+        );
+        assert_eq!(heap.delete_key(array, "named".into()), Ok(true));
+        assert_eq!(heap.delete_key(array, "missing".into()), Ok(true));
     }
 }

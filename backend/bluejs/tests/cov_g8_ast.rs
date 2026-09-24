@@ -292,3 +292,66 @@ fn a_try_statement_with_neither_clause_compiles_to_its_block() {
     };
     assert_eq!(error_of(&program), None);
 }
+
+/// Parses `source`, then lets `edit` change the tree the parser produced.
+fn edited(source: &str, edit: impl FnOnce(&mut Program)) -> Program {
+    let mut program = blueice_bluejs::parse(source).unwrap();
+    edit(&mut program);
+    program
+}
+
+#[test]
+fn a_decorator_naming_an_undeclared_private_name_is_rejected_on_every_element() {
+    let source = "class D { #y = 0; @(this.#y) x = 1; @(this.#y) m() {} @(this.#y) accessor a; }";
+    // Without the declaration of `#y` the decorators can no longer resolve it.
+    let program = edited(source, |program| {
+        let Stmt::ClassDecl(class) = &mut program.body[0] else {
+            panic!("a class declaration");
+        };
+        class.elements.retain(|element| {
+            !matches!(element, blueice_bluejs::ClassElement::Field {
+                key: blueice_bluejs::PropertyKey::Identifier(name), ..
+            } if name == "#y")
+        });
+    });
+    assert_eq!(
+        error_of(&program),
+        invalid("private name is not declared in an enclosing class")
+    );
+    // One element at a time, so each element kind's decorators are reached.
+    for element in [
+        "@(this.#y) x = 1;",
+        "@(this.#y) m() {}",
+        "@(this.#y) accessor a;",
+        "@(this.#y) static s = 1;",
+    ] {
+        let source = format!("class D {{ #y = 0; {element} }}");
+        let program = edited(&source, |program| {
+            let Stmt::ClassDecl(class) = &mut program.body[0] else {
+                panic!("a class declaration");
+            };
+            class.elements.remove(0);
+        });
+        assert_eq!(
+            error_of(&program),
+            invalid("private name is not declared in an enclosing class"),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn a_parenthesized_anonymous_function_is_still_named_by_its_binding() {
+    let program = edited("var f = function () {}; f.name", |program| {
+        let Stmt::VarDecl(_, declarations) = &mut program.body[0] else {
+            panic!("a variable declaration");
+        };
+        let initializer = declarations[0].init.take().unwrap();
+        declarations[0].init = Some(Expr::Parenthesized(Box::new(initializer)));
+    });
+    let code = compile(&program).unwrap();
+    assert_eq!(
+        blueice_bluejs::Vm::default().execute(&code),
+        Ok(blueice_bluejs::Value::String("f".into()))
+    );
+}

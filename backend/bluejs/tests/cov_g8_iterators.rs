@@ -10,7 +10,7 @@
 mod cov_g8_common;
 
 use blueice_bluejs::{compile, parse, Value, Vm, VmConfig};
-use cov_g8_common::{budget_sweep, check_cases, fault_sweep, heap_sweep};
+use cov_g8_common::{budget_sweep, check_cases, fault_sweep, heap_sweep, heap_sweep_with};
 
 include!("cov_g8_tables/iterators.in");
 
@@ -189,6 +189,47 @@ fn the_setup_helpers_build_their_prototypes_on_an_almost_full_heap() {
     let mut stopped = 0;
     for source in SETUP_SOURCES {
         stopped += heap_sweep(source, 350_000, 16);
+    }
+    assert!(stopped > 1000, "{stopped}");
+}
+
+/// The iterator natives of another realm run in this realm's VM, which builds
+/// the iterator prototypes they need on first use, possibly from a full heap.
+const FOREIGN_SOURCES: &[&str] = &[
+    "var o = $262.createRealm().global; o.Iterator.from({ next() { return { done: true }; } });",
+    "var o = $262.createRealm().global; o.Iterator.from('ab');",
+    "var o = $262.createRealm().global; o.Iterator.prototype.map.call({ next() { return { done: true }; } }, function (x) { return x; });",
+    "var o = $262.createRealm().global; o.Iterator.prototype.windows.call({ next() { return { done: true }; } }, 2);",
+    "var o = $262.createRealm().global; o.Iterator.prototype.chunks.call({ next() { return { done: true }; } }, 2);",
+    "var o = $262.createRealm().global; o.Iterator.zip([{ next() { return { done: true }; } }]);",
+    "var o = $262.createRealm().global; o.Iterator.zipKeyed({ a: { next() { return { done: true }; } } }, { mode: 'longest', padding: { a: 0 } });",
+];
+
+#[test]
+fn iterator_natives_of_another_realm_build_prototypes_on_an_almost_full_heap() {
+    let mut stopped = 0;
+    for source in FOREIGN_SOURCES {
+        stopped += heap_sweep_with(source, 400_000, 128, true);
+    }
+    assert!(stopped > 100, "{stopped}");
+}
+
+/// Creating a helper leaves nothing else to allocate, so each allocation of
+/// its construction is the last one the heap can hold in turn.
+const CREATION_SOURCES: &[&str] = &[
+    "[1, 2].values().windows(2);",
+    "[1, 2].values().chunks(2);",
+    "Iterator.zip([[1].values()]);",
+    "Iterator.zip([[1].values(), [2].values()], { mode: 'longest', padding: [0] });",
+    "Iterator.zipKeyed({ a: [1].values(), b: [2].values() }, { mode: 'longest', padding: { a: 0 } });",
+    "Iterator.from('abc');",
+];
+
+#[test]
+fn creating_an_iterator_helper_can_be_the_allocation_that_does_not_fit() {
+    let mut stopped = 0;
+    for source in CREATION_SOURCES {
+        stopped += heap_sweep(source, 350_000, 8);
     }
     assert!(stopped > 1000, "{stopped}");
 }

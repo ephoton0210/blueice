@@ -503,6 +503,16 @@ impl Compiler {
         Ok(())
     }
 
+    /// Assigns the value on top of the stack to the dynamic binding `name`
+    /// and discards it. Only direct eval code, which is compiled without a
+    /// bytecode limit, needs this, so the emit results just pass through.
+    fn store_unbound_name(&mut self, name: &str) -> Result<(), CompileError> {
+        let index = self.name_const(name);
+        self.emit(Opcode::SetUnboundName, index)
+            .and_then(|_| self.emit(Opcode::Pop, 0))
+            .map(|_| ())
+    }
+
     fn function_declaration(&mut self, statement: &Stmt) -> Result<(), CompileError> {
         let (function, binding_name) = match statement {
             Stmt::FunctionDecl(function) => (
@@ -527,10 +537,7 @@ impl Compiler {
             // A sloppy direct eval re-declaring a function that an earlier eval
             // in the same function created: the binding is dynamic, so the new
             // function object replaces its value.
-            let index = self.name_const(binding_name);
-            self.emit(Opcode::SetUnboundName, index)?;
-            self.emit(Opcode::Pop, 0)?;
-            return Ok(());
+            return self.store_unbound_name(binding_name);
         };
         if self.bytecode.bindings[slot as usize].lexical {
             self.emit(Opcode::InitializeBinding, slot)?;
@@ -1520,17 +1527,11 @@ impl Compiler {
                         .or_else(|| self.eval_catch_parameter_slot(name))
                         .or_else(|| self.names[self.local_scope].get(name).copied())
                         .or_else(|| self.resolve(name));
-                    let Some(slot) = resolved else {
-                        // A sloppy direct eval does not re-create a `var` that
-                        // an earlier eval already added to the function's
-                        // VariableEnvironment: it has no static slot, and the
-                        // initializer assigns to that dynamic binding.
-                        let index = self.name_const(name);
-                        self.emit(Opcode::SetUnboundName, index)?;
-                        self.emit(Opcode::Pop, 0)?;
-                        return Ok(());
-                    };
-                    slot
+                    // A `var` an earlier direct eval already added to the
+                    // function's VariableEnvironment is a captured binding of
+                    // the eval that re-declares it, so it resolves like any
+                    // other.
+                    resolved.expect("a var initialized here is declared or captured here")
                 } else {
                     self.names.last().unwrap()[name]
                 };

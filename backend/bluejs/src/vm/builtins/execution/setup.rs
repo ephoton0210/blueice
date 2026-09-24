@@ -145,7 +145,9 @@ impl Vm {
         {
             return Ok(());
         }
-        let function_prototype = self.function_prototype()?;
+        let function_prototype = self
+            .function_prototype()
+            .expect("the Iterator prototype exists, so the String intrinsics do");
         self.install_native(
             owner,
             function_prototype,
@@ -224,8 +226,10 @@ impl Vm {
         if let Some(prototype) = self.iterator_wrapper_prototype {
             return Ok(prototype);
         }
-        let function_prototype = self.function_prototype()?;
         let base = self.base_iterator_prototype()?;
+        let function_prototype = self
+            .function_prototype()
+            .expect("base_iterator_prototype built the String intrinsics");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
         let root = self
             .heap
@@ -264,8 +268,10 @@ impl Vm {
         if let Some(prototype) = self.iterator_helper_prototype {
             return Ok(prototype);
         }
-        let function_prototype = self.function_prototype()?;
         let base = self.base_iterator_prototype()?;
+        let function_prototype = self
+            .function_prototype()
+            .expect("base_iterator_prototype built the String intrinsics");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
         let root = self
             .heap
@@ -857,7 +863,9 @@ impl Vm {
                     .get_own(metadata, format!("zipKey{index}"))
                     .expect("the zipKeyed metadata object is live")
                     .expect("zipKeyed metadata stores every source key");
-                let key = self.coerce_property_key(&key)?;
+                let key = self
+                    .coerce_property_key(&key)
+                    .expect("a stored own property key is a String or Symbol");
                 self.get_property(padding_option, &key)?
             };
             self.stack.push(value.clone());

@@ -9,7 +9,7 @@
 
 mod cov_g8_common;
 
-use cov_g8_common::{budget_sweep, check_cases, fault_sweep, heap_sweep};
+use cov_g8_common::{budget_sweep, check_cases, fault_sweep, heap_sweep, heap_sweep_with};
 
 include!("cov_g8_tables/numbers.in");
 include!("cov_g8_tables/number_format.in");
@@ -95,5 +95,18 @@ fn the_intl_namespace_is_built_from_an_almost_full_heap() {
         + heap_sweep("(1).toLocaleString('en')", 400_000, 16)
         + heap_sweep("(1n).toLocaleString('en')", 400_000, 16)
         + heap_sweep("[1, 2].toLocaleString('en')", 400_000, 16);
+    assert!(stopped > 100, "{stopped}");
+}
+
+/// A NumberFormat of another realm is constructed by this realm's VM, which
+/// builds its own `Intl` namespace on the way, possibly from a full heap.
+#[test]
+fn a_number_format_of_another_realm_builds_the_intl_namespace_on_an_almost_full_heap() {
+    let stopped = heap_sweep_with(
+        "var o = $262.createRealm().global; new o.Intl.NumberFormat('en');",
+        400_000,
+        128,
+        true,
+    );
     assert!(stopped > 100, "{stopped}");
 }

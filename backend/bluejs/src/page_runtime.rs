@@ -1379,7 +1379,7 @@ mod coverage_tests {
         ) -> Result<(), BlueJsPageRuntimeError> {
             runtime.configure_realm_bindings(tab_id, |bindings| {
                 if install_object {
-                    bindings.install_global_object("answer")?;
+                    bindings.install_global_object("namespace")?;
                     return Ok(());
                 }
                 bindings.install_global_function("answer", 1, |args: &[HostValue]| {
@@ -1395,6 +1395,7 @@ mod coverage_tests {
         );
         runtime.open_realm(1, origin()).unwrap();
         assert_eq!(configure(&mut runtime, 1, false), Ok(()));
+        assert_eq!(configure(&mut runtime, 1, true), Ok(()));
         let handle = install(&mut runtime, 1, "page:///a.js", &script("answer(1)"));
         assert_eq!(runtime.execute_program(1, handle), Ok(Value::Number(42.0)));
         assert_eq!(

@@ -93,4 +93,7 @@ const ITERATOR_CASES: &[(&str, &str)] = &[
     (r#"Iterator.zipKeyed({ a: [1, 2].values(), b: undefined, c: [3].values() }, { mode: 'longest', padding: { a: 0, c: 9 } }).toArray().map(x => JSON.stringify(x)).join('|')"#, r#"{"a":1,"c":3}|{"a":2,"c":9}"#),
     (r#"Iterator.zipKeyed({ a: [1].values() }, { mode: 'longest' }).toArray().length"#, r#"1"#),
     (r#"Iterator.zipKeyed({ a: [1].values() }, { mode: 'longest', padding: 5 })"#, r#"throws TypeError: Iterator.zip padding must be an object"#),
+    (r#"Iterator.zip([[1].values(), [2].values(), [3].values()], { mode: 'longest', padding: [0] }).toArray().join('|')"#, r#"1,2,3"#),
+    (r#"Iterator.zip([{ [Symbol.iterator]() { return 5; } }]).next()"#, r#"throws TypeError: Iterator.flatMap iterator method must return an object"#),
+    (r#"Iterator.zipKeyed({ a: { [Symbol.iterator]() { return 5; } } }).next()"#, r#"throws TypeError: Iterator.flatMap iterator method must return an object"#),
 ];

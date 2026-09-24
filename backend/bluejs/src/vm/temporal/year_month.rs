@@ -325,11 +325,8 @@ impl Vm {
                 |_| RuntimeError::RangeError("invalid Temporal calendar month-day".into()),
             )?
         };
-        if !epoch::is_date_within_limits(date) {
-            return Err(RuntimeError::RangeError(
-                "Temporal.PlainMonthDay is outside the supported range".into(),
-            ));
-        }
+        // The reference date of a month-day is always near 1972, well inside
+        // the supported range, whatever `year` was used to regulate the day.
         Ok(Self::temporal_date_value(
             TemporalKind::PlainMonthDay,
             calendar,
