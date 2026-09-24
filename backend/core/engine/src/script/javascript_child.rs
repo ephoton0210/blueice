@@ -13,10 +13,11 @@
 //! selected at executor startup supplies its complete closed graph. Core copies
 //! that graph into the private protocol; neither this adapter nor the child
 //! fetches, resolves a URL/import map, reads a filesystem, or falls back to a
-//! second source loader. It installs only fixed copied JavaScript
-//! document-text/origin callbacks; it installs no document object, DOM/event
-//! object, IPC, storage, network, URL, resolver, or page-selected binding in
-//! the child realm.
+//! second source loader. Ordinary realms install only fixed copied JavaScript
+//! document-text/origin callbacks, with no document object, DOM/event object,
+//! storage, network, URL, resolver, or page-selected binding. A separate
+//! launcher-owner proof profile can install one boolean child-to-core DOM
+//! lookup callback; it exposes no core node ID or raw IPC to page code.
 
 use super::{
     contracts::{core_script_binding_contract, CoreScriptBindingContractLimits},

@@ -3,9 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Private isolated BlueJS page-host child launched only by
-//! `blueice-launcher`. It owns no page loader, DOM, network, filesystem, or
-//! frontend socket; its sole authority is to execute complete source graphs
-//! that arrive after the launcher's versioned capability handshake.
+//! `blueice-launcher`. It owns no page loader, core DOM, network, filesystem,
+//! or frontend socket. A separately enabled proof profile can use the
+//! launcher's generation-private script socket for a boolean DOM lookup;
+//! ordinary realms execute only complete authorized source graphs.
 
 #[cfg(unix)]
 use blueice_launcher::bluejs_host::{
@@ -21,6 +22,8 @@ use std::process::ExitCode;
 struct Args {
     socket: PathBuf,
     session_token: String,
+    script_socket: Option<PathBuf>,
+    enable_dom_lookup_probe: bool,
     runtime_limits: BlueJsHostRuntimeLimits,
 }
 
@@ -28,6 +31,8 @@ struct Args {
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut socket = None;
     let mut session_token = None;
+    let mut script_socket = None;
+    let mut enable_dom_lookup_probe = false;
     let mut max_realms = None;
     let mut max_programs_per_realm = None;
     let mut max_bytecode_bytes_per_realm = None;
@@ -44,6 +49,18 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         match flag.as_str() {
             "--socket" => socket = Some(PathBuf::from(value()?)),
             "--session-token" => session_token = Some(value()?),
+            "--script-socket" => {
+                if script_socket.is_some() {
+                    return Err("--script-socket may be supplied only once".to_string());
+                }
+                script_socket = Some(PathBuf::from(value()?));
+            }
+            "--enable-dom-lookup-probe" => {
+                if enable_dom_lookup_probe {
+                    return Err("--enable-dom-lookup-probe may be supplied only once".to_string());
+                }
+                enable_dom_lookup_probe = true;
+            }
             "--max-realms" => {
                 if max_realms.is_some() {
                     return Err("--max-realms may be supplied only once".to_string());
@@ -102,6 +119,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if session_token.len() < 32 || !session_token.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("--session-token must be a non-short hexadecimal capability".to_string());
     }
+    if enable_dom_lookup_probe && script_socket.is_none() {
+        return Err("--enable-dom-lookup-probe requires --script-socket".to_string());
+    }
+    if let Some(script_socket) = script_socket.as_ref() {
+        if !script_socket.is_absolute() {
+            return Err("--script-socket must be absolute".to_string());
+        }
+        if !blueice_ipc::script::valid_script_session_token(&session_token) {
+            return Err("--script-socket requires a fixed-shape lowercase capability".to_string());
+        }
+    }
     let runtime_limits = match (
         max_realms,
         max_programs_per_realm,
@@ -137,6 +165,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     Ok(Args {
         socket,
         session_token,
+        script_socket,
+        enable_dom_lookup_probe,
         runtime_limits,
     })
 }
@@ -168,6 +198,16 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if let Some(script_socket) = args.script_socket {
+        if let Err(error) = host.configure_script_dom_capability(
+            script_socket,
+            args.session_token.clone(),
+            args.enable_dom_lookup_probe,
+        ) {
+            eprintln!("blueice-bluejs-host: invalid private script capability: {error}");
+            return ExitCode::FAILURE;
+        }
+    }
     let listener = match bind_bluejs_host_socket(&args.socket) {
         Ok(listener) => listener,
         Err(error) => {
@@ -227,6 +267,58 @@ mod tests {
             ]),
             Err("--session-token must be a non-short hexadecimal capability".to_string())
         );
+    }
+
+    #[test]
+    fn dom_lookup_probe_requires_an_absolute_private_script_socket_and_exact_capability() {
+        let token = "0123456789abcdef".repeat(4);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/host.sock",
+                "--session-token",
+                &token,
+                "--enable-dom-lookup-probe",
+            ]),
+            Err("--enable-dom-lookup-probe requires --script-socket".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/host.sock",
+                "--session-token",
+                &token,
+                "--script-socket",
+                "relative.sock",
+            ]),
+            Err("--script-socket must be absolute".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/host.sock",
+                "--session-token",
+                "0123456789abcdef0123456789abcdef",
+                "--script-socket",
+                "/tmp/script.sock",
+            ]),
+            Err("--script-socket requires a fixed-shape lowercase capability".to_string())
+        );
+        let parsed = args(&[
+            "--socket",
+            "/tmp/host.sock",
+            "--session-token",
+            &token,
+            "--script-socket",
+            "/tmp/script.sock",
+            "--enable-dom-lookup-probe",
+        ])
+        .unwrap();
+        assert_eq!(
+            parsed.script_socket,
+            Some(PathBuf::from("/tmp/script.sock"))
+        );
+        assert!(parsed.enable_dom_lookup_probe);
     }
 
     #[test]

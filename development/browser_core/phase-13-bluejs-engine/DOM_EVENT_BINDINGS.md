@@ -4,12 +4,13 @@
 
 This is the design decision for the first page-visible slice of the broader
 [Phase 2 MVP DOM surface](../phase-2-mvp-scope/PLAN.md).
-It does not claim that the bindings have been implemented. The existing
+It does not claim that the listed bindings have been implemented. The existing
 `blueice_ipc::script` requests and core dispatcher prove DOM operations against
-live tabs, while the current BlueJS page hosts install only copied document
-text and origin functions. A page VM cannot yet call the DOM dispatcher or
-receive an event. The implementation and real-page acceptance remain open in
-Phases 13 and 18.
+live tabs. Ordinary BlueJS page hosts still install only copied document text
+and origin functions; a separate owner-only proof profile lets a real child VM
+perform a synchronous lookup through core and receive a boolean, not a node
+wrapper. The listed DOM and event acceptance gates remain open in Phases 13
+and 18.
 
 ## First exposed surface
 
@@ -51,8 +52,9 @@ The script socket accepts a matching per-core child capability before any DOM
 dispatch, and each DOM request is bound to the exact live document generation.
 The launcher configures the private listener with its fresh supervised-child
 secret; a predecessor capability is denied even when a successor reuses the
-same path. The child VM has no live DOM callback yet: connection authorization
-alone does not install these bindings. An arbitrary process that can reach a
+same path. Only the owner-selected proof profile installs a boolean live-DOM
+callback; connection authorization alone does not install the listed bindings.
+An arbitrary process that can reach a
 socket or guess a tab/node number must not gain DOM authority. Public frontend,
 debugger and MCP requests cannot invoke this private operation set.
 
@@ -98,12 +100,11 @@ unchanged.
 ## Implementation and acceptance order
 
 1. Add authenticated, document-generation-bound script IPC and a bounded
-   session-owned child wait that can answer a DOM call during execution. The
-   core dispatcher now rejects an old document generation on every existing
-   DOM operation; child authentication and the nested wait are still pending.
-   Verify that an unauthenticated, stale, cross-tab or old-core request cannot
-   mutate a page; prove a child can complete a synchronous lookup without a
-   session deadlock.
+   session-owned child wait that can answer a DOM call during execution.
+   Completed: core rejects unauthenticated, stale, cross-tab, and old-core
+   requests before mutation; the supervised child completes positive and
+   negative lookups through a real HTTP page without a session deadlock.
+   This proof exposes no raw node ID to page code.
 2. Add VM-owned node wrappers and the listed DOM methods. Verify a real HTTP
    page's `<script>` reads, creates and changes visible text through the
    launcher/core/child route in document order. Reload must invalidate prior
@@ -115,12 +116,11 @@ unchanged.
    queued callbacks. Repeat the route with a supported direct BlueTS page
    using the same host profile, without a second DOM bridge.
 
-The legacy proof-of-mechanism script channel now has v2 negotiation, an exact
-tab/document-generation target on every DOM request, capped frames and
-name/text fields, and a real-core regression rejecting a stale socket request
-after navigation. This does not satisfy step 1: the listener still needs a
-launcher-owned child authentication grant and a bounded reentrant session wait
-before a page VM may call it.
+The script channel now has v3 negotiation, an exact tab/document-generation
+target on every DOM request, a launcher-owned per-core child capability,
+capped frames and name/text fields, and a bounded reentrant session wait.
+Step 1's transport/scheduling proof is complete. The remaining first-surface
+work is VM-owned wrappers, mutation methods, capability policy, and events.
 
 These are acceptance gates for the existing Phase 13/18 runtime items; this
 document closes only the Phase 13 **design** checklist item.

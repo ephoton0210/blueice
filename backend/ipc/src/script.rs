@@ -25,9 +25,10 @@
 //! one-shot connections), a `bluejs` connection is long-lived and
 //! stateful, so it gets the same `Hello`-handshake-then-long-lived-
 //! connection shape. The listener requires a launcher-owned per-core child
-//! capability before forwarding any DOM request to the session. This is not
-//! yet a usable child DOM bridge: the page host has no reentrant call route
-//! during execution. Do not expose this raw protocol to a page VM.
+//! capability before forwarding any DOM request to the session. A distinct
+//! owner-only test profile now proves a child VM can complete a synchronous
+//! lookup through the bounded reentrant session route; the raw protocol and
+//! numeric node IDs are still never exposed to page JavaScript.
 //!
 //! Each DOM request names the exact core-owned document generation as well as
 //! its tab. A request from a predecessor document fails before lookup or

@@ -96,6 +96,10 @@ mod unix {
         /// resource-policy carrier: callers cannot supply URLs, manifests,
         /// resolvers, paths, sources, or fetch settings.
         core_http_page_script_fixture: bool,
+        /// Separate owner-only proof profile for the child-to-core DOM
+        /// lookup route. It exposes only a boolean JavaScript test callback,
+        /// not node handles or the general DOM wrapper API.
+        core_dom_lookup_probe_fixture: bool,
         /// A caller-selected Unix endpoint for a sealed core compiler catalog.
         /// The default builder selects the fixed compiled-in fixture; the
         /// separate trusted-owner builder may supply a complete closed graph.
@@ -225,6 +229,15 @@ mod unix {
         pub fn supervise_out_of_process_bluejs_with_core_http_fixture(mut self) -> Self {
             self.supervise_out_of_process_bluejs = true;
             self.core_http_page_script_fixture = true;
+            self
+        }
+
+        /// Opts a supervised child into the narrow, untyped JavaScript DOM
+        /// lookup proof callback. This is a trusted embedding test profile,
+        /// unavailable to page markup, frontend IPC, and the launcher CLI.
+        pub fn supervise_out_of_process_bluejs_with_dom_lookup_probe_fixture(mut self) -> Self {
+            self.supervise_out_of_process_bluejs = true;
+            self.core_dom_lookup_probe_fixture = true;
             self
         }
 
@@ -1637,6 +1650,35 @@ mod unix {
         debugger_relay: Option<Arc<GenerationPinnedUnixRelay>>,
     }
 
+    /// One inseparable launcher-issued child/core script capability pair.
+    /// Keeping the supervisor, page-host handshake, and script socket together
+    /// prevents a staged core from accidentally receiving a mismatched path.
+    struct PrivatePageHostLaunch {
+        host: SpawnedBlueJsHost,
+        config: BlueJsHostCoreConfig,
+        script_socket: PathBuf,
+    }
+
+    impl PrivatePageHostLaunch {
+        fn spawn(options: &CoreLaunchOptions) -> io::Result<Option<Self>> {
+            if !options.supervise_out_of_process_bluejs {
+                return Ok(None);
+            }
+            let script_socket = unique_internal_script_socket_path();
+            let (host, config) =
+                SpawnedBlueJsHost::spawn_for_core_with_script_socket_and_runtime_limits(
+                    &script_socket,
+                    options.bluejs_host_runtime_limits,
+                    options.core_dom_lookup_probe_fixture,
+                )?;
+            Ok(Some(Self {
+                host,
+                config,
+                script_socket,
+            }))
+        }
+    }
+
     /// A `core` process this launcher spawned and owns privately: killed
     /// and cleaned up (process, internal socket, and frame directory) on
     /// [`Drop`], the same lifetime discipline `mcp-server`'s `CoreProcess`
@@ -1726,21 +1768,13 @@ mod unix {
                 })
                 .transpose()?
                 .map(Arc::new);
-            let (bluejs_host, page_host_config) = if options.supervise_out_of_process_bluejs {
-                let (host, config) = SpawnedBlueJsHost::spawn_for_core_with_runtime_limits(
-                    options.bluejs_host_runtime_limits,
-                )?;
-                (Some(host), Some(config))
-            } else {
-                (None, None)
-            };
+            let private_page_host = PrivatePageHostLaunch::spawn(&options)?;
             let core = Self::spawn_with_private_host(
                 width,
                 height,
                 frame_dir,
                 options,
-                bluejs_host,
-                page_host_config,
+                private_page_host,
                 RelaySet {
                     route_gate,
                     compiler_mcp_relay,
@@ -1762,21 +1796,13 @@ mod unix {
             options: CoreLaunchOptions,
             relays: RelaySet,
         ) -> io::Result<Self> {
-            let (bluejs_host, page_host_config) = if options.supervise_out_of_process_bluejs {
-                let (host, config) = SpawnedBlueJsHost::spawn_for_core_with_runtime_limits(
-                    options.bluejs_host_runtime_limits,
-                )?;
-                (Some(host), Some(config))
-            } else {
-                (None, None)
-            };
+            let private_page_host = PrivatePageHostLaunch::spawn(&options)?;
             Self::spawn_with_private_host(
                 width,
                 height,
                 frame_dir,
                 options,
-                bluejs_host,
-                page_host_config,
+                private_page_host,
                 relays,
             )
         }
@@ -1786,17 +1812,22 @@ mod unix {
             height: f64,
             frame_dir: &Path,
             options: CoreLaunchOptions,
-            bluejs_host: Option<SpawnedBlueJsHost>,
-            page_host_config: Option<BlueJsHostCoreConfig>,
+            private_page_host: Option<PrivatePageHostLaunch>,
             relays: RelaySet,
         ) -> io::Result<Self> {
+            let (bluejs_host, page_host_config, script_private_socket_path) =
+                match private_page_host {
+                    Some(private_page_host) => (
+                        Some(private_page_host.host),
+                        Some(private_page_host.config),
+                        Some(private_page_host.script_socket),
+                    ),
+                    None => (None, None, None),
+                };
             let this_exe = std::env::current_exe()?;
             let core_bin = sibling_core_binary(&this_exe);
             let internal_socket_path = unique_internal_socket_path();
             let _ = std::fs::remove_file(&internal_socket_path);
-            let script_private_socket_path = page_host_config
-                .as_ref()
-                .map(|_| unique_internal_script_socket_path());
             if let Some(path) = &script_private_socket_path {
                 remove_owned_socket_if_owned(path);
             }

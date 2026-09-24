@@ -19,7 +19,7 @@ page-host socket and never owns `TabManager`. Wrong-target calls receive an
 error without mutation, and unrelated frontend, debugger, and compiler
 messages are not dispatched in the nested wait. Socket-pair, executor,
 debugger-resume, and dispatcher tests cover this scheduling boundary. The
-child VM's first live DOM binding remains open; this is not yet an interactive
+child VM's general live DOM binding remains open; this is not yet an interactive
 page-script claim.
 
 **Nested-wait limits (A2.2):** Every child document synchronization and
@@ -31,7 +31,21 @@ the wait. Timeout, disconnect, and abort poison only that child transport;
 core does not dispatch unrelated frontend, debugger, or compiler traffic in
 the nested wait. Socket-pair regressions cover a stalled peer, prompt
 disconnect, and post-timeout unusability; dispatcher regressions cover the
-total budget and unchanged DOM. A real child VM-to-core call is still A2.3.
+total budget and unchanged DOM.
+
+**Real child DOM lookup proof (A2.3):** A distinct trusted-embedding fixture
+option now passes the launcher's per-core private script socket and existing
+64-hex child capability to the supervised child. The child lazily performs
+script IPC v3 `Hello` and sends one `GetElementById` bound to the executing
+tab/document generation. Only this owner-selected proof profile installs the
+JavaScript `blueiceTestHasElementById(id)` callback; it returns a boolean and
+never exposes a raw core node ID, socket path, or capability to page code.
+The copied-snapshot BlueTS typing inventory remains unchanged and does not
+advertise this probe. A real launcher/core/child HTTP page checks both a
+present and absent ID and then observes two completed scripts without a
+session deadlock. The ordinary child profile continues to have no live DOM
+binding. This proves the transport/scheduling mechanism, not the eventual
+`document` node-wrapper, mutation, or event API.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

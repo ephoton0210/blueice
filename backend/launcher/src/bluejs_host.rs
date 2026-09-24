@@ -61,6 +61,9 @@ use blueice_ipc::page_host::{
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
+use blueice_ipc::script::{
+    self, ScriptDocumentTarget, ScriptReply, ScriptRequest, SCRIPT_MAX_NAME_BYTES,
+};
 use blueice_net::canonical_http_origin;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
@@ -83,6 +86,8 @@ const MAX_SOURCE_BYTES_PER_DOCUMENT: usize = 8 * 1024 * 1024;
 // executable validation before it reaches its socket bind. Keep the deadline
 // finite, but do not misclassify that cold start as a dead child.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
+/// A child DOM callback must fail before the core's 60-second nested wait.
+const SCRIPT_DOM_CALL_WAIT: Duration = Duration::from_secs(30);
 
 /// Static metadata inventory IDs are private to the child but intentionally
 /// start in a separate range from child debugger-program IDs. The type-level
@@ -266,13 +271,92 @@ struct PendingDebuggerExecution {
     execution: DeferredChildExecution,
 }
 
+#[derive(Clone)]
+struct ScriptDomCapability {
+    socket_path: PathBuf,
+    session_token: String,
+    enable_lookup_probe: bool,
+}
+
+/// Child-only script IPC. The core still owns every DOM node and validates
+/// the exact target; this client never exposes a raw node ID to page code.
+struct ScriptDomClient {
+    capability: ScriptDomCapability,
+    stream: Option<UnixStream>,
+}
+
+impl ScriptDomClient {
+    fn new(capability: ScriptDomCapability) -> Self {
+        Self {
+            capability,
+            stream: None,
+        }
+    }
+
+    fn connect(&self) -> io::Result<UnixStream> {
+        let mut stream = UnixStream::connect(&self.capability.socket_path)?;
+        stream.set_read_timeout(Some(SCRIPT_DOM_CALL_WAIT))?;
+        stream.set_write_timeout(Some(SCRIPT_DOM_CALL_WAIT))?;
+        script::write_script_request(
+            &mut stream,
+            &ScriptRequest::Hello {
+                protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+                session_token: self.capability.session_token.clone(),
+            },
+        )?;
+        match script::read_script_reply(&mut stream)? {
+            ScriptReply::HelloAck {
+                protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+            } => Ok(stream),
+            _ => Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "core rejected child script capability",
+            )),
+        }
+    }
+
+    fn has_element_by_id(&mut self, target: ScriptDocumentTarget, id: String) -> io::Result<bool> {
+        if id.len() > SCRIPT_MAX_NAME_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "script DOM lookup name exceeds its fixed limit",
+            ));
+        }
+        if self.stream.is_none() {
+            self.stream = Some(self.connect()?);
+        }
+        let result = (|| {
+            let stream = self
+                .stream
+                .as_mut()
+                .expect("script stream was just connected");
+            script::write_script_request(stream, &ScriptRequest::GetElementById { target, id })?;
+            match script::read_script_reply(stream)? {
+                ScriptReply::Node { node } => Ok(node.is_some()),
+                ScriptReply::Error { .. } => Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "core denied child DOM lookup",
+                )),
+                _ => Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "core returned an invalid child DOM lookup reply",
+                )),
+            }
+        })();
+        if result.is_err() {
+            self.stream = None;
+        }
+        result
+    }
+}
+
 /// The actual state machine running in the child process.
 ///
-/// It accepts only fully selected source records. In particular, this type
-/// has no filesystem/network resolver, no DOM/IPC callback path, and no API
-/// that gives the parent a VM or a program handle. Its only host callbacks
-/// are the two fixed core-validated JavaScript string snapshots installed
-/// during document admission.
+/// It accepts only fully selected source records. It has no filesystem or
+/// network resolver and gives the parent no VM/program handle. Ordinary
+/// realms install only the two fixed core-validated string snapshots; an
+/// explicit owner-only proof profile can additionally make a boolean DOM
+/// lookup through the private script socket, without exposing node IDs.
 pub struct BlueJsChildHost {
     runtime: BlueJsPageRuntime,
     limits: BlueJsHostRuntimeLimits,
@@ -286,6 +370,7 @@ pub struct BlueJsChildHost {
     next_debugger_program_generation: u64,
     next_debugger_metadata_handle: u64,
     next_debugger_metadata_generation: u64,
+    script_dom_capability: Option<ScriptDomCapability>,
 }
 
 impl BlueJsChildHost {
@@ -311,7 +396,35 @@ impl BlueJsChildHost {
             next_debugger_program_generation: 1,
             next_debugger_metadata_handle: CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
             next_debugger_metadata_generation: CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
+            script_dom_capability: None,
         })
+    }
+
+    /// Installs only a launcher-originated, generation-private script socket.
+    /// The optional positive-lookup probe is an explicit DOM proof lane;
+    /// it is not the general DOM wrapper profile.
+    pub fn configure_script_dom_capability(
+        &mut self,
+        socket_path: PathBuf,
+        session_token: String,
+        enable_lookup_probe: bool,
+    ) -> io::Result<()> {
+        if !self.documents.is_empty()
+            || self.script_dom_capability.is_some()
+            || !socket_path.is_absolute()
+            || !script::valid_script_session_token(&session_token)
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "child script capability must be configured once before document admission",
+            ));
+        }
+        self.script_dom_capability = Some(ScriptDomCapability {
+            socket_path,
+            session_token,
+            enable_lookup_probe,
+        });
+        Ok(())
     }
 
     /// Creates a child using the complete, immutable launcher-owner envelope.
@@ -700,7 +813,9 @@ impl BlueJsChildHost {
         if install_document_snapshot_bindings(
             &mut self.runtime,
             document.tab_id,
+            document.document_generation,
             &document.snapshot,
+            self.script_dom_capability.clone(),
         )
         .is_err()
         {
@@ -3539,16 +3654,17 @@ fn validated_document_origin(
     BlueJsPageOrigin::new(canonical).map_err(|_| DocumentSnapshotError::Invalid)
 }
 
-/// Installs exactly the two core-selected immutable JavaScript callbacks. The
-/// shared generated BlueTS artifact verifies this same inventory before it can
-/// become an ambient module for a child compilation. The registrar deliberately
-/// exposes no VM operation, DOM node, resolver, URL, fetch, IPC, or object
-/// handle. Captured Rust strings are copied snapshots and page arguments are
-/// rejected before a callback can return either one.
+/// Installs the two immutable callbacks verified by the BlueTS artifact.
+/// An explicit launcher DOM-lookup fixture may additionally install a JavaScript-
+/// only boolean DOM-lookup probe. That probe forwards one exact document
+/// request to core, but exposes neither raw node IDs nor its socket/token;
+/// it is not advertised as the eventual `document` wrapper profile.
 fn install_document_snapshot_bindings(
     runtime: &mut BlueJsPageRuntime,
     tab_id: u64,
+    document_generation: u64,
     snapshot: &PageHostDocumentSnapshot,
+    script_dom_capability: Option<ScriptDomCapability>,
 ) -> Result<(), BlueJsPageRuntimeError> {
     let artifact = PageHostDocumentTypingsV1::generate();
     let binding_inventory = page_host_document_runtime_bindings_v1();
@@ -3588,6 +3704,33 @@ fn install_document_snapshot_bindings(
                     ));
                 }
             }
+        }
+        if let Some(capability) =
+            script_dom_capability.filter(|capability| capability.enable_lookup_probe)
+        {
+            let mut client = ScriptDomClient::new(capability);
+            let target = ScriptDocumentTarget {
+                tab_id,
+                document_generation,
+            };
+            bindings.install_global_function(
+                "blueiceTestHasElementById",
+                1,
+                move |arguments: &[HostValue]| {
+                    let [HostValue::String(id)] = arguments else {
+                        return Err(HostFunctionError::new(
+                            "blueiceTestHasElementById requires one string ID",
+                        ));
+                    };
+                    let id = id.to_utf8().map_err(|_| {
+                        HostFunctionError::new("DOM lookup ID must be valid UTF-16")
+                    })?;
+                    client
+                        .has_element_by_id(target, id)
+                        .map(HostValue::Bool)
+                        .map_err(|_| HostFunctionError::new("child DOM lookup unavailable"))
+                },
+            )?;
         }
         Ok(())
     })
@@ -4304,7 +4447,9 @@ pub fn bind_bluejs_host_socket(path: &Path) -> io::Result<UnixListener> {
 /// This is deliberately not a frontend setting or a page-visible capability.
 /// A caller using [`SpawnedBlueJsHost::spawn_for_core`] must pass it to a
 /// trusted core startup boundary and keep the returned supervisor alive for
-/// at least as long as that core. It has no fetch, URL, DOM, or VM authority.
+/// at least as long as that core. The same secret authenticates the child's
+/// generation-private script DOM connection when the launcher supplied that
+/// socket; it must therefore never be disclosed to frontend or page code.
 pub struct BlueJsHostCoreConfig {
     socket_path: PathBuf,
     session_token: String,
@@ -4316,7 +4461,8 @@ impl BlueJsHostCoreConfig {
         &self.socket_path
     }
 
-    /// The per-spawn capability needed by the trusted core's v1 handshake.
+    /// The per-spawn capability for the trusted core's page-host handshake
+    /// and the supervised child's matching private script socket.
     /// Callers must not forward it to frontend/page code or log it.
     pub fn session_token(&self) -> &str {
         &self.session_token
@@ -4349,7 +4495,7 @@ impl SpawnedBlueJsHost {
     /// envelope. This is an embedding/launcher construction API, not a
     /// page-host protocol capability and not a child-wide RSS limit.
     pub fn spawn_with_runtime_limits(limits: BlueJsHostRuntimeLimits) -> io::Result<Self> {
-        let mut host = Self::spawn_unconnected(limits)?;
+        let mut host = Self::spawn_unconnected(limits, None)?;
         if let Err(error) = host.connect_as_launcher() {
             host.reap_after_shutdown();
             return Err(error);
@@ -4376,7 +4522,7 @@ impl SpawnedBlueJsHost {
     pub fn spawn_for_core_with_runtime_limits(
         limits: BlueJsHostRuntimeLimits,
     ) -> io::Result<(Self, BlueJsHostCoreConfig)> {
-        let host = Self::spawn_unconnected(limits)?;
+        let host = Self::spawn_unconnected(limits, None)?;
         let config = BlueJsHostCoreConfig {
             socket_path: host.socket_path.clone(),
             session_token: host.session_token.clone(),
@@ -4384,7 +4530,33 @@ impl SpawnedBlueJsHost {
         Ok((host, config))
     }
 
-    fn spawn_unconnected(limits: BlueJsHostRuntimeLimits) -> io::Result<Self> {
+    /// Gives the supervised child only this generation's launcher-selected
+    /// core script socket and its existing per-child capability. The probe is
+    /// enabled solely by the explicit DOM lookup proof profile; ordinary
+    /// child realms receive no page-visible DOM callback yet.
+    pub(crate) fn spawn_for_core_with_script_socket_and_runtime_limits(
+        script_socket: &Path,
+        limits: BlueJsHostRuntimeLimits,
+        enable_dom_lookup_probe: bool,
+    ) -> io::Result<(Self, BlueJsHostCoreConfig)> {
+        if !script_socket.is_absolute() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "child script socket path must be absolute",
+            ));
+        }
+        let host = Self::spawn_unconnected(limits, Some((script_socket, enable_dom_lookup_probe)))?;
+        let config = BlueJsHostCoreConfig {
+            socket_path: host.socket_path.clone(),
+            session_token: host.session_token.clone(),
+        };
+        Ok((host, config))
+    }
+
+    fn spawn_unconnected(
+        limits: BlueJsHostRuntimeLimits,
+        script_socket: Option<(&Path, bool)>,
+    ) -> io::Result<Self> {
         limits
             .runtime_config()
             .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
@@ -4393,7 +4565,8 @@ impl SpawnedBlueJsHost {
         let socket_path = unique_bluejs_host_socket_path();
         let token = secure_session_token()?;
         let _ = fs::remove_file(&socket_path);
-        let mut child = Command::new(&binary)
+        let mut command = Command::new(&binary);
+        command
             .arg("--socket")
             .arg(&socket_path)
             .arg("--session-token")
@@ -4411,8 +4584,14 @@ impl SpawnedBlueJsHost {
             .arg("--max-reserved-bytecode-bytes")
             .arg(limits.max_reserved_bytecode_bytes.to_string())
             .arg("--max-reserved-heap-bytes")
-            .arg(limits.max_reserved_heap_bytes.to_string())
-            .spawn()?;
+            .arg(limits.max_reserved_heap_bytes.to_string());
+        if let Some((script_socket, enable_dom_lookup_probe)) = script_socket {
+            command.arg("--script-socket").arg(script_socket);
+            if enable_dom_lookup_probe {
+                command.arg("--enable-dom-lookup-probe");
+            }
+        }
+        let mut child = command.spawn()?;
 
         let started = wait_for_child_socket(&mut child, &socket_path, STARTUP_TIMEOUT);
         if let Err(error) = started {
@@ -6548,7 +6727,7 @@ mod tests {
                         concat!(
                             "if (blueiceDocumentText() !== 'private document snapshot') throw 'text';",
                             "if (blueiceDocumentOrigin() !== 'https://example.test') throw 'origin';",
-                            "if (typeof document !== 'undefined' || typeof fetch !== 'undefined') throw 'ambient';"
+                            "if (typeof document !== 'undefined' || typeof fetch !== 'undefined' || typeof blueiceTestHasElementById !== 'undefined') throw 'ambient';"
                         ),
                     ),
                     classic(1, "blueiceDocumentText(1);"),

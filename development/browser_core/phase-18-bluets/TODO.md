@@ -14,16 +14,18 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: A2.3.** Prove the first real child VM-to-core synchronous DOM
-lookup through a launcher/core/child HTTP fixture. The core now serves only
-the executing document during a bounded nested wait, but the child still has
-no page-visible DOM call route.
+**Current leaf: A3.1.** Bind every child DOM request and reply to the exact
+live tab/document, without child fetch, resolver, or direct core-DOM access.
+A2 now proves one synchronous child VM lookup through a real HTTP page under
+an explicit owner-only probe profile; general DOM wrappers remain open.
 
 ## Current boundary
 
 The supervised child runs authorized JavaScript and supported BlueTS classic
-and module graphs. It exposes copied document text and origin, with no live
-DOM or event API. Classic-root pause/resume and bounded BlueTS source-span
+and module graphs. Ordinary pages expose copied document text and origin,
+with no general live DOM or event API. A separately selected owner-only HTTP
+test profile exposes a boolean DOM lookup probe, not a node wrapper.
+Classic-root pause/resume and bounded BlueTS source-span
 stepping work; nested/module debugging, stack, scope, and values do not. The
 compiler/MCP route supports sealed projects and read-only queries, with no
 client registration, build output, or write authority.
@@ -76,8 +78,16 @@ client registration, build output, or write authority.
   only exact-document script requests and never enters the ordinary frontend,
   debugger, or compiler dispatch loop. Focused socket-pair tests cover prompt
   timeout/disconnect, and budget tests show excess calls leave DOM unchanged.
-- [ ] Prove a child script completes one synchronous DOM lookup through a
-  real launcher/core/child HTTP fixture without deadlock.
+- [x] Prove a child script completes one synchronous DOM lookup through a
+  real launcher/core/child HTTP fixture without deadlock. A trusted embedding
+  owner selects the separate `blueiceTestHasElementById` proof profile; the
+  launcher supplies its exact generation-private script socket and 64-hex
+  capability to the supervised child. The child lazily authenticates, sends
+  `GetElementById` with its executing tab/generation, and returns only a
+  boolean to JavaScript, never a raw node ID. A real HTTP page tests both a
+  present and absent ID in document order through launcher/core/child;
+  ordinary child realms do not install the probe. The general `document`
+  wrapper and typed DOM profile remain B1/B2 work.
 
 #### A3. Preserve the child-to-core realm boundary.
 
