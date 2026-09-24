@@ -99,6 +99,8 @@ impl Vm {
             top_level_module: false,
             globals: HashMap::new(),
             host_functions: Vec::new(),
+            host_object_factories: Vec::new(),
+            host_object_families: Vec::new(),
             global_bindings: HashMap::new(),
             symbol_registry: Rc::new(RefCell::new(HashMap::new())),
             intl_legacy_constructed_symbol: None,

@@ -14,7 +14,8 @@
 use crate::{
     BlueJsAstNodeKind, BlueJsProgramDebugError, BlueJsProgramHandle, BlueJsProgramRegistry,
     BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, HeapError, HeapStats, HostFunction,
-    HostObject, RuntimeError, Value, Vm, VmConfig, VmDebuggerExecutionState,
+    HostObject, HostObjectFactory, HostObjectFamily, RuntimeError, Value, Vm, VmConfig,
+    VmDebuggerExecutionState,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -120,6 +121,24 @@ impl BlueJsHostBindingRegistrar<'_> {
     /// Installs one opaque host object as a global in this realm.
     pub fn install_global_object(&mut self, name: &str) -> Result<HostObject, RuntimeError> {
         self.vm.install_host_object(name)
+    }
+
+    /// Creates a private, collector-rooted wrapper family for this realm.
+    pub fn create_host_object_family(&mut self) -> Result<HostObjectFamily, RuntimeError> {
+        self.vm.create_host_object_family()
+    }
+
+    /// Installs a global factory that turns child-private keys into stable JS
+    /// wrapper objects. No key or VM object handle crosses to page code.
+    pub fn install_global_object_factory(
+        &mut self,
+        name: &str,
+        length: u32,
+        family: HostObjectFamily,
+        factory: impl HostObjectFactory,
+    ) -> Result<(), RuntimeError> {
+        self.vm
+            .install_host_object_factory(name, length, family, factory)
     }
 
     /// Installs one non-constructable callback on a host object created by

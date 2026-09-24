@@ -16,8 +16,8 @@
 use blueice_bluejs::{
     parse, parse_module, BlueJsPageDebuggerExecutionState, BlueJsPageOrigin, BlueJsPageRuntime,
     BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BlueJsProgramHandle, BlueJsProgramV1,
-    BlueJsSourceIdentity, CompileError, HeapConfig, HostFunctionError, HostValue, Module,
-    ParseError, RuntimeError, Value, Vm, VmConfig,
+    BlueJsSourceIdentity, CompileError, HeapConfig, HostFunctionError, HostObjectKey, HostValue,
+    Module, ParseError, RuntimeError, Value, Vm, VmConfig,
 };
 use blueice_bluets::{
     AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
@@ -65,6 +65,7 @@ use blueice_ipc::script::{
     self, ScriptDocumentTarget, ScriptReply, ScriptRequest, SCRIPT_MAX_NAME_BYTES,
 };
 use blueice_net::canonical_http_origin;
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
 use std::io;
@@ -72,6 +73,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -318,6 +320,15 @@ impl ScriptDomClient {
     }
 
     fn has_element_by_id(&mut self, target: ScriptDocumentTarget, id: String) -> io::Result<bool> {
+        self.get_element_by_id(target, id)
+            .map(|node| node.is_some())
+    }
+
+    fn get_element_by_id(
+        &mut self,
+        target: ScriptDocumentTarget,
+        id: String,
+    ) -> io::Result<Option<u64>> {
         if id.len() > SCRIPT_MAX_NAME_BYTES {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -347,7 +358,7 @@ impl ScriptDomClient {
                     target: reply_target,
                     reply,
                 } if reply_id == request_id && reply_target == target => match *reply {
-                    ScriptReply::Node { node } => Ok(node.is_some()),
+                    ScriptReply::Node { node } => Ok(node),
                     ScriptReply::Error { .. } => Err(io::Error::new(
                         io::ErrorKind::PermissionDenied,
                         "core denied child DOM lookup",
@@ -384,8 +395,9 @@ impl ScriptDomClient {
 /// It accepts only fully selected source records. It has no filesystem or
 /// network resolver and gives the parent no VM/program handle. Ordinary
 /// realms install only the two fixed core-validated string snapshots; an
-/// explicit owner-only proof profile can additionally make a boolean DOM
-/// lookup through the private script socket, without exposing node IDs.
+/// explicit owner-only proof profile can additionally make boolean and
+/// opaque-wrapper DOM lookups through the private script socket, without
+/// exposing numeric node IDs to page code.
 pub struct BlueJsChildHost {
     runtime: BlueJsPageRuntime,
     limits: BlueJsHostRuntimeLimits,
@@ -430,8 +442,8 @@ impl BlueJsChildHost {
     }
 
     /// Installs only a launcher-originated, generation-private script socket.
-    /// The optional positive-lookup probe is an explicit DOM proof lane;
-    /// it is not the general DOM wrapper profile.
+    /// The optional lookup probes are an explicit DOM proof lane; they are
+    /// not the general DOM wrapper profile.
     pub fn configure_script_dom_capability(
         &mut self,
         socket_path: PathBuf,
@@ -3684,10 +3696,10 @@ fn validated_document_origin(
 }
 
 /// Installs the two immutable callbacks verified by the BlueTS artifact.
-/// An explicit launcher DOM-lookup fixture may additionally install a JavaScript-
-/// only boolean DOM-lookup probe. That probe forwards one exact document
-/// request to core, but exposes neither raw node IDs nor its socket/token;
-/// it is not advertised as the eventual `document` wrapper profile.
+/// An explicit launcher DOM-lookup fixture may additionally install
+/// JavaScript-only boolean and opaque-object lookup probes. They forward
+/// exact-document requests to core without exposing raw node IDs or the
+/// socket/token, and are not the eventual `document` binding profile.
 fn install_document_snapshot_bindings(
     runtime: &mut BlueJsPageRuntime,
     tab_id: u64,
@@ -3737,32 +3749,53 @@ fn install_document_snapshot_bindings(
         if let Some(capability) =
             script_dom_capability.filter(|capability| capability.enable_lookup_probe)
         {
-            let mut client = ScriptDomClient::new(capability);
+            let client = Rc::new(RefCell::new(ScriptDomClient::new(capability)));
             let target = ScriptDocumentTarget {
                 tab_id,
                 document_generation,
             };
+            let boolean_client = Rc::clone(&client);
             bindings.install_global_function(
                 "blueiceTestHasElementById",
                 1,
                 move |arguments: &[HostValue]| {
-                    let [HostValue::String(id)] = arguments else {
-                        return Err(HostFunctionError::new(
-                            "blueiceTestHasElementById requires one string ID",
-                        ));
-                    };
-                    let id = id.to_utf8().map_err(|_| {
-                        HostFunctionError::new("DOM lookup ID must be valid UTF-16")
-                    })?;
-                    client
+                    let id = dom_lookup_id(arguments, "blueiceTestHasElementById")?;
+                    boolean_client
+                        .borrow_mut()
                         .has_element_by_id(target, id)
                         .map(HostValue::Bool)
+                        .map_err(|_| HostFunctionError::new("child DOM lookup unavailable"))
+                },
+            )?;
+            let family = bindings.create_host_object_family()?;
+            bindings.install_global_object_factory(
+                "blueiceTestGetElementById",
+                1,
+                family,
+                move |arguments: &[HostValue]| {
+                    let id = dom_lookup_id(arguments, "blueiceTestGetElementById")?;
+                    client
+                        .borrow_mut()
+                        .get_element_by_id(target, id)
+                        .map(|node| {
+                            node.map(|node| HostObjectKey::new(tab_id, document_generation, node))
+                        })
                         .map_err(|_| HostFunctionError::new("child DOM lookup unavailable"))
                 },
             )?;
         }
         Ok(())
     })
+}
+
+fn dom_lookup_id(arguments: &[HostValue], function: &str) -> Result<String, HostFunctionError> {
+    let [HostValue::String(id)] = arguments else {
+        return Err(HostFunctionError::new(format!(
+            "{function} requires one string ID"
+        )));
+    };
+    id.to_utf8()
+        .map_err(|_| HostFunctionError::new("DOM lookup ID must be valid UTF-16"))
 }
 
 fn require_no_arguments(arguments: &[HostValue], function: &str) -> Result<(), HostFunctionError> {
@@ -6963,7 +6996,7 @@ mod tests {
                         concat!(
                             "if (blueiceDocumentText() !== 'private document snapshot') throw 'text';",
                             "if (blueiceDocumentOrigin() !== 'https://example.test') throw 'origin';",
-                            "if (typeof document !== 'undefined' || typeof fetch !== 'undefined' || typeof blueiceTestHasElementById !== 'undefined') throw 'ambient';"
+                            "if (typeof document !== 'undefined' || typeof fetch !== 'undefined' || typeof blueiceTestHasElementById !== 'undefined' || typeof blueiceTestGetElementById !== 'undefined') throw 'ambient';"
                         ),
                     ),
                     classic(1, "blueiceDocumentText(1);"),

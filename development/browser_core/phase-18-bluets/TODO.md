@@ -14,18 +14,17 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: B1.1.** Keep node wrappers and collector-visible roots in the
-child without exposing raw numeric node IDs to page code. A3 now proves the
-DOM channel's document binding and lifecycle revocation; general DOM wrappers
-remain open.
+**Current leaf: B1.2.** Reject a wrapper after node removal, reload, or realm
+close. B1.1 establishes child-owned identity and GC roots under an owner-only
+proof profile; general `document` methods remain open.
 
 ## Current boundary
 
 The supervised child runs authorized JavaScript and supported BlueTS classic
 and module graphs. Ordinary pages expose copied document text and origin,
 with no general live DOM or event API. A separately selected owner-only HTTP
-test profile exposes a boolean DOM lookup probe, not a node wrapper.
-Classic-root pause/resume and bounded BlueTS source-span
+test profile exposes boolean and opaque-wrapper lookup probes, not the
+general `document` API. Classic-root pause/resume and bounded BlueTS source-span
 stepping work; nested/module debugging, stack, scope, and values do not. The
 compiler/MCP route supports sealed projects and read-only queries, with no
 client registration, build output, or write authority.
@@ -116,8 +115,17 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
 
 #### B1. Give JavaScript safe node identity.
 
-- [ ] Keep node wrappers and their collector-visible roots in the child;
-  never expose raw numeric node IDs to page code.
+- [x] Keep node wrappers and their collector-visible roots in the child;
+  never expose raw numeric node IDs to page code. A VM-owned host-object
+  family converts exact `(tab, generation, node)` private keys into stable
+  JavaScript objects, roots every wrapper and its private prototype for the
+  realm lifetime, and caps the family at 4,096 wrappers. The primitive-only
+  callback ABI still rejects JavaScript objects as Rust arguments. An
+  owner-only `blueiceTestGetElementById` probe shares the authenticated DOM
+  client with the prior boolean probe but returns a wrapper or `null`, never
+  a numeric node ID. VM GC/identity tests and a real launcher/core/child HTTP
+  fixture cover survival, repeat identity, an empty own-property surface,
+  absence on miss, and lack of the probe in ordinary realms.
 - [ ] Reject a wrapper after node removal, reload, or realm close.
 
 #### B2. Read and change live DOM text.

@@ -95,6 +95,6 @@ pub use property::{JsSymbol, PropertyDescriptor, PropertyName};
 pub use string::JsString;
 pub use value::{ObjectId, Value};
 pub use vm::{
-    HostFunction, HostFunctionError, HostObject, HostValue, RuntimeError, Vm, VmConfig,
-    VmDebuggerExecutionState,
+    HostFunction, HostFunctionError, HostObject, HostObjectFactory, HostObjectFamily,
+    HostObjectKey, HostValue, RuntimeError, Vm, VmConfig, VmDebuggerExecutionState,
 };

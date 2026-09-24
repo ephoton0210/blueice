@@ -69,7 +69,23 @@ core-socket regression rejects predecessor capabilities after path reuse;
 the real broker cutover regression now also checks that v1's private script
 listener is unlinked and v2 has a distinct listener, alongside replacement
 and reaping of the private child. Thus no old child stream or reply is
-transferred to the successor core. VM-owned node wrappers remain B1 work.
+transferred to the successor core. VM-owned node-wrapper identity is B1.1 below.
+
+**Child-owned node identity (B1.1):** A separate BlueJS host-object factory
+preserves the primitive-only `HostValue` callback ABI. An owner-only lookup
+callback returns an exact `(tab, document generation, node)` private key;
+the VM allocates an ordinary wrapper with a private family prototype, roots
+both prototype and wrapper in its heap, and reuses that object for repeated
+keys in the same realm. The family is bounded to 4,096 wrappers and dies with
+the VM. The raw numeric node ID remains within core/child internals and their
+private script IPC; neither it nor the child key becomes a JavaScript
+property, argument, or return value. The boolean and wrapper probes share one
+authenticated child DOM stream to respect the core listener's long-lived
+connection. VM tests force major GC and verify identity, hidden key, null on
+miss, and cross-realm rejection; the real HTTP fixture verifies the same
+page-visible wrapper behavior through launcher/core/child. The owner-only
+probe is not a general `document` binding or BlueTS declaration. Stale-node
+validation and methods are separate B1.2/B2 work.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

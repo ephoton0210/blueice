@@ -118,6 +118,11 @@ fn supervised_child_script_completes_a_synchronous_core_dom_lookup() {
             "if (typeof document !== 'undefined') throw 'child gained direct document';",
             "if (!blueiceTestHasElementById('target')) throw 'missing live node';",
             "if (blueiceTestHasElementById('absent')) throw 'invented node';",
+            "let node = blueiceTestGetElementById('target');",
+            "if (node === null || typeof node !== 'object') throw 'missing wrapper';",
+            "if (node !== blueiceTestGetElementById('target')) throw 'unstable wrapper';",
+            "if (Object.keys(node).length !== 0 || node.nodeId !== undefined) throw 'leaked node ID';",
+            "if (blueiceTestGetElementById('absent') !== null) throw 'invented wrapper';",
             "globalThis.domLookupCompleted = true;",
             "</script>",
             "<script>if (!globalThis.domLookupCompleted) throw 'lookup did not complete';</script>"

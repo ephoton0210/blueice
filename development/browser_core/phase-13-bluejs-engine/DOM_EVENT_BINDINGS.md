@@ -8,9 +8,9 @@ It does not claim that the listed bindings have been implemented. The existing
 `blueice_ipc::script` requests and core dispatcher prove DOM operations against
 live tabs. Ordinary BlueJS page hosts still install only copied document text
 and origin functions; a separate owner-only proof profile lets a real child VM
-perform a synchronous lookup through core and receive a boolean, not a node
-wrapper. The listed DOM and event acceptance gates remain open in Phases 13
-and 18.
+perform a synchronous lookup through core and receive either a boolean or a
+child-owned opaque node wrapper. The listed general DOM and event acceptance
+gates remain open in Phases 13 and 18.
 
 ## First exposed surface
 
@@ -52,18 +52,22 @@ The script socket accepts a matching per-core child capability before any DOM
 dispatch, and each DOM request is bound to the exact live document generation.
 The launcher configures the private listener with its fresh supervised-child
 secret; a predecessor capability is denied even when a successor reuses the
-same path. Only the owner-selected proof profile installs a boolean live-DOM
-callback; connection authorization alone does not install the listed bindings.
+same path. Only the owner-selected proof profile installs boolean and
+opaque-wrapper live-DOM callbacks; connection authorization alone does not
+install the listed general bindings.
 An arbitrary process that can reach a
 socket or guess a tab/node number must not gain DOM authority. Public frontend,
 debugger and MCP requests cannot invoke this private operation set.
 
-The VM's current `HostValue` callback ABI accepts primitives only. DOM wrapper
-objects and event listeners therefore need a VM-owned host-object/callable
-mechanism with collector-visible roots; do not pass or retain JS object IDs
-through `HostValue`, or put a Rust reference to `Page` in the child. Generated
-host typings may advertise a member only once that exact runtime installer
-and its capability policy exist.
+The VM's `HostValue` callback ABI continues to accept primitives only. Its
+separate host-object factory now turns child-private keys into stable,
+collector-rooted JS wrappers without sending JS object IDs through callbacks;
+the first family is capped at 4,096 wrappers per realm and is installed only
+in the owner-only proof profile. DOM methods, receiver validation, stale-node
+rejection, and listener rooting still need the capability-aware binding
+installer. Do not put a Rust reference to `Page` in the child. Generated host
+typings may advertise a member only once that exact runtime installer and its
+capability policy exist.
 
 ## Scheduling and failure behavior
 

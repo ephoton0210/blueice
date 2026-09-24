@@ -26,6 +26,7 @@ mod debugger;
 mod errors;
 mod execution;
 mod functions;
+mod host_objects;
 mod interpreter;
 mod intl;
 mod intrinsics;
@@ -45,6 +46,8 @@ use completion::{
 };
 use debugger::DebuggerContinuation;
 pub use debugger::VmDebuggerExecutionState;
+pub use host_objects::{HostObjectFactory, HostObjectFamily, HostObjectKey};
+use host_objects::{HostObjectFactoryRegistration, HostObjectFamilyState};
 use std::fmt;
 
 /// A private interpreter suspension boundary. `Offset` is also used by
@@ -883,6 +886,11 @@ pub struct Vm {
     /// Host callbacks are private to this realm. Native function objects hold
     /// only an index into this vector, so GC sees no Rust references.
     host_functions: Vec<Box<dyn HostFunction>>,
+    /// Opaque host-object factories and their collector-rooted, realm-private
+    /// identity tables. Neither a JavaScript value nor a raw host key enters
+    /// a Rust callback through the primitive-only HostValue ABI.
+    host_object_factories: Vec<HostObjectFactoryRegistration>,
+    host_object_families: Vec<HostObjectFamilyState>,
     global_bindings: HashMap<String, GlobalBinding>,
     /// The GlobalSymbolRegistry belongs to an ECMAScript agent, not to an
     /// individual Realm. Test262 child realms share this handle; independent
@@ -1116,10 +1124,20 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         let index = u32::try_from(self.host_functions.len())
             .map_err(|_| RuntimeError::RangeError("too many host functions".into()))?;
+        self.install_host_callable_native(owner, name, length, NativeFunction::Host(index))?;
+        self.host_functions.push(Box::new(function));
+        Ok(())
+    }
+
+    fn install_host_callable_native(
+        &mut self,
+        owner: ObjectId,
+        name: &str,
+        length: u32,
+        function: NativeFunction,
+    ) -> Result<(), RuntimeError> {
         let prototype = self.function_prototype()?;
-        let id = self.with_roots(|heap| {
-            heap.alloc_native_function(NativeFunction::Host(index), name, prototype)
-        })?;
+        let id = self.with_roots(|heap| heap.alloc_native_function(function, name, prototype))?;
         self.stack.push(Value::Object(id));
         let result = (|| {
             self.define_data(
@@ -1135,7 +1153,6 @@ impl Vm {
         })();
         self.stack.pop();
         result?;
-        self.host_functions.push(Box::new(function));
         Ok(())
     }
 

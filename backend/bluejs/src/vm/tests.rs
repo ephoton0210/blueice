@@ -295,6 +295,86 @@ fn host_object_methods_are_realm_local_callable_globals() {
 }
 
 #[test]
+fn opaque_host_object_factory_roots_identity_without_exposing_its_key() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findHostNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::String(id)] = args else {
+            return Err(HostFunctionError::new("a string ID is required"));
+        };
+        Ok((id.to_utf8().ok().as_deref() == Some("present"))
+            .then_some(HostObjectKey::new(7, 3, 42)))
+    })
+    .unwrap();
+    let code = crate::compile(&crate::parse("findHostNode('present');").unwrap()).unwrap();
+    let Value::Object(first) = vm.execute_script(&code).unwrap() else {
+        panic!("a host key must become a JavaScript object");
+    };
+    vm.execute_script(&crate::compile(&crate::parse("undefined;").unwrap()).unwrap())
+        .unwrap();
+    vm.heap.collect_major();
+    assert!(
+        vm.heap.contains(first),
+        "the VM-owned host wrapper must remain collector-rooted"
+    );
+    assert_eq!(vm.execute_script(&code).unwrap(), Value::Object(first));
+    let inspection = crate::compile(
+        &crate::parse(
+            "let node = findHostNode('present'); \
+             node === findHostNode('present') && \
+             typeof node === 'object' && \
+             Object.keys(node).length === 0 && \
+             node.nodeId === undefined && \
+             findHostNode('missing') === null;",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(vm.execute_script(&inspection).unwrap(), Value::Bool(true));
+    assert!(matches!(
+        vm.execute_script(&crate::compile(&crate::parse("findHostNode({});").unwrap()).unwrap()),
+        Err(RuntimeError::TypeError(_))
+    ));
+    let mut other = Vm::default();
+    assert!(matches!(
+        other.install_host_object_factory("foreign", 0, family, |_args: &[HostValue]| { Ok(None) }),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn opaque_host_object_family_has_a_fixed_root_limit() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("makeHostNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::Number(id)] = args else {
+            return Err(HostFunctionError::new("a numeric test ID is required"));
+        };
+        Ok(Some(HostObjectKey::new(7, 3, *id as u64)))
+    })
+    .unwrap();
+    let fill = crate::compile(
+        &crate::parse(&format!(
+            "for (let i = 0; i < {}; i++) makeHostNode(i);",
+            host_objects::MAX_HOST_OBJECTS_PER_FAMILY
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    vm.execute_script(&fill).unwrap();
+    assert!(matches!(
+        vm.execute_script(&crate::compile(&crate::parse("makeHostNode(0);").unwrap()).unwrap()),
+        Ok(Value::Object(_))
+    ));
+    assert!(matches!(
+        vm.execute_script(
+            &crate::compile(&crate::parse("makeHostNode(4096);").unwrap()).unwrap()
+        ),
+        Err(RuntimeError::RangeError(message)) if message == "host-object wrapper limit exceeded"
+    ));
+}
+
+#[test]
 fn host_objects_and_methods_reject_collisions_and_construction() {
     let mut vm = Vm::default();
     let code = crate::compile(&crate::parse("globalThis.reserved = undefined;").unwrap()).unwrap();
