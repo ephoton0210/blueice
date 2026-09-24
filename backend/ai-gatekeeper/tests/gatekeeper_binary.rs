@@ -170,6 +170,14 @@ fn real_gatekeeper_process_reviews_extension_actions_on_an_overridden_private_so
         gatekeeper.check("target=form-input; input_type=password"),
         GatekeeperReply::Rejected { category, .. } if category == "sensitive-extension-action"
     ));
+    assert_eq!(
+        gatekeeper.check("action=set-visible-leaf-text; text=Updated heading"),
+        GatekeeperReply::Cleared
+    );
+    assert!(matches!(
+        gatekeeper.check("action=set-visible-leaf-text; text=Enter your password"),
+        GatekeeperReply::Rejected { category, .. } if category == "extension-visible-text-social-engineering"
+    ));
 }
 
 #[test]

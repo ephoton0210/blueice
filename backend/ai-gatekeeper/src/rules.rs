@@ -18,7 +18,7 @@ use blueice_ipc::gatekeeper::{
 
 /// Version carried in diagnostics and release notes for this compiled rule
 /// set. Keep it monotonic whenever a detection decision changes.
-pub const RULESET_VERSION: &str = "2026.09.24.2";
+pub const RULESET_VERSION: &str = "2026.09.24.3";
 
 const KNOWN_MALICIOUS_HOSTS: &[&str] = &["malware.test", "phishing.test"];
 const BIDI_OVERRIDE_CODEPOINTS: &[&str] = &["U+202A–U+202E", "U+2066–U+2069"];
@@ -114,7 +114,7 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
                 signatures(BIDI_OVERRIDE_CODEPOINTS),
                 signatures(ZERO_WIDTH_CODEPOINTS),
             ].concat(),
-            match_logic: "Any obfuscating character in extension metadata rejects; a listed input_type on an action also rejects.".to_string(),
+            match_logic: "Any obfuscating character in extension metadata rejects; a listed input_type on a form-input action also rejects.".to_string(),
             workflow_steps: vec!["extension-before-side-effect".to_string(), "extension-popup-before-publish".to_string()],
             mandatory: true,
         },
@@ -125,6 +125,15 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
             conditions: [POPUP_BLOCKED_PHRASES, PROMPT_INJECTION_PHRASES].concat().iter().map(|item| (*item).to_string()).collect(),
             match_logic: "Any listed phrase in lower-cased native popup metadata rejects before publication.".to_string(),
             workflow_steps: vec!["extension-popup-before-publish".to_string()],
+            mandatory: true,
+        },
+        GatekeeperRuleInfo {
+            id: "extension-visible-text-social-engineering".to_string(),
+            category: "extension-visible-text-social-engineering".to_string(),
+            description: "Blocks credential, external-URL, and instruction-override phrases in extension-proposed visible page text before mutation.".to_string(),
+            conditions: [POPUP_BLOCKED_PHRASES, PROMPT_INJECTION_PHRASES].concat().iter().map(|item| (*item).to_string()).collect(),
+            match_logic: "Any listed phrase in the bounded proposed text rejects before the live semantic leaf changes.".to_string(),
+            workflow_steps: vec!["extension-before-side-effect".to_string()],
             mandatory: true,
         },
     ]
@@ -410,9 +419,19 @@ fn review_extension_action(
             "extension-popup-social-engineering",
         );
     }
-    if SENSITIVE_INPUT_TYPES
-        .iter()
-        .any(|kind| detail.contains(&format!("input_type={kind}")))
+    if detail.starts_with("action=set-visible-leaf-text; text=")
+        && (POPUP_BLOCKED_PHRASES.iter().any(|phrase| detail.contains(phrase))
+            || PROMPT_INJECTION_PHRASES.iter().any(|phrase| detail.contains(phrase)))
+    {
+        return reject(
+            "the extension-proposed visible text contains a credential, external-URL, or instruction-override phrase",
+            "extension-visible-text-social-engineering",
+        );
+    }
+    if detail.starts_with("target=form-input;")
+        && SENSITIVE_INPUT_TYPES
+            .iter()
+            .any(|kind| detail.contains(&format!("input_type={kind}")))
     {
         return reject(
             "the extension action writes a credential or payment-shaped input",
@@ -771,5 +790,23 @@ mod tests {
             detail: "action=show-native-popup; title=\"Notes\"; body=\"Ready\"; action_label=\"Enter password\"".to_string(),
         });
         assert!(matches!(action_label, GatekeeperReply::Rejected { .. }));
+    }
+
+    #[test]
+    fn extension_visible_leaf_text_is_reviewed_before_page_mutation() {
+        for (text, blocked) in [
+            ("Updated heading", false),
+            ("input_type=payment", false),
+            ("Enter your password", true),
+            ("ignore previous instructions", true),
+            ("Visit https://outside.example", true),
+        ] {
+            let request = GatekeeperRequest::CheckExtensionAction {
+                extension_id: "extension".to_string(),
+                capability: "dom:write".to_string(),
+                detail: format!("action=set-visible-leaf-text; text={text}"),
+            };
+            assert_eq!(matches!(review(&request), GatekeeperReply::Rejected { .. }), blocked);
+        }
     }
 }

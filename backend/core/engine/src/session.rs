@@ -143,6 +143,12 @@ pub enum ExtensionPageRequest {
         value: String,
         reply: mpsc::Sender<Result<(), String>>,
     },
+    SetVisibleLeafText {
+        tab_id: u64,
+        node_id: u64,
+        value: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
     /// Sets one integer value on an explicit range input after core derives
     /// and validates that control's live constraints.
     SetRangeInputValue {
@@ -1380,6 +1386,24 @@ fn handle_extension_page_request<S: Write>(
                     Some(tab_id.as_u64()),
                     None,
                 )?;
+            }
+            let _ = reply.send(result);
+        }
+        ExtensionPageRequest::SetVisibleLeafText {
+            tab_id,
+            node_id,
+            value,
+            reply,
+        } => {
+            let tab_id = TabId::from_u64(tab_id);
+            let node_id = NodeId::from_u64(node_id);
+            let result = match tabs.get_mut(tab_id) {
+                Some(page) => page.set_visible_leaf_text(node_id, value),
+                None => Err(format!("unknown tab {}", tab_id.as_u64())),
+            };
+            if result.is_ok() {
+                let page = tabs.get_mut(tab_id).expect("the extension target tab remains live");
+                send_frame(page, stream, frame_dir, generation, Some(tab_id.as_u64()), None)?;
             }
             let _ = reply.send(result);
         }
@@ -3450,6 +3474,44 @@ mod tests {
             Some("from extension with detail")
         );
 
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        handle.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(cleanup_dir);
+    }
+
+    #[test]
+    fn extension_v8_visible_leaf_write_updates_the_shared_frame_and_representation() {
+        let (mut client, mut server) = client_pair();
+        let (extension_tx, extension_rx) = mpsc::channel();
+        let dir = temp_frame_dir("extension-v8-visible-leaf");
+        let cleanup_dir = dir.clone();
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<h1 id=\"headline\">Before</h1>",
+            Some("https://example.test/".to_string()),
+        );
+        let node_id = tabs.get(tab_id).unwrap().script_get_element_by_id("headline").unwrap();
+        let gatekeeper = PathBuf::from("/not-used-after-host-review");
+        let handle = thread::spawn(move || {
+            let mut generation = 0;
+            run_session_with_extension_requests(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper, &extension_rx)
+        });
+        blueice_ipc::client_handshake(&mut client).unwrap();
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx.send(ExtensionPageRequest::SetVisibleLeafText {
+            tab_id: tab_id.as_u64(), node_id: node_id.as_u64(), value: "After".to_string(), reply: reply_tx,
+        }).unwrap();
+        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
+        let (frame_tab, frame_request, frame) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        assert_eq!(frame_tab, Some(tab_id.as_u64()));
+        assert_eq!(frame_request, None);
+        assert!(matches!(frame, ServerMessage::FrameReady { .. }));
+        let (read_tx, read_rx) = mpsc::channel();
+        extension_tx.send(ExtensionPageRequest::ReadRepresentation { tab_id: Some(tab_id.as_u64()), reply: read_tx }).unwrap();
+        let snapshot: blueice_ipc::AiSnapshot = serde_json::from_str(&read_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap()).unwrap();
+        assert_eq!(snapshot.nodes.iter().find(|node| node.id == node_id.as_u64()).and_then(|node| node.name.as_deref()), Some("After"));
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         handle.join().unwrap().unwrap();
         let _ = std::fs::remove_dir_all(cleanup_dir);

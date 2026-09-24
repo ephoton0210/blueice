@@ -383,11 +383,22 @@ fn range_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
         wat::parse_str(
             r#"(module
                 (import "blueice" "set_range_input_value" (func $set (param i64 i64 i64) (result i32)))
+                (import "blueice" "set_visible_leaf_text" (func $leaf (param i64 i64 i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (data (i32.const 0) "Updated heading")
                 (func (export "blueice_start")
                     i64.const 7
                     i64.const 17
                     i64.const -3
                     call $set
+                    i32.const 0
+                    i32.ne
+                    if unreachable end
+                    i64.const 7
+                    i64.const 19
+                    i32.const 0
+                    i32.const 15
+                    call $leaf
                     i32.const 0
                     i32.ne
                     if unreachable end))"#,
@@ -1025,7 +1036,7 @@ fn core_connection_mode_negotiates_storage_v3_and_keeps_v1_v2_imports_compatible
 }
 
 #[test]
-fn core_connection_mode_negotiates_dom_write_v7_and_runs_an_integer_range_write() {
+fn core_connection_mode_negotiates_dom_write_v8_and_runs_range_and_visible_leaf_writes() {
     let (root, manifest, extension_id) = range_manifest_package("core-connect");
     let socket = unique_socket_path("core-range");
     let _ = std::fs::remove_file(&socket);
@@ -1047,7 +1058,7 @@ fn core_connection_mode_negotiates_dom_write_v7_and_runs_an_integer_range_write(
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::HelloAuthenticated {
             extension_id,
-            capability_versions: BTreeMap::from([("dom:write".to_string(), 7)]),
+            capability_versions: BTreeMap::from([("dom:write".to_string(), 8)]),
             authentication: authentication.to_string(),
         }
     );
@@ -1070,6 +1081,16 @@ fn core_connection_mode_negotiates_dom_write_v7_and_runs_an_integer_range_write(
             tab_id: 7,
             node_id: 17,
             value: -3,
+        }
+    );
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::DomWriteAck)
+        .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::SetVisibleLeafText {
+            tab_id: 7,
+            node_id: 19,
+            value: "Updated heading".to_string(),
         }
     );
     blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::DomWriteAck)

@@ -38,6 +38,9 @@ use std::path::PathBuf;
 /// development client is subject to it too, and core repeats the check before
 /// changing a live page.
 pub const MAX_TEXT_WRITE_BYTES: usize = 4 * 1024;
+/// One visible, semantic leaf's replacement text. Keep the payload smaller
+/// than form values because it is reviewed as untrusted text by the model.
+pub const MAX_VISIBLE_LEAF_TEXT_BYTES: usize = 1024;
 
 /// Maximum UTF-8 URL accepted by the first declarative network rule. Keeping
 /// a distinct, small bound means a rule cannot turn the extension socket into
@@ -264,6 +267,15 @@ pub enum ExtensionRequest {
         node_id: u64,
         value: i64,
     },
+    /// Version 8 of `dom:write`: replace only the text of a live, rendered
+    /// heading, paragraph, or list item with exactly one text child. Core
+    /// rejects built-in pages, nested elements, and hidden targets; the host
+    /// reviews the proposed text before asking core to mutate the page.
+    SetVisibleLeafText {
+        tab_id: u64,
+        node_id: u64,
+        value: String,
+    },
     /// Version 5 of `dom:write`: selects one enabled native radio input.
     /// This is intentionally selection-only, never a generic `checked`
     /// setter: core identifies the radio's local group and clears its other
@@ -351,6 +363,9 @@ pub enum DomWriteTarget {
     /// Writes a form/input control. `input_type` is structured metadata
     /// (for example `text`, `email`, or `password`), not the field value.
     FormInput { input_type: String },
+    /// One reviewed, visible semantic text leaf. The actual proposed text is
+    /// carried only by the explicit v8 request, never by legacy DomWrite.
+    VisibleTextLeaf,
     /// Causes a network-facing effect, such as submitting a form. The
     /// short action label is metadata for gatekeeper review.
     NetworkCausing { action: String },
@@ -360,13 +375,13 @@ impl DomWriteTarget {
     /// Whether this target is in Phase 9's resolved gatekeeper trigger
     /// list.
     pub const fn requires_gatekeeper_review(&self) -> bool {
-        matches!(self, Self::FormInput { .. } | Self::NetworkCausing { .. })
+        matches!(self, Self::FormInput { .. } | Self::NetworkCausing { .. } | Self::VisibleTextLeaf)
     }
 
-    /// A bounded, structured diagnostic passed to the gatekeeper. The
-    /// extension-provided write value itself is intentionally excluded:
-    /// the reviewer needs the action class, not arbitrary untrusted text
-    /// that could become a second prompt-injection surface.
+    /// A bounded, structured diagnostic for legacy `DomWrite` review. That
+    /// generic request excludes its value. The explicit v8 visible-text
+    /// operation instead sends its bounded proposed text through a separate
+    /// fixed action label before any core mutation.
     pub fn gatekeeper_detail(&self) -> Option<String> {
         match self {
             Self::Document => None,
@@ -374,6 +389,7 @@ impl DomWriteTarget {
                 "target=form-input; input_type={}",
                 safe_metadata_label(input_type)
             )),
+            Self::VisibleTextLeaf => Some("target=visible-text-leaf".to_string()),
             Self::NetworkCausing { action } => Some(format!(
                 "target=network-causing; action={}",
                 safe_metadata_label(action)
@@ -609,6 +625,11 @@ mod tests {
                 node_id: 104,
                 value: 50,
             },
+            ExtensionRequest::SetVisibleLeafText {
+                tab_id: 42,
+                node_id: 105,
+                value: "Updated heading".to_string(),
+            },
             ExtensionRequest::SetRadioChecked {
                 tab_id: 42,
                 node_id: 102,
@@ -791,7 +812,7 @@ mod tests {
     }
 
     #[test]
-    fn only_form_input_and_network_causing_writes_require_a_gatekeeper_review() {
+    fn form_network_and_visible_leaf_writes_require_a_gatekeeper_review() {
         assert!(!DomWriteTarget::Document.requires_gatekeeper_review());
         assert!(DomWriteTarget::FormInput {
             input_type: "email".to_string()
@@ -801,6 +822,7 @@ mod tests {
             action: "form-submit".to_string()
         }
         .requires_gatekeeper_review());
+        assert!(DomWriteTarget::VisibleTextLeaf.requires_gatekeeper_review());
         assert_eq!(DomWriteTarget::Document.gatekeeper_detail(), None);
         assert_eq!(
             DomWriteTarget::FormInput {
@@ -816,6 +838,7 @@ mod tests {
             .gatekeeper_detail(),
             Some("target=network-causing; action=submitstealeverything".to_string())
         );
+        assert_eq!(DomWriteTarget::VisibleTextLeaf.gatekeeper_detail(), Some("target=visible-text-leaf".to_string()));
     }
 
     #[test]

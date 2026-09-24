@@ -22,7 +22,7 @@ use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     MAX_NETWORK_BLOCK_URL_BYTES, MAX_NETWORK_BLOCK_HOST_BYTES, MAX_NETWORK_BLOCK_PATH_BYTES, MAX_STORAGE_KEY_BYTES, MAX_STORAGE_VALUE_BYTES,
     MAX_STORAGE_KEYS_JSON_BYTES,
-    MAX_TEXT_WRITE_BYTES, MAX_NETWORK_OBSERVATION_BYTES, MAX_NETWORK_TRACE_BYTES,
+    MAX_TEXT_WRITE_BYTES, MAX_VISIBLE_LEAF_TEXT_BYTES, MAX_NETWORK_OBSERVATION_BYTES, MAX_NETWORK_TRACE_BYTES,
     MAX_EXTENSION_TOOLBAR_LABEL_BYTES,
     MAX_EXTENSION_POPUP_TITLE_BYTES, MAX_EXTENSION_POPUP_BODY_BYTES,
 };
@@ -307,6 +307,15 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
         .map_err(|error| {
             format!("could not define the set_range_input_value ABI import: {error}")
         })?;
+    linker
+        .func_wrap(
+            "blueice",
+            "set_visible_leaf_text",
+            |mut caller: Caller<'_, RuntimeState>, tab_id: i64, node_id: i64, value_ptr: i32, value_len: i32| {
+                set_visible_leaf_text(&mut caller, tab_id, node_id, value_ptr, value_len)
+            },
+        )
+        .map_err(|error| format!("could not define the set_visible_leaf_text ABI import: {error}"))?;
     linker
         .func_wrap(
             "blueice",
@@ -786,6 +795,34 @@ fn set_range_input_value(
             value,
         },
     ) {
+        Ok(ExtensionReply::DomWriteAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
+fn set_visible_leaf_text(
+    caller: &mut Caller<'_, RuntimeState>,
+    tab_id: i64,
+    node_id: i64,
+    value_ptr: i32,
+    value_len: i32,
+) -> i32 {
+    let (Ok(tab_id), Ok(node_id)) = (stable_id(tab_id), stable_id(node_id)) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok((value_ptr, value_len)) = guest_range(value_ptr, value_len, MAX_VISIBLE_LEAF_TEXT_BYTES) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(value) = read_guest_bytes(caller, value_ptr, value_len) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(value) = String::from_utf8(value) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    if value.trim().is_empty() || value.chars().any(|ch| ch.is_control() && ch != '\n' && ch != '\t') {
+        return RESULT_INVALID_ARGUMENT;
+    }
+    match request_core(caller, ExtensionRequest::SetVisibleLeafText { tab_id, node_id, value }) {
         Ok(ExtensionReply::DomWriteAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
@@ -1376,7 +1413,7 @@ mod tests {
     }
 
     #[test]
-    fn reactor_forwards_bounded_reads_and_form_writes_to_core() {
+    fn reactor_forwards_bounded_reads_form_writes_and_visible_text_to_core() {
         let (root, extension) = installed_extension(
             "requests",
             r#"(module
@@ -1387,6 +1424,7 @@ mod tests {
                 (import "blueice" "select_option" (func $select (param i64 i64) (result i32)))
                 (import "blueice" "set_textarea_value" (func $textarea (param i64 i64 i32 i32) (result i32)))
                 (import "blueice" "set_range_input_value" (func $range (param i64 i64 i64) (result i32)))
+                (import "blueice" "set_visible_leaf_text" (func $leaf (param i64 i64 i32 i32) (result i32)))
                 (memory (export "memory") 1)
                 (data (i32.const 0) "BlueIce")
                 (func (export "blueice_start")
@@ -1424,6 +1462,12 @@ mod tests {
                     i64.const 17
                     i64.const -3
                     call $range
+                    drop
+                    i64.const 7
+                    i64.const 18
+                    i32.const 0
+                    i32.const 7
+                    call $leaf
                     drop))"#,
         );
         let (guest, mut core) = UnixStream::pair().unwrap();
@@ -1493,6 +1537,16 @@ mod tests {
                     tab_id: 7,
                     node_id: 17,
                     value: -3,
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::DomWriteAck)
+                .unwrap();
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::SetVisibleLeafText {
+                    tab_id: 7,
+                    node_id: 18,
+                    value: "BlueIce".to_string(),
                 }
             );
             blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::DomWriteAck)

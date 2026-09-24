@@ -626,6 +626,76 @@ impl Page {
         self.script_set_text_content(id, value)
     }
 
+    /// Narrow v8 extension mutation: only text inside an ordinary rendered
+    /// semantic leaf. Keeping the existing text node avoids removing links,
+    /// controls, event targets, or arbitrary subtrees through textContent.
+    pub(crate) fn set_visible_leaf_text(&mut self, id: NodeId, value: String) -> Result<(), String> {
+        if value.len() > blueice_ipc::extension::MAX_VISIBLE_LEAF_TEXT_BYTES {
+            return Err("visible leaf text exceeds the protocol limit".to_string());
+        }
+        if value.trim().is_empty() {
+            return Err("visible leaf text cannot be empty".to_string());
+        }
+        if value.chars().any(|ch| ch.is_control() && ch != '\n' && ch != '\t') {
+            return Err("visible leaf text contains a control character".to_string());
+        }
+        if !self
+            .url
+            .as_deref()
+            .is_some_and(|url| url.starts_with("http://") || url.starts_with("https://"))
+        {
+            return Err("extension text writes require an ordinary web page".to_string());
+        }
+        if !self.doc.contains(id) {
+            return Err(format!("unknown visible text node {}", id.as_u64()));
+        }
+        let NodeData::Element { tag_name, .. } = self.doc.data(id) else {
+            return Err("the target must be a semantic element".to_string());
+        };
+        if !matches!(
+            tag_name.as_str(),
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "li"
+        ) {
+            return Err("the target is not a supported semantic text leaf".to_string());
+        }
+        if element_attribute(&self.doc, id, "aria-label").is_some()
+            || element_attribute(&self.doc, id, "title").is_some()
+        {
+            return Err("the target has a separate accessible name".to_string());
+        }
+        let children = self.doc.children(id).collect::<Vec<_>>();
+        let [text_id] = children.as_slice() else {
+            return Err("the target must have exactly one text child".to_string());
+        };
+        if !matches!(self.doc.data(*text_id), NodeData::Text { .. }) {
+            return Err("the target contains nested content".to_string());
+        }
+        let mut ancestor = Some(id);
+        while let Some(node) = ancestor {
+            if element_attribute(&self.doc, node, "hidden").is_some()
+                || element_attribute(&self.doc, node, "aria-hidden")
+                    .is_some_and(|value| value.trim().eq_ignore_ascii_case("true"))
+                || self
+                    .styles
+                    .get(&node)
+                    .is_some_and(|style| style.opacity() <= 0.0)
+            {
+                return Err("the target is hidden".to_string());
+            }
+            ancestor = self.doc.parent(node);
+        }
+        if !find_fragment_bounds(&self.fragment, id, 0.0, 0.0)
+            .is_some_and(|bounds| bounds.width > 0.0 && bounds.height > 0.0)
+        {
+            return Err("the target is not rendered".to_string());
+        }
+        if let NodeData::Text { data } = self.doc.data_mut(*text_id) {
+            *data = value;
+        }
+        self.restyle_and_relayout();
+        Ok(())
+    }
+
     /// Sets an integer value on one real, enabled native range input for the
     /// extension protocol's version-7 `dom:write` operation. This is not a
     /// generic numeric attribute setter: core owns the live `min`, `max`, and
@@ -1891,6 +1961,7 @@ mod tests {
         )));
         page.navigate("about:settings?lang=en").unwrap();
         assert!(page.dom_dump().contains("known-malicious-domain"));
+        assert!(page.dom_dump().contains("extension-visible-text-social-engineering"));
         assert!(page.dom_dump().contains("Exact host or dot-boundary subdomain match"));
         assert!(page.dom_dump().contains("If rejected or unavailable"));
         assert!(page.dom_dump().contains("Active review order"));
@@ -2122,6 +2193,44 @@ mod tests {
         assert!(page
             .set_textarea_value(NodeId::from_u64(9_999), "stale".to_string())
             .is_err());
+    }
+
+    #[test]
+    fn extension_visible_leaf_write_preserves_nested_content_and_rejects_hidden_or_builtin_pages() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"<h1 id="title">Before</h1><p id="nested">Before <a href="/next">link</a></p><p id="hidden" hidden>Secret</p><p id="aria" aria-hidden="TRUE">Secret</p><p id="named" aria-label="Other">Secret</p><p id="none" style="display:none">Secret</p><input id="field" value="old">"#,
+            Some("https://example.test/".to_string()),
+        );
+        let title = page.script_get_element_by_id("title").unwrap();
+        let original_text = page.doc.children(title).next().unwrap();
+        page.set_visible_leaf_text(title, "After".to_string()).unwrap();
+        assert_eq!(page.doc.children(title).next(), Some(original_text));
+        assert_eq!(
+            page.snapshot(1, 1)
+                .nodes
+                .iter()
+                .find(|node| node.id == title.as_u64())
+                .and_then(|node| node.name.as_deref()),
+            Some("After")
+        );
+        for id in ["nested", "hidden", "aria", "named", "none", "field"] {
+            let node = page.script_get_element_by_id(id).unwrap();
+            assert!(
+                page.set_visible_leaf_text(node, "changed".to_string())
+                    .is_err(),
+                "{id} must not be writable"
+            );
+        }
+        assert!(page
+            .set_visible_leaf_text(
+                title,
+                "x".repeat(blueice_ipc::extension::MAX_VISIBLE_LEAF_TEXT_BYTES + 1)
+            )
+            .is_err());
+        assert!(page.set_visible_leaf_text(title, "  \n  ".to_string()).is_err());
+        page.navigate("about:credits").unwrap();
+        assert!(page.set_visible_leaf_text(title, "changed".to_string()).is_err());
     }
 
     #[test]

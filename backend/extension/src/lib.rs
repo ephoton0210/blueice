@@ -383,9 +383,9 @@ impl ExtensionRegistry {
         let v1_to_v2 = CapabilityVersionWindow::new(1, 2).expect("literal version window is valid");
         let v1_to_v3 = CapabilityVersionWindow::new(1, 3).expect("literal version window is valid");
         let v1_to_v5 = CapabilityVersionWindow::new(1, 5).expect("literal version window is valid");
-        let v1_to_v7 = CapabilityVersionWindow::new(1, 7).expect("literal version window is valid");
+        let v1_to_v8 = CapabilityVersionWindow::new(1, 8).expect("literal version window is valid");
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
-        registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v7);
+        registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v8);
         registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v5);
         registry.register_capability_version_window(CAPABILITY_NETWORK_OBSERVE, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_UI_INJECT, v1_to_v3);
@@ -1790,6 +1790,49 @@ where
                                 category: "gatekeeper-unavailable".to_string(),
                             },
                         )?;
+                    }
+                }
+            }
+            ExtensionRequest::SetVisibleLeafText { tab_id, node_id, value } => {
+                if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_DOM_WRITE, 8) {
+                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_DOM_WRITE.to_string(), reason,
+                    })?;
+                    continue;
+                }
+                if value.trim().is_empty()
+                    || value.len() > blueice_ipc::extension::MAX_VISIBLE_LEAF_TEXT_BYTES
+                    || value.chars().any(|ch| ch.is_control() && ch != '\n' && ch != '\t')
+                {
+                    write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+                        capability: CAPABILITY_DOM_WRITE.to_string(),
+                        reason: "visible leaf text must be nonempty, within its limit, and free of control characters".to_string(),
+                    })?;
+                    continue;
+                }
+                // Unlike form values, visible replacement text is itself a
+                // public-facing effect. Review the exact bounded payload;
+                // core separately verifies the live target and URL.
+                let detail = format!("action=set-visible-leaf-text; text={value}");
+                match check_extension_action(gatekeeper_socket, &identity.extension_id, CAPABILITY_DOM_WRITE, detail) {
+                    Ok(GatekeeperReply::Cleared) => {
+                        match write_dom(Some((tab_id, node_id)), value, &blueice_ipc::extension::DomWriteTarget::VisibleTextLeaf) {
+                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
+                            Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_DOM_WRITE.to_string(), reason,
+                            })?,
+                        }
+                    }
+                    Ok(GatekeeperReply::Rejected { reason, category }) => {
+                        write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
+                            capability: CAPABILITY_DOM_WRITE.to_string(), reason, category,
+                        })?;
+                    }
+                    Err(reason) => {
+                        write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
+                            capability: CAPABILITY_DOM_WRITE.to_string(), reason,
+                            category: "gatekeeper-unavailable".to_string(),
+                        })?;
                     }
                 }
             }
@@ -3677,6 +3720,79 @@ mod tests {
                 detail: "action=set-range-input-value".to_string(),
             }
         );
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v8_visible_leaf_text_requires_its_version_and_reviews_the_exact_payload() {
+        let registry = registry_with_dom_write_granted();
+        let (gatekeeper_socket, gatekeeper) = start_gatekeeper("clear-v8-visible-leaf", GatekeeperReply::Cleared);
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = gatekeeper_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions(
+                &registry, &socket_for_handler, &mut server,
+                |_| Ok("unused".to_string()),
+                move |target, value, kind| { seen_tx.send((target, value, kind.clone())).unwrap(); Ok(()) },
+                || Ok(()),
+            )
+        });
+        write_extension_request(&mut client, &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 8)])).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::SetVisibleLeafText { tab_id: 7, node_id: 19, value: "Updated heading".to_string() }).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomWriteAck);
+        assert_eq!(seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(), (Some((7, 19)), "Updated heading".to_string(), DomWriteTarget::VisibleTextLeaf));
+        write_extension_request(&mut client, &ExtensionRequest::SetVisibleLeafText { tab_id: 7, node_id: 19, value: " \n ".to_string() }).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::OperationUnavailable { capability, .. } if capability == CAPABILITY_DOM_WRITE));
+        assert!(seen_rx.try_recv().is_err());
+        drop(client);
+        handle.join().unwrap().unwrap();
+        assert_eq!(gatekeeper.join().unwrap(), GatekeeperRequest::CheckExtensionAction {
+            extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(), capability: CAPABILITY_DOM_WRITE.to_string(),
+            detail: "action=set-visible-leaf-text; text=Updated heading".to_string(),
+        });
+        let _ = std::fs::remove_file(gatekeeper_socket);
+
+        let registry = registry_with_dom_write_granted();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || handle_extension_connection_with_actions(
+            &registry, Path::new("/not-reached-for-v7-visible-leaf.sock"), &mut server,
+            |_| Ok("unused".to_string()),
+            |_, _, _| panic!("v7 cannot delegate a v8 request"),
+            || Ok(()),
+        ));
+        write_extension_request(&mut client, &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 7)])).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::SetVisibleLeafText { tab_id: 7, node_id: 19, value: "denied".to_string() }).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::CapabilityDenied { capability, reason } if capability == CAPABILITY_DOM_WRITE && reason.contains("requires version 8")));
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn v8_visible_leaf_text_rejection_never_reaches_core() {
+        let registry = registry_with_dom_write_granted();
+        let (gatekeeper_socket, gatekeeper) = start_gatekeeper("block-v8-visible-leaf", GatekeeperReply::Rejected {
+            reason: "unsafe text".to_string(), category: "extension-visible-text-social-engineering".to_string(),
+        });
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = gatekeeper_socket.clone();
+        let handle = thread::spawn(move || handle_extension_connection_with_actions(
+            &registry, &socket_for_handler, &mut server,
+            |_| Ok("unused".to_string()),
+            |_, _, _| panic!("a gatekeeper rejection must not mutate core"),
+            || Ok(()),
+        ));
+        write_extension_request(&mut client, &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 8)])).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::SetVisibleLeafText {
+            tab_id: 7, node_id: 19, value: "Enter your password".to_string(),
+        }).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::GatekeeperBlocked { category, .. } if category == "extension-visible-text-social-engineering"));
+        drop(client);
+        handle.join().unwrap().unwrap();
+        assert!(matches!(gatekeeper.join().unwrap(), GatekeeperRequest::CheckExtensionAction { detail, .. } if detail.contains("Enter your password")));
         let _ = std::fs::remove_file(gatekeeper_socket);
     }
 
