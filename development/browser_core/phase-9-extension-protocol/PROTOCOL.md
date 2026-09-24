@@ -81,8 +81,11 @@ tab. The launcher obtains the live HTTP(S) URL and document epoch through
 core's private parent pipe; the panel shows the package hash, full pageable
 URL and installed origin scope before a distinct **Confirm one read** pointer
 target can arm that exact document. Keyboard confirmation cannot arm it. The
-launcher rechecks the epoch, package, and core generation, rejects cutover
-races, and returns no bearer token to the window. Core expires an unspent
+launcher-owned pipe also requires a preceding successful matching review on
+that same pipe and consumes it on any confirmation attempt or intervening
+request; a direct or repeated arm is rejected. The launcher rechecks the
+epoch, package, and core generation, rejects cutover races, and returns no
+bearer token to the window. Core expires an unspent
 lease after ten seconds and spends it on at most one matching snapshot read.
 Other `runtime_ephemeral` capabilities remain unavailable. The launcher rechecks the
 package/generation and rejects cutover races before using its separate private

@@ -936,10 +936,13 @@ fn serve_trusted_window_pipe<R: Read, W: Write>(
     ready: Sender<()>,
 ) -> io::Result<()> {
     let mut ready = Some(ready);
+    let mut reviewed_ephemeral = None;
     let result = (|| {
         while let Some(request) = trusted_window::read_request(&mut requests)? {
             let inspected = matches!(&request, trusted_window::TrustedWindowRequest::Inspect);
-            let reply = handle_trusted_window_request(request, broker);
+            let reply = handle_trusted_window_session_request(
+                request, broker, &mut reviewed_ephemeral,
+            );
             trusted_window::write_reply(&mut replies, &reply)?;
             if inspected && matches!(reply, trusted_window::TrustedWindowReply::State { .. }) {
                 if let Some(ready) = ready.take() {
@@ -954,6 +957,59 @@ fn serve_trusted_window_pipe<R: Read, W: Write>(
     // active core, not leave those grants serving to ordinary/MCP clients.
     let _ = broker.done.send(());
     result
+}
+
+#[derive(PartialEq, Eq)]
+struct ReviewedEphemeral {
+    core_generation: u64,
+    extension_id: String,
+    capability: String,
+    tab_id: u64,
+    document_epoch: u64,
+}
+
+/// The private native pipe itself requires a successful review immediately
+/// before one matching confirmation. Even a malformed or replayed request
+/// from that exact child cannot skip the review or reuse it for a second arm.
+fn handle_trusted_window_session_request(
+    request: trusted_window::TrustedWindowRequest,
+    broker: &Arc<Broker>,
+    reviewed_ephemeral: &mut Option<ReviewedEphemeral>,
+) -> trusted_window::TrustedWindowReply {
+    let confirmation_matches_review = match &request {
+        trusted_window::TrustedWindowRequest::ArmEphemeral {
+            expected_core_generation, expected_extension_id, capability,
+            tab_id, document_epoch,
+        } => reviewed_ephemeral.as_ref().is_some_and(|review| {
+            review.core_generation == *expected_core_generation
+                && review.extension_id == *expected_extension_id
+                && review.capability == *capability
+                && review.tab_id == *tab_id
+                && review.document_epoch == *document_epoch
+        }),
+        _ => true,
+    };
+    // Any intervening request cancels the old review. Arm consumes it before
+    // reaching core, including when cutover or a changed document rejects it.
+    *reviewed_ephemeral = None;
+    if !confirmation_matches_review {
+        return trusted_window::TrustedWindowReply::Rejected {
+            reason: "review the live one-shot document before confirming it".into(),
+        };
+    }
+    let reply = handle_trusted_window_request(request, broker);
+    if let trusted_window::TrustedWindowReply::EphemeralReview {
+        core_generation, installed, capability, tab_id, document_epoch, ..
+    } = &reply {
+        *reviewed_ephemeral = Some(ReviewedEphemeral {
+            core_generation: *core_generation,
+            extension_id: installed.extension_id.clone(),
+            capability: capability.clone(),
+            tab_id: *tab_id,
+            document_epoch: *document_epoch,
+        });
+    }
+    reply
 }
 
 fn handle_trusted_window_request(
@@ -1956,13 +2012,41 @@ mod tests {
             }));
         assert_eq!(arm_count.load(Ordering::SeqCst), 1);
         let mut inbound = Vec::new();
-        trusted_window::write_request(&mut inbound, &trusted_window::TrustedWindowRequest::Inspect).unwrap();
+        for request in [
+            trusted_window::TrustedWindowRequest::Inspect,
+            arm(13), // no review on this trusted pipe
+            review(3, "sha256:installed", 7),
+            arm(12), // mismatched review consumes it
+            arm(13), // the matching arm can no longer reuse it
+            review(3, "sha256:installed", 7),
+            arm(13), // exactly one authorized arm
+            arm(13), // duplicate confirmation
+            review(3, "sha256:installed", 7),
+            trusted_window::TrustedWindowRequest::Inspect, // cancels review
+            arm(13),
+        ] {
+            trusted_window::write_request(&mut inbound, &request).unwrap();
+        }
         let mut outbound = Vec::new();
         let (ready, ready_rx) = mpsc::channel();
         serve_trusted_window_pipe(inbound.as_slice(), &mut outbound, &broker, ready).unwrap();
         ready_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert!(matches!(trusted_window::read_reply(&mut outbound.as_slice()).unwrap(),
-            Some(trusted_window::TrustedWindowReply::State { .. })));
+        let mut replies = outbound.as_slice();
+        for expected in [
+            "state", "rejected", "review", "rejected", "rejected", "review",
+            "armed", "rejected", "review", "state", "rejected",
+        ] {
+            let reply = trusted_window::read_reply(&mut replies).unwrap().unwrap();
+            assert!(match expected {
+                "state" => matches!(&reply, trusted_window::TrustedWindowReply::State { .. }),
+                "review" => matches!(&reply, trusted_window::TrustedWindowReply::EphemeralReview { .. }),
+                "armed" => matches!(&reply, trusted_window::TrustedWindowReply::EphemeralArmed { .. }),
+                _ => matches!(&reply, trusted_window::TrustedWindowReply::Rejected { .. }),
+            }, "expected {expected} from the trusted-window session, got {reply:?}");
+        }
+        assert!(replies.is_empty());
+        assert_eq!(arm_count.load(Ordering::SeqCst), 2,
+            "only a fresh matching review can reach the core's one-shot arm");
         done_rx.recv_timeout(Duration::from_secs(1)).unwrap();
         let (ready, _ready_rx) = mpsc::channel();
         assert!(serve_trusted_window_pipe([1_u8].as_slice(), &mut Vec::new(), &broker, ready).is_err());
