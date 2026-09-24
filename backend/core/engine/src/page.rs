@@ -54,6 +54,7 @@ pub struct Page {
     viewport_height: f64,
     scroll_y: f64,
     url: Option<String>,
+    network_response: Option<blueice_ipc::extension::NetworkResponseInfo>,
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     highlighted: Option<NodeId>,
@@ -96,6 +97,7 @@ impl Page {
             viewport_height,
             scroll_y: 0.0,
             url: None,
+            network_response: None,
             hovered: None,
             focused: None,
             highlighted: None,
@@ -116,6 +118,7 @@ impl Page {
         // an unrelated node that happens to have been assigned the same
         // recycled ID (plan §1's stable-ID-across-mutations requirement).
         self.doc = blueice_html::parse_continuing_from(html, self.doc.next_node_id());
+        self.network_response = None;
         self.scroll_y = 0.0;
         // A fresh document invalidates every NodeId a prior interaction
         // might have recorded -- holding onto a stale ID here would let
@@ -162,6 +165,12 @@ impl Page {
         }
         let fetched = blueice_net::fetch(url)?;
         self.load_html(&fetched.body);
+        self.network_response = Some(blueice_ipc::extension::NetworkResponseInfo {
+            method: "GET".to_string(),
+            final_url: fetched.final_url.clone(),
+            status: fetched.status,
+            content_type: fetched.content_type,
+        });
         self.url = Some(fetched.final_url);
         Ok(())
     }
@@ -266,6 +275,17 @@ impl Page {
     ) {
         self.load_html(html);
         self.url = Some(url.to_string());
+    }
+
+    pub(crate) fn set_network_response(
+        &mut self,
+        response: blueice_ipc::extension::NetworkResponseInfo,
+    ) {
+        self.network_response = Some(response);
+    }
+
+    pub(crate) fn network_response(&self) -> Option<&blueice_ipc::extension::NetworkResponseInfo> {
+        self.network_response.as_ref()
     }
 
     pub fn resize(&mut self, width: f64, height: f64) {
@@ -2199,11 +2219,17 @@ mod tests {
         });
         let mut page = Page::new(320.0, 200.0);
         page.navigate(&format!("http://{addr}")).unwrap();
+        let response = page.network_response().expect("a network page has response metadata");
+        assert_eq!(response.method, "GET");
+        assert_eq!(response.status, 200);
+        assert_eq!(response.final_url, format!("http://{addr}"));
         assert!(page
             .render()
             .commands
             .iter()
             .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "fetched")));
+        page.navigate("about:blank").unwrap();
+        assert!(page.network_response().is_none());
     }
 
     fn distinct_line_count(frame: &Frame) -> usize {

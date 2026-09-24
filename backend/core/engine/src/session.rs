@@ -99,6 +99,10 @@ pub enum ExtensionPageRequest {
         tab_id: Option<u64>,
         reply: mpsc::Sender<Result<String, String>>,
     },
+    ReadNetworkResponse {
+        tab_id: u64,
+        reply: mpsc::Sender<Result<Option<blueice_ipc::extension::NetworkResponseInfo>, String>>,
+    },
     SetTextInputValue {
         tab_id: u64,
         node_id: u64,
@@ -1000,6 +1004,13 @@ fn handle_extension_page_request<S: Write>(
                 });
             let _ = reply.send(result);
         }
+        ExtensionPageRequest::ReadNetworkResponse { tab_id, reply } => {
+            let result = tabs
+                .get(TabId::from_u64(tab_id))
+                .ok_or_else(|| format!("unknown tab {tab_id}"))
+                .map(|page| page.network_response().cloned());
+            let _ = reply.send(result);
+        }
         ExtensionPageRequest::SetTextInputValue {
             tab_id,
             node_id,
@@ -1789,13 +1800,21 @@ fn apply_completion<S: Write>(
             clearance,
             final_url,
             html,
+            status,
+            content_type,
         } => {
+            let response = blueice_ipc::extension::NetworkResponseInfo {
+                method: "GET".to_string(),
+                final_url: final_url.clone(),
+                status,
+                content_type,
+            };
             let committed = match &kind {
                 PendingKind::History(direction) => tabs.apply_fetched_history_navigation(
-                    tab_id, *direction, clearance, &final_url, &html,
+                    tab_id, *direction, clearance, &final_url, &html, response,
                 ),
                 PendingKind::Navigate | PendingKind::OpenTab => {
-                    tabs.apply_fetched_navigation(tab_id, clearance, &final_url, &html);
+                    tabs.apply_fetched_navigation(tab_id, clearance, &final_url, &html, response);
                     true
                 }
             };
@@ -2234,6 +2253,106 @@ mod tests {
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         handle.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(cleanup_dir);
+    }
+
+    #[test]
+    fn extension_observes_only_the_committed_http_response_for_a_live_tab() {
+        let gatekeeper = clearing_gatekeeper("extension-network-observe");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let http = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = std::io::Read::read(&mut stream, &mut request);
+            std::io::Write::write_all(
+                &mut stream,
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nSet-Cookie: secret=never-expose\r\nContent-Length: 9\r\nConnection: close\r\n\r\n<p>ok</p>",
+            )
+            .unwrap();
+        });
+        let (mut client, mut server) = client_pair();
+        let (extension_tx, extension_rx) = mpsc::channel();
+        let dir = temp_frame_dir("extension-network-observe");
+        let cleanup_dir = dir.clone();
+        std::fs::create_dir_all(&dir).unwrap();
+        let session = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0;
+            run_session_with_extension_requests(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper,
+                &extension_rx,
+            )
+        });
+        handshake(&mut client);
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ReadNetworkResponse {
+                tab_id: 1,
+                reply: reply_tx,
+            })
+            .unwrap();
+        assert_eq!(reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap(), None);
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: url.clone() })
+            .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Navigated { url: url.clone() }
+        );
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }
+        ));
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ReadNetworkResponse {
+                tab_id: 1,
+                reply: reply_tx,
+            })
+            .unwrap();
+        let response = reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap().unwrap();
+        assert_eq!(response.method, "GET");
+        assert_eq!(response.final_url, url);
+        assert_eq!(response.status, 200);
+        assert_eq!(response.content_type.as_deref(), Some("text/html; charset=utf-8"));
+        assert!(!format!("{response:?}").contains("secret"));
+
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate { url: "about:blank".to_string() },
+        )
+        .unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Navigated { .. }
+        ));
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }
+        ));
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ReadNetworkResponse {
+                tab_id: 1,
+                reply: reply_tx,
+            })
+            .unwrap();
+        assert_eq!(reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap(), None);
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ReadNetworkResponse {
+                tab_id: 99,
+                reply: reply_tx,
+            })
+            .unwrap();
+        assert!(reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().is_err());
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        session.join().unwrap().unwrap();
+        http.join().unwrap();
         let _ = std::fs::remove_dir_all(cleanup_dir);
     }
 

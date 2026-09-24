@@ -45,6 +45,19 @@ pub const MAX_TEXT_WRITE_BYTES: usize = 4 * 1024;
 /// before it becomes active.
 pub const MAX_NETWORK_BLOCK_URL_BYTES: usize = 2 * 1024;
 
+/// Maximum serialized response metadata returned to an extension guest.
+pub const MAX_NETWORK_OBSERVATION_BYTES: usize = 4 * 1024;
+
+/// Metadata for the final HTTP response of one committed navigation. Response
+/// bodies and sensitive headers are intentionally excluded.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkResponseInfo {
+    pub method: String,
+    pub final_url: String,
+    pub status: u16,
+    pub content_type: Option<String>,
+}
+
 /// Maximum UTF-8 key for the first bounded extension storage API. Keys use a
 /// small identifier grammar in the host, while this wire-level size limit also
 /// protects manually connected development clients before a request reaches
@@ -124,6 +137,10 @@ pub enum ExtensionRequest {
     /// must keep using [`Self::DomRead`], preserving the original default-tab
     /// behavior rather than gaining a new addressing convention silently.
     DomReadTab { tab_id: u64 },
+    /// Version 1 of `network:observe`: read only the final response metadata
+    /// associated with the currently committed page in an explicit tab.
+    /// `None` means this page did not come from an HTTP fetch.
+    ReadNetworkResponse { tab_id: u64 },
     /// Mutate something DOM-shaped -- requires the `dom:write`
     /// capability, deliberately not granted to this minimal slice's one
     /// hardcoded extension, so this is the request that proves
@@ -319,6 +336,8 @@ pub enum ExtensionReply {
     RuntimeEventStreamClosed,
     /// Reply to a granted [`ExtensionRequest::DomRead`].
     DomReadResult { value: String },
+    /// Reply to a granted [`ExtensionRequest::ReadNetworkResponse`].
+    NetworkResponseResult { response: Option<NetworkResponseInfo> },
     /// Reply to a granted [`ExtensionRequest::DomWrite`].
     DomWriteAck,
     /// Reply to a granted `network:intercept` operation. Rule registration is

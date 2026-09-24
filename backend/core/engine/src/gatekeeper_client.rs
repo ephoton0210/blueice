@@ -54,6 +54,8 @@ pub(crate) enum NavOutcome {
         clearance: GatekeeperClearance,
         final_url: String,
         html: String,
+        status: u16,
+        content_type: Option<String>,
     },
     /// Either gatekeeper stage rejected the navigation, or the
     /// gatekeeper itself was unreachable (fail-closed, see module
@@ -196,6 +198,8 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
             },
             final_url: fetched.final_url,
             html: fetched.body,
+            status: fetched.status,
+            content_type: fetched.content_type,
         };
     }
     unreachable!("the bounded redirect loop always returns or commits a page")

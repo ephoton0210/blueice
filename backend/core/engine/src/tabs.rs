@@ -498,9 +498,11 @@ impl TabManager {
         clearance: crate::gatekeeper_client::GatekeeperClearance,
         url: &str,
         html: &str,
+        response: blueice_ipc::extension::NetworkResponseInfo,
     ) {
         let mut next = self.new_history_page(id);
         next.apply_fetched(clearance, url, html);
+        next.set_network_response(response);
         self.replace_current_as_new_navigation(id, next);
     }
 
@@ -541,9 +543,11 @@ impl TabManager {
         clearance: crate::gatekeeper_client::GatekeeperClearance,
         url: &str,
         html: &str,
+        response: blueice_ipc::extension::NetworkResponseInfo,
     ) -> bool {
         let mut next = self.new_history_page(id);
         next.apply_fetched(clearance, url, html);
+        next.set_network_response(response);
         self.replace_current_from_history(id, direction, next)
     }
 

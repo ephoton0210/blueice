@@ -27,7 +27,7 @@ use blueice_extension_host::{
     load_installed_extension, registry_for_installed_extension, ExtensionActionDelegates,
     ExtensionConnectionAuthentication, ExtensionRegistry, ExtensionStorage,
 };
-use blueice_ipc::extension::ExtensionRuntimeEvent;
+use blueice_ipc::extension::{ExtensionRuntimeEvent, NetworkResponseInfo};
 use std::io::Read;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
@@ -247,6 +247,21 @@ fn request_tab_representation(
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
 }
 
+fn request_network_response(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    tab_id: u64,
+) -> Result<Option<NetworkResponseInfo>, String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::ReadNetworkResponse {
+        tab_id,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
 fn request_text_input_value(
     tx: &mpsc::Sender<ExtensionPageRequest>,
     tab_id: u64,
@@ -429,6 +444,7 @@ fn spawn_extension_listener(
                     None => authentication,
                 };
                 let read_tx = request_tx.clone();
+                let observe_tx = request_tx.clone();
                 let write_tx = request_tx.clone();
                 let rule_tx = request_tx.clone();
                 let clear_tx = request_tx.clone();
@@ -496,7 +512,10 @@ fn spawn_extension_listener(
                             move |url| request_network_block_url(&rule_tx, connection_id, url),
                             move || clear_network_block_urls(&clear_tx, connection_id),
                         )
-                        .with_storage(storage),
+                        .with_storage(storage)
+                        .with_network_observer(move |tab_id| {
+                            request_network_response(&observe_tx, tab_id)
+                        }),
                     );
                 let _ = clear_network_block_urls(&request_tx, connection_id);
             });

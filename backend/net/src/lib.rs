@@ -54,6 +54,14 @@ impl std::error::Error for FetchError {}
 pub struct FetchedPage {
     pub final_url: String,
     pub body: String,
+    pub status: u16,
+    pub content_type: Option<String>,
+}
+
+fn safe_content_type(response: &ureq::http::Response<ureq::Body>) -> Option<String> {
+    let value = response.headers().get("content-type")?.to_str().ok()?;
+    (value.len() <= 256 && value.bytes().all(|byte| byte.is_ascii_graphic() || byte == b' '))
+        .then(|| value.to_string())
 }
 
 /// The result of one HTTP navigation hop with automatic redirects disabled.
@@ -96,8 +104,10 @@ pub fn fetch(url: &str) -> Result<FetchedPage, FetchError> {
     // (needed for "the browser's address bar shows where you actually
     // ended up", which has no UI to show it in yet anyway).
     let final_url = url.to_string();
+    let status = response.status().as_u16();
+    let content_type = safe_content_type(&response);
     let body = response.body_mut().read_to_string().map_err(|e| FetchError::Body(e.to_string()))?;
-    Ok(FetchedPage { final_url, body })
+    Ok(FetchedPage { final_url, body, status, content_type })
 }
 
 /// Fetches exactly one HTTP navigation hop, never following a `Location`
@@ -133,6 +143,8 @@ pub fn fetch_navigation_hop(url: &str) -> Result<FetchHop, FetchError> {
             location: location.to_string(),
         });
     }
+    let status = response.status().as_u16();
+    let content_type = safe_content_type(&response);
     let body = response
         .body_mut()
         .read_to_string()
@@ -140,6 +152,8 @@ pub fn fetch_navigation_hop(url: &str) -> Result<FetchHop, FetchError> {
     Ok(FetchHop::Page(FetchedPage {
         final_url: url.to_string(),
         body,
+        status,
+        content_type,
     }))
 }
 

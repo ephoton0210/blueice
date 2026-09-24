@@ -61,7 +61,7 @@ pub use runtime::{
 
 use blueice_ipc::extension::{
     read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest,
-    ExtensionRuntimeEvent, UnsupportedCapabilityVersion,
+    ExtensionRuntimeEvent, NetworkResponseInfo, UnsupportedCapabilityVersion,
 };
 use blueice_ipc::gatekeeper::{
     default_gatekeeper_socket_path, read_gatekeeper_reply, write_gatekeeper_request,
@@ -87,6 +87,9 @@ pub const CAPABILITY_DOM_WRITE: &str = "dom:write";
 /// Registering network interception is high-risk and therefore always
 /// needs a cleared gatekeeper review after ordinary capability checks.
 pub const CAPABILITY_NETWORK_INTERCEPT: &str = "network:intercept";
+
+/// Read-only observation of the final response behind a committed page.
+pub const CAPABILITY_NETWORK_OBSERVE: &str = "network:observe";
 
 /// A per-extension key-value bucket owned by core, never by the guest's
 /// ambient filesystem or process. Version 1 deliberately lasts only for the
@@ -299,6 +302,7 @@ impl ExtensionRegistry {
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v7);
         registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v3);
+        registry.register_capability_version_window(CAPABILITY_NETWORK_OBSERVE, v1);
         registry.register_capability_version_window(CAPABILITY_STORAGE, v1);
         registry
     }
@@ -591,6 +595,7 @@ pub struct ExtensionActionDelegates<R, W, N, B, C> {
     register_network_intercept: N,
     register_network_block_url: B,
     clear_network_block_urls: C,
+    observe_network: Box<dyn FnMut(u64) -> Result<Option<NetworkResponseInfo>, String> + Send>,
     storage: ExtensionStorage,
 }
 
@@ -611,6 +616,9 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
             register_network_intercept,
             register_network_block_url,
             clear_network_block_urls,
+            observe_network: Box::new(|_| {
+                Err("network:observe needs a core-backed response reader".to_string())
+            }),
             storage: ExtensionStorage::default(),
         }
     }
@@ -621,6 +629,16 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
     /// process handle, or mutable reference to the map.
     pub fn with_storage(mut self, storage: ExtensionStorage) -> Self {
         self.storage = storage;
+        self
+    }
+
+
+    /// Binds read-only response observation to core's live tab state.
+    pub fn with_network_observer(
+        mut self,
+        observer: impl FnMut(u64) -> Result<Option<NetworkResponseInfo>, String> + Send + 'static,
+    ) -> Self {
+        self.observe_network = Box::new(observer);
         self
     }
 }
@@ -796,6 +814,7 @@ where
         mut register_network_intercept,
         mut register_network_block_url,
         mut clear_network_block_urls,
+        mut observe_network,
         storage,
     } = delegates;
     let mut identity = match read_extension_request(stream) {
@@ -948,6 +967,39 @@ where
                             },
                         )?,
                     }
+                }
+            }
+            ExtensionRequest::ReadNetworkResponse { tab_id } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_OBSERVE, 1)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
+                            reason,
+                        },
+                    )?;
+                } else {
+                    let reply = match observe_network(tab_id) {
+                        Ok(response)
+                            if response.as_ref().is_some_and(|value| {
+                                serde_json::to_vec(value).is_ok_and(|bytes| {
+                                    bytes.len()
+                                        > blueice_ipc::extension::MAX_NETWORK_OBSERVATION_BYTES
+                                })
+                            }) => ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
+                            reason: "network response metadata exceeds the 4096-byte limit"
+                                .to_string(),
+                        },
+                        Ok(response) => ExtensionReply::NetworkResponseResult { response },
+                        Err(reason) => ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
+                            reason,
+                        },
+                    };
+                    write_extension_reply(stream, &reply)?;
                 }
             }
             ExtensionRequest::DomWrite { value, target } => {
@@ -1769,6 +1821,94 @@ mod tests {
         ExtensionReply::HelloAck {
             unsupported_capabilities: BTreeMap::new(),
         }
+    }
+
+    #[test]
+    fn network_observation_requires_its_own_grant_and_negotiated_version() {
+        let mut registry = ExtensionRegistry::minimal_slice();
+        registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_OBSERVE);
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry,
+                Path::new("/not-used-for-read-only-observation"),
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    |_| Ok(String::new()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_| Ok(()),
+                    || Ok(()),
+                )
+                .with_network_observer(|tab_id| {
+                    assert_eq!(tab_id, 7);
+                    Ok(Some(NetworkResponseInfo {
+                        method: "GET".to_string(),
+                        final_url: "https://example.test/final".to_string(),
+                        status: 200,
+                        content_type: Some("text/html".to_string()),
+                    }))
+                }),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_OBSERVE, 1)]),
+        )
+        .unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::ReadNetworkResponse { tab_id: 7 })
+            .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::NetworkResponseResult {
+                response: Some(NetworkResponseInfo {
+                    method: "GET".to_string(),
+                    final_url: "https://example.test/final".to_string(),
+                    status: 200,
+                    content_type: Some("text/html".to_string()),
+                })
+            }
+        );
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_READ, 1)]),
+        )
+        .unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::ReadNetworkResponse { tab_id: 7 })
+            .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_NETWORK_OBSERVE
+        ));
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_OBSERVE, 2)]),
+        )
+        .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::HelloAck { unsupported_capabilities }
+                if matches!(
+                    unsupported_capabilities.get(CAPABILITY_NETWORK_OBSERVE),
+                    Some(UnsupportedCapabilityVersion::OutsideSupportedRange {
+                        min_inclusive: 1,
+                        max_inclusive: 1,
+                    })
+                )
+        ));
+        write_extension_request(&mut client, &ExtensionRequest::ReadNetworkResponse { tab_id: 7 })
+            .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_NETWORK_OBSERVE
+        ));
+        drop(client);
+        handle.join().unwrap().unwrap();
     }
 
     fn unused_write_delegate(

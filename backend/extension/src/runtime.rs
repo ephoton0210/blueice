@@ -21,7 +21,7 @@ use crate::InstalledExtension;
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     MAX_NETWORK_BLOCK_URL_BYTES, MAX_STORAGE_KEY_BYTES, MAX_STORAGE_VALUE_BYTES,
-    MAX_TEXT_WRITE_BYTES,
+    MAX_TEXT_WRITE_BYTES, MAX_NETWORK_OBSERVATION_BYTES,
 };
 use std::os::unix::net::UnixStream;
 use wasmtime::{
@@ -170,6 +170,15 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
             },
         )
         .map_err(|error| format!("could not define the dom_read_utf8 ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
+            "network_response_utf8",
+            |mut caller: Caller<'_, RuntimeState>, tab_id: i64, destination: i32, capacity: i32| {
+                network_response_utf8(&mut caller, tab_id, destination, capacity)
+            },
+        )
+        .map_err(|error| format!("could not define the network_response_utf8 ABI import: {error}"))?;
     linker
         .func_wrap(
             "blueice",
@@ -341,6 +350,39 @@ fn dom_read_utf8(
         return RESULT_BUFFER_TOO_SMALL;
     }
     if write_guest_bytes(caller, destination, bytes).is_err() {
+        return RESULT_INVALID_ARGUMENT;
+    }
+    i32::try_from(bytes.len()).unwrap_or(RESULT_ERROR)
+}
+
+/// Copies JSON response metadata into guest memory. A missing HTTP response
+/// returns RESULT_NOT_FOUND, distinct from authorization or transport errors.
+fn network_response_utf8(
+    caller: &mut Caller<'_, RuntimeState>,
+    tab_id: i64,
+    destination: i32,
+    capacity: i32,
+) -> i32 {
+    let Ok(tab_id) = stable_id(tab_id) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok((destination, capacity)) =
+        guest_range(destination, capacity, MAX_NETWORK_OBSERVATION_BYTES)
+    else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let response = match request_core(caller, ExtensionRequest::ReadNetworkResponse { tab_id }) {
+        Ok(ExtensionReply::NetworkResponseResult { response: Some(response) }) => response,
+        Ok(ExtensionReply::NetworkResponseResult { response: None }) => return RESULT_NOT_FOUND,
+        Ok(_) | Err(()) => return RESULT_ERROR,
+    };
+    let Ok(bytes) = serde_json::to_vec(&response) else {
+        return RESULT_ERROR;
+    };
+    if bytes.len() > MAX_NETWORK_OBSERVATION_BYTES || bytes.len() > capacity {
+        return RESULT_BUFFER_TOO_SMALL;
+    }
+    if write_guest_bytes(caller, destination, &bytes).is_err() {
         return RESULT_INVALID_ARGUMENT;
     }
     i32::try_from(bytes.len()).unwrap_or(RESULT_ERROR)
@@ -680,6 +722,46 @@ mod tests {
         fs::write(root.join("extension.wasm"), wat::parse_str(wasm).unwrap()).unwrap();
         let installed = load_installed_extension(root.join("extension.json")).unwrap();
         (root, installed)
+    }
+
+    #[test]
+    fn reactor_reads_bounded_network_response_metadata_without_ambient_network_access() {
+        let (root, extension) = installed_extension(
+            "network-observe",
+            r#"(module
+                (import "blueice" "network_response_utf8" (func $observe (param i64 i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (func (export "blueice_start")
+                    i64.const 7
+                    i32.const 0
+                    i32.const 512
+                    call $observe
+                    i32.const 0
+                    i32.le_s
+                    if unreachable end))"#,
+        );
+        let (guest, mut core) = UnixStream::pair().unwrap();
+        let core_thread = thread::spawn(move || {
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::ReadNetworkResponse { tab_id: 7 }
+            );
+            blueice_ipc::extension::write_extension_reply(
+                &mut core,
+                &ExtensionReply::NetworkResponseResult {
+                    response: Some(blueice_ipc::extension::NetworkResponseInfo {
+                        method: "GET".to_string(),
+                        final_url: "https://example.test/final".to_string(),
+                        status: 200,
+                        content_type: Some("text/html".to_string()),
+                    }),
+                },
+            )
+            .unwrap();
+        });
+        execute_installed_extension(&extension, guest).unwrap();
+        core_thread.join().unwrap();
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
