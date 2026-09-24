@@ -3159,6 +3159,92 @@ mod tests {
     }
 
     #[test]
+    fn live_session_broadcasts_optional_ui_revocation_without_client_traffic() {
+        let root = temp_frame_dir("live-optional-ui-revoke");
+        std::fs::create_dir_all(&root).unwrap();
+        let manifest = root.join("extension.json");
+        std::fs::write(&manifest,
+            r#"{"name":"Live optional UI","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["ui:inject"]}}"#
+        ).unwrap();
+        std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0").unwrap();
+        let installed = blueice_extension_host::load_installed_extension(&manifest).unwrap();
+        let id = installed.extension_id().to_string();
+        let registry = Arc::new(blueice_extension_host::registry_for_installed_extension(&installed));
+        registry.grant_optional(&id, "ui:inject").unwrap();
+        let old_generation = registry.capability_generation(&id, "ui:inject").unwrap();
+        let (mut client, mut server) = client_pair();
+        client.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let (extension_tx, extension_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::sync_channel(16);
+        let session_registry = Arc::clone(&registry);
+        let session = thread::spawn({
+            let id = id.clone();
+            let root = root.clone();
+            move || {
+                let mut tabs = TabManager::new(320.0, 200.0);
+                tabs.set_extension_permission_registry(session_registry, id);
+                let mut generation = 0;
+                run_session_with_extension_requests_and_events(
+                    &mut tabs, &mut server, &root, &mut generation,
+                    Path::new("/not-used-for-optional-ui"), &extension_rx, Some(&event_tx),
+                )
+            }
+        });
+        handshake(&mut client);
+        let (reply, result) = mpsc::channel();
+        extension_tx.send(ExtensionPageRequest::SetToolbarButton {
+            connection_id: 7, grant_generation: old_generation, label: "Notes".into(), reply,
+        }).unwrap();
+        assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionToolbar { label: Some("Notes".into()) });
+        result.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+        let shown = ExtensionPopup { id: 1, tab_id: 1, title: "Notes".into(),
+            body: "Saved".into(), action_label: Some("Open".into()) };
+        let (reply, result) = mpsc::channel();
+        extension_tx.send(ExtensionPageRequest::ShowPopup {
+            connection_id: 7, grant_generation: old_generation, popup: shown.clone(), reply,
+        }).unwrap();
+        assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionPopup { popup: Some(shown) });
+        result.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+
+        registry.revoke_optional(&id, "ui:inject").unwrap();
+        // No client command follows the revoke. The session's own poll must
+        // retire both surfaces and broadcast their removal.
+        assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionPopup { popup: None });
+        assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionToolbar { label: None });
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::ActivateExtensionToolbar).unwrap();
+        assert!(matches!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Error { message } if message.contains("no extension toolbar")));
+        blueice_ipc::write_client_message(&mut client,
+            &ClientMessage::ActivateExtensionPopupAction { popup_id: 1 }).unwrap();
+        assert!(matches!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Error { message } if message.contains("no matching live extension popup action")));
+        assert!(event_rx.try_recv().is_err());
+
+        registry.grant_optional(&id, "ui:inject").unwrap();
+        let new_generation = registry.capability_generation(&id, "ui:inject").unwrap();
+        assert_ne!(old_generation, new_generation);
+        let (reply, result) = mpsc::channel();
+        extension_tx.send(ExtensionPageRequest::SetToolbarButton {
+            connection_id: 7, grant_generation: old_generation, label: "Old".into(), reply,
+        }).unwrap();
+        assert!(result.recv_timeout(Duration::from_secs(2)).unwrap().is_err());
+        let (reply, result) = mpsc::channel();
+        extension_tx.send(ExtensionPageRequest::SetToolbarButton {
+            connection_id: 7, grant_generation: new_generation, label: "New".into(), reply,
+        }).unwrap();
+        assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionToolbar { label: Some("New".into()) });
+        result.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        session.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn extension_network_rule_blocks_a_matching_navigation_before_gatekeeper_or_fetch() {
         let (mut client, mut server) = client_pair();
         let (extension_tx, extension_rx) = mpsc::channel();
