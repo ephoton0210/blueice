@@ -14,10 +14,10 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: A3.2.** Revoke the child DOM route on reload, tab close, and
-core cutover; prove an old reply cannot attach to a successor. A3.1 now binds
-each call and reply to an exact ID and document, but lifecycle revocation and
-general DOM wrappers remain open.
+**Current leaf: B1.1.** Keep node wrappers and collector-visible roots in the
+child without exposing raw numeric node IDs to page code. A3 now proves the
+DOM channel's document binding and lifecycle revocation; general DOM wrappers
+remain open.
 
 ## Current boundary
 
@@ -99,8 +99,15 @@ client registration, build output, or write authority.
   stream. Real core-socket and supervised child HTTP tests exercise the
   route; the child profile exposes only a boolean lookup, with no fetch,
   resolver, direct document object, or raw node ID.
-- [ ] Revoke that route on reload, tab close, and core cutover; test that
-  an old reply cannot attach to a successor.
+- [x] Revoke that route on reload, tab close, and core cutover; test that
+  an old reply cannot attach to a successor. Realm replacement and CloseRealm
+  drop the VM-owned callback and its script socket. A child socket regression
+  proves old streams reach EOF, a predecessor reply with the reused call ID
+  is rejected by both replacement and reopened realms, and a fresh call can
+  still succeed. A real launcher cutover regression proves the superseded
+  child and script socket are removed before a successor with a distinct
+  private endpoint serves, complementing the real core-socket denial of a
+  predecessor capability.
 
 ### B. Install the first DOM and event profile (Phases 2/13).
 

@@ -753,6 +753,11 @@ fn opt_in_launcher_replaces_the_private_child_at_cutover_and_reaps_both_generati
         .clone()
         .expect("the opted-in launcher must create v1's private child");
     assert!(v1_child_socket.exists());
+    let v1_script_socket = std::env::temp_dir().join(format!(
+        "blueice-launcher-script-{}-0.sock",
+        launcher.child.id()
+    ));
+    launcher.wait_for_socket(&v1_script_socket, "v1 private script");
 
     // Give cutover a real current tab to replay. `about:` avoids a network
     // fixture while still exercising the core-replacement lifecycle.
@@ -783,6 +788,10 @@ fn opt_in_launcher_replaces_the_private_child_at_cutover_and_reaps_both_generati
         !v1_child_socket.exists(),
         "cutover must reap the superseded core's child and unlink its capability endpoint"
     );
+    assert!(
+        !v1_script_socket.exists(),
+        "cutover must unlink the superseded core's script DOM listener"
+    );
 
     let v2_child_socket = std::env::temp_dir().join(format!(
         "blueice-launcher-bluejs-host-{}-1.sock",
@@ -792,12 +801,22 @@ fn opt_in_launcher_replaces_the_private_child_at_cutover_and_reaps_both_generati
         v2_child_socket.exists(),
         "replacement core must receive a fresh launcher-created child, not v1's capability"
     );
+    let v2_script_socket = std::env::temp_dir().join(format!(
+        "blueice-launcher-script-{}-1.sock",
+        launcher.child.id()
+    ));
+    launcher.wait_for_socket(&v2_script_socket, "v2 private script");
+    assert_ne!(v1_script_socket, v2_script_socket);
 
     write_client_message(&mut frontend, &ClientMessage::Shutdown).unwrap();
     launcher.wait_or_kill(Duration::from_secs(5));
     assert!(
         !v2_child_socket.exists(),
         "final launcher shutdown must reap the replacement child too"
+    );
+    assert!(
+        !v2_script_socket.exists(),
+        "final launcher shutdown must unlink the replacement script DOM listener"
     );
     let _ = std::fs::remove_file(gatekeeper_socket);
 }

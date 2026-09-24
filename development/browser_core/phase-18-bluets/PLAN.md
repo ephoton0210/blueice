@@ -57,7 +57,19 @@ core socket rejects malformed envelopes; a socket-pair child test rejects
 wrong IDs, wrong documents, naked results, and nested results. The supervised
 HTTP fixture also asserts this realm has no `fetch` or direct `document`.
 There is no child resolver or direct core DOM reference; page source and graph
-selection remain with the parent. Lifecycle revocation is separate A3.2 work.
+selection remain with the parent. Lifecycle revocation is proven in A3.2 below.
+
+**Script-route lifecycle (A3.2):** The DOM client is owned by a callback in
+the child VM, so realm navigation/reload and exact-generation `CloseRealm`
+drop the old socket rather than retargeting it. A child socket regression
+observes EOF on both transitions, then sends a predecessor document reply
+with the successor's reused call ID: the child rejects it before page code
+can see a node and reconnects for a valid successor call. The existing real
+core-socket regression rejects predecessor capabilities after path reuse;
+the real broker cutover regression now also checks that v1's private script
+listener is unlinked and v2 has a distinct listener, alongside replacement
+and reaping of the private child. Thus no old child stream or reply is
+transferred to the successor core. VM-owned node wrappers remain B1 work.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

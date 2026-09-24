@@ -4825,6 +4825,147 @@ mod tests {
     use super::*;
 
     #[test]
+    fn child_revokes_dom_streams_on_navigation_and_close_and_rejects_old_replies() {
+        let socket_path =
+            std::env::temp_dir().join(format!("bi-dom-revoke-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&socket_path);
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let capability = "a".repeat(script::SCRIPT_SESSION_TOKEN_HEX_BYTES);
+        let server_capability = capability.clone();
+        let server = std::thread::spawn(move || {
+            // Both successors reuse call ID 1 on a fresh stream. First give
+            // each an old-document result, then a valid result after the
+            // child fails closed and reconnects.
+            for (request_generation, reply_generation) in [(1, 1), (2, 1), (2, 2), (3, 2), (3, 3)] {
+                let deadline = Instant::now() + Duration::from_secs(10);
+                let mut peer = loop {
+                    match listener.accept() {
+                        Ok((peer, _)) => break peer,
+                        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                            assert!(Instant::now() < deadline, "child did not open DOM stream");
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(error) => panic!("failed to accept child DOM stream: {error}"),
+                    }
+                };
+                peer.set_nonblocking(false).unwrap();
+                peer.set_read_timeout(Some(Duration::from_secs(10)))
+                    .unwrap();
+                assert_eq!(
+                    script::read_script_request(&mut peer).unwrap(),
+                    ScriptRequest::Hello {
+                        protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+                        session_token: server_capability.clone(),
+                    }
+                );
+                script::write_script_reply(
+                    &mut peer,
+                    &ScriptReply::HelloAck {
+                        protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+                    },
+                )
+                .unwrap();
+                assert_eq!(
+                    script::read_script_request(&mut peer).unwrap(),
+                    ScriptRequest::Call {
+                        request_id: 1,
+                        request: Box::new(ScriptRequest::GetElementById {
+                            target: ScriptDocumentTarget {
+                                tab_id: 7,
+                                document_generation: request_generation,
+                            },
+                            id: "present".to_string(),
+                        }),
+                    }
+                );
+                script::write_script_reply(
+                    &mut peer,
+                    &ScriptReply::CallResult {
+                        request_id: 1,
+                        target: ScriptDocumentTarget {
+                            tab_id: 7,
+                            document_generation: reply_generation,
+                        },
+                        reply: Box::new(ScriptReply::Node { node: Some(11) }),
+                    },
+                )
+                .unwrap();
+                assert_eq!(
+                    script::read_script_request(&mut peer).unwrap_err().kind(),
+                    io::ErrorKind::UnexpectedEof,
+                    "navigation, tab close, or a stale reply must close the old DOM stream"
+                );
+            }
+        });
+
+        let mut host = BlueJsChildHost::default();
+        host.configure_script_dom_capability(socket_path.clone(), capability, true)
+            .unwrap();
+        let script = |ordinal| {
+            classic(
+                ordinal,
+                "if (!blueiceTestHasElementById('present')) throw 'missing';",
+            )
+        };
+        let outcomes = |reply: PageHostReply| match reply {
+            PageHostReply::Synchronized { reports, .. } => reports
+                .into_iter()
+                .map(|report| report.outcome)
+                .collect::<Vec<_>>(),
+            other => panic!("expected a synchronized child document, got {other:?}"),
+        };
+        assert_eq!(
+            outcomes(host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(1, vec![script(0)]),
+            })),
+            vec![PageHostScriptOutcome::Executed]
+        );
+        let second_outcomes = outcomes(host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(2, vec![script(0), script(1)]),
+        }));
+        assert!(matches!(
+            second_outcomes.as_slice(),
+            [
+                PageHostScriptOutcome::Rejected { .. },
+                PageHostScriptOutcome::Executed
+            ]
+        ));
+        assert_eq!(
+            host.handle_request(PageHostRequest::CloseRealm {
+                tab_id: 7,
+                document_generation: 2,
+            }),
+            PageHostReply::RealmClosed {
+                tab_id: 7,
+                document_generation: 2,
+            }
+        );
+        let third_outcomes = outcomes(host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(3, vec![script(0), script(1)]),
+        }));
+        assert!(matches!(
+            third_outcomes.as_slice(),
+            [
+                PageHostScriptOutcome::Rejected { .. },
+                PageHostScriptOutcome::Executed
+            ]
+        ));
+        assert_eq!(
+            host.handle_request(PageHostRequest::CloseRealm {
+                tab_id: 7,
+                document_generation: 3,
+            }),
+            PageHostReply::RealmClosed {
+                tab_id: 7,
+                document_generation: 3,
+            }
+        );
+        server.join().unwrap();
+        std::fs::remove_file(socket_path).unwrap();
+    }
+
+    #[test]
     fn child_rejects_unbound_or_mismatched_dom_replies_and_closes_the_stream() {
         let target = ScriptDocumentTarget {
             tab_id: 7,
