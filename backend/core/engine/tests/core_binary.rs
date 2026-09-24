@@ -1085,6 +1085,157 @@ fn installed_extension_v4_host_rule_blocks_redirect_before_target_connection() {
 }
 
 #[test]
+fn scoped_network_intercept_rule_affects_only_its_exact_origin_and_redirect_targets() {
+    let _guard = core_process_test_guard();
+    use blueice_ipc::extension::{
+        read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
+    };
+    use std::collections::BTreeMap;
+    use std::io::ErrorKind;
+
+    let core_socket = unique_socket_path("eisc");
+    let extension_socket = unique_private_extension_socket_path("eisc");
+    let gatekeeper_socket = clearing_gatekeeper("eisg");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-intercept-scope-frames-{}",
+        std::process::id()
+    ));
+    let (package_root, manifest, _) =
+        extension_manifest_package("intercept-scope", &["network:intercept"]);
+    let target_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    target_listener.set_nonblocking(true).unwrap();
+    let target_url = format!("http://{}/private", target_listener.local_addr().unwrap());
+    let target_origin = format!("http://{}", target_listener.local_addr().unwrap());
+    std::fs::write(
+        &manifest,
+        format!(
+            r#"{{"name":"Core bridge test","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{{"declared":["network:intercept"]}},"capability_origins":{{"network:intercept":["{target_origin}"]}}}}"#
+        ),
+    )
+    .unwrap();
+    let extension_id = blueice_extension_host::load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
+    let open_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let open_origin = format!("http://{}", open_listener.local_addr().unwrap());
+    let open_server = thread::spawn({
+        let target_url = target_url.clone();
+        move || {
+            for response in [
+                "HTTP/1.1 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\n<h1>Open</h1>",
+                "",
+            ] {
+                let (mut stream, _) = open_listener.accept().unwrap();
+                let mut request = [0u8; 1024];
+                let _ = stream.read(&mut request);
+                if response.is_empty() {
+                    stream
+                        .write_all(
+                            format!(
+                                "HTTP/1.1 302 Found\r\nLocation: {target_url}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            )
+                            .as_bytes(),
+                        )
+                        .unwrap();
+                } else {
+                    stream.write_all(response.as_bytes()).unwrap();
+                }
+            }
+        }
+    });
+    let _ = std::fs::remove_file(&core_socket);
+    let _ = std::fs::remove_file(&extension_socket);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_socket.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ])
+        .spawn()
+        .expect("failed to spawn core with a scoped network rule");
+    assert!(wait_for(&core_socket, Duration::from_secs(5)));
+    assert!(wait_for(&extension_socket, Duration::from_secs(5)));
+    let mut frontend = UnixStream::connect(&core_socket).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    let mut extension = UnixStream::connect(&extension_socket).unwrap();
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::Hello {
+            extension_id,
+            capability_versions: BTreeMap::from([("network:intercept".to_string(), 4)]),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        }
+    );
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::RegisterNetworkBlockHost {
+            host: "127.0.0.1".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::NetworkInterceptAck
+    );
+
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("{open_origin}/safe"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("{open_origin}/redirect"),
+        },
+    )
+    .unwrap();
+    match blueice_ipc::read_server_message(&mut frontend).unwrap() {
+        blueice_ipc::ServerMessage::Error { message } => {
+            assert!(message.contains("declarative extension rule"));
+            assert!(message.contains(&target_url));
+        }
+        other => panic!("the in-scope redirect target must be blocked, got {other:?}"),
+    }
+    open_server.join().unwrap();
+    assert_eq!(target_listener.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    assert!(core.wait().unwrap().success());
+    assert!(!core_socket.exists());
+    assert!(!extension_socket.exists());
+    let _ = std::fs::remove_file(gatekeeper_socket);
+    let _ = std::fs::remove_dir_all(package_root);
+}
+
+#[test]
 fn installed_extension_v5_path_prefix_blocks_redirect_before_target_connection() {
     let _guard = core_process_test_guard();
     use blueice_ipc::extension::{

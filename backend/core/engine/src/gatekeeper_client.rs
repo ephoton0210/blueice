@@ -21,12 +21,15 @@
 //! compile-time effect: skipping the gate becomes a compile error, not
 //! a runtime convention a differently-written caller could omit.
 
-use crate::tabs::{extension_navigation_rules_block_url, ExtensionNavigationBlockRule};
+use crate::tabs::{extension_navigation_rules_block_url, ExtensionNavigationRuleSnapshot};
+#[cfg(test)]
+use crate::tabs::ExtensionNavigationBlockRule;
 use crate::TabId;
 use blueice_ipc::gatekeeper::{
     read_gatekeeper_reply, write_gatekeeper_request, GatekeeperReply, GatekeeperRequest,
 };
 use blueice_ipc::extension::NetworkRedirectInfo;
+#[cfg(test)]
 use std::collections::HashSet;
 use std::io;
 use std::os::unix::net::UnixStream;
@@ -127,7 +130,12 @@ fn check_stage(gatekeeper_socket: &Path, request: &GatekeeperRequest) -> StageOu
 /// caller applies back on the main thread once it arrives.
 #[cfg(test)]
 pub(crate) fn check_and_fetch(tab_id: TabId, url: String, gatekeeper_socket: &Path) -> NavOutcome {
-    check_and_fetch_with_navigation_rules(tab_id, url, gatekeeper_socket, HashSet::new())
+    check_and_fetch_with_navigation_rules(
+        tab_id,
+        url,
+        gatekeeper_socket,
+        ExtensionNavigationRuleSnapshot::default(),
+    )
 }
 
 /// Runs a network navigation through two Phase 7 review stages while applying
@@ -139,7 +147,7 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
     tab_id: TabId,
     url: String,
     gatekeeper_socket: &Path,
-    navigation_rules: HashSet<ExtensionNavigationBlockRule>,
+    navigation_rules: ExtensionNavigationRuleSnapshot,
 ) -> NavOutcome {
     let request_url = url.clone();
     let mut current_url = url;
@@ -339,7 +347,7 @@ mod tests {
             TabId::from_u64(9),
             initial_url.clone(),
             &gatekeeper,
-            HashSet::new(),
+            HashSet::new().into(),
         ) {
             NavOutcome::Cleared {
                 final_url: committed,
@@ -414,7 +422,7 @@ mod tests {
             TabId::from_u64(10),
             initial_url.clone(),
             &gatekeeper,
-            HashSet::from([ExtensionNavigationBlockRule::ExactUrl(blocked_url.clone())]),
+            HashSet::from([ExtensionNavigationBlockRule::ExactUrl(blocked_url.clone())]).into(),
         ) {
             NavOutcome::ExtensionRuleBlocked { url } => assert_eq!(url, blocked_url),
             _ => panic!("the redirect target must be blocked before a second review or fetch"),

@@ -38,6 +38,26 @@ pub(crate) enum ExtensionNavigationBlockRule {
     PathPrefix { host: String, path_prefix: String },
 }
 
+/// Immutable navigation-start policy passed to the fetch worker. A scoped
+/// intercept grant applies only when the *target request URL* has one of its
+/// exact origins, including on redirect hops; the rule's host pattern alone
+/// cannot broaden that install-time authority.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ExtensionNavigationRuleSnapshot {
+    rules: HashSet<ExtensionNavigationBlockRule>,
+    allowed_origins: Option<BTreeSet<String>>,
+}
+
+#[cfg(test)]
+impl From<HashSet<ExtensionNavigationBlockRule>> for ExtensionNavigationRuleSnapshot {
+    fn from(rules: HashSet<ExtensionNavigationBlockRule>) -> Self {
+        Self {
+            rules,
+            allowed_origins: None,
+        }
+    }
+}
+
 /// Stable identity for a tab, assigned once at [`TabManager::open_tab`]
 /// (or at [`TabManager::new`] for the initial tab) and never reused --
 /// mirrors `blueice_dom::NodeId`'s own monotonic-counter, never-an-
@@ -387,11 +407,18 @@ impl TabManager {
     /// The background fetch worker receives this ordinary data rather than a
     /// reference to `TabManager`, keeping the session thread the sole owner of
     /// live tab state while still letting every redirect hop be evaluated.
-    pub(crate) fn extension_navigation_block_rule_snapshot(&self) -> HashSet<ExtensionNavigationBlockRule> {
-        self.extension_navigation_block_rules
-            .values()
-            .flat_map(|rules| rules.iter().cloned())
-            .collect()
+    pub(crate) fn extension_navigation_block_rule_snapshot(&self) -> ExtensionNavigationRuleSnapshot {
+        ExtensionNavigationRuleSnapshot {
+            rules: self
+                .extension_navigation_block_rules
+                .values()
+                .flat_map(|rules| rules.iter().cloned())
+                .collect(),
+            allowed_origins: self
+                .extension_capability_origins
+                .get("network:intercept")
+                .cloned(),
+        }
     }
 
     /// Tests the exact canonical initial navigation URL against every live
@@ -816,7 +843,7 @@ impl TabManager {
 /// Fragments never cross HTTP, so they cannot make a different network rule;
 /// credentials are forbidden rather than retained in long-lived core state.
 pub(crate) fn extension_navigation_rules_block_url(
-    rules: &HashSet<ExtensionNavigationBlockRule>,
+    snapshot: &ExtensionNavigationRuleSnapshot,
     url: &str,
 ) -> bool {
     let Ok(mut parsed) = Url::parse(url) else {
@@ -825,13 +852,18 @@ pub(crate) fn extension_navigation_rules_block_url(
     if !matches!(parsed.scheme(), "http" | "https") {
         return false;
     }
+    if snapshot.allowed_origins.as_ref().is_some_and(|allowed| {
+        !allowed.contains(&parsed.origin().ascii_serialization())
+    }) {
+        return false;
+    }
     let Some(host) = parsed.host_str().map(|host| host.trim_end_matches('.').to_ascii_lowercase()) else {
         return false;
     };
     let has_credentials = !parsed.username().is_empty() || parsed.password().is_some();
     parsed.set_fragment(None);
     let canonical_url = parsed.to_string();
-    rules.iter().any(|rule| match rule {
+    snapshot.rules.iter().any(|rule| match rule {
         ExtensionNavigationBlockRule::ExactUrl(blocked) => !has_credentials && blocked == &canonical_url,
         ExtensionNavigationBlockRule::Host(blocked) => host_matches_block_rule(&host, blocked),
         ExtensionNavigationBlockRule::PathPrefix { host: blocked, path_prefix } => {
@@ -930,6 +962,34 @@ mod tests {
         tabs.get_mut(tab).unwrap().navigate("about:blank").unwrap();
         assert!(tabs.check_extension_origin("dom:write", tab).is_err());
         assert!(tabs.check_extension_origin("dom:write", TabId::from_u64(999)).is_err());
+    }
+
+    #[test]
+    fn scoped_network_intercept_rules_cannot_block_other_origins_even_when_host_matches() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        tabs.add_extension_navigation_block_host_rule(7, "127.0.0.1".to_string())
+            .unwrap();
+        assert!(tabs.is_extension_navigation_blocked("http://127.0.0.1:4312/page"));
+        assert!(tabs.is_extension_navigation_blocked("http://127.0.0.1:4313/page"));
+
+        tabs.set_extension_capability_origins(BTreeMap::from([(
+            "network:intercept".to_string(),
+            BTreeSet::from(["http://127.0.0.1:4312".to_string()]),
+        )]));
+        let snapshot = tabs.extension_navigation_block_rule_snapshot();
+        assert!(extension_navigation_rules_block_url(
+            &snapshot,
+            "http://127.0.0.1:4312/page"
+        ));
+        assert!(!extension_navigation_rules_block_url(
+            &snapshot,
+            "http://127.0.0.1:4313/page"
+        ));
+        assert!(!extension_navigation_rules_block_url(
+            &snapshot,
+            "https://127.0.0.1:4312/page"
+        ));
+        assert!(!extension_navigation_rules_block_url(&snapshot, "about:settings"));
     }
 
     #[test]

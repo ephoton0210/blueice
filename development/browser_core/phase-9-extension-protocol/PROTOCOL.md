@@ -34,24 +34,31 @@ capability name may appear once in exactly one tier. The accepted names are
 `dom:read`, `dom:write`, `network:observe`, `network:intercept`, `ui:inject`, and
 `storage`.
 
-For a page-facing declared grant, `capability_origins` can restrict that
-capability to exact HTTP(S) origins. For example:
+For a declared grant that reads or changes a page or intercepts navigation,
+`capability_origins` can restrict that capability to exact HTTP(S) origins.
+For example:
 
 ```json
 "capability_origins": {
   "dom:read": ["https://example.test", "http://127.0.0.1:4312"],
-  "dom:write": ["https://example.test"]
+  "dom:write": ["https://example.test"],
+  "network:intercept": ["https://example.test"]
 }
 ```
 
-Only declared `dom:read`, `dom:write`, and `network:observe` may be scoped.
+Only declared `dom:read`, `dom:write`, `network:observe`, and
+`network:intercept` may be scoped.
 Each list must contain 1–32 unique canonical origins (scheme, host, optional
 nonzero port): no path, trailing slash, query, fragment, credentials,
 wildcards, or implicit subdomains. Core compares the scope to the **live
 tab's** origin when it performs each read or write, not to an extension-supplied
-URL or a prior navigation. A scoped grant denies `about:` pages. An omitted
-scope retains the pre-existing all-origin grant for backward compatibility;
-other capability kinds do not gain an origin scope from this field.
+URL or a prior navigation. For `network:intercept`, the scope is evaluated
+against each target request URL before the connection, including redirect
+targets. A host or path-prefix block rule cannot affect requests outside its
+declared exact origins, even if the rule's host pattern would otherwise match.
+A scoped grant denies `about:` pages. An omitted scope retains the
+pre-existing all-origin grant for backward compatibility; `ui:inject` and
+`storage` do not gain an origin scope from this field.
 
 Only `declared` grants a capability today. `optional` and
 `runtime_ephemeral` are parsed, but **neither can be requested or exercised**:

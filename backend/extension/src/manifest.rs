@@ -290,11 +290,17 @@ fn validate_capability_origins(
 ) -> Result<BTreeMap<String, BTreeSet<String>>, ManifestError> {
     let mut scopes = BTreeMap::new();
     for (capability, origins) in raw {
-        if !matches!(capability.as_str(), CAPABILITY_DOM_READ | CAPABILITY_DOM_WRITE | CAPABILITY_NETWORK_OBSERVE)
+        if !matches!(
+            capability.as_str(),
+            CAPABILITY_DOM_READ
+                | CAPABILITY_DOM_WRITE
+                | CAPABILITY_NETWORK_OBSERVE
+                | CAPABILITY_NETWORK_INTERCEPT
+        )
             || !capabilities.declared().contains(&capability)
         {
             return Err(ManifestError::Invalid(format!(
-                "capability_origins can scope only a declared page-facing capability, not {capability}"
+                "capability_origins can scope only a declared origin-aware capability, not {capability}"
             )));
         }
         if origins.is_empty() || origins.len() > 32 {
@@ -490,14 +496,18 @@ mod tests {
     }
 
     #[test]
-    fn declared_page_capabilities_accept_only_exact_canonical_origin_scopes() {
-        let source = r#"{"name":"Scoped","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read","dom:write","network:observe"]},"capability_origins":{"dom:read":["https://example.test","http://127.0.0.1:4312"],"dom:write":["https://example.test"]}}"#;
+    fn declared_origin_aware_capabilities_accept_only_exact_canonical_origin_scopes() {
+        let source = r#"{"name":"Scoped","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read","dom:write","network:observe","network:intercept"]},"capability_origins":{"dom:read":["https://example.test","http://127.0.0.1:4312"],"dom:write":["https://example.test"],"network:intercept":["http://127.0.0.1:4312"]}}"#;
         let (root, path) = temporary_package("origin-scopes", source, WASM_V1);
         let extension = load_installed_extension(&path).unwrap();
         assert_eq!(extension.manifest().capability_origins()[CAPABILITY_DOM_READ], BTreeSet::from([
             "https://example.test".to_string(), "http://127.0.0.1:4312".to_string(),
         ]));
         assert!(!extension.manifest().capability_origins().contains_key(CAPABILITY_NETWORK_OBSERVE));
+        assert_eq!(
+            extension.manifest().capability_origins()[CAPABILITY_NETWORK_INTERCEPT],
+            BTreeSet::from(["http://127.0.0.1:4312".to_string()])
+        );
         let original_id = extension.extension_id().to_string();
         std::fs::write(&path, source.replace("https://example.test", "https://other.test")).unwrap();
         assert_ne!(load_installed_extension(&path).unwrap().extension_id(), original_id);
@@ -509,6 +519,7 @@ mod tests {
         for (label, declared, scopes) in [
             ("undeclared", r#"["dom:read"]"#, r#"{"dom:write":["https://example.test"]}"#),
             ("storage", r#"["storage"]"#, r#"{"storage":["https://example.test"]}"#),
+            ("ungranted-intercept", r#"[]"#, r#"{"network:intercept":["https://example.test"]}"#),
             ("empty", r#"["dom:read"]"#, r#"{"dom:read":[]}"#),
             ("wildcard", r#"["dom:read"]"#, r#"{"dom:read":["https://*.example.test"]}"#),
             ("path", r#"["dom:read"]"#, r#"{"dom:read":["https://example.test/private"]}"#),
