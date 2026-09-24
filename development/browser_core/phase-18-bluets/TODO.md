@@ -1133,7 +1133,7 @@ or second module resolver to bypass them.
   `bluetsc_session_capabilities` truthfully reports whether the compiler
   adapter is attached and, when it is, returns the exact opaque receipt minted
   by the core listener for that accepted relay stream together with the complete
-  core-authored v2 manifest of nine read-only operations. MCP accepts neither
+  core-authored v3 manifest of ten read-only operations. MCP accepts neither
   a missing, malformed, subset, reordered, nor locally derived manifest. Every
   compiler tool echoes and requires that receipt;
   static queries additionally require the exact generation first observed by
@@ -1154,6 +1154,17 @@ or second module resolver to bypass them.
   regression exercises receipt mismatch, unobserved generation, and stale
   diagnostic-page rejection; service and adapter coverage exercise
   continuation/replay and response bounds.
+  Compiler IPC v6 and its v3 fixed manifest now add `ListWorkSet` as a tenth
+  read-only operation. Core retains each of the four compiler-produced
+  incremental work-sets at a fixed owner cap and pages canonical module
+  identities with one-shot cursors bound to generation, kind, and accepted
+  compiler stream. Replacement and disconnect revoke outstanding receipts;
+  a fixed service/IPC/stream budget prevents cursor accumulation. MCP's
+  `bluetsc_list_work_set` requires the exact session attestation and a
+  previously observed check generation, forwards only the fixed category,
+  cursor, and clamped limit, and rejects a mismatched core page. No source
+  text, registration, resolver, option, build, artifact, or output-write
+  authority crosses this operation.
   There is still
   no general launcher-owned catalog distribution or authorization beyond the
   one fixed closed profile, no remote registration/update/source/filesystem/
@@ -1169,7 +1180,8 @@ or second module resolver to bypass them.
   capped, redacted where needed, and reject stale project state.
 
 - [ ] **Complete the negotiated MCP BlueTS/BlueTSC adapter (Phase 12).**
-  `bluetsc_describe_project`, `bluetsc_check`, `bluetsc_list_diagnostics`, `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
+  `bluetsc_describe_project`, `bluetsc_check`, `bluetsc_list_diagnostics`,
+  `bluetsc_list_work_set`, `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
   `debug_get_provenance`, `debug_get_contract`, and
   `debug_validate_contract` now adapt the native query service, not shell
   endpoints or a second compiler. Still add `bluetsc_build` only alongside an

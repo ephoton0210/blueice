@@ -83,6 +83,33 @@ pub(super) struct CompilerDiagnosticInventoryParams {
     pub(super) limit: Option<u32>,
 }
 
+/// Fixed compiler work-set categories. A module identity is metadata only;
+/// selecting a category cannot read that module's source.
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum CompilerWorkSetKindParams {
+    Parsed,
+    ReusedParsed,
+    Rechecked,
+    ReusedChecked,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub(super) struct CompilerWorkSetCursorParams {
+    /// Core-minted one-shot cursor from the prior work-set page.
+    pub(super) id: u64,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub(super) struct CompilerWorkSetInventoryParams {
+    pub(super) session_id: Option<String>,
+    pub(super) project_id: u64,
+    pub(super) generation: u64,
+    pub(super) kind: CompilerWorkSetKindParams,
+    pub(super) cursor: Option<CompilerWorkSetCursorParams>,
+    pub(super) limit: Option<u32>,
+}
+
 /// The only source-free static metadata collections discoverable through the
 /// compiler service. A category never grants a source, path, configuration,
 /// artifact, write, or runtime-object capability.
@@ -511,6 +538,23 @@ pub(super) fn compiler_static_metadata_kind_from_params(
         }
         CompilerStaticMetadataKindParams::Contracts => {
             blueice_ipc::compiler::CompilerStaticMetadataKind::Contracts
+        }
+    }
+}
+
+pub(super) fn compiler_work_set_kind_from_params(
+    kind: CompilerWorkSetKindParams,
+) -> blueice_ipc::compiler::CompilerWorkSetKind {
+    match kind {
+        CompilerWorkSetKindParams::Parsed => blueice_ipc::compiler::CompilerWorkSetKind::Parsed,
+        CompilerWorkSetKindParams::ReusedParsed => {
+            blueice_ipc::compiler::CompilerWorkSetKind::ReusedParsed
+        }
+        CompilerWorkSetKindParams::Rechecked => {
+            blueice_ipc::compiler::CompilerWorkSetKind::Rechecked
+        }
+        CompilerWorkSetKindParams::ReusedChecked => {
+            blueice_ipc::compiler::CompilerWorkSetKind::ReusedChecked
         }
     }
 }

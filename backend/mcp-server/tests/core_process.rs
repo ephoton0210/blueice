@@ -102,7 +102,7 @@ fn compiler_session_id(result: &rmcp::model::CallToolResult) -> String {
         .get("operation_ids")
         .and_then(serde_json::Value::as_array)
         .expect("capability manifest must expose its complete query vocabulary");
-    assert_eq!(operation_ids.len(), 9);
+    assert_eq!(operation_ids.len(), 10);
     assert_eq!(
         operation_ids.first(),
         Some(&serde_json::json!("describe-project"))
@@ -112,6 +112,7 @@ fn compiler_session_id(result: &rmcp::model::CallToolResult) -> String {
         Some(&serde_json::json!("validate-static-contract"))
     );
     assert!(operation_ids.contains(&serde_json::json!("list-diagnostics")));
+    assert!(operation_ids.contains(&serde_json::json!("list-work-set")));
     assert!(
         !text.contains("coreRegisteredAnswer") && !text.contains("core-fixture-dist"),
         "capability result must remain source/output-free: {text}"
@@ -470,6 +471,68 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         .static_metadata
         .as_ref()
         .expect("successful check must retain source-free static metadata");
+
+    let work_set_result = compiler_tool!(
+        "bluetsc_list_work_set",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "kind": "parsed",
+            "limit": 1,
+        })
+    );
+    assert_eq!(work_set_result.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&work_set_result);
+    let blueice_ipc::compiler::CompilerReply::WorkSetPage(work_set_page) =
+        compiler_tool_reply(&work_set_result)
+    else {
+        panic!("the sealed core fixture must expose a bounded parsed-module page")
+    };
+    assert_eq!(work_set_page.generation, check.generation);
+    assert_eq!(
+        work_set_page.kind,
+        blueice_ipc::compiler::CompilerWorkSetKind::Parsed
+    );
+    assert_eq!(
+        work_set_page.entries,
+        vec!["project:///core-fixture/main.ts".to_string()]
+    );
+    assert!(work_set_page.next_cursor.is_none());
+    assert!(!work_set_page.truncated);
+
+    let unobserved_work_set = compiler_tool!(
+        "bluetsc_list_work_set",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence + 1,
+            "kind": "parsed",
+        })
+    );
+    assert_eq!(unobserved_work_set.is_error, Some(true));
+    assert!(matches!(
+        compiler_tool_reply(&unobserved_work_set),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::StaleGeneration,
+            ..
+        }
+    ));
+    let wrong_work_set_session = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_list_work_set").with_arguments(
+                serde_json::json!({
+                    "session_id": "f".repeat(64),
+                    "project_id": 1,
+                    "generation": check.generation.sequence,
+                    "kind": "parsed",
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .expect("wrong work-set session must receive a structured result");
+    assert_eq!(wrong_work_set_session.is_error, Some(true));
 
     let diagnostic_page = compiler_tool!(
         "bluetsc_list_diagnostics",
@@ -927,6 +990,22 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         panic!("later core check must produce a new generation")
     };
     assert_ne!(later_check.generation, check.generation);
+    let stale_work_set = compiler_tool!(
+        "bluetsc_list_work_set",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "kind": "parsed",
+        })
+    );
+    assert_eq!(stale_work_set.is_error, Some(true));
+    assert!(matches!(
+        compiler_tool_reply(&stale_work_set),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::StaleGeneration,
+            ..
+        }
+    ));
     let stale_diagnostics = compiler_tool!(
         "bluetsc_list_diagnostics",
         serde_json::json!({

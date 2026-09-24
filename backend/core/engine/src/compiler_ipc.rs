@@ -20,7 +20,7 @@
 use crate::compiler_service::{
     CompilerServiceCheck, CompilerServiceError, CompilerServiceLimits,
     RegisteredProjectCompilerService, RegisteredProjectGeneration, RegisteredProjectId,
-    RegisteredProjectRegistration, StaticMetadataInventoryKind,
+    RegisteredProjectRegistration, StaticMetadataInventoryKind, WorkSetInventoryKind,
 };
 use blueice_bluets::{
     ContractId, ContractValue, Diagnostic, Severity, SourceId, SymbolKind, ValidationError,
@@ -33,6 +33,7 @@ use blueice_ipc::compiler::{
     CompilerSessionAttestation, CompilerStaticContract, CompilerStaticMetadataCursor,
     CompilerStaticMetadataKind, CompilerStaticMetadataPage, CompilerStaticMetadataSummary,
     CompilerStaticProvenance, CompilerStaticSymbol, CompilerStaticType, CompilerSymbolKind,
+    CompilerWorkSetCursor, CompilerWorkSetKind, CompilerWorkSetPage,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -58,6 +59,8 @@ pub struct CompilerServiceIpcLimits {
     /// Maximum diagnostics returned by one separately paginated diagnostic
     /// reply. A request can only lower this core-selected cap.
     pub max_diagnostic_page_entries: usize,
+    /// Maximum module identities returned by one work-set page.
+    pub max_work_set_page_entries: usize,
     /// Maximum opaque IDs returned in one static-metadata inventory page. A
     /// request may ask for fewer entries but cannot raise this core-selected
     /// cap or use a cursor as an offset.
@@ -76,6 +79,7 @@ impl Default for CompilerServiceIpcLimits {
             max_modules_per_set: 1_024,
             max_diagnostics: 256,
             max_diagnostic_page_entries: 128,
+            max_work_set_page_entries: 128,
             max_static_metadata_page_entries: 128,
             max_stream_cursor_receipts: 2_048,
         }
@@ -91,6 +95,7 @@ pub enum CompilerServiceIpcConfigurationError {
     ResponseExceedsTransportLimit,
     ZeroFieldBytes,
     ZeroDiagnosticPageEntries,
+    ZeroWorkSetPageEntries,
     ZeroStaticMetadataPageEntries,
     ZeroStreamCursorReceipts,
 }
@@ -108,6 +113,9 @@ impl fmt::Display for CompilerServiceIpcConfigurationError {
             }
             Self::ZeroDiagnosticPageEntries => {
                 formatter.write_str("compiler IPC diagnostic page cap must be nonzero")
+            }
+            Self::ZeroWorkSetPageEntries => {
+                formatter.write_str("compiler IPC work-set page cap must be nonzero")
             }
             Self::ZeroStaticMetadataPageEntries => {
                 formatter.write_str("compiler IPC static metadata page cap must be nonzero")
@@ -136,6 +144,7 @@ pub struct CompilerServiceIpcAdapter {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum CompilerSessionCursorKind {
     Diagnostics,
+    WorkSet(CompilerWorkSetKind),
     Sources,
     Types,
     Symbols,
@@ -234,6 +243,12 @@ impl CompilerServiceIpcAdapter {
                 cursor,
                 limit,
             } => self.diagnostic_page(generation, cursor, limit),
+            CompilerRequest::ListWorkSet {
+                generation,
+                kind,
+                cursor,
+                limit,
+            } => self.work_set_page(generation, kind, cursor, limit),
             CompilerRequest::GetStaticType {
                 generation,
                 type_id,
@@ -291,6 +306,16 @@ impl CompilerServiceIpcAdapter {
                 CompilerSessionCursorKind::Diagnostics,
                 cursor.map(|cursor| cursor.id),
             )),
+            CompilerRequest::ListWorkSet {
+                generation,
+                kind,
+                cursor,
+                ..
+            } => Some((
+                *generation,
+                CompilerSessionCursorKind::WorkSet(*kind),
+                cursor.map(|cursor| cursor.id),
+            )),
             CompilerRequest::ListStaticMetadata {
                 generation,
                 kind,
@@ -316,16 +341,19 @@ impl CompilerServiceIpcAdapter {
                 .get(session_id)
                 .is_some_and(|receipts| receipts.contains(&cursor))
             {
-                let (code, message) = if cursor.kind == CompilerSessionCursorKind::Diagnostics {
-                    (
+                let (code, message) = match cursor.kind {
+                    CompilerSessionCursorKind::Diagnostics => (
                         CompilerErrorCode::InvalidDiagnosticCursor,
                         "compiler diagnostic cursor was not returned on this stream",
-                    )
-                } else {
-                    (
+                    ),
+                    CompilerSessionCursorKind::WorkSet(_) => (
+                        CompilerErrorCode::InvalidWorkSetCursor,
+                        "compiler work-set cursor was not returned on this stream",
+                    ),
+                    _ => (
                         CompilerErrorCode::InvalidMetadataCursor,
                         "static metadata cursor was not returned on this stream",
-                    )
+                    ),
                 };
                 return CompilerReply::Error {
                     code,
@@ -351,6 +379,18 @@ impl CompilerServiceIpcAdapter {
                     cursor.id,
                 )
             }),
+            (
+                Some((generation, CompilerSessionCursorKind::WorkSet(kind), _)),
+                CompilerReply::WorkSetPage(page),
+            ) if page.generation == generation && page.kind == kind => {
+                page.next_cursor.map(|cursor| {
+                    CompilerSessionCursorReceipt::new(
+                        generation,
+                        CompilerSessionCursorKind::WorkSet(kind),
+                        cursor.id,
+                    )
+                })
+            }
             (Some((generation, kind, _)), CompilerReply::StaticMetadataPage(page))
                 if page.generation == generation
                     && CompilerSessionCursorKind::from_static_kind(page.kind) == kind =>
@@ -362,7 +402,9 @@ impl CompilerServiceIpcAdapter {
         };
         if matches!(
             &reply,
-            CompilerReply::DiagnosticPage(_) | CompilerReply::StaticMetadataPage(_)
+            CompilerReply::DiagnosticPage(_)
+                | CompilerReply::WorkSetPage(_)
+                | CompilerReply::StaticMetadataPage(_)
         ) {
             let receipts = self
                 .session_cursors
@@ -432,15 +474,16 @@ impl CompilerServiceIpcAdapter {
     fn release_session_cursors(&mut self, receipts: BTreeSet<CompilerSessionCursorReceipt>) {
         let mut metadata = Vec::new();
         let mut diagnostics = Vec::new();
+        let mut work_sets = Vec::new();
         for receipt in receipts {
-            if receipt.kind == CompilerSessionCursorKind::Diagnostics {
-                diagnostics.push(receipt.id);
-            } else {
-                metadata.push(receipt.id);
+            match receipt.kind {
+                CompilerSessionCursorKind::Diagnostics => diagnostics.push(receipt.id),
+                CompilerSessionCursorKind::WorkSet(_) => work_sets.push(receipt.id),
+                _ => metadata.push(receipt.id),
             }
         }
         self.service
-            .revoke_inventory_cursors(&metadata, &diagnostics);
+            .revoke_inventory_cursors(&metadata, &diagnostics, &work_sets);
     }
 
     fn describe_project(&self, project: CompilerProject) -> CompilerReply {
@@ -479,6 +522,18 @@ impl CompilerServiceIpcAdapter {
         // a cursor merely because an unseen later entry violates the fixed
         // public field policy.
         if !retained_diagnostics_fit_wire_policy(&check.retained_diagnostics, self.limits) {
+            return response_limit_reply();
+        }
+        if [
+            &check.parsed_modules,
+            &check.reused_parsed_modules,
+            &check.rechecked_modules,
+            &check.reused_checked_modules,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|module| module.len() > self.limits.max_field_bytes)
+        {
             return response_limit_reply();
         }
         match self.check_to_wire(check) {
@@ -559,7 +614,7 @@ impl CompilerServiceIpcAdapter {
         let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
         if !budget.reserve_fixed(PAGE_FIXED_BYTES) {
             if let Some(id) = page.next_cursor {
-                self.service.revoke_inventory_cursors(&[], &[id]);
+                self.service.revoke_inventory_cursors(&[], &[id], &[]);
             }
             return response_limit_reply();
         }
@@ -568,7 +623,7 @@ impl CompilerServiceIpcAdapter {
             Ok(entries) => entries,
             Err(()) => {
                 if let Some(id) = page.next_cursor {
-                    self.service.revoke_inventory_cursors(&[], &[id]);
+                    self.service.revoke_inventory_cursors(&[], &[id], &[]);
                 }
                 return response_limit_reply();
             }
@@ -577,6 +632,84 @@ impl CompilerServiceIpcAdapter {
             generation: generation_to_wire(generation),
             entries,
             next_cursor: page.next_cursor.map(|id| CompilerDiagnosticCursor { id }),
+            truncated: page.truncated,
+        })
+    }
+
+    fn work_set_page(
+        &mut self,
+        generation: CompilerGeneration,
+        kind: CompilerWorkSetKind,
+        cursor: Option<CompilerWorkSetCursor>,
+        requested_limit: Option<u32>,
+    ) -> CompilerReply {
+        let generation = match generation_from_wire(generation) {
+            Ok(generation) => generation,
+            Err(error) => return handle_error_reply(error),
+        };
+        if cursor.is_some_and(|cursor| !cursor.is_well_formed()) {
+            return CompilerReply::Error {
+                code: CompilerErrorCode::InvalidWorkSetCursor,
+                message: "invalid compiler work-set cursor".to_string(),
+            };
+        }
+        let requested_limit = match requested_limit {
+            Some(0) => {
+                return CompilerReply::Error {
+                    code: CompilerErrorCode::InvalidWorkSetPage,
+                    message: "compiler work-set page limit must be positive".to_string(),
+                };
+            }
+            Some(limit) => usize::try_from(limit).unwrap_or(usize::MAX),
+            None => self.limits.max_work_set_page_entries,
+        };
+        const PAGE_FIXED_BYTES: usize = 256;
+        const ENTRY_FIXED_BYTES: usize = 64;
+        let Some(max_entry_bytes) = self
+            .limits
+            .max_field_bytes
+            .checked_mul(6)
+            .and_then(|bytes| bytes.checked_add(ENTRY_FIXED_BYTES + 2))
+        else {
+            return response_limit_reply();
+        };
+        let response_cap = self
+            .limits
+            .max_response_bytes
+            .saturating_sub(PAGE_FIXED_BYTES)
+            / max_entry_bytes;
+        let limit = requested_limit
+            .min(self.limits.max_work_set_page_entries)
+            .min(response_cap);
+        if limit == 0 {
+            return response_limit_reply();
+        }
+        let page = match self.service.work_set_inventory(
+            generation,
+            work_set_kind_from_wire(kind),
+            cursor.map(|cursor| cursor.id),
+            limit,
+        ) {
+            Ok(page) => page,
+            Err(error) => return service_error_reply(&error),
+        };
+        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
+        let valid = budget.reserve_fixed(PAGE_FIXED_BYTES)
+            && page.entries.iter().all(|entry| {
+                budget.reserve_required_string(entry, self.limits.max_field_bytes)
+                    && budget.reserve_fixed(ENTRY_FIXED_BYTES)
+            });
+        if !valid {
+            if let Some(id) = page.next_cursor {
+                self.service.revoke_inventory_cursors(&[], &[], &[id]);
+            }
+            return response_limit_reply();
+        }
+        CompilerReply::WorkSetPage(CompilerWorkSetPage {
+            generation: generation_to_wire(generation),
+            kind,
+            entries: page.entries,
+            next_cursor: page.next_cursor.map(|id| CompilerWorkSetCursor { id }),
             truncated: page.truncated,
         })
     }
@@ -711,7 +844,7 @@ impl CompilerServiceIpcAdapter {
                 .any(|_| !budget.reserve_optional_fixed(PAGE_ID_BYTES))
         {
             if let Some(id) = page.next_cursor {
-                self.service.revoke_inventory_cursors(&[id], &[]);
+                self.service.revoke_inventory_cursors(&[id], &[], &[]);
             }
             return response_limit_reply();
         }
@@ -1011,6 +1144,9 @@ fn validate_limits(
     if limits.max_diagnostic_page_entries == 0 {
         return Err(CompilerServiceIpcConfigurationError::ZeroDiagnosticPageEntries);
     }
+    if limits.max_work_set_page_entries == 0 {
+        return Err(CompilerServiceIpcConfigurationError::ZeroWorkSetPageEntries);
+    }
     if limits.max_static_metadata_page_entries == 0 {
         return Err(CompilerServiceIpcConfigurationError::ZeroStaticMetadataPageEntries);
     }
@@ -1109,6 +1245,10 @@ fn service_error_reply(error: &CompilerServiceError) -> CompilerReply {
             CompilerErrorCode::InvalidDiagnosticCursor,
             "invalid, consumed, stale, or mismatched compiler diagnostic cursor",
         ),
+        CompilerServiceError::InvalidWorkSetCursor { .. } => (
+            CompilerErrorCode::InvalidWorkSetCursor,
+            "invalid, consumed, stale, or mismatched compiler work-set cursor",
+        ),
         CompilerServiceError::InvalidStaticMetadataPage { .. } => (
             CompilerErrorCode::InvalidMetadataPage,
             "invalid static metadata page request",
@@ -1117,11 +1257,16 @@ fn service_error_reply(error: &CompilerServiceError) -> CompilerReply {
             CompilerErrorCode::InvalidDiagnosticPage,
             "invalid compiler diagnostic page request",
         ),
+        CompilerServiceError::InvalidWorkSetPage { .. } => (
+            CompilerErrorCode::InvalidWorkSetPage,
+            "invalid compiler work-set page request",
+        ),
         CompilerServiceError::ProjectLimit { .. }
         | CompilerServiceError::GenerationExhausted { .. }
         | CompilerServiceError::StaticMetadataLimit { .. }
         | CompilerServiceError::StaticMetadataCursorLimit { .. }
         | CompilerServiceError::DiagnosticCursorLimit { .. }
+        | CompilerServiceError::WorkSetCursorLimit { .. }
         | CompilerServiceError::BuildOutputLimit { .. } => (
             CompilerErrorCode::ResourceLimit,
             "compiler service resource limit reached",
@@ -1363,6 +1508,15 @@ fn static_metadata_kind_from_wire(kind: CompilerStaticMetadataKind) -> StaticMet
         CompilerStaticMetadataKind::Types => StaticMetadataInventoryKind::Types,
         CompilerStaticMetadataKind::Symbols => StaticMetadataInventoryKind::Symbols,
         CompilerStaticMetadataKind::Contracts => StaticMetadataInventoryKind::Contracts,
+    }
+}
+
+fn work_set_kind_from_wire(kind: CompilerWorkSetKind) -> WorkSetInventoryKind {
+    match kind {
+        CompilerWorkSetKind::Parsed => WorkSetInventoryKind::Parsed,
+        CompilerWorkSetKind::ReusedParsed => WorkSetInventoryKind::ReusedParsed,
+        CompilerWorkSetKind::Rechecked => WorkSetInventoryKind::Rechecked,
+        CompilerWorkSetKind::ReusedChecked => WorkSetInventoryKind::ReusedChecked,
     }
 }
 
@@ -2003,6 +2157,173 @@ mod tests {
     }
 
     #[test]
+    fn work_set_cursors_are_stream_kind_and_generation_bound() {
+        let mut adapter = CompilerServiceIpcAdapter::new(
+            RegisteredProjectCompilerService::new(CompilerServiceLimits {
+                max_work_set_cursors: 1,
+                ..CompilerServiceLimits::default()
+            }),
+            CompilerServiceIpcLimits {
+                max_modules_per_set: 1,
+                max_work_set_page_entries: 1,
+                ..CompilerServiceIpcLimits::default()
+            },
+        )
+        .unwrap();
+        let project = adapter
+            .register_core_project(registration("export const value: number = answer;"))
+            .unwrap();
+        let first_stream = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
+        let second_stream = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
+        let CompilerReply::Check(check) =
+            adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
+        else {
+            panic!("fixture must check under the first stream")
+        };
+        assert!(check.parsed_modules.truncated);
+        let CompilerReply::WorkSetPage(first) = adapter.handle_session_request(
+            &first_stream,
+            CompilerRequest::ListWorkSet {
+                generation: check.generation,
+                kind: CompilerWorkSetKind::Parsed,
+                cursor: None,
+                limit: Some(1),
+            },
+        ) else {
+            panic!("first work-set page must be available")
+        };
+        assert_eq!(first.entries.len(), 1);
+        let cursor = first.next_cursor.expect("two modules need continuation");
+        let continuation = CompilerRequest::ListWorkSet {
+            generation: check.generation,
+            kind: CompilerWorkSetKind::Parsed,
+            cursor: Some(cursor),
+            limit: Some(1),
+        };
+        for rejected in [
+            adapter.handle_session_request(&second_stream, continuation.clone()),
+            adapter.handle_session_request(
+                &first_stream,
+                CompilerRequest::ListWorkSet {
+                    generation: check.generation,
+                    kind: CompilerWorkSetKind::Rechecked,
+                    cursor: Some(cursor),
+                    limit: Some(1),
+                },
+            ),
+        ] {
+            assert!(matches!(
+                rejected,
+                CompilerReply::Error {
+                    code: CompilerErrorCode::InvalidWorkSetCursor,
+                    ..
+                }
+            ));
+        }
+        assert!(matches!(
+            adapter.handle_session_request(
+                &first_stream,
+                CompilerRequest::ListWorkSet {
+                    generation: check.generation,
+                    kind: CompilerWorkSetKind::Parsed,
+                    cursor: Some(cursor),
+                    limit: Some(0),
+                },
+            ),
+            CompilerReply::Error {
+                code: CompilerErrorCode::InvalidWorkSetPage,
+                ..
+            }
+        ));
+        let CompilerReply::WorkSetPage(second) =
+            adapter.handle_session_request(&first_stream, continuation.clone())
+        else {
+            panic!("owning stream must consume its cursor once")
+        };
+        assert!(second.next_cursor.is_none());
+        assert_ne!(first.entries, second.entries);
+        assert!(matches!(
+            adapter.handle_session_request(&first_stream, continuation),
+            CompilerReply::Error {
+                code: CompilerErrorCode::InvalidWorkSetCursor,
+                ..
+            }
+        ));
+        let CompilerReply::Check(later) =
+            adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
+        else {
+            panic!("successor generation must check")
+        };
+        assert_ne!(later.generation, check.generation);
+        assert!(matches!(
+            adapter.handle_session_request(
+                &first_stream,
+                CompilerRequest::ListWorkSet {
+                    generation: check.generation,
+                    kind: CompilerWorkSetKind::Parsed,
+                    cursor: None,
+                    limit: Some(1),
+                }
+            ),
+            CompilerReply::Error {
+                code: CompilerErrorCode::StaleGeneration,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn abandoned_work_set_cursor_slots_are_released_on_disconnect() {
+        let mut adapter = CompilerServiceIpcAdapter::new(
+            RegisteredProjectCompilerService::new(CompilerServiceLimits {
+                max_work_set_cursors: 1,
+                ..CompilerServiceLimits::default()
+            }),
+            CompilerServiceIpcLimits {
+                max_work_set_page_entries: 1,
+                ..CompilerServiceIpcLimits::default()
+            },
+        )
+        .unwrap();
+        let project = adapter
+            .register_core_project(registration("export const value: number = answer;"))
+            .unwrap();
+        let first_stream = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
+        let second_stream = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
+        let CompilerReply::Check(check) =
+            adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
+        else {
+            panic!("registered fixture must check")
+        };
+        let first_request = CompilerRequest::ListWorkSet {
+            generation: check.generation,
+            kind: CompilerWorkSetKind::Parsed,
+            cursor: None,
+            limit: Some(1),
+        };
+        let CompilerReply::WorkSetPage(first) =
+            adapter.handle_session_request(&first_stream, first_request.clone())
+        else {
+            panic!("the first stream must own the sole cursor slot")
+        };
+        let cursor = first.next_cursor.unwrap();
+        assert!(matches!(
+            adapter.handle_session_request(&second_stream, first_request.clone()),
+            CompilerReply::Error {
+                code: CompilerErrorCode::ResourceLimit,
+                ..
+            }
+        ));
+        adapter.end_session(&first_stream);
+        let CompilerReply::WorkSetPage(second) =
+            adapter.handle_session_request(&second_stream, first_request)
+        else {
+            panic!("disconnect must release the sole work-set cursor slot")
+        };
+        assert_ne!(second.next_cursor, Some(cursor));
+    }
+
+    #[test]
     fn rejected_diagnostic_wire_page_does_not_leak_a_core_cursor_slot() {
         let mut adapter = CompilerServiceIpcAdapter::new(
             RegisteredProjectCompilerService::new(CompilerServiceLimits {
@@ -2147,6 +2468,17 @@ mod tests {
             )
             .unwrap_err(),
             CompilerServiceIpcConfigurationError::ZeroDiagnosticPageEntries
+        );
+        assert_eq!(
+            CompilerServiceIpcAdapter::new(
+                RegisteredProjectCompilerService::default(),
+                CompilerServiceIpcLimits {
+                    max_work_set_page_entries: 0,
+                    ..CompilerServiceIpcLimits::default()
+                },
+            )
+            .unwrap_err(),
+            CompilerServiceIpcConfigurationError::ZeroWorkSetPageEntries
         );
         assert_eq!(
             CompilerServiceIpcAdapter::new(

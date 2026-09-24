@@ -73,7 +73,7 @@ impl<S: Read + Write> CompilerConnection<S> {
     }
 
     /// Returns the source-free core evidence minted for this exact accepted
-    /// transport stream. It is available only after a successful v5
+    /// transport stream. It is available only after a successful v6
     /// handshake, and it grants no authority beyond the stream itself.
     pub fn session_attestation(
         &self,
@@ -125,6 +125,25 @@ impl<S: Read + Write> CompilerConnection<S> {
         self.request(blueice_ipc::compiler::CompilerRequest::ListDiagnostics {
             generation: compiler_generation(project_id, generation),
             cursor: cursor.map(|id| blueice_ipc::compiler::CompilerDiagnosticCursor { id }),
+            limit,
+        })
+    }
+
+    /// Lists one bounded page of compiler-produced incremental work-set
+    /// identities for a generation observed by this connection. The opaque
+    /// cursor is forwarded unchanged and grants no source-read operation.
+    pub fn work_set_page(
+        &mut self,
+        project_id: u64,
+        generation: u64,
+        kind: blueice_ipc::compiler::CompilerWorkSetKind,
+        cursor: Option<u64>,
+        limit: Option<u32>,
+    ) -> io::Result<blueice_ipc::compiler::CompilerReply> {
+        self.request(blueice_ipc::compiler::CompilerRequest::ListWorkSet {
+            generation: compiler_generation(project_id, generation),
+            kind,
+            cursor: cursor.map(|id| blueice_ipc::compiler::CompilerWorkSetCursor { id }),
             limit,
         })
     }
@@ -554,6 +573,27 @@ mod tests {
                 },
             )
             .unwrap();
+
+            assert!(matches!(
+                blueice_ipc::compiler::read_compiler_request(&mut server).unwrap(),
+                blueice_ipc::compiler::CompilerRequest::ListWorkSet {
+                    generation: blueice_ipc::compiler::CompilerGeneration {
+                        project: blueice_ipc::compiler::CompilerProject { id: 41 },
+                        sequence: 9,
+                    },
+                    kind: blueice_ipc::compiler::CompilerWorkSetKind::Rechecked,
+                    cursor: Some(blueice_ipc::compiler::CompilerWorkSetCursor { id: 12 }),
+                    limit: Some(2),
+                }
+            ));
+            blueice_ipc::compiler::write_compiler_reply(
+                &mut server,
+                &blueice_ipc::compiler::CompilerReply::Error {
+                    code: blueice_ipc::compiler::CompilerErrorCode::InvalidWorkSetCursor,
+                    message: "invalid compiler work-set cursor".to_string(),
+                },
+            )
+            .unwrap();
         });
 
         let mut connection = CompilerConnection::new(client);
@@ -584,6 +624,21 @@ mod tests {
             connection.static_symbol(41, 9, 4).unwrap(),
             blueice_ipc::compiler::CompilerReply::Error {
                 code: blueice_ipc::compiler::CompilerErrorCode::UnknownSymbol,
+                ..
+            }
+        ));
+        assert!(matches!(
+            connection
+                .work_set_page(
+                    41,
+                    9,
+                    blueice_ipc::compiler::CompilerWorkSetKind::Rechecked,
+                    Some(12),
+                    Some(2),
+                )
+                .unwrap(),
+            blueice_ipc::compiler::CompilerReply::Error {
+                code: blueice_ipc::compiler::CompilerErrorCode::InvalidWorkSetCursor,
                 ..
             }
         ));

@@ -10,7 +10,9 @@
 //! path, or write capability. Callers can therefore only act on opaque
 //! project and generation handles minted by that owner.
 //!
-//! Version five adds a core-minted, fixed query-only capability manifest to
+//! Version six adds source-free, one-shot pages of incremental compiler
+//! work-set module identities for an exact checked generation. Version five
+//! added a core-minted, fixed query-only capability manifest to
 //! the per-accepted-stream session attestation, source-text-free identity,
 //! check, individual static type/symbol queries, compiler-minted provenance
 //! hashes, deliberately bounded reifiable static-contract
@@ -33,7 +35,7 @@ use std::io::{self, Read, Write};
 
 /// Independent protocol version for registered-project compiler IPC. It does
 /// not share the browser frontend protocol's lifecycle.
-pub const COMPILER_PROTOCOL_VERSION: u32 = 5;
+pub const COMPILER_PROTOCOL_VERSION: u32 = 6;
 
 /// The maximum encoded request or reply accepted by this protocol. The engine
 /// adapter applies a smaller response budget before a reply reaches this
@@ -71,7 +73,7 @@ impl CompilerSessionAttestation {
 /// expose. Its version is independent of the transport version so a client
 /// can validate the fixed query-only operation set explicitly rather than
 /// inferring authority from a protocol number.
-pub const COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION: u32 = 2;
+pub const COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION: u32 = 3;
 
 /// Stable, source-free identifiers for the exact read-only compiler queries
 /// available over this transport. The protocol deliberately has no variants
@@ -83,6 +85,7 @@ pub enum CompilerQueryOperationId {
     DescribeProject,
     Check,
     ListDiagnostics,
+    ListWorkSet,
     GetStaticType,
     GetStaticSymbol,
     ListStaticMetadata,
@@ -125,6 +128,7 @@ impl CompilerSessionCapabilityManifest {
             CompilerQueryOperationId::DescribeProject,
             CompilerQueryOperationId::Check,
             CompilerQueryOperationId::ListDiagnostics,
+            CompilerQueryOperationId::ListWorkSet,
             CompilerQueryOperationId::GetStaticType,
             CompilerQueryOperationId::GetStaticSymbol,
             CompilerQueryOperationId::ListStaticMetadata,
@@ -185,6 +189,40 @@ impl CompilerGeneration {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompilerModuleList {
     pub entries: Vec<String>,
+    pub truncated: bool,
+}
+
+/// One of the four compiler-produced incremental-cache work-sets. Its page
+/// entries are canonical module identities, not source-read capabilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CompilerWorkSetKind {
+    Parsed,
+    ReusedParsed,
+    Rechecked,
+    ReusedChecked,
+}
+
+/// A core-minted, one-shot work-set continuation bound to one accepted stream,
+/// exact generation, and work-set kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CompilerWorkSetCursor {
+    pub id: u64,
+}
+
+impl CompilerWorkSetCursor {
+    pub fn is_well_formed(self) -> bool {
+        self.id != 0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerWorkSetPage {
+    pub generation: CompilerGeneration,
+    pub kind: CompilerWorkSetKind,
+    pub entries: Vec<String>,
+    pub next_cursor: Option<CompilerWorkSetCursor>,
+    /// True only if fixed core retention omitted later entries.
     pub truncated: bool,
 }
 
@@ -450,6 +488,14 @@ pub enum CompilerRequest {
         cursor: Option<CompilerDiagnosticCursor>,
         limit: Option<u32>,
     },
+    /// Paginates one retained incremental work-set. A cursor is not an offset
+    /// and cannot be used for another set, generation, or accepted stream.
+    ListWorkSet {
+        generation: CompilerGeneration,
+        kind: CompilerWorkSetKind,
+        cursor: Option<CompilerWorkSetCursor>,
+        limit: Option<u32>,
+    },
     GetStaticType {
         generation: CompilerGeneration,
         type_id: u32,
@@ -509,6 +555,8 @@ pub enum CompilerErrorCode {
     InvalidContractValue,
     InvalidDiagnosticCursor,
     InvalidDiagnosticPage,
+    InvalidWorkSetCursor,
+    InvalidWorkSetPage,
     InvalidMetadataCursor,
     InvalidMetadataPage,
     /// The MCP adapter has not received this exact opaque metadata ID in an
@@ -531,6 +579,7 @@ pub enum CompilerReply {
     Project(CompilerProjectIdentity),
     Check(CompilerCheck),
     DiagnosticPage(CompilerDiagnosticPage),
+    WorkSetPage(CompilerWorkSetPage),
     StaticType(CompilerStaticType),
     StaticSymbol(CompilerStaticSymbol),
     StaticMetadataPage(CompilerStaticMetadataPage),
@@ -580,6 +629,7 @@ pub fn negotiate(
             CompilerRequest::DescribeProject { .. }
             | CompilerRequest::Check { .. }
             | CompilerRequest::ListDiagnostics { .. }
+            | CompilerRequest::ListWorkSet { .. }
             | CompilerRequest::GetStaticType { .. }
             | CompilerRequest::GetStaticSymbol { .. }
             | CompilerRequest::ListStaticMetadata { .. }
@@ -670,6 +720,12 @@ mod tests {
             CompilerRequest::ListDiagnostics {
                 generation: generation(),
                 cursor: Some(CompilerDiagnosticCursor { id: 6 }),
+                limit: Some(2),
+            },
+            CompilerRequest::ListWorkSet {
+                generation: generation(),
+                kind: CompilerWorkSetKind::Rechecked,
+                cursor: Some(CompilerWorkSetCursor { id: 8 }),
                 limit: Some(2),
             },
             CompilerRequest::GetStaticType {
@@ -763,6 +819,17 @@ mod tests {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_compiler_reply(&mut sender, &diagnostic_page).unwrap();
         assert_eq!(read_compiler_reply(&mut receiver).unwrap(), diagnostic_page);
+
+        let work_set_page = CompilerReply::WorkSetPage(CompilerWorkSetPage {
+            generation: generation(),
+            kind: CompilerWorkSetKind::Parsed,
+            entries: vec!["project:///app/main.ts".to_string()],
+            next_cursor: Some(CompilerWorkSetCursor { id: 8 }),
+            truncated: false,
+        });
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_compiler_reply(&mut sender, &work_set_page).unwrap();
+        assert_eq!(read_compiler_reply(&mut receiver).unwrap(), work_set_page);
 
         let hello_ack = CompilerReply::HelloAck {
             protocol_version: COMPILER_PROTOCOL_VERSION,
@@ -878,6 +945,7 @@ mod tests {
                 CompilerQueryOperationId::DescribeProject,
                 CompilerQueryOperationId::Check,
                 CompilerQueryOperationId::ListDiagnostics,
+                CompilerQueryOperationId::ListWorkSet,
                 CompilerQueryOperationId::GetStaticType,
                 CompilerQueryOperationId::GetStaticSymbol,
                 CompilerQueryOperationId::ListStaticMetadata,

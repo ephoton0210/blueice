@@ -2,6 +2,16 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+**Compiler work-set pagination update:** Compiler IPC v6 and its v3 fixed
+query-only manifest add `ListWorkSet` as the tenth read-only operation.
+`bluetsc_list_work_set` exposes bounded pages of the four incremental check
+work-sets only after this MCP session observed the exact check generation.
+Each continuation is core-minted, one-shot, bound to the accepting stream,
+generation, and work-set category, and released on disconnect or replacement.
+Module identities are untrusted, source-text-free metadata; no source-read,
+registration, build, artifact, or output-write authority is added. Older
+v5/nine-operation descriptions below record the prior milestone.
+
 **Contract shape update:** Page-host v24 and debugger v23 extend the already
 independently default-denied `OpaqueContractDisplay` reply with a closed
 root-kind classification. The child resolves only compiler-retained local

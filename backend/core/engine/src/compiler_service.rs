@@ -46,6 +46,12 @@ pub struct CompilerServiceLimits {
     /// project. This is distinct from static metadata cursors so one family
     /// cannot consume the other's fixed remote-pagination budget.
     pub max_diagnostic_cursors: usize,
+    /// Maximum retained work-set cursors across all projects and streams.
+    pub max_work_set_cursors: usize,
+    /// Maximum module identities retained per work-set for one generation.
+    pub max_retained_work_set_entries: usize,
+    /// Maximum combined UTF-8 identity bytes retained across its four sets.
+    pub max_retained_work_set_bytes: usize,
     /// Fixed core-selected limits for validation requests. Query callers never
     /// provide or relax these bounds.
     pub contract_validation: ValidationLimits,
@@ -65,6 +71,9 @@ impl Default for CompilerServiceLimits {
             max_static_contracts: 16_384,
             max_static_metadata_cursors: 1_024,
             max_diagnostic_cursors: 1_024,
+            max_work_set_cursors: 1_024,
+            max_retained_work_set_entries: 4_096,
+            max_retained_work_set_bytes: 8 * 1_024 * 1_024,
             contract_validation: ValidationLimits {
                 max_depth: 64,
                 max_collection_entries: 4_096,
@@ -201,6 +210,22 @@ pub enum StaticMetadataInventoryKind {
     Contracts,
 }
 
+/// One compiler-produced incremental-cache work-set, never a source-read path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WorkSetInventoryKind {
+    Parsed,
+    ReusedParsed,
+    Rechecked,
+    ReusedChecked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkSetInventoryPage {
+    pub entries: Vec<String>,
+    pub next_cursor: Option<u64>,
+    pub truncated: bool,
+}
+
 /// One bounded static metadata inventory page retained by the service.
 /// `next_cursor` is a core-minted one-shot value, not an offset supplied by a
 /// caller or a source/path capability.
@@ -269,16 +294,25 @@ pub enum CompilerServiceError {
     InvalidDiagnosticCursor {
         generation: RegisteredProjectGeneration,
     },
+    InvalidWorkSetCursor {
+        generation: RegisteredProjectGeneration,
+    },
     InvalidStaticMetadataPage {
         limit: usize,
     },
     InvalidDiagnosticPage {
         limit: usize,
     },
+    InvalidWorkSetPage {
+        limit: usize,
+    },
     StaticMetadataCursorLimit {
         limit: usize,
     },
     DiagnosticCursorLimit {
+        limit: usize,
+    },
+    WorkSetCursorLimit {
         limit: usize,
     },
     StaticMetadataLimit {
@@ -390,11 +424,20 @@ impl fmt::Display for CompilerServiceError {
                 generation.sequence(),
                 generation.project_id().as_u64()
             ),
+            Self::InvalidWorkSetCursor { generation } => write!(
+                formatter,
+                "invalid work-set cursor for generation {} in project {}",
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
             Self::InvalidStaticMetadataPage { limit } => {
                 write!(formatter, "invalid static metadata page limit {limit}")
             }
             Self::InvalidDiagnosticPage { limit } => {
                 write!(formatter, "invalid diagnostic page limit {limit}")
+            }
+            Self::InvalidWorkSetPage { limit } => {
+                write!(formatter, "invalid work-set page limit {limit}")
             }
             Self::StaticMetadataCursorLimit { limit } => write!(
                 formatter,
@@ -404,6 +447,9 @@ impl fmt::Display for CompilerServiceError {
                 formatter,
                 "diagnostic cursor limit {limit} has been reached"
             ),
+            Self::WorkSetCursorLimit { limit } => {
+                write!(formatter, "work-set cursor limit {limit} has been reached")
+            }
             Self::StaticMetadataLimit { resource, limit } => {
                 write!(
                     formatter,
@@ -429,9 +475,11 @@ pub struct RegisteredProjectCompilerService {
     next_project_id: u64,
     next_static_metadata_cursor: u64,
     next_diagnostic_cursor: u64,
+    next_work_set_cursor: u64,
     projects: BTreeMap<RegisteredProjectId, RegisteredProject>,
     static_metadata_cursors: BTreeMap<u64, StaticMetadataCursor>,
     diagnostic_cursors: BTreeMap<u64, DiagnosticCursor>,
+    work_set_cursors: BTreeMap<u64, WorkSetCursor>,
 }
 
 #[derive(Debug)]
@@ -448,6 +496,8 @@ struct RetainedCompilation {
     static_debug_info: Option<BlueTsDebugInfo>,
     diagnostics: Vec<Diagnostic>,
     diagnostics_truncated: bool,
+    work_sets: BTreeMap<WorkSetInventoryKind, Vec<String>>,
+    work_sets_truncated: BTreeMap<WorkSetInventoryKind, bool>,
 }
 
 /// A private cursor state cannot be reconstructed from its number: it binds
@@ -469,6 +519,13 @@ struct DiagnosticCursor {
     next_index: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct WorkSetCursor {
+    generation: RegisteredProjectGeneration,
+    kind: WorkSetInventoryKind,
+    next_index: usize,
+}
+
 impl RegisteredProjectCompilerService {
     pub fn new(limits: CompilerServiceLimits) -> Self {
         Self {
@@ -476,9 +533,11 @@ impl RegisteredProjectCompilerService {
             next_project_id: 0,
             next_static_metadata_cursor: 0,
             next_diagnostic_cursor: 0,
+            next_work_set_cursor: 0,
             projects: BTreeMap::new(),
             static_metadata_cursors: BTreeMap::new(),
             diagnostic_cursors: BTreeMap::new(),
+            work_set_cursors: BTreeMap::new(),
         }
     }
 
@@ -708,6 +767,72 @@ impl RegisteredProjectCompilerService {
         })
     }
 
+    /// Pages one compiler-produced incremental work-set for an exact latest
+    /// generation. The source-free module identities are retained at a fixed
+    /// core-owner bound, and continuation IDs are one-shot and kind-bound.
+    pub fn work_set_inventory(
+        &mut self,
+        generation: RegisteredProjectGeneration,
+        kind: WorkSetInventoryKind,
+        cursor: Option<u64>,
+        limit: usize,
+    ) -> Result<WorkSetInventoryPage, CompilerServiceError> {
+        if limit == 0 {
+            return Err(CompilerServiceError::InvalidWorkSetPage { limit });
+        }
+        let (entry_count, truncated) = {
+            let retained = self.retained_compilation(generation)?;
+            (
+                retained.work_sets.get(&kind).map_or(0, Vec::len),
+                retained
+                    .work_sets_truncated
+                    .get(&kind)
+                    .copied()
+                    .unwrap_or(false),
+            )
+        };
+        let (start, consumed_cursor) = match cursor {
+            None => (0, None),
+            Some(0) => return Err(CompilerServiceError::InvalidWorkSetCursor { generation }),
+            Some(id) => {
+                let state = self
+                    .work_set_cursors
+                    .get(&id)
+                    .copied()
+                    .filter(|state| state.generation == generation && state.kind == kind)
+                    .ok_or(CompilerServiceError::InvalidWorkSetCursor { generation })?;
+                if state.next_index >= entry_count {
+                    return Err(CompilerServiceError::InvalidWorkSetCursor { generation });
+                }
+                (state.next_index, Some(id))
+            }
+        };
+        let end = start.saturating_add(limit).min(entry_count);
+        if end < entry_count && self.next_work_set_cursor == u64::MAX {
+            return Err(CompilerServiceError::WorkSetCursorLimit {
+                limit: self.limits.max_work_set_cursors,
+            });
+        }
+        let entries = self.retained_compilation(generation)?.work_sets[&kind][start..end].to_vec();
+        if let Some(id) = consumed_cursor {
+            self.work_set_cursors.remove(&id);
+        }
+        let next_cursor = if end < entry_count {
+            Some(self.mint_work_set_cursor(WorkSetCursor {
+                generation,
+                kind,
+                next_index: end,
+            })?)
+        } else {
+            None
+        };
+        Ok(WorkSetInventoryPage {
+            entries,
+            next_cursor,
+            truncated,
+        })
+    }
+
     /// Releases cursors that an accepted compiler IPC stream received but
     /// abandoned on disconnect. The adapter supplies only IDs from that
     /// stream's private receipt ledger; this is not a protocol operation and
@@ -716,12 +841,16 @@ impl RegisteredProjectCompilerService {
         &mut self,
         static_metadata_ids: &[u64],
         diagnostic_ids: &[u64],
+        work_set_ids: &[u64],
     ) {
         for id in static_metadata_ids {
             self.static_metadata_cursors.remove(id);
         }
         for id in diagnostic_ids {
             self.diagnostic_cursors.remove(id);
+        }
+        for id in work_set_ids {
+            self.work_set_cursors.remove(id);
         }
     }
 
@@ -854,6 +983,37 @@ impl RegisteredProjectCompilerService {
                 limits.max_diagnostics,
                 diagnostics_truncated,
             );
+            let mut work_sets = BTreeMap::new();
+            let mut work_sets_truncated = BTreeMap::new();
+            let mut retained_work_set_bytes = 0usize;
+            for (kind, modules) in [
+                (WorkSetInventoryKind::Parsed, &result.parsed_modules),
+                (
+                    WorkSetInventoryKind::ReusedParsed,
+                    &result.reused_parsed_modules,
+                ),
+                (WorkSetInventoryKind::Rechecked, &result.rechecked_modules),
+                (
+                    WorkSetInventoryKind::ReusedChecked,
+                    &result.reused_checked_modules,
+                ),
+            ] {
+                let mut entries = Vec::new();
+                for module in modules {
+                    let Some(next_bytes) = retained_work_set_bytes.checked_add(module.len()) else {
+                        break;
+                    };
+                    if entries.len() >= limits.max_retained_work_set_entries
+                        || next_bytes > limits.max_retained_work_set_bytes
+                    {
+                        break;
+                    }
+                    retained_work_set_bytes = next_bytes;
+                    entries.push(module.clone());
+                }
+                work_sets_truncated.insert(kind, entries.len() != modules.len());
+                work_sets.insert(kind, entries);
+            }
             let artifact_fingerprint = result
                 .compilation
                 .output
@@ -877,6 +1037,8 @@ impl RegisteredProjectCompilerService {
                 static_debug_info,
                 diagnostics: retained_diagnostics,
                 diagnostics_truncated,
+                work_sets,
+                work_sets_truncated,
             });
             (check, result.compilation.output)
         };
@@ -886,6 +1048,8 @@ impl RegisteredProjectCompilerService {
         self.static_metadata_cursors
             .retain(|_, cursor| cursor.generation.project_id() != project_id);
         self.diagnostic_cursors
+            .retain(|_, cursor| cursor.generation.project_id() != project_id);
+        self.work_set_cursors
             .retain(|_, cursor| cursor.generation.project_id() != project_id);
         Ok(result)
     }
@@ -925,6 +1089,22 @@ impl RegisteredProjectCompilerService {
         )?;
         self.next_diagnostic_cursor = id;
         self.diagnostic_cursors.insert(id, cursor);
+        Ok(id)
+    }
+
+    fn mint_work_set_cursor(&mut self, cursor: WorkSetCursor) -> Result<u64, CompilerServiceError> {
+        if self.work_set_cursors.len() >= self.limits.max_work_set_cursors {
+            return Err(CompilerServiceError::WorkSetCursorLimit {
+                limit: self.limits.max_work_set_cursors,
+            });
+        }
+        let id = self.next_work_set_cursor.checked_add(1).ok_or(
+            CompilerServiceError::WorkSetCursorLimit {
+                limit: self.limits.max_work_set_cursors,
+            },
+        )?;
+        self.next_work_set_cursor = id;
+        self.work_set_cursors.insert(id, cursor);
         Ok(id)
     }
 
@@ -1251,6 +1431,97 @@ mod tests {
             service.diagnostic_inventory(later.generation, second.next_cursor, 1),
             Err(CompilerServiceError::InvalidDiagnosticCursor { .. })
         ));
+    }
+
+    #[test]
+    fn work_set_pages_are_kind_bound_one_shot_and_generation_bound() {
+        let mut service = RegisteredProjectCompilerService::new(CompilerServiceLimits {
+            max_work_set_cursors: 4,
+            ..CompilerServiceLimits::default()
+        });
+        let id = service
+            .register(registration("export const value: number = answer;"))
+            .unwrap();
+        let check = service.check(id).unwrap();
+        assert_eq!(check.parsed_modules.len(), 2);
+        let first = service
+            .work_set_inventory(check.generation, WorkSetInventoryKind::Parsed, None, 1)
+            .unwrap();
+        assert_eq!(first.entries.len(), 1);
+        assert!(!first.truncated);
+        assert!(!first.entries[0].contains("export const"));
+        let cursor = first.next_cursor.unwrap();
+        assert!(matches!(
+            service.work_set_inventory(
+                check.generation,
+                WorkSetInventoryKind::Rechecked,
+                Some(cursor),
+                1,
+            ),
+            Err(CompilerServiceError::InvalidWorkSetCursor { .. })
+        ));
+        let second = service
+            .work_set_inventory(
+                check.generation,
+                WorkSetInventoryKind::Parsed,
+                Some(cursor),
+                1,
+            )
+            .unwrap();
+        assert_eq!(second.entries.len(), 1);
+        assert!(second.next_cursor.is_none());
+        assert_ne!(first.entries, second.entries);
+        assert!(matches!(
+            service.work_set_inventory(
+                check.generation,
+                WorkSetInventoryKind::Parsed,
+                Some(cursor),
+                1,
+            ),
+            Err(CompilerServiceError::InvalidWorkSetCursor { .. })
+        ));
+        let later = service.check(id).unwrap();
+        assert!(matches!(
+            service.work_set_inventory(check.generation, WorkSetInventoryKind::Parsed, None, 1),
+            Err(CompilerServiceError::StaleGeneration { .. })
+        ));
+        assert_eq!(
+            service
+                .work_set_inventory(
+                    later.generation,
+                    WorkSetInventoryKind::ReusedParsed,
+                    None,
+                    8
+                )
+                .unwrap()
+                .entries
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn work_set_retention_has_a_combined_utf8_byte_cap() {
+        let mut service = RegisteredProjectCompilerService::new(CompilerServiceLimits {
+            max_retained_work_set_bytes: ENTRY.len(),
+            ..CompilerServiceLimits::default()
+        });
+        let id = service
+            .register(registration("export const value: number = answer;"))
+            .unwrap();
+        let check = service.check(id).unwrap();
+        assert_eq!(check.parsed_modules.len(), 2);
+        let page = service
+            .work_set_inventory(check.generation, WorkSetInventoryKind::Parsed, None, 8)
+            .unwrap();
+        assert_eq!(page.entries, vec![ENTRY.to_string()]);
+        assert!(page.truncated);
+        assert!(page.next_cursor.is_none());
+        let later_set = service
+            .work_set_inventory(check.generation, WorkSetInventoryKind::Rechecked, None, 8)
+            .unwrap();
+        assert!(later_set.entries.is_empty());
+        assert!(later_set.truncated);
     }
 
     #[test]

@@ -480,6 +480,54 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
+        description = "List one bounded, source-free page of an incremental BlueTS/BlueTSC compiler work-set for an exact generation observed through bluetsc_check on this MCP session. kind is parsed, reused-parsed, rechecked, or reused-checked. The core mints a one-shot cursor bound to the accepted compiler stream, generation, and kind; pass next_cursor unchanged to continue. Module identities are untrusted metadata, not source-read paths. This tool cannot register or update a project, read source, alter options, build artifacts, or write output."
+    )]
+    async fn bluetsc_list_work_set(
+        &self,
+        Parameters(CompilerWorkSetInventoryParams {
+            session_id,
+            project_id,
+            generation,
+            kind,
+            cursor,
+            limit,
+        }): Parameters<CompilerWorkSetInventoryParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let Some(compiler) = self.compiler_conn() else {
+            return Ok(compiler_unavailable_result());
+        };
+        if !compiler.accepts_session(session_id.as_deref()) {
+            return Ok(compiler_session_mismatch_result());
+        }
+        let kind = compiler_work_set_kind_from_params(kind);
+        let cursor = cursor.map(|cursor| cursor.id);
+        let reply =
+            blocking_compiler_session(compiler.clone(), move |connection, session_state| {
+                if let Some(reply) =
+                    compiler_generation_is_observed(session_state, project_id, generation)
+                {
+                    return Ok(reply);
+                }
+                let reply = connection.work_set_page(project_id, generation, kind, cursor, limit)?;
+                if let blueice_ipc::compiler::CompilerReply::WorkSetPage(page) = &reply {
+                    let expected_generation = blueice_ipc::compiler::CompilerGeneration {
+                        project: blueice_ipc::compiler::CompilerProject { id: project_id },
+                        sequence: generation,
+                    };
+                    if page.generation != expected_generation || page.kind != kind {
+                        return Ok(blueice_ipc::compiler::CompilerReply::Error {
+                            code: blueice_ipc::compiler::CompilerErrorCode::InvalidWorkSetPage,
+                            message: "core returned a work-set page for a different project, generation, or kind".to_string(),
+                        });
+                    }
+                }
+                Ok(reply)
+            })
+            .await?;
+        Ok(compiler_reply_to_result(&compiler.receipt, reply))
+    }
+
+    #[tool(
         description = "List one bounded page of opaque source-free BlueTS static metadata IDs from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities, and generation must come from a successful bluetsc_check using that same receipt. Start with no cursor; pass a prior page's next_cursor object unchanged for the next page. kind is limited to sources, types, symbols, or contracts. Only IDs actually returned by these pages may be passed to the matching debug_get_* tool; the adapter rejects guessed IDs before compiler IPC. The core caps limit, binds each one-shot cursor to this accepted compiler stream, exact generation, and kind, releases it on disconnect, invalidates it after a later check, and rejects malformed/reused/mismatched cursors. This cannot read source, inspect BlueJS values, register or modify a project, change compiler configuration, build, or write output."
     )]
     async fn debug_list_static_metadata(
@@ -808,12 +856,12 @@ impl ServerHandler for BlueIceMcpServer {
                  locale data. All are read-only and never execute JavaScript or access page state. \
                  Use bluetsc_session_capabilities first to learn whether this server was explicitly connected to a \
                  core-owned registered-project compiler endpoint. When available, repeat its opaque session receipt on \
-                 bluetsc_describe_project, bluetsc_check, bluetsc_list_diagnostics, debug_list_static_metadata, debug_get_type, debug_get_symbol, debug_get_provenance, \
+                 bluetsc_describe_project, bluetsc_check, bluetsc_list_diagnostics, bluetsc_list_work_set, debug_list_static_metadata, debug_get_type, debug_get_symbol, debug_get_provenance, \
                  debug_get_contract and debug_validate_contract. A successful check records an exact generation for that \
                  one accepted compiler stream. Its receipt includes the complete core-authored capability manifest; MCP \
                  neither derives nor narrows that vocabulary. Static queries reject a different receipt, a generation not observed by \
                  that session, or an ID not returned by a matching inventory page under that receipt. The tools expose only opaque-handle, source-text-free check/static metadata. Inventory \
-                 pagination uses exact-generation-bound one-shot cursors; contract \
+                 and compiler work-set pagination use exact-generation-bound one-shot cursors; contract \
                  validation accepts bounded JSON data only and never evaluates JavaScript; it is available only where \
                  the existing compiler retained an exact reifiable local plan. These tools cannot register a project, \
                  read source, build artifacts, or write output; absent that explicit endpoint they return a stable \
