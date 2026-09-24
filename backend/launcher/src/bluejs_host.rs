@@ -335,6 +335,50 @@ impl ScriptDomClient {
                 "script DOM lookup name exceeds its fixed limit",
             ));
         }
+        match self.call(target, ScriptRequest::GetElementById { target, id })? {
+            ScriptReply::Node { node } => Ok(node),
+            ScriptReply::Error { .. } => {
+                self.stream = None;
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "core denied child DOM lookup",
+                ))
+            }
+            _ => {
+                self.stream = None;
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "core returned an invalid child DOM lookup result",
+                ))
+            }
+        }
+    }
+
+    fn validate_node(&mut self, target: ScriptDocumentTarget, node: u64) -> io::Result<()> {
+        match self.call(target, ScriptRequest::ValidateNode { target, node })? {
+            ScriptReply::Ack => Ok(()),
+            ScriptReply::Error { .. } => {
+                self.stream = None;
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "core denied stale child DOM node",
+                ))
+            }
+            _ => {
+                self.stream = None;
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "core returned an invalid child DOM validation result",
+                ))
+            }
+        }
+    }
+
+    fn call(
+        &mut self,
+        target: ScriptDocumentTarget,
+        request: ScriptRequest,
+    ) -> io::Result<ScriptReply> {
         if self.stream.is_none() {
             self.stream = Some(self.connect()?);
             self.next_call_id = 1;
@@ -349,7 +393,7 @@ impl ScriptDomClient {
                 stream,
                 &ScriptRequest::Call {
                     request_id,
-                    request: Box::new(ScriptRequest::GetElementById { target, id }),
+                    request: Box::new(request),
                 },
             )?;
             match script::read_script_reply(stream)? {
@@ -357,17 +401,7 @@ impl ScriptDomClient {
                     request_id: reply_id,
                     target: reply_target,
                     reply,
-                } if reply_id == request_id && reply_target == target => match *reply {
-                    ScriptReply::Node { node } => Ok(node),
-                    ScriptReply::Error { .. } => Err(io::Error::new(
-                        io::ErrorKind::PermissionDenied,
-                        "core denied child DOM lookup",
-                    )),
-                    _ => Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "core returned an invalid child DOM lookup result",
-                    )),
-                },
+                } if reply_id == request_id && reply_target == target => Ok(*reply),
                 _ => Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "core returned a reply for a different script call or document",
@@ -3768,6 +3802,25 @@ fn install_document_snapshot_bindings(
                 },
             )?;
             let family = bindings.create_host_object_family()?;
+            let validation_client = Rc::clone(&client);
+            bindings.install_host_object_method(
+                family,
+                "blueiceTestRequireLive",
+                0,
+                move |key: HostObjectKey, arguments: &[HostValue]| {
+                    require_no_arguments(arguments, "blueiceTestRequireLive")?;
+                    if !key.matches_owner(tab_id, document_generation) {
+                        return Err(HostFunctionError::new(
+                            "child DOM node belongs to another document",
+                        ));
+                    }
+                    validation_client
+                        .borrow_mut()
+                        .validate_node(target, key.object())
+                        .map_err(|_| HostFunctionError::new("child DOM node is no longer live"))?;
+                    Ok(HostValue::Bool(true))
+                },
+            )?;
             bindings.install_global_object_factory(
                 "blueiceTestGetElementById",
                 1,
@@ -4856,6 +4909,143 @@ fn wait_for_child_socket(child: &mut Child, path: &Path, timeout: Duration) -> i
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn child_wrapper_rechecks_core_liveness_and_does_not_survive_realm_replacement() {
+        let socket_path = std::env::temp_dir().join(format!(
+            "bi-dom-wrapper-lifetime-{}.sock",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&socket_path);
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        let capability = "a".repeat(script::SCRIPT_SESSION_TOKEN_HEX_BYTES);
+        let server_capability = capability.clone();
+        let server = std::thread::spawn(move || {
+            let (mut peer, _) = listener.accept().unwrap();
+            peer.set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            assert_eq!(
+                script::read_script_request(&mut peer).unwrap(),
+                ScriptRequest::Hello {
+                    protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+                    session_token: server_capability,
+                }
+            );
+            script::write_script_reply(
+                &mut peer,
+                &ScriptReply::HelloAck {
+                    protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+                },
+            )
+            .unwrap();
+            let target = ScriptDocumentTarget {
+                tab_id: 7,
+                document_generation: 1,
+            };
+            for (request_id, operation, reply) in [
+                (
+                    1,
+                    ScriptRequest::GetElementById {
+                        target,
+                        id: "present".to_string(),
+                    },
+                    ScriptReply::Node { node: Some(11) },
+                ),
+                (
+                    2,
+                    ScriptRequest::ValidateNode { target, node: 11 },
+                    ScriptReply::Ack,
+                ),
+                (
+                    3,
+                    ScriptRequest::ValidateNode { target, node: 11 },
+                    ScriptReply::Error {
+                        message: "unknown node 11".to_string(),
+                    },
+                ),
+            ] {
+                assert_eq!(
+                    script::read_script_request(&mut peer).unwrap(),
+                    ScriptRequest::Call {
+                        request_id,
+                        request: Box::new(operation),
+                    }
+                );
+                script::write_script_reply(
+                    &mut peer,
+                    &ScriptReply::CallResult {
+                        request_id,
+                        target,
+                        reply: Box::new(reply),
+                    },
+                )
+                .unwrap();
+            }
+            assert_eq!(
+                script::read_script_request(&mut peer).unwrap_err().kind(),
+                io::ErrorKind::UnexpectedEof
+            );
+        });
+
+        let mut host = BlueJsChildHost::default();
+        host.configure_script_dom_capability(socket_path.clone(), capability, true)
+            .unwrap();
+        let outcomes = |reply: PageHostReply| match reply {
+            PageHostReply::Synchronized { reports, .. } => reports
+                .into_iter()
+                .map(|report| report.outcome)
+                .collect::<Vec<_>>(),
+            other => panic!("expected a synchronized child document, got {other:?}"),
+        };
+        let first = outcomes(host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(
+                1,
+                vec![
+                    classic(
+                        0,
+                        "globalThis.saved = blueiceTestGetElementById('present'); if (!saved.blueiceTestRequireLive()) throw 'not live';",
+                    ),
+                    classic(1, "saved.blueiceTestRequireLive();"),
+                ],
+            ),
+        }));
+        assert!(matches!(
+            first.as_slice(),
+            [
+                PageHostScriptOutcome::Executed,
+                PageHostScriptOutcome::Rejected { .. }
+            ]
+        ));
+        let second = outcomes(host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(
+                2,
+                vec![classic(
+                    0,
+                    "if (typeof saved !== 'undefined') throw 'old wrapper';",
+                )],
+            ),
+        }));
+        assert_eq!(second, vec![PageHostScriptOutcome::Executed]);
+        assert!(matches!(
+            host.handle_request(PageHostRequest::CloseRealm {
+                tab_id: 7,
+                document_generation: 2,
+            }),
+            PageHostReply::RealmClosed { .. }
+        ));
+        let third = outcomes(host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(
+                3,
+                vec![classic(
+                    0,
+                    "if (typeof saved !== 'undefined') throw 'closed wrapper';",
+                )],
+            ),
+        }));
+        assert_eq!(third, vec![PageHostScriptOutcome::Executed]);
+        server.join().unwrap();
+        std::fs::remove_file(socket_path).unwrap();
+    }
 
     #[test]
     fn child_revokes_dom_streams_on_navigation_and_close_and_rejects_old_replies() {

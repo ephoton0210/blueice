@@ -85,7 +85,24 @@ connection. VM tests force major GC and verify identity, hidden key, null on
 miss, and cross-realm rejection; the real HTTP fixture verifies the same
 page-visible wrapper behavior through launcher/core/child. The owner-only
 probe is not a general `document` binding or BlueTS declaration. Stale-node
-validation and methods are separate B1.2/B2 work.
+validation is B1.2 below; general DOM methods remain B2 work.
+
+**Wrapper liveness (B1.2):** Script IPC v5 introduces an exact-document
+`ValidateNode` call with only an acknowledgement or structured error. Core
+uses its owned document node table, so newly created detached nodes are
+valid while nodes reclaimed by subtree removal are not; replacement and
+closed documents are rejected before node resolution. The BlueJS VM now
+installs host-object methods on a family-private prototype and resolves the
+call receiver through its reverse identity table, preventing ordinary,
+prototype-forged, or other-family objects from entering a host callback.
+Only the child-private key reaches that callback; JavaScript still cannot
+read or provide numeric node IDs. The owner-selected proof profile's
+`blueiceTestRequireLive()` method asks core on every call and fails closed on
+denial or malformed replies. Navigation/reload and close drop the realm, its
+rooted wrappers, and its socket; a replacement never inherits the old global
+or VM family. VM, core dispatcher, isolated-child socket, and real HTTP
+regressions cover these seams. Ordinary pages remain snapshot-only; actual
+`document` and `textContent` methods are B2.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

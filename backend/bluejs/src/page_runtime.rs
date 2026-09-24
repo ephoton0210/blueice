@@ -14,8 +14,8 @@
 use crate::{
     BlueJsAstNodeKind, BlueJsProgramDebugError, BlueJsProgramHandle, BlueJsProgramRegistry,
     BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, HeapError, HeapStats, HostFunction,
-    HostObject, HostObjectFactory, HostObjectFamily, RuntimeError, Value, Vm, VmConfig,
-    VmDebuggerExecutionState,
+    HostObject, HostObjectFactory, HostObjectFamily, HostObjectMethod, RuntimeError, Value, Vm,
+    VmConfig, VmDebuggerExecutionState,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -139,6 +139,19 @@ impl BlueJsHostBindingRegistrar<'_> {
     ) -> Result<(), RuntimeError> {
         self.vm
             .install_host_object_factory(name, length, family, factory)
+    }
+
+    /// Installs an operation whose receiver is an exact wrapper from this
+    /// realm-local family. The callback receives only its private key.
+    pub fn install_host_object_method(
+        &mut self,
+        family: HostObjectFamily,
+        name: &str,
+        length: u32,
+        method: impl HostObjectMethod,
+    ) -> Result<(), RuntimeError> {
+        self.vm
+            .install_host_object_method(family, name, length, method)
     }
 
     /// Installs one non-constructable callback on a host object created by

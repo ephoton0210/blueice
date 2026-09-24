@@ -170,6 +170,12 @@ pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> S
                 node: page.script_get_element_by_id(&id).map(|node| node.as_u64()),
             })
         }
+        ScriptRequest::ValidateNode { target, node } => with_document(tabs, target, |page| {
+            page.script_validate_node(node).map_or_else(
+                |message| ScriptReply::Error { message },
+                |_| ScriptReply::Ack,
+            )
+        }),
         ScriptRequest::CreateElement { target, tag_name } => {
             if tag_name.len() > SCRIPT_MAX_NAME_BYTES {
                 return script_error("script DOM name exceeds its fixed byte limit");
@@ -364,6 +370,89 @@ mod tests {
             }
         );
         assert!(tabs.get(tab).unwrap().dom_dump().contains("\"new\""));
+    }
+
+    #[test]
+    fn node_validation_preserves_detached_nodes_and_rejects_removed_subtrees() {
+        let (mut tabs, tab) = loaded_tabs();
+        let generation = tabs.get(tab).unwrap().document_generation();
+        let target = target(tab, generation);
+        let ScriptReply::Node { node: Some(app) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target,
+                id: "app".to_string(),
+            },
+        ) else {
+            panic!("the page element must resolve")
+        };
+        let ScriptReply::Node { node: Some(label) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target,
+                id: "label".to_string(),
+            },
+        ) else {
+            panic!("the page label must resolve")
+        };
+        let ScriptReply::NodeCreated { node: detached } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::CreateElement {
+                target,
+                tag_name: "span".to_string(),
+            },
+        ) else {
+            panic!("the detached element must be created")
+        };
+        assert_eq!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::ValidateNode {
+                    target,
+                    node: detached
+                }
+            ),
+            ScriptReply::Ack
+        );
+        assert_eq!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::SetTextContent {
+                    target,
+                    node: app,
+                    value: "replacement".to_string(),
+                },
+            ),
+            ScriptReply::Ack
+        );
+        let before = tabs.get(tab).unwrap().dom_dump();
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::ValidateNode {
+                    target,
+                    node: label
+                }
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(tab).unwrap().dom_dump(), before);
+        assert_eq!(
+            handle_script_request(&mut tabs, ScriptRequest::ValidateNode { target, node: app }),
+            ScriptReply::Ack
+        );
+        tabs.get_mut(tab)
+            .unwrap()
+            .load_html_str("<p>successor</p>", None);
+        assert!(matches!(
+            handle_script_request(&mut tabs, ScriptRequest::ValidateNode { target, node: app }),
+            ScriptReply::Error { .. }
+        ));
+        tabs.close_tab(tab);
+        assert!(matches!(
+            handle_script_request(&mut tabs, ScriptRequest::ValidateNode { target, node: app }),
+            ScriptReply::Error { .. }
+        ));
     }
 
     #[test]

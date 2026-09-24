@@ -32,6 +32,16 @@ impl HostObjectKey {
             object,
         }
     }
+
+    /// Only the embedding host may inspect a private key. JavaScript sees no
+    /// corresponding property, even when it can call a method on the wrapper.
+    pub fn matches_owner(self, owner: u64, generation: u64) -> bool {
+        self.owner == owner && self.generation == generation
+    }
+
+    pub fn object(self) -> u64 {
+        self.object
+    }
 }
 
 /// A family/prototype created in one VM. A copied handle is not an object or
@@ -58,15 +68,46 @@ where
     }
 }
 
+/// A synchronous primitive-argument operation on a VM-verified wrapper.
+/// The VM resolves the receiver to a private key before invoking the host;
+/// ordinary objects, forged prototypes, and another family never enter it.
+pub trait HostObjectMethod: 'static {
+    fn call(
+        &mut self,
+        key: HostObjectKey,
+        args: &[HostValue],
+    ) -> Result<HostValue, HostFunctionError>;
+}
+
+impl<F> HostObjectMethod for F
+where
+    F: for<'args> FnMut(HostObjectKey, &'args [HostValue]) -> Result<HostValue, HostFunctionError>
+        + 'static,
+{
+    fn call(
+        &mut self,
+        key: HostObjectKey,
+        args: &[HostValue],
+    ) -> Result<HostValue, HostFunctionError> {
+        self(key, args)
+    }
+}
+
 pub(super) struct HostObjectFamilyState {
     prototype: ObjectId,
     _prototype_root: RootId,
     wrappers: HashMap<HostObjectKey, (ObjectId, RootId)>,
+    keys_by_wrapper: HashMap<ObjectId, HostObjectKey>,
 }
 
 pub(super) struct HostObjectFactoryRegistration {
     family_index: u32,
     factory: Box<dyn HostObjectFactory>,
+}
+
+pub(super) struct HostObjectMethodRegistration {
+    family_index: u32,
+    method: Box<dyn HostObjectMethod>,
 }
 
 impl Vm {
@@ -82,11 +123,52 @@ impl Vm {
             prototype,
             _prototype_root: root,
             wrappers: HashMap::new(),
+            keys_by_wrapper: HashMap::new(),
         });
         Ok(HostObjectFamily {
             heap: self.object_prototype.heap,
             index,
         })
+    }
+
+    /// Installs a method on this family's private prototype. A JavaScript
+    /// call reaches the embedder only if its receiver is an exact wrapper
+    /// minted in this family and every argument remains primitive.
+    pub fn install_host_object_method(
+        &mut self,
+        family: HostObjectFamily,
+        name: &str,
+        length: u32,
+        method: impl HostObjectMethod,
+    ) -> Result<(), RuntimeError> {
+        if family.heap != self.object_prototype.heap || !host_property_name_is_valid(name) {
+            return Err(RuntimeError::TypeError(
+                "host-object family or method name is invalid".into(),
+            ));
+        }
+        let prototype = self
+            .host_object_families
+            .get(family.index as usize)
+            .ok_or_else(|| RuntimeError::TypeError("host-object family is unavailable".into()))?
+            .prototype;
+        if self.heap.get_own(prototype, name)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "host-object method is already defined".into(),
+            ));
+        }
+        let index = u32::try_from(self.host_object_methods.len())
+            .map_err(|_| RuntimeError::RangeError("too many host-object methods".into()))?;
+        self.install_host_callable_native(
+            prototype,
+            name,
+            length,
+            NativeFunction::HostObjectMethod(index),
+        )?;
+        self.host_object_methods.push(HostObjectMethodRegistration {
+            family_index: family.index,
+            method: Box::new(method),
+        });
+        Ok(())
     }
 
     /// Installs one non-constructable global factory. Only private keys cross
@@ -177,6 +259,48 @@ impl Vm {
         self.host_object_families[family_index]
             .wrappers
             .insert(key, (object, root));
+        self.host_object_families[family_index]
+            .keys_by_wrapper
+            .insert(object, key);
         Ok(Value::Object(object))
+    }
+
+    pub(super) fn host_object_method_call(
+        &mut self,
+        index: u32,
+        receiver: Value,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if construct {
+            return Err(RuntimeError::TypeError(
+                "host-object methods are not constructors".into(),
+            ));
+        }
+        let registration = self
+            .host_object_methods
+            .get(index as usize)
+            .ok_or_else(|| RuntimeError::TypeError("host-object method is unavailable".into()))?;
+        let key = receiver
+            .object_id()
+            .and_then(|object| {
+                self.host_object_families[registration.family_index as usize]
+                    .keys_by_wrapper
+                    .get(&object)
+                    .copied()
+            })
+            .ok_or_else(|| RuntimeError::TypeError("invalid host-object receiver".into()))?;
+        let args = args
+            .iter()
+            .map(HostValue::try_from)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| RuntimeError::TypeError(error.to_string()))?;
+        let result: Value = self.host_object_methods[index as usize]
+            .method
+            .call(key, &args)
+            .map_err(|error| RuntimeError::TypeError(error.to_string()))?
+            .into();
+        self.check_string(&result)?;
+        Ok(result)
     }
 }

@@ -46,8 +46,10 @@ use completion::{
 };
 use debugger::DebuggerContinuation;
 pub use debugger::VmDebuggerExecutionState;
-pub use host_objects::{HostObjectFactory, HostObjectFamily, HostObjectKey};
-use host_objects::{HostObjectFactoryRegistration, HostObjectFamilyState};
+pub use host_objects::{HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod};
+use host_objects::{
+    HostObjectFactoryRegistration, HostObjectFamilyState, HostObjectMethodRegistration,
+};
 use std::fmt;
 
 /// A private interpreter suspension boundary. `Offset` is also used by
@@ -890,6 +892,7 @@ pub struct Vm {
     /// identity tables. Neither a JavaScript value nor a raw host key enters
     /// a Rust callback through the primitive-only HostValue ABI.
     host_object_factories: Vec<HostObjectFactoryRegistration>,
+    host_object_methods: Vec<HostObjectMethodRegistration>,
     host_object_families: Vec<HostObjectFamilyState>,
     global_bindings: HashMap<String, GlobalBinding>,
     /// The GlobalSymbolRegistry belongs to an ECMAScript agent, not to an

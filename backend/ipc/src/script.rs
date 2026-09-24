@@ -55,9 +55,10 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
-/// Versions before v4 lack a call ID and document target on each reply, so a
-/// delayed response cannot be bound to its initiating child DOM operation.
-pub const SCRIPT_PROTOCOL_VERSION: u32 = 4;
+/// V5 adds core-owned node-liveness validation for opaque child wrappers.
+/// Older versions cannot safely establish that a cached wrapper survived a
+/// subtree removal before invoking an operation on it.
+pub const SCRIPT_PROTOCOL_VERSION: u32 = 5;
 pub const SCRIPT_SESSION_TOKEN_HEX_BYTES: usize = 64;
 pub const SCRIPT_MAX_FRAME_BYTES: usize = 1_100_000;
 pub const SCRIPT_MAX_NAME_BYTES: usize = 4_096;
@@ -96,6 +97,13 @@ pub enum ScriptRequest {
     GetElementById {
         target: ScriptDocumentTarget,
         id: String,
+    },
+    /// Checks a child-private node identity against the exact live document.
+    /// A detached but allocated node remains valid; a reclaimed subtree does
+    /// not. This operation grants no node data to the caller.
+    ValidateNode {
+        target: ScriptDocumentTarget,
+        node: u64,
     },
     /// `document.createElement(tag_name)`, scoped to one tab. Creates
     /// the node but does not attach it anywhere -- a script must still
@@ -139,6 +147,7 @@ impl ScriptRequest {
         match self {
             Self::Hello { .. } | Self::Call { .. } => None,
             Self::GetElementById { target, .. }
+            | Self::ValidateNode { target, .. }
             | Self::CreateElement { target, .. }
             | Self::CreateTextNode { target, .. }
             | Self::AppendChild { target, .. }
@@ -170,9 +179,9 @@ pub enum ScriptReply {
     /// given a valid tab, so this carries the new node's ID directly
     /// rather than an `Option`.
     NodeCreated { node: u64 },
-    /// Reply to [`ScriptRequest::AppendChild`]/
-    /// [`ScriptRequest::SetTextContent`] -- both are plain mutations
-    /// with no meaningful success payload.
+    /// Reply to [`ScriptRequest::ValidateNode`],
+    /// [`ScriptRequest::AppendChild`], or
+    /// [`ScriptRequest::SetTextContent`].
     Ack,
     /// Reply to [`ScriptRequest::GetTextContent`].
     Text { value: String },
@@ -269,6 +278,7 @@ mod tests {
                 target,
                 id: "widget".to_string(),
             },
+            ScriptRequest::ValidateNode { target, node: 10 },
             ScriptRequest::CreateElement {
                 target,
                 tag_name: "li".to_string(),

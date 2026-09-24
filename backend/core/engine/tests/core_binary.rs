@@ -636,7 +636,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     let frame_dir = std::env::temp_dir().join(format!("bicb-script-denial-{}", std::process::id()));
     let gatekeeper_path = clearing_gatekeeper("sd-gk");
     let (first_addr, first_server) =
-        serve_html_once("<main><span id=\"label\">first</span></main>");
+        serve_html_once("<main id=\"root\"><span id=\"label\">first</span></main>");
     let (replacement_addr, replacement_server) =
         serve_html_once("<main><span id=\"label\">replacement</span></main>");
     let (successor_addr, successor_server) =
@@ -763,9 +763,90 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
         ScriptReply::Error { .. }
     ));
     assert_eq!(read_tab_dom(&mut frontend, 1, 5), first_dom);
+    let root = match script_exchange(
+        &mut script,
+        &mut script_call_id,
+        ScriptRequest::GetElementById {
+            target: first_target,
+            id: "root".to_string(),
+        },
+    ) {
+        ScriptReply::Node { node: Some(node) } => node,
+        reply => panic!("expected the first document root element, got {reply:?}"),
+    };
+    let detached = match script_exchange(
+        &mut script,
+        &mut script_call_id,
+        ScriptRequest::CreateElement {
+            target: first_target,
+            tag_name: "aside".to_string(),
+        },
+    ) {
+        ScriptReply::NodeCreated { node } => node,
+        reply => panic!("expected a detached node, got {reply:?}"),
+    };
+    for node in [root, first_node, detached] {
+        assert_eq!(
+            script_exchange(
+                &mut script,
+                &mut script_call_id,
+                ScriptRequest::ValidateNode {
+                    target: first_target,
+                    node,
+                },
+            ),
+            ScriptReply::Ack
+        );
+    }
+    assert_eq!(
+        script_exchange(
+            &mut script,
+            &mut script_call_id,
+            ScriptRequest::SetTextContent {
+                target: first_target,
+                node: root,
+                value: "replaced subtree".to_string(),
+            },
+        ),
+        ScriptReply::Ack
+    );
+    assert!(matches!(
+        script_exchange(
+            &mut script,
+            &mut script_call_id,
+            ScriptRequest::ValidateNode {
+                target: first_target,
+                node: first_node,
+            },
+        ),
+        ScriptReply::Error { .. }
+    ));
+    assert_eq!(
+        script_exchange(
+            &mut script,
+            &mut script_call_id,
+            ScriptRequest::ValidateNode {
+                target: first_target,
+                node: detached,
+            },
+        ),
+        ScriptReply::Ack
+    );
+    assert!(read_tab_dom(&mut frontend, 1, 51).contains("replaced subtree"));
     navigate_default_tab(&mut frontend, format!("http://{replacement_addr}"));
     let replacement_dom = read_tab_dom(&mut frontend, 1, 6);
     assert!(replacement_dom.contains("replacement"));
+    assert!(matches!(
+        script_exchange(
+            &mut script,
+            &mut script_call_id,
+            ScriptRequest::ValidateNode {
+                target: first_target,
+                node: root,
+            },
+        ),
+        ScriptReply::Error { .. }
+    ));
     assert!(matches!(
         script_exchange(
             &mut script,

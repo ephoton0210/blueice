@@ -189,6 +189,9 @@ pub(crate) enum NativeFunction {
     /// A realm-private callback whose opaque key is materialized as a rooted
     /// JavaScript object by the VM, never as a page-visible numeric value.
     HostObjectFactory(u32),
+    /// A callback invoked only after the receiver resolves to this family's
+    /// VM-minted opaque wrapper.
+    HostObjectMethod(u32),
     Function,
     /// The intrinsic constructor reached through an async function's
     /// `constructor` property. It is deliberately not installed as a global.

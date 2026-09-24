@@ -14,9 +14,10 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: B1.2.** Reject a wrapper after node removal, reload, or realm
-close. B1.1 establishes child-owned identity and GC roots under an owner-only
-proof profile; general `document` methods remain open.
+**Current leaf: B2.1.** Implement live element lookup and `textContent`
+get/set through the authenticated route, with a rendered real-page mutation.
+B1 establishes child-owned identity and liveness under an owner-only proof
+profile; general `document` methods remain open.
 
 ## Current boundary
 
@@ -126,7 +127,16 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   a numeric node ID. VM GC/identity tests and a real launcher/core/child HTTP
   fixture cover survival, repeat identity, an empty own-property surface,
   absence on miss, and lack of the probe in ordinary realms.
-- [ ] Reject a wrapper after node removal, reload, or realm close.
+- [x] Reject a wrapper after node removal, reload, or realm close. Script IPC
+  v5 adds an exact-document, read-only `ValidateNode` operation; core accepts
+  allocated detached nodes but rejects reclaimed subtrees and stale/closed
+  documents. VM-owned prototype methods resolve only exact wrappers in their
+  originating family, reject forged receivers, and pass only a private key to
+  the host. The owner-only `blueiceTestRequireLive` proof method revalidates
+  through core on every call. VM, core dispatcher, isolated-child socket, and
+  real launcher/core/child HTTP regressions cover the boundary. Reload and
+  close discard the old VM and its rooted wrappers; neither can appear in a
+  successor realm. General DOM text methods remain B2.
 
 #### B2. Read and change live DOM text.
 

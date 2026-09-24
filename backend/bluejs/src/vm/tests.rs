@@ -343,6 +343,65 @@ fn opaque_host_object_factory_roots_identity_without_exposing_its_key() {
 }
 
 #[test]
+fn opaque_host_object_methods_require_an_exact_live_wrapper_receiver() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findHostNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::Number(id)] = args else {
+            return Err(HostFunctionError::new("a numeric test ID is required"));
+        };
+        Ok(Some(HostObjectKey::new(7, 3, *id as u64)))
+    })
+    .unwrap();
+    vm.install_host_object_method(family, "requireLive", 0, |key, args: &[HostValue]| {
+        if !args.is_empty() {
+            return Err(HostFunctionError::new("no arguments allowed"));
+        }
+        if key == HostObjectKey::new(7, 3, 42) {
+            Ok(HostValue::Bool(true))
+        } else {
+            Err(HostFunctionError::new("node is no longer live"))
+        }
+    })
+    .unwrap();
+    let valid =
+        crate::compile(&crate::parse("let node = findHostNode(42); node.requireLive();").unwrap())
+            .unwrap();
+    assert_eq!(vm.execute_script(&valid).unwrap(), Value::Bool(true));
+    for source in [
+        "findHostNode(43).requireLive();",
+        "node.requireLive.call({});",
+        "node.requireLive.call(Object.create(node));",
+        "node.requireLive.call(findHostNode(43));",
+        "new node.requireLive();",
+    ] {
+        let code = crate::compile(&crate::parse(source).unwrap()).unwrap();
+        assert!(
+            matches!(vm.execute_script(&code), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
+    }
+    let other_family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("otherHostNode", 0, other_family, |_args: &[HostValue]| {
+        Ok(Some(HostObjectKey::new(7, 3, 42)))
+    })
+    .unwrap();
+    let code =
+        crate::compile(&crate::parse("node.requireLive.call(otherHostNode());").unwrap()).unwrap();
+    assert!(matches!(
+        vm.execute_script(&code),
+        Err(RuntimeError::TypeError(_))
+    ));
+    let mut successor = Vm::default();
+    assert!(matches!(
+        successor.install_host_object_method(family, "stale", 0, |_key, _args: &[HostValue]| {
+            Ok(HostValue::Bool(true))
+        }),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
 fn opaque_host_object_family_has_a_fixed_root_limit() {
     let mut vm = Vm::default();
     let family = vm.create_host_object_family().unwrap();

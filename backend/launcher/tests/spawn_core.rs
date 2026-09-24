@@ -122,6 +122,8 @@ fn supervised_child_script_completes_a_synchronous_core_dom_lookup() {
             "if (node === null || typeof node !== 'object') throw 'missing wrapper';",
             "if (node !== blueiceTestGetElementById('target')) throw 'unstable wrapper';",
             "if (Object.keys(node).length !== 0 || node.nodeId !== undefined) throw 'leaked node ID';",
+            "if (node.blueiceTestRequireLive() !== true) throw 'live wrapper rejected';",
+            "try { node.blueiceTestRequireLive.call(Object.create(node)); throw 'forged receiver accepted'; } catch (error) { if (!(error instanceof TypeError)) throw error; }",
             "if (blueiceTestGetElementById('absent') !== null) throw 'invented wrapper';",
             "globalThis.domLookupCompleted = true;",
             "</script>",

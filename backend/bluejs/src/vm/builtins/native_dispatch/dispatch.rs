@@ -71,6 +71,9 @@ impl Vm {
             NativeFunction::HostObjectFactory(index) => {
                 self.host_object_factory_call(index, &args, construct)
             }
+            NativeFunction::HostObjectMethod(index) => {
+                self.host_object_method_call(index, receiver, &args, construct)
+            }
             NativeFunction::Promise => self.promise_constructor(first.clone(), construct),
             NativeFunction::PromiseResolvingFunction {
                 promise,

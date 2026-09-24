@@ -96,5 +96,6 @@ pub use string::JsString;
 pub use value::{ObjectId, Value};
 pub use vm::{
     HostFunction, HostFunctionError, HostObject, HostObjectFactory, HostObjectFamily,
-    HostObjectKey, HostValue, RuntimeError, Vm, VmConfig, VmDebuggerExecutionState,
+    HostObjectKey, HostObjectMethod, HostValue, RuntimeError, Vm, VmConfig,
+    VmDebuggerExecutionState,
 };

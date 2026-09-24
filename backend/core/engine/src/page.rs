@@ -268,6 +268,12 @@ impl Page {
         find_element_by_id(&self.doc, self.doc.root(), id)
     }
 
+    /// Checks whether a child-private node handle still belongs to this
+    /// document. Detached nodes remain valid until their subtree is removed.
+    pub(crate) fn script_validate_node(&self, node: u64) -> Result<(), String> {
+        self.script_node(node).map(|_| ())
+    }
+
     /// Creates a detached element for the page-script IPC surface.
     pub(crate) fn script_create_element(&mut self, tag_name: String) -> Result<NodeId, String> {
         if tag_name.is_empty() {
