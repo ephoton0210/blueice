@@ -874,6 +874,15 @@ or second module resolver to bypass them.
   closed. No contract name, plan, validation result, source/span, static
   record, or runtime value crosses this operation. IPC, core-policy, private-
   child, and launcher-supervised regressions cover the boundary.
+  Page-host v22/debugger v21 extend the already independently default-denied
+  `OpaqueSymbolDisplay` reply with the compiler's bounded declaration kind:
+  import, type alias, interface, variable, or function. The operation still
+  requires the same exact-stream parent and symbol-ID receipts, live tuple,
+  owner grant, and child capability report. It adds no new target or
+  authority, and still discloses no source text, module identity, span,
+  static type, contract plan, bytecode, VM object, or runtime value. The
+  launcher-supervised test checks interface and variable kinds from a real
+  BlueTS page while keeping guessed and stale symbol targets closed.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

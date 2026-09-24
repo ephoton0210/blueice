@@ -50,6 +50,8 @@
 //! core-proxied operation, not a general static-record read or source access.
 //! Version 16 adds one exact contract-ID display lookup; it remains an explicit
 //! core-proxied operation, not a general static-record read or source access.
+//! Version 22 adds the compiler declaration kind to the exact child-local
+//! symbol display. It does not add a target, source read, or runtime access.
 //! Version 21 adds an exact symbol-to-reifiable-contract verification under
 //! one private metadata attachment. It repeats only two caller-supplied
 //! opaque IDs and does not disclose the contract plan or static record.
@@ -69,11 +71,12 @@
 //! contract plan, or structural failure detail.
 
 use crate::compiler::CompilerContractValue;
+use crate::debugger::DebuggerStaticMetadataSymbolKind;
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 21;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 22;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -219,13 +222,15 @@ pub struct PageHostDebuggerBlueTsMetadataContractValidation {
 }
 
 /// One child-local compiler-produced symbol display for an exact symbol ID
-/// under an opaque metadata attachment. The enclosing request/reply carries
-/// the child program and metadata identities; this value never grants a
-/// generic static-record read or source access.
+/// under an opaque metadata attachment, with its bounded declaration kind.
+/// The enclosing request/reply carries the child program and metadata
+/// identities; this value never grants a generic static-record read or source
+/// access.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PageHostDebuggerBlueTsMetadataSymbolDisplay {
     pub symbol_id: u32,
     pub display: String,
+    pub kind: DebuggerStaticMetadataSymbolKind,
 }
 
 /// One child-local source-text-free declaration range for an exact symbol.
@@ -1522,6 +1527,7 @@ mod tests {
             symbol: PageHostDebuggerBlueTsMetadataSymbolDisplay {
                 symbol_id: 0,
                 display: "ProjectControlledName".to_string(),
+                kind: DebuggerStaticMetadataSymbolKind::Interface,
             },
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();

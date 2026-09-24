@@ -32,7 +32,7 @@ use blueice_bluets_bluejs::{
 };
 use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
-    DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES,
+    DebuggerStaticMetadataSymbolKind, DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES,
     DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_COLLECTION_ENTRIES,
     DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_DEPTH,
     DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_NODES,
@@ -1557,6 +1557,23 @@ impl BlueJsChildHost {
                 PageHostDebuggerBlueTsMetadataSymbolDisplay {
                     symbol_id,
                     display: symbol.name.clone(),
+                    kind: match symbol.kind {
+                        blueice_bluets::SymbolKind::Import => {
+                            DebuggerStaticMetadataSymbolKind::Import
+                        }
+                        blueice_bluets::SymbolKind::TypeAlias => {
+                            DebuggerStaticMetadataSymbolKind::TypeAlias
+                        }
+                        blueice_bluets::SymbolKind::Interface => {
+                            DebuggerStaticMetadataSymbolKind::Interface
+                        }
+                        blueice_bluets::SymbolKind::Variable => {
+                            DebuggerStaticMetadataSymbolKind::Variable
+                        }
+                        blueice_bluets::SymbolKind::Function => {
+                            DebuggerStaticMetadataSymbolKind::Function
+                        }
+                    },
                 }
             }
             Err(_) => {

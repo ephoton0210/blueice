@@ -2547,6 +2547,7 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         Ok(JavaScriptPageDebuggerStaticMetadataSymbolDisplay {
             symbol_id: symbol.symbol_id,
             display: symbol.display,
+            kind: symbol.kind,
         })
     }
 

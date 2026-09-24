@@ -17,7 +17,8 @@ use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
     read_debugger_reply, write_debugger_request, DebuggerErrorCode,
     DebuggerMetadataCapabilityManifest, DebuggerMetadataCapabilitySelection, DebuggerPageRealm,
-    DebuggerProgram, DebuggerReply, DebuggerRequest, DebuggerSafePoint, DEBUGGER_PROTOCOL_VERSION,
+    DebuggerProgram, DebuggerReply, DebuggerRequest, DebuggerSafePoint,
+    DebuggerStaticMetadataSymbolKind, DEBUGGER_PROTOCOL_VERSION,
 };
 use blueice_ipc::{read_server_message, write_client_message, ClientMessage, ServerMessage};
 use std::io::{Read, Write};
@@ -1008,6 +1009,8 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             && !format!("{symbols:?}").contains("number"),
         "symbol IDs must not contain names, type displays, or compiler-record payload"
     );
+    let mut saw_interface = false;
+    let mut saw_variable = false;
     for symbol in &symbols {
         let symbol_display_reply = debugger_request(
             &mut debugger,
@@ -1018,6 +1021,23 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
         };
         assert_eq!(symbol_display.symbol, *symbol);
         assert!(!symbol_display.display.is_empty());
+        match symbol_display.display.as_str() {
+            "PrivateContract" => {
+                assert_eq!(
+                    symbol_display.kind,
+                    DebuggerStaticMetadataSymbolKind::Interface
+                );
+                saw_interface = true;
+            }
+            "privateBlueTsMetadata" => {
+                assert_eq!(
+                    symbol_display.kind,
+                    DebuggerStaticMetadataSymbolKind::Variable
+                );
+                saw_variable = true;
+            }
+            _ => {}
+        }
         assert!(
             !symbol_display.display.contains("const ")
                 && !symbol_display.display.contains(": number")
@@ -1026,6 +1046,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             "symbol display may expose its authorized name, never declaration source, type, initializer, or module identity"
         );
     }
+    assert!(saw_interface && saw_variable);
     assert!(matches!(
         debugger_request(
             &mut debugger,

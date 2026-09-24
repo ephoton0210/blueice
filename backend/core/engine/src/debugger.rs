@@ -1661,6 +1661,7 @@ fn describe_child_static_metadata_symbol(
             let symbol_display = DebuggerStaticMetadataSymbolDisplay {
                 symbol,
                 display: symbol_display.display,
+                kind: symbol_display.kind,
             };
             if !symbol_display.is_well_formed() {
                 return DebuggerReply::Error {
@@ -3557,6 +3558,7 @@ mod tests {
                         target.symbol_id
                     },
                     display: "ProjectControlledName".to_string(),
+                    kind: blueice_ipc::debugger::DebuggerStaticMetadataSymbolKind::Interface,
                 },
             )
         }
@@ -4136,6 +4138,7 @@ mod tests {
             DebuggerReply::StaticMetadataSymbol(DebuggerStaticMetadataSymbolDisplay {
                 symbol: displayed_symbol,
                 display: "ProjectControlledName".to_string(),
+                kind: blueice_ipc::debugger::DebuggerStaticMetadataSymbolKind::Interface,
             })
         );
 

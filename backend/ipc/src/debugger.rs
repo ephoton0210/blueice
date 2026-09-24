@@ -9,7 +9,10 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version twenty adds an
+//! and an opt-in root-code-unit pause/resume seam. Version twenty-one adds a
+//! compiler-minted declaration kind to the already receipt-bound, opt-in
+//! symbol display. It carries no additional target or source-read authority.
+//! Version twenty adds an
 //! independently default-denied symbol-to-contract relation that requires
 //! exact symbol and contract receipts on one debugger stream. Version nineteen adds an
 //! independently default-denied symbol-to-static-type relation that requires
@@ -37,7 +40,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 20;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 21;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -315,12 +318,25 @@ impl DebuggerStaticMetadataLoweringSummary {
 
 /// One owner-authorized display for a compiler-minted symbol ID previously
 /// returned by the exact stream's symbol inventory. A display can contain a
-/// project-authored identifier, so it is independently default-denied and
-/// carries no source span, type, contract, bytecode, or static record.
+/// project-authored identifier and compiler declaration kind, so it is
+/// independently default-denied and carries no source span, type, contract,
+/// bytecode, or static record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DebuggerStaticMetadataSymbolDisplay {
     pub symbol: DebuggerStaticMetadataSymbolId,
     pub display: String,
+    pub kind: DebuggerStaticMetadataSymbolKind,
+}
+
+/// The bounded compiler classification of a source-level declaration. It
+/// carries no identifier, source position, static type, or runtime identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DebuggerStaticMetadataSymbolKind {
+    Import,
+    TypeAlias,
+    Interface,
+    Variable,
+    Function,
 }
 
 impl DebuggerStaticMetadataSymbolDisplay {
@@ -2550,6 +2566,7 @@ mod tests {
                     symbol_id: 0,
                 },
                 display: "ProjectControlledName".to_string(),
+                kind: DebuggerStaticMetadataSymbolKind::Variable,
             }),
             DebuggerReply::StaticMetadataSymbolLocation(DebuggerStaticMetadataSymbolLocation {
                 symbol: DebuggerStaticMetadataSymbolId {
@@ -3392,8 +3409,22 @@ mod tests {
         let display = DebuggerStaticMetadataSymbolDisplay {
             symbol,
             display: "ProjectControlledName".to_string(),
+            kind: DebuggerStaticMetadataSymbolKind::Interface,
         };
         assert!(display.is_well_formed());
+        for kind in [
+            DebuggerStaticMetadataSymbolKind::Import,
+            DebuggerStaticMetadataSymbolKind::TypeAlias,
+            DebuggerStaticMetadataSymbolKind::Interface,
+            DebuggerStaticMetadataSymbolKind::Variable,
+            DebuggerStaticMetadataSymbolKind::Function,
+        ] {
+            let encoded = serde_json::to_string(&kind).unwrap();
+            assert_eq!(
+                serde_json::from_str::<DebuggerStaticMetadataSymbolKind>(&encoded).unwrap(),
+                kind
+            );
+        }
         assert!(!DebuggerStaticMetadataSymbolDisplay {
             display: String::new(),
             ..display.clone()
