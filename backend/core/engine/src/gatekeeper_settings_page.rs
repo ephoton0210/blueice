@@ -625,8 +625,24 @@ mod tests {
         let live_html = gatekeeper_settings_html(
             &GatekeeperSettingsView::Settings(live.clone()), "en", None,
         );
-        assert!(live_html.contains("data-gatekeeper-step=\"extension-toolbar-before-publish\""));
-        assert!(live_html.contains("<code>extension-toolbar-social-engineering</code>"));
+        assert!(live_html.contains(&live.ruleset_version));
+        for rule in &live.baseline_rules {
+            assert!(live_html.contains(&escape_html(&rule.id)));
+            assert!(live_html.contains(&escape_html(&rule.category)));
+            assert!(live_html.contains(&escape_html(&rule.description)));
+            assert!(live_html.contains(&escape_html(&rule.match_logic)));
+            for condition in &rule.conditions {
+                assert!(live_html.contains(&format!("<code>{}</code>", escape_html(condition))));
+            }
+        }
+        for step in &live.workflow {
+            assert!(live_html.contains(&format!(
+                "data-gatekeeper-step=\"{}\"", escape_html(&step.id)
+            )));
+            assert!(live_html.contains(&escape_html(&step.trigger)));
+            assert!(live_html.contains(&escape_html(&step.description)));
+            assert!(live_html.contains(&escape_html(&step.failure_behavior)));
+        }
         let updated = source
                 .update(GatekeeperSettingsChange::AddBlockedHost {
                     host: "tracker.example".to_string(),
@@ -637,6 +653,11 @@ mod tests {
         assert_eq!(updated.workflow[0].active_user_conditions, [GatekeeperUserCondition {
             kind: "host".to_string(), value: "tracker.example".to_string(),
         }]);
+        let updated_html = gatekeeper_settings_html(
+            &GatekeeperSettingsView::Settings(updated), "en", None,
+        );
+        assert!(updated_html.contains("Host: <code>tracker.example</code>"));
+        assert!(updated_html.contains("<li>Your blocked hosts</li>"));
         worker.join().unwrap();
         let _ = std::fs::remove_file(socket);
     }

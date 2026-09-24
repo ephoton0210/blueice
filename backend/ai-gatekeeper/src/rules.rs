@@ -18,7 +18,7 @@ use blueice_ipc::gatekeeper::{
 
 /// Version carried in diagnostics and release notes for this compiled rule
 /// set. Keep it monotonic whenever a detection decision changes.
-pub const RULESET_VERSION: &str = "2026.09.24.5";
+pub const RULESET_VERSION: &str = "2026.09.24.6";
 
 const KNOWN_MALICIOUS_HOSTS: &[&str] = &["malware.test", "phishing.test"];
 const BIDI_OVERRIDE_CODEPOINTS: &[&str] = &["U+202A–U+202E", "U+2066–U+2069"];
@@ -76,7 +76,7 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
             category: "unicode-bidi-override / url-obfuscation".to_string(),
             description: "Blocks bidirectional overrides and invisible Unicode characters in a URL.".to_string(),
             conditions: [BIDI_OVERRIDE_CODEPOINTS, ZERO_WIDTH_CODEPOINTS].concat().iter().map(|item| (*item).to_string()).collect(),
-            match_logic: "Any listed character in a URL rejects. The content stage also rechecks URL bidi overrides after redirects.".to_string(),
+            match_logic: "Any listed character in a URL rejects. The content stage also rechecks both URL bidi overrides and invisible characters after redirects.".to_string(),
             workflow_steps: vec!["url-before-fetch".to_string(), "content-before-parse".to_string(), "download-before-bytes".to_string()],
             mandatory: true,
         },
@@ -358,6 +358,12 @@ fn review_content(url: &str, html: &str, custom_blocked_phrases: &[String]) -> G
         return reject(
             "the page contains a Unicode bidirectional override that can disguise text",
             "unicode-bidi-override",
+        );
+    }
+    if contains_zero_width(url) {
+        return reject(
+            "the final page URL contains invisible Unicode characters",
+            "url-obfuscation",
         );
     }
 
@@ -757,6 +763,22 @@ mod tests {
         ] {
             assert!(matches!(
                 review(&GatekeeperRequest::CheckUrl { url: url.to_string() }),
+                GatekeeperReply::Rejected { category: actual, .. } if actual == category
+            ));
+        }
+    }
+
+    #[test]
+    fn content_review_rechecks_an_obfuscated_final_url_before_parsing() {
+        for (url, category) in [
+            ("https://safe.example/pa\u{200b}th", "url-obfuscation"),
+            ("https://safe.example/pa\u{202e}th", "unicode-bidi-override"),
+        ] {
+            assert!(matches!(
+                review(&GatekeeperRequest::CheckContent {
+                    url: url.to_string(),
+                    html: "<p>Ordinary page</p>".to_string(),
+                }),
                 GatekeeperReply::Rejected { category: actual, .. } if actual == category
             ));
         }
