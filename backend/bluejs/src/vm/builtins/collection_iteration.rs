@@ -30,9 +30,15 @@ impl Vm {
             return Ok(prototype);
         }
         let base = self.base_iterator_prototype()?;
-        let function_prototype = self.function_prototype()?;
+        // `base_iterator_prototype` has created the String intrinsics.
+        let function_prototype = self
+            .function_prototype()
+            .expect("the String intrinsics exist");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
-        let root = self.heap.root(prototype)?;
+        let root = self
+            .heap
+            .root(prototype)
+            .expect("the prototype was just allocated");
         let result = (|| {
             self.install_native(
                 prototype,
@@ -61,7 +67,9 @@ impl Vm {
                 Ok(prototype)
             }
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.heap
+                    .unroot(root)
+                    .expect("the prototype's root was just registered");
                 Err(error)
             }
         }
@@ -88,7 +96,10 @@ impl Vm {
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
         let step = match receiver.object_id() {
-            Some(iterator) => self.heap.collection_iterator_next(iterator, map)?,
+            Some(iterator) => self
+                .heap
+                .collection_iterator_next(iterator, map)
+                .expect("a receiver object is live"),
             None => None,
         };
         let Some(step) = step else {
@@ -129,7 +140,9 @@ impl Vm {
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let callback = native::argument(args, 0).clone();
-        if !self.is_callable(&callback)? {
+        // Only a handle to a collected object can make `is_callable` fail, and
+        // JavaScript cannot hold one, so such a handle is simply not callable.
+        if !self.is_callable(&callback).unwrap_or(false) {
             return Err(RuntimeError::TypeError(
                 "forEach requires a callable callback".into(),
             ));
@@ -141,7 +154,11 @@ impl Vm {
         let result = (|| {
             let mut index = 0;
             loop {
-                match self.heap.collection_entry_at(collection, index)? {
+                match self
+                    .heap
+                    .collection_entry_at(collection, index)
+                    .expect("the collection was brand-checked and is live")
+                {
                     CollectionEntry::End => return Ok(Value::Undefined),
                     CollectionEntry::Deleted => index += 1,
                     CollectionEntry::Present(key, value) => {

@@ -21,17 +21,16 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<blueice_ecma402::DurationRecord, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.Duration method requires a Duration receiver".into())
-        })?;
-        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.Duration method requires a Duration receiver".into())
-        })?;
-        if value.kind != TemporalKind::Duration {
-            return Err(RuntimeError::TypeError(
-                "Temporal.Duration method requires a Duration receiver".into(),
-            ));
-        }
+        // The native dispatcher brand-checks every Duration receiver before it
+        // reaches a method, so this only reads the record.
+        let object = receiver
+            .object_id()
+            .expect("the dispatcher checked for a Duration receiver");
+        let value = self
+            .heap
+            .temporal_value(object)
+            .expect("the dispatcher checked for a live Duration receiver")
+            .expect("the dispatcher checked for a Duration receiver");
         Ok(*value
             .duration
             .as_deref()
@@ -201,7 +200,11 @@ impl Vm {
             return Ok(None);
         }
         if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("a relativeTo object is live")
+            {
                 let calendar = calendar::calendar_kind(&temporal.calendar)
                     .expect("Temporal values retain a validated calendar identifier");
                 return match temporal.kind {
@@ -238,13 +241,12 @@ impl Vm {
                 .temporal_duration_relative_to_property_bag(value)
                 .map(Some);
         }
-        if !matches!(value, Value::String(_)) {
+        let Value::String(text) = value else {
             return Err(RuntimeError::TypeError(
                 "relativeTo must be an object or a string".into(),
             ));
-        }
-        let source = self
-            .coerce_string(value)?
+        };
+        let source = text
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid relativeTo string".into()))?;
         self.temporal_duration_relative_to_string(&source).map(Some)
@@ -327,21 +329,18 @@ impl Vm {
         let offset_primitive = (!matches!(offset_value, Value::Undefined))
             .then(|| self.coerce_primitive(&offset_value, "string"))
             .transpose()?;
-        if let Some(primitive) = &offset_primitive {
-            if !matches!(primitive, Value::String(_)) {
+        let offset_string = match offset_primitive {
+            None => None,
+            Some(Value::String(text)) => Some(
+                text.to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid Temporal offset".into()))?,
+            ),
+            Some(_) => {
                 return Err(RuntimeError::TypeError(
                     "Temporal relativeTo offset must be a string".into(),
                 ));
             }
-        }
-        let offset_string = offset_primitive
-            .map(|primitive| self.coerce_string(&primitive))
-            .transpose()?
-            .map(|text| {
-                text.to_utf8()
-                    .map_err(|_| RuntimeError::RangeError("invalid Temporal offset".into()))
-            })
-            .transpose()?;
+        };
         let requested_second = self.temporal_read_optional_integer(bag, "second", 0, 60)?;
         let time_zone_value = self.get_property(bag, &"timeZone".into())?;
         let requested_year = self.temporal_read_optional_integer(bag, "year", -275_760, 275_760)?;
@@ -648,10 +647,11 @@ impl Vm {
     /// `DifferenceISODateTime` borrows that day back).
     ///
     /// The range checks are the specification's own: `CalendarDateAdd` must
-    /// stay representable, and -- only when the two points differ, since
-    /// `DifferencePlainDateTimeWithRounding` returns a blank duration for equal
-    /// ones before looking at limits -- both must be within
-    /// `ISODateTimeWithinLimits`.
+    /// stay representable, and both points must be within
+    /// `ISODateTimeWithinLimits`. (The two points always differ: callers
+    /// answer a blank duration before asking, and any other duration moves
+    /// the target away from the anchor, so the specification's "equal points
+    /// skip the limits" shortcut can never apply here.)
     #[allow(clippy::type_complexity)]
     pub(in super::super) fn temporal_duration_plain_endpoints(
         calendar: AnyCalendarKind,
@@ -668,6 +668,7 @@ impl Vm {
         const MIDNIGHT: epoch::CivilTime = (0, 0, 0, 0, 0, 0);
         let out_of_range =
             || RuntimeError::RangeError("Temporal date arithmetic is out of range".into());
+        // Every duration field is below 2^53, so the day count always fits.
         // `ToInternalDurationRecordWith24HourDays`: the `days` field joins the
         // time part; years, months and weeks stay calendar fields.
         let time_total = duration_math::TimeDuration::from_fields(
@@ -680,8 +681,7 @@ impl Vm {
         )
         .total_nanoseconds()
             + record.days * DAY_NS;
-        let target_days =
-            i64::try_from(time_total.div_euclid(DAY_NS)).map_err(|_| out_of_range())?;
+        let target_days = time_total.div_euclid(DAY_NS) as i64;
         let target_time =
             duration_math::time_fields_from_nanoseconds(time_total.rem_euclid(DAY_NS));
         let target_date = plain_date::calendar_add_date(
@@ -695,14 +695,10 @@ impl Vm {
         )
         .filter(|date| epoch::is_date_within_limits(*date))
         .ok_or_else(out_of_range)?;
-        let origin = (anchor, MIDNIGHT);
-        let target = (target_date, target_time);
-        if origin != target {
-            Self::temporal_duration_anchor_datetime_in_range(anchor)?;
-            if !epoch::is_date_time_within_limits(target_date, target_time) {
-                return Err(out_of_range());
-            }
+        Self::temporal_duration_anchor_datetime_in_range(anchor)?;
+        if !epoch::is_date_time_within_limits(target_date, target_time) {
+            return Err(out_of_range());
         }
-        Ok((origin, target))
+        Ok(((anchor, MIDNIGHT), (target_date, target_time)))
     }
 }

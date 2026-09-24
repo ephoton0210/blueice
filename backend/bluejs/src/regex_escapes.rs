@@ -299,4 +299,14 @@ mod tests {
         // After the class has ended `\W` is outside again.
         assert_eq!(adjust(r"[[a]]\W", "iv"), r"[[a]]\W");
     }
+
+    #[test]
+    fn four_hex_digits_must_be_hex_digits_of_scalar_values() {
+        let points = |text: &str| text.chars().map(u32::from).collect::<Vec<_>>();
+        assert_eq!(hex4(&points("00e9"), 0), Some(0xe9));
+        assert_eq!(hex4(&points("00eg"), 0), None);
+        assert_eq!(hex4(&points("00e"), 0), None);
+        // A lone surrogate is not a scalar value, so not a digit either.
+        assert_eq!(hex4(&[0x30, 0x30, 0xd800, 0x30], 0), None);
+    }
 }

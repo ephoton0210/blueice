@@ -57,11 +57,8 @@ pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::Dur
             continue;
         }
         let mut number = String::new();
-        while characters
-            .peek()
-            .is_some_and(|character| character.is_ascii_digit())
-        {
-            number.push(characters.next()?);
+        while let Some(digit) = characters.next_if(char::is_ascii_digit) {
+            number.push(digit);
         }
         if number.is_empty() {
             return None;
@@ -70,11 +67,8 @@ pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::Dur
         if matches!(characters.peek(), Some('.' | ',')) {
             characters.next();
             let mut digits = String::new();
-            while characters
-                .peek()
-                .is_some_and(|character| character.is_ascii_digit())
-            {
-                digits.push(characters.next()?);
+            while let Some(digit) = characters.next_if(char::is_ascii_digit) {
+                digits.push(digit);
             }
             if digits.is_empty() || digits.len() > 9 {
                 return None;
@@ -108,7 +102,11 @@ pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::Dur
                 _ => return None,
             };
             let scale = 10_i128.pow(digits.len() as u32);
-            let mut remaining = digits.parse::<i128>().ok()? * unit_nanoseconds / scale;
+            // At most nine ASCII digits, so the value always fits.
+            let fraction_value = digits
+                .bytes()
+                .fold(0_i128, |value, digit| value * 10 + i128::from(digit - b'0'));
+            let mut remaining = fraction_value * unit_nanoseconds / scale;
             for (slot, unit) in [
                 (5_usize, 60_000_000_000_i128),
                 (6, 1_000_000_000),

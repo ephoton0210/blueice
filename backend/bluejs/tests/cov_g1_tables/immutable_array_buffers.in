@@ -1,0 +1,108 @@
+// Expected results shared by the integration test of the same name and the
+// in-crate `vm::functions::reference_tables` test.
+const CASES: &[(&str, &str)] = &[
+    (
+        r#"Uint8Array.prototype.fill.call(5, 1)"#,
+        r#"throws TypeError: TypedArray method requires a TypedArray receiver"#,
+    ),
+    (
+        r#"Uint8Array.prototype.setFromHex.call(5, 'aa')"#,
+        r#"throws TypeError: Uint8Array method requires a Uint8Array receiver"#,
+    ),
+    (
+        r#"Uint8Array.prototype.setFromBase64.call({}, 'aa')"#,
+        r#"throws TypeError: Uint8Array method requires a Uint8Array receiver"#,
+    ),
+    (
+        r#"Uint8Array.prototype.setFromHex.call(new Uint8Array(new ArrayBuffer(4).transferToImmutable()), 'aa')"#,
+        r#"throws TypeError: TypedArray is backed by an immutable ArrayBuffer"#,
+    ),
+    (
+        r#"Atomics.store(5, 0, 1)"#,
+        r#"throws TypeError: Atomics requires an integer TypedArray"#,
+    ),
+    (
+        r#"new Uint8Array(new ArrayBuffer(4).transferToImmutable()).fill(1)"#,
+        r#"throws TypeError: TypedArray is backed by an immutable ArrayBuffer"#,
+    ),
+    (
+        r#"new DataView(new ArrayBuffer(4).transferToImmutable()).setUint8(0, 1)"#,
+        r#"throws TypeError: DataView is backed by an immutable ArrayBuffer"#,
+    ),
+    (
+        r#"Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, 'immutable').get.call(5)"#,
+        r#"throws TypeError: ArrayBuffer method requires an ArrayBuffer receiver"#,
+    ),
+    (
+        r#"Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, 'immutable').get.call(new ArrayBuffer(1))"#,
+        r#"false"#,
+    ),
+    (
+        r#"Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, 'immutable').get.call(new ArrayBuffer(1).transferToImmutable())"#,
+        r#"true"#,
+    ),
+    (
+        r#"ArrayBuffer.prototype.transferToImmutable.call({})"#,
+        r#"throws TypeError: ArrayBuffer method requires an ArrayBuffer receiver"#,
+    ),
+    (
+        r#"ArrayBuffer.prototype.transferToImmutable.call(new ArrayBuffer(4).transferToImmutable())"#,
+        r#"throws TypeError: ArrayBuffer is immutable and cannot be detached"#,
+    ),
+    (
+        r#"(function () { var b = new ArrayBuffer(4); b.transfer(); return b.transferToImmutable() })()"#,
+        r#"throws TypeError: ArrayBuffer is detached"#,
+    ),
+    (
+        r#"new ArrayBuffer(4).transferToImmutable({ valueOf() { throw new EvalError('len') } })"#,
+        r#"throws EvalError: len"#,
+    ),
+    (
+        r#"(function () { var b = new ArrayBuffer(4); return b.transferToImmutable({ valueOf() { b.transfer(); return 2 } }) })()"#,
+        r#"throws TypeError: ArrayBuffer is detached"#,
+    ),
+    (
+        r#"new ArrayBuffer(4).transferToImmutable(2 ** 60)"#,
+        r#"throws RangeError: buffer index is too large"#,
+    ),
+    (
+        r#"new ArrayBuffer(8).sliceToImmutable(2, 6).byteLength"#,
+        r#"4"#,
+    ),
+    (
+        r#"new ArrayBuffer(8).sliceToImmutable().byteLength"#,
+        r#"8"#,
+    ),
+    (
+        r#"new ArrayBuffer(8).sliceToImmutable(6, 2).byteLength"#,
+        r#"0"#,
+    ),
+    (
+        r#"new ArrayBuffer(8).sliceToImmutable(-2).byteLength"#,
+        r#"2"#,
+    ),
+    (
+        r#"(function () { var b = new ArrayBuffer(4); b.transfer(); return b.sliceToImmutable(0, 1) })()"#,
+        r#"throws TypeError: ArrayBuffer is detached"#,
+    ),
+    (
+        r#"ArrayBuffer.prototype.sliceToImmutable.call(5)"#,
+        r#"throws TypeError: ArrayBuffer method requires an ArrayBuffer receiver"#,
+    ),
+    (
+        r#"(function () { var b = new ArrayBuffer(8, { maxByteLength: 16 }); return b.sliceToImmutable({ valueOf() { b.resize(2); return 0 } }, 6) })()"#,
+        r#"throws RangeError: ArrayBuffer shrank below the requested slice"#,
+    ),
+    (
+        r#"(function () { var b = new ArrayBuffer(8); return b.sliceToImmutable({ valueOf() { b.transfer(); return 0 } }, 6) })()"#,
+        r#"throws TypeError: ArrayBuffer is detached"#,
+    ),
+    (
+        r#"new ArrayBuffer(8).sliceToImmutable({ valueOf() { throw new EvalError('s') } })"#,
+        r#"throws EvalError: s"#,
+    ),
+    (
+        r#"new ArrayBuffer(8).sliceToImmutable(0, { valueOf() { throw new EvalError('e') } })"#,
+        r#"throws EvalError: e"#,
+    ),
+];

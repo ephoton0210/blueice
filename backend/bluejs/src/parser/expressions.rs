@@ -66,7 +66,9 @@ impl Parser {
             }
             if self.destructuring_assignment_ahead() {
                 let pattern = self.parse_assignment_pattern()?;
-                self.expect_punct(Punct::Assign)?;
+                // The look-ahead saw the pattern's matching delimiter followed
+                // by `=`, and a pattern that parses ends exactly there.
+                self.advance();
                 let value = self.parse_assignment()?;
                 return Ok(Expr::DestructureAssign {
                     pattern,
@@ -178,36 +180,36 @@ impl Parser {
     /// member target (including after `...`), whereas `{key}` is a nested
     /// object pattern.  Looking only at the opener used to misparse the
     /// former as a pattern and reject a valid rest target as non-final.
+    ///
+    /// Called only at an opening `[` or `{` whose matching delimiter exists
+    /// (the destructuring look-ahead found it), so the scan below, which
+    /// starts at that opener, always reaches the matching delimiter.
     pub(super) fn cover_assignment_target_has_lhs_suffix(&self) -> bool {
-        let Some(open) = (match self.peek() {
-            Token::Punct(Punct::LBracket) => Some(Punct::RBracket),
-            Token::Punct(Punct::LBrace) => Some(Punct::RBrace),
-            _ => None,
-        }) else {
-            return false;
-        };
-        let mut delimiters = vec![open];
-        let mut index = self.pos + 1;
-        while let Some(token) = self.tokens.get(index) {
-            match token.token {
-                Token::Punct(Punct::LParen) => delimiters.push(Punct::RParen),
-                Token::Punct(Punct::LBracket) => delimiters.push(Punct::RBracket),
-                Token::Punct(Punct::LBrace) => delimiters.push(Punct::RBrace),
-                Token::Punct(punct) if delimiters.last() == Some(&punct) => {
-                    delimiters.pop();
-                    if delimiters.is_empty() {
-                        return matches!(
-                            self.tokens.get(index + 1).map(|token| &token.token),
-                            Some(Token::Punct(Punct::Dot | Punct::LBracket | Punct::LParen))
-                        );
+        let mut delimiters = Vec::new();
+        self.tokens[self.pos..]
+            .iter()
+            .enumerate()
+            .find_map(|(offset, token)| {
+                match token.token {
+                    Token::Punct(Punct::LParen) => delimiters.push(Punct::RParen),
+                    Token::Punct(Punct::LBracket) => delimiters.push(Punct::RBracket),
+                    Token::Punct(Punct::LBrace) => delimiters.push(Punct::RBrace),
+                    Token::Punct(punct) if delimiters.last() == Some(&punct) => {
+                        delimiters.pop();
+                        if delimiters.is_empty() {
+                            return Some(matches!(
+                                self.tokens
+                                    .get(self.pos + offset + 1)
+                                    .map(|token| &token.token),
+                                Some(Token::Punct(Punct::Dot | Punct::LBracket | Punct::LParen))
+                            ));
+                        }
                     }
+                    _ => {}
                 }
-                Token::Eof => return false,
-                _ => {}
-            }
-            index += 1;
-        }
-        false
+                None
+            })
+            .unwrap_or(false)
     }
 
     /// An AssignmentExpression with `in` permitted again: inside a
@@ -224,7 +226,8 @@ impl Parser {
     pub(super) fn parse_array_assignment_pattern(
         &mut self,
     ) -> Result<AssignmentPattern, ParseError> {
-        self.expect_punct(Punct::LBracket)?;
+        // The only caller dispatched on the opening `[`.
+        self.advance();
         let mut elements = Vec::new();
         while !self.check_punct(Punct::RBracket) {
             if self.eat_punct(Punct::Comma) {
@@ -254,14 +257,16 @@ impl Parser {
                 self.expect_punct(Punct::Comma).map_err(known_syntax)?;
             }
         }
-        self.expect_punct(Punct::RBracket)?;
+        // The loop only ends at the closing `]`.
+        self.advance();
         Ok(AssignmentPattern::Array(elements))
     }
 
     pub(super) fn parse_object_assignment_pattern(
         &mut self,
     ) -> Result<AssignmentPattern, ParseError> {
-        self.expect_punct(Punct::LBrace)?;
+        // The only caller dispatched on the opening `{`.
+        self.advance();
         let mut properties = Vec::new();
         while !self.check_punct(Punct::RBrace) {
             if self.eat_punct(Punct::Ellipsis) {
@@ -286,15 +291,15 @@ impl Parser {
                     };
                     (value, default)
                 } else {
-                    if !shorthand_is_identifier_reference {
-                        return Err(self.syntax_error(
-                            "destructuring assignment shorthand requires an IdentifierReference",
-                        ));
-                    }
-                    let PropertyKey::Identifier(name) = &key else {
-                        return Err(
-                            self.syntax_error("expected ':' in destructuring assignment pattern")
-                        );
+                    // A shorthand property names an IdentifierReference, the
+                    // only kind of key that is an `Identifier`.
+                    let name = match &key {
+                        PropertyKey::Identifier(name) if shorthand_is_identifier_reference => name,
+                        _ => {
+                            return Err(self.syntax_error(
+                                "destructuring assignment shorthand requires an IdentifierReference",
+                            ));
+                        }
                     };
                     let default = if self.eat_punct(Punct::Assign) {
                         Some(self.parse_assignment_allowing_in()?)
@@ -316,7 +321,8 @@ impl Parser {
                 self.expect_punct(Punct::Comma).map_err(known_syntax)?;
             }
         }
-        self.expect_punct(Punct::RBrace)?;
+        // The loop only ends at the closing `}`.
+        self.advance();
         Ok(AssignmentPattern::Object(properties))
     }
 
@@ -459,13 +465,14 @@ impl Parser {
         // `#name in object` is a distinct relational-expression production:
         // a private identifier cannot otherwise begin an expression.  Keep
         // its RHS at ShiftExpression precedence, matching ordinary `in`.
-        let mut left = if !self.no_in
-            && matches!(self.peek(), Token::PrivateIdentifier(_))
-            && matches!(self.peek_at(1), Token::Keyword(Keyword::In))
-        {
-            let Token::PrivateIdentifier(name) = self.advance().clone() else {
-                unreachable!("private identifier was checked above")
-            };
+        let private_name = match (self.peek(), self.peek_at(1)) {
+            (Token::PrivateIdentifier(name), Token::Keyword(Keyword::In)) if !self.no_in => {
+                Some(name.clone())
+            }
+            _ => None,
+        };
+        let mut left = if let Some(name) = private_name {
+            self.advance(); // the private name
             self.advance(); // `in`
             Expr::PrivateIn {
                 name,
@@ -1002,7 +1009,8 @@ impl Parser {
         })();
         self.no_in = saved_no_in;
         let (specifier, options) = parsed?;
-        self.expect_punct(Punct::RParen)?;
+        // A successfully parsed list ends exactly at its closing `)`.
+        self.advance();
         Ok(Expr::DynamicImport {
             specifier: Box::new(specifier),
             options,
@@ -1015,7 +1023,8 @@ impl Parser {
     }
 
     fn parse_arguments_list(&mut self) -> Result<Vec<Argument>, ParseError> {
-        self.expect_punct(Punct::LParen)?;
+        // Every caller checked for the opening `(`.
+        self.advance();
         let mut args = Vec::new();
         while !self.check_punct(Punct::RParen) {
             if self.eat_punct(Punct::Ellipsis) {
@@ -1027,7 +1036,8 @@ impl Parser {
                 self.expect_punct(Punct::Comma)?;
             }
         }
-        self.expect_punct(Punct::RParen)?;
+        // The loop only ends at the closing `)`.
+        self.advance();
         Ok(args)
     }
 
@@ -1095,7 +1105,8 @@ impl Parser {
             Token::Identifier(name) if name == "async" && self.async_function_follows() => {
                 self.require_unescaped_async()?;
                 self.advance();
-                self.expect_keyword(Keyword::Function)?;
+                // `async_function_follows` already saw the `function` keyword.
+                self.advance();
                 Ok(Expr::Function(self.parse_function_with_async(true)?))
             }
             Token::Identifier(name) if name == "class" => {
@@ -1201,7 +1212,8 @@ impl Parser {
     }
 
     pub(super) fn parse_array_literal(&mut self) -> Result<Expr, ParseError> {
-        self.expect_punct(Punct::LBracket)?;
+        // The caller dispatched on the opening `[`.
+        self.advance();
         let mut elements = Vec::new();
         while !self.check_punct(Punct::RBracket) {
             if self.check_punct(Punct::Comma) {
@@ -1218,12 +1230,14 @@ impl Parser {
                 self.expect_punct(Punct::Comma)?;
             }
         }
-        self.expect_punct(Punct::RBracket)?;
+        // The loop only ends at the closing `]`.
+        self.advance();
         Ok(Expr::Array(elements))
     }
 
     pub(super) fn parse_object_literal(&mut self) -> Result<Expr, ParseError> {
-        self.expect_punct(Punct::LBrace)?;
+        // The caller dispatched on the opening `{`.
+        self.advance();
         let mut props = Vec::new();
         while !self.check_punct(Punct::RBrace) {
             if self.eat_punct(Punct::Ellipsis) {
@@ -1310,7 +1324,8 @@ impl Parser {
                 self.expect_punct(Punct::Comma)?;
             }
         }
-        self.expect_punct(Punct::RBrace)?;
+        // The loop only ends at the closing `}`.
+        self.advance();
         Ok(Expr::Object(props))
     }
 }

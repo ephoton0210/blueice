@@ -197,14 +197,14 @@ fn hex(points: &[u32], at: usize, count: usize) -> Option<u16> {
 /// A legacy octal escape (Annex B) whose digits start at `at`: one to three
 /// octal digits, three only when the first is at most `3`, so that the value
 /// is at most 255. Returns the value and the index after the digits.
-fn octal(points: &[u32], at: usize) -> Option<(u16, usize)> {
+fn octal(points: &[u32], at: usize) -> (u16, usize) {
     let digit = |index: usize| {
         points
             .get(index)
             .and_then(|&point| char::from_u32(point))
             .and_then(|character| character.to_digit(8))
     };
-    let first = digit(at)?;
+    let first = digit(at).expect("every caller passes the index of an octal digit");
     let longest = if first <= 3 { 3 } else { 2 };
     let (mut value, mut end) = (first, at + 1);
     while end < at + longest {
@@ -212,7 +212,7 @@ fn octal(points: &[u32], at: usize) -> Option<(u16, usize)> {
         value = value * 8 + next;
         end += 1;
     }
-    Some((value as u16, end))
+    (value as u16, end)
 }
 
 fn is_syntax(unit: u16) -> bool {
@@ -264,7 +264,7 @@ fn escape(
                 out.extend([BACKSLASH, escaped]);
                 return Some(next);
             }
-            let (unit, end) = octal(points, at + 1)?;
+            let (unit, end) = octal(points, at + 1);
             push_escaped_literal(out, unit);
             Some(end)
         }
@@ -317,7 +317,7 @@ fn escape(
                 push_escaped_literal(out, escaped as u16);
                 Some(next)
             } else {
-                let (unit, end) = octal(points, at + 1)?;
+                let (unit, end) = octal(points, at + 1);
                 push_escaped_literal(out, unit);
                 Some(end)
             }
@@ -412,7 +412,7 @@ fn class_atom(points: &[u32], index: &mut usize, named: bool) -> Option<Atom> {
         Some('f') => (Atom::Unit(0x0c), next),
         Some('r') => (Atom::Unit(0x0d), next),
         Some('0'..='7') => {
-            let (unit, end) = octal(points, *index + 1)?;
+            let (unit, end) = octal(points, *index + 1);
             (Atom::Unit(unit), end)
         }
         Some('c') => match points.get(next).copied().and_then(ascii_char) {
@@ -860,5 +860,25 @@ mod tests {
             assert_eq!(rewrite(pattern), None, "{pattern}");
         }
         assert_eq!(rewrite("[\u{17f}-\u{131}]"), None);
+    }
+
+    #[test]
+    fn a_pattern_entry_that_is_not_a_code_unit_cannot_be_rewritten() {
+        // One entry stands for one code unit, so a code point beyond U+FFFF is
+        // not something the rewrite models: as a literal, after a backslash,
+        // as a class member, as an escaped class member, or as the end of a
+        // range.
+        let astral = 0x1f600;
+        let backslash = u32::from(b'\\');
+        assert_eq!(rewrite_pattern(&[astral]), None);
+        assert_eq!(rewrite_pattern(&[backslash, astral]), None);
+        assert_eq!(rewrite_pattern(&[0x5b, astral, 0x5d]), None);
+        assert_eq!(rewrite_pattern(&[0x5b, backslash, astral, 0x5d]), None);
+        assert_eq!(
+            rewrite_pattern(&[0x5b, u32::from(b'a'), u32::from(b'-'), astral, 0x5d]),
+            None
+        );
+        // A range to `\k` cannot be read when the pattern has named groups.
+        assert_eq!(rewrite_pattern(&units(r"(?<n>x)[a-\k]")), None);
     }
 }

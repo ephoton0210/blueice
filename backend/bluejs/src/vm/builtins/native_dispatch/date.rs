@@ -64,14 +64,16 @@ fn civil_from_days(days: i128) -> (i128, i128, i128) {
 }
 
 fn date_parts(time: f64) -> Option<DateParts> {
-    if !time.is_finite() {
-        return None;
-    }
+    time.is_finite().then(|| finite_date_parts(time))
+}
+
+/// The calendar parts of a finite time value.
+fn finite_date_parts(time: f64) -> DateParts {
     let days = (time / MILLISECONDS_PER_DAY).floor() as i128;
     let within_day = time - days as f64 * MILLISECONDS_PER_DAY;
     let within_day = within_day.round() as i128;
     let (year, month, day) = civil_from_days(days);
-    Some(DateParts {
+    DateParts {
         year,
         month,
         day,
@@ -80,7 +82,7 @@ fn date_parts(time: f64) -> Option<DateParts> {
         minute: within_day / 60_000 % 60,
         second: within_day / 1_000 % 60,
         millisecond: within_day % 1_000,
-    })
+    }
 }
 
 fn date_year(year: i128) -> String {
@@ -182,17 +184,25 @@ fn date_string(time: f64) -> JsString {
     .into()
 }
 
+/// The value of a run of ASCII decimal digits.
+fn decimal_value(digits: &str) -> i128 {
+    digits
+        .bytes()
+        .fold(0, |value, digit| value * 10 + i128::from(digit - b'0'))
+}
+
 fn parse_date_number(source: &str, width: usize) -> Option<(i128, &str)> {
     let prefix = source.get(..width)?;
     if !prefix.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
-    Some((prefix.parse().ok()?, &source[width..]))
+    Some((decimal_value(prefix), &source[width..]))
 }
 
 fn parse_date_time(source: &str) -> Option<(i128, i128, i128)> {
     let mut parts = source.split(':');
-    let hour = parts.next()?.parse().ok()?;
+    // `split` always yields at least one piece.
+    let hour = parts.next().unwrap_or_default().parse().ok()?;
     let minute = parts.next()?.parse().ok()?;
     let second = parts.next()?.parse().ok()?;
     (parts.next().is_none() && hour <= 23 && minute <= 59 && second <= 59)
@@ -263,7 +273,7 @@ fn parse_date_fraction(source: &str) -> Option<(i128, &str)> {
         return None;
     }
     let digits = &source[..width.min(3)];
-    let milliseconds = digits.parse::<i128>().ok()? * 10_i128.pow(3 - digits.len() as u32);
+    let milliseconds = decimal_value(digits) * 10_i128.pow(3 - digits.len() as u32);
     Some((milliseconds, &source[width..]))
 }
 
@@ -285,7 +295,7 @@ fn date_time_from_fields(
     // The day is checked on its own: "24:00" is the end of that day, which
     // is a time on the next one.
     let day_start = days_from_civil(year, month, day) as f64 * MILLISECONDS_PER_DAY;
-    let parts = date_parts(day_start)?;
+    let parts = finite_date_parts(day_start);
     if parts.year != year || parts.month != month || parts.day != day {
         return None;
     }
@@ -361,7 +371,7 @@ fn parse_short_date_number(source: &str) -> Option<(i128, &str)> {
     if width == 0 {
         return None;
     }
-    Some((source[..width].parse().ok()?, &source[width..]))
+    Some((decimal_value(&source[..width]), &source[width..]))
 }
 
 // Date.parse may accept more than the ISO format. Like SpiderMonkey and V8,
@@ -385,9 +395,9 @@ fn parse_spaced_date(source: &str) -> Option<f64> {
     let offset_minutes = if rest.is_empty() || rest == "Z" {
         0
     } else {
-        let sign = match rest.chars().next()? {
-            '+' => 1,
-            '-' => -1,
+        let sign = match rest.chars().next() {
+            Some('+') => 1,
+            Some('-') => -1,
             _ => return None,
         };
         let (offset_hour, rest) = parse_date_number(&rest[1..], 2)?;
@@ -473,7 +483,9 @@ impl Vm {
                     if let Some(object) = value.object_id() {
                         if let Ok(time) = self.heap.date_value(object) {
                             time
-                        } else if let Some(time) = self.test262_foreign_date_value(object)? {
+                        } else if let Some(time) =
+                            self.test262_foreign_date_value(object).ok().flatten()
+                        {
                             time
                         } else {
                             let primitive = self.coerce_primitive(value, "default")?;
@@ -497,10 +509,7 @@ impl Vm {
                         time_clip(self.coerce_number(value)?)
                     }
                 }
-                _ => match self.date_utc(args)? {
-                    Value::Number(time) => time,
-                    _ => unreachable!("Date.UTC returns a Number"),
-                },
+                _ => self.date_utc_time(args)?,
             };
             let default = self
                 .date_prototype
@@ -556,7 +565,9 @@ impl Vm {
                 .collect::<Result<Vec<_>, _>>()?;
             let first = numbers.first().copied().flatten();
             if numbers.iter().any(Option::is_none) {
-                self.with_roots(|heap| heap.set_date_value(object, f64::NAN))?;
+                self.heap
+                    .set_date_value(object, f64::NAN)
+                    .expect("the receiver was checked to be a live Date");
                 return Ok(Value::Number(f64::NAN));
             }
             let parts = if prior.is_finite() {
@@ -572,7 +583,9 @@ impl Vm {
                 return Ok(Value::Number(f64::NAN));
             };
             let Some(first) = first else {
-                self.with_roots(|heap| heap.set_date_value(object, f64::NAN))?;
+                self.heap
+                    .set_date_value(object, f64::NAN)
+                    .expect("the receiver was checked to be a live Date");
                 return Ok(Value::Number(f64::NAN));
             };
             let optional = |index: usize, default: i128| {
@@ -669,7 +682,9 @@ impl Vm {
                     )
                 }
             };
-            self.with_roots(|heap| heap.set_date_value(object, result))?;
+            self.heap
+                .set_date_value(object, result)
+                .expect("the receiver was checked to be a live Date");
             Ok(Value::Number(result))
         })();
         self.stack.truncate(base);
@@ -719,7 +734,9 @@ impl Vm {
                 // Validate the receiver before observable number conversion.
                 self.date_receiver_time(receiver)?;
                 let time = time_clip(self.coerce_number(value)?);
-                self.with_roots(|heap| heap.set_date_value(object, time))?;
+                self.heap
+                    .set_date_value(object, time)
+                    .expect("the receiver was checked to be a live Date");
                 Ok(Value::Number(time))
             }
             native::DateMethod::ToIsoString => date_iso_string(self.date_receiver_time(receiver)?)
@@ -771,7 +788,7 @@ impl Vm {
                 }
                 for name in names {
                     let method = self.get_property(receiver, &name.into())?;
-                    if !self.is_callable(&method)? {
+                    if !self.is_callable(&method).unwrap_or(false) {
                         continue;
                     }
                     let result = self.call_native(method, receiver.clone(), Vec::new(), false)?;
@@ -801,7 +818,7 @@ impl Vm {
                     }
                 }
                 let to_iso_string = self.get_property(receiver, &"toISOString".into())?;
-                if !self.is_callable(&to_iso_string)? {
+                if !self.is_callable(&to_iso_string).unwrap_or(false) {
                     return Err(RuntimeError::TypeError(
                         "Date toISOString must be callable".into(),
                     ));
@@ -815,6 +832,11 @@ impl Vm {
         &mut self,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
+        Ok(Value::Number(self.date_utc_time(args)?))
+    }
+
+    /// The time value `Date.UTC(...args)` returns.
+    fn date_utc_time(&mut self, args: &[Value]) -> Result<f64, RuntimeError> {
         let defaults = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
         let mut components = [0.0; 7];
         let mut invalid = false;
@@ -833,7 +855,7 @@ impl Vm {
             }
         }
         if invalid {
-            return Ok(Value::Number(f64::NAN));
+            return Ok(f64::NAN);
         }
         let mut year = components[0];
         if (0.0..=99.0).contains(&year) {
@@ -843,7 +865,7 @@ impl Vm {
             || components[1].abs() > i64::MAX as f64
             || components[2].abs() > i64::MAX as f64
         {
-            return Ok(Value::Number(f64::NAN));
+            return Ok(f64::NAN);
         }
         let mut year = year as i128;
         let month = components[1] as i128;
@@ -859,9 +881,9 @@ impl Vm {
         let milliseconds =
             days_from_civil(year, month, components[2] as i128) as f64 * 86_400_000.0 + time;
         if !milliseconds.is_finite() || milliseconds.abs() > 8_640_000_000_000_000.0 {
-            Ok(Value::Number(f64::NAN))
+            Ok(f64::NAN)
         } else {
-            Ok(Value::Number(milliseconds.trunc()))
+            Ok(milliseconds.trunc())
         }
     }
 }

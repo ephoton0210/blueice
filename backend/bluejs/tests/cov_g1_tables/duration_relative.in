@@ -1,0 +1,388 @@
+// Expected results shared by the integration test of the same name and the
+// in-crate `vm::functions::reference_tables` test.
+const CASES: &[(&str, &str)] = &[
+    (
+        r#"Temporal.Duration.prototype.round.call(5, 'day')"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.round.call({}, 'day')"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.round.call(new Temporal.Instant(0n), 'day')"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.total.call({}, 'day')"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.total.call(5, 'day')"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.total.call(new Temporal.PlainDate(2020, 1, 1), 'day')"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.add.call({}, 'PT1S')"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.add.call(new Temporal.PlainDate(2020, 1, 1), 'PT1S')"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.subtract.call(5, 'PT1S')"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.negated.call({})"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.abs.call(5)"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.with.call({}, {})"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.toString.call(5)"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.toJSON.call({})"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.valueOf.call({})"#,
+        r#"throws TypeError: Temporal.Duration cannot be converted to a primitive value"#,
+    ),
+    (
+        r#"Temporal.Duration.prototype.days"#,
+        r#"throws TypeError: receiver is not a Temporal.Duration"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).round({ largestUnit: 'month', relativeTo: '2020-01-01' })"#,
+        r#"P1M9D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: { year: 2020, month: 1, day: 1 } })"#,
+        r#"1.3103448275862069"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: new Temporal.PlainDate(2020, 1, 1) })"#,
+        r#"1.3103448275862069"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: new Temporal.PlainDateTime(2020, 1, 1, 12) })"#,
+        r#"1.3103448275862069"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: Temporal.ZonedDateTime.from('2020-01-01T00:00[UTC]') })"#,
+        r#"1.3103448275862069"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: new Temporal.PlainYearMonth(2020, 1) })"#,
+        r#"throws TypeError: relativeTo must be a PlainDate, PlainDateTime or ZonedDateTime"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: new Temporal.PlainMonthDay(1, 1) })"#,
+        r#"throws TypeError: relativeTo must be a PlainDate, PlainDateTime or ZonedDateTime"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: new Temporal.Instant(0n) })"#,
+        r#"throws TypeError: relativeTo must be a PlainDate, PlainDateTime or ZonedDateTime"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: 5 })"#,
+        r#"throws TypeError: relativeTo must be an object or a string"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: Symbol() })"#,
+        r#"throws TypeError: relativeTo must be an object or a string"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: true })"#,
+        r#"throws TypeError: relativeTo must be an object or a string"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: '\uD800' })"#,
+        r#"throws RangeError: invalid relativeTo string"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: 'nonsense' })"#,
+        r#"throws RangeError: invalid relativeTo string"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: '2020-01-01T00:00:00+01:00[Europe/Paris]' })"#,
+        r#"1.3103448275862069"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month', relativeTo: null })"#,
+        r#"throws TypeError: relativeTo must be an object or a string"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total({ unit: 'month' })"#,
+        r#"throws RangeError: a Temporal.Duration with years, months or weeks needs a relativeTo anchor"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).round({ largestUnit: 'month' })"#,
+        r#"throws RangeError: a Temporal.Duration with years, months or weeks needs a relativeTo anchor"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).round({ largestUnit: 'day', relativeTo: '2020-01-01' })"#,
+        r#"P40D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 9007199254740991 }).round({ largestUnit: 'day', relativeTo: '2020-01-01' })"#,
+        r#"throws RangeError: duration is outside the ECMA-402 range"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ hours: 9007199254740991 }).round({ largestUnit: 'day', relativeTo: '2020-01-01' })"#,
+        r#"throws RangeError: duration is outside the ECMA-402 range"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: '+275760-09-13' })"#,
+        r#"throws RangeError: Temporal date arithmetic is out of range"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: '-271821-04-20' })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: -1 }).round({ largestUnit: 'day', relativeTo: '-271821-04-20' })"#,
+        r#"throws RangeError: Temporal date arithmetic is out of range"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ years: 1 }).round({ largestUnit: 'day', relativeTo: '+275760-01-01' })"#,
+        r#"throws RangeError: Temporal date arithmetic is out of range"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).round('\uD800')"#,
+        r#"throws RangeError: invalid round unit"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).round(undefined)"#,
+        r#"throws TypeError: Temporal.Duration.prototype.round requires an argument"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).round(5)"#,
+        r#"throws TypeError: Temporal options must be an object"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).round({})"#,
+        r#"throws RangeError: Temporal.Duration.prototype.round requires largestUnit or smallestUnit"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total('\uD800')"#,
+        r#"throws RangeError: invalid total unit"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total(5)"#,
+        r#"throws TypeError: Temporal options must be an object"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 40 }).total()"#,
+        r#"throws TypeError: Temporal.Duration.prototype.total requires an argument"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ hours: 40 }).round('day')"#,
+        r#"P2D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ hours: 40 }).total('day')"#,
+        r#"1.6666666666666667"#,
+    ),
+    (
+        r#"(function () { var out = []; var d = Temporal.Duration.from({ days: 1 }); for (var name of ['calendar', 'era', 'eraYear', 'hour', 'microsecond', 'millisecond', 'minute', 'month', 'monthCode', 'nanosecond', 'offset', 'second', 'timeZone', 'year', 'day']) { var bag = { year: 2020, month: 1, day: 1, calendar: 'gregory' }; Object.defineProperty(bag, name, { get() { throw new EvalError(name) }, enumerable: true }); try { d.round({ largestUnit: 'day', relativeTo: bag }); out.push('ok ' + name) } catch (e) { out.push(e.constructor.name + ':' + e.message) } } return out.join(' ') })()"#,
+        r#"EvalError:calendar EvalError:era EvalError:eraYear EvalError:hour EvalError:microsecond EvalError:millisecond EvalError:minute EvalError:month EvalError:monthCode EvalError:nanosecond EvalError:offset EvalError:second EvalError:timeZone EvalError:year EvalError:day"#,
+    ),
+    (
+        r#"(function () { var out = []; var d = Temporal.Duration.from({ days: 1 }); for (var name of ['calendar', 'era', 'eraYear', 'hour', 'microsecond', 'millisecond', 'minute', 'month', 'monthCode', 'nanosecond', 'offset', 'second', 'timeZone', 'year', 'day']) { var bag = { year: 2020, month: 1, day: 1, calendar: 'gregory' }; Object.defineProperty(bag, name, { value: { valueOf() { throw new EvalError(name) }, toString() { throw new EvalError(name) } }, enumerable: true }); try { d.round({ largestUnit: 'day', relativeTo: bag }); out.push('ok ' + name) } catch (e) { out.push(e.constructor.name + ':' + e.message) } } return out.join(' ') })()"#,
+        r#"TypeError:Temporal calendar must be a string EvalError:era RangeError:Temporal eraYear requires an era EvalError:hour EvalError:microsecond EvalError:millisecond EvalError:minute EvalError:month EvalError:monthCode EvalError:nanosecond EvalError:offset EvalError:second TypeError:Temporal time zone must be a string or a Temporal.ZonedDateTime EvalError:year EvalError:day"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, era: '\uD800', calendar: 'gregory' } })"#,
+        r#"throws RangeError: invalid Temporal era"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, era: 'ce', eraYear: 2020, calendar: 'gregory' } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { month: 1, day: 1, era: 'ce', eraYear: 2020, calendar: 'gregory' } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, era: 'bogus', eraYear: 2020, calendar: 'gregory' } })"#,
+        r#"throws RangeError: invalid Temporal calendar date"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, eraYear: 2020, calendar: 'gregory' } })"#,
+        r#"throws RangeError: Temporal eraYear requires an era"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, eraYear: 2020 } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, era: 'ce', eraYear: 100000, calendar: 'gregory' } })"#,
+        r#"throws RangeError: invalid Temporal era year"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { month: 1, day: 1 } })"#,
+        r#"throws TypeError: Temporal date fields require year"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, day: 1 } })"#,
+        r#"throws TypeError: Temporal date fields require month or monthCode"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1 } })"#,
+        r#"throws TypeError: Temporal date fields require day"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, monthCode: 'M01', day: 1 } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 2, monthCode: 'M01', day: 1 } })"#,
+        r#"throws RangeError: inconsistent Temporal calendar fields"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, monthCode: 'M01', day: 1 } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 13, day: 1 } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 40 } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 300000, month: 1, day: 1 } })"#,
+        r#"throws RangeError: invalid Temporal year"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, hour: 24 } })"#,
+        r#"throws RangeError: invalid Temporal hour"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, microsecond: 1000 } })"#,
+        r#"throws RangeError: invalid Temporal microsecond"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, nanosecond: 1000 } })"#,
+        r#"throws RangeError: invalid Temporal nanosecond"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, second: 61 } })"#,
+        r#"throws RangeError: invalid Temporal second"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, calendar: 'bogus' } })"#,
+        r#"throws RangeError: invalid Temporal calendar"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, calendar: 'iso8601' } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, calendar: 'chinese' } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 'UTC' } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 'UTC', offset: '+00:00' } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 'UTC', offset: '+01:00' } })"#,
+        r#"throws RangeError: the given offset does not match the time zone"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 'UTC', offset: '+99:99' } })"#,
+        r#"throws RangeError: invalid Temporal offset"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 'UTC', offset: 'garbage' } })"#,
+        r#"throws RangeError: invalid Temporal offset"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 'UTC', offset: 5 } })"#,
+        r#"throws TypeError: Temporal relativeTo offset must be a string"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 'UTC', offset: '\uD800' } })"#,
+        r#"throws RangeError: invalid Temporal offset"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 'UTC', offset: { toString() { return '+00:00' } } } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 'UTC', offset: { toString() { throw new EvalError('off') } } } })"#,
+        r#"throws EvalError: off"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 'Bogus/Zone' } })"#,
+        r#"throws RangeError: invalid Temporal time zone: Bogus/Zone"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 5 } })"#,
+        r#"throws TypeError: Temporal time zone must be a string or a Temporal.ZonedDateTime"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 'UTC', hour: 5, minute: 6, second: 7, millisecond: 8, microsecond: 9, nanosecond: 10 } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 'UTC', second: 60 } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 2020, month: 1, day: 1, timeZone: 'Europe/Paris', offset: '+01:00' } })"#,
+        r#"P1D"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 275760, month: 9, day: 13, timeZone: 'UTC', hour: 1 } })"#,
+        r#"throws RangeError: Temporal.ZonedDateTime epoch nanoseconds are outside the supported range"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: -271821, month: 4, day: 19, timeZone: 'UTC' } })"#,
+        r#"throws RangeError: Temporal.ZonedDateTime epoch nanoseconds are outside the supported range"#,
+    ),
+    (
+        r#"Temporal.Duration.from({ days: 1 }).round({ largestUnit: 'day', relativeTo: { year: 275760, month: 9, day: 13, timeZone: 'UTC', hour: 0 } })"#,
+        r#"throws RangeError: Temporal.ZonedDateTime epoch nanoseconds are outside the supported range"#,
+    ),
+    (
+        r#"new Temporal.Duration().total({ unit: 'day', relativeTo: '2020-01-01' })"#,
+        r#"0"#,
+    ),
+    (
+        r#"Temporal.Duration.from('P1')"#,
+        r#"throws RangeError: invalid Temporal.Duration string"#,
+    ),
+    (
+        r#"Temporal.Duration.from('PT1')"#,
+        r#"throws RangeError: invalid Temporal.Duration string"#,
+    ),
+    (
+        r#"Temporal.Duration.from('P1.5')"#,
+        r#"throws RangeError: invalid Temporal.Duration string"#,
+    ),
+    (
+        r#"Temporal.Duration.from('PT1.5')"#,
+        r#"throws RangeError: invalid Temporal.Duration string"#,
+    ),
+];

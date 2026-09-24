@@ -77,11 +77,13 @@ impl Vm {
                 self.create_bytes_module_value(bytes)?
             }
             ModuleType::JavaScript => {
-                unreachable!("Source Text Modules are never synthesized")
+                return Err(RuntimeError::ModuleResolution(format!(
+                    "{path} is a Source Text Module, not a synthetic one"
+                )));
             }
         };
         if let Value::Object(id) = value {
-            roots.push(self.heap.root(id)?);
+            roots.push(self.heap.root(id).expect("a synthesized value is live"));
         }
         let mut code = Bytecode::empty();
         code.module = true;
@@ -180,5 +182,135 @@ impl Vm {
             self.ensure_synthetic_module(&target, modules, roots)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Synthesizes `key` into a fresh module map, returning the map and the
+    /// number of roots the call registered.
+    fn synthesize(
+        vm: &mut Vm,
+        key: &str,
+    ) -> (Result<(), RuntimeError>, HashMap<String, Bytecode>, usize) {
+        let mut modules = HashMap::new();
+        let mut roots = Vec::new();
+        // The module loader gives the synthesis a budget before calling it.
+        vm.remaining_instructions = vm.config.instruction_budget;
+        let result = vm.ensure_synthetic_module(key, &mut modules, &mut roots);
+        (result, modules, roots.len())
+    }
+
+    fn vm_with_sources() -> Vm {
+        let mut vm = Vm::default();
+        vm.set_json_module_sources(HashMap::from([
+            ("t/object.json".to_string(), "{\"a\": 1}".to_string()),
+            ("t/number.json".to_string(), "5".to_string()),
+            ("t/broken.json".to_string(), "{".to_string()),
+        ]));
+        vm.set_text_module_sources(HashMap::from([("t/x.txt".to_string(), "abc".to_string())]));
+        vm.set_bytes_module_sources(HashMap::from([("t/x.bin".to_string(), vec![1, 2, 3])]));
+        vm
+    }
+
+    #[test]
+    fn a_source_text_module_is_never_synthesized() {
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.ensure_synthetic_module("t/main.js", &mut HashMap::new(), &mut Vec::new()),
+            Err(RuntimeError::ModuleResolution(
+                "t/main.js is a Source Text Module, not a synthetic one".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn json_text_and_bytes_modules_get_one_default_export() {
+        let mut vm = vm_with_sources();
+        // An object value is rooted until a cell holds it; a primitive is not.
+        for (path, module_type, roots) in [
+            ("t/object.json", ModuleType::Json, 1),
+            ("t/number.json", ModuleType::Json, 0),
+            ("t/x.txt", ModuleType::Text, 0),
+            ("t/x.bin", ModuleType::Bytes, 1),
+        ] {
+            let key = module_type.module_key(path);
+            let (result, modules, rooted) = synthesize(&mut vm, &key);
+            assert_eq!(result, Ok(()), "{key:?}");
+            assert_eq!(rooted, roots, "{key:?}");
+            let code = &modules[&key];
+            assert_eq!(code.module_exports.len(), 1, "{key:?}");
+            assert!(code.synthetic_default_export.is_some(), "{key:?}");
+        }
+    }
+
+    #[test]
+    fn a_module_that_already_exists_is_not_synthesized_again() {
+        let mut vm = vm_with_sources();
+        let key = ModuleType::Text.module_key("t/x.txt");
+        let mut modules = HashMap::from([(key.clone(), Bytecode::empty())]);
+        let mut roots = Vec::new();
+        assert_eq!(
+            vm.ensure_synthetic_module(&key, &mut modules, &mut roots),
+            Ok(())
+        );
+        assert!(modules[&key].synthetic_default_export.is_none());
+    }
+
+    #[test]
+    fn a_resource_the_host_did_not_provide_is_a_type_error() {
+        let mut vm = vm_with_sources();
+        for (module_type, kind) in [
+            (ModuleType::Json, "JSON"),
+            (ModuleType::Text, "text"),
+            (ModuleType::Bytes, "bytes"),
+        ] {
+            let (result, modules, _) = synthesize(&mut vm, &module_type.module_key("t/absent"));
+            assert_eq!(
+                result,
+                Err(RuntimeError::TypeError(format!(
+                    "host did not provide a {kind} module source for t/absent"
+                )))
+            );
+            assert!(modules.is_empty());
+        }
+    }
+
+    #[test]
+    fn malformed_json_is_a_module_resolution_failure() {
+        let mut vm = vm_with_sources();
+        let (result, modules, _) =
+            synthesize(&mut vm, &ModuleType::Json.module_key("t/broken.json"));
+        assert_eq!(
+            result,
+            Err(RuntimeError::ModuleResolution(
+                "invalid JSON module t/broken.json: SyntaxError: invalid JSON text".into()
+            ))
+        );
+        assert!(modules.is_empty());
+    }
+
+    #[test]
+    fn a_bytes_resource_over_the_buffer_limit_is_a_range_error() {
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity: 256,
+                major_threshold_bytes: 262_144,
+                max_heap_bytes: 262_144,
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        vm.set_bytes_module_sources(HashMap::from([("t/big.bin".to_string(), vec![0; 300_000])]));
+        let (result, modules, _) = synthesize(&mut vm, &ModuleType::Bytes.module_key("t/big.bin"));
+        assert_eq!(
+            result,
+            Err(RuntimeError::RangeError(
+                "immutable ArrayBuffer length is too large".into()
+            ))
+        );
+        assert!(modules.is_empty());
     }
 }
