@@ -103,6 +103,8 @@ impl Vm {
             host_object_methods: Vec::new(),
             host_object_pair_methods: Vec::new(),
             host_object_families: Vec::new(),
+            host_click_listeners: Vec::new(),
+            active_host_click_event: None,
             global_bindings: HashMap::new(),
             symbol_registry: Rc::new(RefCell::new(HashMap::new())),
             intl_legacy_constructed_symbol: None,

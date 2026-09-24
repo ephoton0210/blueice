@@ -46,12 +46,12 @@ use completion::{
 };
 use debugger::DebuggerContinuation;
 pub use debugger::VmDebuggerExecutionState;
+use host_objects::{
+    ActiveHostClickEvent, HostClickListener, HostObjectFactoryRegistration, HostObjectFamilyState,
+    HostObjectMethodRegistration, HostObjectPairMethodRegistration,
+};
 pub use host_objects::{
     HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod, HostObjectPairMethod,
-};
-use host_objects::{
-    HostObjectFactoryRegistration, HostObjectFamilyState, HostObjectMethodRegistration,
-    HostObjectPairMethodRegistration,
 };
 use std::fmt;
 
@@ -898,6 +898,8 @@ pub struct Vm {
     host_object_methods: Vec<HostObjectMethodRegistration>,
     host_object_pair_methods: Vec<HostObjectPairMethodRegistration>,
     host_object_families: Vec<HostObjectFamilyState>,
+    host_click_listeners: Vec<HostClickListener>,
+    active_host_click_event: Option<ActiveHostClickEvent>,
     global_bindings: HashMap<String, GlobalBinding>,
     /// The GlobalSymbolRegistry belongs to an ECMAScript agent, not to an
     /// individual Realm. Test262 child realms share this handle; independent

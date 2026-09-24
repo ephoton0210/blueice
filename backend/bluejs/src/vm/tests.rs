@@ -543,6 +543,109 @@ fn host_pair_method_requires_two_exact_minted_wrappers_and_returns_the_child() {
 }
 
 #[test]
+fn host_click_listeners_are_vm_rooted_and_prevent_default_only_during_dispatch() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findNode", 0, family, |_args: &[HostValue]| {
+        Ok(Some(HostObjectKey::new(7, 3, 42)))
+    })
+    .unwrap();
+    vm.install_host_click_event_methods(family).unwrap();
+    let source = "globalThis.calls = 0; findNode().addEventListener('click', function(event) { \
+                  globalThis.calls += 1; event.preventDefault(); globalThis.savedEvent = event; });";
+    vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.execute_script(&crate::compile(&crate::parse("undefined;").unwrap()).unwrap())
+        .unwrap();
+    vm.heap.collect_major();
+
+    assert!(vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    let read_calls = crate::compile(&crate::parse("globalThis.calls;").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(1.0));
+    assert!(vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(2.0));
+    assert!(!vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 99))
+        .unwrap());
+    let late = crate::compile(&crate::parse("savedEvent.preventDefault();").unwrap()).unwrap();
+    assert!(matches!(
+        vm.execute_script(&late),
+        Err(RuntimeError::TypeError(_))
+    ));
+
+    let mut successor = Vm::default();
+    assert!(matches!(
+        successor.dispatch_host_click(family, HostObjectKey::new(7, 3, 42)),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn host_click_listener_removal_and_receiver_checks_are_exact() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::Number(id)] = args else {
+            return Err(HostFunctionError::new("numeric node ID required"));
+        };
+        Ok(Some(HostObjectKey::new(7, 3, *id as u64)))
+    })
+    .unwrap();
+    vm.install_host_click_event_methods(family).unwrap();
+    let source = "globalThis.calls = 0; var node = findNode(42); \
+                  var listener = function(event) { globalThis.calls += 1; }; \
+                  node.addEventListener('click', listener); \
+                  node.addEventListener('click', listener);";
+    vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap())
+        .unwrap();
+    let callback = vm
+        .execute_script(&crate::compile(&crate::parse("listener;").unwrap()).unwrap())
+        .unwrap()
+        .object_id()
+        .expect("the registered listener is a JavaScript function object");
+    assert!(!vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    let read_calls = crate::compile(&crate::parse("globalThis.calls;").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(1.0));
+    for source in [
+        "node.addEventListener.call({}, 'click', listener);",
+        "node.addEventListener.call(Object.create(node), 'click', listener);",
+        "node.addEventListener('mouseover', listener);",
+        "node.addEventListener('click', {});",
+        "node.addEventListener('click', listener, true);",
+        "new node.addEventListener('click', listener);",
+    ] {
+        assert!(matches!(
+            vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap()),
+            Err(RuntimeError::TypeError(_))
+        ));
+    }
+    vm.execute_script(
+        &crate::compile(&crate::parse("node.removeEventListener('click', listener);").unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    vm.execute_script(&crate::compile(&crate::parse("listener = undefined;").unwrap()).unwrap())
+        .unwrap();
+    vm.execute_script(&crate::compile(&crate::parse("undefined;").unwrap()).unwrap())
+        .unwrap();
+    vm.heap.collect_major();
+    assert!(
+        !vm.heap.contains(callback),
+        "removal must release the VM root"
+    );
+    assert!(!vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(1.0));
+}
+
+#[test]
 fn opaque_host_object_family_has_a_fixed_root_limit() {
     let mut vm = Vm::default();
     let family = vm.create_host_object_family().unwrap();

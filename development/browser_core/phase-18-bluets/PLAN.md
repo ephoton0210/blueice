@@ -141,6 +141,18 @@ open because ordinary realms cannot transfer wrappers. BlueTS now recursively
 infers chained call-result receivers and validates their method arguments;
 the real-page rejected script exercises this path before execution.
 
+**Click callback VM foundation (B3 in progress):** The BlueJS host-object
+family can now opt into exact-wrapper `addEventListener('click', callback)`
+and `removeEventListener` methods. BlueJS itself roots callable identities,
+deduplicates and caps registrations, and releases roots on removal; no
+function object or numeric callback handle enters primitive host callbacks
+or IPC. A host-owned synchronous dispatch creates a short-lived click event
+whose `preventDefault()` works only during that dispatch and returns a
+cancellation bit to the embedding host. Per-realm page runtime routing rejects
+cross-tab and successor-realm families, with GC and lifecycle regressions.
+The launcher child has not installed this profile, and core has not yet
+ordered hit-test dispatch before default link navigation; B3 remains open.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

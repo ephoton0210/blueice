@@ -13,6 +13,8 @@ use super::*;
 /// across collection is the first DOM-binding contract. Realm destruction
 /// releases the entire table and its roots.
 pub const MAX_HOST_OBJECTS_PER_FAMILY: usize = 4_096;
+/// A separate fixed cap on VM-rooted callback functions in one family.
+pub const MAX_HOST_CLICK_LISTENERS_PER_FAMILY: usize = 4_096;
 
 /// An embedder-owned identity scoped by a VM-owned host-object family. The
 /// three private words can name an owner, generation, and object without
@@ -142,7 +144,266 @@ pub(super) struct HostObjectPairMethodRegistration {
     method: Box<dyn HostObjectPairMethod>,
 }
 
+pub(super) struct HostClickListener {
+    family_index: u32,
+    key: HostObjectKey,
+    callback: ObjectId,
+    root: RootId,
+}
+
+pub(super) struct ActiveHostClickEvent {
+    object: ObjectId,
+    default_prevented: bool,
+}
+
 impl Vm {
+    /// Installs only the exact `click` add/remove listener pair on one private
+    /// wrapper family. JavaScript callbacks stay in this VM's rooted table;
+    /// neither a function object nor a numeric function handle reaches the
+    /// embedding host or its IPC protocol.
+    pub fn install_host_click_event_methods(
+        &mut self,
+        family: HostObjectFamily,
+    ) -> Result<(), RuntimeError> {
+        if family.heap != self.object_prototype.heap {
+            return Err(RuntimeError::TypeError(
+                "host-object family belongs to a different realm".into(),
+            ));
+        }
+        let prototype = self
+            .host_object_families
+            .get(family.index as usize)
+            .ok_or_else(|| RuntimeError::TypeError("host-object family is unavailable".into()))?
+            .prototype;
+        if self.heap.get_own(prototype, "addEventListener")?.is_some()
+            || self
+                .heap
+                .get_own(prototype, "removeEventListener")?
+                .is_some()
+        {
+            return Err(RuntimeError::TypeError(
+                "host click listener methods are already installed".into(),
+            ));
+        }
+        self.install_host_callable_native(
+            prototype,
+            "addEventListener",
+            2,
+            NativeFunction::HostClickListenerAdd(family.index),
+        )?;
+        self.install_host_callable_native(
+            prototype,
+            "removeEventListener",
+            2,
+            NativeFunction::HostClickListenerRemove(family.index),
+        )
+    }
+
+    /// Dispatches one host-authorized click to an exact minted wrapper. The
+    /// result says whether a synchronous listener called `preventDefault`;
+    /// the host, not script, uses that result before any default navigation.
+    /// Missing wrappers have no listeners. A copied family from another realm
+    /// is rejected even when its private key happens to match.
+    pub fn dispatch_host_click(
+        &mut self,
+        family: HostObjectFamily,
+        key: HostObjectKey,
+    ) -> Result<bool, RuntimeError> {
+        self.ensure_no_debugger_continuation()?;
+        if family.heap != self.object_prototype.heap {
+            return Err(RuntimeError::TypeError(
+                "host-object family belongs to a different realm".into(),
+            ));
+        }
+        let Some(state) = self.host_object_families.get(family.index as usize) else {
+            return Err(RuntimeError::TypeError(
+                "host-object family is unavailable".into(),
+            ));
+        };
+        let Some(&(wrapper, _)) = state.wrappers.get(&key) else {
+            return Ok(false);
+        };
+        if self.active_host_click_event.is_some() {
+            return Err(RuntimeError::TypeError(
+                "host click dispatch is already active".into(),
+            ));
+        }
+        let callbacks = self
+            .host_click_listeners
+            .iter()
+            .filter(|listener| listener.family_index == family.index && listener.key == key)
+            .map(|listener| listener.callback)
+            .collect::<Vec<_>>();
+        if callbacks.is_empty() {
+            return Ok(false);
+        }
+        let mut snapshot_roots = Vec::with_capacity(callbacks.len());
+        for callback in &callbacks {
+            match self.heap.root(*callback) {
+                Ok(root) => snapshot_roots.push(root),
+                Err(error) => {
+                    for root in snapshot_roots {
+                        let _ = self.heap.unroot(root);
+                    }
+                    return Err(error.into());
+                }
+            }
+        }
+        let outcome = self.dispatch_rooted_host_click(family.index, key, wrapper, &callbacks);
+        for root in snapshot_roots {
+            self.heap.unroot(root)?;
+        }
+        outcome
+    }
+
+    fn dispatch_rooted_host_click(
+        &mut self,
+        family_index: u32,
+        key: HostObjectKey,
+        wrapper: ObjectId,
+        callbacks: &[ObjectId],
+    ) -> Result<bool, RuntimeError> {
+        self.remaining_instructions = self.config.instruction_budget;
+        let object_prototype = self.object_prototype;
+        let event = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+        let event_root = self.heap.root(event)?;
+        let outcome = (|| {
+            self.define_data(
+                event,
+                "type",
+                Value::String("click".into()),
+                false,
+                true,
+                false,
+            )?;
+            self.define_data(event, "target", Value::Object(wrapper), false, true, false)?;
+            self.define_data(event, "cancelable", Value::Bool(true), false, true, false)?;
+            self.install_host_callable_native(
+                event,
+                "preventDefault",
+                0,
+                NativeFunction::HostClickPreventDefault,
+            )?;
+            self.active_host_click_event = Some(ActiveHostClickEvent {
+                object: event,
+                default_prevented: false,
+            });
+            let result = (|| {
+                for callback in callbacks {
+                    if !self.host_click_listeners.iter().any(|listener| {
+                        listener.family_index == family_index
+                            && listener.key == key
+                            && listener.callback == *callback
+                    }) {
+                        continue;
+                    }
+                    self.call_native(
+                        Value::Object(*callback),
+                        Value::Object(wrapper),
+                        vec![Value::Object(event)],
+                        false,
+                    )?;
+                }
+                Ok(())
+            })();
+            let prevented = self
+                .active_host_click_event
+                .take()
+                .expect("the active click event belongs to this dispatch")
+                .default_prevented;
+            result.map(|()| prevented)
+        })();
+        self.active_host_click_event = None;
+        self.heap.unroot(event_root)?;
+        outcome
+    }
+
+    pub(super) fn host_click_listener_call(
+        &mut self,
+        family_index: u32,
+        receiver: Value,
+        args: &[Value],
+        construct: bool,
+        add: bool,
+    ) -> Result<Value, RuntimeError> {
+        if construct || args.len() != 2 || args[0] != Value::String("click".into()) {
+            return Err(RuntimeError::TypeError(
+                "host listener method requires a click type and one callback".into(),
+            ));
+        }
+        let family = self
+            .host_object_families
+            .get(family_index as usize)
+            .ok_or_else(|| RuntimeError::TypeError("host-object family is unavailable".into()))?;
+        let key = receiver
+            .object_id()
+            .and_then(|object| family.keys_by_wrapper.get(&object).copied())
+            .ok_or_else(|| RuntimeError::TypeError("invalid host-object receiver".into()))?;
+        if !self.is_callable(&args[1])? {
+            return Err(RuntimeError::TypeError(
+                "host click listener must be callable".into(),
+            ));
+        }
+        let callback = args[1]
+            .object_id()
+            .ok_or_else(|| RuntimeError::TypeError("invalid host click listener".into()))?;
+        let existing = self.host_click_listeners.iter().position(|listener| {
+            listener.family_index == family_index
+                && listener.key == key
+                && listener.callback == callback
+        });
+        if add {
+            if existing.is_none() {
+                let count = self
+                    .host_click_listeners
+                    .iter()
+                    .filter(|listener| listener.family_index == family_index)
+                    .count();
+                if count >= MAX_HOST_CLICK_LISTENERS_PER_FAMILY {
+                    return Err(RuntimeError::RangeError(
+                        "host click listener limit exceeded".into(),
+                    ));
+                }
+                let root = self.heap.root(callback)?;
+                self.host_click_listeners.push(HostClickListener {
+                    family_index,
+                    key,
+                    callback,
+                    root,
+                });
+            }
+        } else if let Some(index) = existing {
+            let listener = self.host_click_listeners.remove(index);
+            self.heap.unroot(listener.root)?;
+        }
+        Ok(Value::Undefined)
+    }
+
+    pub(super) fn host_click_prevent_default(
+        &mut self,
+        receiver: Value,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if construct || !args.is_empty() {
+            return Err(RuntimeError::TypeError(
+                "preventDefault takes no arguments".into(),
+            ));
+        }
+        let Some(active) = self.active_host_click_event.as_mut() else {
+            return Err(RuntimeError::TypeError(
+                "click event is no longer dispatching".into(),
+            ));
+        };
+        if receiver.object_id() != Some(active.object) {
+            return Err(RuntimeError::TypeError(
+                "invalid click event receiver".into(),
+            ));
+        }
+        active.default_prevented = true;
+        Ok(Value::Undefined)
+    }
+
     /// Creates a realm-local prototype and identity table. The prototype is
     /// kept alive even before a wrapper exists; all roots die with the VM.
     pub fn create_host_object_family(&mut self) -> Result<HostObjectFamily, RuntimeError> {

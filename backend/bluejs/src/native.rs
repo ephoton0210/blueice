@@ -194,6 +194,11 @@ pub(crate) enum NativeFunction {
     HostObjectMethod(u32),
     /// An exact two-wrapper operation returning its original child wrapper.
     HostObjectPairMethod(u32),
+    /// VM-owned click-listener registration on one exact host-object family.
+    HostClickListenerAdd(u32),
+    HostClickListenerRemove(u32),
+    /// Can cancel only the currently dispatching VM-owned click event.
+    HostClickPreventDefault,
     Function,
     /// The intrinsic constructor reached through an async function's
     /// `constructor` property. It is deliberately not installed as a global.

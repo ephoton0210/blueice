@@ -77,6 +77,15 @@ impl Vm {
             NativeFunction::HostObjectPairMethod(index) => {
                 self.host_object_pair_method_call(index, receiver, &args, construct)
             }
+            NativeFunction::HostClickListenerAdd(index) => {
+                self.host_click_listener_call(index, receiver, &args, construct, true)
+            }
+            NativeFunction::HostClickListenerRemove(index) => {
+                self.host_click_listener_call(index, receiver, &args, construct, false)
+            }
+            NativeFunction::HostClickPreventDefault => {
+                self.host_click_prevent_default(receiver, &args, construct)
+            }
             NativeFunction::Promise => self.promise_constructor(first.clone(), construct),
             NativeFunction::PromiseResolvingFunction {
                 promise,

@@ -14,8 +14,8 @@
 use crate::{
     BlueJsAstNodeKind, BlueJsProgramDebugError, BlueJsProgramHandle, BlueJsProgramRegistry,
     BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, HeapError, HeapStats, HostFunction,
-    HostObject, HostObjectFactory, HostObjectFamily, HostObjectMethod, HostObjectPairMethod,
-    RuntimeError, Value, Vm, VmConfig, VmDebuggerExecutionState,
+    HostObject, HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod,
+    HostObjectPairMethod, RuntimeError, Value, Vm, VmConfig, VmDebuggerExecutionState,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -178,6 +178,16 @@ impl BlueJsHostBindingRegistrar<'_> {
     ) -> Result<(), RuntimeError> {
         self.vm
             .install_host_object_pair_method(family, name, length, method)
+    }
+
+    /// Installs VM-owned click listener registration on exact wrappers in
+    /// this realm. Callback functions are rooted inside BlueJS and never
+    /// cross the primitive-only embedding callback ABI.
+    pub fn install_host_click_event_methods(
+        &mut self,
+        family: HostObjectFamily,
+    ) -> Result<(), RuntimeError> {
+        self.vm.install_host_click_event_methods(family)
     }
 
     /// Installs a private wrapper getter/setter pair with exact receiver
@@ -610,6 +620,23 @@ impl BlueJsPageRuntime {
             .vm
             .step_debugger_root_instruction()
             .map(page_debugger_execution_state)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
+    /// Delivers a host-authorized click only to a wrapper minted in this
+    /// exact live tab realm. The VM returns a cancellation bit, not a callback
+    /// or script value; navigation remains the embedding host's decision.
+    pub fn dispatch_host_click(
+        &mut self,
+        tab_id: u64,
+        family: HostObjectFamily,
+        key: HostObjectKey,
+    ) -> Result<bool, BlueJsPageRuntimeError> {
+        self.realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .dispatch_host_click(family, key)
             .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
@@ -1156,6 +1183,58 @@ mod tests {
             runtime.configure_realm_bindings(8, |_| Ok(())),
             Err(BlueJsPageRuntimeError::UnknownRealm(8))
         );
+    }
+
+    #[test]
+    fn host_click_dispatch_is_realm_bound_and_old_document_listeners_expire() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        runtime.open_realm(8, origin()).unwrap();
+        let mut family = None;
+        runtime
+            .configure_realm_bindings(7, |bindings| {
+                let document = bindings.install_global_object("document")?;
+                let node_family = bindings.create_host_object_family()?;
+                bindings.install_host_click_event_methods(node_family)?;
+                bindings.install_host_object_factory_method(
+                    document,
+                    "getElementById",
+                    1,
+                    node_family,
+                    |_args: &[crate::HostValue]| Ok(Some(HostObjectKey::new(7, 1, 42))),
+                )?;
+                family = Some(node_family);
+                Ok(())
+            })
+            .unwrap();
+        let family = family.unwrap();
+        let program = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///click.js"),
+                &BlueJsProgramV1::Script(
+                    parse("globalThis.clicks = 0; document.getElementById('x').addEventListener('click', function(event) { globalThis.clicks += 1; event.preventDefault(); });").unwrap(),
+                ),
+            )
+            .unwrap();
+        runtime.execute_program(7, program).unwrap();
+        let key = HostObjectKey::new(7, 1, 42);
+        assert!(runtime.dispatch_host_click(7, family, key).unwrap());
+        assert!(matches!(
+            runtime.dispatch_host_click(8, family, key),
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::TypeError(_)))
+        ));
+        runtime.navigate(7, origin()).unwrap();
+        assert!(matches!(
+            runtime.dispatch_host_click(7, family, key),
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::TypeError(_)))
+        ));
+        runtime.close_realm(7);
+        assert!(matches!(
+            runtime.dispatch_host_click(7, family, key),
+            Err(BlueJsPageRuntimeError::UnknownRealm(7))
+        ));
     }
 
     #[test]

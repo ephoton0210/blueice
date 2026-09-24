@@ -165,7 +165,10 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
 #### B3. Deliver a real click.
 
 - [ ] Root and remove click listeners in the child VM; removed and
-  old-document listeners must never run.
+  old-document listeners must never run. Partial: BlueJS VM and page-runtime
+  APIs now root, deduplicate, remove, and synchronously dispatch exact-wrapper
+  click callbacks with realm-expiry and GC tests. The launcher child profile
+  and core-to-child click delivery remain to be connected.
 - [ ] Dispatch a core click before default navigation; a real listener
   must run, and preventDefault must suppress link navigation.
 
