@@ -52,6 +52,8 @@ pub struct GatekeeperService {
 struct CustomPolicy {
     blocked_hosts: BTreeSet<String>,
     blocked_phrases: BTreeSet<String>,
+    blocked_download_extensions: BTreeSet<String>,
+    blocked_popup_phrases: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,9 +62,13 @@ struct StoredSettings {
     custom_blocked_hosts: Vec<String>,
     #[serde(default)]
     custom_blocked_phrases: Vec<String>,
+    #[serde(default)]
+    custom_blocked_download_extensions: Vec<String>,
+    #[serde(default)]
+    custom_blocked_popup_phrases: Vec<String>,
 }
 
-const SETTINGS_SCHEMA_VERSION: u32 = 2;
+const SETTINGS_SCHEMA_VERSION: u32 = 3;
 const MAX_CUSTOM_ENTRIES: usize = 128;
 
 impl GatekeeperService {
@@ -97,6 +103,8 @@ impl GatekeeperService {
                         &request,
                         &policy.blocked_hosts.into_iter().collect::<Vec<_>>(),
                         &policy.blocked_phrases.into_iter().collect::<Vec<_>>(),
+                        &policy.blocked_download_extensions.into_iter().collect::<Vec<_>>(),
+                        &policy.blocked_popup_phrases.into_iter().collect::<Vec<_>>(),
                     ),
                 )
             }
@@ -125,6 +133,8 @@ impl GatekeeperService {
         rules::settings(
             policy.blocked_hosts.iter().cloned().collect(),
             policy.blocked_phrases.iter().cloned().collect(),
+            policy.blocked_download_extensions.iter().cloned().collect(),
+            policy.blocked_popup_phrases.iter().cloned().collect(),
         )
     }
 
@@ -151,6 +161,30 @@ impl GatekeeperService {
                 next.blocked_phrases.insert(phrase)
             }
             GatekeeperSettingsChange::RemoveBlockedPhrase { phrase } => next.blocked_phrases.remove(&normalize_phrase(&phrase)?),
+            GatekeeperSettingsChange::AddBlockedDownloadExtension { extension } => {
+                let extension = normalize_extension(&extension)?;
+                if !next.blocked_download_extensions.contains(&extension)
+                    && next.blocked_download_extensions.len() >= MAX_CUSTOM_ENTRIES
+                {
+                    return Err("the blocked-download-extension list is full".to_string());
+                }
+                next.blocked_download_extensions.insert(extension)
+            }
+            GatekeeperSettingsChange::RemoveBlockedDownloadExtension { extension } => {
+                next.blocked_download_extensions.remove(&normalize_extension(&extension)?)
+            }
+            GatekeeperSettingsChange::AddBlockedPopupPhrase { phrase } => {
+                let phrase = normalize_phrase(&phrase)?;
+                if !next.blocked_popup_phrases.contains(&phrase)
+                    && next.blocked_popup_phrases.len() >= MAX_CUSTOM_ENTRIES
+                {
+                    return Err("the blocked-popup-phrase list is full".to_string());
+                }
+                next.blocked_popup_phrases.insert(phrase)
+            }
+            GatekeeperSettingsChange::RemoveBlockedPopupPhrase { phrase } => {
+                next.blocked_popup_phrases.remove(&normalize_phrase(&phrase)?)
+            }
         };
         if changed {
             if let Some(path) = self.settings_path.as_deref() {
@@ -161,6 +195,8 @@ impl GatekeeperService {
         Ok(rules::settings(
             policy.blocked_hosts.iter().cloned().collect(),
             policy.blocked_phrases.iter().cloned().collect(),
+            policy.blocked_download_extensions.iter().cloned().collect(),
+            policy.blocked_popup_phrases.iter().cloned().collect(),
         ))
     }
 }
@@ -181,7 +217,7 @@ fn load_custom_policy(path: &Path) -> Result<CustomPolicy, String> {
         .map_err(|error| format!("reading gatekeeper settings {}: {error}", path.display()))?;
     let stored: StoredSettings = serde_json::from_str(&raw)
         .map_err(|error| format!("parsing gatekeeper settings {}: {error}", path.display()))?;
-    if stored.schema_version != 1 && stored.schema_version != SETTINGS_SCHEMA_VERSION {
+    if !matches!(stored.schema_version, 1 | 2 | SETTINGS_SCHEMA_VERSION) {
         return Err(format!(
             "gatekeeper settings {} use unsupported schema version {}",
             path.display(),
@@ -198,10 +234,23 @@ fn load_custom_policy(path: &Path) -> Result<CustomPolicy, String> {
         .into_iter()
         .map(|phrase| normalize_phrase(&phrase))
         .collect::<Result<BTreeSet<_>, _>>()?;
-    if blocked_hosts.len() > MAX_CUSTOM_ENTRIES || blocked_phrases.len() > MAX_CUSTOM_ENTRIES {
+    let blocked_download_extensions = stored
+        .custom_blocked_download_extensions
+        .into_iter()
+        .map(|extension| normalize_extension(&extension))
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    let blocked_popup_phrases = stored
+        .custom_blocked_popup_phrases
+        .into_iter()
+        .map(|phrase| normalize_phrase(&phrase))
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    if [blocked_hosts.len(), blocked_phrases.len(), blocked_download_extensions.len(), blocked_popup_phrases.len()]
+        .into_iter()
+        .any(|len| len > MAX_CUSTOM_ENTRIES)
+    {
         return Err("gatekeeper settings exceed the maximum list size".to_string());
     }
-    Ok(CustomPolicy { blocked_hosts, blocked_phrases })
+    Ok(CustomPolicy { blocked_hosts, blocked_phrases, blocked_download_extensions, blocked_popup_phrases })
 }
 
 fn persist_custom_policy(path: &Path, policy: &CustomPolicy) -> Result<(), String> {
@@ -218,6 +267,8 @@ fn persist_custom_policy(path: &Path, policy: &CustomPolicy) -> Result<(), Strin
         schema_version: SETTINGS_SCHEMA_VERSION,
         custom_blocked_hosts: policy.blocked_hosts.iter().cloned().collect(),
         custom_blocked_phrases: policy.blocked_phrases.iter().cloned().collect(),
+        custom_blocked_download_extensions: policy.blocked_download_extensions.iter().cloned().collect(),
+        custom_blocked_popup_phrases: policy.blocked_popup_phrases.iter().cloned().collect(),
     };
     let json = serde_json::to_vec_pretty(&stored)
         .map_err(|error| format!("encoding gatekeeper settings: {error}"))?;
@@ -265,6 +316,18 @@ fn normalize_phrase(raw: &str) -> Result<String, String> {
         return Err("a blocked phrase must be 3 to 120 UTF-8 bytes".to_string());
     }
     Ok(phrase)
+}
+
+fn normalize_extension(raw: &str) -> Result<String, String> {
+    let extension = raw.trim().to_ascii_lowercase();
+    if extension.len() < 2
+        || extension.len() > 16
+        || !extension.starts_with('.')
+        || !extension[1..].bytes().all(|byte| byte.is_ascii_alphanumeric())
+    {
+        return Err("a blocked download extension must be a dot followed by 1 to 15 ASCII letters or digits".to_string());
+    }
+    Ok(extension)
 }
 
 #[cfg(test)]
@@ -410,6 +473,8 @@ mod tests {
         assert!(initial.baseline_rules.iter().all(|rule| !rule.conditions.is_empty()));
         assert!(initial.custom_blocked_hosts.is_empty());
         assert!(initial.custom_blocked_phrases.is_empty());
+        assert!(initial.custom_blocked_download_extensions.is_empty());
+        assert!(initial.custom_blocked_popup_phrases.is_empty());
 
         let GatekeeperSettingsReply::Settings(updated) = settings_exchange(
             &service,
@@ -479,6 +544,81 @@ mod tests {
     }
 
     #[test]
+    fn user_download_and_popup_rules_are_live_and_do_not_weaken_the_baseline() {
+        let service = GatekeeperService::new(None).unwrap();
+        for change in [
+            GatekeeperSettingsChange::AddBlockedDownloadExtension { extension: ".ZIP".to_string() },
+            GatekeeperSettingsChange::AddBlockedPopupPhrase { phrase: "Send   secrets".to_string() },
+        ] {
+            assert!(matches!(
+                settings_exchange(&service, GatekeeperSettingsRequest::Update { change }),
+                GatekeeperSettingsReply::Settings(_)
+            ));
+        }
+        assert_eq!(service.settings().custom_blocked_download_extensions, vec![".zip"]);
+        assert_eq!(service.settings().custom_blocked_popup_phrases, vec!["send secrets"]);
+        for (request, category) in [
+            (GatekeeperRequest::CheckDownload {
+                url: "https://safe.example/file.zip".to_string(),
+                file_name: "FILE.ZIP".to_string(),
+                content_type: None,
+                total_bytes: None,
+            }, "custom-blocked-download-extension"),
+            (GatekeeperRequest::CheckExtensionAction {
+                extension_id: "demo".to_string(),
+                capability: "ui:inject".to_string(),
+                detail: "action=show-native-popup; title=Please send   secrets".to_string(),
+            }, "custom-blocked-popup-phrase"),
+            (GatekeeperRequest::CheckDownload {
+                url: "https://safe.example/file.exe".to_string(),
+                file_name: "file.exe".to_string(),
+                content_type: None,
+                total_bytes: None,
+            }, "dangerous-file-type"),
+        ] {
+            let (mut client, mut server) = UnixStream::pair().unwrap();
+            thread::scope(|scope| {
+                let worker = scope.spawn(|| service.handle_connection(&mut server));
+                write_gatekeeper_request(&mut client, &request).unwrap();
+                assert!(matches!(read_gatekeeper_reply(&mut client).unwrap(),
+                    GatekeeperReply::Rejected { category: actual, .. } if actual == category));
+                worker.join().unwrap().unwrap();
+            });
+        }
+        for change in [
+            GatekeeperSettingsChange::RemoveBlockedDownloadExtension { extension: ".zip".to_string() },
+            GatekeeperSettingsChange::RemoveBlockedPopupPhrase { phrase: "send secrets".to_string() },
+        ] {
+            assert!(matches!(
+                settings_exchange(&service, GatekeeperSettingsRequest::Update { change }),
+                GatekeeperSettingsReply::Settings(_)
+            ));
+        }
+        assert!(service.settings().custom_blocked_download_extensions.is_empty());
+        assert!(service.settings().custom_blocked_popup_phrases.is_empty());
+        assert_eq!(
+            rules::review_with_custom_policy(
+                &GatekeeperRequest::CheckExtensionAction {
+                    extension_id: "demo".to_string(),
+                    capability: "dom:write".to_string(),
+                    detail: "target=document; note=send secrets".to_string(),
+                },
+                &[],
+                &[],
+                &[],
+                &["send secrets".to_string()],
+            ),
+            GatekeeperReply::Cleared,
+            "popup-only rules must not block unrelated extension actions"
+        );
+        assert_eq!(review(&GatekeeperRequest::CheckUrl { url: "https://malware.test".to_string() }),
+            GatekeeperReply::Rejected {
+                reason: format!("the URL matches the local malicious-domain rule (ruleset {RULESET_VERSION})"),
+                category: "known-bad-domain".to_string(),
+            });
+    }
+
+    #[test]
     fn invalid_adjustments_are_rejected_and_persisted_hosts_survive_restart() {
         let path = std::env::temp_dir().join(format!(
             "blueice-gatekeeper-settings-{}-{}.json",
@@ -520,6 +660,15 @@ mod tests {
                 },
             },
         );
+        assert!(matches!(settings_exchange(&service, GatekeeperSettingsRequest::Update {
+            change: GatekeeperSettingsChange::AddBlockedDownloadExtension { extension: "zip".to_string() },
+        }), GatekeeperSettingsReply::Rejected { .. }));
+        let _ = settings_exchange(&service, GatekeeperSettingsRequest::Update {
+            change: GatekeeperSettingsChange::AddBlockedDownloadExtension { extension: ".zip".to_string() },
+        });
+        let _ = settings_exchange(&service, GatekeeperSettingsRequest::Update {
+            change: GatekeeperSettingsChange::AddBlockedPopupPhrase { phrase: "Send secrets".to_string() },
+        });
         drop(service);
         let restored = GatekeeperService::new(Some(path.clone())).unwrap();
         assert_eq!(
@@ -527,6 +676,8 @@ mod tests {
             vec!["blocked.example"]
         );
         assert_eq!(restored.settings().custom_blocked_phrases, vec!["private code"]);
+        assert_eq!(restored.settings().custom_blocked_download_extensions, vec![".zip"]);
+        assert_eq!(restored.settings().custom_blocked_popup_phrases, vec!["send secrets"]);
         let _ = fs::remove_file(path);
     }
 
@@ -554,9 +705,35 @@ mod tests {
         );
         assert!(matches!(reply, GatekeeperSettingsReply::Settings(_)));
         let stored: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        assert_eq!(stored["schema_version"], 2);
+        assert_eq!(stored["schema_version"], 3);
         assert_eq!(stored["custom_blocked_hosts"][0], "legacy.example");
         assert_eq!(stored["custom_blocked_phrases"][0], "blocked phrase");
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn version_two_settings_load_without_losing_existing_rules() {
+        let path = std::env::temp_dir().join(format!(
+            "blueice-gatekeeper-v2-{}.json",
+            std::process::id()
+        ));
+        fs::write(
+            &path,
+            r#"{"schema_version":2,"custom_blocked_hosts":["legacy.example"],"custom_blocked_phrases":["legacy phrase"]}"#,
+        ).unwrap();
+        let service = GatekeeperService::new(Some(path.clone())).unwrap();
+        assert_eq!(service.settings().custom_blocked_hosts, vec!["legacy.example"]);
+        assert_eq!(service.settings().custom_blocked_phrases, vec!["legacy phrase"]);
+        assert!(service.settings().custom_blocked_download_extensions.is_empty());
+        assert!(service.settings().custom_blocked_popup_phrases.is_empty());
+        assert!(matches!(settings_exchange(&service, GatekeeperSettingsRequest::Update {
+            change: GatekeeperSettingsChange::AddBlockedDownloadExtension { extension: ".zip".to_string() },
+        }), GatekeeperSettingsReply::Settings(_)));
+        let stored: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(stored["schema_version"], 3);
+        assert_eq!(stored["custom_blocked_hosts"][0], "legacy.example");
+        assert_eq!(stored["custom_blocked_phrases"][0], "legacy phrase");
+        assert_eq!(stored["custom_blocked_download_extensions"][0], ".zip");
         let _ = fs::remove_file(path);
     }
 }

@@ -70,6 +70,13 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
             mandatory: true,
         },
         GatekeeperRuleInfo {
+            id: "page-bidi-obfuscation".to_string(),
+            category: "unicode-bidi-override".to_string(),
+            description: "Blocks bidirectional override characters in fetched HTML before parsing.".to_string(),
+            conditions: signatures(BIDI_OVERRIDE_CODEPOINTS),
+            mandatory: true,
+        },
+        GatekeeperRuleInfo {
             id: "hidden-prompt-injection".to_string(),
             category: "hidden-prompt-injection".to_string(),
             description: "Blocks instruction-shaped content only when it is hidden or Unicode-obfuscated.".to_string(),
@@ -147,7 +154,12 @@ pub fn mandatory_workflow() -> Vec<GatekeeperWorkflowStep> {
     ]
 }
 
-pub fn settings(custom_blocked_hosts: Vec<String>, custom_blocked_phrases: Vec<String>) -> GatekeeperSettings {
+pub fn settings(
+    custom_blocked_hosts: Vec<String>,
+    custom_blocked_phrases: Vec<String>,
+    custom_blocked_download_extensions: Vec<String>,
+    custom_blocked_popup_phrases: Vec<String>,
+) -> GatekeeperSettings {
     GatekeeperSettings {
         ruleset_version: RULESET_VERSION.to_string(),
         model_review_active: false,
@@ -155,6 +167,8 @@ pub fn settings(custom_blocked_hosts: Vec<String>, custom_blocked_phrases: Vec<S
         workflow: mandatory_workflow(),
         custom_blocked_hosts,
         custom_blocked_phrases,
+        custom_blocked_download_extensions,
+        custom_blocked_popup_phrases,
     }
 }
 
@@ -162,7 +176,7 @@ pub fn settings(custom_blocked_hosts: Vec<String>, custom_blocked_phrases: Vec<S
 /// self-contained: callers need no mutable rule engine and therefore no
 /// opportunity for one request to alter another's future decision.
 pub fn review(request: &GatekeeperRequest) -> GatekeeperReply {
-    review_with_custom_policy(request, &[], &[])
+    review_with_custom_policy(request, &[], &[], &[], &[])
 }
 
 /// Reviews with a user-controlled *additive* local denylist. The compiled
@@ -171,6 +185,8 @@ pub fn review_with_custom_policy(
     request: &GatekeeperRequest,
     custom_blocked_hosts: &[String],
     custom_blocked_phrases: &[String],
+    custom_blocked_download_extensions: &[String],
+    custom_blocked_popup_phrases: &[String],
 ) -> GatekeeperReply {
     match request {
         GatekeeperRequest::CheckUrl { url } => review_url(url, custom_blocked_hosts),
@@ -185,12 +201,13 @@ pub fn review_with_custom_policy(
             file_name,
             content_type.as_deref(),
             custom_blocked_hosts,
+            custom_blocked_download_extensions,
         ),
         GatekeeperRequest::CheckExtensionAction {
             extension_id,
             capability,
             detail,
-        } => review_extension_action(extension_id, capability, detail),
+        } => review_extension_action(extension_id, capability, detail, custom_blocked_popup_phrases),
     }
 }
 
@@ -262,6 +279,7 @@ fn review_download(
     file_name: &str,
     content_type: Option<&str>,
     custom_blocked_hosts: &[String],
+    custom_blocked_download_extensions: &[String],
 ) -> GatekeeperReply {
     if let GatekeeperReply::Rejected { reason, category } = review_url(url, custom_blocked_hosts) {
         return GatekeeperReply::Rejected { reason, category };
@@ -285,10 +303,24 @@ fn review_download(
             "dangerous-file-type",
         );
     }
+    if custom_blocked_download_extensions
+        .iter()
+        .any(|extension| lower_name.ends_with(extension))
+    {
+        return reject(
+            "the download matches a user-managed blocked file extension",
+            "custom-blocked-download-extension",
+        );
+    }
     GatekeeperReply::Cleared
 }
 
-fn review_extension_action(extension_id: &str, capability: &str, detail: &str) -> GatekeeperReply {
+fn review_extension_action(
+    extension_id: &str,
+    capability: &str,
+    detail: &str,
+    custom_blocked_popup_phrases: &[String],
+) -> GatekeeperReply {
     // The extension host sends only structured action metadata, never a
     // raw extension-provided write value. Still reject obfuscation in
     // every field: identity or metadata that can be displayed to a
@@ -303,7 +335,7 @@ fn review_extension_action(extension_id: &str, capability: &str, detail: &str) -
         );
     }
 
-    let detail = detail.to_ascii_lowercase();
+    let detail = detail.to_lowercase();
     if detail.starts_with("action=show-native-popup;")
         && (POPUP_BLOCKED_PHRASES.iter()
         .any(|phrase| detail.contains(phrase))
@@ -314,6 +346,17 @@ fn review_extension_action(extension_id: &str, capability: &str, detail: &str) -
         return reject(
             "the extension popup contains a credential, external-navigation, or instruction-override prompt",
             "extension-popup-social-engineering",
+        );
+    }
+    let normalized_detail = detail.split_whitespace().collect::<Vec<_>>().join(" ");
+    if detail.starts_with("action=show-native-popup;")
+        && custom_blocked_popup_phrases
+            .iter()
+            .any(|phrase| normalized_detail.contains(phrase))
+    {
+        return reject(
+            "the extension popup matches a user-managed blocked phrase",
+            "custom-blocked-popup-phrase",
         );
     }
     if SENSITIVE_INPUT_TYPES

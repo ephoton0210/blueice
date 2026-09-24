@@ -264,6 +264,52 @@ pub fn gatekeeper_settings_html(
                 body.push_str("</ul>");
             }
             body.push_str("</div>");
+
+            body.push_str(&format!(
+                "<div class=\"section\"><h2>{}</h2><p class=\"adjustable\">{}</p><label for=\"gatekeeper-custom-extension\">{}</label><input id=\"gatekeeper-custom-extension\" type=\"text\" value=\"\"><button data-gatekeeper-action=\"add-extension\">{}</button>",
+                escape_html(&t("custom-extensions-heading")),
+                escape_html(&t("adjustable")),
+                escape_html(&t("add-extension-label")),
+                escape_html(&t("add-extension-button")),
+            ));
+            if settings.custom_blocked_download_extensions.is_empty() {
+                body.push_str(&format!("<p>{}</p>", escape_html(&t("custom-extensions-empty"))));
+            } else {
+                body.push_str("<ul>");
+                for extension in &settings.custom_blocked_download_extensions {
+                    body.push_str(&format!(
+                        "<li>{}<button data-gatekeeper-action=\"remove-extension\" data-gatekeeper-extension=\"{}\">{}</button></li>",
+                        escape_html(extension),
+                        escape_html(extension),
+                        escape_html(&t("remove-extension-button")),
+                    ));
+                }
+                body.push_str("</ul>");
+            }
+            body.push_str("</div>");
+
+            body.push_str(&format!(
+                "<div class=\"section\"><h2>{}</h2><p class=\"adjustable\">{}</p><label for=\"gatekeeper-custom-popup-phrase\">{}</label><input id=\"gatekeeper-custom-popup-phrase\" type=\"text\" value=\"\"><button data-gatekeeper-action=\"add-popup-phrase\">{}</button>",
+                escape_html(&t("custom-popup-phrases-heading")),
+                escape_html(&t("adjustable")),
+                escape_html(&t("add-popup-phrase-label")),
+                escape_html(&t("add-popup-phrase-button")),
+            ));
+            if settings.custom_blocked_popup_phrases.is_empty() {
+                body.push_str(&format!("<p>{}</p>", escape_html(&t("custom-popup-phrases-empty"))));
+            } else {
+                body.push_str("<ul>");
+                for phrase in &settings.custom_blocked_popup_phrases {
+                    body.push_str(&format!(
+                        "<li>{}<button data-gatekeeper-action=\"remove-popup-phrase\" data-gatekeeper-popup-phrase=\"{}\">{}</button></li>",
+                        escape_html(phrase),
+                        escape_html(phrase),
+                        escape_html(&t("remove-popup-phrase-button")),
+                    ));
+                }
+                body.push_str("</ul>");
+            }
+            body.push_str("</div>");
         }
     }
     format!(
@@ -296,6 +342,8 @@ mod tests {
             }],
             custom_blocked_hosts: vec!["tracker.example".to_string()],
             custom_blocked_phrases: vec!["ignore <instructions>".to_string()],
+            custom_blocked_download_extensions: vec![".zip".to_string()],
+            custom_blocked_popup_phrases: vec!["send <secrets>".to_string()],
         }
     }
 
@@ -314,9 +362,14 @@ mod tests {
         assert!(html.contains("data-gatekeeper-action=\"remove-host\""));
         assert!(html.contains("data-gatekeeper-action=\"add-phrase\""));
         assert!(html.contains("data-gatekeeper-action=\"remove-phrase\""));
+        assert!(html.contains("data-gatekeeper-action=\"add-extension\""));
+        assert!(html.contains("data-gatekeeper-action=\"remove-extension\""));
+        assert!(html.contains("data-gatekeeper-action=\"add-popup-phrase\""));
+        assert!(html.contains("data-gatekeeper-action=\"remove-popup-phrase\""));
         assert!(html.contains("Blocks &lt;unsafe&gt; text."));
         assert!(html.contains("&lt;unsafe&gt;"));
         assert!(html.contains("ignore &lt;instructions&gt;"));
+        assert!(html.contains("send &lt;secrets&gt;"));
     }
 
     #[test]

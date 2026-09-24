@@ -480,6 +480,24 @@ impl Page {
             "remove-phrase" => Some(GatekeeperSettingsChange::RemoveBlockedPhrase {
                 phrase: element_attribute(&self.doc, node, "data-gatekeeper-phrase")?.to_string(),
             }),
+            "add-extension" => {
+                let input = find_element_by_id(&self.doc, self.doc.root(), "gatekeeper-custom-extension")?;
+                Some(GatekeeperSettingsChange::AddBlockedDownloadExtension {
+                    extension: element_attribute(&self.doc, input, "value")?.to_string(),
+                })
+            }
+            "remove-extension" => Some(GatekeeperSettingsChange::RemoveBlockedDownloadExtension {
+                extension: element_attribute(&self.doc, node, "data-gatekeeper-extension")?.to_string(),
+            }),
+            "add-popup-phrase" => {
+                let input = find_element_by_id(&self.doc, self.doc.root(), "gatekeeper-custom-popup-phrase")?;
+                Some(GatekeeperSettingsChange::AddBlockedPopupPhrase {
+                    phrase: element_attribute(&self.doc, input, "value")?.to_string(),
+                })
+            }
+            "remove-popup-phrase" => Some(GatekeeperSettingsChange::RemoveBlockedPopupPhrase {
+                phrase: element_attribute(&self.doc, node, "data-gatekeeper-popup-phrase")?.to_string(),
+            }),
             _ => None,
         }
     }
@@ -1818,7 +1836,7 @@ mod tests {
             move || {
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
                 let mut handled = 0;
-                while handled < 4 && std::time::Instant::now() < deadline {
+                while handled < 8 && std::time::Instant::now() < deadline {
                     match listener.accept() {
                         Ok((mut stream, _)) => {
                             service.handle_connection(&mut stream).unwrap();
@@ -1831,7 +1849,7 @@ mod tests {
                     }
                 }
                 assert_eq!(
-                    handled, 4,
+                    handled, 8,
                     "the page must read and apply every control through the real service"
                 );
             }
@@ -1891,6 +1909,34 @@ mod tests {
         ).unwrap();
         assert_eq!(page.apply_gatekeeper_settings_control(remove_phrase), Some(Ok(())));
         assert!(service.settings().custom_blocked_phrases.is_empty());
+        let extension_input = find_element_by_id(
+            page.doc(), page.doc().root(), "gatekeeper-custom-extension",
+        ).unwrap();
+        let add_extension = find_by_attribute(
+            page.doc(), page.doc().root(), "data-gatekeeper-action", "add-extension",
+        ).unwrap();
+        page.act(extension_input, NodeAction::SetValue(".zip".to_string()));
+        assert_eq!(page.apply_gatekeeper_settings_control(add_extension), Some(Ok(())));
+        assert!(page.dom_dump().contains(".zip"));
+        let remove_extension = find_by_attribute(
+            page.doc(), page.doc().root(), "data-gatekeeper-action", "remove-extension",
+        ).unwrap();
+        assert_eq!(page.apply_gatekeeper_settings_control(remove_extension), Some(Ok(())));
+        assert!(service.settings().custom_blocked_download_extensions.is_empty());
+        let popup_input = find_element_by_id(
+            page.doc(), page.doc().root(), "gatekeeper-custom-popup-phrase",
+        ).unwrap();
+        let add_popup = find_by_attribute(
+            page.doc(), page.doc().root(), "data-gatekeeper-action", "add-popup-phrase",
+        ).unwrap();
+        page.act(popup_input, NodeAction::SetValue("send secrets".to_string()));
+        assert_eq!(page.apply_gatekeeper_settings_control(add_popup), Some(Ok(())));
+        assert!(page.dom_dump().contains("send secrets"));
+        let remove_popup = find_by_attribute(
+            page.doc(), page.doc().root(), "data-gatekeeper-action", "remove-popup-phrase",
+        ).unwrap();
+        assert_eq!(page.apply_gatekeeper_settings_control(remove_popup), Some(Ok(())));
+        assert!(service.settings().custom_blocked_popup_phrases.is_empty());
         worker.join().unwrap();
         let _ = std::fs::remove_file(socket);
     }

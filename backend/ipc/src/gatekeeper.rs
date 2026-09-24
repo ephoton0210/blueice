@@ -108,8 +108,8 @@ pub struct GatekeeperWorkflowStep {
 }
 
 /// Complete inspectable gatekeeper policy. The compiled rules and workflow are
-/// immutable for a running release; the custom host and phrase lists are the
-/// deliberately narrow, additive adjustment surfaces a user controls locally.
+/// immutable for a running release; the custom lists are deliberately narrow,
+/// additive adjustment surfaces a user controls locally at each review stage.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GatekeeperSettings {
     pub ruleset_version: String,
@@ -120,6 +120,10 @@ pub struct GatekeeperSettings {
     pub workflow: Vec<GatekeeperWorkflowStep>,
     pub custom_blocked_hosts: Vec<String>,
     pub custom_blocked_phrases: Vec<String>,
+    #[serde(default)]
+    pub custom_blocked_download_extensions: Vec<String>,
+    #[serde(default)]
+    pub custom_blocked_popup_phrases: Vec<String>,
 }
 
 /// A user-requested, strictly additive local policy adjustment. There is no
@@ -130,6 +134,10 @@ pub enum GatekeeperSettingsChange {
     RemoveBlockedHost { host: String },
     AddBlockedPhrase { phrase: String },
     RemoveBlockedPhrase { phrase: String },
+    AddBlockedDownloadExtension { extension: String },
+    RemoveBlockedDownloadExtension { extension: String },
+    AddBlockedPopupPhrase { phrase: String },
+    RemoveBlockedPopupPhrase { phrase: String },
 }
 
 /// The settings-control protocol shares the private gatekeeper socket with
