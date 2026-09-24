@@ -341,6 +341,7 @@ impl Vm {
             &[],
             &[],
             crate::compiler::EvalContext::default(),
+            crate::compiler::CompileLimits::default(),
         )
         .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let helper = self.execute_eval(&code, Vec::new(), !code.strict)?;

@@ -142,6 +142,8 @@ fn host_property_name_is_valid(name: &str) -> bool {
 #[derive(Debug, Clone, Copy)]
 pub struct VmConfig {
     pub heap: HeapConfig,
+    /// Bytecode and metadata limits for source compiled by direct or indirect eval.
+    pub eval_compile_limits: crate::compiler::CompileLimits,
     /// Per-execute dispatch limit, including branches/scopes and native
     /// raw/split/replace loop steps; not a wall-clock or whole-native-work limit.
     pub instruction_budget: u64,
@@ -156,6 +158,7 @@ impl Default for VmConfig {
     fn default() -> Self {
         Self {
             heap: HeapConfig::default(),
+            eval_compile_limits: crate::compiler::CompileLimits::default(),
             instruction_budget: 1_000_000,
             max_string_bytes: 1024 * 1024,
             regex_timeout: crate::regex_worker::DEFAULT_TIMEOUT,

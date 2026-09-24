@@ -338,6 +338,7 @@ impl Vm {
                     inherited: self.inherited_with_depth,
                 },
             },
+            self.config.eval_compile_limits,
         )
         .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let captures = code
@@ -372,6 +373,7 @@ impl Vm {
             &[],
             &[],
             crate::compiler::EvalContext::default(),
+            self.config.eval_compile_limits,
         )
         .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let global_this = self.global("globalThis")?;

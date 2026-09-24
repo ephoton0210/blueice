@@ -89,8 +89,7 @@ impl Compiler {
                 if let Some(slot) = self.resolve_inside_innermost_with(name) {
                     self.emit(Opcode::GetBinding, slot)?;
                 } else if self.with_depth != 0 {
-                    let index = u32::try_from(self.bytecode.constants.len())
-                        .map_err(|_| CompileError::ProgramTooLarge)?;
+                    let index = self.metadata_index(self.bytecode.constants.len())?;
                     self.bytecode
                         .constants
                         .push(Value::String(name.clone().into()));
@@ -167,15 +166,14 @@ impl Compiler {
                         | "ReferenceError"
                         | "EvalError"
                         | "URIError" => {
-                            let index = self.bytecode.constants.len() as u32;
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
                             self.bytecode
                                 .constants
                                 .push(Value::String(name.as_str().into()));
                             self.emit(Opcode::Global, index)?;
                         }
                         _ => {
-                            let index = u32::try_from(self.bytecode.constants.len())
-                                .map_err(|_| CompileError::ProgramTooLarge)?;
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
                             self.bytecode
                                 .constants
                                 .push(Value::String(name.clone().into()));
@@ -280,8 +278,7 @@ impl Compiler {
                                 self.constant(Value::Bool(false))?;
                             }
                         } else {
-                            let index = u32::try_from(self.bytecode.constants.len())
-                                .map_err(|_| CompileError::ProgramTooLarge)?;
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
                             self.bytecode
                                 .constants
                                 .push(Value::String(name.clone().into()));
@@ -306,8 +303,7 @@ impl Compiler {
                     let Expr::Identifier(name) = &**arg else {
                         unreachable!()
                     };
-                    let index = u32::try_from(self.bytecode.constants.len())
-                        .map_err(|_| CompileError::ProgramTooLarge)?;
+                    let index = self.metadata_index(self.bytecode.constants.len())?;
                     self.bytecode
                         .constants
                         .push(Value::String(name.as_str().into()));
@@ -319,8 +315,7 @@ impl Compiler {
                     let Expr::Identifier(name) = &**arg else {
                         unreachable!()
                     };
-                    let index = u32::try_from(self.bytecode.constants.len())
-                        .map_err(|_| CompileError::ProgramTooLarge)?;
+                    let index = self.metadata_index(self.bytecode.constants.len())?;
                     self.bytecode
                         .constants
                         .push(Value::String(name.as_str().into()));
@@ -1504,8 +1499,7 @@ impl Compiler {
             if let Some(slot) = self.resolve(name) {
                 Some(slot)
             } else {
-                let index = u32::try_from(self.bytecode.constants.len())
-                    .map_err(|_| CompileError::ProgramTooLarge)?;
+                let index = self.metadata_index(self.bytecode.constants.len())?;
                 self.bytecode
                     .constants
                     .push(Value::String("globalThis".into()));
@@ -1881,8 +1875,7 @@ impl Compiler {
     }
 
     pub(super) fn name_constant(&mut self, name: &str) -> Result<u32, CompileError> {
-        let index = u32::try_from(self.bytecode.constants.len())
-            .map_err(|_| CompileError::ProgramTooLarge)?;
+        let index = self.metadata_index(self.bytecode.constants.len())?;
         self.bytecode.constants.push(Value::String(name.into()));
         Ok(index)
     }

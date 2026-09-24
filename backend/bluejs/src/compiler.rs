@@ -59,11 +59,33 @@ impl fmt::Display for CompileError {
             }
             Self::DuplicateBinding(name) => write!(f, "duplicate or conflicting binding: {name}"),
             Self::InvalidSyntax(message) => f.write_str(message),
-            Self::ProgramTooLarge => f.write_str("BlueJS program exceeds the bytecode size limit"),
+            Self::ProgramTooLarge => {
+                f.write_str("BlueJS program exceeds the bytecode size limit or a metadata limit")
+            }
         }
     }
 }
 impl std::error::Error for CompileError {}
+
+/// Resource limits applied independently to each compiled code unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompileLimits {
+    /// Maximum bytes emitted in one code unit; nested functions use the
+    /// remaining budget at their definition site.
+    pub max_bytecode_bytes: u32,
+    /// Maximum entries in each binding, constant, and scope table. Values
+    /// above `u32::MAX + 1` are capped at that representable maximum.
+    pub max_metadata_entries: u64,
+}
+
+impl Default for CompileLimits {
+    fn default() -> Self {
+        Self {
+            max_bytecode_bytes: u32::MAX,
+            max_metadata_entries: u64::from(u32::MAX) + 1,
+        }
+    }
+}
 
 /// Compiles the supported executable subset. The parser deliberately
 /// accepts more than the VM can run; unsupported syntax is rejected even
@@ -86,7 +108,21 @@ pub fn compile_with_limit(
     program: &Program,
     max_bytecode_bytes: u32,
 ) -> Result<Bytecode, CompileError> {
-    compile_with_limit_and_mode(program, max_bytecode_bytes, false, &[], &[], &[])
+    compile_with_limits(
+        program,
+        CompileLimits {
+            max_bytecode_bytes,
+            ..CompileLimits::default()
+        },
+    )
+}
+
+/// Compile a script with explicit bytecode and metadata-table limits.
+pub fn compile_with_limits(
+    program: &Program,
+    limits: CompileLimits,
+) -> Result<Bytecode, CompileError> {
+    compile_with_limit_and_mode(program, limits, false, &[], &[], &[])
 }
 
 /// Like [`compile_module`], with the Test262 adapter's bytecode resource
@@ -96,11 +132,25 @@ pub fn compile_module_with_limit(
     module: &Module,
     max_bytecode_bytes: u32,
 ) -> Result<Bytecode, CompileError> {
+    compile_module_with_limits(
+        module,
+        CompileLimits {
+            max_bytecode_bytes,
+            ..CompileLimits::default()
+        },
+    )
+}
+
+/// Compile a module with explicit bytecode and metadata-table limits.
+pub fn compile_module_with_limits(
+    module: &Module,
+    limits: CompileLimits,
+) -> Result<Bytecode, CompileError> {
     compile_with_limit_and_mode(
         &Program {
             body: module.body.clone(),
         },
-        max_bytecode_bytes,
+        limits,
         true,
         &module.imports,
         &module.exports,
@@ -110,7 +160,7 @@ pub fn compile_module_with_limit(
 
 fn compile_with_limit_and_mode(
     program: &Program,
-    max_bytecode_bytes: u32,
+    limits: CompileLimits,
     module: bool,
     module_imports: &[ImportEntry],
     module_exports: &[ExportEntry],
@@ -124,7 +174,8 @@ fn compile_with_limit_and_mode(
         scopes: Vec::new(),
         loops: Vec::new(),
         catch_var_slots: Vec::new(),
-        max_bytecode_bytes,
+        max_bytecode_bytes: limits.max_bytecode_bytes,
+        max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
         function: false,
         local_scope: 0,
         with_depth: 0,
@@ -394,6 +445,7 @@ pub(crate) fn compile_eval(
     variable_environment_names: &[String],
     lexical_conflicts: &[String],
     context: EvalContext,
+    limits: CompileLimits,
 ) -> Result<Bytecode, CompileError> {
     let EvalContext {
         strict,
@@ -410,7 +462,8 @@ pub(crate) fn compile_eval(
         scopes: Vec::new(),
         loops: Vec::new(),
         catch_var_slots: Vec::new(),
-        max_bytecode_bytes: u32::MAX,
+        max_bytecode_bytes: limits.max_bytecode_bytes,
+        max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
         function: false,
         local_scope: 1,
         with_depth,
@@ -443,8 +496,7 @@ pub(crate) fn compile_eval(
         })
         .collect();
     for (name, binding, caller_slot) in visible {
-        let slot = u32::try_from(compiler.bytecode.bindings.len())
-            .map_err(|_| CompileError::ProgramTooLarge)?;
+        let slot = compiler.metadata_index(compiler.bytecode.bindings.len())?;
         compiler.names[0].insert(name.clone(), slot);
         if let Some((scope, private_name)) = private_owner_binding_name(name) {
             // Direct eval inherits lexical private names just as it inherits
@@ -544,6 +596,7 @@ struct Compiler {
     // in its block. Those declaration writes target the catch binding.
     catch_var_slots: Vec<HashMap<String, u32>>,
     max_bytecode_bytes: u32,
+    max_metadata_entries: u64,
     function: bool,
     local_scope: usize,
     with_depth: usize,
@@ -610,6 +663,14 @@ impl FunctionCompileOptions {
 }
 
 impl Compiler {
+    fn metadata_index(&self, len: usize) -> Result<u32, CompileError> {
+        if (len as u64) >= self.max_metadata_entries {
+            return Err(CompileError::ProgramTooLarge);
+        }
+        // The constructor caps max_metadata_entries at u32::MAX + 1.
+        Ok(len as u32)
+    }
+
     fn offset(&self) -> u32 {
         // Only `emit` grows the code, and it checks the u32-sized byte limit
         // before writing an instruction. Thus every stored offset fits u32.
@@ -633,8 +694,7 @@ impl Compiler {
     }
 
     fn constant(&mut self, value: Value) -> Result<(), CompileError> {
-        let index = u32::try_from(self.bytecode.constants.len())
-            .map_err(|_| CompileError::ProgramTooLarge)?;
+        let index = self.metadata_index(self.bytecode.constants.len())?;
         self.bytecode.constants.push(value);
         self.emit(Opcode::Constant, index)?;
         Ok(())
@@ -675,8 +735,7 @@ impl Compiler {
             if names.contains_key(&name) || (kind != DeclKind::Var && vars.contains(&name)) {
                 return Err(CompileError::DuplicateBinding(name));
             }
-            let slot = u32::try_from(self.bytecode.bindings.len())
-                .map_err(|_| CompileError::ProgramTooLarge)?;
+            let slot = self.metadata_index(self.bytecode.bindings.len())?;
             self.bytecode.bindings.push(Binding {
                 name: name.clone(),
                 mutable: !matches!(
@@ -694,8 +753,7 @@ impl Compiler {
             names.insert(name, slot);
             slots.push(slot);
         }
-        let scope =
-            u32::try_from(self.bytecode.scopes.len()).map_err(|_| CompileError::ProgramTooLarge)?;
+        let scope = self.metadata_index(self.bytecode.scopes.len())?;
         self.bytecode.scopes.push(slots);
         self.names.push(names);
         self.scopes.push(scope);
@@ -742,9 +800,11 @@ impl Compiler {
             .ok_or(CompileError::InvalidSyntax(
                 "private name is not declared in an enclosing class",
             ))?;
-        self.resolve(binding).ok_or(CompileError::InvalidSyntax(
-            "private name binding is not available in this function",
-        ))
+        // Every private scope is installed together with its owner binding;
+        // child compilers and direct eval copy both into their outer scope.
+        Ok(self
+            .resolve(binding)
+            .expect("private scope has its owner binding"))
     }
 
     /// Annex B creates a var binding in the enclosing variable environment
@@ -759,27 +819,28 @@ impl Compiler {
         if self.annex_b_parameter_names.contains(name) {
             return None;
         }
-        for scope in self.names[..self.names.len() - 1].iter().rev() {
-            let Some(&candidate) = scope.get(name) else {
-                continue;
-            };
-            let binding = &self.bytecode.bindings[candidate as usize];
-            if !binding.lexical {
-                return Some(candidate);
-            }
-            // Annex B.3.5 permits the function's var binding to pass through
-            // a simple catch parameter. Other lexical bindings prevent the
-            // legacy outer var from being introduced.
-            if self
-                .catch_var_slots
-                .iter()
-                .any(|slots| slots.get(name) == Some(&candidate))
-            {
-                continue;
-            }
-            return None;
-        }
-        None
+        self.names[..self.names.len() - 1]
+            .iter()
+            .rev()
+            .filter_map(|scope| scope.get(name).copied())
+            .find_map(|candidate| {
+                let binding = &self.bytecode.bindings[candidate as usize];
+                if !binding.lexical {
+                    return Some(Some(candidate));
+                }
+                // Annex B.3.5 permits the function's var binding to pass
+                // through a simple catch parameter. A different lexical
+                // binding stops the search, even if an outer var exists.
+                if self
+                    .catch_var_slots
+                    .iter()
+                    .any(|slots| slots.get(name) == Some(&candidate))
+                {
+                    return None;
+                }
+                Some(None)
+            })
+            .flatten()
     }
 }
 

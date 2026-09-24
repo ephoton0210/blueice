@@ -3,8 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use blueice_bluejs::{
-    compile, compile_module, compile_module_with_limit, parse, parse_module, Bytecode,
-    ClassElement, CompileError, Expr, Opcode, RuntimeError, Stmt, Value, Vm,
+    compile, compile_module, compile_module_with_limit, compile_module_with_limits,
+    compile_with_limits, parse, parse_module, Bytecode, ClassElement, CompileError, CompileLimits,
+    Expr, Opcode, Program, RuntimeError, Stmt, Value, Vm, VmConfig,
 };
 
 fn largest_compile_path(code: &Bytecode) -> usize {
@@ -58,6 +59,85 @@ fn module_byte_limit_rejects_every_partial_program() {
         }
         assert!(first_success.is_some(), "{source}");
     }
+}
+
+#[test]
+fn metadata_limits_reject_each_table_before_an_index_overflows() {
+    let limits = CompileLimits {
+        max_metadata_entries: 1,
+        ..CompileLimits::default()
+    };
+    for source in ["let first, second;", "1; 2;", "{}"] {
+        assert!(
+            matches!(
+                compile_with_limits(&parse(source).unwrap(), limits),
+                Err(CompileError::ProgramTooLarge)
+            ),
+            "{source}"
+        );
+    }
+    assert!(compile_with_limits(&parse("1;").unwrap(), limits).is_ok());
+    assert!(matches!(
+        compile_module_with_limits(&parse_module("let first, second;").unwrap(), limits),
+        Err(CompileError::ProgramTooLarge)
+    ));
+}
+
+#[test]
+fn eval_limits_cover_visible_bindings_and_the_final_halt() {
+    let outer = compile(&parse("eval('');").unwrap()).unwrap();
+    let mut vm = Vm::new(VmConfig {
+        eval_compile_limits: CompileLimits {
+            max_bytecode_bytes: 5,
+            ..CompileLimits::default()
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    assert!(matches!(
+        vm.execute(&outer),
+        Err(RuntimeError::SyntaxError(_))
+    ));
+
+    let mut vm = Vm::new(VmConfig {
+        eval_compile_limits: CompileLimits {
+            max_bytecode_bytes: 6,
+            ..CompileLimits::default()
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    assert_eq!(vm.execute(&outer), Ok(Value::Undefined));
+
+    let outer = compile(&parse("let first = 1, second = 2; eval('1');").unwrap()).unwrap();
+    let mut vm = Vm::new(VmConfig {
+        eval_compile_limits: CompileLimits {
+            max_metadata_entries: 1,
+            ..CompileLimits::default()
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    assert!(matches!(
+        vm.execute(&outer),
+        Err(RuntimeError::SyntaxError(_))
+    ));
+}
+
+#[test]
+fn compiler_rejects_an_undeclared_private_name_in_an_external_ast() {
+    let program = Program {
+        body: vec![Stmt::Expr(Expr::PrivateIn {
+            name: "missing".into(),
+            object: Box::new(Expr::Number(0.0)),
+        })],
+    };
+    assert!(matches!(
+        compile(&program),
+        Err(CompileError::InvalidSyntax(
+            "private name is not declared in an enclosing class"
+        ))
+    ));
 }
 
 #[test]

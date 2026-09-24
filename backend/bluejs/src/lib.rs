@@ -77,7 +77,8 @@ mod vm;
 pub use ast::*;
 pub use bytecode::{Bytecode, Instruction, Opcode, MAY_USE_INLINE_CACHE};
 pub use compiler::{
-    compile, compile_module, compile_module_with_limit, compile_with_limit, CompileError,
+    compile, compile_module, compile_module_with_limit, compile_module_with_limits,
+    compile_with_limit, compile_with_limits, CompileError, CompileLimits,
 };
 pub use heap::{Heap, HeapConfig, HeapError, HeapStats, RootId};
 pub use page_runtime::{

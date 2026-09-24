@@ -995,6 +995,7 @@ impl Compiler {
             loops: Vec::new(),
             catch_var_slots: Vec::new(),
             max_bytecode_bytes: child_budget,
+            max_metadata_entries: self.max_metadata_entries,
             function: true,
             local_scope: 1,
             // A function created inside `with` resolves its free names
@@ -1066,7 +1067,7 @@ impl Compiler {
             if !arrow && (name == DERIVED_THIS_BINDING || name == DERIVED_CONSTRUCTOR_BINDING) {
                 continue;
             }
-            let index = child.bytecode.bindings.len() as u32;
+            let index = child.metadata_index(child.bytecode.bindings.len())?;
             child.names[0].insert(name, index);
             child
                 .bytecode
@@ -1080,8 +1081,7 @@ impl Compiler {
                 .as_ref()
                 .expect("named function expression has a name")
                 .clone();
-            let slot = u32::try_from(child.bytecode.bindings.len())
-                .map_err(|_| CompileError::ProgramTooLarge)?;
+            let slot = child.metadata_index(child.bytecode.bindings.len())?;
             child.names[0].insert(name.clone(), slot);
             child.bytecode.bindings.push(Binding {
                 name,
@@ -1097,8 +1097,7 @@ impl Compiler {
             // `super()` needs the active function; the frame initializes this
             // immutable binding to the callee, exactly like a named function
             // expression's own name.
-            let slot = u32::try_from(child.bytecode.bindings.len())
-                .map_err(|_| CompileError::ProgramTooLarge)?;
+            let slot = child.metadata_index(child.bytecode.bindings.len())?;
             child.names[0].insert(DERIVED_CONSTRUCTOR_BINDING.into(), slot);
             child.bytecode.bindings.push(Binding {
                 name: DERIVED_CONSTRUCTOR_BINDING.into(),
