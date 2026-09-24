@@ -1872,6 +1872,8 @@ mod tests {
         )));
         page.navigate("about:settings?lang=en").unwrap();
         assert!(page.dom_dump().contains("known-malicious-domain"));
+        assert!(page.dom_dump().contains("Exact host or dot-boundary subdomain match"));
+        assert!(page.dom_dump().contains("If rejected or unavailable"));
         let input =
             find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-custom-host").unwrap();
         let add = find_by_attribute(

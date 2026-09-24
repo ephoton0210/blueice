@@ -60,6 +60,8 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
             category: "known-bad-domain".to_string(),
             description: "Blocks the compiled local denylist, including malware.test and phishing.test, before a network fetch.".to_string(),
             conditions: signatures(KNOWN_MALICIOUS_HOSTS),
+            match_logic: "Exact host or dot-boundary subdomain match, case-insensitive; any listed host rejects.".to_string(),
+            workflow_steps: vec!["url-before-fetch".to_string(), "download-before-bytes".to_string()],
             mandatory: true,
         },
         GatekeeperRuleInfo {
@@ -67,6 +69,8 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
             category: "unicode-bidi-override / url-obfuscation".to_string(),
             description: "Blocks bidirectional overrides and invisible Unicode characters in a URL.".to_string(),
             conditions: [BIDI_OVERRIDE_CODEPOINTS, ZERO_WIDTH_CODEPOINTS].concat().iter().map(|item| (*item).to_string()).collect(),
+            match_logic: "Any listed character in a URL rejects. The content stage also rechecks URL bidi overrides after redirects.".to_string(),
+            workflow_steps: vec!["url-before-fetch".to_string(), "content-before-parse".to_string(), "download-before-bytes".to_string()],
             mandatory: true,
         },
         GatekeeperRuleInfo {
@@ -74,6 +78,8 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
             category: "unicode-bidi-override".to_string(),
             description: "Blocks bidirectional override characters in fetched HTML before parsing.".to_string(),
             conditions: signatures(BIDI_OVERRIDE_CODEPOINTS),
+            match_logic: "Any listed character in the fetched HTML rejects.".to_string(),
+            workflow_steps: vec!["content-before-parse".to_string()],
             mandatory: true,
         },
         GatekeeperRuleInfo {
@@ -86,6 +92,8 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
                 signatures(ZERO_WIDTH_CODEPOINTS),
                 vec!["white-on-white foreground/background pair".to_string()],
             ].concat(),
+            match_logic: "An instruction phrase AND either a hidden-content marker or zero-width obfuscation rejects; visible discussion alone does not.".to_string(),
+            workflow_steps: vec!["content-before-parse".to_string()],
             mandatory: true,
         },
         GatekeeperRuleInfo {
@@ -93,6 +101,8 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
             category: "dangerous-file-type".to_string(),
             description: "Blocks executable and installer downloads before transfer bytes begin.".to_string(),
             conditions: [DANGEROUS_EXTENSIONS, DANGEROUS_CONTENT_TYPES].concat().iter().map(|item| (*item).to_string()).collect(),
+            match_logic: "Any listed filename suffix OR media type rejects, case-insensitively.".to_string(),
+            workflow_steps: vec!["download-before-bytes".to_string()],
             mandatory: true,
         },
         GatekeeperRuleInfo {
@@ -104,6 +114,8 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
                 signatures(BIDI_OVERRIDE_CODEPOINTS),
                 signatures(ZERO_WIDTH_CODEPOINTS),
             ].concat(),
+            match_logic: "Any obfuscating character in extension metadata rejects; a listed input_type on an action also rejects.".to_string(),
+            workflow_steps: vec!["extension-before-side-effect".to_string(), "extension-popup-before-publish".to_string()],
             mandatory: true,
         },
         GatekeeperRuleInfo {
@@ -111,6 +123,8 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
             category: "extension-popup-social-engineering".to_string(),
             description: "Blocks the listed credential, URL, and instruction-override phrases in extension popup text before it reaches native chrome.".to_string(),
             conditions: [POPUP_BLOCKED_PHRASES, PROMPT_INJECTION_PHRASES].concat().iter().map(|item| (*item).to_string()).collect(),
+            match_logic: "Any listed phrase in lower-cased native popup metadata rejects before publication.".to_string(),
+            workflow_steps: vec!["extension-popup-before-publish".to_string()],
             mandatory: true,
         },
     ]
@@ -125,30 +139,35 @@ pub fn mandatory_workflow() -> Vec<GatekeeperWorkflowStep> {
             id: "url-before-fetch".to_string(),
             trigger: "Every HTTP(S) navigation and redirect target".to_string(),
             description: "Review URL before opening a network connection; a failure or unavailable gatekeeper blocks the navigation.".to_string(),
+            failure_behavior: "Block navigation before the connection.".to_string(),
             mandatory: true,
         },
         GatekeeperWorkflowStep {
             id: "content-before-parse".to_string(),
             trigger: "Every fetched page".to_string(),
             description: "Review the final URL and HTML before parsing, cascade, layout, or paint.".to_string(),
+            failure_behavior: "Do not parse or display the fetched page.".to_string(),
             mandatory: true,
         },
         GatekeeperWorkflowStep {
             id: "download-before-bytes".to_string(),
             trigger: "Every download after probe".to_string(),
             description: "Review the URL and discovered file metadata before transfer bytes begin or resume.".to_string(),
+            failure_behavior: "Do not start or resume transfer bytes.".to_string(),
             mandatory: true,
         },
         GatekeeperWorkflowStep {
             id: "extension-before-side-effect".to_string(),
             trigger: "Every high-risk extension action".to_string(),
             description: "Review non-extension-controlled action metadata before the core applies the capability side effect.".to_string(),
+            failure_behavior: "Do not grant the high-risk action.".to_string(),
             mandatory: true,
         },
         GatekeeperWorkflowStep {
             id: "extension-popup-before-publish".to_string(),
             trigger: "Every extension native popup".to_string(),
             description: "Review the bounded popup title and body before broadcasting native UI; an unavailable reviewer blocks publication.".to_string(),
+            failure_behavior: "Do not publish the native popup.".to_string(),
             mandatory: true,
         },
     ]
@@ -480,6 +499,24 @@ fn has_hidden_content_marker(html: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_manifest_links_every_rule_to_a_mandatory_fail_closed_step() {
+        let workflow = mandatory_workflow();
+        let step_ids: std::collections::HashSet<_> =
+            workflow.iter().map(|step| step.id.as_str()).collect();
+        assert!(workflow.iter().all(|step| step.mandatory && !step.failure_behavior.is_empty()));
+        let rules = baseline_rules();
+        assert!(rules.iter().all(|rule| {
+            rule.mandatory
+                && !rule.match_logic.is_empty()
+                && !rule.workflow_steps.is_empty()
+                && rule.workflow_steps.iter().all(|id| step_ids.contains(id.as_str()))
+        }));
+        let hidden_rule = rules.iter().find(|rule| rule.id == "hidden-prompt-injection").unwrap();
+        assert!(hidden_rule.match_logic.contains(" AND "));
+        assert_eq!(hidden_rule.workflow_steps, ["content-before-parse"]);
+    }
 
     #[test]
     fn ruleset_version_is_present_in_rejections() {

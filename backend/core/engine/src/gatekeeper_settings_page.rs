@@ -191,7 +191,22 @@ pub fn gatekeeper_settings_html(
                 for condition in &rule.conditions {
                     body.push_str(&format!("<li><code>{}</code></li>", escape_html(condition)));
                 }
-                body.push_str("</ul></div>");
+                body.push_str("</ul>");
+                if !rule.match_logic.is_empty() {
+                    body.push_str(&format!(
+                        "<p class=\"detail\">{} {}</p>",
+                        escape_html(&t("match-logic")),
+                        escape_html(&rule.match_logic)
+                    ));
+                }
+                if !rule.workflow_steps.is_empty() {
+                    body.push_str(&format!(
+                        "<p class=\"detail\">{} {}</p>",
+                        escape_html(&t("applies-at")),
+                        escape_html(&rule.workflow_steps.join(", "))
+                    ));
+                }
+                body.push_str("</div>");
             }
             body.push_str("</div>");
 
@@ -206,13 +221,21 @@ pub fn gatekeeper_settings_html(
                     ("adjustable", t("adjustable"))
                 };
                 body.push_str(&format!(
-                    "<div class=\"item\"><p class=\"name\">{}</p><p class=\"{status_class}\">{}</p><p class=\"detail\">{} {}</p><p class=\"detail\">{}</p></div>",
+                    "<div class=\"item\"><p class=\"name\">{}</p><p class=\"{status_class}\">{}</p><p class=\"detail\">{} {}</p><p class=\"detail\">{}</p>",
                     escape_html(&step.id),
                     escape_html(&status_label),
                     escape_html(&t("trigger")),
                     escape_html(&step.trigger),
                     escape_html(&step.description),
                 ));
+                if !step.failure_behavior.is_empty() {
+                    body.push_str(&format!(
+                        "<p class=\"detail\">{} {}</p>",
+                        escape_html(&t("failure-behavior")),
+                        escape_html(&step.failure_behavior)
+                    ));
+                }
+                body.push_str("</div>");
             }
             body.push_str("</div>");
 
@@ -223,6 +246,7 @@ pub fn gatekeeper_settings_html(
                 escape_html(&t("add-host-label")),
                 escape_html(&t("add-host-button")),
             ));
+            body.push_str(&format!("<p class=\"detail\">{}</p>", escape_html(&t("custom-blocklist-match"))));
             if settings.custom_blocked_hosts.is_empty() {
                 body.push_str(&format!(
                     "<p>{}</p>",
@@ -249,6 +273,7 @@ pub fn gatekeeper_settings_html(
                 escape_html(&t("add-phrase-label")),
                 escape_html(&t("add-phrase-button")),
             ));
+            body.push_str(&format!("<p class=\"detail\">{}</p>", escape_html(&t("custom-phrases-match"))));
             if settings.custom_blocked_phrases.is_empty() {
                 body.push_str(&format!("<p>{}</p>", escape_html(&t("custom-phrases-empty"))));
             } else {
@@ -272,6 +297,7 @@ pub fn gatekeeper_settings_html(
                 escape_html(&t("add-extension-label")),
                 escape_html(&t("add-extension-button")),
             ));
+            body.push_str(&format!("<p class=\"detail\">{}</p>", escape_html(&t("custom-extensions-match"))));
             if settings.custom_blocked_download_extensions.is_empty() {
                 body.push_str(&format!("<p>{}</p>", escape_html(&t("custom-extensions-empty"))));
             } else {
@@ -295,6 +321,7 @@ pub fn gatekeeper_settings_html(
                 escape_html(&t("add-popup-phrase-label")),
                 escape_html(&t("add-popup-phrase-button")),
             ));
+            body.push_str(&format!("<p class=\"detail\">{}</p>", escape_html(&t("custom-popup-phrases-match"))));
             if settings.custom_blocked_popup_phrases.is_empty() {
                 body.push_str(&format!("<p>{}</p>", escape_html(&t("custom-popup-phrases-empty"))));
             } else {
@@ -332,12 +359,15 @@ mod tests {
                 category: "known-bad-domain".to_string(),
                 description: "Blocks <unsafe> text.".to_string(),
                 conditions: vec!["<unsafe>".to_string()],
+                match_logic: "one <unsafe> condition".to_string(),
+                workflow_steps: vec!["url-before-fetch".to_string()],
                 mandatory: true,
             }],
             workflow: vec![GatekeeperWorkflowStep {
                 id: "url-before-fetch".to_string(),
                 trigger: "Every navigation".to_string(),
                 description: "Review first.".to_string(),
+                failure_behavior: "Block <unsafe> navigation.".to_string(),
                 mandatory: true,
             }],
             custom_blocked_hosts: vec!["tracker.example".to_string()],
@@ -368,6 +398,10 @@ mod tests {
         assert!(html.contains("data-gatekeeper-action=\"remove-popup-phrase\""));
         assert!(html.contains("Blocks &lt;unsafe&gt; text."));
         assert!(html.contains("&lt;unsafe&gt;"));
+        assert!(html.contains("one &lt;unsafe&gt; condition"));
+        assert!(html.contains("Block &lt;unsafe&gt; navigation."));
+        assert!(html.contains("Applied at workflow steps: url-before-fetch"));
+        assert!(html.contains("A host also blocks its dot-boundary subdomains"));
         assert!(html.contains("ignore &lt;instructions&gt;"));
         assert!(html.contains("send &lt;secrets&gt;"));
     }
@@ -401,7 +435,14 @@ mod tests {
             }
         });
         let source = GatekeeperSettingsSource::without_default(&socket);
-        assert!(source.fetch().unwrap().custom_blocked_hosts.is_empty());
+        let live = source.fetch().unwrap();
+        assert!(live.custom_blocked_hosts.is_empty());
+        assert!(live.baseline_rules.iter().all(|rule| {
+            rule.mandatory && !rule.match_logic.is_empty() && !rule.workflow_steps.is_empty()
+        }));
+        assert!(live.workflow.iter().all(|step| {
+            step.mandatory && !step.failure_behavior.is_empty()
+        }));
         assert_eq!(
             source
                 .update(GatekeeperSettingsChange::AddBlockedHost {

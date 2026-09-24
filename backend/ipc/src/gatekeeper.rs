@@ -93,6 +93,13 @@ pub struct GatekeeperRuleInfo {
     /// Shipped signatures or human-readable matching conditions, reported by the enforcing
     /// process rather than independently transcribed by the settings page.
     pub conditions: Vec<String>,
+    /// How the signatures are combined. A flat conditions list alone cannot
+    /// distinguish an AND from an OR, which matters for hidden-content rules.
+    #[serde(default)]
+    pub match_logic: String,
+    /// IDs of the mandatory workflow steps at which this rule is evaluated.
+    #[serde(default)]
+    pub workflow_steps: Vec<String>,
     pub mandatory: bool,
 }
 
@@ -104,6 +111,10 @@ pub struct GatekeeperWorkflowStep {
     pub id: String,
     pub trigger: String,
     pub description: String,
+    /// What the enforcing caller does when this review rejects or cannot be
+    /// completed. Reported by the service, not inferred by the settings UI.
+    #[serde(default)]
+    pub failure_behavior: String,
     pub mandatory: bool,
 }
 
