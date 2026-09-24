@@ -123,6 +123,15 @@ pub fn sweep_heap_runs(setup: &str, body: &str, max_runs: u64) {
     }
 }
 
+/// [`sweep_heap_runs`] with a filler kept alive before `body` starts. The
+/// limits tried begin at the setup's own peak, where the collector still
+/// reclaims the setup's garbage, so an allocation early in `body` would never
+/// be the one to fail; the filler lifts everything after it above that peak.
+pub fn sweep_heap_filled(setup: &str, body: &str) {
+    let filled = format!("var __filler = new Uint8Array(32768); {body}");
+    sweep_heap_runs(setup, &filled, 8000);
+}
+
 /// Fails the heap allocations of `script` run on a bare VM -- nothing, not
 /// even the assertion prelude, has run first -- so the lazy creation of every
 /// intrinsic the script is the first to touch is swept as well. Every limit
@@ -144,7 +153,7 @@ pub fn sweep_heap_bare(script: &str, max_runs: u64) {
         Vm::new(config).is_ok()
     };
     let mut high = 1 << 16;
-    while !run(high).is_ok() {
+    while run(high).is_err() {
         high *= 2;
         assert!(
             high <= 1 << 28,

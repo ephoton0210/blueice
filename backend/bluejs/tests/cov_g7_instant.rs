@@ -7,7 +7,7 @@
 //! cases, and the Temporal duration/ISO-string conversions they share.
 
 mod cov_g7_common;
-use cov_g7_common::{failures, sweep_fuel_each, sweep_heap_each, with_setup};
+use cov_g7_common::{failures, sweep_fuel_each, sweep_heap_each, sweep_heap_filled, with_setup};
 
 const PRELUDE: &str = r#"
 var boom = {};
@@ -402,6 +402,7 @@ const BODIES: &[&str] = &[
 #[test]
 fn every_heap_allocation_failure_reports_the_heap_limit() {
     sweep_heap_each(&with_setup(SETUP, BODIES));
+    sweep_heap_filled(SETUP, "z.round('hour');");
 }
 
 #[test]

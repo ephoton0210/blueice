@@ -184,7 +184,12 @@ impl Vm {
         if let Some(&id) = self.globals.get("Intl") {
             return Ok(Value::Object(id));
         }
-        let string = self.string_intrinsics()?.0;
+        // Only running native code reaches this, and creating that code
+        // materialized the String intrinsics.
+        let string = self
+            .string_intrinsics()
+            .expect("the String intrinsics are materialized")
+            .0;
         let function_prototype = self.heap.prototype(string).expect(LIVE).unwrap();
         let object_prototype = self.object_prototype;
         let namespace = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
@@ -759,9 +764,20 @@ impl Vm {
         })();
         match result {
             Ok(value) => {
-                if let Some(&global) = self.globals.get("globalThis") {
-                    self.define_data(global, "Intl", Value::Object(namespace), true, false, true)?;
-                }
+                self.globals
+                    .get("globalThis")
+                    .copied()
+                    .map(|global| {
+                        self.define_data(
+                            global,
+                            "Intl",
+                            Value::Object(namespace),
+                            true,
+                            false,
+                            true,
+                        )
+                    })
+                    .transpose()?;
                 Ok(value)
             }
             Err(error) => {

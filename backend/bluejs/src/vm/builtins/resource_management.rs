@@ -387,7 +387,11 @@ impl Vm {
         }
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let function_prototype = self.function_prototype()?;
+        // Only running native code reaches this, and creating that code
+        // materialized the String intrinsics.
+        let function_prototype = self
+            .function_prototype()
+            .expect("the String intrinsics are materialized");
         let tag = if is_async {
             "AsyncDisposableStack"
         } else {
@@ -486,7 +490,10 @@ impl Vm {
                 "{name} constructor must be called with new"
             )));
         }
-        let default = self.disposable_stack_prototype(is_async)?;
+        // The constructor came from `global`, which created the prototype.
+        let default = self
+            .disposable_stack_prototype(is_async)
+            .expect("a constructor's prototype is cached");
         let prototype = self.constructor_prototype(default)?;
         let id = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         if is_async {
@@ -739,7 +746,9 @@ impl Vm {
         };
         if self.async_disposable_stacks[&id].disposed {
             let promise_id = self.new_promise()?;
-            self.resolve_promise(promise_id, Value::Undefined)?;
+            // Settling a fresh promise with a primitive allocates nothing.
+            self.resolve_promise(promise_id, Value::Undefined)
+                .expect("a fresh promise settles without allocating");
             return Ok(Value::Object(promise_id));
         }
         let resources = {
