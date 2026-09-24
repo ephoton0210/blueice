@@ -404,6 +404,38 @@ fn clear_network_block_urls(
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())
 }
 
+fn request_toolbar_button(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    connection_id: u64,
+    label: String,
+) -> Result<(), String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::SetToolbarButton {
+        connection_id,
+        label,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
+fn clear_toolbar_button(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    connection_id: u64,
+) -> Result<(), String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::ClearToolbarButton {
+        connection_id,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())
+}
+
 /// Serves extension connections outside the session thread, but asks that
 /// thread for the one piece of real `Page` data Phase 9 currently supports.
 /// This keeps a `Page` single-thread-owned just like navigation and frontend
@@ -448,6 +480,8 @@ fn spawn_extension_listener(
                 let write_tx = request_tx.clone();
                 let rule_tx = request_tx.clone();
                 let clear_tx = request_tx.clone();
+                let toolbar_tx = request_tx.clone();
+                let toolbar_clear_tx = request_tx.clone();
                 let _ =
                     handle_extension_connection_with_actions_and_authentication_and_network_rules(
                         &registry,
@@ -515,9 +549,16 @@ fn spawn_extension_listener(
                         .with_storage(storage)
                         .with_network_observer(move |tab_id| {
                             request_network_response(&observe_tx, tab_id)
+                        })
+                        .with_toolbar_button(move |label| {
+                            request_toolbar_button(&toolbar_tx, connection_id, label)
+                        })
+                        .with_toolbar_clearer(move || {
+                            clear_toolbar_button(&toolbar_clear_tx, connection_id)
                         }),
                     );
                 let _ = clear_network_block_urls(&request_tx, connection_id);
+                let _ = clear_toolbar_button(&request_tx, connection_id);
             });
         }
     });

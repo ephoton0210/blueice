@@ -171,6 +171,7 @@ const TAB_WIDTH: u32 = 150;
 const GROUP_HEADER_WIDTH: u32 = 104;
 const HISTORY_BUTTON_WIDTH: u32 = 26;
 const NEW_TAB_WIDTH: u32 = 32;
+const EXTENSION_BUTTON_WIDTH: u32 = 200;
 const CHROME_BG: u32 = 0x0020_2228;
 const TAB_BG: u32 = 0x0035_3943;
 const SELECTED_TAB_BG: u32 = 0x0053_5968;
@@ -234,6 +235,7 @@ enum TabStripHit {
     Close(u64),
     ToggleGroup(u64),
     NewTab,
+    ExtensionToolbar,
 }
 
 #[derive(Debug, Clone)]
@@ -262,6 +264,7 @@ struct TabStrip {
     can_go_back: bool,
     can_go_forward: bool,
     new_tab: Rect,
+    extension_toolbar: Option<(Rect, String)>,
 }
 
 struct App {
@@ -280,6 +283,7 @@ struct App {
     /// tab lifecycle event, while selected-tab chrome stays local here.
     history: HashMap<u64, (bool, bool)>,
     groups: Vec<TabGroupSummary>,
+    extension_toolbar_label: Option<String>,
     selected_tab: Option<u64>,
     pending_open: HashSet<u64>,
     next_request_id: u64,
@@ -505,6 +509,7 @@ impl App {
             self.selected_tab,
             &self.history,
             size.width,
+            self.extension_toolbar_label.as_deref(),
         );
         let pixels = compose_window(size.width, size.height, self.selected_frame(), &strip);
         let Some(surface) = &mut self.surface else {
@@ -523,6 +528,9 @@ impl App {
 
 impl TabStrip {
     fn hit(&self, x: f64, y: f64) -> Option<TabStripHit> {
+        if self.extension_toolbar.as_ref().is_some_and(|(rect, _)| rect.contains(x, y)) {
+            return Some(TabStripHit::ExtensionToolbar);
+        }
         if self.back.contains(x, y) {
             return self.can_go_back.then_some(TabStripHit::GoBack);
         }
@@ -553,6 +561,7 @@ fn tab_strip(
     selected_tab: Option<u64>,
     history: &HashMap<u64, (bool, bool)>,
     window_width: u32,
+    extension_toolbar_label: Option<&str>,
 ) -> TabStrip {
     let mut items = Vec::new();
     let mut seen_groups = HashSet::new();
@@ -572,7 +581,24 @@ fn tab_strip(
         height: TAB_STRIP_HEIGHT,
     };
     let mut x = HISTORY_BUTTON_WIDTH.saturating_mul(2);
-    let available_width = window_width.saturating_sub(NEW_TAB_WIDTH);
+    // Reserve native chrome space only when the window can show the whole
+    // button; never let extension text cover history or tab controls.
+    let extension_toolbar = extension_toolbar_label
+        .filter(|_| window_width >= 320)
+        .map(|label| {
+            (
+                Rect {
+                    x: window_width - NEW_TAB_WIDTH - EXTENSION_BUTTON_WIDTH,
+                    y: 0,
+                    width: EXTENSION_BUTTON_WIDTH,
+                    height: TAB_STRIP_HEIGHT,
+                },
+                format!("Ext: {label}"),
+            )
+        });
+    let available_width = window_width.saturating_sub(
+        NEW_TAB_WIDTH + if extension_toolbar.is_some() { EXTENSION_BUTTON_WIDTH } else { 0 },
+    );
     for tab in tabs {
         let group = tab
             .group_id
@@ -619,6 +645,7 @@ fn tab_strip(
             width: NEW_TAB_WIDTH,
             height: TAB_STRIP_HEIGHT,
         },
+        extension_toolbar,
     }
 }
 
@@ -785,6 +812,10 @@ fn compose_window(
         "+",
         TEXT,
     );
+    if let Some((rect, label)) = &strip.extension_toolbar {
+        draw_rect(&mut pixels, width, height, *rect, 0x003A_526C);
+        draw_label(&mut pixels, width, height, rect.x + 8, rect.y + 12, label, TEXT);
+    }
     pixels
 }
 
@@ -1025,6 +1056,7 @@ impl ApplicationHandler<UserEvent> for App {
                         self.selected_tab,
                         &self.history,
                         self.window_size.0,
+                        self.extension_toolbar_label.as_deref(),
                     );
                     match strip.hit(x, y) {
                         Some(TabStripHit::GoBack) => {
@@ -1045,6 +1077,9 @@ impl ApplicationHandler<UserEvent> for App {
                             self.toggle_group(group_id);
                         }
                         Some(TabStripHit::NewTab) => self.open_tab(),
+                        Some(TabStripHit::ExtensionToolbar) => {
+                            self.send_selected(&ClientMessage::ActivateExtensionToolbar);
+                        }
                         None => {}
                     }
                 } else {
@@ -1144,6 +1179,10 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 ServerMessage::TabGroupClosed { group_id } => self.close_group(group_id),
                 ServerMessage::TabGroups(groups) => self.replace_groups(groups),
+                ServerMessage::ExtensionToolbar { label } => {
+                    self.extension_toolbar_label = label;
+                    self.request_redraw();
+                }
                 ServerMessage::Error { message } => {
                     eprintln!("blueice-frontend: core reported an error: {message}");
                 }
@@ -1614,6 +1653,7 @@ fn main() {
         tabs: Vec::new(),
         history: HashMap::new(),
         groups: Vec::new(),
+        extension_toolbar_label: None,
         selected_tab: None,
         pending_open: HashSet::new(),
         next_request_id: 0,
@@ -1623,6 +1663,7 @@ fn main() {
     };
     app.send_unscoped(&ClientMessage::ListTabs);
     app.send_unscoped(&ClientMessage::ListTabGroups);
+    app.send_unscoped(&ClientMessage::GetExtensionToolbar);
     app.send_selected(&ClientMessage::Navigate { url });
 
     event_loop
@@ -1846,7 +1887,7 @@ mod tests {
             group_id: None,
         }];
         let history = HashMap::from([(7, (true, false))]);
-        let strip = tab_strip(&tabs, &[], Some(7), &history, 300);
+        let strip = tab_strip(&tabs, &[], Some(7), &history, 300, None);
         assert_eq!(strip.hit(10.0, 10.0), Some(TabStripHit::GoBack));
         assert_eq!(strip.hit(36.0, 10.0), None);
     }
@@ -1871,7 +1912,7 @@ mod tests {
             color: "#4f8cff".to_string(),
             collapsed: true,
         }];
-        let strip = tab_strip(&tabs, &groups, Some(1), &HashMap::new(), 500);
+        let strip = tab_strip(&tabs, &groups, Some(1), &HashMap::new(), 500, None);
         assert!(matches!(
             strip.items[0],
             TabStripItem::Group { group_id: 9, .. }
@@ -1894,10 +1935,29 @@ mod tests {
             generation: 1,
             pixels_xrgb: vec![0x0011_2233; 4],
         };
-        let strip = tab_strip(&[], &[], None, &HashMap::new(), 2);
+        let strip = tab_strip(&[], &[], None, &HashMap::new(), 2, None);
         let pixels = compose_window(2, TAB_STRIP_HEIGHT + 2, Some(&frame), &strip);
         assert_eq!(pixels[0], CHROME_BG);
         assert_eq!(pixels[TAB_STRIP_HEIGHT as usize * 2], 0x0011_2233);
+    }
+
+    #[test]
+    fn extension_toolbar_is_native_chrome_with_a_distinct_click_target() {
+        let tabs = vec![TabSummary {
+            id: 1,
+            url: Some("about:blank".to_string()),
+            group_id: None,
+        }];
+        let strip = tab_strip(&tabs, &[], Some(1), &HashMap::new(), 800, Some("Notes"));
+        let (button, label) = strip.extension_toolbar.as_ref().unwrap();
+        assert_eq!(label, "Ext: Notes");
+        assert_eq!(strip.hit(f64::from(button.x + 2), 10.0), Some(TabStripHit::ExtensionToolbar));
+        assert_eq!(strip.hit(790.0, 10.0), Some(TabStripHit::NewTab));
+        let pixels = compose_window(800, TAB_STRIP_HEIGHT, None, &strip);
+        assert_eq!(pixels[10 * 800 + (button.x + 2) as usize], 0x003A_526C);
+
+        let narrow = tab_strip(&tabs, &[], Some(1), &HashMap::new(), 300, Some("Notes"));
+        assert!(narrow.extension_toolbar.is_none());
     }
 
     #[test]

@@ -20,7 +20,7 @@
 
 use crate::{
     ExtensionRegistry, CAPABILITY_DOM_READ, CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT,
-    CAPABILITY_STORAGE, CAPABILITY_NETWORK_OBSERVE,
+    CAPABILITY_STORAGE, CAPABILITY_NETWORK_OBSERVE, CAPABILITY_UI_INJECT,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -339,6 +339,7 @@ fn is_supported_capability(capability: &str) -> bool {
             | CAPABILITY_DOM_WRITE
             | CAPABILITY_NETWORK_INTERCEPT
             | CAPABILITY_NETWORK_OBSERVE
+            | CAPABILITY_UI_INJECT
             | CAPABILITY_STORAGE
     )
 }

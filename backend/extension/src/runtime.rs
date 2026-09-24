@@ -21,7 +21,7 @@ use crate::InstalledExtension;
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     MAX_NETWORK_BLOCK_URL_BYTES, MAX_STORAGE_KEY_BYTES, MAX_STORAGE_VALUE_BYTES,
-    MAX_TEXT_WRITE_BYTES, MAX_NETWORK_OBSERVATION_BYTES,
+    MAX_TEXT_WRITE_BYTES, MAX_NETWORK_OBSERVATION_BYTES, MAX_EXTENSION_TOOLBAR_LABEL_BYTES,
 };
 use std::os::unix::net::UnixStream;
 use wasmtime::{
@@ -47,12 +47,13 @@ const RESULT_INVALID_ARGUMENT: i32 = -3;
 const RESULT_NOT_FOUND: i32 = -4;
 
 /// The core-defined context for one fresh `blueice_start` invocation. The
-/// integer values exposed through the ABI are stable: `0` is startup and `1`
-/// is a successfully committed navigation.
+/// integer values exposed through the ABI are stable: `0` is startup, `1`
+/// is a successfully committed navigation, and `2` is toolbar activation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeInvocation {
     Startup,
     NavigationCommitted { tab_id: u64 },
+    ToolbarActivated { tab_id: u64 },
 }
 
 impl RuntimeInvocation {
@@ -60,6 +61,7 @@ impl RuntimeInvocation {
         match self {
             Self::Startup => 0,
             Self::NavigationCommitted { .. } => 1,
+            Self::ToolbarActivated { .. } => 2,
         }
     }
 
@@ -67,6 +69,7 @@ impl RuntimeInvocation {
         match self {
             Self::Startup => -1,
             Self::NavigationCommitted { tab_id } => i64::try_from(tab_id).unwrap_or(-1),
+            Self::ToolbarActivated { tab_id } => i64::try_from(tab_id).unwrap_or(-1),
         }
     }
 }
@@ -179,6 +182,22 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
             },
         )
         .map_err(|error| format!("could not define the network_response_utf8 ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
+            "set_toolbar_button_utf8",
+            |mut caller: Caller<'_, RuntimeState>, pointer: i32, length: i32| {
+                set_toolbar_button_utf8(&mut caller, pointer, length)
+            },
+        )
+        .map_err(|error| format!("could not define the set_toolbar_button_utf8 ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
+            "clear_toolbar_button",
+            |mut caller: Caller<'_, RuntimeState>| clear_toolbar_button(&mut caller),
+        )
+        .map_err(|error| format!("could not define the clear_toolbar_button ABI import: {error}"))?;
     linker
         .func_wrap(
             "blueice",
@@ -386,6 +405,34 @@ fn network_response_utf8(
         return RESULT_INVALID_ARGUMENT;
     }
     i32::try_from(bytes.len()).unwrap_or(RESULT_ERROR)
+}
+
+fn set_toolbar_button_utf8(
+    caller: &mut Caller<'_, RuntimeState>,
+    pointer: i32,
+    length: i32,
+) -> i32 {
+    let Ok((pointer, length)) = guest_range(pointer, length, MAX_EXTENSION_TOOLBAR_LABEL_BYTES)
+    else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(bytes) = read_guest_bytes(caller, pointer, length) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(label) = String::from_utf8(bytes) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    match request_core(caller, ExtensionRequest::SetToolbarButton { label }) {
+        Ok(ExtensionReply::UiInjectAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
+fn clear_toolbar_button(caller: &mut Caller<'_, RuntimeState>) -> i32 {
+    match request_core(caller, ExtensionRequest::ClearToolbarButton) {
+        Ok(ExtensionReply::UiInjectAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
 }
 
 fn set_text_input_value(
@@ -760,6 +807,64 @@ mod tests {
             .unwrap();
         });
         execute_installed_extension(&extension, guest).unwrap();
+        core_thread.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn toolbar_activation_runs_a_fresh_guest_with_an_explicit_tab_and_bounded_ui_import() {
+        let (root, extension) = installed_extension(
+            "toolbar-activation",
+            r#"(module
+                (import "blueice" "runtime_event_kind" (func $kind (result i32)))
+                (import "blueice" "runtime_event_tab_id" (func $tab (result i64)))
+                (import "blueice" "set_toolbar_button_utf8" (func $toolbar (param i32 i32) (result i32)))
+                (import "blueice" "clear_toolbar_button" (func $clear (result i32)))
+                (memory (export "memory") 1)
+                (data (i32.const 0) "Notes")
+                (func (export "blueice_start")
+                    call $kind
+                    i32.const 2
+                    i32.ne
+                    if unreachable end
+                    call $tab
+                    i64.const 9
+                    i64.ne
+                    if unreachable end
+                    i32.const 0
+                    i32.const 5
+                    call $toolbar
+                    i32.const 0
+                    i32.ne
+                    if unreachable end
+                    call $clear
+                    i32.const 0
+                    i32.ne
+                    if unreachable end))"#,
+        );
+        let (guest, mut core) = UnixStream::pair().unwrap();
+        let core_thread = thread::spawn(move || {
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::SetToolbarButton {
+                    label: "Notes".to_string(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::UiInjectAck)
+                .unwrap();
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::ClearToolbarButton
+            );
+            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::UiInjectAck)
+                .unwrap();
+        });
+        execute_installed_extension_for_invocation(
+            &extension,
+            guest,
+            RuntimeInvocation::ToolbarActivated { tab_id: 9 },
+        )
+        .unwrap();
         core_thread.join().unwrap();
         let _ = fs::remove_dir_all(root);
     }

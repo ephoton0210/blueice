@@ -226,6 +226,11 @@ pub enum ClientMessage {
     /// Requests every tab group in creation order, replied to with
     /// [`ServerMessage::TabGroups`].
     ListTabGroups,
+    /// Query the currently published extension toolbar button, if any.
+    GetExtensionToolbar,
+    /// Activate the visible extension toolbar button for the addressed tab.
+    /// This is a UI action, not an authenticated user-gesture capability.
+    ActivateExtensionToolbar,
     Chrome(ChromeCommand),
     Shutdown,
     /// Catch-all for a variant this build doesn't recognize (e.g. sent
@@ -311,6 +316,9 @@ pub enum ServerMessage {
     },
     /// Reply to [`ClientMessage::ListTabGroups`].
     TabGroups(Vec<TabGroupSummary>),
+    /// Current native toolbar label, returned for a query or broadcast when
+    /// the installed extension changes/disconnects. `None` removes it.
+    ExtensionToolbar { label: Option<String> },
     Error {
         message: String,
     },

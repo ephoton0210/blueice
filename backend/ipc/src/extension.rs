@@ -48,6 +48,10 @@ pub const MAX_NETWORK_BLOCK_URL_BYTES: usize = 2 * 1024;
 /// Maximum serialized response metadata returned to an extension guest.
 pub const MAX_NETWORK_OBSERVATION_BYTES: usize = 4 * 1024;
 
+/// Native chrome accepts one short label, never extension HTML or a guest
+/// selected coordinate. The host and core both enforce this bound.
+pub const MAX_EXTENSION_TOOLBAR_LABEL_BYTES: usize = 20;
+
 /// Metadata for the final HTTP response of one committed navigation. Response
 /// bodies and sensitive headers are intentionally excluded.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,6 +145,11 @@ pub enum ExtensionRequest {
     /// associated with the currently committed page in an explicit tab.
     /// `None` means this page did not come from an HTTP fetch.
     ReadNetworkResponse { tab_id: u64 },
+    /// Version 1 of `ui:inject`: show one core-owned native toolbar button.
+    /// The label is validated as short printable ASCII before publication.
+    SetToolbarButton { label: String },
+    /// Remove only this extension connection's native toolbar button.
+    ClearToolbarButton,
     /// Mutate something DOM-shaped -- requires the `dom:write`
     /// capability, deliberately not granted to this minimal slice's one
     /// hardcoded extension, so this is the request that proves
@@ -338,6 +347,8 @@ pub enum ExtensionReply {
     DomReadResult { value: String },
     /// Reply to a granted [`ExtensionRequest::ReadNetworkResponse`].
     NetworkResponseResult { response: Option<NetworkResponseInfo> },
+    /// A bounded native toolbar update or clear was applied by core.
+    UiInjectAck,
     /// Reply to a granted [`ExtensionRequest::DomWrite`].
     DomWriteAck,
     /// Reply to a granted `network:intercept` operation. Rule registration is
@@ -377,13 +388,17 @@ pub enum ExtensionReply {
 }
 
 /// A core-owned lifecycle notification for one fresh, bounded Wasm reactor
-/// invocation. This protocol intentionally starts with just an after-commit
-/// navigation event; it does not expose arbitrary frontend or network hooks.
+/// invocation. Events carry only opaque tab IDs and do not expose arbitrary
+/// frontend state or network hooks.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExtensionRuntimeEvent {
     /// A navigation has cleared gatekeeper review, committed to the live tab,
     /// and published its frame. `tab_id` addresses that resulting live tab.
     NavigationCommitted { tab_id: u64 },
+    /// A client activated the displayed native extension button for a live
+    /// tab. This is not an authenticated human gesture and grants no ambient
+    /// or ephemeral authority by itself.
+    ToolbarActivated { tab_id: u64 },
 }
 
 /// A capability declaration the host could not negotiate during an

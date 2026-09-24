@@ -91,6 +91,22 @@ pub const CAPABILITY_NETWORK_INTERCEPT: &str = "network:intercept";
 /// Read-only observation of the final response behind a committed page.
 pub const CAPABILITY_NETWORK_OBSERVE: &str = "network:observe";
 
+/// A bounded native-chrome surface, not an HTML/CSS injection privilege.
+pub const CAPABILITY_UI_INJECT: &str = "ui:inject";
+
+pub fn validate_toolbar_label(label: &str) -> Result<(), String> {
+    if label.is_empty()
+        || label.len() > blueice_ipc::extension::MAX_EXTENSION_TOOLBAR_LABEL_BYTES
+        || label.trim() != label
+        || !label.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b' ' | b'-' | b'_')
+        })
+    {
+        return Err("toolbar label must be 1–20 ASCII letters, digits, spaces, hyphens, or underscores without outer spaces".to_string());
+    }
+    Ok(())
+}
+
 /// A per-extension key-value bucket owned by core, never by the guest's
 /// ambient filesystem or process. Version 1 deliberately lasts only for the
 /// core process lifetime; durable storage needs its own reviewed crash and
@@ -303,6 +319,7 @@ impl ExtensionRegistry {
         registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v7);
         registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v3);
         registry.register_capability_version_window(CAPABILITY_NETWORK_OBSERVE, v1);
+        registry.register_capability_version_window(CAPABILITY_UI_INJECT, v1);
         registry.register_capability_version_window(CAPABILITY_STORAGE, v1);
         registry
     }
@@ -586,7 +603,7 @@ pub struct ExtensionConnectionAuthentication<'a> {
 }
 
 /// Core-owned delegates for one authenticated extension connection. Bundling
-/// the five protocol effects keeps the long-lived connection handler's
+/// the protocol effects keeps the long-lived connection handler's
 /// authority surface explicit without growing its public argument list every
 /// time a new, independently reviewed operation is added.
 pub struct ExtensionActionDelegates<R, W, N, B, C> {
@@ -596,6 +613,8 @@ pub struct ExtensionActionDelegates<R, W, N, B, C> {
     register_network_block_url: B,
     clear_network_block_urls: C,
     observe_network: Box<dyn FnMut(u64) -> Result<Option<NetworkResponseInfo>, String> + Send>,
+    set_toolbar_button: Box<dyn FnMut(String) -> Result<(), String> + Send>,
+    clear_toolbar_button: Box<dyn FnMut() -> Result<(), String> + Send>,
     storage: ExtensionStorage,
 }
 
@@ -619,6 +638,12 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
             observe_network: Box::new(|_| {
                 Err("network:observe needs a core-backed response reader".to_string())
             }),
+            set_toolbar_button: Box::new(|_| {
+                Err("ui:inject needs a core-backed native toolbar".to_string())
+            }),
+            clear_toolbar_button: Box::new(|| {
+                Err("ui:inject needs a core-backed native toolbar".to_string())
+            }),
             storage: ExtensionStorage::default(),
         }
     }
@@ -639,6 +664,23 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
         observer: impl FnMut(u64) -> Result<Option<NetworkResponseInfo>, String> + Send + 'static,
     ) -> Self {
         self.observe_network = Box::new(observer);
+        self
+    }
+
+    pub fn with_toolbar_button(
+        mut self,
+        setter: impl FnMut(String) -> Result<(), String> + Send + 'static,
+    ) -> Self {
+        self.set_toolbar_button = Box::new(setter);
+        self
+    }
+
+    /// Removes a connection-owned button when this socket renegotiates.
+    pub fn with_toolbar_clearer(
+        mut self,
+        clearer: impl FnMut() -> Result<(), String> + Send + 'static,
+    ) -> Self {
+        self.clear_toolbar_button = Box::new(clearer);
         self
     }
 }
@@ -815,6 +857,8 @@ where
         mut register_network_block_url,
         mut clear_network_block_urls,
         mut observe_network,
+        mut set_toolbar_button,
+        mut clear_toolbar_button,
         storage,
     } = delegates;
     let mut identity = match read_extension_request(stream) {
@@ -831,6 +875,7 @@ where
     };
     authentication.signal_ready();
     let mut runtime_started = false;
+    let mut toolbar_visible = false;
 
     loop {
         let request = match read_extension_request(stream) {
@@ -844,6 +889,12 @@ where
             } => {
                 if authentication.expected().is_some() {
                     return Ok(());
+                }
+                if toolbar_visible {
+                    if clear_toolbar_button().is_err() {
+                        return Ok(()); // fail closed before acknowledging a changed grant
+                    }
+                    toolbar_visible = false;
                 }
                 let (new_identity, reply) =
                     negotiate_hello(registry, extension_id, capability_versions);
@@ -859,6 +910,12 @@ where
                     !constant_time_authentication_matches(expected, &provided_authentication)
                 }) {
                     return Ok(());
+                }
+                if toolbar_visible {
+                    if clear_toolbar_button().is_err() {
+                        return Ok(());
+                    }
+                    toolbar_visible = false;
                 }
                 let (new_identity, reply) =
                     negotiate_hello(registry, extension_id, capability_versions);
@@ -996,6 +1053,58 @@ where
                         Ok(response) => ExtensionReply::NetworkResponseResult { response },
                         Err(reason) => ExtensionReply::OperationUnavailable {
                             capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
+                            reason,
+                        },
+                    };
+                    write_extension_reply(stream, &reply)?;
+                }
+            }
+            ExtensionRequest::SetToolbarButton { label } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_UI_INJECT, 1)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_UI_INJECT.to_string(),
+                            reason,
+                        },
+                    )?;
+                } else {
+                    let result = validate_toolbar_label(&label)
+                        .and_then(|()| set_toolbar_button(label));
+                    let reply = match result {
+                        Ok(()) => {
+                            toolbar_visible = true;
+                            ExtensionReply::UiInjectAck
+                        }
+                        Err(reason) => ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_UI_INJECT.to_string(),
+                            reason,
+                        },
+                    };
+                    write_extension_reply(stream, &reply)?;
+                }
+            }
+            ExtensionRequest::ClearToolbarButton => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_UI_INJECT, 1)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_UI_INJECT.to_string(),
+                            reason,
+                        },
+                    )?;
+                } else {
+                    let reply = match clear_toolbar_button() {
+                        Ok(()) => {
+                            toolbar_visible = false;
+                            ExtensionReply::UiInjectAck
+                        }
+                        Err(reason) => ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_UI_INJECT.to_string(),
                             reason,
                         },
                     };
@@ -1906,6 +2015,126 @@ mod tests {
         assert!(matches!(
             read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_NETWORK_OBSERVE
+        ));
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn native_toolbar_requires_ui_grant_and_validates_before_delegation() {
+        let mut registry = ExtensionRegistry::minimal_slice();
+        registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
+        let (seen_tx, seen_rx) = mpsc::channel();
+        let (clear_tx, clear_rx) = mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry,
+                Path::new("/not-used-for-native-ui"),
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    |_| Ok(String::new()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_| Ok(()),
+                    || Ok(()),
+                )
+                .with_toolbar_button(move |label| {
+                    seen_tx.send(label).unwrap();
+                    Ok(())
+                })
+                .with_toolbar_clearer(move || {
+                    clear_tx.send(()).unwrap();
+                    Ok(())
+                }),
+            )
+        });
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 1)]),
+        )
+        .unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetToolbarButton {
+                label: "Bad\nLabel".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::OperationUnavailable { capability, .. } if capability == CAPABILITY_UI_INJECT
+        ));
+        assert!(seen_rx.try_recv().is_err());
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetToolbarButton {
+                label: "Notes".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
+        assert_eq!(seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(), "Notes");
+        write_extension_request(&mut client, &ExtensionRequest::ClearToolbarButton).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
+        clear_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetToolbarButton {
+                label: "Notes".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
+        assert_eq!(seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(), "Notes");
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_READ, 1)]),
+        )
+        .unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        clear_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetToolbarButton {
+                label: "Denied".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_UI_INJECT
+        ));
+        assert!(seen_rx.try_recv().is_err());
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 2)]),
+        )
+        .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::HelloAck { unsupported_capabilities }
+                if matches!(
+                    unsupported_capabilities.get(CAPABILITY_UI_INJECT),
+                    Some(UnsupportedCapabilityVersion::OutsideSupportedRange {
+                        min_inclusive: 1,
+                        max_inclusive: 1,
+                    })
+                )
+        ));
+        assert!(clear_rx.try_recv().is_err());
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetToolbarButton {
+                label: "Denied".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_UI_INJECT
         ));
         drop(client);
         handle.join().unwrap().unwrap();

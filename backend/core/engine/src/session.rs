@@ -103,6 +103,15 @@ pub enum ExtensionPageRequest {
         tab_id: u64,
         reply: mpsc::Sender<Result<Option<blueice_ipc::extension::NetworkResponseInfo>, String>>,
     },
+    SetToolbarButton {
+        connection_id: u64,
+        label: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    ClearToolbarButton {
+        connection_id: u64,
+        reply: mpsc::Sender<()>,
+    },
     SetTextInputValue {
         tab_id: u64,
         node_id: u64,
@@ -371,6 +380,8 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
     let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
     let (listing_tx, listing_rx) = mpsc::channel::<DownloadsListing>();
     let mut downloads_refresher = DownloadsRefresher::default();
+    // Only the connection that published the native button can remove it.
+    let mut extension_toolbar: Option<(u64, String)> = None;
 
     loop {
         match blueice_ipc::read_client_message_with_ids(stream) {
@@ -901,6 +912,39 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                             &ServerMessage::TabGroups(groups),
                         )?;
                     }
+                    ClientMessage::GetExtensionToolbar => {
+                        blueice_ipc::write_server_message_with_ids(
+                            stream,
+                            None,
+                            request_id,
+                            &ServerMessage::ExtensionToolbar {
+                                label: extension_toolbar.as_ref().map(|(_, label)| label.clone()),
+                            },
+                        )?;
+                    }
+                    ClientMessage::ActivateExtensionToolbar => {
+                        let result = if extension_toolbar.is_none() {
+                            Err("no extension toolbar button is installed".to_string())
+                        } else if tabs.get(target).is_none() {
+                            Err(format!("unknown tab {}", target.as_u64()))
+                        } else if let Some(events) = extension_events {
+                            events
+                                .try_send(ExtensionRuntimeEvent::ToolbarActivated {
+                                    tab_id: target.as_u64(),
+                                })
+                                .map_err(|_| "extension event queue is unavailable".to_string())
+                        } else {
+                            Err("the extension runtime is unavailable".to_string())
+                        };
+                        if let Err(message) = result {
+                            blueice_ipc::write_server_message_with_ids(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                &ServerMessage::Error { message },
+                            )?;
+                        }
+                    }
                     // Chrome commands (window show/hide) operate on
                     // `frontend`'s own window, not on anything `core`
                     // owns -- see module docs.
@@ -968,6 +1012,7 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                     frame_dir,
                     generation,
                     script_scheduler,
+                    &mut extension_toolbar,
                     request,
                 )?;
             }
@@ -986,6 +1031,7 @@ fn handle_extension_page_request<S: Write>(
     frame_dir: &Path,
     generation: &mut u64,
     script_scheduler: &mut dyn ScriptScheduler,
+    extension_toolbar: &mut Option<(u64, String)>,
     request: ExtensionPageRequest,
 ) -> io::Result<()> {
     match request {
@@ -1010,6 +1056,41 @@ fn handle_extension_page_request<S: Write>(
                 .ok_or_else(|| format!("unknown tab {tab_id}"))
                 .map(|page| page.network_response().cloned());
             let _ = reply.send(result);
+        }
+        ExtensionPageRequest::SetToolbarButton {
+            connection_id,
+            label,
+            reply,
+        } => {
+            let result = blueice_extension_host::validate_toolbar_label(&label).and_then(|()| {
+                blueice_ipc::write_server_message_with_ids(
+                    stream,
+                    None,
+                    None,
+                    &ServerMessage::ExtensionToolbar {
+                        label: Some(label.clone()),
+                    },
+                )
+                .map_err(|error| format!("could not publish extension toolbar: {error}"))?;
+                *extension_toolbar = Some((connection_id, label));
+                Ok(())
+            });
+            let _ = reply.send(result);
+        }
+        ExtensionPageRequest::ClearToolbarButton {
+            connection_id,
+            reply,
+        } => {
+            if extension_toolbar.as_ref().is_some_and(|(owner, _)| *owner == connection_id) {
+                *extension_toolbar = None;
+                blueice_ipc::write_server_message_with_ids(
+                    stream,
+                    None,
+                    None,
+                    &ServerMessage::ExtensionToolbar { label: None },
+                )?;
+            }
+            let _ = reply.send(());
         }
         ExtensionPageRequest::SetTextInputValue {
             tab_id,
@@ -2353,6 +2434,127 @@ mod tests {
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         session.join().unwrap().unwrap();
         http.join().unwrap();
+        let _ = std::fs::remove_dir_all(cleanup_dir);
+    }
+
+    #[test]
+    fn extension_toolbar_is_broadcast_clickable_and_owned_by_its_connection() {
+        let (mut client, mut server) = client_pair();
+        let (extension_tx, extension_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::sync_channel(16);
+        let dir = temp_frame_dir("extension-toolbar");
+        let cleanup_dir = dir.clone();
+        std::fs::create_dir_all(&dir).unwrap();
+        let session = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0;
+            run_session_with_extension_requests_and_events(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                Path::new("/not-used-for-native-ui"),
+                &extension_rx,
+                Some(&event_tx),
+            )
+        });
+        handshake(&mut client);
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::SetToolbarButton {
+                connection_id: 4,
+                label: "\u{202e}spoof".to_string(),
+                reply: reply_tx,
+            })
+            .unwrap();
+        assert!(reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().is_err());
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::SetToolbarButton {
+                connection_id: 4,
+                label: "Notes".to_string(),
+                reply: reply_tx,
+            })
+            .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionToolbar {
+                label: Some("Notes".to_string()),
+            }
+        );
+        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetExtensionToolbar)
+            .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionToolbar {
+                label: Some("Notes".to_string()),
+            }
+        );
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(1),
+            None,
+            &ClientMessage::ActivateExtensionToolbar,
+        )
+        .unwrap();
+        assert_eq!(
+            event_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            ExtensionRuntimeEvent::ToolbarActivated { tab_id: 1 }
+        );
+
+        // A stale connection cannot clear a newer connection's button.
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::SetToolbarButton {
+                connection_id: 5,
+                label: "Tasks".to_string(),
+                reply: reply_tx,
+            })
+            .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionToolbar {
+                label: Some("Tasks".to_string()),
+            }
+        );
+        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ClearToolbarButton {
+                connection_id: 4,
+                reply: reply_tx,
+            })
+            .unwrap();
+        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetExtensionToolbar)
+            .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionToolbar {
+                label: Some("Tasks".to_string()),
+            }
+        );
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ClearToolbarButton {
+                connection_id: 5,
+                reply: reply_tx,
+            })
+            .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionToolbar { label: None }
+        );
+        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::ActivateExtensionToolbar)
+            .unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Error { message } if message.contains("no extension toolbar")
+        ));
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        session.join().unwrap().unwrap();
         let _ = std::fs::remove_dir_all(cleanup_dir);
     }
 

@@ -257,8 +257,15 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
         match read_extension_reply(&mut stream)
             .map_err(|error| format!("core did not provide the next lifecycle event: {error}"))?
         {
-            ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::NavigationCommitted { tab_id }) => {
-                let invocation = RuntimeInvocation::NavigationCommitted { tab_id };
+            ExtensionReply::RuntimeEvent(event) => {
+                let invocation = match event {
+                    ExtensionRuntimeEvent::NavigationCommitted { tab_id } => {
+                        RuntimeInvocation::NavigationCommitted { tab_id }
+                    }
+                    ExtensionRuntimeEvent::ToolbarActivated { tab_id } => {
+                        RuntimeInvocation::ToolbarActivated { tab_id }
+                    }
+                };
                 let event_stream = stream.try_clone().map_err(|error| {
                     format!(
                         "could not clone the authenticated extension stream for an event: {error}"
@@ -266,7 +273,7 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
                 })?;
                 execute_installed_extension_for_invocation(&installed, event_stream, invocation)
                     .map_err(|error| {
-                        format!("could not run the installed WASM extension for navigation event: {error}")
+                        format!("could not run the installed WASM extension for lifecycle event: {error}")
                     })?;
             }
             ExtensionReply::RuntimeEventStreamClosed => return Ok(()),
