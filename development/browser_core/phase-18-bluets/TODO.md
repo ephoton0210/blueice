@@ -1012,6 +1012,16 @@ or second module resolver to bypass them.
   resume path, proves unbound/end-of-source behavior, and rejects guessed,
   cross-stream, and stale tuples. General non-root/module interruption and
   stack/scope mapping remain open before general TS breakpoints can be claimed.
+  Debugger v29 now composes that exact position binding and the existing
+  root-classic arm within one owning core session request. The caller still
+  needs the separate owner/client `OpaqueSourceBreakpoint` grant and exact
+  metadata/source receipts; core revalidates the child binding and requires
+  live execution control before arming. An unbound original byte position,
+  guessed source ID, stale tuple, different debugger stream, non-root point,
+  or already-running program cannot start the pending declaration. The reply
+  acknowledges only the verified root safe point. This requires no new child
+  protocol operation or metadata grant and does not imply general TypeScript
+  breakpoint or source-level stepping support.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

@@ -9,7 +9,12 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version twenty-eight adds
+//! and an opt-in root-code-unit pause/resume seam. Version twenty-nine adds
+//! an atomic source-position arm request: one session turn must first pass
+//! the independently default-denied metadata grant and same-stream opaque
+//! source receipt, then bind an exact root safe point and arm only a pending
+//! classic script. An unbound position never starts execution. Version
+//! twenty-eight adds
 //! a separately default-denied, bounded original-BlueTS byte-position binding
 //! under one same-stream source-ID receipt. It reports one core-revalidated
 //! safe point or explicit unbound result, without installing or executing a
@@ -63,7 +68,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 28;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 29;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -2198,6 +2203,15 @@ pub enum DebuggerRequest {
     ResolveStaticMetadataSourceBreakpoint {
         target: DebuggerStaticMetadataSourceBreakpointTarget,
     },
+    /// Atomically resolves one separately authorized original BlueTS byte
+    /// position and arms only its verified root-classic safe point. Both the
+    /// same-stream metadata/source receipts and execution-control capability
+    /// must be live; an unbound position or non-root instruction fails before
+    /// the pending declaration starts. The reply is the ordinary source-free
+    /// `RootSafePointBreakpointArmed` with the exact core-reminted safe point.
+    ArmStaticMetadataSourceBreakpoint {
+        target: DebuggerStaticMetadataSourceBreakpointTarget,
+    },
     /// Describes one contract declaration range only after separate exact
     /// contract and source inventory receipts on this debugger stream.
     DescribeStaticMetadataContractLocation {
@@ -2475,6 +2489,7 @@ pub fn negotiate(
         | DebuggerRequest::DescribeStaticMetadataSymbolLocation { .. }
         | DebuggerRequest::DescribeStaticMetadataSafePointSpan { .. }
         | DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { .. }
+        | DebuggerRequest::ArmStaticMetadataSourceBreakpoint { .. }
         | DebuggerRequest::DescribeStaticMetadataContractLocation { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolType { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolContract { .. }
@@ -4480,6 +4495,17 @@ mod tests {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_request(&mut sender, &request).unwrap();
         assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
+        let arm = DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target };
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_request(&mut sender, &arm).unwrap();
+        assert_eq!(read_debugger_request(&mut receiver).unwrap(), arm);
+        assert!(matches!(
+            negotiate(&arm, &manifest),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::ProtocolVersion,
+                ..
+            }
+        ));
         let reply = DebuggerReply::StaticMetadataSourceBreakpoint(result);
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();

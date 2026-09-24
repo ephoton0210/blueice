@@ -171,6 +171,7 @@ impl DebuggerRequestReceiver {
                 &envelope.request,
                 DebuggerRequest::ArmEntryBreakpoint { .. }
                     | DebuggerRequest::ArmRootSafePointBreakpoint { .. }
+                    | DebuggerRequest::ArmStaticMetadataSourceBreakpoint { .. }
                     | DebuggerRequest::ResumeExecution { .. }
                     | DebuggerRequest::StepRootInstruction { .. }
             );
@@ -304,6 +305,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         }
         DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { .. } => {
             unavailable_static_metadata_source_breakpoint()
+        }
+        DebuggerRequest::ArmStaticMetadataSourceBreakpoint { .. } => {
+            unavailable_static_metadata_source_breakpoint_arm()
         }
         DebuggerRequest::DescribeStaticMetadataContractLocation { .. } => {
             unavailable_static_metadata_contract_location()
@@ -480,6 +484,9 @@ fn handle_debugger_request_with_child_locations(
                 metadata_session,
                 target,
             )
+        }
+        DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target } => {
+            arm_child_static_metadata_source_breakpoint(tabs, locations, metadata_session, target)
         }
         DebuggerRequest::DescribeStaticMetadataContractLocation { target } => {
             describe_child_static_metadata_contract_location(
@@ -2012,6 +2019,40 @@ fn resolve_child_static_metadata_source_breakpoint(
     DebuggerReply::StaticMetadataSourceBreakpoint(result)
 }
 
+/// Combines the separately authorized source-position binding with the
+/// existing root-classic arm in one owning session turn. No worker or peer
+/// can substitute a safe point between those checks, and an unbound or child
+/// code-unit result never reaches the execution-control call.
+fn arm_child_static_metadata_source_breakpoint(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    target: DebuggerStaticMetadataSourceBreakpointTarget,
+) -> DebuggerReply {
+    let binding = match resolve_child_static_metadata_source_breakpoint(
+        tabs,
+        locations,
+        metadata_session,
+        target,
+    ) {
+        DebuggerReply::StaticMetadataSourceBreakpoint(binding) => binding,
+        DebuggerReply::Unsupported { .. } => {
+            return unavailable_static_metadata_source_breakpoint_arm()
+        }
+        reply => return reply,
+    };
+    let Some(safe_point) = binding.safe_point else {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidSafePoint,
+            message: "source position has no executable root safe point".to_string(),
+        };
+    };
+    if !locations.debugger_execution_control_available() {
+        return unavailable_execution_control();
+    }
+    arm_child_root_safe_point_breakpoint(tabs, locations, safe_point)
+}
+
 /// A contract location is resolved only after this stream received the exact
 /// parent, contract ID, and source ID and the live child reports the distinct
 /// location capability. No source identity, text, plan, or value crosses it.
@@ -3256,6 +3297,13 @@ fn unavailable_static_metadata_source_breakpoint() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_source_breakpoint_arm() -> DebuggerReply {
+    DebuggerReply::Unsupported {
+        operation: "arm static metadata source breakpoint".to_string(),
+        reason: "BlueTS source-position arm requires a separate owner/client binding grant, a prior same-stream source-ID receipt, a live child attachment, and execution control".to_string(),
+    }
+}
+
 fn unavailable_static_metadata_contract_location() -> DebuggerReply {
     DebuggerReply::Unsupported {
         operation: "describe static metadata contract location".to_string(),
@@ -3698,7 +3746,7 @@ fn capability_reports(
                 DebuggerCapabilityState::Planned
             },
             if static_metadata_source_breakpoint_available {
-                "bounded BlueTS source positions resolve to exact safe points or explicit unbound results under separate receipts"
+                "bounded BlueTS source positions resolve to exact safe points or explicit unbound results under separate receipts; atomic root-classic arm also requires execution control"
             } else {
                 "BlueTS source-position binding requires independent inventory, source-inventory, and binding grants plus a live child attachment"
             },
@@ -5456,6 +5504,16 @@ mod tests {
                 &tabs,
                 &mut locations,
                 Some(&session),
+                DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target },
+            ),
+            unavailable_static_metadata_source_breakpoint_arm(),
+            "an unreceipted arm must fail before checking execution control"
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
                 DebuggerRequest::ListStaticMetadata { program },
             ),
             DebuggerReply::StaticMetadata(vec![metadata])
@@ -5493,6 +5551,16 @@ mod tests {
                     bytecode_offset: 4,
                 }),
             })
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target },
+            ),
+            unavailable_execution_control(),
+            "metadata authority alone must not arm a page host without execution control"
         );
         assert_eq!(
             handle_debugger_request_with_child_locations(

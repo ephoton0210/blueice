@@ -1362,6 +1362,18 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
         ),
         DebuggerReply::Unsupported { .. }
     ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmStaticMetadataSourceBreakpoint {
+                target: blueice_ipc::debugger::DebuggerStaticMetadataSourceBreakpointTarget {
+                    source: sources[0],
+                    source_byte: 0,
+                },
+            },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
     let initial_contract_location_target =
         blueice_ipc::debugger::DebuggerStaticMetadataContractLocationTarget {
             contract: contracts[0],
@@ -2134,36 +2146,55 @@ fn launcher_resolves_receipted_bluets_source_positions_to_live_breakpoints() {
         ),
         DebuggerReply::Unsupported { .. }
     ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target: guessed },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
     let DebuggerReply::StaticMetadataSources(sources) = debugger_request(
         &mut debugger,
         DebuggerRequest::ListStaticMetadataSources { metadata },
     ) else {
         panic!("the same stream must receive compiler source IDs");
     };
-    let mut bound = None;
+    let mut armed = None;
     for source in sources {
-        let target = blueice_ipc::debugger::DebuggerStaticMetadataSourceBreakpointTarget {
+        let candidate = blueice_ipc::debugger::DebuggerStaticMetadataSourceBreakpointTarget {
             source,
             source_byte,
         };
         match debugger_request(
             &mut debugger,
-            DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target },
+            DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target: candidate },
         ) {
-            DebuggerReply::StaticMetadataSourceBreakpoint(result) => {
-                assert_eq!(result.target, target);
-                if let Some(safe_point) = result.safe_point {
-                    bound = Some((target, safe_point));
-                    break;
-                }
+            DebuggerReply::RootSafePointBreakpointArmed { safe_point } => {
+                armed = Some((candidate, safe_point));
+                break;
             }
-            reply => panic!("unexpected source-breakpoint reply: {reply:?}"),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidSafePoint | DebuggerErrorCode::InvalidTarget,
+                ..
+            } => assert_eq!(
+                debugger_request(
+                    &mut debugger,
+                    DebuggerRequest::GetExecutionState { program }
+                ),
+                DebuggerReply::ExecutionState {
+                    program,
+                    state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+                },
+                "an unbound source must leave the classic declaration pending"
+            ),
+            reply => panic!("unexpected atomic source-breakpoint arm reply: {reply:?}"),
         }
     }
-    let (target, safe_point) = bound.expect("the declaration must bind to one verified point");
+    let (target, safe_point) = armed.expect("one original BlueTS source must arm its root point");
     assert_eq!(safe_point.program, program);
     assert_eq!(safe_point.code_unit_ordinal, 0);
     assert_ne!(safe_point.bytecode_offset, 0);
+    await_paused_execution(&mut debugger, program, safe_point);
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -2199,14 +2230,42 @@ fn launcher_resolves_receipted_bluets_source_positions_to_live_breakpoints() {
         ),
         DebuggerReply::Unsupported { .. }
     ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmStaticMetadataSourceBreakpoint {
+                target: blueice_ipc::debugger::DebuggerStaticMetadataSourceBreakpointTarget {
+                    source_byte: FIRST_BLUETS_SOURCE.len() as u32,
+                    ..target
+                },
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidSafePoint,
+            ..
+        }
+    ));
     assert_eq!(
         debugger_request(
             &mut debugger,
-            DebuggerRequest::ArmRootSafePointBreakpoint { safe_point },
+            DebuggerRequest::GetExecutionState { program }
         ),
-        DebuggerReply::RootSafePointBreakpointArmed { safe_point }
+        DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Paused { safe_point },
+        },
+        "an unbound arm must not release the paused root frame"
     );
-    await_paused_execution(&mut debugger, program, safe_point);
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -2237,6 +2296,16 @@ fn launcher_resolves_receipted_bluets_source_positions_to_live_breakpoints() {
             ..
         }
     ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
     drop(debugger);
     let mut separate = UnixStream::connect(&launcher.debugger_socket).unwrap();
     assert!(matches!(
@@ -2253,6 +2322,13 @@ fn launcher_resolves_receipted_bluets_source_positions_to_live_breakpoints() {
         debugger_request(
             &mut separate,
             DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut separate,
+            DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target },
         ),
         DebuggerReply::Unsupported { .. }
     ));
