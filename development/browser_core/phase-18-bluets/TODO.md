@@ -14,9 +14,10 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: A1.3.** Through a real socket, verify wrong-tab,
-stale-generation, and old-core denial leaves the DOM unchanged. Authentication
-is now in place, but the child still has no reentrant DOM call route.
+**Current leaf: A2.1.** Let the core session thread serve bounded child DOM
+calls while it waits for that child's script result. A1 now rejects foreign,
+cross-tab, stale-document, and predecessor-core requests before mutation; the
+child still has no reentrant DOM call route.
 
 ## Current boundary
 
@@ -49,8 +50,13 @@ client registration, build output, or write authority.
   capabilities, including after a successor core reuses the same path. The
   listener is owner-only (`0600`), preserves occupied files and live sockets,
   and drops an incomplete unauthenticated handshake after two seconds.
-- [ ] Verify wrong-tab, stale-generation, and old-core denial through a
-  real socket; denied requests must leave the DOM unchanged.
+- [x] Verify wrong-tab, stale-generation, and old-core denial through a
+  real socket; denied requests must leave the DOM unchanged. A real core
+  subprocess test loads two live documents, compares both tab DOM dumps
+  before and after a cross-tab node write, replaces the first document and
+  checks stale writes/creation, then reuses the socket path under a successor
+  core and queues an old-capability write. Every denial preserves the exact
+  visible DOM, while an authorized successor write changes it as a control.
 
 #### A2. Serve DOM calls during script execution.
 

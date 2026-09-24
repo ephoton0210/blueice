@@ -125,6 +125,82 @@ fn connect_with_retry(path: &std::path::Path, timeout: Duration) -> std::io::Res
     }
 }
 
+fn serve_html_once(body: &'static str) -> (std::net::SocketAddr, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0u8; 1024];
+        let _ = stream.read(&mut request);
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+    (address, server)
+}
+
+fn read_tab_dom(frontend: &mut UnixStream, tab_id: u64, request_id: u64) -> String {
+    blueice_ipc::write_client_message_with_ids(
+        frontend,
+        Some(tab_id),
+        Some(request_id),
+        &blueice_ipc::ClientMessage::GetDom,
+    )
+    .unwrap();
+    loop {
+        let (reply_tab, reply_id, reply) =
+            blueice_ipc::read_server_message_with_ids(frontend).unwrap();
+        if reply_id != Some(request_id) {
+            assert!(matches!(
+                reply,
+                blueice_ipc::ServerMessage::FrameReady { .. }
+            ));
+            continue;
+        }
+        assert_eq!(reply_tab, Some(tab_id));
+        let blueice_ipc::ServerMessage::Dom(dom) = reply else {
+            panic!("expected a DOM dump, got {reply:?}");
+        };
+        return dom;
+    }
+}
+
+fn script_exchange(
+    script: &mut UnixStream,
+    request: blueice_ipc::script::ScriptRequest,
+) -> blueice_ipc::script::ScriptReply {
+    blueice_ipc::script::write_script_request(script, &request).unwrap();
+    blueice_ipc::script::read_script_reply(script).unwrap()
+}
+
+fn navigate_default_tab(frontend: &mut UnixStream, url: String) {
+    blueice_ipc::write_client_message(
+        frontend,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
+    )
+    .unwrap();
+    loop {
+        match blueice_ipc::read_server_message(frontend).unwrap() {
+            blueice_ipc::ServerMessage::Navigated { url: navigated } => {
+                assert_eq!(navigated, url);
+                break;
+            }
+            blueice_ipc::ServerMessage::FrameReady { .. } => {}
+            other => panic!("unexpected navigation reply: {other:?}"),
+        }
+    }
+    assert!(matches!(
+        blueice_ipc::read_server_message(frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+}
+
 /// Sends one complete native-debugger request/response pair over the real
 /// socket and asserts that the raw public reply has not reflected this
 /// fixture's page-controlled secret, a VM/completion representation, or a
@@ -480,6 +556,293 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
     .unwrap();
     assert!(successor.wait().unwrap().success());
     assert!(!script_socket_path.exists());
+}
+
+#[test]
+fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_core_replacement() {
+    use blueice_ipc::script::{
+        ScriptDocumentTarget, ScriptReply, ScriptRequest, SCRIPT_PROTOCOL_VERSION,
+    };
+
+    const FIRST_CAPABILITY: &str =
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const SUCCESSOR_CAPABILITY: &str =
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    let socket_path = unique_socket_path("sd-core");
+    let script_path = unique_socket_path("sd-host");
+    let frame_dir = std::env::temp_dir().join(format!("bicb-script-denial-{}", std::process::id()));
+    let gatekeeper_path = clearing_gatekeeper("sd-gk");
+    let (first_addr, first_server) =
+        serve_html_once("<main><span id=\"label\">first</span></main>");
+    let (replacement_addr, replacement_server) =
+        serve_html_once("<main><span id=\"label\">replacement</span></main>");
+    let (successor_addr, successor_server) =
+        serve_html_once("<main><span id=\"label\">successor</span></main>");
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&script_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+
+    let spawn_core = |capability: &str| {
+        Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+            .args([
+                "--socket",
+                socket_path.to_str().unwrap(),
+                "--script-socket",
+                script_path.to_str().unwrap(),
+                "--script-session-token",
+                capability,
+                "--frame-dir",
+                frame_dir.to_str().unwrap(),
+                "--gatekeeper-socket",
+                gatekeeper_path.to_str().unwrap(),
+            ])
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap()
+    };
+    let mut first_core = spawn_core(FIRST_CAPABILITY);
+    assert!(wait_for(&socket_path, Duration::from_secs(15)));
+    assert!(wait_for(&script_path, Duration::from_secs(15)));
+    let mut frontend = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
+    frontend
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    navigate_default_tab(&mut frontend, format!("http://{first_addr}"));
+    let first_dom = read_tab_dom(&mut frontend, 1, 1);
+    assert!(first_dom.contains("first"));
+
+    let mut script = connect_with_retry(&script_path, Duration::from_secs(5)).unwrap();
+    assert_eq!(
+        script_exchange(
+            &mut script,
+            ScriptRequest::Hello {
+                protocol_version: SCRIPT_PROTOCOL_VERSION,
+                session_token: FIRST_CAPABILITY.to_string(),
+            }
+        ),
+        ScriptReply::HelloAck {
+            protocol_version: SCRIPT_PROTOCOL_VERSION
+        }
+    );
+    let first_target = ScriptDocumentTarget {
+        tab_id: 1,
+        document_generation: 1,
+    };
+    let first_node = match script_exchange(
+        &mut script,
+        ScriptRequest::GetElementById {
+            target: first_target,
+            id: "label".to_string(),
+        },
+    ) {
+        ScriptReply::Node { node: Some(node) } => node,
+        reply => panic!("expected the first live label, got {reply:?}"),
+    };
+
+    blueice_ipc::write_client_message_with_ids(
+        &mut frontend,
+        None,
+        Some(20),
+        &blueice_ipc::ClientMessage::OpenTab { url: None },
+    )
+    .unwrap();
+    let second_tab = loop {
+        let (_, request_id, reply) =
+            blueice_ipc::read_server_message_with_ids(&mut frontend).unwrap();
+        if request_id == Some(20) {
+            let blueice_ipc::ServerMessage::TabOpened { tab_id, .. } = reply else {
+                panic!("expected a second tab, got {reply:?}");
+            };
+            break tab_id;
+        }
+        assert!(matches!(
+            reply,
+            blueice_ipc::ServerMessage::FrameReady { .. }
+        ));
+    };
+    assert_ne!(second_tab, 1);
+    let second_dom = read_tab_dom(&mut frontend, second_tab, 2);
+    assert!(matches!(
+        script_exchange(
+            &mut script,
+            ScriptRequest::SetTextContent {
+                target: ScriptDocumentTarget {
+                    tab_id: second_tab,
+                    document_generation: 0
+                },
+                node: first_node,
+                value: "CROSS_TAB_POISON".to_string(),
+            }
+        ),
+        ScriptReply::Error { .. }
+    ));
+    assert_eq!(read_tab_dom(&mut frontend, 1, 3), first_dom);
+    assert_eq!(read_tab_dom(&mut frontend, second_tab, 4), second_dom);
+
+    assert!(matches!(
+        script_exchange(
+            &mut script,
+            ScriptRequest::SetTextContent {
+                target: ScriptDocumentTarget {
+                    tab_id: 1,
+                    document_generation: 0
+                },
+                node: first_node,
+                value: "STALE_GENERATION_POISON".to_string(),
+            }
+        ),
+        ScriptReply::Error { .. }
+    ));
+    assert_eq!(read_tab_dom(&mut frontend, 1, 5), first_dom);
+    navigate_default_tab(&mut frontend, format!("http://{replacement_addr}"));
+    let replacement_dom = read_tab_dom(&mut frontend, 1, 6);
+    assert!(replacement_dom.contains("replacement"));
+    assert!(matches!(
+        script_exchange(
+            &mut script,
+            ScriptRequest::SetTextContent {
+                target: first_target,
+                node: first_node,
+                value: "OLD_DOCUMENT_POISON".to_string(),
+            }
+        ),
+        ScriptReply::Error { .. }
+    ));
+    assert!(matches!(
+        script_exchange(
+            &mut script,
+            ScriptRequest::CreateTextNode {
+                target: first_target,
+                data: "OLD_CREATE_POISON".to_string(),
+            }
+        ),
+        ScriptReply::Error { .. }
+    ));
+    assert_eq!(read_tab_dom(&mut frontend, 1, 7), replacement_dom);
+    assert_eq!(read_tab_dom(&mut frontend, second_tab, 8), second_dom);
+    drop(script);
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    assert!(first_core.wait().unwrap().success());
+    assert!(!script_path.exists());
+
+    let mut successor = spawn_core(SUCCESSOR_CAPABILITY);
+    assert!(wait_for(&script_path, Duration::from_secs(15)));
+    let mut successor_frontend = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
+    successor_frontend
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    blueice_ipc::client_handshake(&mut successor_frontend).unwrap();
+    navigate_default_tab(&mut successor_frontend, format!("http://{successor_addr}"));
+    let successor_dom = read_tab_dom(&mut successor_frontend, 1, 9);
+    assert!(successor_dom.contains("successor"));
+    let successor_target = ScriptDocumentTarget {
+        tab_id: 1,
+        document_generation: 1,
+    };
+    let mut current = connect_with_retry(&script_path, Duration::from_secs(5)).unwrap();
+    assert_eq!(
+        script_exchange(
+            &mut current,
+            ScriptRequest::Hello {
+                protocol_version: SCRIPT_PROTOCOL_VERSION,
+                session_token: SUCCESSOR_CAPABILITY.to_string(),
+            }
+        ),
+        ScriptReply::HelloAck {
+            protocol_version: SCRIPT_PROTOCOL_VERSION
+        }
+    );
+    let successor_node = match script_exchange(
+        &mut current,
+        ScriptRequest::GetElementById {
+            target: successor_target,
+            id: "label".to_string(),
+        },
+    ) {
+        ScriptReply::Node { node: Some(node) } => node,
+        reply => panic!("expected the successor label, got {reply:?}"),
+    };
+    drop(current);
+
+    let mut predecessor = connect_with_retry(&script_path, Duration::from_secs(5)).unwrap();
+    let mut queued = Vec::new();
+    blueice_ipc::script::write_script_request(
+        &mut queued,
+        &ScriptRequest::Hello {
+            protocol_version: SCRIPT_PROTOCOL_VERSION,
+            session_token: FIRST_CAPABILITY.to_string(),
+        },
+    )
+    .unwrap();
+    blueice_ipc::script::write_script_request(
+        &mut queued,
+        &ScriptRequest::SetTextContent {
+            target: successor_target,
+            node: successor_node,
+            value: "OLD_CORE_POISON".to_string(),
+        },
+    )
+    .unwrap();
+    predecessor.write_all(&queued).unwrap();
+    assert!(matches!(
+        blueice_ipc::script::read_script_reply(&mut predecessor).unwrap(),
+        ScriptReply::Error { .. }
+    ));
+    assert!(blueice_ipc::script::read_script_reply(&mut predecessor).is_err());
+    assert_eq!(read_tab_dom(&mut successor_frontend, 1, 10), successor_dom);
+
+    let mut current = connect_with_retry(&script_path, Duration::from_secs(5)).unwrap();
+    assert_eq!(
+        script_exchange(
+            &mut current,
+            ScriptRequest::Hello {
+                protocol_version: SCRIPT_PROTOCOL_VERSION,
+                session_token: SUCCESSOR_CAPABILITY.to_string(),
+            }
+        ),
+        ScriptReply::HelloAck {
+            protocol_version: SCRIPT_PROTOCOL_VERSION
+        }
+    );
+    assert_eq!(
+        script_exchange(
+            &mut current,
+            ScriptRequest::GetTextContent {
+                target: successor_target,
+                node: successor_node,
+            }
+        ),
+        ScriptReply::Text {
+            value: "successor".to_string()
+        }
+    );
+    assert_eq!(
+        script_exchange(
+            &mut current,
+            ScriptRequest::SetTextContent {
+                target: successor_target,
+                node: successor_node,
+                value: "authorized change".to_string(),
+            }
+        ),
+        ScriptReply::Ack
+    );
+    let changed = read_tab_dom(&mut successor_frontend, 1, 11);
+    assert_ne!(changed, successor_dom);
+    assert!(changed.contains("authorized change"));
+
+    blueice_ipc::write_client_message(
+        &mut successor_frontend,
+        &blueice_ipc::ClientMessage::Shutdown,
+    )
+    .unwrap();
+    assert!(successor.wait().unwrap().success());
+    assert!(!script_path.exists());
+    first_server.join().unwrap();
+    replacement_server.join().unwrap();
+    successor_server.join().unwrap();
 }
 
 #[test]
