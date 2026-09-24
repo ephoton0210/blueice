@@ -62,11 +62,13 @@ A scoped grant denies `about:` pages. An omitted scope retains the
 pre-existing all-origin grant for backward compatibility; `ui:inject` and
 `storage` do not gain an origin scope from this field.
 
-Only `declared` grants a capability today. `optional` and
-`runtime_ephemeral` are parsed, but **neither can be requested or exercised**:
-there is no user-consent or authenticated gesture flow yet. Do not interpret
-their presence as a grant. The host now retains optional declarations in an
-internal, process-lifetime registry with a live revocation transition, but
+Only `declared` grants a capability today. The core-spawned host negotiates
+compatible API versions for every manifest tier at startup, including
+`optional` and `runtime_ephemeral`, but **neither can be exercised**: there is
+no user-consent or authenticated gesture flow yet. Version negotiation is not
+permission. Do not interpret their presence or negotiation as a grant. The
+internal, process-lifetime registry retains optional declarations and has a
+live revocation transition, but
 no client, guest, or public core IPC path can invoke that transition. The
 shared launcher IPC accepts both human frontend
 and AI clients, so an ordinary client message or toolbar activation cannot by

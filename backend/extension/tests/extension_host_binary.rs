@@ -612,7 +612,13 @@ fn a_manifest_derived_identity_is_required_over_a_real_process_boundary() {
 
 #[test]
 fn core_connection_mode_authenticates_then_runs_a_navigation_event_reactor_over_real_ipc() {
-    let (root, manifest, extension_id) = manifest_package("core-connect");
+    let (root, manifest, _) = manifest_package("core-connect");
+    std::fs::write(
+        &manifest,
+        r#"{"name":"Binary test","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read"],"optional":["storage"],"runtime_ephemeral":["dom:write"]}}"#,
+    )
+    .unwrap();
+    let extension_id = load_installed_extension(&manifest).unwrap().extension_id().to_string();
     let socket = unique_socket_path("core-connect");
     let _ = std::fs::remove_file(&socket);
     let listener = UnixListener::bind(&socket).unwrap();
@@ -633,7 +639,11 @@ fn core_connection_mode_authenticates_then_runs_a_navigation_event_reactor_over_
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::HelloAuthenticated {
             extension_id,
-            capability_versions: BTreeMap::from([("dom:read".to_string(), 2)]),
+            capability_versions: BTreeMap::from([
+                ("dom:read".to_string(), 2),
+                ("dom:write".to_string(), 9),
+                ("storage".to_string(), 3),
+            ]),
             authentication: authentication.to_string(),
         }
     );

@@ -174,18 +174,17 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
         return Err("BLUEICE_EXTENSION_AUTH_TOKEN must not be empty".to_string());
     }
 
-    // A package declares only the APIs it needs. The one-shot Wasm ABI uses
-    // explicit tab reads (v2), every currently bounded DOM write (v8), and
-    // declarative rule registration/clearing (v3), committed navigation trace
-    // observation (v2), and durable storage with bounded key listing (v3).
-    // Negotiate the highest safe version per declared capability before guest
-    // code can invoke an import. Core remains free to reject an unsupported
-    // declaration without granting it any authority.
+    // Negotiate every installed declaration up front, including optional and
+    // runtime-ephemeral tiers, so a later authorized grant can take effect on
+    // this same connection. Negotiation is only API compatibility: core still
+    // denies every operation without a separate live capability grant.
     let capability_versions: BTreeMap<_, _> = installed
         .manifest()
         .capabilities()
         .declared()
         .iter()
+        .chain(installed.manifest().capabilities().optional().iter())
+        .chain(installed.manifest().capabilities().runtime_ephemeral().iter())
         .map(|capability| {
             let version = match capability.as_str() {
                 CAPABILITY_DOM_READ => 2,
