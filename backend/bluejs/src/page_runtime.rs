@@ -14,8 +14,8 @@
 use crate::{
     BlueJsAstNodeKind, BlueJsProgramDebugError, BlueJsProgramHandle, BlueJsProgramRegistry,
     BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, HeapError, HeapStats, HostFunction,
-    HostObject, HostObjectFactory, HostObjectFamily, HostObjectMethod, RuntimeError, Value, Vm,
-    VmConfig, VmDebuggerExecutionState,
+    HostObject, HostObjectFactory, HostObjectFamily, HostObjectMethod, HostObjectPairMethod,
+    RuntimeError, Value, Vm, VmConfig, VmDebuggerExecutionState,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -165,6 +165,19 @@ impl BlueJsHostBindingRegistrar<'_> {
     ) -> Result<(), RuntimeError> {
         self.vm
             .install_host_object_method(family, name, length, method)
+    }
+
+    /// Installs an exact two-wrapper method such as `appendChild` without
+    /// allowing arbitrary JavaScript objects into the host callback.
+    pub fn install_host_object_pair_method(
+        &mut self,
+        family: HostObjectFamily,
+        name: &str,
+        length: u32,
+        method: impl HostObjectPairMethod,
+    ) -> Result<(), RuntimeError> {
+        self.vm
+            .install_host_object_pair_method(family, name, length, method)
     }
 
     /// Installs a private wrapper getter/setter pair with exact receiver

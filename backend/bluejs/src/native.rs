@@ -192,6 +192,8 @@ pub(crate) enum NativeFunction {
     /// A callback invoked only after the receiver resolves to this family's
     /// VM-minted opaque wrapper.
     HostObjectMethod(u32),
+    /// An exact two-wrapper operation returning its original child wrapper.
+    HostObjectPairMethod(u32),
     Function,
     /// The intrinsic constructor reached through an async function's
     /// `constructor` property. It is deliberately not installed as a global.

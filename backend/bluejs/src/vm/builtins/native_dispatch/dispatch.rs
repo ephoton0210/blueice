@@ -74,6 +74,9 @@ impl Vm {
             NativeFunction::HostObjectMethod(index) => {
                 self.host_object_method_call(index, receiver, &args, construct)
             }
+            NativeFunction::HostObjectPairMethod(index) => {
+                self.host_object_pair_method_call(index, receiver, &args, construct)
+            }
             NativeFunction::Promise => self.promise_constructor(first.clone(), construct),
             NativeFunction::PromiseResolvingFunction {
                 promise,

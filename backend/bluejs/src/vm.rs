@@ -46,9 +46,12 @@ use completion::{
 };
 use debugger::DebuggerContinuation;
 pub use debugger::VmDebuggerExecutionState;
-pub use host_objects::{HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod};
+pub use host_objects::{
+    HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod, HostObjectPairMethod,
+};
 use host_objects::{
     HostObjectFactoryRegistration, HostObjectFamilyState, HostObjectMethodRegistration,
+    HostObjectPairMethodRegistration,
 };
 use std::fmt;
 
@@ -893,6 +896,7 @@ pub struct Vm {
     /// a Rust callback through the primitive-only HostValue ABI.
     host_object_factories: Vec<HostObjectFactoryRegistration>,
     host_object_methods: Vec<HostObjectMethodRegistration>,
+    host_object_pair_methods: Vec<HostObjectPairMethodRegistration>,
     host_object_families: Vec<HostObjectFamilyState>,
     global_bindings: HashMap<String, GlobalBinding>,
     /// The GlobalSymbolRegistry belongs to an ECMAScript agent, not to an

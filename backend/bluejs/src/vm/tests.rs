@@ -476,6 +476,73 @@ fn host_document_factory_and_node_accessor_verify_both_receivers() {
 }
 
 #[test]
+fn host_pair_method_requires_two_exact_minted_wrappers_and_returns_the_child() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::Number(id)] = args else {
+            return Err(HostFunctionError::new("a numeric fixture ID is required"));
+        };
+        let generation = if *id == 3.0 { 4 } else { 3 };
+        Ok(Some(HostObjectKey::new(7, generation, *id as u64)))
+    })
+    .unwrap();
+    let calls = Rc::new(RefCell::new(Vec::new()));
+    let recorded = Rc::clone(&calls);
+    vm.install_host_object_pair_method(
+        family,
+        "appendChild",
+        1,
+        move |parent: HostObjectKey, child: HostObjectKey| {
+            if !parent.matches_owner(7, 3) || !child.matches_owner(7, 3) {
+                return Err(HostFunctionError::new("cross-document child"));
+            }
+            recorded.borrow_mut().push((parent, child));
+            Ok(())
+        },
+    )
+    .unwrap();
+    let valid = crate::compile(
+        &crate::parse(
+            "let parent = findNode(1); let child = findNode(2); parent.appendChild(child) === child;",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(vm.execute_script(&valid).unwrap(), Value::Bool(true));
+    assert_eq!(
+        calls.borrow().as_slice(),
+        &[(HostObjectKey::new(7, 3, 1), HostObjectKey::new(7, 3, 2))]
+    );
+    let other_family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("otherNode", 0, other_family, |_args: &[HostValue]| {
+        Ok(Some(HostObjectKey::new(7, 3, 2)))
+    })
+    .unwrap();
+    for source in [
+        "parent.appendChild({});",
+        "parent.appendChild(Object.create(child));",
+        "parent.appendChild(otherNode());",
+        "parent.appendChild(findNode(3));",
+        "parent.appendChild();",
+        "parent.appendChild(child, child);",
+        "parent.appendChild.call({}, child);",
+        "parent.appendChild.call(Object.create(parent), child);",
+        "new parent.appendChild(child);",
+    ] {
+        let code = crate::compile(&crate::parse(source).unwrap()).unwrap();
+        assert!(
+            matches!(vm.execute_script(&code), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
+    }
+    assert_eq!(calls.borrow().len(), 1);
+}
+
+#[test]
 fn opaque_host_object_family_has_a_fixed_root_limit() {
     let mut vm = Vm::default();
     let family = vm.create_host_object_family().unwrap();

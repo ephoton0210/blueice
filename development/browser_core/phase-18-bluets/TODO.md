@@ -151,7 +151,12 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   document order, renders the changed text, rejects an invalid typed call,
   and rejects a removed wrapper.
 - [ ] Implement createElement, createTextNode, and appendChild; a real
-  page must render the new subtree and reject a cross-document child.
+  page must render the new subtree and reject a cross-document child. Partial:
+  BlueJS now has a realm-private two-wrapper method boundary for `appendChild`:
+  it rejects forged/foreign-family arguments, returns the original child only
+  after the host accepts both opaque keys, and leaves exact document/generation
+  and liveness validation to the child/core adapter. The owner-selected
+  creation/append installer, typings, and real-page test remain open.
 
 #### B3. Deliver a real click.
 

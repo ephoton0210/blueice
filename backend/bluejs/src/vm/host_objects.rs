@@ -93,6 +93,32 @@ where
     }
 }
 
+/// An operation on two exact wrappers from one realm-private family. The VM
+/// resolves both opaque keys before calling the embedder and returns the
+/// original child object only after the operation succeeds. No JS object ID
+/// or arbitrary object crosses the callback boundary. The embedder must still
+/// check that both keys name the same live owner/document generation.
+pub trait HostObjectPairMethod: 'static {
+    fn call(
+        &mut self,
+        parent: HostObjectKey,
+        child: HostObjectKey,
+    ) -> Result<(), HostFunctionError>;
+}
+
+impl<F> HostObjectPairMethod for F
+where
+    F: FnMut(HostObjectKey, HostObjectKey) -> Result<(), HostFunctionError> + 'static,
+{
+    fn call(
+        &mut self,
+        parent: HostObjectKey,
+        child: HostObjectKey,
+    ) -> Result<(), HostFunctionError> {
+        self(parent, child)
+    }
+}
+
 pub(super) struct HostObjectFamilyState {
     prototype: ObjectId,
     _prototype_root: RootId,
@@ -109,6 +135,11 @@ pub(super) struct HostObjectFactoryRegistration {
 pub(super) struct HostObjectMethodRegistration {
     family_index: u32,
     method: Box<dyn HostObjectMethod>,
+}
+
+pub(super) struct HostObjectPairMethodRegistration {
+    family_index: u32,
+    method: Box<dyn HostObjectPairMethod>,
 }
 
 impl Vm {
@@ -169,6 +200,47 @@ impl Vm {
             family_index: family.index,
             method: Box::new(method),
         });
+        Ok(())
+    }
+
+    /// Installs a one-child operation on the family's private prototype.
+    /// The receiver and sole argument must both be wrappers minted by this
+    /// exact family; the callback sees their private keys only.
+    pub fn install_host_object_pair_method(
+        &mut self,
+        family: HostObjectFamily,
+        name: &str,
+        length: u32,
+        method: impl HostObjectPairMethod,
+    ) -> Result<(), RuntimeError> {
+        if family.heap != self.object_prototype.heap || !host_property_name_is_valid(name) {
+            return Err(RuntimeError::TypeError(
+                "host-object family or method name is invalid".into(),
+            ));
+        }
+        let prototype = self
+            .host_object_families
+            .get(family.index as usize)
+            .ok_or_else(|| RuntimeError::TypeError("host-object family is unavailable".into()))?
+            .prototype;
+        if self.heap.get_own(prototype, name)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "host-object method is already defined".into(),
+            ));
+        }
+        let index = u32::try_from(self.host_object_pair_methods.len())
+            .map_err(|_| RuntimeError::RangeError("too many host-object pair methods".into()))?;
+        self.install_host_callable_native(
+            prototype,
+            name,
+            length,
+            NativeFunction::HostObjectPairMethod(index),
+        )?;
+        self.host_object_pair_methods
+            .push(HostObjectPairMethodRegistration {
+                family_index: family.index,
+                method: Box::new(method),
+            });
         Ok(())
     }
 
@@ -395,5 +467,43 @@ impl Vm {
             .into();
         self.check_string(&result)?;
         Ok(result)
+    }
+
+    pub(super) fn host_object_pair_method_call(
+        &mut self,
+        index: u32,
+        receiver: Value,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if construct || args.len() != 1 {
+            return Err(RuntimeError::TypeError(
+                "host-object pair method requires one child".into(),
+            ));
+        }
+        let registration = self
+            .host_object_pair_methods
+            .get(index as usize)
+            .ok_or_else(|| {
+                RuntimeError::TypeError("host-object pair method is unavailable".into())
+            })?;
+        let family = &self.host_object_families[registration.family_index as usize];
+        let parent = receiver
+            .object_id()
+            .and_then(|object| family.keys_by_wrapper.get(&object).copied())
+            .ok_or_else(|| RuntimeError::TypeError("invalid host-object receiver".into()))?;
+        let child_object = args[0]
+            .object_id()
+            .ok_or_else(|| RuntimeError::TypeError("invalid host-object child".into()))?;
+        let child = family
+            .keys_by_wrapper
+            .get(&child_object)
+            .copied()
+            .ok_or_else(|| RuntimeError::TypeError("invalid host-object child".into()))?;
+        self.host_object_pair_methods[index as usize]
+            .method
+            .call(parent, child)
+            .map_err(|error| RuntimeError::TypeError(error.to_string()))?;
+        Ok(Value::Object(child_object))
     }
 }

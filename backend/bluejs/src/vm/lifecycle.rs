@@ -101,6 +101,7 @@ impl Vm {
             host_functions: Vec::new(),
             host_object_factories: Vec::new(),
             host_object_methods: Vec::new(),
+            host_object_pair_methods: Vec::new(),
             host_object_families: Vec::new(),
             global_bindings: HashMap::new(),
             symbol_registry: Rc::new(RefCell::new(HashMap::new())),
