@@ -20,6 +20,7 @@ applies-at = 套用於工作流程步驟：
 trigger = 觸發時機：
 failure-behavior = 拒絕或無法審查時：
 review-order = 目前生效的審查順序：
+compiled-rules-at-step = 此步驟套用的內建規則：
 review-layer-compiled = 編譯內建確定性規則（必要）
 review-layer-hosts = 您封鎖的主機
 review-layer-html-phrases = 您封鎖的 HTML 文字詞條

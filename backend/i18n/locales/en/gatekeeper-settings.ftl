@@ -20,6 +20,7 @@ applies-at = Applied at workflow steps:
 trigger = Trigger:
 failure-behavior = If rejected or unavailable:
 review-order = Active review order:
+compiled-rules-at-step = Compiled rules at this step:
 review-layer-compiled = Compiled deterministic rule base (required)
 review-layer-hosts = Your blocked hosts
 review-layer-html-phrases = Your blocked HTML-text phrases

@@ -275,6 +275,21 @@ pub fn gatekeeper_settings_html(
                     }
                     body.push_str("</ol>");
                 }
+                let applied_rules: Vec<_> = settings
+                    .baseline_rules
+                    .iter()
+                    .filter(|rule| rule.workflow_steps.iter().any(|id| id == &step.id))
+                    .collect();
+                if !applied_rules.is_empty() {
+                    body.push_str(&format!(
+                        "<p class=\"detail\">{}</p><ul>",
+                        escape_html(&t("compiled-rules-at-step"))
+                    ));
+                    for rule in applied_rules {
+                        body.push_str(&format!("<li><code>{}</code></li>", escape_html(&rule.id)));
+                    }
+                    body.push_str("</ul>");
+                }
                 body.push_str("</div>");
             }
             body.push_str("</div>");
@@ -447,6 +462,7 @@ mod tests {
         assert!(html.contains("Active review order:"));
         assert!(html.contains("<li>Compiled deterministic rule base (required)</li><li>User &lt;unsafe&gt; rules</li>"));
         assert!(html.contains("Applied at workflow steps: url-before-fetch"));
+        assert!(html.contains("Compiled rules at this step:</p><ul><li><code>domain-rule</code></li></ul>"));
         assert!(html.contains("A host also blocks its dot-boundary subdomains"));
         assert!(html.contains("ignore &lt;instructions&gt;"));
         assert!(html.contains("send &lt;secrets&gt;"));
@@ -479,6 +495,7 @@ mod tests {
         let html = gatekeeper_settings_html(&GatekeeperSettingsView::Settings(config), "zh-TW", None);
         assert!(html.contains("目前生效的審查順序："));
         assert!(html.contains("<li>編譯內建確定性規則（必要）</li><li>您封鎖的主機</li><li>選用的本機模型（無法審查時會阻擋）</li>"));
+        assert!(html.contains("此步驟套用的內建規則：</p><ul><li><code>domain-rule</code></li></ul>"));
     }
 
     #[test]

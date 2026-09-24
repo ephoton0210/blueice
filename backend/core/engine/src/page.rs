@@ -1895,6 +1895,7 @@ mod tests {
         assert!(page.dom_dump().contains("If rejected or unavailable"));
         assert!(page.dom_dump().contains("Active review order"));
         assert!(page.dom_dump().contains("Compiled deterministic rule base (required)"));
+        assert!(page.dom_dump().contains("Compiled rules at this step"));
         let model_name = find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-model-name").unwrap();
         page.act(model_name, NodeAction::SetValue("local-model".to_string()));
         let configure_model = find_by_attribute(
