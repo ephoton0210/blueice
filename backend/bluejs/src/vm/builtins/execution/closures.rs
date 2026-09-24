@@ -423,9 +423,12 @@ impl Vm {
         self.home_object = home_object;
         self.class_field_initializer = class_field_initializer;
         self.stack.truncate(base - 1);
-        if let Some((state, awaited)) = suspended_async {
-            self.suspend_async_await(state, awaited)?;
-        }
+        // A failure to suspend takes the same route as a failure of the body:
+        // it ends the call (or rejects the async function's promise) below.
+        let result = match suspended_async {
+            Some((state, awaited)) => self.suspend_async_await(state, awaited).and(result),
+            None => result,
+        };
         let mut completion_check_failed = false;
         let result = result.and_then(|value| {
             if construct && !matches!(value, Value::Object(_)) {
@@ -529,5 +532,14 @@ mod tests {
             }))),
             "an ordinary async function has no entry suspend"
         );
+    }
+
+    #[test]
+    fn an_async_function_fails_its_first_await_when_continuation_ids_run_out() {
+        let mut vm = Vm::default();
+        vm.next_async_continuation = u64::MAX;
+        let code =
+            crate::compile(&crate::parse("(async function () { await 1; })()").unwrap()).unwrap();
+        assert_eq!(vm.execute(&code), Err(RuntimeError::InstructionLimit));
     }
 }

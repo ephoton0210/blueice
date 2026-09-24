@@ -10,7 +10,10 @@ mod cov_g2_sweep;
 
 use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm, VmConfig};
 use cov_g2_support::{expect_async_true, expect_true};
-use cov_g2_sweep::{sweep_cold_by, sweep_native, sweep_ops_by, sweep_string_limit, Mode};
+use cov_g2_sweep::{
+    sweep_cold_by, sweep_cold_true, sweep_jobs_after_ballast, sweep_native, sweep_ops_by,
+    sweep_string_limit, Mode,
+};
 use std::collections::HashMap;
 
 fn thrown(text: &str) -> Result<Value, RuntimeError> {
@@ -27,6 +30,8 @@ fn closing_a_flat_map_helper_closes_its_active_inner_iterator() {
          var it = [1].values().flatMap(() => inner);
          it.next();
          it.return();
+         var idle = [1].values().flatMap(() => inner);
+         idle.return();
          closed === 1",
     );
 }
@@ -90,7 +95,7 @@ fn an_uninitialized_or_missing_result_length_rejects_array_from_async() {
 #[test]
 fn set_intersection_with_a_smaller_set_like_reads_its_keys() {
     expect_true(
-        "var other = { size: 1, has(x) { return x === 1; }, keys() { return [1].values(); } };
+        "var other = { size: 1, has(x) { return x === 1; }, keys() { return [1, 9, 1].values(); } };
          var r = new Set([1, 2, 3]).intersection(other);
          r.size === 1 && r.has(1)",
     );
@@ -136,6 +141,8 @@ fn exhausts_the_budget(script: &str) {
 #[test]
 fn an_uncatchable_error_in_an_array_from_async_callback_ends_the_run() {
     exhausts_the_budget("Array.fromAsync([1], x => { for (;;) {} });");
+    exhausts_the_budget("Promise.try(() => { for (;;) {} });");
+    exhausts_the_budget("(async () => { await { get then() { for (;;) {} } }; })();");
     exhausts_the_budget("Array.fromAsync({ length: 1, 0: 1 }, x => { for (;;) {} });");
     exhausts_the_budget(
         "var Target = function () { return new Proxy({}, { defineProperty() { for (;;) {} } }); };
@@ -187,14 +194,14 @@ fn compare_array_stops_at_a_length_whose_conversion_throws() {
 #[test]
 fn test262_messages_that_outgrow_the_string_limit_fail_at_every_concatenation() {
     for script in [
-        "assert.throws(TypeError, function () { throw 1; }, 'mmm');",
-        "assert.compareArray([1], [2], 'mm');",
-        "assert.compareArray([1, 2, 3], [4, 5, 6], 'mm');",
-        "assert.compareArray(1, [], 'mm');",
-        "assert.compareArray([], 'a', 'mm');",
-        "assert.sameValue('ab', 'c', 'mm');",
-        "globalThis.JSON = undefined; assert.sameValue('ab', 'c', 'mm');",
-        "assert.sameValue(1n, 2n, 'mm');",
+        "assert.throws(TypeError, function () { throw 1; }, 'm'.repeat(40));",
+        "assert.compareArray(['a'.repeat(40)], ['b'.repeat(40)], 'm'.repeat(40));",
+        "assert.compareArray(['a'.repeat(20), 'b'.repeat(20)], [1], 'm'.repeat(40));",
+        "assert.compareArray('a'.repeat(40), [], 'm'.repeat(40));",
+        "assert.compareArray([], 'a'.repeat(40), 'm'.repeat(40));",
+        "assert.sameValue('a'.repeat(40), 'b'.repeat(40), 'm'.repeat(40));",
+        "globalThis.JSON = undefined; assert.sameValue('a'.repeat(40), 'b'.repeat(40));",
+        "assert.sameValue(1234567890123456789012345678901234567890n, 2n, 'm'.repeat(40));",
     ] {
         sweep_string_limit(Mode::HARNESS, script, 1, 1, |result| {
             matches!(result, Err(RuntimeError::Test262(_)))
@@ -214,12 +221,13 @@ fn a_test262_error_with_a_lone_surrogate_message_is_built_on_a_cold_heap() {
 
 #[test]
 fn case_mapping_stops_where_a_lone_surrogate_would_outgrow_the_string_limit() {
+    // The strings must outgrow the smallest limit the call itself needs.
     for script in [
         // The pending run maps to more than the whole input.
-        "'\\u00df\\u00df\\ud800'.toUpperCase()",
-        // The run fits; the surrogate after it does not.
-        "'\\u00df\\u0061\\ud800'.toUpperCase()",
-        "'\\u00df\\u0061\\ud800'.toLocaleUpperCase('en')",
+        "('\\u00df'.repeat(40) + '\\ud800').toLocaleUpperCase('en')",
+        // The run grows by one unit, exactly the surrogate's room: it fits,
+        // and the surrogate after it does not.
+        "('\\u00df' + 'a'.repeat(39) + '\\ud800').toLocaleUpperCase('en')",
     ] {
         sweep_string_limit(Mode::PLAIN, script, 1, 1, |result| {
             matches!(result, Ok(Value::String(_)))
@@ -236,18 +244,115 @@ fn is_true(result: &Result<Value, RuntimeError>) -> bool {
     *result == Ok(Value::Bool(true))
 }
 
+const OBJECT_PARAMETERS: &str = "a = {}, b = [], c = {}, d = [], e = {}, f = [], g = {}, h = []";
+
 #[test]
 fn allocations_after_a_user_hook_in_generators_and_async_functions() {
+    // A saved frame accounts for the objects its bindings reference, so
+    // parameters that default to fresh objects make its account wide enough
+    // for the ceiling to land inside it.
     sweep_ops_by(
         Mode::JOBS,
-        "(function* () {})(); (async function () { await 1; })(); (async function* () {})();",
-        "b(); var g = (function* (a, b, c, d, e) { yield a; })(1, 2, 3, 4, 5);
-         b(); var ag = (async function* (a, b, c, d, e) { yield a; })(1, 2, 3, 4, 5);
-         b(); var p1 = (async function (a, b, c) { await a; return b; })(1, 2, 3);
-         b(); var p2 = (async function () { await 1; await 2; })();
-         b(); var p3 = (async function () { for await (var x of [1]) {} })();
+        &format!(
+            "(function* ({OBJECT_PARAMETERS}) {{}})(); (async function ({OBJECT_PARAMETERS}) {{ await 1; }})();
+             (async function* ({OBJECT_PARAMETERS}) {{}})(); 0"
+        ),
+        &format!(
+            "b(); var g = (function* ({OBJECT_PARAMETERS}) {{ yield a; }})();
+             b(); var ag = (async function* ({OBJECT_PARAMETERS}) {{ yield a; }})();
+             b(); var p1 = (async function ({OBJECT_PARAMETERS}) {{ await a; return b; }})();
+             b(); var p2 = (async function ({OBJECT_PARAMETERS}) {{ await 1; await 2; }})();
+             b(); var p3 = (async function () {{ for await (var x of [1]) {{}} }})();
+             return true;"
+        ),
+        4,
+        is_true,
+    );
+}
+
+const ASYNC_ITERABLE: &str = "var iterable = { [Symbol.asyncIterator]() { return {
+    next() { return Promise.resolve({ value: 1, done: false }); }, return() { return {}; } }; } };";
+
+#[test]
+fn array_from_async_allocations_after_a_user_hook() {
+    sweep_ops_by(
+        Mode::JOBS,
+        &format!(
+            "{ASYNC_ITERABLE} var big = 'e'.repeat(1500); Array.fromAsync(5); Array.fromAsync(true);
+             Array.fromAsync(iterable, () => {{ throw big; }}); 0"
+        ),
+        &format!(
+            "{ASYNC_ITERABLE} var big = 'e'.repeat(1500);
+             b(); Array.fromAsync(5); b(); Array.fromAsync(true);
+             b(); Array.fromAsync(iterable, () => {{ b(); throw big; }});
+             return true;"
+        ),
+        16,
+        is_true,
+    );
+}
+
+#[test]
+fn promise_bookkeeping_allocations_after_a_user_hook() {
+    sweep_ops_by(
+        Mode::JOBS,
+        "var pr = Promise.resolve(1); var th = { then(r) { r(1); } };
+         Promise.resolve(1).finally(() => pr); Promise.reject(1).finally(() => pr).catch(() => {});
+         Promise.allSettled([th, pr, Promise.reject(th)]); 0",
+        "var pr = Promise.resolve(1);
+         var th = { then(r) { b(); r(1); } };
+         b(); Promise.resolve(1).finally(() => { b(); return pr; });
+         b(); Promise.reject(2).finally(() => { b(); return pr; }).catch(() => {});
+         b(); Promise.allSettled([th, pr, Promise.reject(th)]);
          return true;",
-        1,
+        4,
+        is_true,
+    );
+}
+
+#[test]
+fn a_pending_promise_returned_to_an_unstarted_async_generator_settles_the_request() {
+    expect_async_true(
+        "var resolveIt;
+         var pending = new Promise(r => { resolveIt = r; });
+         var g = (async function* () {})();
+         g.return(pending).then(r => { globalThis.result = r.value === 7 && r.done === true; });
+         resolveIt(7);",
+    );
+}
+
+#[test]
+fn a_top_level_await_builds_the_promise_intrinsics_on_a_cold_heap() {
+    sweep_cold_true(Mode::MODULE, "await 1; true", 16);
+}
+
+#[test]
+fn a_global_property_assignment_allocates_after_a_user_hook() {
+    sweep_ops_by(
+        Mode::JOBS,
+        "var gv = 'a'; globalThis.gv = 'b'.repeat(4); 0",
+        "b(); globalThis.gv = 'c'.repeat(64); b(); globalThis.gv = 'd'.repeat(80);
+         return true;",
+        8,
+        is_true,
+    );
+}
+
+#[test]
+fn a_foreign_realm_native_creating_an_array_allocates_after_a_user_hook() {
+    // A foreign Iterator method applied to this realm's iterator runs here, on
+    // behalf of the other realm, whose `%Array.prototype%` the collected array
+    // must inherit from: it is imported the first time it is needed.
+    sweep_ops_by(
+        Mode::HARNESS,
+        "var warm = $262.createRealm().evalScript('Iterator.prototype.toArray');
+         warm.call({ next() { return { done: true }; } }); 0",
+        "var toArray = $262.createRealm().evalScript('Iterator.prototype.toArray');
+         var finished = { done: true, value: undefined }, item = { done: false, value: 1 };
+         var calls = 0;
+         var collected = toArray.call({ next() { if (++calls < 2) return item; bb(); return finished; } });
+         return collected.length === 1;",
+        4,
         is_true,
     );
 }
@@ -263,7 +368,83 @@ fn allocations_while_assigning_to_primitives_globals_and_classes() {
          b(); class C2 extends C1 {}
          b(); var o1 = { ...'abc' }; b(); var { a, ...rest } = 'xyz';
          return true;",
-        1,
+        4,
         is_true,
+    );
+}
+
+#[test]
+fn set_intersection_allocates_after_a_user_hook() {
+    // A large receiver and a small set-like: the set-like's keys are read.
+    // Its iterator reuses one result object, so nothing but the ballast and
+    // the intersection's own entry is allocated between the hook and `add`.
+    sweep_ops_by(
+        Mode::PLAIN,
+        "var big = new Set([1, 2, 3]); var reused = { value: 0, done: false };
+         var like = { size: 1, has() { return true; }, keys() { var i = 0;
+             return { next() { reused.done = i >= 3; reused.value = ++i; return reused; } }; } };
+         big.intersection(like); 0",
+        "var reused = { value: 0, done: false };
+         var like = { size: 1, has() { return true; }, keys() { var i = 0;
+             return { next() { if (i === 0) bb(); reused.done = i >= 3; reused.value = ++i; return reused; } }; } };
+         var r = new Set([1, 2, 3]).intersection(like);
+         return r.size === 3;",
+        4,
+        is_true,
+    );
+}
+
+#[test]
+fn promise_finally_thunk_state_allocates_after_a_user_hook() {
+    for body in [
+        "Promise.resolve(1).finally(() => { bb(); return pr; });",
+        "Promise.reject(1).finally(() => { bb(); return pr; }).catch(() => {});",
+    ] {
+        sweep_ops_by(
+            Mode::JOBS,
+            "var pr = Promise.resolve(1);
+             Promise.resolve(1).finally(() => pr); Promise.reject(1).finally(() => pr).catch(() => {}); 0",
+            &format!("var pr = Promise.resolve(1); {body} return true;"),
+            8,
+            is_true,
+        );
+    }
+}
+
+#[test]
+fn promise_settlement_records_allocate_once_the_heap_is_nearly_full() {
+    for settle in ["resolveP(1)", "rejectP(1)"] {
+        sweep_jobs_after_ballast(
+            "var resolveP, rejectP; new Promise((res, rej) => { resolveP = res; rejectP = rej; });
+             Promise.allSettled([new Promise(() => {})]); 0",
+            &format!(
+                "var resolveP, rejectP;
+                 var p = new Promise((res, rej) => {{ resolveP = res; rejectP = rej; }});
+                 Promise.allSettled([p, p]); {settle};"
+            ),
+            4,
+        );
+    }
+}
+
+#[test]
+fn a_saved_async_frame_allocates_after_a_user_hook() {
+    sweep_ops_by(
+        Mode::JOBS,
+        &format!("(async function ({OBJECT_PARAMETERS}) {{ await 1; }})(); 0"),
+        "(async function (a = (bb(), {}), b = {}, c = [], d = {}) { await 1; })();
+         (async function (a = (bb(), {}), b = {}, c = [], d = {}) { for await (var x of [1]) {} })();
+         return true;",
+        8,
+        is_true,
+    );
+}
+
+#[test]
+fn a_super_property_assignment_propagates_a_throwing_setter() {
+    expect_true(
+        "class Base { set x(v) { throw 'setter'; } }
+         class Derived extends Base { assign() { super.x = 1; } }
+         try { new Derived().assign(); false } catch (e) { e === 'setter' }",
     );
 }

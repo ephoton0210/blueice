@@ -385,5 +385,22 @@ mod tests {
             vm.set_algebra_method(SetMethod::IsDisjointFrom, set, &other),
             Ok(Value::Bool(true))
         );
+        for method in [
+            SetMethod::Union,
+            SetMethod::Intersection,
+            SetMethod::Difference,
+            SetMethod::SymmetricDifference,
+            SetMethod::IsSubsetOf,
+            SetMethod::IsSupersetOf,
+            SetMethod::IsDisjointFrom,
+        ] {
+            assert!(vm.set_algebra_method(method, set, &other).is_ok());
+            // A set-like operand that is not an object fails before any work.
+            assert_eq!(
+                vm.set_algebra_method(method, set, &Value::Undefined)
+                    .is_err(),
+                true
+            );
+        }
     }
 }

@@ -166,9 +166,9 @@ impl Vm {
         }
         self.materialize_global_object_property(target, key)?;
         if let Some(cell) = self.global_property_cell(target, key) {
-            return self
+            return Ok(self
                 .record_get(cell, "value")
-                .ok_or_else(|| RuntimeError::ReferenceError("global binding".into()));
+                .expect("a global property cell always holds its value"));
         }
         self.materialize_string_intrinsics_for_key(key)?;
         if key == "propertyIsEnumerable" {
@@ -494,7 +494,10 @@ impl Vm {
         self.heap
             .set_prototype(prototype, instance_parent)
             .expect("a fresh class prototype cannot form a prototype cycle");
-        self.with_roots(|heap| heap.set_closure_home(class, prototype))?;
+        // SetClassHome already gave the class its closure metadata, so this
+        // second write allocates nothing and only an invalid handle fails.
+        self.with_roots(|heap| heap.set_closure_home(class, prototype))
+            .expect("the class closure already has metadata");
         Ok(())
     }
 
@@ -552,7 +555,10 @@ impl Vm {
             .object_id()
             .expect("class constructors have a prototype object");
         self.with_roots(|heap| heap.set_closure_home(initializer, prototype))?;
-        self.with_roots(|heap| heap.set_class_fields(class, initializer))?;
+        // The class closure's metadata was made by SetClassHome, so storing
+        // its `[[Fields]]` allocates nothing and only an invalid handle fails.
+        self.with_roots(|heap| heap.set_class_fields(class, initializer))
+            .expect("the class closure already has metadata");
         self.stack.pop();
         Ok(())
     }
@@ -905,6 +911,33 @@ impl Vm {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_private_reference_resolves_to_its_bound_owner_object() {
+        let mut vm = Vm::default();
+        let owner = vm.with_roots(|heap| heap.alloc_object(None)).unwrap();
+        vm.bindings = vec![Some(Value::Object(owner))];
+        vm.stack
+            .extend([Value::Number(3.0), Value::String("#x".into())]);
+        assert_eq!(
+            vm.private_reference(0),
+            Ok((Value::Number(3.0), owner, JsString::from("#x")))
+        );
+    }
+
+    #[test]
+    fn a_private_reference_needs_a_bound_owner_object() {
+        let mut vm = Vm::default();
+        vm.bindings = vec![None];
+        vm.stack
+            .extend([Value::Undefined, Value::String("#x".into())]);
+        assert_eq!(
+            vm.private_reference(0),
+            Err(RuntimeError::TypeError(
+                "private elements are not available in this function".into()
+            ))
+        );
+    }
 
     #[test]
     fn a_private_owner_binding_must_hold_an_object() {

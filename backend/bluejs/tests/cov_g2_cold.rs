@@ -31,7 +31,7 @@ fn cold_property_lookups_on_primitives_and_plain_objects() {
         "globalThis.Array !== undefined",
         "(globalThis.Array = 1, globalThis.Array === 1)",
     ] {
-        sweep_cold_true(Mode::PLAIN, script, 8);
+        sweep_cold_true(Mode::PLAIN, script, 16);
     }
 }
 
@@ -42,7 +42,7 @@ fn cold_error_and_iterator_intrinsics() {
         "''[Symbol.iterator]().next().done === true",
         "(() => { try { Reflect.construct(Object, [], new Proxy(function () {}, { get(t, k) { if (k === 'prototype') throw 1; return t[k]; } })); } catch (e) { return e === 1; } })()",
     ] {
-        sweep_cold_true(Mode::PLAIN, script, 8);
+        sweep_cold_true(Mode::PLAIN, script, 16);
     }
     for script in [
         "(async function () {})() instanceof Promise",
@@ -51,6 +51,6 @@ fn cold_error_and_iterator_intrinsics() {
         "Promise.resolve(1).finally(() => {}) instanceof Promise",
         "Promise.resolve(1).then(x => x) instanceof Promise",
     ] {
-        sweep_cold_true(Mode::JOBS, script, 8);
+        sweep_cold_true(Mode::JOBS, script, 16);
     }
 }

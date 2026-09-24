@@ -234,7 +234,9 @@ pub fn sweep_budget(mode: Mode, script: &str, expected: Value) {
 
 /// [`sweep_heap`] for a script that is expected to end in an error (or any
 /// non-`true` value): `accepted` judges the result of every run that is not
-/// cut short by the heap ceiling. `step` is in bytes.
+/// cut short by the heap ceiling. `step` is in bytes. The ceiling is not held
+/// up by the default collection threshold (see [`low_heap_config`]), so an
+/// allocation fails exactly when the *live* data no longer leaves it room.
 pub fn sweep_heap_by(
     mode: Mode,
     warmup: &str,
@@ -243,7 +245,7 @@ pub fn sweep_heap_by(
     accepted: impl Fn(&Result<Value, RuntimeError>) -> bool,
 ) {
     let succeeds = |limit: usize, with_script: bool| {
-        new_vm(heap_config(limit), mode).is_some_and(|mut vm| {
+        new_vm(low_heap_config(limit), mode).is_some_and(|mut vm| {
             run(&mut vm, warmup, mode).is_ok()
                 && (!with_script || !is_heap_limit(&run(&mut vm, script, mode)))
         })
@@ -251,7 +253,7 @@ pub fn sweep_heap_by(
     let floor = smallest(4096, |limit| succeeds(limit, false));
     let ceiling = smallest(floor, |limit| succeeds(limit, true));
     for limit in (floor..=ceiling).step_by(step) {
-        let Some(mut vm) = new_vm(heap_config(limit), mode) else {
+        let Some(mut vm) = new_vm(low_heap_config(limit), mode) else {
             continue;
         };
         if run(&mut vm, warmup, mode).is_err() {
@@ -266,6 +268,11 @@ pub fn sweep_heap_by(
 }
 
 /// [`sweep_heap_by`] over `body`, with the `b()` ballast helper installed.
+/// Unlike [`sweep_ops`], `b()` builds nothing (it stores a string made once
+/// during the warm-up), so the ballast leaves no transient garbage that would
+/// mask the allocation right after it. `bb()` stores twelve pieces at once:
+/// a run's earlier phases can have held more live data than a late job does,
+/// and only a new peak of live data can be the first thing to fail.
 pub fn sweep_ops_by(
     mode: Mode,
     warmup: &str,
@@ -275,7 +282,9 @@ pub fn sweep_ops_by(
 ) {
     let warmup = format!(
         "{warmup}; globalThis.keep = [];
-         globalThis.b = function () {{ keep.push('x'.repeat(800) + keep.length); }};
+         globalThis.piece = 'x'.repeat(800);
+         globalThis.b = function () {{ keep.push(piece); }};
+         globalThis.bb = function () {{ for (var i = 0; i < 12; i++) keep.push(piece); }};
          keep.push('y'.repeat(20000)); 0"
     );
     sweep_heap_by(
@@ -346,4 +355,75 @@ pub fn sweep_cold_true(mode: Mode, script: &str, step: usize) {
     sweep_cold_by(mode, script, step, |result| {
         *result == Ok(Value::Bool(true))
     });
+}
+
+/// What one run of [`sweep_jobs_after_ballast`] came to.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum JobsOutcome {
+    /// Everything completed.
+    Done,
+    /// The ceiling was reached while the promise jobs ran.
+    JobsFailed,
+    /// The ballast alone already reached the ceiling.
+    BallastFailed,
+}
+
+/// Runs `script` (which leaves promise jobs pending), then fills the heap with
+/// ballast, then runs the promise jobs. The script's own transient allocations
+/// are behind it by then, so an allocation made by a job fails as soon as the
+/// live data no longer leaves it room: the sweep is over how much ballast is
+/// added (`step` two-byte units at a time), from the largest amount under
+/// which every job still completes up to the amount that fills the heap on
+/// its own. Every job must complete or hit the ceiling.
+pub fn sweep_jobs_after_ballast(warmup: &str, script: &str, step: usize) {
+    let mode = Mode::PLAIN;
+    let prelude = "globalThis.keep = []; globalThis.piece = 'x'.repeat(800); 0";
+    let sync_succeeds = |limit: usize| {
+        new_vm(low_heap_config(limit), mode).is_some_and(|mut vm| {
+            [prelude, warmup, script].iter().all(|source| {
+                vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+                    .is_ok()
+            })
+        })
+    };
+    let floor = smallest(4096, sync_succeeds);
+    let ceiling = floor + 96 * 1024;
+    let attempt = |units: usize| {
+        let mut vm = new_vm(low_heap_config(ceiling), mode).expect("the ceiling has room to start");
+        for source in [prelude, warmup, script] {
+            let result = vm.execute_script(&compile(&parse(source).unwrap()).unwrap());
+            assert!(result.is_ok(), "{source}: {result:?}");
+        }
+        let ballast = format!(
+            "for (var i = 0; i < {}; i++) keep.push(piece); keep.push(piece.slice(0, {})); 0",
+            units / 800,
+            units % 800
+        );
+        let filled = vm.execute_script(&compile(&parse(&ballast).unwrap()).unwrap());
+        if is_heap_limit(&filled) {
+            return JobsOutcome::BallastFailed;
+        }
+        assert!(filled.is_ok(), "{ballast}: {filled:?}");
+        match vm.run_promise_jobs() {
+            Ok(()) => JobsOutcome::Done,
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => JobsOutcome::JobsFailed,
+            Err(error) => panic!("{script}: {error:?}"),
+        }
+    };
+    // The largest ballast under which the jobs complete.
+    let mut low = 0;
+    let mut high = ceiling / 2;
+    assert_eq!(attempt(low), JobsOutcome::Done, "{script}");
+    while low + 1 < high {
+        let middle = low + (high - low) / 2;
+        if attempt(middle) == JobsOutcome::Done {
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+    let mut units = low + 1;
+    while attempt(units) != JobsOutcome::BallastFailed {
+        units += step;
+    }
 }

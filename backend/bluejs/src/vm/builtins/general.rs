@@ -11,7 +11,10 @@ impl Vm {
 
     pub fn install_test262_done(&mut self) -> Result<(), RuntimeError> {
         let global = self.global("globalThis")?.object_id().unwrap();
-        let prototype = self.function_prototype()?;
+        // `global` builds the string intrinsics before anything else.
+        let prototype = self
+            .function_prototype()
+            .expect("the string intrinsics exist once a global was looked up");
         self.install_native(global, prototype, "$DONE", 1, NativeFunction::Test262Done)
     }
 

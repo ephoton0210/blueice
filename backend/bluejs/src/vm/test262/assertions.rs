@@ -77,7 +77,9 @@ impl Vm {
     }
 
     fn test262_error_object(&mut self, message: &Value) -> Result<Value, RuntimeError> {
-        let constructor = self.error_global("Test262Error")?;
+        let constructor = self
+            .error_global("Test262Error")
+            .expect("installing the harness builds Test262Error");
         let error = self.call_native(constructor, Value::Undefined, vec![], false)?;
         let object = error.object_id().expect("Test262Error builds an object");
         self.stack.push(error.clone());

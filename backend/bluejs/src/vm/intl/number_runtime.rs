@@ -541,6 +541,16 @@ mod tests {
         // The bound `format` function always carries its branded NumberFormat,
         // so a foreign receiver can only come from a direct native call.
         let mut vm = Vm::default();
+        let format = vm
+            .execute(
+                &crate::compile(&crate::parse("new Intl.NumberFormat('en')").unwrap()).unwrap(),
+            )
+            .unwrap();
+        vm.stack.push(format.clone());
+        assert_eq!(
+            vm.number_format_format(&format, &Value::Number(1234.5)),
+            Ok(Value::String("1,234.5".into()))
+        );
         assert_eq!(
             vm.number_format_format(&Value::Undefined, &Value::Number(1.0)),
             Err(RuntimeError::TypeError(

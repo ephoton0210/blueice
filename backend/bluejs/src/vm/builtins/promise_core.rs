@@ -925,13 +925,52 @@ mod tests {
             vm.settle_promise(object, PromiseStatus::Fulfilled(Value::Undefined)),
             invalid
         );
-        let target = vm.new_promise().unwrap();
-        let _ = target;
         assert_eq!(
             vm.promise_then(&Value::Object(object), &[]),
             Err(RuntimeError::TypeError(
                 "Promise.prototype.then receiver".into()
             ))
         );
+    }
+
+    #[test]
+    fn promise_then_returns_a_new_promise_for_a_known_promise() {
+        let mut vm = Vm::default();
+        let promise = vm.new_promise().unwrap();
+        let derived = vm.promise_then(&Value::Object(promise), &[]).unwrap();
+        assert!(vm.promises.contains_key(&derived.object_id().unwrap()));
+    }
+
+    #[test]
+    fn settling_a_promise_queues_a_job_for_every_kind_of_reaction() {
+        for status in [
+            PromiseStatus::Fulfilled(Value::Number(1.0)),
+            PromiseStatus::Rejected(Value::Number(2.0)),
+        ] {
+            let mut vm = Vm::default();
+            let promise = vm.new_promise().unwrap();
+            let other = ObjectId { heap: 0, serial: 0 };
+            vm.promises.get_mut(&promise).unwrap().reactions.extend([
+                PromiseReaction::Then(PromiseThenReaction {
+                    target: ReactionTarget::Native(other),
+                    on_fulfilled: Value::Undefined,
+                    on_rejected: Value::Undefined,
+                }),
+                PromiseReaction::ModuleAwait { continuation: 1 },
+                PromiseReaction::AsyncAwait { continuation: 2 },
+                PromiseReaction::AsyncGeneratorYield {
+                    generator: other,
+                    target: other,
+                    result: other,
+                },
+                PromiseReaction::AsyncGeneratorDelegate {
+                    generator: other,
+                    target: other,
+                    kind: AsyncGeneratorDelegateKind::Return,
+                },
+            ]);
+            vm.settle_promise(promise, status).unwrap();
+            assert_eq!(vm.promise_jobs.len(), 5);
+        }
     }
 }

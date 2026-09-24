@@ -749,4 +749,32 @@ mod tests {
         // The iterator stops at the first byte it cannot decode.
         assert_eq!(bytecode.instructions().count(), 1);
     }
+
+    #[test]
+    fn an_empty_program_exposes_no_metadata() {
+        let bytecode = Bytecode::empty();
+        assert_eq!(bytecode.bytes(), &[] as &[u8]);
+        assert!(bytecode.constants().is_empty());
+        assert!(bytecode.root_statement_offsets().is_empty());
+        assert_eq!(bytecode.child_code_units().count(), 0);
+    }
+
+    #[test]
+    fn opcode_metadata_reports_width_and_inline_cache_use() {
+        assert_eq!((Opcode::Pop.width(), Opcode::Pop.flags()), (1, 0));
+        assert_eq!(Opcode::Constant.width(), 5);
+        assert_eq!(Opcode::GetProperty.flags(), MAY_USE_INLINE_CACHE);
+    }
+
+    #[test]
+    fn exactly_the_assigned_opcode_bytes_decode() {
+        let decoded = (0..=u8::MAX).filter_map(Opcode::decode).collect::<Vec<_>>();
+        // Bytes are assigned to opcodes densely from zero, in table order.
+        assert_eq!(decoded.first(), Some(&Opcode::Constant));
+        assert!(decoded
+            .iter()
+            .enumerate()
+            .all(|(index, opcode)| *opcode as usize == index));
+        assert!(Opcode::decode(decoded.len() as u8).is_none());
+    }
 }

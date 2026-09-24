@@ -156,9 +156,11 @@ impl Vm {
                 self.settle_tracked_promise(target, PromiseStatus::Rejected(first.clone()));
                 Ok(Value::Undefined)
             }
-            NativeFunction::AbstractModuleSource => Err(RuntimeError::TypeError(
-                "AbstractModuleSource is an abstract constructor".into(),
-            )),
+            NativeFunction::AbstractModuleSource | NativeFunction::ShadowRealmWrappedFunction => {
+                Err(RuntimeError::TypeError(
+                    bare_native_message(function).into(),
+                ))
+            }
             NativeFunction::AbstractModuleSourceToStringTag => Ok(Value::Undefined),
             NativeFunction::Function => self.function_constructor(&args),
             NativeFunction::AsyncFunction => self.async_function_constructor(&args),
@@ -1011,12 +1013,6 @@ impl Vm {
                 let second = native::argument(&args, 1);
                 self.shadow_realm_import_value(receiver, first.clone(), second.clone())
             }
-            // Never reached: `dispatch_call` routes any callee registered
-            // in `shadow_wrapped_functions` to `shadow_call_wrapped` before
-            // a callee is ever reduced to this bare `NativeFunction` tag.
-            NativeFunction::ShadowRealmWrappedFunction => Err(RuntimeError::TypeError(
-                "ShadowRealm wrapped function called without its membrane record".into(),
-            )),
             NativeFunction::WeakCollectionMethod { map, method } => {
                 self.weak_collection_method(map, method, &receiver, &args)
             }
@@ -1091,7 +1087,9 @@ impl Vm {
                             ..
                         }))
                     )
-                    && self.array_push_is_unobservable(object, args.len())?;
+                    && self
+                        .array_push_is_unobservable(object, args.len())
+                        .expect(Self::LIVE_OBJECT);
                 if direct {
                     let array = Value::Object(object);
                     self.stack.push(array.clone());
@@ -1788,11 +1786,10 @@ impl Vm {
                     ));
                 }
                 if matches!(first, Value::Undefined | Value::Null) {
-                    let proto = if construct {
-                        self.constructor_prototype(self.object_prototype)?
-                    } else {
-                        self.object_prototype
-                    };
+                    // A distinct NewTarget was handled above, so a
+                    // construction that gets here is `new Object()` and its
+                    // prototype is `%Object.prototype%` itself.
+                    let proto = self.object_prototype;
                     return Ok(Value::Object(
                         self.with_roots(|heap| heap.alloc_object(Some(proto)))?,
                     ));
@@ -1935,9 +1932,34 @@ impl Vm {
     }
 }
 
+/// The TypeError text for a native function that can never do its work when
+/// called: `AbstractModuleSource` is abstract, and the bare
+/// `ShadowRealmWrappedFunction` tag is only ever reached without its membrane
+/// record, because `dispatch_call` routes every callee registered in
+/// `shadow_wrapped_functions` to `shadow_call_wrapped` before a callee is
+/// reduced to that tag.
+fn bare_native_message(function: NativeFunction) -> &'static str {
+    match function {
+        NativeFunction::AbstractModuleSource => "AbstractModuleSource is an abstract constructor",
+        _ => "ShadowRealm wrapped function called without its membrane record",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_uncallable_native_names_what_is_missing() {
+        assert_eq!(
+            bare_native_message(NativeFunction::AbstractModuleSource),
+            "AbstractModuleSource is an abstract constructor"
+        );
+        assert_eq!(
+            bare_native_message(NativeFunction::ShadowRealmWrappedFunction),
+            "ShadowRealm wrapped function called without its membrane record"
+        );
+    }
 
     #[test]
     fn a_shadow_realm_wrapper_without_its_membrane_record_is_rejected() {
