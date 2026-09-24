@@ -200,6 +200,13 @@ pub enum ExtensionPageRequest {
         path_prefix: String,
         reply: mpsc::Sender<Result<(), String>>,
     },
+    /// Adds one exact same-origin navigation rewrite after core validation.
+    RegisterNetworkRedirectUrl {
+        connection_id: u64,
+        source_url: String,
+        target_url: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
     /// Clears the rule set when the associated extension socket disconnects.
     /// The acknowledgement makes disconnect cleanup ordered with respect to
     /// subsequent frontend navigation work on this session thread.
@@ -1552,6 +1559,16 @@ fn handle_extension_page_request<S: Write>(
         } => {
             let _ = reply.send(tabs.add_extension_navigation_block_path_prefix_rule(
                 connection_id, host, path_prefix,
+            ));
+        }
+        ExtensionPageRequest::RegisterNetworkRedirectUrl {
+            connection_id,
+            source_url,
+            target_url,
+            reply,
+        } => {
+            let _ = reply.send(tabs.add_extension_navigation_redirect_rule(
+                connection_id, source_url, target_url,
             ));
         }
         ExtensionPageRequest::ClearNetworkBlockUrls {

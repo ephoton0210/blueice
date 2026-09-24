@@ -382,11 +382,11 @@ impl ExtensionRegistry {
         let mut registry = Self::new();
         let v1_to_v2 = CapabilityVersionWindow::new(1, 2).expect("literal version window is valid");
         let v1_to_v3 = CapabilityVersionWindow::new(1, 3).expect("literal version window is valid");
-        let v1_to_v5 = CapabilityVersionWindow::new(1, 5).expect("literal version window is valid");
+        let v1_to_v6 = CapabilityVersionWindow::new(1, 6).expect("literal version window is valid");
         let v1_to_v9 = CapabilityVersionWindow::new(1, 9).expect("literal version window is valid");
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v9);
-        registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v5);
+        registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v6);
         registry.register_capability_version_window(CAPABILITY_NETWORK_OBSERVE, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_UI_INJECT, v1_to_v3);
         registry.register_capability_version_window(CAPABILITY_STORAGE, v1_to_v3);
@@ -682,6 +682,7 @@ pub struct ExtensionActionDelegates<R, W, N, B, C> {
     register_network_block_url: B,
     register_network_block_host: Box<dyn FnMut(String) -> Result<(), String> + Send>,
     register_network_block_path_prefix: Box<dyn FnMut(String, String) -> Result<(), String> + Send>,
+    register_network_redirect_url: Box<dyn FnMut(String, String) -> Result<(), String> + Send>,
     clear_network_block_urls: C,
     observe_network: Box<dyn FnMut(u64) -> Result<Option<NetworkResponseInfo>, String> + Send>,
     observe_network_trace: Box<dyn FnMut(u64) -> Result<Option<NetworkTraceInfo>, String> + Send>,
@@ -714,6 +715,9 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
             }),
             register_network_block_path_prefix: Box::new(|_, _| {
                 Err("network:intercept v5 needs a core-backed path-prefix rule store".to_string())
+            }),
+            register_network_redirect_url: Box::new(|_, _| {
+                Err("network:intercept v6 needs a core-backed redirect rule store".to_string())
             }),
             clear_network_block_urls,
             observe_network: Box::new(|_| {
@@ -784,6 +788,15 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
         blocker: impl FnMut(String, String) -> Result<(), String> + Send + 'static,
     ) -> Self {
         self.register_network_block_path_prefix = Box::new(blocker);
+        self
+    }
+
+    /// Binds v6 exact same-origin navigation rewrites to core's rule store.
+    pub fn with_network_redirect_url(
+        mut self,
+        redirector: impl FnMut(String, String) -> Result<(), String> + Send + 'static,
+    ) -> Self {
+        self.register_network_redirect_url = Box::new(redirector);
         self
     }
 
@@ -995,6 +1008,7 @@ where
         mut register_network_block_url,
         mut register_network_block_host,
         mut register_network_block_path_prefix,
+        mut register_network_redirect_url,
         mut clear_network_block_urls,
         mut observe_network,
         mut observe_network_trace,
@@ -2179,6 +2193,54 @@ where
                     }
                 }
             }
+            ExtensionRequest::RegisterNetworkRedirectUrl { source_url, target_url } => {
+                if let Some(reason) = capability_denial_reason(
+                    registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 6,
+                ) {
+                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
+                    })?;
+                    continue;
+                }
+                if source_url.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_URL_BYTES
+                    || target_url.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_URL_BYTES
+                {
+                    write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                        reason: "navigation redirect URLs exceed the protocol bound".to_string(),
+                    })?;
+                    continue;
+                }
+                // Only a fixed action label reaches the reviewer. Core later
+                // validates both exact URLs and their shared origin; every
+                // actual target still receives normal CheckUrl review.
+                match check_extension_action(
+                    gatekeeper_socket,
+                    &identity.extension_id,
+                    CAPABILITY_NETWORK_INTERCEPT,
+                    "action=register-same-origin-navigation-redirect".to_string(),
+                ) {
+                    Ok(GatekeeperReply::Cleared) => {
+                        match register_network_redirect_url(source_url, target_url) {
+                            Ok(()) => write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?,
+                            Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
+                            })?,
+                        }
+                    }
+                    Ok(GatekeeperReply::Rejected { reason, category }) => {
+                        write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason, category,
+                        })?;
+                    }
+                    Err(reason) => {
+                        write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
+                            category: "gatekeeper-unavailable".to_string(),
+                        })?;
+                    }
+                }
+            }
             ExtensionRequest::ClearNetworkBlockUrls => {
                 if let Some(reason) =
                     capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 3)
@@ -2193,9 +2255,9 @@ where
                     continue;
                 }
                 // A connection may only clear its own opaque rule bucket.
-                // Reducing its own declarative policy has no URL/body/header
-                // payload and creates no new privileged network effect, so
-                // ordinary capability/version enforcement is sufficient.
+                // This carries no URL/body/header payload; any later
+                // navigation, including one no longer rewritten, still
+                // receives the ordinary mandatory URL/content reviews.
                 match clear_network_block_urls() {
                     Ok(()) => write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?,
                     Err(reason) => write_extension_reply(
@@ -4829,6 +4891,77 @@ mod tests {
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, reason }
                 if capability == CAPABILITY_NETWORK_INTERCEPT && reason.contains("requires version 5")));
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn v6_same_origin_redirect_is_reviewed_with_fixed_metadata_before_core() {
+        let registry = registry_with_network_intercept_granted();
+        let (gatekeeper_socket, gatekeeper) =
+            start_gatekeeper("clear-navigation-redirect", GatekeeperReply::Cleared);
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = gatekeeper_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry, &socket_for_handler, &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    |_| Ok("unused".into()), unused_write_delegate, || Ok(()),
+                    |_| Ok(()), || Ok(()),
+                ).with_network_redirect_url(move |source_url, target_url| {
+                    seen_tx.send((source_url, target_url)).unwrap();
+                    Ok(())
+                }),
+            )
+        });
+        write_extension_request(&mut client, &hello_with_capabilities(
+            MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_INTERCEPT, 6)],
+        )).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::RegisterNetworkRedirectUrl {
+            source_url: "https://example.test/old".into(),
+            target_url: "https://example.test/new".into(),
+        }).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::NetworkInterceptAck);
+        assert_eq!(seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            ("https://example.test/old".to_string(), "https://example.test/new".to_string()));
+        drop(client);
+        handle.join().unwrap().unwrap();
+        assert_eq!(gatekeeper.join().unwrap(), GatekeeperRequest::CheckExtensionAction {
+            extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+            detail: "action=register-same-origin-navigation-redirect".to_string(),
+        });
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v6_redirect_is_denied_after_a_v5_handshake() {
+        let registry = registry_with_network_intercept_granted();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry, Path::new("/not-reached-for-v5-redirect-denial.sock"), &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    |_| Ok("unused".into()), unused_write_delegate, || Ok(()),
+                    |_| Ok(()), || Ok(()),
+                ).with_network_redirect_url(|_, _| panic!("v5 must not reach core")),
+            )
+        });
+        write_extension_request(&mut client, &hello_with_capabilities(
+            MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_INTERCEPT, 5)],
+        )).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::RegisterNetworkRedirectUrl {
+            source_url: "https://example.test/old".into(),
+            target_url: "https://example.test/new".into(),
+        }).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, reason }
+                if capability == CAPABILITY_NETWORK_INTERCEPT && reason.contains("requires version 6")));
         drop(client);
         handle.join().unwrap().unwrap();
     }

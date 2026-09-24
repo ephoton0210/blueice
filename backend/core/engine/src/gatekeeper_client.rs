@@ -21,7 +21,10 @@
 //! compile-time effect: skipping the gate becomes a compile error, not
 //! a runtime convention a differently-written caller could omit.
 
-use crate::tabs::{extension_navigation_rules_block_url, ExtensionNavigationRuleSnapshot};
+use crate::tabs::{
+    extension_navigation_rules_block_url, extension_navigation_rules_redirect_url,
+    ExtensionNavigationRuleSnapshot,
+};
 #[cfg(test)]
 use crate::tabs::ExtensionNavigationBlockRule;
 use crate::TabId;
@@ -149,7 +152,7 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
     gatekeeper_socket: &Path,
     navigation_rules: ExtensionNavigationRuleSnapshot,
 ) -> NavOutcome {
-    let request_url = url.clone();
+    let mut request_url = None;
     let mut current_url = url;
     let mut redirects = Vec::new();
     for redirects_followed in 0..=MAX_NAVIGATION_REDIRECTS {
@@ -168,6 +171,22 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
                 url: current_url,
             };
         }
+
+        if let Some(target_url) = extension_navigation_rules_redirect_url(&navigation_rules, &current_url) {
+            if redirects_followed == MAX_NAVIGATION_REDIRECTS {
+                return NavOutcome::FetchFailed {
+                    message: format!(
+                        "navigation exceeded the {MAX_NAVIGATION_REDIRECTS}-redirect limit"
+                    ),
+                };
+            }
+            // The extension cannot choose a different origin. The next loop
+            // applies block rules and mandatory CheckUrl to the target before
+            // any network connection; v2 observe records only actual GETs.
+            current_url = target_url;
+            continue;
+        }
+        request_url.get_or_insert_with(|| current_url.clone());
 
         let fetched = match blueice_net::fetch_navigation_hop(&current_url) {
             Ok(fetched) => fetched,
@@ -221,7 +240,7 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
             html: fetched.body,
             status: fetched.status,
             content_type: fetched.content_type,
-            request_url,
+            request_url: request_url.expect("a committed page has one actual GET request"),
             redirects,
         };
     }
@@ -437,6 +456,163 @@ mod tests {
             target_listener.accept(),
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
         ));
+        let _ = std::fs::remove_file(gatekeeper);
+    }
+
+    #[test]
+    fn same_origin_extension_rewrite_reviews_both_urls_and_fetches_only_the_target() {
+        let web_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", web_listener.local_addr().unwrap());
+        let source_url = format!("{origin}/source");
+        let target_url = format!("{origin}/target");
+        let web = thread::spawn(move || {
+            let (mut stream, _) = web_listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let len = stream.read(&mut request).unwrap();
+            let request = String::from_utf8_lossy(&request[..len]);
+            assert!(request.starts_with("GET /target "), "{request}");
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 16\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n<p>rewritten</p>").unwrap();
+        });
+        let gatekeeper = unique_gatekeeper_socket_path("same-origin-extension-rewrite");
+        let _ = std::fs::remove_file(&gatekeeper);
+        let listener = UnixListener::bind(&gatekeeper).unwrap();
+        let reviewer = thread::spawn(move || {
+            let mut requests = Vec::new();
+            for _ in 0..3 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let request = read_gatekeeper_request(&mut stream).unwrap();
+                write_gatekeeper_reply(&mut stream, &GatekeeperReply::Cleared).unwrap();
+                requests.push(request);
+            }
+            requests
+        });
+        let rules = HashSet::from([ExtensionNavigationBlockRule::RedirectExactUrl {
+            source_url: source_url.clone(), target_url: target_url.clone(),
+        }]);
+        match check_and_fetch_with_navigation_rules(
+            TabId::from_u64(11), source_url.clone(), &gatekeeper, rules.into(),
+        ) {
+            NavOutcome::Cleared { final_url, html, request_url, redirects, .. } => {
+                assert_eq!(final_url, target_url);
+                assert_eq!(html, "<p>rewritten</p>");
+                assert_eq!(request_url, target_url);
+                assert!(redirects.is_empty(), "a rewrite is not an HTTP redirect response");
+            }
+            _ => panic!("the reviewed rewrite should commit"),
+        }
+        assert_eq!(reviewer.join().unwrap(), vec![
+            GatekeeperRequest::CheckUrl { url: source_url },
+            GatekeeperRequest::CheckUrl { url: target_url.clone() },
+            GatekeeperRequest::CheckContent { url: target_url, html: "<p>rewritten</p>".into() },
+        ]);
+        web.join().unwrap();
+        let _ = std::fs::remove_file(gatekeeper);
+    }
+
+    #[test]
+    fn block_rules_win_before_and_after_an_extension_rewrite() {
+        let source_url = "https://example.test/source".to_string();
+        let target_url = "https://example.test/target".to_string();
+        let rewrite = ExtensionNavigationBlockRule::RedirectExactUrl {
+            source_url: source_url.clone(), target_url: target_url.clone(),
+        };
+        let absent_gatekeeper = unique_gatekeeper_socket_path("blocked-source-no-review");
+        let source_block = HashSet::from([
+            rewrite.clone(), ExtensionNavigationBlockRule::ExactUrl(source_url.clone()),
+        ]);
+        assert!(matches!(check_and_fetch_with_navigation_rules(
+            TabId::from_u64(12), source_url.clone(), &absent_gatekeeper, source_block.into(),
+        ), NavOutcome::ExtensionRuleBlocked { url } if url == source_url));
+
+        let gatekeeper = unique_gatekeeper_socket_path("blocked-rewrite-target");
+        let _ = std::fs::remove_file(&gatekeeper);
+        let listener = UnixListener::bind(&gatekeeper).unwrap();
+        let reviewer = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_gatekeeper_request(&mut stream).unwrap();
+            write_gatekeeper_reply(&mut stream, &GatekeeperReply::Cleared).unwrap();
+            request
+        });
+        let target_block = HashSet::from([
+            rewrite, ExtensionNavigationBlockRule::ExactUrl(target_url.clone()),
+        ]);
+        assert!(matches!(check_and_fetch_with_navigation_rules(
+            TabId::from_u64(12), source_url.clone(), &gatekeeper, target_block.into(),
+        ), NavOutcome::ExtensionRuleBlocked { url } if url == target_url));
+        assert_eq!(reviewer.join().unwrap(), GatekeeperRequest::CheckUrl { url: source_url });
+        let _ = std::fs::remove_file(gatekeeper);
+    }
+
+    #[test]
+    fn gatekeeper_rejection_of_rewrite_target_prevents_its_connection() {
+        let web_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        web_listener.set_nonblocking(true).unwrap();
+        let origin = format!("http://{}", web_listener.local_addr().unwrap());
+        let source_url = format!("{origin}/source");
+        let target_url = format!("{origin}/target");
+        let gatekeeper = unique_gatekeeper_socket_path("reject-rewrite-target");
+        let _ = std::fs::remove_file(&gatekeeper);
+        let listener = UnixListener::bind(&gatekeeper).unwrap();
+        let reviewer = thread::spawn(move || {
+            let mut requests = Vec::new();
+            for index in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                requests.push(read_gatekeeper_request(&mut stream).unwrap());
+                let reply = if index == 0 { GatekeeperReply::Cleared } else {
+                    GatekeeperReply::Rejected {
+                        reason: "target blocked".into(), category: "test-target".into(),
+                    }
+                };
+                write_gatekeeper_reply(&mut stream, &reply).unwrap();
+            }
+            requests
+        });
+        let rules = HashSet::from([ExtensionNavigationBlockRule::RedirectExactUrl {
+            source_url: source_url.clone(), target_url: target_url.clone(),
+        }]);
+        assert!(matches!(check_and_fetch_with_navigation_rules(
+            TabId::from_u64(13), source_url.clone(), &gatekeeper, rules.into(),
+        ), NavOutcome::GatekeeperBlocked { url, category, .. }
+            if url == target_url && category == "test-target"));
+        assert_eq!(reviewer.join().unwrap(), vec![
+            GatekeeperRequest::CheckUrl { url: source_url },
+            GatekeeperRequest::CheckUrl { url: target_url },
+        ]);
+        assert_eq!(web_listener.accept().unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
+        let _ = std::fs::remove_file(gatekeeper);
+    }
+
+    #[test]
+    fn extension_rewrite_cycles_stop_at_the_shared_redirect_limit() {
+        let first = "https://example.test/first".to_string();
+        let second = "https://example.test/second".to_string();
+        let rules = HashSet::from([
+            ExtensionNavigationBlockRule::RedirectExactUrl {
+                source_url: first.clone(), target_url: second.clone(),
+            },
+            ExtensionNavigationBlockRule::RedirectExactUrl {
+                source_url: second.clone(), target_url: first.clone(),
+            },
+        ]);
+        let gatekeeper = unique_gatekeeper_socket_path("rewrite-cycle-limit");
+        let _ = std::fs::remove_file(&gatekeeper);
+        let listener = UnixListener::bind(&gatekeeper).unwrap();
+        let reviewer = thread::spawn(move || {
+            let mut requests = Vec::new();
+            for _ in 0..=MAX_NAVIGATION_REDIRECTS {
+                let (mut stream, _) = listener.accept().unwrap();
+                requests.push(read_gatekeeper_request(&mut stream).unwrap());
+                write_gatekeeper_reply(&mut stream, &GatekeeperReply::Cleared).unwrap();
+            }
+            requests
+        });
+        assert!(matches!(check_and_fetch_with_navigation_rules(
+            TabId::from_u64(14), first.clone(), &gatekeeper, rules.into(),
+        ), NavOutcome::FetchFailed { message } if message.contains("redirect limit")));
+        let requests = reviewer.join().unwrap();
+        assert_eq!(requests.len(), MAX_NAVIGATION_REDIRECTS + 1);
+        assert_eq!(requests[0], GatekeeperRequest::CheckUrl { url: first });
+        assert_eq!(requests[1], GatekeeperRequest::CheckUrl { url: second });
         let _ = std::fs::remove_file(gatekeeper);
     }
 

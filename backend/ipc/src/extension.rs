@@ -95,7 +95,10 @@ pub struct NetworkRedirectInfo {
 /// navigation must never publish this record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NetworkTraceInfo {
+    /// First actual GET URL, after any declarative pre-connection rewrite;
+    /// not necessarily the URL originally typed by a client.
     pub request_url: String,
+    /// Only HTTP redirect responses, never synthetic extension rewrites.
     pub redirects: Vec<NetworkRedirectInfo>,
     pub response: NetworkResponseInfo,
 }
@@ -315,8 +318,14 @@ pub enum ExtensionRequest {
     /// fragment do not affect the match. Core validates both fields; there
     /// is no guest-supplied pattern language or request callback.
     RegisterNetworkBlockPathPrefix { host: String, path_prefix: String },
-    /// Version 3 of `network:intercept`: remove every exact-URL or host
-    /// navigation-block rule owned by this connection. This cannot affect rules installed by a
+    /// Version 6 of `network:intercept`: rewrite one exact HTTP(S)
+    /// navigation URL to another URL on the same exact origin. Core owns the
+    /// canonicalization, conflict checks, per-connection lifetime, and
+    /// redirect budget. Both URLs receive mandatory URL review before any
+    /// target connection; this is not a general request callback.
+    RegisterNetworkRedirectUrl { source_url: String, target_url: String },
+    /// Version 3 of `network:intercept`: remove every navigation block or
+    /// redirect rule owned by this connection. This cannot affect rules installed by a
     /// different extension connection and has no extension-controlled payload,
     /// so it needs no further gatekeeper action review. The same cleanup also
     /// runs automatically when the connection ends.
@@ -671,6 +680,10 @@ mod tests {
             ExtensionRequest::RegisterNetworkBlockPathPrefix {
                 host: "example.test".to_string(),
                 path_prefix: "/private".to_string(),
+            },
+            ExtensionRequest::RegisterNetworkRedirectUrl {
+                source_url: "https://example.test/old".to_string(),
+                target_url: "https://example.test/new".to_string(),
             },
             ExtensionRequest::ClearNetworkBlockUrls,
             ExtensionRequest::StorageGet {

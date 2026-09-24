@@ -370,6 +370,15 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
     linker
         .func_wrap(
             "blueice",
+            "register_network_redirect_url",
+            |mut caller: Caller<'_, RuntimeState>, source_ptr: i32, source_len: i32, target_ptr: i32, target_len: i32| {
+                register_network_redirect_url(&mut caller, source_ptr, source_len, target_ptr, target_len)
+            },
+        )
+        .map_err(|error| format!("could not define the register_network_redirect_url ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
             "storage_get_utf8",
             |mut caller: Caller<'_, RuntimeState>,
              key_ptr: i32,
@@ -887,7 +896,7 @@ fn register_network_block_url(
     }
 }
 
-/// Removes only the caller connection's declarative URL, host, and path block rules. This
+/// Removes only the caller connection's declarative URL, host, path, and redirect rules. This
 /// version-3 operation supplies no URL or other extension-controlled policy
 /// input and therefore merely reduces the caller's own active rule set.
 fn clear_network_block_urls(caller: &mut Caller<'_, RuntimeState>) -> i32 {
@@ -942,6 +951,35 @@ fn register_network_block_path_prefix(
         return RESULT_INVALID_ARGUMENT;
     };
     match request_core(caller, ExtensionRequest::RegisterNetworkBlockPathPrefix { host, path_prefix }) {
+        Ok(ExtensionReply::NetworkInterceptAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
+/// Registers one v6 exact same-origin navigation rewrite. The guest may
+/// supply two bounded URLs, but core alone validates their relationship.
+fn register_network_redirect_url(
+    caller: &mut Caller<'_, RuntimeState>,
+    source_ptr: i32,
+    source_len: i32,
+    target_ptr: i32,
+    target_len: i32,
+) -> i32 {
+    let Ok((source_ptr, source_len)) = guest_range(source_ptr, source_len, MAX_NETWORK_BLOCK_URL_BYTES) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok((target_ptr, target_len)) = guest_range(target_ptr, target_len, MAX_NETWORK_BLOCK_URL_BYTES) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(source_url) = read_guest_bytes(caller, source_ptr, source_len)
+        .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ())) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(target_url) = read_guest_bytes(caller, target_ptr, target_len)
+        .and_then(|bytes| String::from_utf8(bytes).map_err(|_| ())) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    match request_core(caller, ExtensionRequest::RegisterNetworkRedirectUrl { source_url, target_url }) {
         Ok(ExtensionReply::NetworkInterceptAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
@@ -1708,6 +1746,43 @@ mod tests {
                 blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
                 ExtensionRequest::RegisterNetworkBlockPathPrefix {
                     host: "example.test".into(), path_prefix: "/private".into(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(
+                &mut core, &ExtensionReply::NetworkInterceptAck,
+            ).unwrap();
+        });
+        execute_installed_extension(&extension, guest).unwrap();
+        core_thread.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reactor_forwards_a_bounded_same_origin_redirect_to_core() {
+        let (root, extension) = installed_extension(
+            "network-redirect-url",
+            r#"(module
+                (import "blueice" "register_network_redirect_url" (func $redirect (param i32 i32 i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (data (i32.const 0) "https://example.test/old")
+                (data (i32.const 64) "https://example.test/new")
+                (func (export "blueice_start")
+                    i32.const 0
+                    i32.const 24
+                    i32.const 64
+                    i32.const 24
+                    call $redirect
+                    i32.const 0
+                    i32.ne
+                    if unreachable end))"#,
+        );
+        let (guest, mut core) = UnixStream::pair().unwrap();
+        let core_thread = thread::spawn(move || {
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::RegisterNetworkRedirectUrl {
+                    source_url: "https://example.test/old".into(),
+                    target_url: "https://example.test/new".into(),
                 }
             );
             blueice_ipc::extension::write_extension_reply(

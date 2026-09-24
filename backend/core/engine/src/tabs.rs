@@ -26,16 +26,17 @@ use url::Url;
 /// A single extension connection cannot install an unbounded number of
 /// navigation rules. The small cap keeps this deliberately declarative slice
 /// from becoming a general purpose core-side routing database.
-const MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION: usize = 64;
+const MAX_EXTENSION_NAVIGATION_RULES_PER_CONNECTION: usize = 64;
 
-/// A small, connection-owned declarative rule. Keep URL and host matches
-/// distinct so neither kind can be mistaken for a guest-supplied pattern or
-/// an executable interception callback.
+/// A small, connection-owned declarative navigation rule. Keep exact URL,
+/// host, path, and rewrite effects distinct; none is a guest callback or an
+/// arbitrary request-programming language.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum ExtensionNavigationBlockRule {
     ExactUrl(String),
     Host(String),
     PathPrefix { host: String, path_prefix: String },
+    RedirectExactUrl { source_url: String, target_url: String },
 }
 
 /// Immutable navigation-start policy passed to the fetch worker. A scoped
@@ -376,6 +377,34 @@ impl TabManager {
         )
     }
 
+    /// Rewrites one exact navigation request to a fixed URL on the same
+    /// origin. Only core may register the validated rule, and a conflicting
+    /// source mapping is rejected rather than resolved by hash iteration.
+    pub(crate) fn add_extension_navigation_redirect_rule(
+        &mut self,
+        connection_id: u64,
+        source_url: String,
+        target_url: String,
+    ) -> Result<(), String> {
+        let source_url = canonical_http_navigation_url(&source_url)?;
+        let target_url = canonical_http_navigation_url(&target_url)?;
+        let source = Url::parse(&source_url).expect("a canonical URL must parse");
+        let target = Url::parse(&target_url).expect("a canonical URL must parse");
+        if source.origin() != target.origin() || source_url == target_url {
+            return Err("navigation redirects must change the URL within one exact origin".to_string());
+        }
+        if self.extension_navigation_block_rules.values().flat_map(|rules| rules.iter()).any(|rule| {
+            matches!(rule, ExtensionNavigationBlockRule::RedirectExactUrl {
+                source_url: existing_source, target_url: existing_target,
+            } if existing_source == &source_url && existing_target != &target_url)
+        }) {
+            return Err("a navigation redirect for this source URL already exists".to_string());
+        }
+        self.add_extension_navigation_rule(connection_id, ExtensionNavigationBlockRule::RedirectExactUrl {
+            source_url, target_url,
+        })
+    }
+
     fn add_extension_navigation_rule(
         &mut self,
         connection_id: u64,
@@ -386,17 +415,17 @@ impl TabManager {
             .entry(connection_id)
             .or_default();
         if !rules.contains(&rule)
-            && rules.len() >= MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION
+            && rules.len() >= MAX_EXTENSION_NAVIGATION_RULES_PER_CONNECTION
         {
             return Err(format!(
-                "an extension connection may register at most {MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION} navigation-block rules"
+                "an extension connection may register at most {MAX_EXTENSION_NAVIGATION_RULES_PER_CONNECTION} navigation rules"
             ));
         }
         rules.insert(rule);
         Ok(())
     }
 
-    /// Removes every declarative navigation-block rule owned by one extension
+    /// Removes every declarative navigation block or rewrite rule owned by one extension
     /// connection. A disconnect always calls this, so a stale package cannot
     /// leave navigation policy behind after its host is gone.
     pub(crate) fn clear_extension_navigation_block_rules(&mut self, connection_id: u64) {
@@ -872,6 +901,36 @@ pub(crate) fn extension_navigation_rules_block_url(
                     || (path_prefix.ends_with('/') && parsed.path().starts_with(path_prefix))
                     || parsed.path().strip_prefix(path_prefix).is_some_and(|rest| rest.starts_with('/')))
         },
+        ExtensionNavigationBlockRule::RedirectExactUrl { .. } => false,
+    })
+}
+
+/// The only request-modification effect: one exact same-origin rewrite from
+/// the immutable navigation-start snapshot. A blocked source takes precedence
+/// in the caller, and both source and target receive URL review before any
+/// connection to the target is opened.
+pub(crate) fn extension_navigation_rules_redirect_url(
+    snapshot: &ExtensionNavigationRuleSnapshot,
+    url: &str,
+) -> Option<String> {
+    let mut parsed = Url::parse(url).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return None;
+    }
+    if snapshot.allowed_origins.as_ref().is_some_and(|allowed| {
+        !allowed.contains(&parsed.origin().ascii_serialization())
+    }) {
+        return None;
+    }
+    parsed.set_fragment(None);
+    let canonical_url = parsed.to_string();
+    snapshot.rules.iter().find_map(|rule| match rule {
+        ExtensionNavigationBlockRule::RedirectExactUrl { source_url, target_url }
+            if source_url == &canonical_url => Some(target_url.clone()),
+        _ => None,
     })
 }
 
@@ -919,6 +978,9 @@ fn canonical_navigation_block_host(input: &str) -> Result<String, String> {
 }
 
 fn canonical_http_navigation_url(input: &str) -> Result<String, String> {
+    if input.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_URL_BYTES {
+        return Err("navigation-rule URL exceeds the protocol limit".to_string());
+    }
     let mut url =
         Url::parse(input).map_err(|error| format!("navigation-block URL is invalid: {error}"))?;
     if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
@@ -928,7 +990,11 @@ fn canonical_http_navigation_url(input: &str) -> Result<String, String> {
         return Err("navigation-block URLs must not contain credentials".to_string());
     }
     url.set_fragment(None);
-    Ok(url.to_string())
+    let canonical = url.to_string();
+    if canonical.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_URL_BYTES {
+        return Err("canonical navigation-rule URL exceeds the protocol limit".to_string());
+    }
+    Ok(canonical)
 }
 
 #[cfg(test)]
@@ -1023,6 +1089,34 @@ mod tests {
     }
 
     #[test]
+    fn exact_navigation_redirects_are_same_origin_scoped_conflict_free_and_connection_owned() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let source = "https://example.test/old?x=1";
+        let target = "https://example.test/new?x=1";
+        tabs.add_extension_navigation_redirect_rule(41, source.into(), target.into()).unwrap();
+        let snapshot = tabs.extension_navigation_block_rule_snapshot();
+        assert_eq!(extension_navigation_rules_redirect_url(&snapshot, source), Some(target.into()));
+        assert_eq!(extension_navigation_rules_redirect_url(&snapshot, "https://example.test/other"), None);
+        assert_eq!(extension_navigation_rules_redirect_url(&snapshot, "https://user:secret@example.test/old?x=1"), None);
+        assert!(tabs.add_extension_navigation_redirect_rule(42, source.into(), "https://example.test/other".into()).is_err());
+        assert!(tabs.add_extension_navigation_redirect_rule(41, source.into(), "https://outside.test/new".into()).is_err());
+        assert!(tabs.add_extension_navigation_redirect_rule(41, source.into(), source.into()).is_err());
+        assert!(tabs.add_extension_navigation_redirect_rule(41, "about:blank".into(), target.into()).is_err());
+        assert!(tabs.add_extension_navigation_redirect_rule(
+            41, source.into(), format!("https://example.test/{}", "x".repeat(2048)),
+        ).is_err());
+        tabs.set_extension_capability_origins(BTreeMap::from([(
+            "network:intercept".to_string(), BTreeSet::from(["https://other.test".to_string()]),
+        )]));
+        assert_eq!(extension_navigation_rules_redirect_url(&tabs.extension_navigation_block_rule_snapshot(), source), None);
+        tabs.clear_extension_navigation_block_rules(42);
+        tabs.set_extension_capability_origins(BTreeMap::new());
+        assert_eq!(extension_navigation_rules_redirect_url(&tabs.extension_navigation_block_rule_snapshot(), source), Some(target.into()));
+        tabs.clear_extension_navigation_block_rules(41);
+        assert_eq!(extension_navigation_rules_redirect_url(&tabs.extension_navigation_block_rule_snapshot(), source), None);
+    }
+
+    #[test]
     fn extension_host_rules_match_exact_hosts_and_subdomains_but_not_suffix_tricks() {
         let mut tabs = TabManager::new(320.0, 200.0);
         tabs.add_extension_navigation_block_host_rule(41, "EXAMPLE.test.".to_string())
@@ -1105,7 +1199,7 @@ mod tests {
         assert!(tabs.add_extension_navigation_block_path_prefix_rule(
             7, "example.test".into(), format!("/{}", "x".repeat(512)),
         ).is_err());
-        for index in 0..MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION {
+        for index in 0..MAX_EXTENSION_NAVIGATION_RULES_PER_CONNECTION {
             tabs.add_extension_navigation_block_path_prefix_rule(
                 7, "example.test".into(), format!("/private/{index}"),
             ).unwrap();
@@ -1118,7 +1212,7 @@ mod tests {
         let mut tabs = TabManager::new(320.0, 200.0);
         tabs.add_extension_navigation_block_rule(7, "https://exact.example/".to_string())
             .unwrap();
-        for index in 1..MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION {
+        for index in 1..MAX_EXTENSION_NAVIGATION_RULES_PER_CONNECTION {
             tabs.add_extension_navigation_block_host_rule(7, format!("host{index}.example"))
                 .unwrap();
         }

@@ -1334,6 +1334,102 @@ fn installed_extension_v5_path_prefix_blocks_redirect_before_target_connection()
 }
 
 #[test]
+fn installed_extension_v6_redirects_one_same_origin_navigation_before_fetch_and_clears_it() {
+    let _guard = core_process_test_guard();
+    use blueice_ipc::extension::{
+        read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
+    };
+    use std::collections::BTreeMap;
+
+    let core_socket = unique_socket_path("er6");
+    let extension_socket = unique_private_extension_socket_path("r6");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-extension-redirect-frames-{}", std::process::id()
+    ));
+    let (package_root, manifest, extension_id) =
+        extension_manifest_package("same-origin-redirect", &["network:intercept"]);
+    let gatekeeper_socket = clearing_gatekeeper("r6g");
+    let _ = std::fs::remove_file(&core_socket);
+    let _ = std::fs::remove_file(&extension_socket);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+
+    let web_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let origin = format!("http://{}", web_listener.local_addr().unwrap());
+    let source_url = format!("{origin}/old");
+    let target_url = format!("{origin}/new");
+    let web_server = thread::spawn(move || {
+        for (path, body) in [
+            ("/new", "<h1>Rewritten</h1>"),
+            ("/old", "<h1>Original</h1>"),
+        ] {
+            let (mut stream, _) = web_listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let len = stream.read(&mut request).unwrap();
+            let request = String::from_utf8_lossy(&request[..len]);
+            assert!(request.starts_with(&format!("GET {path} ")), "{request}");
+            stream.write_all(format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len(),
+            ).as_bytes()).unwrap();
+        }
+    });
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket", core_socket.to_str().unwrap(),
+            "--extension-socket", extension_socket.to_str().unwrap(),
+            "--extension-manifest", manifest.to_str().unwrap(),
+            "--gatekeeper-socket", gatekeeper_socket.to_str().unwrap(),
+            "--frame-dir", frame_dir.to_str().unwrap(),
+        ])
+        .spawn()
+        .expect("failed to spawn core with a v6 redirect extension");
+    assert!(wait_for(&core_socket, Duration::from_secs(5)));
+    assert!(wait_for(&extension_socket, Duration::from_secs(5)));
+    let mut frontend = UnixStream::connect(&core_socket).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    let mut extension = UnixStream::connect(&extension_socket).unwrap();
+    write_extension_request(&mut extension, &ExtensionRequest::Hello {
+        extension_id,
+        capability_versions: BTreeMap::from([("network:intercept".to_string(), 6)]),
+    }).unwrap();
+    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::HelloAck {
+        unsupported_capabilities: BTreeMap::new(),
+    });
+    write_extension_request(&mut extension, &ExtensionRequest::RegisterNetworkRedirectUrl {
+        source_url: source_url.clone(), target_url: target_url.clone(),
+    }).unwrap();
+    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::NetworkInterceptAck);
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
+        url: source_url.clone(),
+    }).unwrap();
+    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url, .. } if url == target_url));
+    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }));
+
+    write_extension_request(&mut extension, &ExtensionRequest::ClearNetworkBlockUrls).unwrap();
+    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::NetworkInterceptAck);
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
+        url: source_url.clone(),
+    }).unwrap();
+    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url, .. } if url == source_url));
+    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }));
+
+    web_server.join().unwrap();
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    assert!(core.wait().unwrap().success());
+    assert!(!core_socket.exists());
+    assert!(!extension_socket.exists());
+    assert!(!frame_dir.exists());
+    let _ = std::fs::remove_dir_all(package_root);
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
 fn installed_extension_storage_v1_v2_v3_keep_their_separate_lifetimes() {
     let _guard = core_process_test_guard();
     use blueice_ipc::extension::{
