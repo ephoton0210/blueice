@@ -48,6 +48,10 @@ use std::io::{self, Read, Write};
 /// not share the browser frontend protocol's lifecycle.
 pub const COMPILER_PROTOCOL_VERSION: u32 = 9;
 
+/// The code is a fixed compiler vocabulary, not project-controlled prose.
+/// Keep its wire budget separate from the bounded module and message fields.
+pub const COMPILER_DIAGNOSTIC_MAX_CODE_BYTES: usize = 64;
+
 /// The maximum encoded request or reply accepted by this protocol. The engine
 /// adapter applies a smaller response budget before a reply reaches this
 /// transport boundary; this check also rejects a malicious length prefix
@@ -268,6 +272,21 @@ pub struct CompilerDiagnostic {
     pub message: String,
 }
 
+impl CompilerDiagnostic {
+    /// Structural validation at a public adapter boundary. The source bytes
+    /// are intentionally unavailable here; only the core can establish that
+    /// an otherwise plausible UTF-16 position really maps to this span.
+    pub fn is_well_formed(&self) -> bool {
+        !self.code.is_empty()
+            && self.code.len() <= COMPILER_DIAGNOSTIC_MAX_CODE_BYTES
+            && !self.module.is_empty()
+            && self.start <= self.end
+            && self.coordinates.is_none_or(|coordinates| {
+                coordinates.is_well_formed_for_diagnostic_range(self.start, self.end)
+            })
+    }
+}
+
 /// Capped diagnostics returned by a compiler check.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompilerDiagnostics {
@@ -301,6 +320,20 @@ pub struct CompilerDiagnosticPage {
     pub entries: Vec<CompilerDiagnostic>,
     pub next_cursor: Option<CompilerDiagnosticCursor>,
     pub truncated: bool,
+}
+
+impl CompilerDiagnosticPage {
+    /// A page can continue only after returning at least one entry. Its
+    /// generation and each coordinate must agree with the exact request.
+    pub fn is_well_formed_for_generation(&self, generation: CompilerGeneration) -> bool {
+        generation.is_well_formed()
+            && self.generation == generation
+            && (self.next_cursor.is_none() || !self.entries.is_empty())
+            && self
+                .next_cursor
+                .is_none_or(CompilerDiagnosticCursor::is_well_formed)
+            && self.entries.iter().all(CompilerDiagnostic::is_well_formed)
+    }
 }
 
 /// Counts and fingerprints of source-text-free static metadata retained for a
@@ -1033,6 +1066,55 @@ mod tests {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_compiler_reply(&mut sender, &page).unwrap();
         assert_eq!(read_compiler_reply(&mut receiver).unwrap(), page);
+    }
+
+    #[test]
+    fn diagnostic_pages_reject_mismatched_generations_invalid_positions_and_empty_continuations() {
+        let valid = CompilerDiagnosticPage {
+            generation: generation(),
+            entries: vec![CompilerDiagnostic {
+                code: "BTS3003".to_string(),
+                severity: CompilerDiagnosticSeverity::Error,
+                module: "project:///app/main.ts".to_string(),
+                start: 8,
+                end: 8,
+                coordinates: Some(CompilerSourceCoordinates {
+                    start_line: 1,
+                    start_column_utf16: 3,
+                    end_line: 1,
+                    end_column_utf16: 3,
+                }),
+                message: "expected token".to_string(),
+            }],
+            next_cursor: Some(CompilerDiagnosticCursor { id: 2 }),
+            truncated: false,
+        };
+        assert!(valid.is_well_formed_for_generation(generation()));
+        let mut malformed = valid.clone();
+        malformed.generation.sequence += 1;
+        assert!(!malformed.is_well_formed_for_generation(generation()));
+        malformed = valid.clone();
+        malformed.entries[0]
+            .coordinates
+            .as_mut()
+            .unwrap()
+            .start_column_utf16 = 9;
+        assert!(!malformed.is_well_formed_for_generation(generation()));
+        malformed = valid.clone();
+        malformed.entries[0].start = 9;
+        assert!(!malformed.is_well_formed_for_generation(generation()));
+        malformed = valid.clone();
+        malformed.entries[0].code = "X".repeat(COMPILER_DIAGNOSTIC_MAX_CODE_BYTES + 1);
+        assert!(!malformed.is_well_formed_for_generation(generation()));
+        malformed = valid.clone();
+        malformed.entries[0].module.clear();
+        assert!(!malformed.is_well_formed_for_generation(generation()));
+        malformed = valid.clone();
+        malformed.next_cursor = Some(CompilerDiagnosticCursor { id: 0 });
+        assert!(!malformed.is_well_formed_for_generation(generation()));
+        malformed = valid;
+        malformed.entries.clear();
+        assert!(!malformed.is_well_formed_for_generation(generation()));
     }
 
     #[test]

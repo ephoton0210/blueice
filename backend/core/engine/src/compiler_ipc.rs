@@ -36,6 +36,7 @@ use blueice_ipc::compiler::{
     CompilerStaticMetadataPage, CompilerStaticMetadataSummary, CompilerStaticProvenance,
     CompilerStaticSymbol, CompilerStaticSymbolLocation, CompilerStaticType, CompilerSymbolKind,
     CompilerWorkSetCursor, CompilerWorkSetKind, CompilerWorkSetPage,
+    COMPILER_DIAGNOSTIC_MAX_CODE_BYTES,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -600,7 +601,7 @@ impl CompilerServiceIpcAdapter {
             .max_field_bytes
             .checked_mul(12)
             .and_then(|bytes| {
-                MAX_COMPILER_DIAGNOSTIC_CODE_BYTES
+                COMPILER_DIAGNOSTIC_MAX_CODE_BYTES
                     .checked_mul(6)
                     .and_then(|code_bytes| bytes.checked_add(code_bytes))
             })
@@ -1519,11 +1520,6 @@ fn module_list(
     Ok(CompilerModuleList { entries, truncated })
 }
 
-/// Compiler diagnostic codes are a fixed compiler vocabulary, not
-/// project-controlled prose. Keep their wire budget separately small so the
-/// diagnostic-page envelope can be proved before a one-shot cursor is used.
-const MAX_COMPILER_DIAGNOSTIC_CODE_BYTES: usize = 64;
-
 fn retained_diagnostics_fit_wire_policy(
     diagnostics: &[Diagnostic],
     locations: &[Option<DebugSourceLocation>],
@@ -1534,7 +1530,7 @@ fn retained_diagnostics_fit_wire_policy(
             .iter()
             .zip(locations)
             .all(|(diagnostic, location)| {
-                diagnostic.code.to_string().len() <= MAX_COMPILER_DIAGNOSTIC_CODE_BYTES
+                diagnostic.code.to_string().len() <= COMPILER_DIAGNOSTIC_MAX_CODE_BYTES
                     && diagnostic.span.module.len() <= limits.max_field_bytes
                     && diagnostic.message.len() <= limits.max_field_bytes
                     && u64::try_from(diagnostic.span.start).is_ok()
@@ -1582,8 +1578,8 @@ fn diagnostics_to_wire(
             break;
         }
         let code = diagnostic.code.to_string();
-        if code.len() > MAX_COMPILER_DIAGNOSTIC_CODE_BYTES
-            || !budget.reserve_optional_string(&code, MAX_COMPILER_DIAGNOSTIC_CODE_BYTES)?
+        if code.len() > COMPILER_DIAGNOSTIC_MAX_CODE_BYTES
+            || !budget.reserve_optional_string(&code, COMPILER_DIAGNOSTIC_MAX_CODE_BYTES)?
             || !budget.reserve_optional_string(&diagnostic.span.module, limits.max_field_bytes)?
             || !budget.reserve_optional_string(&diagnostic.message, limits.max_field_bytes)?
             || !budget.reserve_optional_fixed(320)
@@ -1633,8 +1629,8 @@ fn diagnostic_page_entries_to_wire(
         .zip(locations)
         .map(|(diagnostic, location)| {
             let code = diagnostic.code.to_string();
-            if code.len() > MAX_COMPILER_DIAGNOSTIC_CODE_BYTES
-                || !budget.reserve_required_string(&code, MAX_COMPILER_DIAGNOSTIC_CODE_BYTES)
+            if code.len() > COMPILER_DIAGNOSTIC_MAX_CODE_BYTES
+                || !budget.reserve_required_string(&code, COMPILER_DIAGNOSTIC_MAX_CODE_BYTES)
                 || !budget.reserve_required_string(&diagnostic.span.module, limits.max_field_bytes)
                 || !budget.reserve_required_string(&diagnostic.message, limits.max_field_bytes)
                 || !budget.reserve_optional_fixed(352)

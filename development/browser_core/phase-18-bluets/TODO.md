@@ -1229,7 +1229,13 @@ or second module resolver to bypass them.
   cursors or a later check's stale generation fail closed. The real MCP/core
   regression exercises receipt mismatch, unobserved generation, and stale
   diagnostic-page rejection; service and adapter coverage exercise
-  continuation/replay and response bounds.
+  continuation/replay and response bounds. MCP now revokes a project's old
+  generation/metadata receipts before any new check and accepts replacement
+  evidence only if the core reply names that exact project and all published
+  diagnostic ranges/optional coordinates are structurally valid. Diagnostic
+  pages must match the requested generation, contain no malformed positions,
+  and cannot advertise an empty continuation or zero cursor; a wrong reply
+  variant fails as a structured source-free error.
   Compiler IPC v6 and its v3 fixed manifest now add `ListWorkSet` as a tenth
   read-only operation. Core retains each of the four compiler-produced
   incremental work-sets at a fixed owner cap and pages canonical module

@@ -283,6 +283,14 @@ pub(super) enum CompilerMetadataReceiptError {
 }
 
 impl CompilerMcpSessionState {
+    /// A check may replace the core generation even if its reply is lost or
+    /// malformed. Drop prior evidence before issuing it, then admit only a
+    /// validated replacement generation.
+    pub(super) fn revoke_project(&mut self, project_id: u64) {
+        self.observed_generations.remove(&project_id);
+        self.observed_static_metadata.remove(&project_id);
+    }
+
     pub(super) fn observe_generation(&mut self, project_id: u64, generation: u64) {
         self.observed_generations.insert(project_id, generation);
         self.observed_static_metadata.remove(&project_id);
@@ -372,6 +380,86 @@ impl CompilerMcpSessionState {
             .extend(received);
         Ok(())
     }
+}
+
+fn compiler_check_reply_is_well_formed(
+    project_id: u64,
+    check: &blueice_ipc::compiler::CompilerCheck,
+) -> bool {
+    check.generation.is_well_formed()
+        && check.generation.project.id == project_id
+        && check
+            .diagnostics
+            .entries
+            .iter()
+            .all(blueice_ipc::compiler::CompilerDiagnostic::is_well_formed)
+}
+
+fn invalid_compiler_diagnostic_reply(
+    message: &'static str,
+) -> blueice_ipc::compiler::CompilerReply {
+    blueice_ipc::compiler::CompilerReply::Error {
+        code: blueice_ipc::compiler::CompilerErrorCode::InvalidDiagnosticPage,
+        message: message.to_string(),
+    }
+}
+
+/// Admits only the check result for the requested project. The caller must
+/// revoke old project evidence before the request, since the core may advance
+/// its generation even if this reply is lost or malformed.
+pub(super) fn accept_compiler_check_reply(
+    state: &mut CompilerMcpSessionState,
+    project_id: u64,
+    reply: blueice_ipc::compiler::CompilerReply,
+) -> blueice_ipc::compiler::CompilerReply {
+    match &reply {
+        blueice_ipc::compiler::CompilerReply::Check(check) => {
+            if !compiler_check_reply_is_well_formed(project_id, check) {
+                return invalid_compiler_diagnostic_reply(
+                    "core returned a compiler check for a different project or with malformed diagnostic positions",
+                );
+            }
+            state.observe_generation(project_id, check.generation.sequence);
+        }
+        blueice_ipc::compiler::CompilerReply::Error { .. }
+        | blueice_ipc::compiler::CompilerReply::Unsupported { .. } => {}
+        _ => {
+            return invalid_compiler_diagnostic_reply(
+                "core returned a non-check reply to a compiler check",
+            );
+        }
+    }
+    reply
+}
+
+/// Rechecks core evidence before a diagnostic page crosses the MCP boundary.
+/// A malformed reply never becomes a cursor or position receipt for clients.
+pub(super) fn accept_compiler_diagnostic_page_reply(
+    project_id: u64,
+    generation: u64,
+    reply: blueice_ipc::compiler::CompilerReply,
+) -> blueice_ipc::compiler::CompilerReply {
+    match &reply {
+        blueice_ipc::compiler::CompilerReply::DiagnosticPage(page) => {
+            let expected_generation = blueice_ipc::compiler::CompilerGeneration {
+                project: blueice_ipc::compiler::CompilerProject { id: project_id },
+                sequence: generation,
+            };
+            if !page.is_well_formed_for_generation(expected_generation) {
+                return invalid_compiler_diagnostic_reply(
+                    "core returned a diagnostic page for a different generation or with malformed positions or cursor",
+                );
+            }
+        }
+        blueice_ipc::compiler::CompilerReply::Error { .. }
+        | blueice_ipc::compiler::CompilerReply::Unsupported { .. } => {}
+        _ => {
+            return invalid_compiler_diagnostic_reply(
+                "core returned a non-diagnostic reply to a diagnostic page request",
+            );
+        }
+    }
+    reply
 }
 
 pub(super) fn compiler_metadata_receipt_error_reply(
