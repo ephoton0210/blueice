@@ -72,6 +72,7 @@ use std::time::{Duration, Instant};
 /// is noticed promptly, long enough that the loop doesn't busy-spin
 /// between real messages.
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
+const OPTIONAL_REVOKE_ACK_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// A small seam over `std::os::unix::net::UnixStream::set_read_timeout`
 /// so `run_session` can require it as a trait bound rather than
@@ -95,6 +96,13 @@ pub trait ReadTimeout {
 /// versioned network rule carries no page target. The session validates each
 /// operation against its live `TabManager`/`Page` state before changing it.
 pub enum ExtensionPageRequest {
+    /// Core-internal completion barrier after an optional grant has already
+    /// been revoked in the registry. The session retires all stale published
+    /// effects and writes native UI removal messages before acknowledging.
+    /// No extension wire request or ordinary frontend client maps to this.
+    SynchronizeRevokedEffects {
+        reply: mpsc::Sender<()>,
+    },
     ReadRepresentation {
         tab_id: Option<u64>,
         reply: mpsc::Sender<Result<String, String>>,
@@ -230,6 +238,32 @@ pub enum ExtensionPageRequest {
         connection_id: u64,
         reply: mpsc::Sender<()>,
     },
+}
+
+/// Core-internal revoke transaction for a future authenticated human-control
+/// channel. The grant is withdrawn first, blocking new effects immediately;
+/// only then does the caller wait for the session owner to retire previously
+/// published UI and network rules. A timeout leaves the grant revoked and is
+/// an error, never an implicit cleanup success. This is not mapped from the
+/// public frontend, MCP, or extension wire protocols. Call only from a
+/// separate trusted control worker, never from the session thread itself.
+pub fn revoke_optional_and_wait_for_cleanup(
+    registry: &blueice_extension_host::ExtensionRegistry,
+    extension_id: &str,
+    capability: &str,
+    session_requests: &mpsc::Sender<ExtensionPageRequest>,
+) -> Result<bool, String> {
+    let changed = registry.revoke_optional(extension_id, capability)?;
+    let (reply, completed) = mpsc::channel();
+    session_requests.send(ExtensionPageRequest::SynchronizeRevokedEffects { reply })
+        .map_err(|_| format!(
+            "optional {capability} grant was revoked, but the core session is unavailable for cleanup"
+        ))?;
+    completed.recv_timeout(OPTIONAL_REVOKE_ACK_TIMEOUT)
+        .map_err(|_| format!(
+            "optional {capability} grant was revoked, but the core session did not acknowledge cleanup"
+        ))?;
+    Ok(changed)
 }
 
 impl ReadTimeout for std::os::unix::net::UnixStream {
@@ -1211,6 +1245,12 @@ fn handle_extension_page_request<S: Write>(
     request: ExtensionPageRequest,
 ) -> io::Result<()> {
     match request {
+        ExtensionPageRequest::SynchronizeRevokedEffects { reply } => {
+            prune_stale_extension_effects(
+                tabs, stream, extension_toolbar, extension_popup,
+            )?;
+            let _ = reply.send(());
+        }
         ExtensionPageRequest::ReadRepresentation { tab_id, reply } => {
             let tab_id = tab_id
                 .map(TabId::from_u64)
@@ -3339,9 +3379,11 @@ mod tests {
             ServerMessage::ExtensionPopup { popup: Some(shown) });
         result.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
 
-        registry.revoke_optional(&id, "ui:inject").unwrap();
-        // No client command follows the revoke. The session's own poll must
-        // retire both surfaces and broadcast their removal.
+        assert!(revoke_optional_and_wait_for_cleanup(
+            &registry, &id, "ui:inject", &extension_tx,
+        ).unwrap());
+        // No client command follows the revoke. The private completion
+        // barrier acknowledges only after both removals are published.
         assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(),
             ServerMessage::ExtensionPopup { popup: None });
         assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(),
@@ -3372,6 +3414,97 @@ mod tests {
         result.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         session.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn internal_revoke_barrier_acks_only_after_ui_and_network_effects_are_removed() {
+        let root = temp_frame_dir("optional-revoke-barrier");
+        std::fs::create_dir_all(&root).unwrap();
+        let manifest = root.join("extension.json");
+        std::fs::write(&manifest,
+            r#"{"name":"Optional effects","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["network:intercept","ui:inject"]}}"#
+        ).unwrap();
+        std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0").unwrap();
+        let installed = blueice_extension_host::load_installed_extension(&manifest).unwrap();
+        let id = installed.extension_id().to_string();
+        let registry = Arc::new(blueice_extension_host::registry_for_installed_extension(&installed));
+        registry.grant_optional(&id, "network:intercept").unwrap();
+        registry.grant_optional(&id, "ui:inject").unwrap();
+        let network_generation = registry.capability_generation(&id, "network:intercept").unwrap();
+        let ui_generation = registry.capability_generation(&id, "ui:inject").unwrap();
+        let mut tabs = TabManager::new(320.0, 200.0);
+        tabs.set_extension_permission_registry(Arc::clone(&registry), id.clone());
+        let mut wire = Vec::new();
+        let mut frame_generation = 0;
+        let mut scheduler = NoScriptScheduler;
+        let mut toolbar = None;
+        let mut popup = None;
+
+        let (reply, result) = mpsc::channel();
+        handle_extension_page_request(&mut tabs, &mut wire, &root, &mut frame_generation,
+            &mut scheduler, &mut toolbar, &mut popup, ExtensionPageRequest::RegisterNetworkBlockHost {
+                connection_id: 7, grant_generation: network_generation,
+                host: "old.example.test".into(), reply,
+            }).unwrap();
+        result.recv().unwrap().unwrap();
+        assert_eq!(tabs.extension_navigation_rule_owner_count(), 1);
+        let (reply, result) = mpsc::channel();
+        handle_extension_page_request(&mut tabs, &mut wire, &root, &mut frame_generation,
+            &mut scheduler, &mut toolbar, &mut popup, ExtensionPageRequest::SetToolbarButton {
+                connection_id: 7, grant_generation: ui_generation,
+                label: "Notes".into(), reply,
+            }).unwrap();
+        result.recv().unwrap().unwrap();
+        let shown = ExtensionPopup { id: 1, tab_id: 1, title: "Notes".into(),
+            body: "Saved".into(), action_label: None };
+        let (reply, result) = mpsc::channel();
+        handle_extension_page_request(&mut tabs, &mut wire, &root, &mut frame_generation,
+            &mut scheduler, &mut toolbar, &mut popup, ExtensionPageRequest::ShowPopup {
+                connection_id: 7, grant_generation: ui_generation,
+                popup: shown.clone(), reply,
+            }).unwrap();
+        result.recv().unwrap().unwrap();
+
+        registry.revoke_optional(&id, "ui:inject").unwrap();
+        let (session_tx, session_rx) = mpsc::channel();
+        thread::scope(|scope| {
+            let frame_root = &root;
+            let tabs = &mut tabs;
+            let wire = &mut wire;
+            let frame_generation = &mut frame_generation;
+            let scheduler = &mut scheduler;
+            let toolbar = &mut toolbar;
+            let popup = &mut popup;
+            let worker = scope.spawn(move || {
+                let request = session_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                handle_extension_page_request(tabs, wire, frame_root, frame_generation,
+                    scheduler, toolbar, popup, request).unwrap();
+            });
+            assert!(revoke_optional_and_wait_for_cleanup(
+                &registry, &id, "network:intercept", &session_tx,
+            ).unwrap());
+            worker.join().unwrap();
+        });
+        assert_eq!(tabs.extension_navigation_rule_owner_count(), 0);
+        assert!(toolbar.is_none() && popup.is_none());
+        let mut cursor = std::io::Cursor::new(wire);
+        assert_eq!(blueice_ipc::read_server_message(&mut cursor).unwrap(),
+            ServerMessage::ExtensionToolbar { label: Some("Notes".into()) });
+        assert_eq!(blueice_ipc::read_server_message(&mut cursor).unwrap(),
+            ServerMessage::ExtensionPopup { popup: Some(shown) });
+        assert_eq!(blueice_ipc::read_server_message(&mut cursor).unwrap(),
+            ServerMessage::ExtensionPopup { popup: None });
+        assert_eq!(blueice_ipc::read_server_message(&mut cursor).unwrap(),
+            ServerMessage::ExtensionToolbar { label: None });
+        registry.grant_optional(&id, "network:intercept").unwrap();
+        let (unavailable_session, receiver) = mpsc::channel();
+        drop(receiver);
+        assert!(revoke_optional_and_wait_for_cleanup(
+            &registry, &id, "network:intercept", &unavailable_session,
+        ).is_err(), "a missing session acknowledgement must not look like successful cleanup");
+        assert_eq!(registry.capability_generation(&id, "network:intercept"), None,
+            "an acknowledgement error must not restore the revoked grant");
         let _ = std::fs::remove_dir_all(root);
     }
 
