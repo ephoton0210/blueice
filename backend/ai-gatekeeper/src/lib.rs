@@ -2,9 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! `blueice-ai-gatekeeper`: the deterministic rule-base component of
+//! `blueice-ai-gatekeeper`: the deterministic rule-base and optional local
+//! model-review component of
 //! `phase-7-local-ai/PLAN.md`'s safety-gatekeeper process. It remains
-//! deliberately independent of any future AI model: `rules` has no prompt or
+//! deliberately independent of the AI model: `rules` has no prompt or
 //! model input and produces a stable decision from one request alone. The
 //! process/IPC/concurrency/fail-closed mechanism remains owned by
 //! `blueice-engine`'s `gatekeeper_client`/`session` modules.
@@ -16,13 +17,14 @@
 //! remain independent all the way through the gatekeeper.
 
 mod rules;
+mod model;
 
 pub use rules::{review, RULESET_VERSION};
 
 use blueice_ipc::gatekeeper::{
     read_gatekeeper_request, read_gatekeeper_wire_request, write_gatekeeper_reply,
     write_gatekeeper_settings_reply, GatekeeperSettings, GatekeeperSettingsChange,
-    GatekeeperSettingsReply, GatekeeperWireRequest,
+    GatekeeperSettingsReply, GatekeeperWireRequest, GatekeeperLocalModel, GatekeeperReply,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -30,26 +32,38 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Reads one [`blueice_ipc::gatekeeper::GatekeeperRequest`] from
 /// `stream` and replies with the independent deterministic rule-base
-/// decision. A future model review is a separate second layer; it must not
-/// replace or be able to modify this one.
+/// decision. Production connections use [`GatekeeperService`] to compose an
+/// optional local model only after this independent layer clears.
 pub fn handle_one_check<S: Read + Write>(stream: &mut S) -> io::Result<()> {
     let request = read_gatekeeper_request(stream)?;
     write_gatekeeper_reply(stream, &review(&request))
 }
 
 /// Persistent, user-adjustable state for the deterministic rule base. The
-/// adjustable fields are additive local blocklists; compiled baseline rules
-/// and every workflow stage stay mandatory for the release.
+/// adjustable fields are additive local blocklists plus an optional local
+/// model reviewer; compiled baseline rules and every workflow stage remain
+/// mandatory for the release.
 pub struct GatekeeperService {
     settings_path: Option<PathBuf>,
     custom_policy: RwLock<CustomPolicy>,
+    model_inflight: AtomicUsize,
+}
+
+struct ModelReviewPermit<'a>(&'a AtomicUsize);
+
+impl Drop for ModelReviewPermit<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 #[derive(Debug, Clone, Default)]
 struct CustomPolicy {
+    local_model: Option<GatekeeperLocalModel>,
     blocked_hosts: BTreeSet<String>,
     blocked_phrases: BTreeSet<String>,
     blocked_download_extensions: BTreeSet<String>,
@@ -59,6 +73,8 @@ struct CustomPolicy {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct StoredSettings {
     schema_version: u32,
+    #[serde(default)]
+    local_model: Option<GatekeeperLocalModel>,
     custom_blocked_hosts: Vec<String>,
     #[serde(default)]
     custom_blocked_phrases: Vec<String>,
@@ -68,8 +84,9 @@ struct StoredSettings {
     custom_blocked_popup_phrases: Vec<String>,
 }
 
-const SETTINGS_SCHEMA_VERSION: u32 = 3;
+const SETTINGS_SCHEMA_VERSION: u32 = 4;
 const MAX_CUSTOM_ENTRIES: usize = 128;
+const MAX_CONCURRENT_MODEL_REVIEWS: usize = 4;
 
 impl GatekeeperService {
     /// Constructs a service using `settings_path` for its user-managed,
@@ -83,6 +100,7 @@ impl GatekeeperService {
         Ok(Self {
             settings_path,
             custom_policy: RwLock::new(custom_policy),
+            model_inflight: AtomicUsize::new(0),
         })
     }
 
@@ -97,16 +115,35 @@ impl GatekeeperService {
                     .read()
                     .expect("gatekeeper settings lock must not be poisoned")
                     .clone();
-                write_gatekeeper_reply(
-                    stream,
-                    &rules::review_with_custom_policy(
-                        &request,
-                        &policy.blocked_hosts.into_iter().collect::<Vec<_>>(),
-                        &policy.blocked_phrases.into_iter().collect::<Vec<_>>(),
-                        &policy.blocked_download_extensions.into_iter().collect::<Vec<_>>(),
-                        &policy.blocked_popup_phrases.into_iter().collect::<Vec<_>>(),
-                    ),
-                )
+                let baseline = rules::review_with_custom_policy(
+                    &request,
+                    &policy.blocked_hosts.into_iter().collect::<Vec<_>>(),
+                    &policy.blocked_phrases.into_iter().collect::<Vec<_>>(),
+                    &policy.blocked_download_extensions.into_iter().collect::<Vec<_>>(),
+                    &policy.blocked_popup_phrases.into_iter().collect::<Vec<_>>(),
+                );
+                let reply = if baseline != GatekeeperReply::Cleared {
+                    baseline
+                } else if let Some(config) = policy.local_model.as_ref() {
+                    let verdict = match self.acquire_model_review() {
+                        Some(_permit) => model::review(config, &request),
+                        None => Err("local model review capacity is exhausted".to_string()),
+                    };
+                    match verdict {
+                        Ok(true) => GatekeeperReply::Cleared,
+                        Ok(false) => GatekeeperReply::Rejected {
+                            reason: "the enabled local model classified the action as unsafe".to_string(),
+                            category: "local-model-blocked".to_string(),
+                        },
+                        Err(_) => GatekeeperReply::Rejected {
+                            reason: "the enabled local model review could not be completed".to_string(),
+                            category: "local-model-unavailable".to_string(),
+                        },
+                    }
+                } else {
+                    GatekeeperReply::Cleared
+                };
+                write_gatekeeper_reply(stream, &reply)
             }
             GatekeeperWireRequest::Settings(request) => {
                 let reply = match request {
@@ -125,12 +162,22 @@ impl GatekeeperService {
         }
     }
 
+    fn acquire_model_review(&self) -> Option<ModelReviewPermit<'_>> {
+        self.model_inflight
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+                (active < MAX_CONCURRENT_MODEL_REVIEWS).then_some(active + 1)
+            })
+            .ok()
+            .map(|_| ModelReviewPermit(&self.model_inflight))
+    }
+
     pub fn settings(&self) -> GatekeeperSettings {
         let policy = self
             .custom_policy
             .read()
             .expect("gatekeeper settings lock must not be poisoned");
         rules::settings(
+            policy.local_model.clone(),
             policy.blocked_hosts.iter().cloned().collect(),
             policy.blocked_phrases.iter().cloned().collect(),
             policy.blocked_download_extensions.iter().cloned().collect(),
@@ -145,6 +192,11 @@ impl GatekeeperService {
             .map_err(|_| "gatekeeper settings are unavailable".to_string())?;
         let mut next = policy.clone();
         let changed = match change {
+            GatekeeperSettingsChange::ConfigureLocalModel { provider, base_url, model: model_name } => {
+                let config = model::validate_config(provider, base_url, model_name)?;
+                next.local_model.replace(config.clone()) != Some(config)
+            }
+            GatekeeperSettingsChange::DisableLocalModel => next.local_model.take().is_some(),
             GatekeeperSettingsChange::AddBlockedHost { host } => {
                 let host = normalize_host(&host)?;
                 if !next.blocked_hosts.contains(&host) && next.blocked_hosts.len() >= MAX_CUSTOM_ENTRIES {
@@ -193,6 +245,7 @@ impl GatekeeperService {
         }
         *policy = next;
         Ok(rules::settings(
+            policy.local_model.clone(),
             policy.blocked_hosts.iter().cloned().collect(),
             policy.blocked_phrases.iter().cloned().collect(),
             policy.blocked_download_extensions.iter().cloned().collect(),
@@ -217,7 +270,7 @@ fn load_custom_policy(path: &Path) -> Result<CustomPolicy, String> {
         .map_err(|error| format!("reading gatekeeper settings {}: {error}", path.display()))?;
     let stored: StoredSettings = serde_json::from_str(&raw)
         .map_err(|error| format!("parsing gatekeeper settings {}: {error}", path.display()))?;
-    if !matches!(stored.schema_version, 1 | 2 | SETTINGS_SCHEMA_VERSION) {
+    if !matches!(stored.schema_version, 1 | 2 | 3 | SETTINGS_SCHEMA_VERSION) {
         return Err(format!(
             "gatekeeper settings {} use unsupported schema version {}",
             path.display(),
@@ -250,7 +303,10 @@ fn load_custom_policy(path: &Path) -> Result<CustomPolicy, String> {
     {
         return Err("gatekeeper settings exceed the maximum list size".to_string());
     }
-    Ok(CustomPolicy { blocked_hosts, blocked_phrases, blocked_download_extensions, blocked_popup_phrases })
+    let local_model = stored.local_model.map(|config| {
+        model::validate_config(config.provider, config.base_url, config.model)
+    }).transpose()?;
+    Ok(CustomPolicy { local_model, blocked_hosts, blocked_phrases, blocked_download_extensions, blocked_popup_phrases })
 }
 
 fn persist_custom_policy(path: &Path, policy: &CustomPolicy) -> Result<(), String> {
@@ -265,6 +321,7 @@ fn persist_custom_policy(path: &Path, policy: &CustomPolicy) -> Result<(), Strin
     })?;
     let stored = StoredSettings {
         schema_version: SETTINGS_SCHEMA_VERSION,
+        local_model: policy.local_model.clone(),
         custom_blocked_hosts: policy.blocked_hosts.iter().cloned().collect(),
         custom_blocked_phrases: policy.blocked_phrases.iter().cloned().collect(),
         custom_blocked_download_extensions: policy.blocked_download_extensions.iter().cloned().collect(),
@@ -456,6 +513,63 @@ mod tests {
             reply
         });
         worker
+    }
+
+    fn review_exchange(service: &GatekeeperService, request: GatekeeperRequest) -> GatekeeperReply {
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        thread::scope(|scope| {
+            let worker = scope.spawn(|| service.handle_connection(&mut server));
+            write_gatekeeper_request(&mut client, &request).unwrap();
+            let reply = read_gatekeeper_reply(&mut client).unwrap();
+            worker.join().unwrap().unwrap();
+            reply
+        })
+    }
+
+    #[test]
+    fn optional_local_model_never_overrides_baseline_and_fails_closed_when_unavailable() {
+        let service = GatekeeperService::new(None).unwrap();
+        let configured = settings_exchange(&service, GatekeeperSettingsRequest::Update {
+            change: GatekeeperSettingsChange::ConfigureLocalModel {
+                provider: "ollama".into(),
+                base_url: "http://127.0.0.1:9/v1/".into(),
+                model: "local-model".into(),
+            },
+        });
+        let GatekeeperSettingsReply::Settings(configured) = configured else {
+            panic!("valid loopback model configuration must be accepted")
+        };
+        assert!(configured.model_review_active);
+        assert_eq!(configured.local_model.unwrap().provider, "ollama");
+        assert!(matches!(
+            review_exchange(&service, GatekeeperRequest::CheckUrl { url: "https://malware.test/".into() }),
+            GatekeeperReply::Rejected { category, .. } if category == "known-bad-domain"
+        ));
+        assert!(matches!(
+            review_exchange(&service, GatekeeperRequest::CheckUrl { url: "https://safe.example/".into() }),
+            GatekeeperReply::Rejected { category, .. } if category == "local-model-unavailable"
+        ));
+        assert!(matches!(
+            settings_exchange(&service, GatekeeperSettingsRequest::Update {
+                change: GatekeeperSettingsChange::DisableLocalModel,
+            }),
+            GatekeeperSettingsReply::Settings(settings) if !settings.model_review_active && settings.local_model.is_none()
+        ));
+        assert_eq!(
+            review_exchange(&service, GatekeeperRequest::CheckUrl { url: "https://safe.example/".into() }),
+            GatekeeperReply::Cleared
+        );
+    }
+
+    #[test]
+    fn local_model_review_capacity_is_bounded_and_released() {
+        let service = GatekeeperService::new(None).unwrap();
+        let permits: Vec<_> = (0..MAX_CONCURRENT_MODEL_REVIEWS)
+            .map(|_| service.acquire_model_review().unwrap())
+            .collect();
+        assert!(service.acquire_model_review().is_none());
+        drop(permits);
+        assert!(service.acquire_model_review().is_some());
     }
 
     #[test]
@@ -705,7 +819,7 @@ mod tests {
         );
         assert!(matches!(reply, GatekeeperSettingsReply::Settings(_)));
         let stored: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        assert_eq!(stored["schema_version"], 3);
+        assert_eq!(stored["schema_version"], 4);
         assert_eq!(stored["custom_blocked_hosts"][0], "legacy.example");
         assert_eq!(stored["custom_blocked_phrases"][0], "blocked phrase");
         let _ = fs::remove_file(path);
@@ -730,10 +844,35 @@ mod tests {
             change: GatekeeperSettingsChange::AddBlockedDownloadExtension { extension: ".zip".to_string() },
         }), GatekeeperSettingsReply::Settings(_)));
         let stored: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        assert_eq!(stored["schema_version"], 3);
+        assert_eq!(stored["schema_version"], 4);
         assert_eq!(stored["custom_blocked_hosts"][0], "legacy.example");
         assert_eq!(stored["custom_blocked_phrases"][0], "legacy phrase");
         assert_eq!(stored["custom_blocked_download_extensions"][0], ".zip");
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn version_three_settings_upgrade_and_local_model_configuration_survives_restart() {
+        let path = std::env::temp_dir().join(format!(
+            "blueice-gatekeeper-v3-model-{}.json", std::process::id()
+        ));
+        fs::write(&path, r#"{"schema_version":3,"custom_blocked_hosts":["legacy.example"],"custom_blocked_phrases":[],"custom_blocked_download_extensions":[".zip"],"custom_blocked_popup_phrases":[]}"#).unwrap();
+        let service = GatekeeperService::new(Some(path.clone())).unwrap();
+        assert!(!service.settings().model_review_active);
+        assert!(matches!(settings_exchange(&service, GatekeeperSettingsRequest::Update {
+            change: GatekeeperSettingsChange::ConfigureLocalModel {
+                provider: "huggingface".into(),
+                base_url: "http://127.0.0.1:8080/v1/".into(),
+                model: "repo/model".into(),
+            },
+        }), GatekeeperSettingsReply::Settings(settings) if settings.model_review_active));
+        drop(service);
+        let restored = GatekeeperService::new(Some(path.clone())).unwrap();
+        assert_eq!(restored.settings().custom_blocked_hosts, ["legacy.example"]);
+        assert_eq!(restored.settings().custom_blocked_download_extensions, [".zip"]);
+        assert_eq!(restored.settings().local_model.unwrap().model, "repo/model");
+        let stored: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(stored["schema_version"], 4);
         let _ = fs::remove_file(path);
     }
 }

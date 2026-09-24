@@ -118,15 +118,27 @@ pub struct GatekeeperWorkflowStep {
     pub mandatory: bool,
 }
 
+/// An explicitly enabled, self-operated Chat Completions reviewer. The
+/// gatekeeper validates the endpoint as loopback-only before persistence;
+/// this is never a cloud or API-key configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GatekeeperLocalModel {
+    pub provider: String,
+    pub base_url: String,
+    pub model: String,
+}
+
 /// Complete inspectable gatekeeper policy. The compiled rules and workflow are
-/// immutable for a running release; the custom lists are deliberately narrow,
-/// additive adjustment surfaces a user controls locally at each review stage.
+/// immutable for a running release. Custom lists are additive controls;
+/// local-model configuration is an explicitly optional second review layer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GatekeeperSettings {
     pub ruleset_version: String,
     /// This release's deterministic layer is active; the separate local
     /// model-review layer has not been wired into the enforcement path yet.
     pub model_review_active: bool,
+    #[serde(default)]
+    pub local_model: Option<GatekeeperLocalModel>,
     pub baseline_rules: Vec<GatekeeperRuleInfo>,
     pub workflow: Vec<GatekeeperWorkflowStep>,
     pub custom_blocked_hosts: Vec<String>,
@@ -137,10 +149,13 @@ pub struct GatekeeperSettings {
     pub custom_blocked_popup_phrases: Vec<String>,
 }
 
-/// A user-requested, strictly additive local policy adjustment. There is no
-/// operation to disable or weaken a compiled rule or mandatory workflow step.
+/// A user-requested local policy adjustment. There is no operation to disable
+/// or weaken a compiled rule or mandatory workflow step; only the optional
+/// second model layer may be configured or disabled.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GatekeeperSettingsChange {
+    ConfigureLocalModel { provider: String, base_url: String, model: String },
+    DisableLocalModel,
     AddBlockedHost { host: String },
     RemoveBlockedHost { host: String },
     AddBlockedPhrase { phrase: String },
@@ -330,6 +345,32 @@ mod tests {
             read_gatekeeper_settings_reply(&mut b).unwrap(),
             settings_reply
         );
+    }
+
+    #[test]
+    fn local_model_settings_changes_round_trip_separately_from_reviews() {
+        for change in [
+            GatekeeperSettingsChange::ConfigureLocalModel {
+                provider: "huggingface".into(),
+                base_url: "http://127.0.0.1:8080/v1/".into(),
+                model: "repo/model".into(),
+            },
+            GatekeeperSettingsChange::DisableLocalModel,
+        ] {
+            let request = GatekeeperSettingsRequest::Update { change };
+            let (mut a, mut b) = UnixStream::pair().unwrap();
+            write_gatekeeper_settings_request(&mut a, &request).unwrap();
+            assert_eq!(read_gatekeeper_wire_request(&mut b).unwrap(), GatekeeperWireRequest::Settings(request));
+        }
+    }
+
+    #[test]
+    fn older_settings_replies_without_a_model_configuration_remain_readable() {
+        let old = r#"{"ruleset_version":"2026.09.24.1","model_review_active":false,"baseline_rules":[],"workflow":[],"custom_blocked_hosts":[],"custom_blocked_phrases":[]}"#;
+        let settings: GatekeeperSettings = serde_json::from_str(old).unwrap();
+        assert!(settings.local_model.is_none());
+        assert!(settings.custom_blocked_download_extensions.is_empty());
+        assert!(settings.custom_blocked_popup_phrases.is_empty());
     }
 
     #[test]

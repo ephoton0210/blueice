@@ -12,7 +12,7 @@
 //! not a live remote policy download that an attacker could replace.
 
 use blueice_ipc::gatekeeper::{
-    GatekeeperReply, GatekeeperRequest, GatekeeperRuleInfo, GatekeeperSettings,
+    GatekeeperLocalModel, GatekeeperReply, GatekeeperRequest, GatekeeperRuleInfo, GatekeeperSettings,
     GatekeeperWorkflowStep,
 };
 
@@ -174,6 +174,7 @@ pub fn mandatory_workflow() -> Vec<GatekeeperWorkflowStep> {
 }
 
 pub fn settings(
+    local_model: Option<GatekeeperLocalModel>,
     custom_blocked_hosts: Vec<String>,
     custom_blocked_phrases: Vec<String>,
     custom_blocked_download_extensions: Vec<String>,
@@ -181,7 +182,8 @@ pub fn settings(
 ) -> GatekeeperSettings {
     GatekeeperSettings {
         ruleset_version: RULESET_VERSION.to_string(),
-        model_review_active: false,
+        model_review_active: local_model.is_some(),
+        local_model,
         baseline_rules: baseline_rules(),
         workflow: mandatory_workflow(),
         custom_blocked_hosts,

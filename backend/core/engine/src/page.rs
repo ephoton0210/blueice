@@ -432,7 +432,7 @@ impl Page {
             .map(crate::credits::locale_from_url)
             .unwrap_or(blueice_i18n::DEFAULT_LOCALE);
         let Some(source) = self.gatekeeper_settings.as_ref() else {
-            self.settings_notice = Some(SettingsNotice::Rejected);
+            self.settings_notice = Some(SettingsNotice::Rejected("the settings service is unavailable".to_string()));
             let html = gatekeeper_settings_html(
                 &GatekeeperSettingsView::Unavailable,
                 locale,
@@ -453,7 +453,7 @@ impl Page {
                     .fetch()
                     .map(GatekeeperSettingsView::Settings)
                     .unwrap_or(GatekeeperSettingsView::Unavailable);
-                let html = gatekeeper_settings_html(&view, locale, Some(SettingsNotice::Rejected));
+                let html = gatekeeper_settings_html(&view, locale, Some(SettingsNotice::Rejected(error.clone())));
                 self.load_html(&html);
                 return Some(Err(error));
             }
@@ -471,6 +471,18 @@ impl Page {
             node = self.doc.parent(node)?;
         };
         match action.as_str() {
+            "configure-model" => {
+                let read_input = |id| {
+                    let input = find_element_by_id(&self.doc, self.doc.root(), id)?;
+                    element_attribute(&self.doc, input, "value").map(str::to_string)
+                };
+                Some(GatekeeperSettingsChange::ConfigureLocalModel {
+                    provider: read_input("gatekeeper-model-provider")?,
+                    base_url: read_input("gatekeeper-model-base")?,
+                    model: read_input("gatekeeper-model-name")?,
+                })
+            }
+            "disable-model" => Some(GatekeeperSettingsChange::DisableLocalModel),
             "add-host" => {
                 let input =
                     find_element_by_id(&self.doc, self.doc.root(), "gatekeeper-custom-host")?;
@@ -1847,7 +1859,7 @@ mod tests {
             move || {
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
                 let mut handled = 0;
-                while handled < 8 && std::time::Instant::now() < deadline {
+                while handled < 10 && std::time::Instant::now() < deadline {
                     match listener.accept() {
                         Ok((mut stream, _)) => {
                             service.handle_connection(&mut stream).unwrap();
@@ -1860,7 +1872,7 @@ mod tests {
                     }
                 }
                 assert_eq!(
-                    handled, 8,
+                    handled, 10,
                     "the page must read and apply every control through the real service"
                 );
             }
@@ -1874,6 +1886,18 @@ mod tests {
         assert!(page.dom_dump().contains("known-malicious-domain"));
         assert!(page.dom_dump().contains("Exact host or dot-boundary subdomain match"));
         assert!(page.dom_dump().contains("If rejected or unavailable"));
+        let model_name = find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-model-name").unwrap();
+        page.act(model_name, NodeAction::SetValue("local-model".to_string()));
+        let configure_model = find_by_attribute(
+            page.doc(), page.doc().root(), "data-gatekeeper-action", "configure-model",
+        ).unwrap();
+        assert_eq!(page.gatekeeper_settings_change_for(configure_model), Some(
+            GatekeeperSettingsChange::ConfigureLocalModel {
+                provider: "ollama".to_string(),
+                base_url: "http://127.0.0.1:11434/v1/".to_string(),
+                model: "local-model".to_string(),
+            }
+        ));
         let input =
             find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-custom-host").unwrap();
         let add = find_by_attribute(
@@ -1950,6 +1974,18 @@ mod tests {
         ).unwrap();
         assert_eq!(page.apply_gatekeeper_settings_control(remove_popup), Some(Ok(())));
         assert!(service.settings().custom_blocked_popup_phrases.is_empty());
+        let model_name = find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-model-name").unwrap();
+        page.act(model_name, NodeAction::SetValue("local-model".to_string()));
+        let configure_model = find_by_attribute(
+            page.doc(), page.doc().root(), "data-gatekeeper-action", "configure-model",
+        ).unwrap();
+        assert_eq!(page.apply_gatekeeper_settings_control(configure_model), Some(Ok(())));
+        assert!(service.settings().model_review_active);
+        let disable_model = find_by_attribute(
+            page.doc(), page.doc().root(), "data-gatekeeper-action", "disable-model",
+        ).unwrap();
+        assert_eq!(page.apply_gatekeeper_settings_control(disable_model), Some(Ok(())));
+        assert!(!service.settings().model_review_active);
         worker.join().unwrap();
         let _ = std::fs::remove_file(socket);
     }

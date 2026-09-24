@@ -106,6 +106,10 @@ Project-wide license is MPL-2.0, chosen specifically because the project reads a
 - MPL §2.1's patent grant only covers contributors' own contributions to this project, not unrelated third-party patents (codecs, GPU rendering, JIT techniques). This risk doesn't disappear at non-commercial stage.
 - Do not use "Firefox", "Mozilla", "Chrome", "Google Chrome", or "Chromium" names/logos as BlueIce branding. Descriptive references ("BlueIce references Gecko's approach to X") are fine as nominative fair use.
 
+## Current Phase 7 update (2026-09-24)
+
+The older Phase 7 paragraph's closing gap list predates the current implementation. `GatekeeperService` now runs the mandatory compiled rule-base first, then an optional local Ollama or Hugging Face TGI Chat Completions reviewer configured and disabled through `about:settings`. The page reads live rule/step logic, fail-closed outcomes, model provider/base/name, and additive custom entries from the gatekeeper service. Local-model endpoints are restricted to credential-free loopback HTTP, without proxy, redirects, or cloud fallback; input/output, concurrency, and latency are bounded, and only a strict allow verdict clears. Scripted local-provider and compiled gatekeeper tests pass; actual local-model inference, classifier-quality evaluation, the assistant agent, and broader risk taxonomy remain open. `README.md` and `phase-7-local-ai/PLAN.md` carry the authoritative current summary.
+
 ## Naming
 
 The brand name is written **BlueIce** (capital I) in prose and docs. The lowercase `blueice` is reserved for technical identifiers only — the GitHub repo slug (`ephoton0210/blueice`) and filesystem paths — not for prose.

@@ -12,6 +12,8 @@ use blueice_ipc::gatekeeper::{
     write_gatekeeper_settings_request, GatekeeperReply, GatekeeperRequest,
     GatekeeperSettingsChange, GatekeeperSettingsReply, GatekeeperSettingsRequest,
 };
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command};
@@ -68,8 +70,10 @@ impl GatekeeperProcess {
         let _ = std::fs::remove_file(&socket);
         let child = Command::new(env!("CARGO_BIN_EXE_blueice-ai-gatekeeper"))
             .args([
-                "--socket", socket.to_str().unwrap(),
-                "--settings", settings_path.to_str().unwrap(),
+                "--socket",
+                socket.to_str().unwrap(),
+                "--settings",
+                settings_path.to_str().unwrap(),
             ])
             .spawn()
             .expect("failed to spawn blueice-ai-gatekeeper");
@@ -77,7 +81,11 @@ impl GatekeeperProcess {
             wait_for(&socket, Duration::from_secs(5)),
             "blueice-ai-gatekeeper never created its private socket"
         );
-        Self { child, socket, settings_path }
+        Self {
+            child,
+            socket,
+            settings_path,
+        }
     }
 
     fn check(&self, detail: &str) -> GatekeeperReply {
@@ -101,7 +109,8 @@ impl GatekeeperProcess {
         write_gatekeeper_settings_request(
             &mut stream,
             &GatekeeperSettingsRequest::Update { change },
-        ).unwrap();
+        )
+        .unwrap();
         read_gatekeeper_settings_reply(&mut stream).unwrap()
     }
 }
@@ -118,28 +127,36 @@ impl Drop for GatekeeperProcess {
 #[test]
 fn real_gatekeeper_process_applies_persisted_settings_to_the_next_review() {
     let gatekeeper = GatekeeperProcess::spawn();
-    assert!(matches!(gatekeeper.update(GatekeeperSettingsChange::AddBlockedDownloadExtension {
+    assert!(
+        matches!(gatekeeper.update(GatekeeperSettingsChange::AddBlockedDownloadExtension {
         extension: ".zip".to_string(),
     }), GatekeeperSettingsReply::Settings(settings)
-        if settings.custom_blocked_download_extensions == [".zip"]));
+        if settings.custom_blocked_download_extensions == [".zip"])
+    );
     assert!(gatekeeper.settings_path.exists());
-    assert!(matches!(gatekeeper.review(GatekeeperRequest::CheckDownload {
+    assert!(
+        matches!(gatekeeper.review(GatekeeperRequest::CheckDownload {
         url: "https://safe.example/file.zip".to_string(),
         file_name: "file.zip".to_string(),
         content_type: None,
         total_bytes: None,
     }), GatekeeperReply::Rejected { category, .. }
-        if category == "custom-blocked-download-extension"));
-    assert!(matches!(gatekeeper.update(GatekeeperSettingsChange::AddBlockedPopupPhrase {
+        if category == "custom-blocked-download-extension")
+    );
+    assert!(
+        matches!(gatekeeper.update(GatekeeperSettingsChange::AddBlockedPopupPhrase {
         phrase: "send secrets".to_string(),
     }), GatekeeperSettingsReply::Settings(settings)
-        if settings.custom_blocked_popup_phrases == ["send secrets"]));
-    assert!(matches!(gatekeeper.review(GatekeeperRequest::CheckExtensionAction {
+        if settings.custom_blocked_popup_phrases == ["send secrets"])
+    );
+    assert!(
+        matches!(gatekeeper.review(GatekeeperRequest::CheckExtensionAction {
         extension_id: "minimal-slice-extension".to_string(),
         capability: "ui:inject".to_string(),
         detail: "action=show-native-popup; title=Send secrets; body=Now".to_string(),
     }), GatekeeperReply::Rejected { category, .. }
-        if category == "custom-blocked-popup-phrase"));
+        if category == "custom-blocked-popup-phrase")
+    );
 }
 
 #[test]
@@ -153,4 +170,86 @@ fn real_gatekeeper_process_reviews_extension_actions_on_an_overridden_private_so
         gatekeeper.check("target=form-input; input_type=password"),
         GatekeeperReply::Rejected { category, .. } if category == "sensitive-extension-action"
     ));
+}
+
+#[test]
+fn real_gatekeeper_process_uses_local_model_only_after_mandatory_rules_clear() {
+    let gatekeeper = GatekeeperProcess::spawn();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let base_url = format!(
+        "http://127.0.0.1:{}/v1/",
+        listener.local_addr().unwrap().port()
+    );
+    assert!(
+        matches!(gatekeeper.update(GatekeeperSettingsChange::ConfigureLocalModel {
+        provider: "huggingface".into(), base_url, model: "local/model".into(),
+    }), GatekeeperSettingsReply::Settings(settings) if settings.model_review_active)
+    );
+    assert!(matches!(gatekeeper.review(GatekeeperRequest::CheckUrl {
+        url: "https://malware.test/".into(),
+    }), GatekeeperReply::Rejected { category, .. } if category == "known-bad-domain"));
+    assert_eq!(
+        listener.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock
+    );
+
+    listener.set_nonblocking(false).unwrap();
+    let server = thread::spawn(move || {
+        for decision in ["allow", "block"] {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut received = Vec::new();
+            let header_end = loop {
+                let mut chunk = [0u8; 1024];
+                let count = stream.read(&mut chunk).unwrap();
+                assert!(count > 0);
+                received.extend_from_slice(&chunk[..count]);
+                if let Some(end) = received.windows(4).position(|part| part == b"\r\n\r\n") {
+                    break end + 4;
+                }
+            };
+            let headers = String::from_utf8(received[..header_end].to_vec()).unwrap();
+            assert!(headers.starts_with("POST /v1/chat/completions HTTP/1.1"));
+            let length: usize = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("Content-Length")
+                        .then(|| value.trim().parse().unwrap())
+                })
+                .unwrap();
+            while received.len() - header_end < length {
+                let mut chunk = [0u8; 1024];
+                let count = stream.read(&mut chunk).unwrap();
+                assert!(count > 0);
+                received.extend_from_slice(&chunk[..count]);
+            }
+            let body: serde_json::Value =
+                serde_json::from_slice(&received[header_end..header_end + length]).unwrap();
+            assert_eq!(body["model"], "local/model");
+            let content = format!(r#"{{"decision":"{decision}"}}"#);
+            let response =
+                serde_json::json!({"choices":[{"message":{"content":content}}]}).to_string();
+            stream.write_all(format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}", response.len()
+        ).as_bytes()).unwrap();
+        }
+    });
+    assert_eq!(
+        gatekeeper.review(GatekeeperRequest::CheckUrl {
+            url: "https://safe.example/".into(),
+        }),
+        GatekeeperReply::Cleared
+    );
+    assert!(matches!(gatekeeper.review(GatekeeperRequest::CheckUrl {
+        url: "https://safe.example/".into(),
+    }), GatekeeperReply::Rejected { category, .. } if category == "local-model-blocked"));
+    server.join().unwrap();
+    assert!(
+        matches!(gatekeeper.update(GatekeeperSettingsChange::DisableLocalModel),
+        GatekeeperSettingsReply::Settings(settings) if !settings.model_review_active)
+    );
 }

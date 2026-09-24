@@ -31,6 +31,7 @@ use std::collections::HashSet;
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::time::Duration;
 
 /// Proof that both gatekeeper stages cleared for `url` on `tab_id`.
 /// Unconstructable outside this module (see module docs) -- the exact
@@ -102,6 +103,8 @@ const MAX_NAVIGATION_REDIRECTS: usize = 10;
 fn check_stage(gatekeeper_socket: &Path, request: &GatekeeperRequest) -> StageOutcome {
     let attempt = (|| -> io::Result<GatekeeperReply> {
         let mut stream = UnixStream::connect(gatekeeper_socket)?;
+        stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+        stream.set_write_timeout(Some(Duration::from_secs(10)))?;
         write_gatekeeper_request(&mut stream, request)?;
         read_gatekeeper_reply(&mut stream)
     })();

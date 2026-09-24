@@ -3,8 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! `blueice-ai-gatekeeper`: the process binary. Deliberately thin --
-//! all the logic it runs (`handle_one_check`, applying the versioned
-//! deterministic rule set) lives in `blueice_ai_gatekeeper`'s `lib.rs`, already
+//! all review logic (mandatory versioned rules and an optional local model)
+//! lives in `blueice_ai_gatekeeper`'s `GatekeeperService`, already
 //! covered by its own unit tests against an in-process `UnixStream`
 //! pair. This file is just parsing an optional private socket override,
 //! binding a real `UnixListener`, and accepting connections -- matching

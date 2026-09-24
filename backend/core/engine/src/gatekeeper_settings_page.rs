@@ -28,10 +28,10 @@ pub fn is_gatekeeper_settings_url(url: &str) -> bool {
 
 const SETTINGS_TIMEOUT: Duration = Duration::from_millis(300);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsNotice {
     Saved,
-    Rejected,
+    Rejected(String),
 }
 
 pub enum GatekeeperSettingsView {
@@ -117,9 +117,8 @@ const STYLE: &str = "body { padding: 12px; font-size: 15px; color: #222222; } \
     button { margin-left: 6px; }";
 
 /// Generates a full, escaped snapshot of the policy the running gatekeeper
-/// reports. `notice` intentionally contains no raw service error: a user gets
-/// a clear local result without reflecting arbitrary persistence/path text as
-/// privileged HTML.
+/// reports. Rejection details are bounded and HTML-escaped before they become
+/// privileged-page text, so a user can correct an invalid local-model base.
 pub fn gatekeeper_settings_html(
     view: &GatekeeperSettingsView,
     locale: &str,
@@ -143,7 +142,10 @@ pub fn gatekeeper_settings_html(
     if let Some(notice) = notice {
         let (class, message) = match notice {
             SettingsNotice::Saved => ("adjustable", t("saved")),
-            SettingsNotice::Rejected => ("error", t("invalid")),
+            SettingsNotice::Rejected(reason) => (
+                "error",
+                format!("{} {}", t("invalid"), reason.chars().take(240).collect::<String>()),
+            ),
         };
         body.push_str(&format!(
             "<p class=\"{class}\">{}</p>",
@@ -166,6 +168,25 @@ pub fn gatekeeper_settings_html(
                 escape_html(&t("model-review")),
                 escape_html(&t(if settings.model_review_active { "model-active" } else { "model-inactive" })),
             ));
+            let provider = settings.local_model.as_ref().map(|config| config.provider.as_str()).unwrap_or("ollama");
+            let base_url = settings.local_model.as_ref().map(|config| config.base_url.as_str()).unwrap_or("http://127.0.0.1:11434/v1/");
+            let model = settings.local_model.as_ref().map(|config| config.model.as_str()).unwrap_or("");
+            body.push_str(&format!(
+                "<div class=\"section\"><h2>{}</h2><p class=\"note\">{}</p><label for=\"gatekeeper-model-provider\">{}</label><input id=\"gatekeeper-model-provider\" type=\"text\" value=\"{}\"><label for=\"gatekeeper-model-base\">{}</label><input id=\"gatekeeper-model-base\" type=\"text\" value=\"{}\"><label for=\"gatekeeper-model-name\">{}</label><input id=\"gatekeeper-model-name\" type=\"text\" value=\"{}\"><button data-gatekeeper-action=\"configure-model\">{}</button>",
+                escape_html(&t("local-model-heading")),
+                escape_html(&t("local-model-warning")),
+                escape_html(&t("local-model-provider")), escape_html(provider),
+                escape_html(&t("local-model-base")), escape_html(base_url),
+                escape_html(&t("local-model-name")), escape_html(model),
+                escape_html(&t("local-model-save")),
+            ));
+            if settings.local_model.is_some() {
+                body.push_str(&format!(
+                    "<button data-gatekeeper-action=\"disable-model\">{}</button>",
+                    escape_html(&t("local-model-disable"))
+                ));
+            }
+            body.push_str("</div>");
             body.push_str(&format!(
                 "<div class=\"section\"><h2>{}</h2>",
                 escape_html(&t("baseline-rules-heading"))
@@ -348,12 +369,13 @@ pub fn gatekeeper_settings_html(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blueice_ipc::gatekeeper::{GatekeeperRuleInfo, GatekeeperWorkflowStep};
+    use blueice_ipc::gatekeeper::{GatekeeperLocalModel, GatekeeperRuleInfo, GatekeeperWorkflowStep};
 
     fn settings() -> GatekeeperSettings {
         GatekeeperSettings {
             ruleset_version: "2026.09.23.1".to_string(),
             model_review_active: false,
+            local_model: None,
             baseline_rules: vec![GatekeeperRuleInfo {
                 id: "domain-rule".to_string(),
                 category: "known-bad-domain".to_string(),
@@ -389,6 +411,8 @@ mod tests {
         assert!(html.contains("domain-rule") && html.contains("url-before-fetch"));
         assert!(html.contains("tracker.example"));
         assert!(html.contains("data-gatekeeper-action=\"add-host\""));
+        assert!(html.contains("data-gatekeeper-action=\"configure-model\""));
+        assert!(!html.contains("data-gatekeeper-action=\"disable-model\""));
         assert!(html.contains("data-gatekeeper-action=\"remove-host\""));
         assert!(html.contains("data-gatekeeper-action=\"add-phrase\""));
         assert!(html.contains("data-gatekeeper-action=\"remove-phrase\""));
@@ -404,6 +428,32 @@ mod tests {
         assert!(html.contains("A host also blocks its dot-boundary subdomains"));
         assert!(html.contains("ignore &lt;instructions&gt;"));
         assert!(html.contains("send &lt;secrets&gt;"));
+    }
+
+    #[test]
+    fn settings_page_shows_active_local_model_and_escaped_configuration() {
+        let mut config = settings();
+        config.model_review_active = true;
+        config.local_model = Some(GatekeeperLocalModel {
+            provider: "huggingface".into(),
+            base_url: "http://127.0.0.1:8080/v1/".into(),
+            model: "local<model>".into(),
+        });
+        let html = gatekeeper_settings_html(&GatekeeperSettingsView::Settings(config), "en", None);
+        assert!(html.contains("value=\"huggingface\""));
+        assert!(html.contains("value=\"local&lt;model&gt;\""));
+        assert!(html.contains("data-gatekeeper-action=\"disable-model\""));
+        assert!(html.contains("timeout, malformed reply, oversized input, or unavailable local service blocks"));
+    }
+
+    #[test]
+    fn rejected_model_configuration_shows_an_escaped_reason() {
+        let html = gatekeeper_settings_html(
+            &GatekeeperSettingsView::Settings(settings()), "en",
+            Some(SettingsNotice::Rejected("invalid <remote> endpoint".into())),
+        );
+        assert!(html.contains("invalid &lt;remote&gt; endpoint"));
+        assert!(!html.contains("<remote>"));
     }
 
     #[test]
