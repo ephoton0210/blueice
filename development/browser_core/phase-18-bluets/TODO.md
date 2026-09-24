@@ -1,89 +1,234 @@
 # Phase 18 — BlueTS / BlueTSC completion worklist
 
-[← Phase 18 plan](PLAN.md) · [integration contract](INTEGRATION_CONTRACT.md) · [test interface](TEST_INTERFACE.md) · [first DOM/event binding decision](../phase-13-bluejs-engine/DOM_EVENT_BINDINGS.md)
+[← Plan](PLAN.md) · [integration contract](INTEGRATION_CONTRACT.md) · [test interface](TEST_INTERFACE.md) · [DOM/event decision](../phase-13-bluejs-engine/DOM_EVENT_BINDINGS.md)
 
-This file tracks work that is still needed to make BlueTS a usable BlueIce page language. [PLAN.md](PLAN.md) records scope, delivered foundations, and detailed evidence. Keep this worklist short: update an item when its acceptance condition changes or closes; put implementation history in the plan or commit message. A check mark needs a real acceptance test, not only an API or unit test.
+The goal is a supported BlueTS page that runs, interacts, debugs, and enforces
+its declared boundaries through the real BlueIce processes. [PLAN.md](PLAN.md)
+holds design history and delivered evidence. This file holds the ordered work
+and its acceptance checks; checked leaves show prerequisites for the next step.
+
+Work one leaf at a time, in the order below. Finish its implementation and
+public-boundary test, commit it, then check it off before starting the next
+leaf. A design-only leaf needs a reviewable decision instead of a runtime test.
+Headings show dependencies; they are not tasks to finish in one commit.
+Keep design history in PLAN.md and defer capabilities or syntax that do not
+close the current leaf.
+
+**Current leaf: A1.2.** Require a per-core child capability at the script
+socket handshake. A real socket test must show that wrong and predecessor
+capabilities are rejected before any DOM dispatch. A1.3 follows only after
+that test passes.
 
 ## Current boundary
 
-- The launcher-supervised child runs authorized JavaScript and supported BlueTS classic/module graphs in document order. The child has no source resolver or fetch fallback.
-- The page host exposes copied document text and origin strings. It has no live DOM object, DOM mutation binding, or event listener surface.
-- The debugger can pause, resume, and step a verified classic root; BlueTS source-span stepping is bounded to that root. Modules, nested frames, stack, scope, exception locations, and values are still outside this seam.
-- The compiler/MCP route supports sealed startup projects and bounded read-only queries. It cannot accept client project registration, build output, or output writes.
-- The script DOM dispatcher now checks the exact document generation on each request. Its socket still lacks child authentication and a session wait that can answer DOM calls while the child executes.
+The supervised child runs authorized JavaScript and supported BlueTS classic
+and module graphs. It exposes copied document text and origin, with no live
+DOM or event API. Classic-root pause/resume and bounded BlueTS source-span
+stepping work; nested/module debugging, stack, scope, and values do not. The
+compiler/MCP route supports sealed projects and read-only queries, with no
+client registration, build output, or write authority.
 
-## Work order
+## P0 — interactive and debuggable pages
 
-Finish the P0 page runtime and its real-process tests before adding more static-metadata queries or TypeScript syntax. Add a debugger or compiler capability only when it directly closes an acceptance condition below. Keep page, compiler, debugger, and MCP authority separate.
+### A. Connect the child to the live core DOM (Phase 13).
 
-**Next closure target:** one launcher/core/child HTTP fixture must perform a synchronous DOM lookup, change visible text, and reject an old-generation request after reload. Child authentication and the session-owned wait are the next implementation steps.
+#### A1. Authenticate and identify every DOM request.
 
-## P0 — make a supported page interactive
+- [x] Require the exact document generation on every existing request;
+  reject a stale create-node request before mutation.
+- [ ] Require a launcher-issued, per-core child capability at the script
+  socket handshake; reject a foreign or predecessor child before dispatch.
+- [ ] Verify wrong-tab, stale-generation, and old-core denial through a
+  real socket; denied requests must leave the DOM unchanged.
 
-- [ ] **Connect the BlueJS child to the live core DOM (Phase 13).**
-  Authenticate the child on the script socket, bind each call to its exact tab and document generation, and let the core session answer bounded synchronous DOM calls while it waits for the child. Keep the session thread as the sole owner of TabManager; a stale, cross-tab, unauthenticated, or old-core call must fail before mutation. Retain per-tab VM, source, program, bytecode, and child-wide limits.
+#### A2. Serve DOM calls during script execution.
 
-  **Done when:** a real launcher/core/child HTTP page performs a DOM lookup and mutation without deadlock; navigation invalidates old calls and wrappers; denied calls leave the DOM unchanged. The existing generation check is one part of this item.
+- [ ] Let the session thread answer bounded calls from the executing child
+  while it waits for that child's result; keep TabManager on that thread.
+- [ ] Cap calls and wait time; never process unrelated frontend/debugger
+  work in the nested wait. Test timeout and child disconnect.
+- [ ] Prove a child script completes one synchronous DOM lookup through a
+  real launcher/core/child HTTP fixture without deadlock.
 
-- [ ] **Install the first truthful DOM and event profile (Phases 2/13).**
-  Implement the narrow document/node text and tree API, click listeners, and preventDefault behavior in the [binding decision](../phase-13-bluejs-engine/DOM_EVENT_BINDINGS.md). Keep JS node wrappers and listener roots in the child; core owns the DOM and click default action. Generate BlueTS declarations only for installed members and their exact capability policy. Do not add broad lib.dom declarations.
+#### A3. Preserve the child-to-core realm boundary.
 
-  **Done when:** a real page script changes rendered text and handles a click; a removed listener does not run; preventDefault suppresses link navigation; replacement clears listeners and wrappers. A supported BlueTS page uses the same host route. Unsupported members fail both static checking and runtime access.
+- [ ] Bind each child request/reply to the exact live tab and document;
+  provide no child fetch, resolver, or direct core-DOM reference.
+- [ ] Revoke that route on reload, tab close, and core cutover; test that
+  an old reply cannot attach to a successor.
 
-- [ ] **Complete the native page debugger (Phase 17).**
-  Preserve the delivered exact classic-root pause/resume, root-instruction step, and bounded BlueTS source-span step. Add module and nested-frame control, stack and scope inspection, exception locations, and bounded values through the native debugger channel, under explicit owner/client grants. Keep debugger control separate from DOM and network IPC.
+### B. Install the first DOM and event profile (Phases 2/13).
 
-  **Done when:** a real page test pauses at an original BlueTS source location, steps across nested/module code, inspects a bounded stack/scope/value, observes an exception location, and rejects stale, cross-tab, unauthorized, or over-budget requests without source or value leaks.
+Follow the [binding decision](../phase-13-bluejs-engine/DOM_EVENT_BINDINGS.md).
+Keep per-tab VM, program, source, bytecode, and child-wide budgets.
 
-- [ ] **Bind BlueTS static debug information to every page lifecycle.**
-  Retain compiler metadata only for its exact live program and source set. Complete original source locations and privacy policy for modules, nested code, cache eviction, and hibernation; invalidation must never attach old metadata to a successor. Static types must remain distinct from runtime values.
+#### B1. Give JavaScript safe node identity.
 
-  **Done when:** real-process tests cover source breakpoints, stack locations, symbol navigation, and type display on a live page, then prove reload, tab close, eviction, and hibernation either invalidate or correctly restore the same checked generation.
+- [ ] Keep node wrappers and their collector-visible roots in the child;
+  never expose raw numeric node IDs to page code.
+- [ ] Reject a wrapper after node removal, reload, or realm close.
 
-- [ ] **Close the direct-page regression matrix.**
-  Use real core, child, debugger, and MCP boundaries where applicable. Cover classic and ESM BlueTS, type-only import elision, resolver identity, source mapping, contracts, tab resource attribution, policy isolation, multiple tabs, and reload.
+#### B2. Read and change live DOM text.
 
-  **Done when:** these fixtures exercise visible page behavior and the public boundaries; no required assertion is satisfied only by a host-neutral unit test.
+- [ ] Implement document.getElementById and node.textContent get/set
+  through A; a real page must render the changed text.
+- [ ] Implement createElement, createTextNode, and appendChild; a real
+  page must render the new subtree and reject a cross-document child.
 
-## P1 — strict boundaries and native compiler
+#### B3. Deliver a real click.
 
-- [ ] **Finish the live contract inventory.**
-  The current inventory names only the two copied host-to-script string results. For each newly implemented ingress or egress, record its owner, source location when one exists, contract ID, limits, failure category, and capability policy. Do not invent contracts for absent Fetch, storage, messaging, DOM, or extension APIs.
+- [ ] Root and remove click listeners in the child VM; removed and
+  old-document listeners must never run.
+- [ ] Dispatch a core click before default navigation; a real listener
+  must run, and preventDefault must suppress link navigation.
 
-  **Done when:** strict-runtime rejects an implemented boundary with no reifiable or reviewed contract; checked and transpile-only policies remain observably distinct.
+#### B4. Publish only implemented host typings.
 
-- [ ] **Enforce contracts on every declared live boundary.**
-  Run the bounded pure validator before values cross into the VM; attribute validator and cache costs to the initiating tab. The two copied strings are already validated. Extend this to actual mutable and foreign-data boundaries as they arrive.
+- [ ] Generate the exact BlueTS declaration/capability profile only after
+  its runtime installer exists; do not add broad lib.dom declarations.
+- [ ] Execute a supported BlueTS page through B2/B3; unsupported members
+  must fail both static checking and JavaScript runtime access.
 
-  **Done when:** malformed, cyclic, deep, oversized, and resource-heavy data fail within fixed budgets; valid data reaches BlueJS once; failures identify policy and source position without disclosing protected content.
+### C. Complete source debugging and metadata lifetime (Phases 17/18).
 
-- [ ] **Preserve strict contracts in BlueTSC output.**
-  Standalone strict-runtime build currently rejects output because no versioned runtime helper is emitted. Add the helper, include its identity in the artifact manifest, and reject targets that erase a required check.
+The exact classic-root pause/resume, instruction step, and bounded BlueTS
+source-span step are delivered. Later control stays on the native debugger
+channel with explicit owner/client grants.
 
-  **Done when:** direct-page and emitted ESM runs reject the same malformed boundary value; weaker artifacts cannot claim strict-runtime policy.
+#### C1. Extend execution control.
 
-- [ ] **Complete the registered-project compiler service.**
-  Keep owner registration sealed before listeners and keep check read-only. Add independently authorized project input, generation/fingerprint-bound build artifacts, atomic no-emit-on-error output, and explicit output-write elevation. Clients must not extend roots, source graphs, resolution, options, or plugins through query IPC.
+- [ ] Pause/resume and step a module root in a real page.
+- [ ] Pause/step a nested frame and resume that same frame; reject stale
+  or cross-tab targets.
 
-  **Done when:** real-process check/build succeeds for an authorized project, emits nothing on error, and rejects guessed/private projects, stale generations, unauthorized inputs, escaped output paths, and oversized artifacts.
+#### C2. Inspect execution within fixed budgets.
 
-- [ ] **Complete the negotiated MCP compiler adapter (Phase 12).**
-  Preserve the delivered same-stream receipts and bounded diagnostic/work-set/static-metadata pages. Add build only with explicit write authority, complete per-client project authorization, result pagination, untrusted-content handling, and capability/session negotiation.
+- [ ] Return a bounded stack and scope for the paused frame.
+- [ ] Return authorized values without guessed handles, excess depth,
+  source text, or cross-realm references.
+- [ ] Report an exception at its original BlueTS source position.
 
-  **Done when:** an MCP client can inspect an authorized page diagnostic and static type/contract failure, then check/build an authorized project; arbitrary paths, stale handles, private projects, untrusted page strings, and unauthorized writes fail safely.
+#### C3. Preserve original static metadata.
+
+- [ ] Map nested/module locations, breakpoints, symbols, and type
+  displays to the exact original source set; distinguish static types
+  from runtime values.
+- [ ] On reload, close, cache eviction, or hibernation, invalidate or
+  restore the same checked generation; never attach old metadata to a
+  successor.
+
+#### C4. Verify the public debugger route.
+
+- [ ] Through launcher/core/child, test source pause, stepping, stack,
+  scope, values, exception, and stale/unauthorized/over-budget rejection.
+
+### D. Close direct-page acceptance.
+
+- [ ] A real classic and ESM BlueTS fixture covers type-only import
+  elision, authorized resolver identity, and original source mapping.
+- [ ] A real page exercises a declared contract and shows its bounded
+  failure without exposing protected content.
+- [ ] Public-boundary tests cover multiple tabs, reload, policy isolation,
+  and tab/child resource attribution; no required result depends only on a
+  host-neutral unit test.
+
+## P1 — strict contracts and compiler service
+
+### E. Enforce live runtime contracts.
+
+#### E1. Inventory only implemented boundaries.
+
+- [x] Name and validate the copied document-text and origin results.
+- [ ] For each new ingress/egress, record owner, source position when
+  available, contract ID, limits, failure category, and capability.
+- [ ] Make strict-runtime reject a missing, unreifiable, or unchecked
+  boundary unless a reviewed contract is authorized.
+
+#### E2. Validate at the crossing.
+
+- [ ] Run the pure bounded validator before data enters the VM; invoke
+  no getter, proxy, page callback, or fetch during validation.
+- [ ] Attribute validation/cache cost to the initiating tab and report
+  policy plus source position without protected content.
+- [ ] Test valid, malformed, cyclic, deep, oversized, and exhausting
+  values at a live boundary.
+
+#### E3. Preserve strict policy in emitted output.
+
+- [x] Reject standalone strict-runtime build while its helper is absent.
+- [ ] Emit a versioned helper and bind its identity to the artifact
+  manifest; reject any target that erases a required check.
+- [ ] Make direct-page and emitted ESM reject the same malformed value;
+  a weaker artifact must never claim strict-runtime.
+
+### F. Finish registered-project compilation and MCP (Phase 12).
+
+Keep check read-only and owner registration sealed before listeners.
+
+#### F1. Authorize projects independently of query receipts.
+
+- [ ] Pin canonical input/config/output roots and a closed source graph;
+  client requests cannot add paths, resolver edges, options, or plugins.
+- [ ] Admit only owner-exposed projects to each client inventory; deny a
+  guessed or private project before reaching the compiler cache.
+
+#### F2. Produce bounded build artifacts.
+
+- [ ] Bind results to project generation and fingerprint; cap artifact,
+  diagnostic, and incremental-work-set responses.
+- [ ] Stage output atomically and emit nothing on compiler error; reject
+  paths outside the authorized output root.
+
+#### F3. Complete the MCP adapter.
+
+- [ ] Negotiate exact session/project/generation capabilities; keep
+  pagination cursors one-shot and treat project strings as untrusted.
+- [ ] Expose build only with explicit output-write authority; a query
+  receipt must never imply write access.
+- [ ] Through a real MCP client, inspect a diagnostic/type/contract
+  failure and check/build an authorized project; reject stale, guessed,
+  oversized, private, and unauthorized requests.
 
 ## Release gate
 
-- [x] Generated and verified host typings for the existing installed snapshot profiles.
-- [x] Direct BlueTS-to-BlueJS bridge connected to page declaration loading.
-- [x] Generation-bound BlueJS source identities and the verified BlueTS-to-safe-point map.
-- [x] Pinned TypeScript 5.9.3 oracle runs as a required CI job.
-- [ ] **Re-run all required quality gates after P0/P1 closure.** Run workspace tests, formatting, all-target Clippy with warnings as errors, real-process suites, the pinned TypeScript oracle, and the applicable coverage gate. Do not hide a failing required test or warning with an exclusion.
+- [x] Generated host typings, the direct BlueTS-to-BlueJS bridge, exact
+  safe-point mapping, and the pinned TypeScript 5.9.3 CI oracle exist.
+
+### G. Verify closure without exclusions.
+
+- [ ] Run workspace tests and applicable real-process suites.
+- [ ] Pass formatting and all-target Clippy with warnings as errors.
+- [ ] Pass the pinned oracle and workspace coverage gate in CI; no
+  ignored required test or suppressed warning may substitute for evidence.
 
 ## P2 — compatibility after the page gate
 
-- [ ] Add control flow, functions, narrowing, and overload behavior only with matching BlueJS execution and source-location semantics.
-- [ ] Add expressions and runtime lowering one form at a time; document rejection rules and test parser/checker/emitter, direct execution, provenance, contracts, and the TypeScript oracle. Never reparse emitted JavaScript as a fallback.
-- [ ] Decide separately whether classes, enums, decorators, namespaces, JSX/TSX, CommonJS, package resolution, remote declarations, transformers, or full web typings belong in the product. Each proposal needs runtime, authority, debugger, contract, and conformance evidence.
+### H. Grow control flow and function semantics.
 
-Phase 18 does not close the rest of Phase 13 ECMAScript conformance, Phase 17 automation/AJAX, or unrelated Phase 12 MCP families.
+- [ ] Define one supported loop form, then test checker, direct execution,
+  safe points, and oracle before selecting another.
+- [ ] Define try/catch/finally with matching BlueJS execution and safe points.
+- [ ] Define control-flow narrowing and return paths through checker, emitter,
+  direct execution, and oracle.
+- [ ] Define callback/method overload resolution with the same four gates.
+
+### I. Grow expressions one form at a time.
+
+- [ ] Choose the next single form from optional calls/chaining, templates,
+  object methods/accessors, member constructors, iterable spread, or
+  structural/union/any operands; state its unsupported behavior.
+- [ ] For that form, test parser/checker/emitter and direct runtime without
+  reparsing emitted JavaScript.
+- [ ] Verify its provenance, debugger behavior, contracts, and TypeScript
+  oracle evidence before choosing another form.
+
+### J. Decide large features only when requested.
+
+- [ ] For each proposed class/enum/decorator/namespace/JSX/CommonJS or
+  package/remote-declaration feature, record its runtime lowering and
+  host authority impact before adding it to the implementation backlog.
+- [ ] Require a debugger map, contract policy, and conformance plan for
+  each accepted proposal; defer features without that evidence.
+
+Phase 18 does not close general Phase 13 ECMAScript conformance, all Phase 17
+automation/AJAX, or unrelated Phase 12 MCP families.
