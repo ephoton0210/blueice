@@ -46,7 +46,7 @@
 
 use blueice_ipc::downloads::{default_downloads_socket_path, DownloadsClient, TransferInfo};
 use blueice_ipc::{shm, ClientMessage, ExtensionPopup, ServerMessage, TabGroupSummary, TabSummary};
-use blueice_launcher::default_rendezvous_socket_path;
+use blueice_launcher::{default_rendezvous_socket_path, trusted_window};
 use softbuffer::{Context, Surface};
 use std::collections::{HashMap, HashSet};
 use std::io::BufRead;
@@ -185,6 +185,7 @@ enum UserEvent {
         message: ServerMessage,
     },
     Disconnected,
+    TrustedPermissions(trusted_window::TrustedWindowReply),
     SetVisible(bool),
     Navigate(String),
     GoBack,
@@ -290,6 +291,12 @@ struct App {
     groups: Vec<TabGroupSummary>,
     extension_toolbar_label: Option<String>,
     extension_popup: Option<ExtensionPopup>,
+    /// Read-only state from the launcher-owned anonymous child pipe. An
+    /// ordinary manually attached frontend never receives this channel.
+    trusted_permissions: Option<trusted_window::TrustedWindowReply>,
+    /// The launcher may consider the child ready only after the real native
+    /// window has been created, not merely after the core socket connects.
+    trusted_window_inspection_pending: bool,
     /// Opt-in Phase 6 evidence badge, never drawn into core-owned page pixels.
     show_generation: bool,
     selected_tab: Option<u64>,
@@ -481,7 +488,19 @@ impl App {
         let page = selected
             .and_then(|tab| tab.url.as_deref())
             .unwrap_or("new tab");
-        window.set_title(&format!("BlueIce — {group_name}{page}"));
+        let extension_status = match self.trusted_permissions.as_ref() {
+            Some(trusted_window::TrustedWindowReply::State { installed: Some(package), .. }) => {
+                format!(" · Extension: {} ({} optional)", package.name, package.optional.len())
+            }
+            Some(trusted_window::TrustedWindowReply::State { installed: None, .. }) => {
+                " · No installed extension".to_string()
+            }
+            Some(trusted_window::TrustedWindowReply::Rejected { .. }) => {
+                " · Permission inspection unavailable".to_string()
+            }
+            None => String::new(),
+        };
+        window.set_title(&format!("BlueIce — {group_name}{page}{extension_status}"));
     }
 
     fn open_tab(&mut self) {
@@ -1127,6 +1146,13 @@ impl ApplicationHandler<UserEvent> for App {
         }
         self.refresh_title();
         self.redraw();
+        if self.trusted_window_inspection_pending {
+            trusted_window::write_request(
+                &mut std::io::stdout(),
+                &trusted_window::TrustedWindowRequest::Inspect,
+            ).expect("could not request trusted launcher permission state");
+            self.trusted_window_inspection_pending = false;
+        }
     }
 
     fn window_event(
@@ -1366,6 +1392,10 @@ impl ApplicationHandler<UserEvent> for App {
                 eprintln!("blueice-frontend: core disconnected");
                 event_loop.exit();
             }
+            UserEvent::TrustedPermissions(reply) => {
+                self.trusted_permissions = Some(reply);
+                self.refresh_title();
+            }
             UserEvent::SetVisible(visible) => {
                 if let Some(window) = &self.window {
                     window.set_visible(visible);
@@ -1446,6 +1476,10 @@ struct Args {
     launcher: bool,
     /// Draws the selected tab and exact frame generation in native chrome.
     show_generation: bool,
+    /// stdin/stdout are dedicated to the launcher-owned child pipe rather
+    /// than operator commands. This flag alone conveys no authority: only
+    /// the exact child whose pipe the launcher owns receives replies.
+    trusted_window_stdio: bool,
 }
 
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
@@ -1453,6 +1487,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut socket = None;
     let mut launcher = false;
     let mut show_generation = false;
+    let mut trusted_window_stdio = false;
     let mut args = args;
     while let Some(argument) = args.next() {
         match argument.as_str() {
@@ -1472,6 +1507,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 launcher = true;
             }
             "--show-generation" => show_generation = true,
+            "--trusted-window-stdio" => trusted_window_stdio = true,
             "--url" => {
                 let value = args
                     .next()
@@ -1490,11 +1526,15 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
         }
     }
+    if trusted_window_stdio && socket.is_none() && !launcher {
+        return Err("--trusted-window-stdio requires a launcher socket".to_string());
+    }
     Ok(Args {
         url: url.unwrap_or_else(|| "https://example.com".to_string()),
         socket,
         launcher,
         show_generation,
+        trusted_window_stdio,
     })
 }
 
@@ -1705,6 +1745,27 @@ fn spawn_stdin_commands(proxy: EventLoopProxy<UserEvent>) {
     });
 }
 
+fn spawn_trusted_window_reader(proxy: EventLoopProxy<UserEvent>) {
+    std::thread::spawn(move || {
+        let stdin = std::io::stdin();
+        let mut replies = stdin.lock();
+        loop {
+            match trusted_window::read_reply(&mut replies) {
+                Ok(Some(reply)) => {
+                    if proxy.send_event(UserEvent::TrustedPermissions(reply)).is_err() {
+                        break;
+                    }
+                }
+                Ok(None) => break,
+                Err(error) => {
+                    eprintln!("blueice-frontend: trusted launcher pipe ended: {error}");
+                    break;
+                }
+            }
+        }
+    });
+}
+
 fn spawn_server_reader(mut reader: UnixStream, proxy: EventLoopProxy<UserEvent>) {
     std::thread::spawn(move || loop {
         match blueice_ipc::read_server_message_with_ids(&mut reader) {
@@ -1739,6 +1800,7 @@ fn main() {
         socket,
         launcher,
         show_generation,
+        trusted_window_stdio,
     } = args;
     let shared_socket = socket.or_else(|| launcher.then(default_rendezvous_socket_path));
     let (core, socket_path, owns_socket) = if let Some(socket) = shared_socket {
@@ -1793,7 +1855,11 @@ fn main() {
     let proxy = event_loop.create_proxy();
 
     spawn_server_reader(reader, proxy.clone());
-    spawn_stdin_commands(proxy);
+    if trusted_window_stdio {
+        spawn_trusted_window_reader(proxy);
+    } else {
+        spawn_stdin_commands(proxy);
+    }
 
     let locale = detect_locale(std::env::var("LANG").ok().as_deref());
     let mut app = App {
@@ -1807,6 +1873,8 @@ fn main() {
         groups: Vec::new(),
         extension_toolbar_label: None,
         extension_popup: None,
+        trusted_permissions: None,
+        trusted_window_inspection_pending: trusted_window_stdio,
         show_generation,
         selected_tab: None,
         pending_open: HashSet::new(),
@@ -1847,6 +1915,7 @@ mod tests {
                 socket: None,
                 launcher: false,
                 show_generation: false,
+                trusted_window_stdio: false,
             }
         );
         assert_eq!(
@@ -1856,6 +1925,7 @@ mod tests {
                 socket: None,
                 launcher: false,
                 show_generation: false,
+                trusted_window_stdio: false,
             }
         );
     }
@@ -1875,6 +1945,7 @@ mod tests {
                 socket: Some(PathBuf::from("/tmp/blueice-shared.sock")),
                 launcher: false,
                 show_generation: false,
+                trusted_window_stdio: false,
             }
         );
     }
@@ -1888,6 +1959,7 @@ mod tests {
                 socket: None,
                 launcher: true,
                 show_generation: false,
+                trusted_window_stdio: false,
             })
         );
     }
@@ -1898,6 +1970,18 @@ mod tests {
         assert!(parsed.launcher);
         assert!(parsed.show_generation);
         assert!(!args(&["--launcher"]).unwrap().show_generation);
+    }
+
+    #[test]
+    fn trusted_window_pipes_require_a_shared_launcher_socket_and_disable_ordinary_stdin() {
+        assert_eq!(
+            args(&["--trusted-window-stdio"]),
+            Err("--trusted-window-stdio requires a launcher socket".to_string())
+        );
+        let parsed = args(&["--socket", "/tmp/shared.sock", "--trusted-window-stdio"]).unwrap();
+        assert!(parsed.trusted_window_stdio);
+        assert_eq!(parsed.socket, Some(PathBuf::from("/tmp/shared.sock")));
+        assert!(!args(&["--launcher"]).unwrap().trusted_window_stdio);
     }
 
     #[test]

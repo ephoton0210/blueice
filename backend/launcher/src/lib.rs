@@ -818,6 +818,26 @@ pub fn run_broker(
     height: f64,
     gatekeeper_socket: PathBuf,
 ) -> io::Result<()> {
+    run_broker_with_trusted_window(
+        rendezvous_listener, control_listener, core, width, height,
+        gatekeeper_socket, None,
+    )
+}
+
+/// The same broker with an optional launcher-spawned native frontend child.
+/// Only the anonymous pipes owned for that exact child can carry the private
+/// trusted-window protocol. In this increment the pipe answers Inspect only;
+/// Change is rejected until a real native confirmation UI and fail-closed
+/// mutation handling are both installed.
+pub fn run_broker_with_trusted_window(
+    rendezvous_listener: UnixListener,
+    control_listener: UnixListener,
+    core: SpawnedCore,
+    width: f64,
+    height: f64,
+    gatekeeper_socket: PathBuf,
+    mut trusted_window: Option<SpawnedTrustedWindow>,
+) -> io::Result<()> {
     let frame_dir = core.frame_dir.clone();
     let extension_manifest = core.extension_manifest.clone();
     let core_writer = Arc::new(Mutex::new(core.stream.try_clone()?));
@@ -839,6 +859,20 @@ pub fn run_broker(
         extension_manifest,
         done: done_tx.clone(),
     });
+
+    let trusted_ready = if let Some(window) = trusted_window.as_mut() {
+        let (requests, replies) = window.take_pipes()?;
+        let broker = Arc::clone(&broker);
+        let (ready_tx, ready_rx) = mpsc::channel();
+        thread::spawn(move || {
+            if let Err(error) = serve_trusted_window_pipe(requests, replies, &broker, ready_tx) {
+                eprintln!("blueice-launcher: trusted window pipe ended: {error}");
+            }
+        });
+        Some(ready_rx)
+    } else {
+        None
+    };
 
     spawn_generation_tagged_broadcast(
         broadcast_stream,
@@ -872,12 +906,84 @@ pub fn run_broker(
         }
     });
 
+    if let Some(ready) = trusted_ready {
+        if ready.recv_timeout(Duration::from_secs(10)).is_err() {
+            if let Ok(mut active) = broker.active_core.lock() {
+                active.take();
+            }
+            drop(trusted_window);
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "trusted native frontend did not inspect its core before the startup deadline",
+            ));
+        }
+    }
+
     let _ = done_rx.recv();
 
     if let Ok(mut active) = broker.active_core.lock() {
         active.take();
     }
 
+    drop(trusted_window);
+
+    Ok(())
+}
+
+fn serve_trusted_window_pipe(
+    mut requests: ChildStdout,
+    mut replies: ChildStdin,
+    broker: &Arc<Broker>,
+    ready: Sender<()>,
+) -> io::Result<()> {
+    let mut ready = Some(ready);
+    while let Some(request) = trusted_window::read_request(&mut requests)? {
+        let inspected = matches!(&request, trusted_window::TrustedWindowRequest::Inspect);
+        let reply = match request {
+            trusted_window::TrustedWindowRequest::Inspect => {
+                let active = broker.active_core.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                let core_generation = broker.generation.load(Ordering::SeqCst);
+                match active.as_ref().map(SpawnedCore::inspect_installed_extension) {
+                    Some(Ok(installed)) => trusted_window::TrustedWindowReply::State {
+                        core_generation, installed,
+                    },
+                    Some(Err(error)) => trusted_window::TrustedWindowReply::Rejected {
+                        reason: error.to_string(),
+                    },
+                    None => trusted_window::TrustedWindowReply::Rejected {
+                        reason: "the active core is unavailable".into(),
+                    },
+                }
+            }
+            trusted_window::TrustedWindowRequest::Change {
+                expected_core_generation,
+                expected_extension_id,
+                capability,
+                ..
+            } => {
+                let active = broker.active_core.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                let core_generation = broker.generation.load(Ordering::SeqCst);
+                let reason = match active.as_ref().map(SpawnedCore::inspect_installed_extension) {
+                    Some(Ok(installed)) => trusted_window::validate_change_target(
+                        core_generation,
+                        installed.as_ref(),
+                        expected_core_generation,
+                        &expected_extension_id,
+                        &capability,
+                    ).err().unwrap_or("native permission confirmation is not enabled yet"),
+                    Some(Err(_)) => "the active core permission state is unavailable",
+                    None => "the active core is unavailable",
+                };
+                trusted_window::TrustedWindowReply::Rejected { reason: reason.into() }
+            }
+        };
+        trusted_window::write_reply(&mut replies, &reply)?;
+        if inspected && matches!(reply, trusted_window::TrustedWindowReply::State { .. }) {
+            if let Some(ready) = ready.take() {
+                let _ = ready.send(());
+            }
+        }
+    }
     Ok(())
 }
 
@@ -939,6 +1045,64 @@ fn sibling_extension_host_binary(this_exe: &Path) -> PathBuf {
         dir
     };
     dir.join(name)
+}
+
+/// The native frontend trusted for a *future* permission confirmation must
+/// be from the same installed build. Never accept an arbitrary binary path
+/// from a control-socket caller as a substitute for this child.
+fn sibling_frontend_binary(this_exe: &Path) -> PathBuf {
+    let name = if cfg!(windows) { "blueice-frontend.exe" } else { "blueice-frontend" };
+    let dir = this_exe.parent().unwrap_or_else(|| Path::new("."));
+    let dir = if dir.file_name().is_some_and(|n| n == "deps") {
+        dir.parent().unwrap_or(dir)
+    } else {
+        dir
+    };
+    dir.join(name)
+}
+
+/// An exact sibling native frontend launched by this launcher. Its stdin and
+/// stdout are private anonymous pipes, not the shared frontend/MCP socket.
+/// Only read-only inspection is accepted on them until native confirmation
+/// and fail-closed mutation handling are wired end to end.
+pub struct SpawnedTrustedWindow {
+    child: Child,
+}
+
+impl SpawnedTrustedWindow {
+    pub fn spawn(rendezvous_socket: &Path) -> io::Result<Self> {
+        let frontend_bin = sibling_frontend_binary(&std::env::current_exe()?);
+        let child = Command::new(&frontend_bin)
+            .arg("--socket")
+            .arg(rendezvous_socket)
+            .arg("--trusted-window-stdio")
+            .arg("--url")
+            .arg("about:blank")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(|error| io::Error::new(error.kind(), format!(
+                "failed to start trusted native frontend {}: {error}", frontend_bin.display()
+            )))?;
+        Ok(Self { child })
+    }
+
+    fn take_pipes(&mut self) -> io::Result<(ChildStdout, ChildStdin)> {
+        let requests = self.child.stdout.take().ok_or_else(|| {
+            io::Error::other("trusted frontend has no private request pipe")
+        })?;
+        let replies = self.child.stdin.take().ok_or_else(|| {
+            io::Error::other("trusted frontend has no private reply pipe")
+        })?;
+        Ok((requests, replies))
+    }
+}
+
+impl Drop for SpawnedTrustedWindow {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
 }
 
 /// The always-resident safety-gatekeeper daemon lives beside `core` and

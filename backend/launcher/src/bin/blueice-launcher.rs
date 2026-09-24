@@ -16,8 +16,8 @@
 use blueice_launcher::memory_pressure::{self, SystemMemorySource};
 use blueice_launcher::supervisor::ProcessRegistry;
 use blueice_launcher::{
-    default_control_socket_path, default_rendezvous_socket_path, run_broker, SpawnedCore,
-    SpawnedGatekeeper,
+    default_control_socket_path, default_rendezvous_socket_path,
+    run_broker_with_trusted_window, SpawnedCore, SpawnedGatekeeper, SpawnedTrustedWindow,
 };
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
@@ -40,6 +40,10 @@ struct Args {
     /// One installed package is validated and hosted by each core generation.
     /// Optional grants remain process-lifetime and do not cross a cutover.
     extension_manifest: Option<PathBuf>,
+    /// Spawn the exact sibling native frontend with private anonymous pipes.
+    /// This is read-only permission inspection until a native confirmation UI
+    /// and fail-closed mutation path are installed.
+    trusted_frontend: bool,
     /// Test/debug-only: use a [`memory_pressure::FixedMemorySource`]
     /// reporting zero availability instead of real host memory, so the
     /// memory-pressure-response path can be exercised deterministically
@@ -63,6 +67,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut height = 600.0;
     let mut frame_dir = None;
     let mut extension_manifest = None;
+    let mut trusted_frontend = false;
     let mut simulate_low_memory = false;
     let mut memory_poll_interval = memory_pressure::DEFAULT_POLL_INTERVAL;
 
@@ -84,6 +89,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
+            "--trusted-frontend" => trusted_frontend = true,
             "--simulate-low-memory" => simulate_low_memory = true,
             "--memory-poll-interval-ms" => {
                 let ms: u64 = value()?
@@ -104,6 +110,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         height,
         frame_dir,
         extension_manifest,
+        trusted_frontend,
         simulate_low_memory,
         memory_poll_interval,
     })
@@ -198,17 +205,32 @@ fn main() -> ExitCode {
         }
     };
 
-    // `run_broker` takes full ownership of `core` from here on --
+    let trusted_window = if args.trusted_frontend {
+        match SpawnedTrustedWindow::spawn(&args.rendezvous_socket) {
+            Ok(window) => Some(window),
+            Err(error) => {
+                eprintln!("blueice-launcher: could not start trusted frontend: {error}");
+                let _ = std::fs::remove_file(&args.rendezvous_socket);
+                let _ = std::fs::remove_file(&args.control_socket);
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        None
+    };
+
+    // The broker takes full ownership of `core` from here on --
     // including spawning/health-checking/swapping in a fresh v2 on a
     // `Cutover` control request, and tearing down whichever `core` is
     // currently active before it returns.
-    let result = run_broker(
+    let result = run_broker_with_trusted_window(
         listener,
         control_listener,
         core,
         args.width,
         args.height,
         gatekeeper.socket_path().to_path_buf(),
+        trusted_window,
     );
 
     let _ = std::fs::remove_file(&args.rendezvous_socket);
@@ -241,6 +263,7 @@ mod tests {
         assert_eq!(parsed.height, 600.0);
         assert_eq!(parsed.frame_dir, None);
         assert_eq!(parsed.extension_manifest, None);
+        assert!(!parsed.trusted_frontend);
         assert!(!parsed.simulate_low_memory);
         assert_eq!(
             parsed.memory_poll_interval,
@@ -263,6 +286,7 @@ mod tests {
             "/tmp/frames",
             "--extension-manifest",
             "/tmp/extension.json",
+            "--trusted-frontend",
             "--simulate-low-memory",
             "--memory-poll-interval-ms",
             "50",
@@ -277,6 +301,7 @@ mod tests {
                 height: 50.0,
                 frame_dir: Some(PathBuf::from("/tmp/frames")),
                 extension_manifest: Some(PathBuf::from("/tmp/extension.json")),
+                trusted_frontend: true,
                 simulate_low_memory: true,
                 memory_poll_interval: Duration::from_millis(50),
             }
