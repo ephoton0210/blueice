@@ -68,7 +68,7 @@ is separate from the independently negotiated **capability API versions**:
 | `network:observe` | 1–2 | 2 | Committed main-frame final response (v1) and initial request/redirect trace (v2). |
 | `network:intercept` | 1–5 | 5 | Exact navigation URL block (v2), clearing own rules (v3), ASCII host/subdomain block (v4), and literal host/path-prefix block (v5); legacy v1 registration has no core effect. |
 | `ui:inject` | 1–3 | 3 | Native toolbar button (v1), fixed-text native popup (v2), and one browser-owned popup action button (v3). |
-| `storage` | 1–2 | 2 | Core-owned, process-lifetime v1 bucket and separate durable v2 bucket for the derived extension ID. |
+| `storage` | 1–3 | 3 | Core-owned, process-lifetime v1 bucket, separate durable v2 bucket, and bounded durable-key listing in v3. |
 
 An unsupported capability version is reported for that capability without
 invalidating compatible declarations. All guest imports are linked, but a
@@ -135,6 +135,7 @@ effect in the guest.
 | `durable_storage_get_utf8(key_ptr:i32, key_len:i32, dst:i32, cap:i32) -> i32` | `storage` v2 | Reads the separate durable bucket; at most 16 KiB UTF-8, or `-4` for an absent key. |
 | `durable_storage_set_utf8(key_ptr:i32, key_len:i32, value_ptr:i32, value_len:i32) -> i32` | `storage` v2 | Persists one bounded UTF-8 value in the separate durable bucket. |
 | `durable_storage_remove_utf8(key_ptr:i32, key_len:i32) -> i32` | `storage` v2 | Returns `1` removed / `0` absent in the durable bucket. |
+| `durable_storage_keys_utf8(dst:i32, cap:i32) -> i32` | `storage` v3 | Copies a lexically sorted JSON array of this extension's durable keys, at most 40 KiB; `[]` for an absent bucket, `-2` when the destination is too small. No values or v1 keys are included. |
 
 The v3 popup is still browser-owned chrome, not guest HTML. Core assigns a
 fresh popup ID; a frontend activation includes that ID and is rejected if the
@@ -155,7 +156,7 @@ identity has at most 128 entries and 256 KiB total key/value bytes, including
 every newly inserted key's bytes. An over-limit write is rejected without
 changing the prior value. These limits apply independently to the v1 and v2
 buckets. The v1 bucket is lost when that core process exits, including after
-a v2 handshake. V2 persists under a core-selected private user-data directory,
+a v2 or v3 handshake. V2 persists under a core-selected private user-data directory,
 using a hashed manifest-derived identity, private files, a per-bucket OS lock,
 and atomic replace plus filesystem sync. A missing, busy, corrupt, or unsafe
 durable store returns `-1`; it never falls back to v1. An updated extension
@@ -164,6 +165,9 @@ bucket without a future migration mechanism. No guest can supply a bucket ID or 
 path. All implemented `dom:write` effects and declarative rule registration receive
 mandatory, fail-closed gatekeeper review after ordinary capability checks;
 publishing popup text or its v3 action label is also reviewed. A reviewer outage is **not** clearance.
+V3 key enumeration uses the same private-file validation and nonblocking lock
+as v2 point reads. It returns only keys belonging to the authenticated
+manifest-derived identity; listing never creates or consults a v1 bucket.
 
 `network_response_utf8` serializes
 `{"method":"GET","final_url":"…","status":200,"content_type":"text/html"}`

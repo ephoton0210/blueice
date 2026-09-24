@@ -71,6 +71,14 @@ impl DurableExtensionStorage {
         Ok(bucket.get(key).cloned())
     }
 
+    pub(crate) fn list_keys(&self, extension_id: &str) -> Result<Vec<String>, String> {
+        // Reuse the same private-file validation and nonblocking OS lock as
+        // point reads; an absent bucket yields an empty list, not another
+        // extension's keys or a process-lifetime v1 fallback.
+        let (_lock, _path, bucket) = self.lock_and_load(extension_id)?;
+        Ok(bucket.keys().cloned().collect())
+    }
+
     pub(crate) fn set(&self, extension_id: &str, key: String, value: String) -> Result<(), String> {
         let (_lock, path, mut bucket) = self.lock_and_load(extension_id)?;
         set_bounded_storage_value(&mut bucket, key, value)?;
@@ -332,6 +340,22 @@ mod tests {
         assert!(restarted.remove(FIRST_ID, "key").unwrap());
         assert!(!first.remove(FIRST_ID, "key").unwrap());
         assert_eq!(first.get(FIRST_ID, "key").unwrap(), None);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn durable_key_listing_is_sorted_reloaded_and_identity_scoped() {
+        let root = scratch("list-keys");
+        let first = DurableExtensionStorage::new(root.clone());
+        assert!(first.list_keys(FIRST_ID).unwrap().is_empty());
+        first.set(FIRST_ID, "zeta".into(), "one".into()).unwrap();
+        first.set(FIRST_ID, "alpha".into(), "two".into()).unwrap();
+        first.set(SECOND_ID, "private".into(), "three".into()).unwrap();
+        let restarted = DurableExtensionStorage::new(root.clone());
+        assert_eq!(restarted.list_keys(FIRST_ID).unwrap(), ["alpha", "zeta"]);
+        assert_eq!(restarted.list_keys(SECOND_ID).unwrap(), ["private"]);
+        first.remove(FIRST_ID, "alpha").unwrap();
+        assert_eq!(restarted.list_keys(FIRST_ID).unwrap(), ["zeta"]);
         fs::remove_dir_all(root).unwrap();
     }
 

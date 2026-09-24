@@ -106,6 +106,9 @@ pub const MAX_STORAGE_KEY_BYTES: usize = 256;
 /// Maximum UTF-8 value for one bounded extension storage entry. The aggregate
 /// per-extension quota is enforced by the core-owned store as well.
 pub const MAX_STORAGE_VALUE_BYTES: usize = 16 * 1024;
+/// A JSON array of at most 128 validated 256-byte ASCII keys fits below
+/// this guest-copy bound, including quotes, commas, and brackets.
+pub const MAX_STORAGE_KEYS_JSON_BYTES: usize = 40 * 1024;
 
 /// One message an extension process sends to the capability-enforcing
 /// side of this protocol.
@@ -319,6 +322,10 @@ pub enum ExtensionRequest {
     /// Version 2 of `storage`: remove one durable value; this does not touch
     /// the version-one process-lifetime bucket.
     DurableStorageRemove { key: String },
+    /// Version 3 of `storage`: enumerate only this installed extension's
+    /// durable keys, in deterministic lexical order. Values and the separate
+    /// process-lifetime v1 namespace are not exposed.
+    DurableStorageListKeys,
     /// Registers a network interception rule -- requires the
     /// `network:intercept` capability. Registering interception at all
     /// is high-risk, so the host always routes this request through the
@@ -442,6 +449,8 @@ pub enum ExtensionReply {
     StorageSetAck,
     /// Reply to a granted [`ExtensionRequest::StorageRemove`].
     StorageRemoveAck { removed: bool },
+    /// Reply to a granted [`ExtensionRequest::DurableStorageListKeys`].
+    StorageKeysResult { keys: Vec<String> },
     /// Authorization (and, where applicable, gatekeeper review) succeeded,
     /// but the host has no concrete implementation for this operation. This
     /// is deliberately distinct from an acknowledgement: the standalone
@@ -639,12 +648,22 @@ mod tests {
             ExtensionRequest::DurableStorageRemove {
                 key: "task-state".to_string(),
             },
+            ExtensionRequest::DurableStorageListKeys,
             ExtensionRequest::NetworkIntercept,
         ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_extension_request(&mut a, &req).unwrap();
             assert_eq!(read_extension_request(&mut b).unwrap(), req);
         }
+    }
+
+    #[test]
+    fn full_durable_key_bucket_fits_the_guest_json_copy_bound() {
+        let keys: Vec<String> = (0..128)
+            .map(|index| format!("{index:03}{}", "a".repeat(MAX_STORAGE_KEY_BYTES - 3)))
+            .collect();
+        assert!(keys.iter().all(|key| key.len() == MAX_STORAGE_KEY_BYTES));
+        assert!(serde_json::to_vec(&keys).unwrap().len() <= MAX_STORAGE_KEYS_JSON_BYTES);
     }
 
     #[test]
@@ -705,6 +724,9 @@ mod tests {
                 value: Some("complete".to_string()),
             },
             ExtensionReply::StorageGetResult { value: None },
+            ExtensionReply::StorageKeysResult {
+                keys: vec!["alpha".to_string(), "beta".to_string()],
+            },
             ExtensionReply::StorageSetAck,
             ExtensionReply::StorageRemoveAck { removed: true },
             ExtensionReply::OperationUnavailable {

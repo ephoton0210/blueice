@@ -21,6 +21,7 @@ use crate::InstalledExtension;
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     MAX_NETWORK_BLOCK_URL_BYTES, MAX_NETWORK_BLOCK_HOST_BYTES, MAX_NETWORK_BLOCK_PATH_BYTES, MAX_STORAGE_KEY_BYTES, MAX_STORAGE_VALUE_BYTES,
+    MAX_STORAGE_KEYS_JSON_BYTES,
     MAX_TEXT_WRITE_BYTES, MAX_NETWORK_OBSERVATION_BYTES, MAX_NETWORK_TRACE_BYTES,
     MAX_EXTENSION_TOOLBAR_LABEL_BYTES,
     MAX_EXTENSION_POPUP_TITLE_BYTES, MAX_EXTENSION_POPUP_BODY_BYTES,
@@ -410,6 +411,15 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
             },
         )
         .map_err(|error| format!("could not define the durable_storage_remove_utf8 ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
+            "durable_storage_keys_utf8",
+            |mut caller: Caller<'_, RuntimeState>, destination: i32, capacity: i32| {
+                durable_storage_keys_utf8(&mut caller, destination, capacity)
+            },
+        )
+        .map_err(|error| format!("could not define the durable_storage_keys_utf8 ABI import: {error}"))?;
     linker
         .func_wrap(
             "blueice",
@@ -908,6 +918,43 @@ fn storage_get(
         return RESULT_BUFFER_TOO_SMALL;
     }
     if write_guest_bytes(caller, destination, bytes).is_err() {
+        return RESULT_INVALID_ARGUMENT;
+    }
+    i32::try_from(bytes.len()).unwrap_or(RESULT_ERROR)
+}
+
+/// Copies a deterministic JSON array of this identity's durable keys. The
+/// host bounds the reply again before serializing it into guest memory, so a
+/// malformed peer cannot expand the Wasm-visible surface beyond the quota.
+fn durable_storage_keys_utf8(
+    caller: &mut Caller<'_, RuntimeState>,
+    destination: i32,
+    capacity: i32,
+) -> i32 {
+    let Ok((destination, capacity)) = guest_range(destination, capacity, MAX_STORAGE_KEYS_JSON_BYTES)
+    else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let keys = match request_core(caller, ExtensionRequest::DurableStorageListKeys) {
+        Ok(ExtensionReply::StorageKeysResult { keys }) => keys,
+        Ok(_) | Err(()) => return RESULT_ERROR,
+    };
+    if keys.len() > crate::MAX_STORAGE_ENTRIES_PER_EXTENSION
+        || keys.iter().any(|key| crate::validate_storage_key(key).is_err())
+        || keys.windows(2).any(|pair| pair[0] >= pair[1])
+    {
+        return RESULT_ERROR;
+    }
+    let Ok(bytes) = serde_json::to_vec(&keys) else {
+        return RESULT_ERROR;
+    };
+    if bytes.len() > MAX_STORAGE_KEYS_JSON_BYTES {
+        return RESULT_ERROR;
+    }
+    if bytes.len() > capacity {
+        return RESULT_BUFFER_TOO_SMALL;
+    }
+    if write_guest_bytes(caller, destination, &bytes).is_err() {
         return RESULT_INVALID_ARGUMENT;
     }
     i32::try_from(bytes.len()).unwrap_or(RESULT_ERROR)
@@ -1751,6 +1798,45 @@ mod tests {
             .unwrap();
         });
 
+        execute_installed_extension(&extension, guest).unwrap();
+        core_thread.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reactor_lists_bounded_durable_keys_without_exposing_values() {
+        let (root, extension) = installed_extension(
+            "durable-storage-keys",
+            r#"(module
+                (import "blueice" "durable_storage_keys_utf8" (func $keys (param i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (func (export "blueice_start")
+                    i32.const 0 i32.const 2 call $keys
+                    i32.const -2 i32.ne if unreachable end
+                    i32.const 0 i32.const 64 call $keys
+                    i32.const 16 i32.ne if unreachable end
+                    i32.const 0 i32.load8_u i32.const 91 i32.ne if unreachable end
+                    i32.const 15 i32.load8_u i32.const 93 i32.ne if unreachable end
+                    i32.const 0 i32.const 64 call $keys
+                    i32.const -1 i32.ne if unreachable end))"#,
+        );
+        let (guest, mut core) = UnixStream::pair().unwrap();
+        let core_thread = thread::spawn(move || {
+            for keys in [
+                vec!["alpha".to_string(), "task".to_string()],
+                vec!["alpha".to_string(), "task".to_string()],
+                vec!["task".to_string(), "alpha".to_string()],
+            ] {
+                assert_eq!(
+                    blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                    ExtensionRequest::DurableStorageListKeys
+                );
+                blueice_ipc::extension::write_extension_reply(
+                    &mut core,
+                    &ExtensionReply::StorageKeysResult { keys },
+                ).unwrap();
+            }
+        });
         execute_installed_extension(&extension, guest).unwrap();
         core_thread.join().unwrap();
         let _ = fs::remove_dir_all(root);

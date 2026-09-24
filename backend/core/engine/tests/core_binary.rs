@@ -981,7 +981,7 @@ fn installed_extension_v5_path_prefix_blocks_redirect_before_target_connection()
 }
 
 #[test]
-fn installed_extension_storage_v1_survives_reconnect_and_v2_survives_core_restart() {
+fn installed_extension_storage_v1_v2_v3_keep_their_separate_lifetimes() {
     let _guard = core_process_test_guard();
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
@@ -1031,6 +1031,10 @@ fn installed_extension_storage_v1_survives_reconnect_and_v2_survives_core_restar
     let hello_v2 = || ExtensionRequest::Hello {
         extension_id: extension_id.clone(),
         capability_versions: BTreeMap::from([("storage".to_string(), 2)]),
+    };
+    let hello_v3 = || ExtensionRequest::Hello {
+        extension_id: extension_id.clone(),
+        capability_versions: BTreeMap::from([("storage".to_string(), 3)]),
     };
 
     let mut first_connection = UnixStream::connect(&extension_socket).unwrap();
@@ -1115,6 +1119,23 @@ fn installed_extension_storage_v1_survives_reconnect_and_v2_survives_core_restar
     )
     .unwrap();
     assert_eq!(read_extension_reply(&mut durable).unwrap(), ExtensionReply::StorageSetAck);
+    write_extension_request(
+        &mut durable,
+        &ExtensionRequest::StorageSet {
+            key: "ephemeral-only".to_string(),
+            value: "not-durable".to_string(),
+        },
+    ).unwrap();
+    assert_eq!(read_extension_reply(&mut durable).unwrap(), ExtensionReply::StorageSetAck);
+    write_extension_request(&mut durable, &ExtensionRequest::DurableStorageListKeys).unwrap();
+    assert!(matches!(read_extension_reply(&mut durable).unwrap(),
+        ExtensionReply::CapabilityDenied { capability, .. } if capability == "storage"));
+    write_extension_request(&mut durable, &hello_v3()).unwrap();
+    assert_eq!(read_extension_reply(&mut durable).unwrap(),
+        ExtensionReply::HelloAck { unsupported_capabilities: BTreeMap::new() });
+    write_extension_request(&mut durable, &ExtensionRequest::DurableStorageListKeys).unwrap();
+    assert_eq!(read_extension_reply(&mut durable).unwrap(),
+        ExtensionReply::StorageKeysResult { keys: vec!["task-state".to_string()] });
     drop(durable);
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
@@ -1143,7 +1164,7 @@ fn installed_extension_storage_v1_survives_reconnect_and_v2_survives_core_restar
     let mut restarted_frontend = UnixStream::connect(&core_socket).unwrap();
     blueice_ipc::client_handshake(&mut restarted_frontend).unwrap();
     let mut restarted_extension = UnixStream::connect(&extension_socket).unwrap();
-    write_extension_request(&mut restarted_extension, &hello_v2()).unwrap();
+    write_extension_request(&mut restarted_extension, &hello_v3()).unwrap();
     assert_eq!(
         read_extension_reply(&mut restarted_extension).unwrap(),
         ExtensionReply::HelloAck {
@@ -1159,6 +1180,10 @@ fn installed_extension_storage_v1_survives_reconnect_and_v2_survives_core_restar
         read_extension_reply(&mut restarted_extension).unwrap(),
         ExtensionReply::StorageGetResult { value: Some("persisted".to_string()) }
     );
+    write_extension_request(&mut restarted_extension, &ExtensionRequest::DurableStorageListKeys)
+        .unwrap();
+    assert_eq!(read_extension_reply(&mut restarted_extension).unwrap(),
+        ExtensionReply::StorageKeysResult { keys: vec!["task-state".to_string()] });
     write_extension_request(
         &mut restarted_extension,
         &ExtensionRequest::StorageGet { key: "task-state".to_string() },
@@ -1232,7 +1257,7 @@ fn optional_and_ephemeral_manifest_entries_cannot_be_self_granted_over_core_ipc(
         &ExtensionRequest::Hello {
             extension_id,
             capability_versions: BTreeMap::from([
-                ("storage".to_string(), 2),
+                ("storage".to_string(), 3),
                 ("dom:read".to_string(), 2),
             ]),
         },
@@ -1245,6 +1270,7 @@ fn optional_and_ephemeral_manifest_entries_cannot_be_self_granted_over_core_ipc(
         }
     );
     for (request, expected_capability) in [
+        (ExtensionRequest::DurableStorageListKeys, "storage"),
         (
             ExtensionRequest::DurableStorageSet {
                 key: "key".into(),

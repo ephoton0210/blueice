@@ -159,6 +159,13 @@ impl ExtensionStorage {
             .get(extension_id, key)
     }
 
+    pub fn durable_list_keys(&self, extension_id: &str) -> Result<Vec<String>, String> {
+        self.durable
+            .as_ref()
+            .ok_or_else(|| "durable extension storage is not configured".to_string())?
+            .list_keys(extension_id)
+    }
+
     pub fn durable_set(&self, extension_id: &str, key: String, value: String) -> Result<(), String> {
         self.durable
             .as_ref()
@@ -382,7 +389,7 @@ impl ExtensionRegistry {
         registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v5);
         registry.register_capability_version_window(CAPABILITY_NETWORK_OBSERVE, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_UI_INJECT, v1_to_v3);
-        registry.register_capability_version_window(CAPABILITY_STORAGE, v1_to_v2);
+        registry.register_capability_version_window(CAPABILITY_STORAGE, v1_to_v3);
         registry
     }
 
@@ -2243,6 +2250,20 @@ where
                     })?,
                 }
             }
+            ExtensionRequest::DurableStorageListKeys => {
+                if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 3) {
+                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_STORAGE.to_string(), reason,
+                    })?;
+                    continue;
+                }
+                match storage.durable_list_keys(&identity.extension_id) {
+                    Ok(keys) => write_extension_reply(stream, &ExtensionReply::StorageKeysResult { keys })?,
+                    Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+                        capability: CAPABILITY_STORAGE.to_string(), reason,
+                    })?,
+                }
+            }
             ExtensionRequest::NetworkIntercept => {
                 if let Some(reason) =
                     capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 1)
@@ -3081,7 +3102,7 @@ mod tests {
     }
 
     #[test]
-    fn durable_storage_v2_requires_its_grant_and_version_and_survives_a_new_service() {
+    fn durable_storage_v2_and_v3_require_grants_and_survive_a_new_service() {
         use std::sync::atomic::{AtomicU64, Ordering};
 
         static NEXT_ROOT: AtomicU64 = AtomicU64::new(1);
@@ -3131,29 +3152,41 @@ mod tests {
             key: "task".into(), value: "ephemeral".into(),
         }), ExtensionReply::StorageSetAck);
         assert_eq!(exchange(&mut client, hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 2)])), empty_hello_ack());
+        assert!(matches!(exchange(&mut client, ExtensionRequest::DurableStorageListKeys),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_STORAGE));
         assert_eq!(exchange(&mut client, ExtensionRequest::DurableStorageSet {
             key: "task".into(), value: "persistent".into(),
+        }), ExtensionReply::StorageSetAck);
+        assert_eq!(exchange(&mut client, ExtensionRequest::DurableStorageSet {
+            key: "alpha".into(), value: "other".into(),
         }), ExtensionReply::StorageSetAck);
         assert_eq!(exchange(&mut client, ExtensionRequest::DurableStorageGet { key: "task".into() }),
             ExtensionReply::StorageGetResult { value: Some("persistent".into()) });
         assert_eq!(exchange(&mut client, ExtensionRequest::StorageGet { key: "task".into() }),
             ExtensionReply::StorageGetResult { value: Some("ephemeral".into()) });
-        assert_eq!(exchange(&mut client, hello_with_capabilities(OTHER_ID, [(CAPABILITY_STORAGE, 2)])), empty_hello_ack());
+        assert_eq!(exchange(&mut client, hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 3)])), empty_hello_ack());
+        assert_eq!(exchange(&mut client, ExtensionRequest::DurableStorageListKeys),
+            ExtensionReply::StorageKeysResult { keys: vec!["alpha".into(), "task".into()] });
+        assert_eq!(exchange(&mut client, hello_with_capabilities(OTHER_ID, [(CAPABILITY_STORAGE, 3)])), empty_hello_ack());
         assert!(matches!(
-            exchange(&mut client, ExtensionRequest::DurableStorageGet { key: "task".into() }),
+            exchange(&mut client, ExtensionRequest::DurableStorageListKeys),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_STORAGE
         ));
         drop(client);
         worker.join().unwrap().unwrap();
 
         let (mut restarted, worker) = spawn(ExtensionStorage::default().with_durable_root(root.clone()));
-        assert_eq!(exchange(&mut restarted, hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 2)])), empty_hello_ack());
+        assert_eq!(exchange(&mut restarted, hello_with_capabilities(ID, [(CAPABILITY_STORAGE, 3)])), empty_hello_ack());
+        assert_eq!(exchange(&mut restarted, ExtensionRequest::DurableStorageListKeys),
+            ExtensionReply::StorageKeysResult { keys: vec!["alpha".into(), "task".into()] });
         assert_eq!(exchange(&mut restarted, ExtensionRequest::DurableStorageGet { key: "task".into() }),
             ExtensionReply::StorageGetResult { value: Some("persistent".into()) });
         assert_eq!(exchange(&mut restarted, ExtensionRequest::StorageGet { key: "task".into() }),
             ExtensionReply::StorageGetResult { value: None });
         assert_eq!(exchange(&mut restarted, ExtensionRequest::DurableStorageRemove { key: "task".into() }),
             ExtensionReply::StorageRemoveAck { removed: true });
+        assert_eq!(exchange(&mut restarted, ExtensionRequest::DurableStorageListKeys),
+            ExtensionReply::StorageKeysResult { keys: vec!["alpha".into()] });
         drop(restarted);
         worker.join().unwrap().unwrap();
         std::fs::remove_dir_all(root).unwrap();

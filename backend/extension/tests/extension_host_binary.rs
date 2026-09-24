@@ -290,6 +290,7 @@ fn storage_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
             r#"(module
                 (import "blueice" "storage_set_utf8" (func $set (param i32 i32 i32 i32) (result i32)))
                 (import "blueice" "durable_storage_set_utf8" (func $durable_set (param i32 i32 i32 i32) (result i32)))
+                (import "blueice" "durable_storage_keys_utf8" (func $durable_keys (param i32 i32) (result i32)))
                 (memory (export "memory") 1)
                 (data (i32.const 0) "task-state")
                 (data (i32.const 16) "complete")
@@ -309,6 +310,17 @@ fn storage_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
                     i32.const 5
                     call $durable_set
                     i32.const 0
+                    i32.ne
+                    if unreachable end
+                    i32.const 64
+                    i32.const 64
+                    call $durable_keys
+                    i32.const 14
+                    i32.ne
+                    if unreachable end
+                    i32.const 64
+                    i32.load8_u
+                    i32.const 91
                     i32.ne
                     if unreachable end))"#,
         )
@@ -932,7 +944,7 @@ fn core_connection_mode_negotiates_network_observe_v2_and_runs_trace_import() {
 }
 
 #[test]
-fn core_connection_mode_negotiates_storage_v2_and_keeps_v1_import_compatible() {
+fn core_connection_mode_negotiates_storage_v3_and_keeps_v1_v2_imports_compatible() {
     let (root, manifest, extension_id) = storage_manifest_package("core-connect");
     let socket = unique_socket_path("core-storage");
     let _ = std::fs::remove_file(&socket);
@@ -954,7 +966,7 @@ fn core_connection_mode_negotiates_storage_v2_and_keeps_v1_import_compatible() {
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::HelloAuthenticated {
             extension_id,
-            capability_versions: BTreeMap::from([("storage".to_string(), 2)]),
+            capability_versions: BTreeMap::from([("storage".to_string(), 3)]),
             authentication: authentication.to_string(),
         }
     );
@@ -989,6 +1001,14 @@ fn core_connection_mode_negotiates_storage_v2_and_keeps_v1_import_compatible() {
     );
     blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::StorageSetAck)
         .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::DurableStorageListKeys
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::StorageKeysResult { keys: vec!["task-state".to_string()] },
+    ).unwrap();
     assert_eq!(
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::NextRuntimeEvent
