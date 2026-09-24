@@ -64,17 +64,18 @@ pub(in super::super) fn round_month_or_year(
     let upper_multiple = lower_multiple + increment;
     let boundary = |multiple: i128| -> Option<CivilDate> {
         let n = i64::try_from(multiple).ok()? * sign;
-        let (years, months) = match unit {
-            DateUnit::Year => (n, 0),
-            DateUnit::Month => (fixed_years, n),
-            DateUnit::Week | DateUnit::Day => {
-                unreachable!("round_month_or_year is only called for Month/Year units")
-            }
+        // Only called for Month/Year units: a year count rounds whole years,
+        // anything else rounds the months that remain after `fixed_years`.
+        let (years, months) = if unit == DateUnit::Year {
+            (n, 0)
+        } else {
+            (fixed_years, n)
         };
         let date = calendar_add_date(calendar, start, years, months, 0, 0, false)?;
         epoch::is_date_within_limits(date).then_some(date)
     };
-    let lower = boundary(lower_multiple)?;
+    // `lower_multiple` is at most the difference itself, so it stays in range.
+    let lower = boundary(lower_multiple).expect("the lower window date lies between the two dates");
     let upper = boundary(upper_multiple)?;
     let total_span =
         (iso_date_to_epoch_days(upper) - iso_date_to_epoch_days(lower)).unsigned_abs() as i64;
@@ -217,10 +218,14 @@ pub(crate) fn round_calendar_duration(
                 let rounded =
                     calendar_add_date(calendar, start, years, rounded_months, 0, 0, false);
                 let next_year = calendar_add_date(calendar, start, years + sign, 0, 0, 0, false);
-                if let (Some(rounded), Some(next_year)) = (rounded, next_year) {
-                    if compare_iso_date(rounded, next_year) as i64 * sign >= 0 {
-                        return Some((years + sign, 0, 0, 0));
-                    }
+                // A window edge outside Temporal's range means the rounded
+                // months cannot have reached the next year.
+                if matches!(
+                    (rounded, next_year),
+                    (Some(rounded), Some(next_year))
+                        if compare_iso_date(rounded, next_year) as i64 * sign >= 0
+                ) {
+                    return Some((years + sign, 0, 0, 0));
                 }
             }
             (fixed_years, rounded_months, 0, 0)
@@ -240,4 +245,93 @@ pub(crate) fn round_calendar_duration(
             (rounded_years, 0, 0, 0)
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use blueice_ecma402::NumberRoundingMode::{Expand, HalfEven, Trunc};
+
+    const ISO: AnyCalendarKind = AnyCalendarKind::Iso;
+
+    #[test]
+    fn equal_dates_have_an_empty_difference_at_any_granularity() {
+        for unit in [
+            DateUnit::Year,
+            DateUnit::Month,
+            DateUnit::Week,
+            DateUnit::Day,
+        ] {
+            assert_eq!(
+                round_calendar_duration(ISO, (2020, 5, 5), (2020, 5, 5), unit, unit, 3, Trunc),
+                Some((0, 0, 0, 0))
+            );
+        }
+    }
+
+    #[test]
+    fn an_increment_beyond_i64_leaves_the_range() {
+        assert_eq!(
+            round_calendar_duration(
+                ISO,
+                (1970, 1, 1),
+                (1971, 1, 1),
+                DateUnit::Year,
+                DateUnit::Month,
+                i128::MAX,
+                Trunc
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn half_even_ties_round_to_the_even_multiple() {
+        // 2019-01-01 to 2019-02-15 is 1 month 14 days, exactly half of
+        // February's 28 days: the odd month count rounds up to 2.
+        assert_eq!(
+            round_calendar_duration(
+                ISO,
+                (2019, 1, 1),
+                (2019, 2, 15),
+                DateUnit::Month,
+                DateUnit::Month,
+                1,
+                HalfEven
+            ),
+            Some((0, 2, 0, 0))
+        );
+        // 2019-02-01 to 2019-02-15 is 0 months 14 days, half of 28: the even
+        // count stays.
+        assert_eq!(
+            round_calendar_duration(
+                ISO,
+                (2019, 2, 1),
+                (2019, 2, 15),
+                DateUnit::Month,
+                DateUnit::Month,
+                1,
+                HalfEven
+            ),
+            Some((0, 0, 0, 0))
+        );
+    }
+
+    #[test]
+    fn expanded_months_that_stay_below_a_year_do_not_bubble() {
+        // 2 years 7 months rounded up to an increment of 5 months is 10
+        // months: still short of the next year.
+        assert_eq!(
+            round_calendar_duration(
+                ISO,
+                (2019, 1, 1),
+                (2021, 8, 1),
+                DateUnit::Year,
+                DateUnit::Month,
+                5,
+                Expand
+            ),
+            Some((2, 10, 0, 0))
+        );
+    }
 }

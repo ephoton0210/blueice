@@ -13,7 +13,11 @@ impl Vm {
         value: &Value,
     ) -> Result<blueice_ecma402::DurationRecord, RuntimeError> {
         if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("a script-visible value is a live heap object")
+            {
                 if temporal.kind == TemporalKind::Duration {
                     return Ok(*temporal
                         .duration
@@ -22,9 +26,8 @@ impl Vm {
                 }
             }
         }
-        if matches!(value, Value::String(_)) {
-            let source = self
-                .coerce_string(value)?
+        if let Value::String(text) = value {
+            let source = text
                 .to_utf8()
                 .map_err(|_| RuntimeError::RangeError("invalid Temporal.Duration string".into()))?;
             return iso::parse_duration_record(&source).ok_or_else(|| {

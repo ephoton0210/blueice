@@ -4,6 +4,12 @@
 
 use super::*;
 
+/// The heap accesses below run on a TypedArray (or a buffer it views) that the
+/// calling method has just validated and that stays reachable while user code
+/// runs, so the only failure the heap can report, a handle it does not own,
+/// cannot happen.
+const LIVE: &str = "a validated TypedArray is a live heap object";
+
 impl Vm {
     fn typed_array_method_receiver(
         &self,
@@ -33,7 +39,7 @@ impl Vm {
         kind: TypedArrayKind,
     ) -> Result<ObjectId, RuntimeError> {
         let buffer = self.new_typed_array_buffer(length, kind)?;
-        let prototype = self.buffer_prototype(kind.name())?;
+        let prototype = self.buffer_prototype(kind.name()).expect(LIVE);
         self.with_roots(|heap| {
             heap.alloc_typed_array(buffer, 0, length, false, kind, Some(prototype))
         })
@@ -49,7 +55,7 @@ impl Vm {
         length: usize,
         fallback_kind: TypedArrayKind,
     ) -> Result<(ObjectId, TypedArrayKind), RuntimeError> {
-        let fallback = self.global(fallback_kind.name())?;
+        let fallback = self.global(fallback_kind.name()).expect(LIVE);
         let constructor = self.typed_array_species_constructor(receiver, fallback)?;
         self.typed_array_create(constructor, length)
     }
@@ -90,7 +96,7 @@ impl Vm {
         constructor: Value,
         length: usize,
     ) -> Result<(ObjectId, TypedArrayKind), RuntimeError> {
-        if !self.is_constructor(&constructor)? {
+        if !self.is_constructor(&constructor).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "TypedArray constructor must be a constructor".into(),
             ));
@@ -198,15 +204,15 @@ impl Vm {
             .collect()
     }
 
-    fn typed_array_element(&self, object: ObjectId, index: usize) -> Result<Value, RuntimeError> {
+    fn typed_array_element(&self, object: ObjectId, index: usize) -> Value {
         // Indexed TypedArray iteration methods capture their iteration range
         // before invoking user callbacks. If a resizable backing buffer then
         // shrinks, each later missing integer-indexed element is observed as
         // `undefined`, rather than terminating that already-started loop.
-        Ok(self
-            .heap
-            .typed_array_index_value(object, index)?
-            .unwrap_or(Value::Undefined))
+        self.heap
+            .typed_array_index_value(object, index)
+            .expect(LIVE)
+            .unwrap_or(Value::Undefined)
     }
 
     pub(super) fn typed_array_write_values(
@@ -247,7 +253,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
         let callback = native::argument(args, 0);
-        if !self.is_callable(callback)? {
+        if !self.is_callable(callback).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "TypedArray callback must be callable".into(),
             ));
@@ -258,10 +264,10 @@ impl Vm {
         let result = (|| match method {
             TypedArrayMethod::Every => {
                 for index in 0..length {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     let result =
                         self.typed_array_callback(callback, &this_arg, value, index, object)?;
-                    if !self.to_boolean(&result)? {
+                    if !self.to_boolean(&result).expect(LIVE) {
                         return Ok(Value::Bool(false));
                     }
                 }
@@ -269,17 +275,17 @@ impl Vm {
             }
             TypedArrayMethod::ForEach => {
                 for index in 0..length {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     self.typed_array_callback(callback, &this_arg, value, index, object)?;
                 }
                 Ok(Value::Undefined)
             }
             TypedArrayMethod::Some => {
                 for index in 0..length {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     let result =
                         self.typed_array_callback(callback, &this_arg, value, index, object)?;
-                    if self.to_boolean(&result)? {
+                    if self.to_boolean(&result).expect(LIVE) {
                         return Ok(Value::Bool(true));
                     }
                 }
@@ -287,7 +293,7 @@ impl Vm {
             }
             TypedArrayMethod::Find | TypedArrayMethod::FindIndex => {
                 for index in 0..length {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     let result = self.typed_array_callback(
                         callback,
                         &this_arg,
@@ -295,7 +301,7 @@ impl Vm {
                         index,
                         object,
                     )?;
-                    if self.to_boolean(&result)? {
+                    if self.to_boolean(&result).expect(LIVE) {
                         return Ok(if method == TypedArrayMethod::Find {
                             value
                         } else {
@@ -311,7 +317,7 @@ impl Vm {
             }
             TypedArrayMethod::FindLast | TypedArrayMethod::FindLastIndex => {
                 for index in (0..length).rev() {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     let result = self.typed_array_callback(
                         callback,
                         &this_arg,
@@ -319,7 +325,7 @@ impl Vm {
                         index,
                         object,
                     )?;
-                    if self.to_boolean(&result)? {
+                    if self.to_boolean(&result).expect(LIVE) {
                         return Ok(if method == TypedArrayMethod::FindLast {
                             value
                         } else {
@@ -338,17 +344,18 @@ impl Vm {
                     self.typed_array_species_create(receiver, length, kind)?;
                 self.stack.push(Value::Object(target));
                 for index in 0..length {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     let value =
                         self.typed_array_callback(callback, &this_arg, value, index, object)?;
                     self.typed_array_write_values(target, target_kind, index, &[value])?;
                 }
                 Ok(Value::Object(target))
             }
-            TypedArrayMethod::Filter => {
+            // `Filter` is the last callback method the caller can hand here.
+            _ => {
                 let mut selected = Vec::new();
                 for index in 0..length {
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     let result = self.typed_array_callback(
                         callback,
                         &this_arg,
@@ -356,7 +363,7 @@ impl Vm {
                         index,
                         object,
                     )?;
-                    if self.to_boolean(&result)? {
+                    if self.to_boolean(&result).expect(LIVE) {
                         selected.push(value);
                     }
                 }
@@ -366,7 +373,6 @@ impl Vm {
                 self.typed_array_write_values(target, target_kind, 0, &selected)?;
                 Ok(Value::Object(target))
             }
-            _ => unreachable!("only callback TypedArray methods use this helper"),
         })();
         self.stack.truncate(base);
         result
@@ -406,7 +412,12 @@ impl Vm {
         };
         loop {
             self.charge_step()?;
-            if self.heap.typed_array_index_value(object, index)? == Some(search.clone()) {
+            if self
+                .heap
+                .typed_array_index_value(object, index)
+                .expect(LIVE)
+                == Some(search.clone())
+            {
                 return Ok(Value::Number(index as f64));
             }
             if index == 0 {
@@ -447,7 +458,7 @@ impl Vm {
         };
         for index in start..length {
             self.charge_step()?;
-            if equality(&self.typed_array_element(object, index)?, search) {
+            if equality(&self.typed_array_element(object, index), search) {
                 return Ok(Value::Bool(true));
             }
         }
@@ -484,7 +495,12 @@ impl Vm {
         };
         for index in start..length {
             self.charge_step()?;
-            if self.heap.typed_array_index_value(object, index)? == Some(search.clone()) {
+            if self
+                .heap
+                .typed_array_index_value(object, index)
+                .expect(LIVE)
+                == Some(search.clone())
+            {
                 return Ok(Value::Number(index as f64));
             }
         }
@@ -508,9 +524,9 @@ impl Vm {
             if index > 0 {
                 native::append(&mut result, &separator, self.config.max_string_bytes)?;
             }
-            let value = self.typed_array_element(object, index)?;
+            let value = self.typed_array_element(object, index);
             if !matches!(value, Value::Undefined | Value::Null) {
-                let value = self.coerce_string(&value)?;
+                let value = self.coerce_string(&value).expect(LIVE);
                 native::append(&mut result, &value, self.config.max_string_bytes)?;
             }
         }
@@ -524,7 +540,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let (object, length, _) = self.typed_array_method_receiver(receiver)?;
         let callback = native::argument(args, 0);
-        if !self.is_callable(callback)? {
+        if !self.is_callable(callback).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "TypedArray callback must be callable".into(),
             ));
@@ -539,10 +555,10 @@ impl Vm {
                 ));
             }
             index = 1;
-            self.typed_array_element(object, 0)?
+            self.typed_array_element(object, 0)
         };
         while index < length {
-            let value = self.typed_array_element(object, index)?;
+            let value = self.typed_array_element(object, index);
             accumulator = self.call_native(
                 callback.clone(),
                 Value::Undefined,
@@ -572,7 +588,7 @@ impl Vm {
             length
         };
         let count = end.saturating_sub(start);
-        let fallback = self.global(kind.name())?;
+        let fallback = self.global(kind.name()).expect(LIVE);
         let constructor = self.typed_array_species_constructor(receiver, fallback)?;
         let foreign_target = self.typed_array_create_foreign_target(&constructor, count)?;
         let attempted_cross_realm_construction = foreign_target.is_some();
@@ -597,7 +613,8 @@ impl Vm {
             match self.test262_foreign_typed_array_info(constructed_id)? {
                 Some((_, target_kind)) => (true, target_kind),
                 None => {
-                    let (_, _, _, target_kind) = self.heap.typed_array_info(constructed_id)?;
+                    let (_, _, _, target_kind) =
+                        self.heap.typed_array_info(constructed_id).expect(LIVE);
                     (false, target_kind)
                 }
             };
@@ -614,7 +631,7 @@ impl Vm {
         if copy_count == 0 {
             return Ok(constructed);
         }
-        let (source_buffer, source_offset, _, _) = self.heap.typed_array_info(object)?;
+        let (source_buffer, source_offset, _, _) = self.heap.typed_array_info(object).expect(LIVE);
         if is_live_foreign_target {
             if kind == target_kind {
                 let target_buffer = self
@@ -639,7 +656,9 @@ impl Vm {
                     .expect("foreign TypedArray construction retains its realm");
                 self.test262_sync_foreign_buffer_mirrors(realm_id)?;
             } else {
-                let values = self.typed_array_read_values(object, start, copy_count)?;
+                let values = self
+                    .typed_array_read_values(object, start, copy_count)
+                    .expect(LIVE);
                 let source = self.array_from(values)?;
                 let set = self.get_property(&constructed, &"set".into())?;
                 self.call_native(set, constructed.clone(), vec![source], false)?;
@@ -679,7 +698,8 @@ impl Vm {
                 let byte_length = copy_count * kind.byte_width();
                 let bytes = self
                     .heap
-                    .array_buffer_copy(source_buffer, byte_start, byte_length)?;
+                    .array_buffer_copy(source_buffer, byte_start, byte_length)
+                    .expect(LIVE);
                 real_write_done = self.test262_reverse_write_into_real_construction_result(
                     constructor_wrapper,
                     constructed_id,
@@ -695,10 +715,11 @@ impl Vm {
                     // buffer_write` takes the *buffer* object's id, not the
                     // TypedArray view's own id -- resolve it first.
                     let (local_buffer, local_offset, ..) =
-                        self.heap.typed_array_info(constructed_id)?;
+                        self.heap.typed_array_info(constructed_id).expect(LIVE);
                     self.with_roots(|heap| {
                         heap.array_buffer_write(local_buffer, local_offset, &bytes)
-                    })?;
+                    })
+                    .expect(LIVE);
                 }
             }
             if !real_write_done {
@@ -709,7 +730,9 @@ impl Vm {
                 // snapshot only, which is still correct for any caller
                 // that observes it before a round trip, and strictly
                 // better than leaving it unpopulated.
-                let values = self.typed_array_read_values(object, start, copy_count)?;
+                let values = self
+                    .typed_array_read_values(object, start, copy_count)
+                    .expect(LIVE);
                 for (index, value) in values.into_iter().enumerate() {
                     self.typed_array_write_values(constructed_id, target_kind, index, &[value])?;
                 }
@@ -717,7 +740,7 @@ impl Vm {
             return Ok(constructed);
         }
         let target = constructed_id;
-        let (target_buffer, target_offset, _, _) = self.heap.typed_array_info(target)?;
+        let (target_buffer, target_offset, _, _) = self.heap.typed_array_info(target).expect(LIVE);
         if kind == target_kind && source_buffer != target_buffer {
             // §23.2.3.29 performs a raw byte copy for a same-element-type
             // destination. Going through Number would canonicalize NaN and
@@ -728,34 +751,35 @@ impl Vm {
             let byte_length = copy_count * kind.byte_width();
             let bytes = self
                 .heap
-                .array_buffer_copy(source_buffer, byte_start, byte_length)?;
-            self.with_roots(|heap| heap.array_buffer_write(target_buffer, target_offset, &bytes))?;
+                .array_buffer_copy(source_buffer, byte_start, byte_length)
+                .expect(LIVE);
+            self.with_roots(|heap| heap.array_buffer_write(target_buffer, target_offset, &bytes))
+                .expect(LIVE);
             return Ok(Value::Object(target));
         }
         // Read and write one element at a time. This preserves slice's
         // observable forward byte-copy behavior when a species result shares
         // the source buffer at a different byte offset.
         for index in 0..copy_count {
-            let value = self.typed_array_element(object, start + index)?;
+            let value = self.typed_array_element(object, start + index);
             self.typed_array_write_values(target, target_kind, index, &[value])?;
         }
         Ok(Value::Object(target))
     }
 
-    fn typed_array_default_compare(
-        left: &Value,
-        right: &Value,
-        kind: TypedArrayKind,
-    ) -> std::cmp::Ordering {
-        if kind.bigint() {
-            let (Value::BigInt(left), Value::BigInt(right)) = (left, right) else {
-                unreachable!("BigInt typed array values are BigInt");
-            };
-            return left.cmp(right);
+    /// The default (comparator-less) sort order: numeric, with NaN last and
+    /// `-0` before `+0`. Elements of a TypedArray are always Numbers (or all
+    /// BigInts); a mixed or non-numeric pair compares equal so the sort
+    /// leaves it in place.
+    fn typed_array_default_compare(left: &Value, right: &Value) -> std::cmp::Ordering {
+        match (left, right) {
+            (Value::BigInt(left), Value::BigInt(right)) => left.cmp(right),
+            (Value::Number(left), Value::Number(right)) => Self::number_order(*left, *right),
+            _ => std::cmp::Ordering::Equal,
         }
-        let (Value::Number(left), Value::Number(right)) = (left, right) else {
-            unreachable!("numeric typed array values are Number");
-        };
+    }
+
+    fn number_order(left: f64, right: f64) -> std::cmp::Ordering {
         if left.is_nan() {
             return if right.is_nan() {
                 std::cmp::Ordering::Equal
@@ -766,14 +790,14 @@ impl Vm {
         if right.is_nan() {
             return std::cmp::Ordering::Less;
         }
-        if *left == 0.0 && *right == 0.0 {
+        if left == 0.0 && right == 0.0 {
             return match (left.is_sign_negative(), right.is_sign_negative()) {
                 (true, false) => std::cmp::Ordering::Less,
                 (false, true) => std::cmp::Ordering::Greater,
                 _ => std::cmp::Ordering::Equal,
             };
         }
-        left.partial_cmp(right)
+        left.partial_cmp(&right)
             .expect("non-NaN numbers are comparable")
     }
 
@@ -781,16 +805,15 @@ impl Vm {
         &mut self,
         values: &mut [Value],
         compare: &Value,
-        kind: TypedArrayKind,
         source: Option<ObjectId>,
     ) -> Result<bool, RuntimeError> {
-        if *compare != Value::Undefined && !self.is_callable(compare)? {
+        if *compare != Value::Undefined && !self.is_callable(compare).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "TypedArray sort comparator must be callable".into(),
             ));
         }
         if *compare == Value::Undefined {
-            values.sort_by(|left, right| Self::typed_array_default_compare(left, right, kind));
+            values.sort_by(Self::typed_array_default_compare);
             return Ok(true);
         }
 
@@ -907,8 +930,8 @@ impl Vm {
         )?;
         let result = self.coerce_number(&result)?;
         if let Some(source) = source {
-            let (buffer, _, _, _) = self.heap.typed_array_info(source)?;
-            if self.heap.buffer_is_detached(buffer)? {
+            let (buffer, _, _, _) = self.heap.typed_array_info(source).expect(LIVE);
+            if self.heap.buffer_is_detached(buffer).expect(LIVE) {
                 return Ok(None);
             }
         }
@@ -923,10 +946,11 @@ impl Vm {
 
     fn typed_array_to_reversed(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {
         let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
-        let values = self.typed_array_read_values(object, 0, length)?;
+        let values = self.typed_array_read_values(object, 0, length).expect(LIVE);
         let target = self.typed_array_new_same_kind(length, kind)?;
         for (index, value) in values.into_iter().rev().enumerate() {
-            self.typed_array_write_values(target, kind, index, &[value])?;
+            self.typed_array_write_values(target, kind, index, &[value])
+                .expect(LIVE);
         }
         Ok(Value::Object(target))
     }
@@ -937,10 +961,11 @@ impl Vm {
         compare: &Value,
     ) -> Result<Value, RuntimeError> {
         let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
-        let mut values = self.typed_array_read_values(object, 0, length)?;
-        self.typed_array_sort_values(&mut values, compare, kind, None)?;
+        let mut values = self.typed_array_read_values(object, 0, length).expect(LIVE);
+        self.typed_array_sort_values(&mut values, compare, None)?;
         let target = self.typed_array_new_same_kind(length, kind)?;
-        self.typed_array_write_values(target, kind, 0, &values)?;
+        self.typed_array_write_values(target, kind, 0, &values)
+            .expect(LIVE);
         Ok(Value::Object(target))
     }
 
@@ -971,7 +996,8 @@ impl Vm {
             || index > usize::MAX as f64
             || self
                 .heap
-                .typed_array_index_value(object, index as usize)?
+                .typed_array_index_value(object, index as usize)
+                .expect(LIVE)
                 .is_none()
         {
             return Err(RuntimeError::RangeError(
@@ -980,8 +1006,10 @@ impl Vm {
         }
         let values = self.typed_array_read_values(object, 0, length)?;
         let target = self.typed_array_new_same_kind(length, kind)?;
-        self.typed_array_write_values(target, kind, 0, &values)?;
-        self.typed_array_write_values(target, kind, index as usize, &[replacement])?;
+        self.typed_array_write_values(target, kind, 0, &values)
+            .expect(LIVE);
+        self.typed_array_write_values(target, kind, index as usize, &[replacement])
+            .expect(LIVE);
         Ok(Value::Object(target))
     }
 
@@ -1020,7 +1048,7 @@ impl Vm {
                 if index >= length {
                     return Ok(Value::Undefined);
                 }
-                self.typed_array_element(object, index)
+                Ok(self.typed_array_element(object, index))
             }
             TypedArrayMethod::LastIndexOf => self.typed_array_last_index_of(receiver, args),
             TypedArrayMethod::CopyWithin => {
@@ -1041,8 +1069,8 @@ impl Vm {
                     .min(length.saturating_sub(target))
                     .min(current_length.saturating_sub(target))
                     .min(current_length.saturating_sub(start));
-                let values = self.typed_array_read_values(object, start, count)?;
-                self.typed_array_write_values(object, kind, target, &values)?;
+                let values = self.typed_array_read_values(object, start, count).expect(LIVE);
+                self.typed_array_write_values(object, kind, target, &values).expect(LIVE);
                 Ok(receiver.clone())
             }
             TypedArrayMethod::Fill => {
@@ -1059,7 +1087,7 @@ impl Vm {
                 // out-of-bounds state before the first indexed write.
                 self.typed_array_receiver(receiver)?;
                 for index in start..end {
-                    self.with_roots(|heap| heap.typed_array_set_index(object, index, &value))?;
+                    self.with_roots(|heap| heap.typed_array_set_index(object, index, &value)).expect(LIVE);
                 }
                 Ok(receiver.clone())
             }
@@ -1078,7 +1106,7 @@ impl Vm {
                 let object = receiver.object_id().ok_or_else(|| {
                     RuntimeError::TypeError("TypedArray method requires a TypedArray receiver".into())
                 })?;
-                if !self.heap.is_typed_array(object)?
+                if !self.heap.is_typed_array(object).expect(LIVE)
                     && self.test262_foreign_typed_array_values(object)?.is_none()
                 {
                     return Err(RuntimeError::TypeError(
@@ -1090,7 +1118,7 @@ impl Vm {
             TypedArrayMethod::ReduceRight => {
                 let (object, length, _) = self.typed_array_method_receiver(receiver)?;
                 let callback = native::argument(args, 0);
-                if !self.is_callable(callback)? {
+                if !self.is_callable(callback).expect(LIVE) {
                     return Err(RuntimeError::TypeError(
                         "TypedArray callback must be callable".into(),
                     ));
@@ -1105,11 +1133,11 @@ impl Vm {
                         ));
                     }
                     index -= 1;
-                    self.typed_array_element(object, index)?
+                    self.typed_array_element(object, index)
                 };
                 while index > 0 {
                     index -= 1;
-                    let value = self.typed_array_element(object, index)?;
+                    let value = self.typed_array_element(object, index);
                     accumulator = self.call_native(
                         callback.clone(),
                         Value::Undefined,
@@ -1126,22 +1154,21 @@ impl Vm {
             }
             TypedArrayMethod::Reverse => {
                 let (object, length, kind) = self.typed_array_write_receiver(receiver)?;
-                let values = self.typed_array_read_values(object, 0, length)?;
+                let values = self.typed_array_read_values(object, 0, length).expect(LIVE);
                 let reversed: Vec<_> = values.into_iter().rev().collect();
-                self.typed_array_write_values(object, kind, 0, &reversed)?;
+                self.typed_array_write_values(object, kind, 0, &reversed).expect(LIVE);
                 Ok(receiver.clone())
             }
             TypedArrayMethod::Slice => self.typed_array_slice(receiver, args),
             TypedArrayMethod::Sort => {
                 let (object, length, kind) = self.typed_array_write_receiver(receiver)?;
-                let mut values = self.typed_array_read_values(object, 0, length)?;
+                let mut values = self.typed_array_read_values(object, 0, length).expect(LIVE);
                 if self.typed_array_sort_values(
                     &mut values,
                     native::argument(args, 0),
-                    kind,
                     Some(object),
                 )? {
-                    self.typed_array_write_values(object, kind, 0, &values)?;
+                    self.typed_array_write_values(object, kind, 0, &values).expect(LIVE);
                 }
                 Ok(receiver.clone())
             }
@@ -1151,5 +1178,127 @@ impl Vm {
             }
             TypedArrayMethod::With => self.typed_array_with(receiver, args),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cmp::Ordering::{Equal, Greater, Less};
+
+    fn number(value: f64) -> Value {
+        Value::Number(value)
+    }
+
+    #[test]
+    fn default_sort_order_puts_nan_last_and_negative_zero_first() {
+        let order =
+            |left: f64, right: f64| Vm::typed_array_default_compare(&number(left), &number(right));
+        assert_eq!(order(f64::NAN, f64::NAN), Equal);
+        assert_eq!(order(f64::NAN, 1.0), Greater);
+        assert_eq!(order(1.0, f64::NAN), Less);
+        assert_eq!(order(-0.0, 0.0), Less);
+        assert_eq!(order(0.0, -0.0), Greater);
+        assert_eq!(order(0.0, 0.0), Equal);
+        assert_eq!(order(-0.0, -0.0), Equal);
+        assert_eq!(order(1.0, 2.0), Less);
+        assert_eq!(order(2.0, 1.0), Greater);
+    }
+
+    #[test]
+    fn default_sort_order_compares_bigints_and_leaves_mixed_pairs_in_place() {
+        let big = |value: i64| Value::BigInt(value.into());
+        assert_eq!(Vm::typed_array_default_compare(&big(1), &big(2)), Less);
+        assert_eq!(Vm::typed_array_default_compare(&big(2), &big(2)), Equal);
+        assert_eq!(
+            Vm::typed_array_default_compare(&big(1), &number(2.0)),
+            Equal
+        );
+        assert_eq!(
+            Vm::typed_array_default_compare(&Value::Undefined, &number(2.0)),
+            Equal
+        );
+    }
+
+    /// A handle to an object that exists in no heap: every heap operation on
+    /// it fails with `InvalidObject`.
+    fn dangling_id() -> ObjectId {
+        ObjectId {
+            heap: u64::MAX,
+            serial: u64::MAX,
+        }
+    }
+
+    fn dangling_error() -> RuntimeError {
+        RuntimeError::Heap(crate::HeapError::InvalidObject(dangling_id()))
+    }
+
+    fn typed_array(vm: &mut Vm) -> Value {
+        vm.execute(&crate::compile(&crate::parse("new Uint8Array(4)").unwrap()).unwrap())
+            .unwrap()
+    }
+
+    #[test]
+    fn reading_values_reports_a_bad_range_or_a_dangling_array() {
+        let mut vm = Vm::default();
+        let array = typed_array(&mut vm).object_id().unwrap();
+        assert_eq!(
+            vm.typed_array_read_values(array, 1, 2),
+            Ok(vec![Value::Number(0.0), Value::Number(0.0)])
+        );
+        assert_eq!(
+            vm.typed_array_read_values(array, usize::MAX, 2),
+            Err(RuntimeError::RangeError(
+                "TypedArray range is too large".into()
+            ))
+        );
+        assert_eq!(
+            vm.typed_array_read_values(array, 4, 1),
+            Err(RuntimeError::TypeError(
+                "TypedArray is out of bounds".into()
+            ))
+        );
+        assert_eq!(
+            vm.typed_array_read_values(dangling_id(), 0, 1),
+            Err(dangling_error())
+        );
+    }
+
+    #[test]
+    fn writing_values_reports_a_bad_element_or_a_dangling_array() {
+        let mut vm = Vm::default();
+        let array = typed_array(&mut vm).object_id().unwrap();
+        assert_eq!(
+            vm.typed_array_write_values(
+                array,
+                TypedArrayKind::Uint8,
+                1,
+                &[Value::Number(7.0), Value::Number(9.0)]
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            vm.typed_array_read_values(array, 0, 3),
+            Ok(vec![
+                Value::Number(0.0),
+                Value::Number(7.0),
+                Value::Number(9.0)
+            ])
+        );
+        assert_eq!(
+            vm.typed_array_write_values(array, TypedArrayKind::BigInt64, 0, &[Value::Number(1.0)]),
+            Err(RuntimeError::TypeError(
+                "cannot convert a Number to a BigInt".into()
+            ))
+        );
+        assert_eq!(
+            vm.typed_array_write_values(
+                dangling_id(),
+                TypedArrayKind::Uint8,
+                0,
+                &[Value::Number(1.0)]
+            ),
+            Err(dangling_error())
+        );
     }
 }

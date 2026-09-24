@@ -5,6 +5,10 @@
 use super::*;
 use crate::bytecode::decoration as deco;
 
+/// `Compiler::offset` cannot fail here: `emit` refuses to grow the code past
+/// `max_bytecode_bytes`, which is itself at most `u32::MAX`.
+const OFFSET_FITS: &str = "the bytecode never outgrows its u32 limit";
+
 impl Compiler {
     pub(super) fn function(
         &mut self,
@@ -306,7 +310,9 @@ impl Compiler {
         for (index, element) in class.elements.iter().enumerate() {
             let decoration = decorations.get(&index);
             if let Some(decoration) = decoration {
-                self.decorator_list(element_decorators(element), &decoration.decorators)?;
+                let (_, decorators) =
+                    key_and_decorators(element).expect("a decorated element is not a static block");
+                self.decorator_list(decorators, &decoration.decorators)?;
             }
             match element {
                 ClassElement::Method {
@@ -754,12 +760,8 @@ impl Compiler {
         private_scope: &HashMap<String, String>,
         metadata: &str,
     ) -> Result<(), CompileError> {
-        let (ClassElement::Method { key, .. }
-        | ClassElement::Accessor { key, .. }
-        | ClassElement::Field { key, .. }) = element
-        else {
-            unreachable!("only methods, accessors and fields are decorated");
-        };
+        let (key, _) =
+            key_and_decorators(element).expect("only methods, accessors and fields are decorated");
         let private_name = private_class_name(key);
         let owner = private_name.map(|name| {
             private_scope
@@ -981,7 +983,9 @@ impl Compiler {
         named_expression: bool,
         options: FunctionCompileOptions,
     ) -> Result<(), CompileError> {
-        let child_budget = self.max_bytecode_bytes.saturating_sub(self.offset()?);
+        let child_budget = self
+            .max_bytecode_bytes
+            .saturating_sub(self.offset().expect(OFFSET_FITS));
         let mut child = Compiler {
             bytecode: Bytecode::empty(),
             names: vec![HashMap::new()],
@@ -1077,7 +1081,7 @@ impl Compiler {
                 .expect("named function expression has a name")
                 .clone();
             let slot = u32::try_from(child.bytecode.bindings.len())
-                .map_err(|_| CompileError::ProgramTooLarge)?;
+                .expect("a function scope holds far fewer than u32::MAX bindings");
             child.names[0].insert(name.clone(), slot);
             child.bytecode.bindings.push(Binding {
                 name,
@@ -1094,7 +1098,7 @@ impl Compiler {
             // immutable binding to the callee, exactly like a named function
             // expression's own name.
             let slot = u32::try_from(child.bytecode.bindings.len())
-                .map_err(|_| CompileError::ProgramTooLarge)?;
+                .expect("a function scope holds far fewer than u32::MAX bindings");
             child.names[0].insert(DERIVED_CONSTRUCTOR_BINDING.into(), slot);
             child.bytecode.bindings.push(Binding {
                 name: DERIVED_CONSTRUCTOR_BINDING.into(),
@@ -1106,13 +1110,15 @@ impl Compiler {
             });
             child.bytecode.self_slot = Some(slot);
         }
-        let mut vars = top_level_var_names(&function.body)?;
+        let mut vars =
+            top_level_var_names(&function.body).expect("collecting a body's var names never fails");
         let parameters: BTreeSet<_> = function
             .params
             .iter()
             .flat_map(|param| pattern_names(&param.pattern))
             .collect();
-        let lexical = lexical_names(&function.body)?;
+        let lexical =
+            lexical_names(&function.body).expect("collecting a body's lexical names never fails");
         if !child.bytecode.strict {
             // Annex B.3.2.1 exempts `parameterNames`. That list holds only the
             // formal parameters: the implicit `arguments` binding is added to
@@ -1200,11 +1206,12 @@ impl Compiler {
                 let mut mapped_names = BTreeSet::new();
                 let mut mapped_slots = vec![None; function.params.len()];
                 for (index, parameter) in function.params.iter().enumerate().rev() {
-                    let Pattern::Identifier(name) = &parameter.pattern else {
-                        unreachable!("simple parameter list contains only identifiers")
-                    };
-                    if mapped_names.insert(name.clone()) {
-                        mapped_slots[index] = child.resolve(name);
+                    // A simple parameter list contains only identifiers, each of
+                    // which binds exactly one name.
+                    for name in pattern_names(&parameter.pattern) {
+                        if mapped_names.insert(name.clone()) {
+                            mapped_slots[index] = child.resolve(&name);
+                        }
                     }
                 }
                 child.bytecode.arguments_mapped_slots = mapped_slots;
@@ -1249,7 +1256,7 @@ impl Compiler {
             child.emit(Opcode::EndParameterEvalScope, 0)?;
         }
         if child.bytecode.generator {
-            child.bytecode.generator_entry = child.offset()?;
+            child.bytecode.generator_entry = child.offset().expect(OFFSET_FITS);
         }
         if options.default_derived_constructor {
             child.super_call_prologue()?;
@@ -1260,11 +1267,12 @@ impl Compiler {
         child.statements_with_disposal(&function.body)?;
         child.constant(Value::Undefined)?;
         child.emit(Opcode::Return, 0)?;
-        let child_bytes = child_budget - child.max_bytecode_bytes + child.offset()?;
+        let child_bytes =
+            child_budget - child.max_bytecode_bytes + child.offset().expect(OFFSET_FITS);
         self.max_bytecode_bytes = self
             .max_bytecode_bytes
             .checked_sub(child_bytes)
-            .ok_or(CompileError::ProgramTooLarge)?;
+            .expect("the child compiled within the budget it was given");
         let index = self.bytecode.functions.len() as u32;
         self.bytecode
             .functions
@@ -1367,11 +1375,63 @@ fn decorated_element(element: &ClassElement) -> Option<(u32, bool)> {
     }
 }
 
-fn element_decorators(element: &ClassElement) -> &[Expr] {
+/// A method, accessor or field's key and decorator list; `None` for a static
+/// block, which is never decorated.
+fn key_and_decorators(element: &ClassElement) -> Option<(&PropertyKey, &[Expr])> {
     match element {
-        ClassElement::Method { decorators, .. }
-        | ClassElement::Accessor { decorators, .. }
-        | ClassElement::Field { decorators, .. } => decorators,
-        ClassElement::StaticBlock(_) => &[],
+        ClassElement::Method {
+            key, decorators, ..
+        }
+        | ClassElement::Accessor {
+            key, decorators, ..
+        }
+        | ClassElement::Field {
+            key, decorators, ..
+        } => Some((key, decorators)),
+        ClassElement::StaticBlock(_) => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_static_block_has_neither_a_key_nor_decorators() {
+        assert!(key_and_decorators(&ClassElement::StaticBlock(Vec::new())).is_none());
+    }
+
+    #[test]
+    fn methods_accessors_and_fields_expose_their_key_and_decorators() {
+        let key = PropertyKey::Identifier("m".into());
+        let decorators = vec![Expr::Null];
+        let elements = [
+            ClassElement::Method {
+                key: key.clone(),
+                function: Function::default(),
+                is_static: false,
+                decorators: decorators.clone(),
+            },
+            ClassElement::Accessor {
+                key: key.clone(),
+                function: Function::default(),
+                getter: true,
+                is_static: false,
+                decorators: decorators.clone(),
+            },
+            ClassElement::Field {
+                key: key.clone(),
+                initializer: None,
+                is_static: false,
+                accessor: false,
+                decorators: decorators.clone(),
+            },
+        ];
+        for element in &elements {
+            assert_eq!(
+                key_and_decorators(element),
+                Some((&key, decorators.as_slice()))
+            );
+        }
     }
 }

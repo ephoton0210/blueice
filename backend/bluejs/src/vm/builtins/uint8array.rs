@@ -8,6 +8,12 @@
 
 use super::*;
 
+/// The heap accesses below run on a Uint8Array the calling method has just
+/// validated (or on a value user code handed in, which is always a live
+/// object), so the only failure the heap can report, a handle it does not own,
+/// cannot happen.
+const LIVE: &str = "a validated Uint8Array is a live heap object";
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Base64Alphabet {
     Standard,
@@ -45,17 +51,14 @@ impl DecodedBytes {
     }
 }
 
+// The native dispatcher already refuses `new` on these non-constructor
+// functions, so every `_construct` below is false.
 impl Vm {
     pub(super) fn uint8_array_from_base64(
         &mut self,
         args: &[Value],
-        construct: bool,
+        _construct: bool,
     ) -> Result<Value, RuntimeError> {
-        if construct {
-            return Err(RuntimeError::TypeError(
-                "Uint8Array.fromBase64 is not a constructor".into(),
-            ));
-        }
         let input = self.uint8_array_string_argument(native::argument(args, 0))?;
         let (alphabet, handling) = self.uint8_array_decode_options(native::argument(args, 1))?;
         let decoded = decode_base64(input, alphabet, handling, usize::MAX);
@@ -68,13 +71,8 @@ impl Vm {
     pub(super) fn uint8_array_from_hex(
         &mut self,
         args: &[Value],
-        construct: bool,
+        _construct: bool,
     ) -> Result<Value, RuntimeError> {
-        if construct {
-            return Err(RuntimeError::TypeError(
-                "Uint8Array.fromHex is not a constructor".into(),
-            ));
-        }
         let input = self.uint8_array_string_argument(native::argument(args, 0))?;
         let decoded = decode_hex(input, usize::MAX);
         if decoded.syntax_error {
@@ -89,14 +87,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
         args: &[Value],
-        construct: bool,
+        _construct: bool,
         method: Uint8ArrayMethod,
     ) -> Result<Value, RuntimeError> {
-        if construct {
-            return Err(RuntimeError::TypeError(
-                "Uint8Array methods are not constructors".into(),
-            ));
-        }
         match method {
             Uint8ArrayMethod::SetFromBase64 => self.uint8_array_set_from_base64(receiver, args),
             Uint8ArrayMethod::SetFromHex => self.uint8_array_set_from_hex(receiver, args),
@@ -118,7 +111,7 @@ impl Vm {
         let (alphabet, handling) = self.uint8_array_decode_options(native::argument(args, 1))?;
         let (target, length) = self.uint8_array_validated_receiver(receiver)?;
         let decoded = decode_base64(input, alphabet, handling, length);
-        self.uint8_array_write_bytes(target, &decoded.bytes)?;
+        self.uint8_array_write_bytes(target, &decoded.bytes);
         if decoded.syntax_error {
             return Err(RuntimeError::SyntaxError("invalid base64 string".into()));
         }
@@ -135,7 +128,7 @@ impl Vm {
         let input = self.uint8_array_string_argument(native::argument(args, 0))?;
         let (target, length) = self.uint8_array_validated_receiver(receiver)?;
         let decoded = decode_hex(input, length);
-        self.uint8_array_write_bytes(target, &decoded.bytes)?;
+        self.uint8_array_write_bytes(target, &decoded.bytes);
         if decoded.syntax_error {
             return Err(RuntimeError::SyntaxError(
                 "invalid hexadecimal string".into(),
@@ -153,7 +146,7 @@ impl Vm {
         let (alphabet, omit_padding) =
             self.uint8_array_encode_options(native::argument(args, 0))?;
         let (target, length) = self.uint8_array_validated_receiver(receiver)?;
-        let bytes = self.uint8_array_bytes(target, length)?;
+        let bytes = self.uint8_array_bytes(target, length);
         Ok(Value::String(
             encode_base64(&bytes, alphabet, omit_padding).into(),
         ))
@@ -161,7 +154,7 @@ impl Vm {
 
     fn uint8_array_to_hex(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {
         let (target, length) = self.uint8_array_validated_receiver(receiver)?;
-        let bytes = self.uint8_array_bytes(target, length)?;
+        let bytes = self.uint8_array_bytes(target, length);
         let mut result = String::with_capacity(bytes.len() * 2);
         for byte in bytes {
             use std::fmt::Write;
@@ -186,12 +179,12 @@ impl Vm {
         let object = receiver.object_id().ok_or_else(|| {
             RuntimeError::TypeError("Uint8Array method requires a Uint8Array receiver".into())
         })?;
-        if !self.heap.is_typed_array(object)? {
+        if !self.heap.is_typed_array(object).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "Uint8Array method requires a Uint8Array receiver".into(),
             ));
         }
-        let (_, _, _, kind) = self.heap.typed_array_info(object)?;
+        let (_, _, _, kind) = self.heap.typed_array_info(object).expect(LIVE);
         if kind != TypedArrayKind::Uint8 {
             return Err(RuntimeError::TypeError(
                 "Uint8Array method requires a Uint8Array receiver".into(),
@@ -209,37 +202,25 @@ impl Vm {
         Ok((object, length))
     }
 
-    fn uint8_array_bytes(&self, target: ObjectId, length: usize) -> Result<Vec<u8>, RuntimeError> {
-        (0..length)
-            .map(|index| {
-                let value = self
-                    .heap
-                    .typed_array_index_value(target, index)?
-                    .ok_or_else(|| RuntimeError::TypeError("Uint8Array is out of bounds".into()))?;
-                match value {
-                    Value::Number(value) => Ok(value as u8),
-                    _ => Err(RuntimeError::TypeError("invalid Uint8Array element".into())),
-                }
-            })
-            .collect()
+    fn uint8_array_bytes(&self, target: ObjectId, length: usize) -> Vec<u8> {
+        let (buffer, byte_offset, _, _) = self.heap.typed_array_info(target).expect(LIVE);
+        self.heap
+            .array_buffer_copy(buffer, byte_offset, length)
+            .expect(LIVE)
     }
 
-    fn uint8_array_write_bytes(
-        &mut self,
-        target: ObjectId,
-        bytes: &[u8],
-    ) -> Result<(), RuntimeError> {
+    fn uint8_array_write_bytes(&mut self, target: ObjectId, bytes: &[u8]) {
         for (index, byte) in bytes.iter().enumerate() {
             self.with_roots(|heap| {
                 heap.typed_array_set_index(target, index, &Value::Number(f64::from(*byte)))
-            })?;
+            })
+            .expect(LIVE);
         }
-        Ok(())
     }
 
     fn uint8_array_from_bytes(&mut self, bytes: Vec<u8>) -> Result<Value, RuntimeError> {
         let buffer = self.new_typed_array_buffer(bytes.len(), TypedArrayKind::Uint8)?;
-        let prototype = self.buffer_prototype("Uint8Array")?;
+        let prototype = self.buffer_prototype("Uint8Array").expect(LIVE);
         let target = self.with_roots(|heap| {
             heap.alloc_typed_array(
                 buffer,
@@ -250,7 +231,7 @@ impl Vm {
                 Some(prototype),
             )
         })?;
-        self.uint8_array_write_bytes(target, &bytes)?;
+        self.uint8_array_write_bytes(target, &bytes);
         Ok(Value::Object(target))
     }
 
@@ -327,7 +308,7 @@ impl Vm {
             }
         };
         let omit_padding = self.get_property(options, &"omitPadding".into())?;
-        Ok((alphabet, self.to_boolean(&omit_padding)?))
+        Ok((alphabet, self.to_boolean(&omit_padding).expect(LIVE)))
     }
 }
 
@@ -386,15 +367,14 @@ fn decode_base64(
                 syntax_error: false,
             };
         }
+        // A padded chunk that is not the last one was rejected above unless
+        // it filled the destination, which returned already, so reaching this
+        // point means the padded chunk ended the input.
         if padded {
-            return if position == units.len() {
-                DecodedBytes {
-                    read,
-                    bytes,
-                    syntax_error: false,
-                }
-            } else {
-                DecodedBytes::error(read, bytes)
+            return DecodedBytes {
+                read,
+                bytes,
+                syntax_error: false,
             };
         }
     }
@@ -410,11 +390,9 @@ fn decode_base64(
         .iter()
         .position(|(_, unit)| *unit == u16::from(b'='));
     if let Some(first_padding) = first_padding {
-        if first_padding < 2
-            || remaining[first_padding..]
-                .iter()
-                .any(|(_, unit)| *unit != u16::from(b'='))
-        {
+        // A partial chunk is at most three units, so the only padding it can
+        // validly hold is the single `=` that ends a three-unit chunk.
+        if first_padding < 2 {
             return DecodedBytes::error(read, bytes);
         }
         return if handling == LastChunkHandling::StopBeforePartial {
@@ -453,11 +431,13 @@ fn decode_base64(
     let Some(values) = values else {
         return DecodedBytes::error(read, bytes);
     };
-    let decoded = match values.as_slice() {
-        [first, second] => vec![(first << 2) | (second >> 4)],
-        [first, second, third] => vec![(first << 2) | (second >> 4), (second << 4) | (third >> 2)],
-        _ => return DecodedBytes::error(read, bytes),
-    };
+    // The partial chunk holds two or three sextets here: one was rejected
+    // above and four would have formed a full group.
+    let (first, second) = (values[0], values[1]);
+    let mut decoded = vec![(first << 2) | (second >> 4)];
+    if let Some(third) = values.get(2) {
+        decoded.push((second << 4) | (third >> 2));
+    }
     if bytes.len().saturating_add(decoded.len()) > maximum {
         return DecodedBytes {
             read,
@@ -591,30 +571,32 @@ fn encode_base64(bytes: &[u8], alphabet: Base64Alphabet, omit_padding: bool) -> 
         }
     };
     let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let first = chunk[0];
+    let chunks = bytes.chunks_exact(3);
+    let remainder = chunks.remainder();
+    for chunk in chunks {
+        let (first, second, third) = (chunk[0], chunk[1], chunk[2]);
         output.push(alphabet[(first >> 2) as usize] as char);
-        match chunk {
-            [first, second, third] => {
-                output.push(alphabet[((first & 0x03) << 4 | (second >> 4)) as usize] as char);
-                output.push(alphabet[((second & 0x0f) << 2 | (third >> 6)) as usize] as char);
-                output.push(alphabet[(third & 0x3f) as usize] as char);
+        output.push(alphabet[((first & 0x03) << 4 | (second >> 4)) as usize] as char);
+        output.push(alphabet[((second & 0x0f) << 2 | (third >> 6)) as usize] as char);
+        output.push(alphabet[(third & 0x3f) as usize] as char);
+    }
+    match remainder {
+        [first, second] => {
+            output.push(alphabet[(first >> 2) as usize] as char);
+            output.push(alphabet[((first & 0x03) << 4 | (second >> 4)) as usize] as char);
+            output.push(alphabet[((second & 0x0f) << 2) as usize] as char);
+            if !omit_padding {
+                output.push('=');
             }
-            [first, second] => {
-                output.push(alphabet[((first & 0x03) << 4 | (second >> 4)) as usize] as char);
-                output.push(alphabet[((second & 0x0f) << 2) as usize] as char);
-                if !omit_padding {
-                    output.push('=');
-                }
-            }
-            [first] => {
-                output.push(alphabet[((first & 0x03) << 4) as usize] as char);
-                if !omit_padding {
-                    output.push_str("==");
-                }
-            }
-            _ => unreachable!("chunks(3) never yields an empty slice"),
         }
+        [first] => {
+            output.push(alphabet[(first >> 2) as usize] as char);
+            output.push(alphabet[((first & 0x03) << 4) as usize] as char);
+            if !omit_padding {
+                output.push_str("==");
+            }
+        }
+        _ => {}
     }
     output
 }

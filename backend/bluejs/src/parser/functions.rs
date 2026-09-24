@@ -97,11 +97,7 @@ impl Parser {
         // The caller has consumed `function`, and before it `async`.
         let start = self.previous_token_start(1 + usize::from(is_async));
         let generator = self.eat_punct(Punct::Star);
-        if matches!(self.peek(), Token::Invalid(message) if message.contains("unexpected character '#'"))
-        {
-            return Err(self.syntax_error("a function cannot have a private name"));
-        }
-        let name = if let Token::Identifier(name) = self.peek() {
+        let name = if let Token::Identifier(name) = self.peek().clone() {
             if name == "await" {
                 let context_reserves_await = self.async_depth != 0
                     || self.module_await
@@ -120,7 +116,8 @@ impl Parser {
                     return Err(self.syntax_error(detail));
                 }
             }
-            Some(self.expect_identifier_name()?)
+            self.advance();
+            Some(name)
         } else if !self.strict && self.check_keyword(Keyword::Let) {
             // `let` is an ordinary identifier in sloppy code.
             self.advance();
@@ -308,7 +305,8 @@ impl Parser {
     fn parse_class_definition(&mut self, start: usize) -> Result<Class, ParseError> {
         let name = match self.peek() {
             Token::Identifier(name) if name != "extends" => {
-                let name = self.expect_identifier_name()?;
+                let name = name.clone();
+                self.advance();
                 if matches!(
                     name.as_str(),
                     "implements"
@@ -562,7 +560,8 @@ impl Parser {
                 });
             }
         }
-        self.expect_punct(Punct::RBrace)?;
+        // The loop above only ends at the closing brace.
+        self.advance();
         Ok(Class {
             name,
             extends,
@@ -806,7 +805,7 @@ impl Parser {
         let mut depth = 0i32;
         let mut i = open_idx;
         loop {
-            match self.tokens.get(i)?.token {
+            match self.tokens[i].token {
                 Token::Punct(Punct::LParen) => depth += 1,
                 Token::Punct(Punct::RParen) => {
                     depth -= 1;
@@ -896,7 +895,8 @@ impl Parser {
                     if self.tokens[self.pos].newline_before {
                         return Err(self.syntax_error("no line terminator is allowed before =>"));
                     }
-                    self.expect_punct(Punct::Arrow)?;
+                    // `matching_close_paren` saw the `=>` right after this list.
+                    self.advance();
                     let body = self.parse_arrow_body(is_async)?;
                     return Ok(Some(Expr::Arrow {
                         params,

@@ -136,12 +136,12 @@ fn temporal_default_components(
 ) {
     use blueice_ecma402::DateTimeWidth::Numeric;
     match kind {
-        TemporalKind::Duration => unreachable!("Temporal.Duration is not date-time formattable"),
         // Leaving the components absent selects DateTimeFormat's legacy
         // default numeric-date pattern. That matters for interval patterns:
         // en-US repeats both default-date endpoints rather than collapsing a
-        // shared year.
-        TemporalKind::PlainDate => {}
+        // shared year. (A Duration or ZonedDateTime is never date-time formattable
+        // here, so neither reaches this; they would get no defaults.)
+        TemporalKind::PlainDate | TemporalKind::Duration | TemporalKind::ZonedDateTime => {}
         TemporalKind::PlainDateTime => {
             options.year = Some(Numeric);
             options.month = Some(Numeric);
@@ -171,9 +171,13 @@ fn temporal_default_components(
             options.minute = Some(Numeric);
             options.second = Some(Numeric);
         }
-        TemporalKind::ZonedDateTime => {}
     }
 }
+
+/// `Intl`'s namespace, constructors and their roots were all just allocated by
+/// `intl_global`, so the only failure the heap can report, a handle it does
+/// not own, cannot happen.
+const LIVE: &str = "a just-created Intl object is a live heap object";
 
 impl Vm {
     pub(super) fn intl_global(&mut self) -> Result<Value, RuntimeError> {
@@ -181,10 +185,10 @@ impl Vm {
             return Ok(Value::Object(id));
         }
         let string = self.string_intrinsics()?.0;
-        let function_prototype = self.heap.prototype(string)?.unwrap();
+        let function_prototype = self.heap.prototype(string).expect(LIVE).unwrap();
         let object_prototype = self.object_prototype;
         let namespace = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let root = self.heap.root(namespace)?;
+        let root = self.heap.root(namespace).expect(LIVE);
         let mut constructor_root = None;
         let result = (|| {
             self.define_data(
@@ -216,8 +220,13 @@ impl Vm {
                 0,
                 NativeFunction::Collator,
             )?;
-            let constructor = self.heap.get(namespace, "Collator")?.object_id().unwrap();
-            constructor_root = Some(self.heap.root(constructor)?);
+            let constructor = self
+                .heap
+                .get(namespace, "Collator")
+                .expect(LIVE)
+                .object_id()
+                .unwrap();
+            constructor_root = Some(self.heap.root(constructor).expect(LIVE));
             let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
             self.define_data(
                 constructor,
@@ -289,7 +298,12 @@ impl Vm {
                     },
                     NativeFunction::IntlService(service),
                 )?;
-                let constructor = self.heap.get(namespace, name)?.object_id().unwrap();
+                let constructor = self
+                    .heap
+                    .get(namespace, name)
+                    .expect(LIVE)
+                    .object_id()
+                    .unwrap();
                 let prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
                 self.stack.push(Value::Object(prototype));
@@ -647,7 +661,12 @@ impl Vm {
                 1,
                 NativeFunction::Locale,
             )?;
-            let constructor = self.heap.get(namespace, "Locale")?.object_id().unwrap();
+            let constructor = self
+                .heap
+                .get(namespace, "Locale")
+                .expect(LIVE)
+                .object_id()
+                .unwrap();
             let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
             self.define_data(
                 constructor,
@@ -745,9 +764,9 @@ impl Vm {
                 Ok(value)
             }
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.heap.unroot(root).expect(LIVE);
                 if let Some(root) = constructor_root {
-                    self.heap.unroot(root)?;
+                    self.heap.unroot(root).expect(LIVE);
                 }
                 Err(error)
             }

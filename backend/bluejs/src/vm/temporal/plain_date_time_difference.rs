@@ -106,7 +106,7 @@ pub(crate) fn difference_plain_date_time(
     if date1 == date2 && time1 == time2 {
         return Some([0; 10]);
     }
-    let diff = difference_iso_date_time(calendar, date1, time1, date2, time2, largest)?;
+    let diff = difference_iso_date_time(calendar, date1, time1, date2, time2, largest);
     let rounded = if smallest == TemporalUnit::Nanosecond && increment == 1 {
         diff
     } else {
@@ -220,14 +220,15 @@ pub(crate) fn difference_plain_date_time_total(
     (date2, time2): (CivilDate, CivilTime),
     unit: TemporalUnit,
 ) -> Option<(i128, i128)> {
-    if date1 == date2 && time1 == time2 {
-        return Some((0, 1));
-    }
-    let diff = difference_iso_date_time(calendar, date1, time1, date2, time2, unit)?;
+    // The two points differ: the one caller returns a blank duration's zero
+    // total before it gets here.
+    let diff = difference_iso_date_time(calendar, date1, time1, date2, time2, unit);
     if !unit.is_calendar() {
         // `unit` is a day or a time unit: `diff` has no year, month or week.
         let nanoseconds = diff.time + i128::from(diff.days) * NANOSECONDS_PER_DAY;
-        let length = unit.nanoseconds()?;
+        let length = unit
+            .nanoseconds()
+            .expect("day and every smaller unit has an exact length");
         return Some((nanoseconds, length));
     }
     let origin = Point {
@@ -243,10 +244,10 @@ pub(crate) fn difference_plain_date_time_total(
     } = nudge_position(origin, epoch_nanoseconds(date2, time2), diff, 1, unit)?;
     // total = r1 + progress * sign, with progress = numerator / denominator.
     let count = i128::from(window.r1);
+    // The bracket count is at most a few million units and the window's
+    // length at most a year in nanoseconds, so nothing here can overflow.
     Some((
-        count
-            .checked_mul(denominator)?
-            .checked_add(numerator.checked_mul(i128::from(diff.sign()))?)?,
+        count * denominator + numerator * i128::from(diff.sign()),
         denominator,
     ))
 }
@@ -269,7 +270,7 @@ fn difference_iso_date_time(
     date2: CivilDate,
     time2: CivilTime,
     largest: TemporalUnit,
-) -> Option<InternalDuration> {
+) -> InternalDuration {
     let mut time = time_nanoseconds(time2) - time_nanoseconds(time1);
     let time_sign = time.signum();
     // The sign of `date2 - date1`; the specification's `CompareISODate`
@@ -284,7 +285,9 @@ fn difference_iso_date_time(
     if time_sign != 0 && time_sign == -date_sign {
         // The time-of-day runs against the date direction, so the date part
         // is one day too long: borrow that day back into the time part.
-        adjusted_date = plain_date::add_iso_date(date2, 0, 0, 0, -(date_sign as i64), false)?;
+        // One day toward `date1` stays between the two (valid) dates.
+        adjusted_date = plain_date::add_iso_date(date2, 0, 0, 0, -(date_sign as i64), false)
+            .expect("a date between two representable dates is representable");
         time += date_sign * NANOSECONDS_PER_DAY;
     }
     let date_largest = date_unit(largest);
@@ -295,13 +298,13 @@ fn difference_iso_date_time(
         time += i128::from(days) * NANOSECONDS_PER_DAY;
         days = 0;
     }
-    Some(InternalDuration {
+    InternalDuration {
         years,
         months,
         weeks,
         days,
         time,
-    })
+    }
 }
 
 /// The origin every rounding step measures from.
@@ -382,7 +385,7 @@ fn compute_nudge_window(
     additional_shift: bool,
 ) -> Option<NudgeWindow> {
     let sign = duration.sign();
-    let step = i64::try_from(increment).ok()?.checked_mul(sign)?;
+    let step = i64::try_from(increment).expect("a validated rounding increment fits in i64") * sign;
     let truncate = |value: i64| -> i64 {
         rounding::round_to_increment(
             i128::from(value),
@@ -397,6 +400,8 @@ fn compute_nudge_window(
         _ => {
             // `unit` is week: how many whole weeks the day remainder holds,
             // measured from the date the years and months land on.
+            // Both dates lie between the origin and the argument, which are
+            // representable, so neither addition can leave the range.
             let weeks_start = plain_date::calendar_add_date(
                 origin.calendar,
                 origin.date,
@@ -405,8 +410,10 @@ fn compute_nudge_window(
                 0,
                 0,
                 false,
-            )?;
-            let weeks_end = plain_date::add_iso_date(weeks_start, 0, 0, 0, duration.days, false)?;
+            )
+            .expect("the duration's own years and months stay in range");
+            let weeks_end = plain_date::add_iso_date(weeks_start, 0, 0, 0, duration.days, false)
+                .expect("the duration's own days stay in range");
             let (_, _, extra_weeks, _) = plain_date::calendar_difference_date(
                 origin.calendar,
                 weeks_start,
@@ -416,12 +423,10 @@ fn compute_nudge_window(
             truncate(duration.weeks + extra_weeks)
         }
     };
-    let r1 = if additional_shift {
-        base.checked_add(step)?
-    } else {
-        base
-    };
-    let r2 = r1.checked_add(step)?;
+    // `base` and `step` are both bounded by a validated increment and a
+    // representable date range, so these sums cannot overflow.
+    let r1 = if additional_shift { base + step } else { base };
+    let r2 = r1 + step;
     let bracket = |count: i64| -> DateFields {
         match unit {
             TemporalUnit::Year => (count, 0, 0, 0),
@@ -433,7 +438,10 @@ fn compute_nudge_window(
     let start_ns = if start == (0, 0, 0, 0) {
         origin_ns
     } else {
-        origin.epoch_after(start)?
+        // `start` lies between the origin and the argument, both representable.
+        origin
+            .epoch_after(start)
+            .expect("the window's start lies between the origin and the argument")
     };
     let end_ns = origin.epoch_after(end)?;
     Some(NudgeWindow {

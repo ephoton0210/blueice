@@ -12,6 +12,11 @@ use crate::{
 };
 use unicode_normalization::UnicodeNormalization;
 
+/// `Vm::dispatch_string_method` (and `String.fromCharCode`/`fromCodePoint`)
+/// run every observable conversion before calling in here, so each receiver
+/// and argument these functions read is already the primitive they need.
+const COERCED: &str = "string method arguments are coerced before dispatch";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AtomicOp {
     Add,
@@ -1220,7 +1225,7 @@ pub(crate) fn from_codes(
 ) -> Result<Value, RuntimeError> {
     let mut result = JsString::default();
     for value in args {
-        let number = primitive::number(value)?;
+        let number = primitive::number(value).expect(COERCED);
         let code = if points {
             if !(0.0..=0x10ffff as f64).contains(&number) || number.fract() != 0.0 {
                 return Err(RuntimeError::RangeError("invalid String code point".into()));
@@ -1239,14 +1244,10 @@ pub(crate) fn from_codes(
 }
 
 fn uri_append(output: &mut Vec<u16>, units: &[u16], limit: usize) -> Result<(), UriCodingError> {
-    let length = output
-        .len()
-        .checked_add(units.len())
-        .ok_or(UriCodingError::StringLimit { limit })?;
-    if length
-        .checked_mul(std::mem::size_of::<u16>())
-        .is_none_or(|bytes| bytes > limit)
-    {
+    // Both lengths are bounded by a `Vec<u16>`'s capacity (at most
+    // `isize::MAX / 2` elements), so neither the sum nor its byte size can
+    // overflow `usize`.
+    if (output.len() + units.len()) * std::mem::size_of::<u16>() > limit {
         return Err(UriCodingError::StringLimit { limit });
     }
     output.extend_from_slice(units);
@@ -1521,14 +1522,14 @@ pub(crate) fn string_method(
             "String value method requires a String receiver".into(),
         ));
     }
-    let mut string = primitive::string(receiver)?;
+    let mut string = primitive::string(receiver).expect(COERCED);
     let units = string.as_code_units();
     let len = units.len();
     let first = argument(args, 0);
     let second = argument(args, 1);
     Ok(match method {
         At | CharAt | CharCodeAt | CodePointAt => {
-            let mut index = integer(first)?;
+            let mut index = integer(first).expect(COERCED);
             if method == At && index < 0.0 {
                 index += len as f64;
             }
@@ -1560,11 +1561,11 @@ pub(crate) fn string_method(
             }
         }
         Slice | Substring => {
-            let start = integer(first)?;
+            let start = integer(first).expect(COERCED);
             let end = if matches!(second, Value::Undefined) {
                 len as f64
             } else {
-                integer(second)?
+                integer(second).expect(COERCED)
             };
             let bound = |index: f64| {
                 let index = if method == Slice && index < 0.0 {
@@ -1584,10 +1585,10 @@ pub(crate) fn string_method(
         }
         IndexOf | LastIndexOf | Includes | StartsWith | EndsWith => {
             // Observable conversions and IsRegExp have run in VM dispatch.
-            let search = primitive::string(first)?;
+            let search = primitive::string(first).expect(COERCED);
             let needle = search.as_code_units();
             let position = if method == LastIndexOf {
-                let number = primitive::number(second)?;
+                let number = primitive::number(second).expect(COERCED);
                 if number.is_nan() {
                     f64::INFINITY
                 } else {
@@ -1596,7 +1597,7 @@ pub(crate) fn string_method(
             } else if method == EndsWith && matches!(second, Value::Undefined) {
                 len as f64
             } else {
-                integer(second)?
+                integer(second).expect(COERCED)
             };
             let position = position.clamp(0.0, len as f64) as usize;
             match method {
@@ -1639,7 +1640,7 @@ pub(crate) fn string_method(
         }
         ToString | ValueOf => Value::String(string),
         PadStart | PadEnd => {
-            let target = length(first)?;
+            let target = length(first).expect(COERCED);
             debug_assert!(
                 target > len as f64,
                 "short padding requests return before filler conversion in VM dispatch"
@@ -1647,7 +1648,7 @@ pub(crate) fn string_method(
             let fill = if matches!(second, Value::Undefined) {
                 JsString::from(" ")
             } else {
-                primitive::string(second)?
+                primitive::string(second).expect(COERCED)
             };
             if fill.is_empty() {
                 return Ok(Value::String(string));
@@ -1673,7 +1674,7 @@ pub(crate) fn string_method(
             }
         }
         Repeat => {
-            let count = integer(first)?;
+            let count = integer(first).expect(COERCED);
             if count < 0.0 || count == f64::INFINITY {
                 return Err(RuntimeError::RangeError(
                     "invalid String repeat count".into(),
@@ -1714,7 +1715,7 @@ pub(crate) fn string_method(
                     let form = if matches!(first, Value::Undefined) {
                         JsString::from("NFC")
                     } else {
-                        primitive::string(first)?
+                        primitive::string(first).expect(COERCED)
                     };
                     if !["NFC", "NFD", "NFKC", "NFKD"]
                         .iter()
@@ -1730,7 +1731,7 @@ pub(crate) fn string_method(
             Value::String(unicode_transform(&string, &form, limit)?)
         }
         Substr => {
-            let start = integer(first)?;
+            let start = integer(first).expect(COERCED);
             let start = (if start < 0.0 {
                 len as f64 + start
             } else {
@@ -1740,7 +1741,7 @@ pub(crate) fn string_method(
             let count = if matches!(second, Value::Undefined) {
                 len as f64
             } else {
-                integer(second)?
+                integer(second).expect(COERCED)
             };
             let count = count.clamp(0.0, (len - start) as f64) as usize;
             Value::String(JsString::from_code_units(
@@ -1750,7 +1751,7 @@ pub(crate) fn string_method(
         Html { tag, attribute } => {
             let mut result: JsString = format!("<{tag}").into();
             if !attribute.is_empty() {
-                let value = primitive::string(first)?;
+                let value = primitive::string(first).expect(COERCED);
                 append(&mut result, &format!(" {attribute}=\"").into(), limit)?;
                 for &unit in value.as_code_units() {
                     let escaped = if unit == u16::from(b'"') {
@@ -1821,4 +1822,185 @@ fn transform_run(
         append(result, &part, limit)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::JsSymbol;
+
+    const ROOMY: usize = 1 << 20;
+
+    fn text(value: &str) -> Value {
+        Value::String(value.into())
+    }
+
+    fn symbol() -> Value {
+        Value::Symbol(JsSymbol::well_known("iterator"))
+    }
+
+    fn units(code_units: &[u16]) -> JsString {
+        JsString::from_code_units(code_units.to_vec())
+    }
+
+    #[test]
+    fn numeric_argument_helpers_reject_symbols() {
+        for message in [
+            integer(&symbol()).unwrap_err().to_string(),
+            uint32(&symbol()).unwrap_err().to_string(),
+            length(&symbol()).unwrap_err().to_string(),
+        ] {
+            assert!(message.starts_with("TypeError"), "{message}");
+        }
+        assert_eq!(integer(&Value::Number(f64::NAN)), Ok(0.0));
+        assert_eq!(integer(&Value::Number(-2.7)), Ok(-2.0));
+        assert_eq!(uint32(&Value::Number(4294967297.0)), Ok(1));
+        assert_eq!(length(&Value::Number(-5.0)), Ok(0.0));
+    }
+
+    #[test]
+    fn growing_a_string_past_the_limit_fails_at_every_step() {
+        use StringMethod::*;
+        let mixed = Value::String(units(&[0x73, 0xe9, 0xd800, 0x7a]));
+        let calls: Vec<(StringMethod, Vec<Value>)> = vec![
+            (
+                Html {
+                    tag: "a",
+                    attribute: "name",
+                },
+                vec![text("x\"y")],
+            ),
+            (
+                Html {
+                    tag: "b",
+                    attribute: "",
+                },
+                vec![],
+            ),
+            (Concat, vec![text("def"), text("ghi")]),
+            (Normalize, vec![text("NFD")]),
+            (ToLowerCase, vec![]),
+            (ToUpperCase, vec![]),
+        ];
+        for limit in 0..=90 {
+            for (method, args) in &calls {
+                let result = string_method(*method, &mixed, args, limit);
+                if let Err(error) = result {
+                    assert_eq!(error, RuntimeError::StringLimit { limit });
+                }
+            }
+        }
+        for limit in 0..=8 {
+            let result = from_codes(&[Value::Number(65.0), Value::Number(66.0)], false, limit);
+            if let Err(error) = result {
+                assert_eq!(error, RuntimeError::StringLimit { limit });
+            }
+        }
+    }
+
+    #[test]
+    fn uri_encoding_escapes_reserved_characters_only_for_components() {
+        let source = JsString::from("a b/\u{e9}\u{1F600}");
+        let encode = |component| encode_uri(&source, component, ROOMY).unwrap();
+        assert_eq!(encode(false), JsString::from("a%20b/%C3%A9%F0%9F%98%80"));
+        assert_eq!(encode(true), JsString::from("a%20b%2F%C3%A9%F0%9F%98%80"));
+    }
+
+    #[test]
+    fn uri_encoding_rejects_unpaired_surrogates() {
+        for malformed in [units(&[0xd800]), units(&[0xd800, 0x61]), units(&[0xdc00])] {
+            assert_eq!(
+                encode_uri(&malformed, false, ROOMY),
+                Err(UriCodingError::Malformed)
+            );
+        }
+    }
+
+    #[test]
+    fn uri_decoding_handles_every_utf8_width_and_reserved_set() {
+        let decode = |input: &str, component| decode_uri(&JsString::from(input), component, ROOMY);
+        assert_eq!(decode("abc", false), Ok(JsString::from("abc")));
+        assert_eq!(decode("%41", false), Ok(JsString::from("A")));
+        assert_eq!(decode("%2F%3b", false), Ok(JsString::from("%2F%3b")));
+        assert_eq!(decode("%2F%3b", true), Ok(JsString::from("/;")));
+        assert_eq!(decode("%C3%A9", false), Ok(JsString::from("\u{e9}")));
+        assert_eq!(decode("%E2%82%AC", false), Ok(JsString::from("\u{20ac}")));
+        assert_eq!(
+            decode("%F0%9F%98%80", false),
+            Ok(JsString::from("\u{1F600}"))
+        );
+    }
+
+    #[test]
+    fn uri_decoding_rejects_malformed_percent_sequences() {
+        for input in [
+            "%",
+            "%4",
+            "%4Z",
+            "%Z1",
+            "%80",
+            "%C0",
+            "%F8",
+            "%C3",
+            "%C3x",
+            "%C3%41",
+            "%E0%80%80",
+            "%F5%80%80%80",
+            "%ED%A0%80",
+        ] {
+            assert_eq!(
+                decode_uri(&JsString::from(input), false, ROOMY),
+                Err(UriCodingError::Malformed),
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn uri_coding_reports_the_string_limit_at_every_append() {
+        let encoded = JsString::from("a b\u{e9}%41%C3%A9%2F%zz");
+        let decodable = JsString::from("a%41%C3%A9%2F");
+        for limit in 0..=60 {
+            for result in [
+                encode_uri(&encoded, false, limit),
+                decode_uri(&decodable, false, limit),
+                decode_uri(&decodable, true, limit),
+                escape(&encoded, limit),
+                unescape(&encoded, limit),
+                escape(&JsString::from("\u{4e2d}"), limit),
+            ] {
+                if let Err(error) = result {
+                    assert_eq!(error, UriCodingError::StringLimit { limit });
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn escape_and_unescape_round_trip_annex_b_forms() {
+        let source = JsString::from("a b\u{e9}\u{4e2d}@*_+-./");
+        let escaped = escape(&source, ROOMY).unwrap();
+        assert_eq!(escaped, JsString::from("a%20b%E9%u4E2D@*_+-./"));
+        assert_eq!(unescape(&escaped, ROOMY), Ok(source));
+        assert_eq!(
+            unescape(&JsString::from("%u00e9%e9%zz%u12%"), ROOMY),
+            Ok(JsString::from("\u{e9}\u{e9}%zz%u12%"))
+        );
+    }
+
+    #[test]
+    fn replacement_patterns_expand_and_respect_the_limit() {
+        let string = JsString::from("xaby");
+        let matched = JsString::from("ab");
+        let template = JsString::from("$$|$&|$`|$'|$1|$");
+        assert_eq!(
+            substitution(&string, &matched, 1, &template, ROOMY),
+            Ok(JsString::from("$|ab|x|y|$1|$"))
+        );
+        for limit in 0..=40 {
+            if let Err(error) = substitution(&string, &matched, 1, &template, limit) {
+                assert_eq!(error, RuntimeError::StringLimit { limit });
+            }
+        }
+    }
 }

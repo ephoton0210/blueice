@@ -311,6 +311,25 @@ fn unparenthesize(expr: Expr) -> Expr {
     }
 }
 
+/// Builds a `SourceText` for a source of `len` bytes: its offsets are `u32`,
+/// so a longer source keeps no per-function text (the default, empty one).
+fn source_text_within(len: usize, build: impl FnOnce() -> SourceText) -> SourceText {
+    if len > u32::MAX as usize {
+        return SourceText::default();
+    }
+    build()
+}
+
+/// Wraps an expression statement's expression in `Expr::Parenthesized`, which
+/// evaluates the same but is no longer a bare string statement; any other
+/// statement is returned unchanged.
+fn parenthesize_expression_statement(statement: Stmt) -> Stmt {
+    match statement {
+        Stmt::Expr(expression) => Stmt::Expr(Expr::Parenthesized(Box::new(expression))),
+        other => other,
+    }
+}
+
 fn is_assignment_operator(token: &Token) -> bool {
     matches!(
         token,
@@ -469,15 +488,14 @@ impl Parser {
     /// token's end is right even when the last thing consumed was a RegExp or
     /// tagged template, which the parser scans outside the token stream.
     fn source_text_from(&self, start: usize) -> SourceText {
-        if self.source.len() > u32::MAX as usize {
-            return SourceText::default();
-        }
-        let end = self.positions[self.pos];
-        let to_byte = |offset: usize| match &self.char_to_byte {
-            Some(offsets) => offsets[offset] as usize,
-            None => offset,
-        };
-        SourceText::range(&self.source, to_byte(start), to_byte(end))
+        source_text_within(self.source.len(), || {
+            let end = self.positions[self.pos];
+            let to_byte = |offset: usize| match &self.char_to_byte {
+                Some(offsets) => offsets[offset] as usize,
+                None => offset,
+            };
+            SourceText::range(&self.source, to_byte(start), to_byte(end))
+        })
     }
 
     fn rescan_suffix(&mut self) {
@@ -649,16 +667,9 @@ impl Parser {
 
     /// A token the grammar cannot accept at this point. Every production the
     /// parser implements is complete for its goal, so a token that fails to
-    /// match a mandatory position is a specified SyntaxError. Only a lexical
-    /// placeholder for a construct this engine does not scan (see
-    /// `Token::Invalid`) stays unclassified, because the source may be valid.
+    /// match a mandatory position is a specified SyntaxError.
     fn error(&self, message: impl Into<String>) -> ParseError {
-        let known_syntax = !matches!(self.peek(), Token::Invalid(message) if message.contains("not supported") || message.contains("unexpected character '#'"));
-        ParseError {
-            message: format!("{} (found {:?})", message.into(), self.peek()),
-            resource: None,
-            known_syntax,
-        }
+        self.syntax_error(message)
     }
 
     /// Legacy octal and non-octal decimal escapes are Annex B extensions.
@@ -699,7 +710,7 @@ impl Parser {
             && matches!(token.token, Token::String(_))
             && (self.pos == start + 1
                 || (self.pos == start + 2
-                    && matches!(self.tokens[start + 1].token, Token::Punct(Punct::Semicolon))));
+                    && self.tokens[start + 1].token == Token::Punct(Punct::Semicolon)));
         if !is_directive {
             prologue.open = false;
         } else {
@@ -709,10 +720,7 @@ impl Parser {
             return Ok(statement);
         }
         if !is_directive || token.string_escaped {
-            let Stmt::Expr(expression) = statement else {
-                unreachable!("a use strict-valued statement is an expression statement")
-            };
-            return Ok(Stmt::Expr(Expr::Parenthesized(Box::new(expression))));
+            return Ok(parenthesize_expression_statement(statement));
         }
         if prologue.legacy_octal {
             return Err(ParseError {
@@ -880,5 +888,33 @@ impl Parser {
             quasis,
             expressions,
         })
+    }
+}
+
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
+
+    #[test]
+    fn source_text_ranges_are_limited_to_u32_offsets() {
+        let source: std::sync::Arc<str> = "ab".into();
+        let build = || SourceText::range(&source, 0, 1);
+        let built = build();
+        assert_eq!(source_text_within(0, build), built);
+        assert_eq!(source_text_within(u32::MAX as usize, build), built);
+        // Too long a source keeps no range at all.
+        assert_eq!(
+            source_text_within(u32::MAX as usize + 1, build),
+            SourceText::default()
+        );
+    }
+
+    #[test]
+    fn only_expression_statements_are_parenthesized() {
+        assert_eq!(
+            parenthesize_expression_statement(Stmt::Expr(Expr::Null)),
+            Stmt::Expr(Expr::Parenthesized(Box::new(Expr::Null)))
+        );
+        assert_eq!(parenthesize_expression_statement(Stmt::Empty), Stmt::Empty);
     }
 }

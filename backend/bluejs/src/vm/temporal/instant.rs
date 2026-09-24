@@ -4,24 +4,36 @@
 
 use super::*;
 
+/// An `Instant`'s epoch nanoseconds as an `i128`: the Temporal range (about
+/// +/-8.64e21) always fits.
+fn instant_epoch_i128(epoch: &BigInt) -> i128 {
+    epoch
+        .to_i128()
+        .expect("an Instant's epoch nanoseconds fit in an i128")
+}
+
 impl Vm {
-    /// Reads a validated `Temporal.Instant` receiver's epoch nanoseconds.
+    /// Reads a validated `Temporal.Instant` receiver's epoch nanoseconds. The
+    /// native dispatcher has already refused a receiver that is not an
+    /// `Instant`.
     pub(in super::super) fn temporal_instant_epoch(
         &mut self,
         receiver: &Value,
     ) -> Result<BigInt, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.Instant method requires an Instant receiver".into())
-        })?;
-        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.Instant method requires an Instant receiver".into())
-        })?;
-        if value.kind != TemporalKind::Instant {
-            return Err(RuntimeError::TypeError(
-                "Temporal.Instant method requires an Instant receiver".into(),
-            ));
-        }
-        Ok(value.epoch_nanoseconds)
+        Ok(self.instant_epoch(receiver))
+    }
+
+    /// [`Self::temporal_instant_epoch`] without a `Result`: reading a slot off
+    /// a live receiver cannot fail.
+    fn instant_epoch(&self, receiver: &Value) -> BigInt {
+        let object = receiver
+            .object_id()
+            .expect("an Instant receiver is an object");
+        self.heap
+            .temporal_value(object)
+            .expect("an Instant receiver is a live heap object")
+            .expect("an Instant receiver carries a Temporal slot")
+            .epoch_nanoseconds
     }
 
     /// Parses a `TemporalInstantString` into epoch nanoseconds.
@@ -53,7 +65,11 @@ impl Vm {
         value: &Value,
     ) -> Result<BigInt, RuntimeError> {
         let primitive = if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("a script-visible value is a live heap object")
+            {
                 if matches!(
                     temporal.kind,
                     TemporalKind::Instant | TemporalKind::ZonedDateTime
@@ -112,7 +128,7 @@ impl Vm {
         duration_value: &Value,
         negate: bool,
     ) -> Result<Value, RuntimeError> {
-        let epoch = self.temporal_instant_epoch(receiver)?;
+        let epoch = self.instant_epoch(receiver);
         let duration = self.temporal_duration_from_value(duration_value)?;
         if duration.years != 0 || duration.months != 0 || duration.weeks != 0 || duration.days != 0
         {
@@ -129,9 +145,7 @@ impl Vm {
             duration.nanoseconds,
         );
         let time = if negate { time.negated() } else { time };
-        let epoch_i128: i128 = epoch
-            .to_i128()
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant".into()))?;
+        let epoch_i128 = instant_epoch_i128(&epoch);
         let result_i128 = epoch_i128 + time.total_nanoseconds();
         self.instant_from_epoch_nanoseconds(BigInt::from(result_i128))
     }
@@ -141,7 +155,7 @@ impl Vm {
         receiver: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let epoch = self.temporal_instant_epoch(receiver)?;
+        let epoch = self.instant_epoch(receiver);
         let options = self.temporal_round_to(options)?;
         // Every option is read and coerced in alphabetical order, before any
         // of them is validated against the others.
@@ -160,9 +174,7 @@ impl Vm {
                 "roundingIncrement does not divide evenly into a day".into(),
             ));
         }
-        let epoch_i128: i128 = epoch
-            .to_i128()
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant".into()))?;
+        let epoch_i128 = instant_epoch_i128(&epoch);
         let rounded = duration_math::TimeDuration::from_nanoseconds(epoch_i128)
             .round_as_if_positive(smallest_unit, increment, mode)
             .total_nanoseconds();
@@ -176,7 +188,7 @@ impl Vm {
         options: &Value,
         since: bool,
     ) -> Result<Value, RuntimeError> {
-        let self_epoch = self.temporal_instant_epoch(receiver)?;
+        let self_epoch = self.instant_epoch(receiver);
         let other_epoch = self.temporal_to_instant_epoch(other)?;
         let options = self.temporal_options(options)?;
         // `GetDifferenceSettings` reads largestUnit, roundingIncrement,
@@ -209,12 +221,8 @@ impl Vm {
                 "roundingIncrement does not divide evenly into the next larger unit".into(),
             ));
         }
-        let self_i128: i128 = self_epoch
-            .to_i128()
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant".into()))?;
-        let other_i128: i128 = other_epoch
-            .to_i128()
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant".into()))?;
+        let self_i128 = instant_epoch_i128(&self_epoch);
+        let other_i128 = instant_epoch_i128(&other_epoch);
         let difference_ns = if since {
             self_i128 - other_i128
         } else {
@@ -233,6 +241,8 @@ impl Vm {
         // that overflows what a double can represent precisely must be
         // observably rounded, not stored exactly
         // (`prototype/{since,until}/float64-representable-integer.js`).
+        // The difference of two Instants is under 1.8e13 seconds, so every
+        // field is within a Duration's limits.
         let record = Self::temporal_duration_record([
             0,
             0,
@@ -244,7 +254,8 @@ impl Vm {
             i128::from(milliseconds),
             i128::from(microseconds),
             i128::from(nanoseconds),
-        ])?;
+        ])
+        .expect("an Instant difference is a valid Duration");
         self.alloc_temporal_value(
             TemporalValue {
                 kind: TemporalKind::Duration,
@@ -271,7 +282,7 @@ impl Vm {
         receiver: &Value,
         other: &Value,
     ) -> Result<Value, RuntimeError> {
-        let self_epoch = self.temporal_instant_epoch(receiver)?;
+        let self_epoch = self.instant_epoch(receiver);
         let other_epoch = self.temporal_to_instant_epoch(other)?;
         Ok(Value::Bool(self_epoch == other_epoch))
     }
@@ -398,11 +409,16 @@ impl Vm {
             return Ok(None);
         }
         if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("a script-visible value is a live heap object")
+            {
                 if temporal.kind == TemporalKind::ZonedDateTime {
-                    return iso::resolve_time_zone_offset(&temporal.time_zone, epoch_nanoseconds)
-                        .map(Some)
-                        .map_err(|()| RuntimeError::RangeError("invalid time zone".into()));
+                    return Ok(Some(
+                        iso::resolve_time_zone_offset(&temporal.time_zone, epoch_nanoseconds)
+                            .expect("a ZonedDateTime's own time zone resolves"),
+                    ));
                 }
             }
         }
@@ -424,7 +440,7 @@ impl Vm {
         receiver: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let epoch = self.temporal_instant_epoch(receiver)?;
+        let epoch = self.instant_epoch(receiver);
         let options = self.temporal_options(options)?;
         // Read (and coerce) every option in alphabetical order first; only
         // then reject a unit this operation does not accept.
@@ -483,9 +499,7 @@ impl Vm {
                 ),
             },
         };
-        let epoch_i128: i128 = epoch
-            .to_i128()
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant".into()))?;
+        let epoch_i128 = instant_epoch_i128(&epoch);
         let rounded = duration_math::TimeDuration::from_nanoseconds(epoch_i128)
             .round_as_if_positive(unit, increment, mode)
             .total_nanoseconds();
@@ -505,8 +519,6 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        // Brand check before any observable option read.
-        self.temporal_instant_epoch(receiver)?;
         let stack_base = self.stack.len();
         let result = (|| {
             let formatter = self.create_date_time_format(

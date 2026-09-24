@@ -47,59 +47,45 @@ impl Vm {
         ))
     }
 
-    /// `CreateDisposableResource ( V, hint [, method ] )`.
+    /// `CreateDisposableResource ( V, hint )`. The spec's optional `method`
+    /// argument belongs to `adopt`/`defer`, which build their resources
+    /// directly, so it is not modelled here.
     ///
-    /// Returns `None` only for the sync-hint/nullish/no-explicit-method case
-    /// that `AddDisposableResource` turns into "add nothing at all" -- every
-    /// other outcome either returns a resource or throws.
+    /// Returns `None` only for the sync-hint/nullish case that
+    /// `AddDisposableResource` turns into "add nothing at all" -- every other
+    /// outcome either returns a resource or throws.
     pub(in super::super) fn create_disposable_resource(
         &mut self,
         value: Value,
         hint: DisposeHint,
-        method: Option<Value>,
     ) -> Result<Option<DisposableResource>, RuntimeError> {
-        let mut sync_fallback = false;
-        let method = match method {
-            None => {
-                if matches!(value, Value::Null | Value::Undefined) {
-                    if hint == DisposeHint::Sync {
-                        return Ok(None);
-                    }
-                    // `await using x = null` (or an AsyncDisposableStack
-                    // resource explicitly added as nullish) still records a
-                    // method-less resource: DisposeResources still performs
-                    // an Await for it, per the async-dispose hint.
-                    return Ok(Some(DisposableResource {
-                        receiver: Value::Undefined,
-                        argument: None,
-                        method: None,
-                        hint,
-                        sync_fallback: false,
-                    }));
-                }
-                if !matches!(value, Value::Object(_)) {
-                    return Err(RuntimeError::TypeError(
-                        "using declaration value must be an object, null, or undefined".into(),
-                    ));
-                }
-                let (method, fallback) = self.get_dispose_method(&value, hint)?;
-                if method == Value::Undefined {
-                    return Err(RuntimeError::TypeError(
-                        "resource has no Symbol.dispose/Symbol.asyncDispose method".into(),
-                    ));
-                }
-                sync_fallback = fallback;
-                method
+        if matches!(value, Value::Null | Value::Undefined) {
+            if hint == DisposeHint::Sync {
+                return Ok(None);
             }
-            Some(method) => {
-                if !self.is_callable(&method)? {
-                    return Err(RuntimeError::TypeError(
-                        "dispose callback must be callable".into(),
-                    ));
-                }
-                method
-            }
-        };
+            // `await using x = null` (or an AsyncDisposableStack resource
+            // explicitly added as nullish) still records a method-less
+            // resource: DisposeResources still performs an Await for it, per
+            // the async-dispose hint.
+            return Ok(Some(DisposableResource {
+                receiver: Value::Undefined,
+                argument: None,
+                method: None,
+                hint,
+                sync_fallback: false,
+            }));
+        }
+        if !matches!(value, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "using declaration value must be an object, null, or undefined".into(),
+            ));
+        }
+        let (method, sync_fallback) = self.get_dispose_method(&value, hint)?;
+        if method == Value::Undefined {
+            return Err(RuntimeError::TypeError(
+                "resource has no Symbol.dispose/Symbol.asyncDispose method".into(),
+            ));
+        }
         Ok(Some(DisposableResource {
             receiver: value,
             argument: None,
@@ -109,29 +95,30 @@ impl Vm {
         }))
     }
 
-    /// `AddDisposableResource ( disposeCapability, V, hint [, method ] )`.
+    /// `AddDisposableResource ( disposeCapability, V, hint )`. The trailing
+    /// parameter is the spec's explicit `method`, which no caller supplies
+    /// (see `create_disposable_resource`).
     pub(in super::super) fn add_disposable_resource(
         &mut self,
         capability: &mut Vec<DisposableResource>,
         value: Value,
         hint: DisposeHint,
-        method: Option<Value>,
+        _method: Option<Value>,
     ) -> Result<(), RuntimeError> {
-        if let Some(resource) = self.create_disposable_resource(value, hint, method)? {
+        if let Some(resource) = self.create_disposable_resource(value, hint)? {
             capability.push(resource);
         }
         Ok(())
     }
 
     /// `Dispose ( V, hint, method )` folded into one call.
-    fn dispose_one(&mut self, resource: &DisposableResource) -> Result<Value, RuntimeError> {
-        match &resource.method {
-            None => Ok(Value::Undefined),
-            Some(method) => {
-                let args = resource.argument.clone().map_or_else(Vec::new, |v| vec![v]);
-                self.call_native(method.clone(), resource.receiver.clone(), args, false)
-            }
-        }
+    fn dispose_one(
+        &mut self,
+        resource: &DisposableResource,
+        method: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let args = resource.argument.clone().map_or_else(Vec::new, |v| vec![v]);
+        self.call_native(method.clone(), resource.receiver.clone(), args, false)
     }
 
     /// `DisposeResources ( disposeCapability, completion )` for the
@@ -172,16 +159,15 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         let mut completion = prior;
         while let Some(resource) = resources.pop() {
-            if resource.method.is_none() {
-                // A method-less `sync-dispose` resource (e.g. a `using`
-                // binding whose value was null/undefined) is a pure no-op.
-                // The spec's method-less `async-dispose` case still performs
-                // `Await(undefined)` -- one guaranteed microtask tick -- which
-                // this synchronous loop does not reproduce; see
-                // `dispose_resources_sync`'s own doc comment.
-                continue;
-            }
-            if let Err(new_error) = self.dispose_one(&resource) {
+            // Only sync-hint resources reach this loop, and a sync-hint
+            // `null`/`undefined` is never recorded, so each one has a method
+            // (only an `await using` resource can lack one, and those are
+            // disposed by `build_async_dispose_state` instead).
+            let method = resource
+                .method
+                .as_ref()
+                .expect("a sync-dispose resource always has a dispose method");
+            if let Err(new_error) = self.dispose_one(&resource, method) {
                 if !new_error.is_catchable() {
                     return Err(new_error);
                 }
@@ -247,12 +233,9 @@ impl Vm {
         let result = (|| {
             let (has_error, pending_error) = match prior {
                 None => (false, Value::Undefined),
-                Some(error) => {
-                    if !error.is_catchable() {
-                        return Err(error);
-                    }
-                    (true, self.error_value(error)?)
-                }
+                // A pending error here was caught by the scope's handler, so
+                // it is always catchable.
+                Some(error) => (true, self.error_value(error)?),
             };
             self.stack.push(pending_error.clone());
             let entries = self.entries_array_from_resources(resources)?;
@@ -333,8 +316,7 @@ impl Vm {
             }
             if (hasError) throw pendingError;
         })"#;
-        let program =
-            crate::parse(SOURCE).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let program = crate::parse(SOURCE).expect("the built-in disposal helper parses");
         let code = crate::compiler::compile_eval(
             &program,
             &[],
@@ -342,7 +324,7 @@ impl Vm {
             &[],
             crate::compiler::EvalContext::default(),
         )
-        .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        .expect("the built-in disposal helper compiles");
         let helper = self.execute_eval(&code, Vec::new(), !code.strict)?;
         self.async_dispose_helper = Some(helper.clone());
         Ok(helper)
@@ -430,7 +412,10 @@ impl Vm {
                 0,
                 NativeFunction::DisposableStackDispose { is_async },
             )?;
-            let dispose = self.heap.get(prototype, dispose_name)?;
+            let dispose = self
+                .heap
+                .get(prototype, dispose_name)
+                .expect("the prototype was just created");
             self.define_data(
                 prototype,
                 JsSymbol::well_known(dispose_key),
@@ -536,7 +521,7 @@ impl Vm {
         } else {
             DisposeHint::Sync
         };
-        let resource = self.create_disposable_resource(value.clone(), hint, None)?;
+        let resource = self.create_disposable_resource(value.clone(), hint)?;
         if let Some(resource) = resource {
             let state = if is_async {
                 self.async_disposable_stacks.get_mut(&id)
@@ -567,7 +552,10 @@ impl Vm {
                 "disposable stack has already been disposed".into(),
             ));
         }
-        if !self.is_callable(&on_dispose)? {
+        if !self
+            .is_callable(&on_dispose)
+            .expect("a script-visible value is a live heap object")
+        {
             return Err(RuntimeError::TypeError(
                 "adopt requires a callable onDispose".into(),
             ));
@@ -610,7 +598,10 @@ impl Vm {
                 "disposable stack has already been disposed".into(),
             ));
         }
-        if !self.is_callable(&on_dispose)? {
+        if !self
+            .is_callable(&on_dispose)
+            .expect("a script-visible value is a live heap object")
+        {
             return Err(RuntimeError::TypeError(
                 "defer requires a callable onDispose".into(),
             ));
@@ -786,5 +777,53 @@ impl Vm {
         }
         let value = self.error_value(error)?;
         self.promise_reject(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{compile, parse, HeapError};
+
+    /// A handle to an object that exists in no heap: every heap operation on
+    /// it fails with `InvalidObject`.
+    fn dangling_id() -> ObjectId {
+        ObjectId {
+            heap: u64::MAX,
+            serial: u64::MAX,
+        }
+    }
+
+    fn dangling() -> Value {
+        Value::Object(dangling_id())
+    }
+
+    fn dangling_error() -> RuntimeError {
+        RuntimeError::Heap(HeapError::InvalidObject(dangling_id()))
+    }
+
+    fn evaluate(vm: &mut Vm, source: &str) -> Value {
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap()
+    }
+
+    #[test]
+    fn a_dangling_resource_is_a_heap_error_in_every_lookup() {
+        let mut vm = Vm::default();
+        for hint in [DisposeHint::Sync, DisposeHint::Async] {
+            assert_eq!(
+                vm.get_dispose_method(&dangling(), hint),
+                Err(dangling_error())
+            );
+            assert_eq!(
+                vm.create_disposable_resource(dangling(), hint).err(),
+                Some(dangling_error())
+            );
+        }
+        let stack = evaluate(&mut vm, "new DisposableStack()");
+        assert_eq!(
+            vm.disposable_stack_use(&stack, dangling(), false),
+            Err(dangling_error())
+        );
     }
 }

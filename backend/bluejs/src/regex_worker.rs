@@ -154,24 +154,40 @@ struct Worker {
     input: Option<Vec<u16>>,
 }
 
+/// The matcher executable's file name on this platform.
+fn bare_worker_path() -> PathBuf {
+    PathBuf::from(format!(
+        "bluejs-regexp-worker{}",
+        std::env::consts::EXE_SUFFIX
+    ))
+}
+
+/// The matcher executable next to `executable` (or one directory up from a
+/// Cargo `deps`/`examples` directory), given the running executable's path.
+fn sibling_worker_path(executable: io::Result<PathBuf>) -> io::Result<PathBuf> {
+    let executable = executable?;
+    let mut directory = executable.parent().unwrap();
+    if directory
+        .file_name()
+        .is_some_and(|name| name == "deps" || name == "examples")
+    {
+        directory = directory.parent().unwrap();
+    }
+    Ok(directory.join(bare_worker_path()))
+}
+
+/// A reply frame's payload: replies are plain data and always serialize.
+fn encode_reply(reply: &Reply) -> Vec<u8> {
+    serde_json::to_vec(reply).expect("a regex reply always serializes")
+}
+
 impl Worker {
     fn start() -> io::Result<Self> {
         let path = match std::env::var_os("BLUEJS_REGEXP_WORKER") {
             Some(path) => PathBuf::from(path),
-            None => {
-                let executable = std::env::current_exe()?;
-                let mut directory = executable.parent().unwrap();
-                if directory
-                    .file_name()
-                    .is_some_and(|name| name == "deps" || name == "examples")
-                {
-                    directory = directory.parent().unwrap();
-                }
-                directory.join(format!(
-                    "bluejs-regexp-worker{}",
-                    std::env::consts::EXE_SUFFIX
-                ))
-            }
+            // Without a known executable, fall back to a bare program name
+            // for the platform to resolve.
+            None => sibling_worker_path(std::env::current_exe()).unwrap_or(bare_worker_path()),
         };
         let mut child = Command::new(path)
             .stdin(Stdio::piped())
@@ -240,7 +256,7 @@ impl Worker {
         timeout: Duration,
         input_length: Option<usize>,
     ) -> Result<Reply, RuntimeError> {
-        let bytes = serde_json::to_vec(&request).map_err(worker_error)?;
+        let bytes = serde_json::to_vec(&request).expect("a regex request always serializes");
         if bytes.len() > MAX_FRAME {
             return Err(worker_error("regex request exceeds frame limit"));
         }
@@ -349,9 +365,9 @@ impl Drop for Worker {
         // to exit explicitly, then close the channel and join its I/O thread
         // before reaping the private child on every platform.
         if let Some(requests) = self.requests.as_ref() {
-            if let Ok(shutdown) = serde_json::to_vec(&Request::Shutdown) {
-                let _ = requests.send(shutdown);
-            }
+            let shutdown =
+                serde_json::to_vec(&Request::Shutdown).expect("a shutdown request serializes");
+            let _ = requests.send(shutdown);
         }
         drop(self.requests.take());
         if let Some(thread) = self.io_thread.take() {
@@ -542,10 +558,7 @@ fn serve_on(stream_in: &mut dyn Read, stream_out: &mut dyn Write) -> io::Result<
                         io::Error::new(io::ErrorKind::InvalidData, "missing regex flags")
                     })?;
                     if let Err(message) = cache_pattern(&mut cached, source, flags) {
-                        frame_write(
-                            stream_out,
-                            &serde_json::to_vec(&Reply::SyntaxError(message))?,
-                        )?;
+                        frame_write(stream_out, &encode_reply(&Reply::SyntaxError(message)))?;
                         continue;
                     }
                 } else if flags.is_some() {
@@ -595,10 +608,159 @@ fn serve_on(stream_in: &mut dyn Read, stream_out: &mut dyn Write) -> io::Result<
                     .collect(),
             ),
         };
-        frame_write(stream_out, &serde_json::to_vec(&reply)?)?;
+        frame_write(stream_out, &encode_reply(&reply))?;
     }
 }
 
 #[cfg(test)]
 #[path = "../tests/fixtures/regex_framing.rs"]
 mod tests;
+
+#[cfg(test)]
+mod transport_failure_tests {
+    use super::*;
+
+    /// A writer that accepts `budget` bytes and then fails.
+    struct Budget(usize);
+
+    impl Write for Budget {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if self.0 < bytes.len() {
+                return Err(io::Error::other("out of budget"));
+            }
+            self.0 -= bytes.len();
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn frame(payload: &[u8]) -> Vec<u8> {
+        let mut framed = Vec::new();
+        frame_write(&mut framed, payload).unwrap();
+        framed
+    }
+
+    #[test]
+    fn a_frame_that_cannot_be_written_or_read_is_an_error() {
+        assert!(frame_write(&mut Budget(0), b"x").is_err());
+        assert!(frame_write(&mut Budget(4), b"x").is_err());
+        assert_eq!(
+            frame_read(&mut io::empty()).unwrap_err().kind(),
+            io::ErrorKind::UnexpectedEof
+        );
+        // A length prefix promising more payload than the stream holds.
+        let truncated = [5u8, 0, 0, 0, 1, 2];
+        assert_eq!(
+            frame_read(&mut truncated.as_slice()).unwrap_err().kind(),
+            io::ErrorKind::UnexpectedEof
+        );
+    }
+
+    /// A process that exits immediately: these tests need an owned child, not
+    /// a working matcher.
+    fn exited_child() -> Child {
+        #[cfg(windows)]
+        {
+            Command::new("cmd.exe")
+                .args(["/C", "exit", "0"])
+                .spawn()
+                .unwrap()
+        }
+
+        #[cfg(not(windows))]
+        {
+            Command::new("true").spawn().unwrap()
+        }
+    }
+
+    #[test]
+    fn a_validation_over_a_closed_transport_is_a_worker_failure() {
+        let (sender, receiver) = mpsc::channel();
+        drop(receiver);
+        let (_reply, replies) = mpsc::channel();
+        let mut worker = Worker {
+            child: exited_child(),
+            requests: Some(sender),
+            replies,
+            io_thread: None,
+            failed: true,
+            pattern: None,
+            input: None,
+        };
+        assert!(worker
+            .validate(Vec::new(), Duration::from_millis(50))
+            .is_err());
+    }
+
+    #[test]
+    fn the_worker_path_is_next_to_the_executable_or_above_its_deps_directory() {
+        let suffix = format!("bluejs-regexp-worker{}", std::env::consts::EXE_SUFFIX);
+        assert_eq!(
+            sibling_worker_path(Ok(PathBuf::from("/build/debug/deps/test"))).unwrap(),
+            PathBuf::from("/build/debug").join(&suffix)
+        );
+        assert_eq!(
+            sibling_worker_path(Ok(PathBuf::from("/build/debug/examples/demo"))).unwrap(),
+            PathBuf::from("/build/debug").join(&suffix)
+        );
+        assert_eq!(
+            sibling_worker_path(Ok(PathBuf::from("/build/debug/app"))).unwrap(),
+            PathBuf::from("/build/debug").join(&suffix)
+        );
+        assert_eq!(
+            sibling_worker_path(Err(io::Error::other("no executable")))
+                .unwrap_err()
+                .to_string(),
+            "no executable"
+        );
+    }
+
+    #[test]
+    fn the_worker_loop_reports_transport_and_request_errors() {
+        // The ready frame cannot be written.
+        assert!(serve_on(&mut io::empty(), &mut Budget(0)).is_err());
+        // A request that is not JSON of a known shape.
+        let garbage = frame(b"not json");
+        assert!(serve_on(&mut garbage.as_slice(), &mut Vec::new()).is_err());
+        // A find that supplies a pattern without its flags.
+        let missing_flags = frame(
+            &serde_json::to_vec(&Request::Find {
+                source: Some(vec![97]),
+                flags: None,
+                input: Some(vec![97]),
+                start: 0,
+            })
+            .unwrap(),
+        );
+        assert_eq!(
+            serve_on(&mut missing_flags.as_slice(), &mut Vec::new())
+                .unwrap_err()
+                .to_string(),
+            "missing regex flags"
+        );
+        // A syntax-error reply that cannot be written after the ready frame,
+        // and an ordinary reply that cannot.
+        let ready = 4 + READY.len();
+        for request in [
+            Request::Compile {
+                source: vec![40],
+                flags: String::new(),
+            },
+            Request::Find {
+                source: Some(vec![40]),
+                flags: Some(String::new()),
+                input: Some(vec![97]),
+                start: 0,
+            },
+            Request::Validate {
+                patterns: vec![(vec![97], String::new())],
+            },
+        ] {
+            let framed = frame(&serde_json::to_vec(&request).unwrap());
+            assert!(serve_on(&mut framed.as_slice(), &mut Budget(ready)).is_err());
+        }
+    }
+}

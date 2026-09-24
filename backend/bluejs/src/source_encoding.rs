@@ -155,7 +155,8 @@ mod tests {
         for text in ["", "a + b", "é\u{1F438}\u{10EFFF}\u{10F801}\u{10FFFF}"] {
             let source = JsString::from(text);
             assert_eq!(encode(&source), text);
-            assert!(matches!(escape(text), Cow::Borrowed(_)), "{text:?}");
+            // An unchanged text is borrowed, not copied.
+            assert!(std::ptr::eq(escape(text).as_ref(), text), "{text:?}");
             assert_eq!(decode(text), source);
         }
     }

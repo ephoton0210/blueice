@@ -5,9 +5,7 @@
 //! `Temporal.ZonedDateTime.prototype.{add, subtract, round}`.
 
 use super::super::*;
-use super::resolution::{
-    temporal_resolution_error, temporal_set_local_fields, temporal_zoned_date_time_zone,
-};
+use super::resolution::{temporal_set_local_fields, temporal_zoned_date_time_zone};
 
 impl Vm {
     /// `Temporal.ZonedDateTime.prototype.add`/`subtract`: `AddZonedDateTime`
@@ -22,7 +20,10 @@ impl Vm {
         options: &Value,
         negate: bool,
     ) -> Result<Value, RuntimeError> {
-        let mut existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        // The native dispatcher has already refused a non-ZonedDateTime receiver.
+        let mut existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("a ZonedDateTime receiver was validated");
         let mut duration = self.temporal_duration_from_value(duration_value)?;
         if negate {
             duration.years = -duration.years;
@@ -96,7 +97,9 @@ impl Vm {
         receiver: &Value,
         round_to: &Value,
     ) -> Result<Value, RuntimeError> {
-        let mut existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let mut existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("a ZonedDateTime receiver was validated");
         if *round_to == Value::Undefined {
             return Err(RuntimeError::TypeError(
                 "Temporal.ZonedDateTime.round requires a smallestUnit or options argument".into(),
@@ -199,6 +202,8 @@ impl Vm {
                 let ns_of_day = rounded.rem_euclid(86_400_000_000_000);
                 let calendar_kind = calendar::calendar_kind(&existing.calendar)
                     .expect("Temporal values retain a validated calendar identifier");
+                // A carry of at most one day from a representable date stays
+                // inside the date-time margin around Temporal's range.
                 let date = plain_date::calendar_add_date(
                     calendar_kind,
                     (existing.year, existing.month, existing.day),
@@ -208,13 +213,11 @@ impl Vm {
                     day_carry as i64,
                     false,
                 )
-                .ok_or_else(|| {
-                    RuntimeError::RangeError("Temporal.ZonedDateTime.round is out of range".into())
-                })?;
+                .expect("a one-day carry stays inside the date-time margin");
                 let time = duration_math::time_fields_from_nanoseconds(ns_of_day);
                 existing.epoch_nanoseconds = zone
                     .epoch_nanoseconds_for(date, time, time_zone::Disambiguation::Compatible)
-                    .map_err(temporal_resolution_error)?;
+                    .expect("compatible disambiguation always resolves a local time");
             }
             if !epoch::is_in_instant_range(&existing.epoch_nanoseconds) {
                 return Err(RuntimeError::RangeError(

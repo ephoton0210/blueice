@@ -10,6 +10,11 @@
 use super::*;
 use std::collections::HashMap;
 
+/// The heap accesses so marked run on an object the caller just allocated or
+/// was handed by running script, so the only failure the heap can report, a
+/// handle it does not own, cannot happen.
+const LIVE: &str = "a script-visible value is a live heap object";
+
 type JsonSourceMap = HashMap<(ObjectId, JsString), (Value, JsString)>;
 
 impl Vm {
@@ -20,7 +25,7 @@ impl Vm {
         let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let id = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let root = self.heap.root(id)?;
+        let root = self.heap.root(id).expect(LIVE);
         let result = (|| {
             self.install_native(
                 id,
@@ -69,7 +74,7 @@ impl Vm {
                 Ok(value)
             }
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.heap.unroot(root).expect(LIVE);
                 Err(error)
             }
         }
@@ -92,7 +97,7 @@ impl Vm {
             let mut sources = JsonSourceMap::new();
             let value = self.json_from_node(&parsed, &mut sources)?;
             let reviver = reviver.cloned().unwrap_or(Value::Undefined);
-            if !self.is_callable(&reviver)? {
+            if !self.is_callable(&reviver).expect(LIVE) {
                 return Ok(value);
             }
             // The complete parsed graph is now outside the interpreter stack.
@@ -104,9 +109,8 @@ impl Vm {
             let prototype = self.object_prototype;
             let wrapper = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
             self.stack.push(Value::Object(wrapper));
-            self.define_data(wrapper, "", value, true, true, true)?;
+            self.define_data(wrapper, "", value.clone(), true, true, true)?;
             if let Some(source) = parsed.primitive_source() {
-                let value = self.get_property(&Value::Object(wrapper), &"".into())?;
                 sources.insert((wrapper, "".into()), (value, source.clone()));
             }
             self.json_internalize(&Value::Object(wrapper), &"".into(), &reviver, &sources)
@@ -141,24 +145,24 @@ impl Vm {
         self.stack.push(Value::Object(raw));
         let result = (|| {
             self.define_data(raw, "rawJSON", Value::String(text), true, true, true)?;
-            if !self.object_define_own_property(
-                raw,
-                "rawJSON".into(),
-                PropertyDescriptor {
-                    writable: Some(false),
-                    configurable: Some(false),
-                    ..Default::default()
-                },
-            )? {
-                return Err(RuntimeError::TypeError(
-                    "cannot freeze raw JSON text".into(),
-                ));
-            }
-            if !self.object_prevent_extensions(raw)? {
-                return Err(RuntimeError::TypeError(
-                    "cannot freeze raw JSON object".into(),
-                ));
-            }
+            // A fresh ordinary object always accepts both of these.
+            let frozen_text = self
+                .object_define_own_property(
+                    raw,
+                    "rawJSON".into(),
+                    PropertyDescriptor {
+                        writable: Some(false),
+                        configurable: Some(false),
+                        ..Default::default()
+                    },
+                )
+                .expect(LIVE);
+            assert!(frozen_text, "a fresh raw JSON object freezes its text");
+            let frozen_object = self.object_prevent_extensions(raw).expect(LIVE);
+            assert!(
+                frozen_object,
+                "a fresh raw JSON object is made non-extensible"
+            );
             Ok(Value::Object(raw))
         })();
         self.stack.truncate(base);
@@ -171,7 +175,7 @@ impl Vm {
         let Value::Object(object) = value else {
             return Ok(Value::Bool(false));
         };
-        Ok(Value::Bool(self.heap.is_raw_json(*object)?))
+        Ok(Value::Bool(self.heap.is_raw_json(*object).expect(LIVE)))
     }
 
     /// `InternalizeJSONProperty` walks the parsed graph post-order, always
@@ -191,13 +195,13 @@ impl Vm {
             self.stack.push(holder.clone());
             let value = self.get_property(holder, &PropertyName::from(name))?;
             self.stack.push(value.clone());
-            let source = match holder {
-                Value::Object(object) => sources
-                    .get(&(*object, name.clone()))
+            // The holder is always an object: the wrapper or a parsed container.
+            let source = holder.object_id().and_then(|object| {
+                sources
+                    .get(&(object, name.clone()))
                     .filter(|(parsed, _)| crate::heap::same_value(parsed, &value))
-                    .map(|(_, source)| source.clone()),
-                _ => None,
-            };
+                    .map(|(_, source)| source.clone())
+            });
             if let Value::Object(object) = value {
                 if self.is_array(&Value::Object(object))? {
                     let length = self.get_property(&Value::Object(object), &"length".into())?;
@@ -284,10 +288,9 @@ impl Vm {
         sources: &mut JsonSourceMap,
     ) -> Result<Value, RuntimeError> {
         match node {
-            JsonNode::Primitive { value, .. } => {
-                self.check_string(value)?;
-                Ok(value.clone())
-            }
+            // A parsed string is never longer than the (already
+            // length-limited) text it came from.
+            JsonNode::Primitive { value, .. } => Ok(value.clone()),
             JsonNode::Array(values) => {
                 let prototype = self.array_prototype;
                 let array =
@@ -393,7 +396,7 @@ impl Vm {
         replacer: &Value,
         space: &Value,
     ) -> Result<JsonStringifyState, RuntimeError> {
-        if self.is_callable(replacer)? {
+        if self.is_callable(replacer).expect(LIVE) {
             return Ok(JsonStringifyState {
                 replacer: Some(replacer.clone()),
                 property_list: None,
@@ -437,9 +440,12 @@ impl Vm {
     /// `toString`, are ignored without coercion.
     fn json_gap(&mut self, space: &Value) -> Result<JsString, RuntimeError> {
         let primitive = if let Value::Object(object) = space {
-            if self.heap.boxed_string(*object)?.is_some() {
+            if self.heap.boxed_string(*object).expect(LIVE).is_some() {
                 Value::String(self.coerce_string(space)?)
-            } else if matches!(self.heap.boxed_primitive(*object)?, Some(Value::Number(_))) {
+            } else if matches!(
+                self.heap.boxed_primitive(*object).expect(LIVE),
+                Some(Value::Number(_))
+            ) {
                 Value::Number(self.coerce_number(space)?)
             } else {
                 Value::Undefined
@@ -467,13 +473,13 @@ impl Vm {
 
     fn json_property_list_key(&mut self, item: &Value) -> Result<Option<JsString>, RuntimeError> {
         match item {
-            Value::String(_) | Value::Number(_) => Ok(Some(self.coerce_string(item)?)),
-            Value::Object(object) if self.heap.boxed_string(*object)?.is_some() => {
+            Value::String(_) | Value::Number(_) => Ok(Some(self.coerce_string(item).expect(LIVE))),
+            Value::Object(object) if self.heap.boxed_string(*object).expect(LIVE).is_some() => {
                 Ok(Some(self.coerce_string(item)?))
             }
             Value::Object(object)
                 if matches!(
-                    self.heap.boxed_primitive(*object)?,
+                    self.heap.boxed_primitive(*object).expect(LIVE),
                     Some(Value::String(_) | Value::Number(_))
                 ) =>
             {
@@ -489,7 +495,7 @@ impl Vm {
             return Ok(false);
         };
         loop {
-            if self.heap.is_array(object)? {
+            if self.heap.is_array(object).expect(LIVE) {
                 return Ok(true);
             }
             let Some((target, _)) = self.heap.proxy(object)? else {
@@ -516,7 +522,7 @@ impl Vm {
             self.stack.push(value.clone());
             if matches!(value, Value::Object(_) | Value::BigInt(_)) {
                 let to_json = self.get_property(&value, &"toJSON".into())?;
-                if self.is_callable(&to_json)? {
+                if self.is_callable(&to_json).expect(LIVE) {
                     value = self.call_native(
                         to_json,
                         value.clone(),
@@ -552,7 +558,7 @@ impl Vm {
             Value::Null => Ok(Some("null".into())),
             Value::Bool(value) => Ok(Some(if *value { "true" } else { "false" }.into())),
             Value::Number(value) => Ok(Some(if value.is_finite() {
-                primitive::string(&Value::Number(*value))?
+                primitive::string(&Value::Number(*value)).expect("a Number always stringifies")
             } else {
                 "null".into()
             })),
@@ -561,35 +567,31 @@ impl Vm {
             )),
             Value::String(value) => Ok(Some(json_quote(value).into())),
             Value::Object(object) => {
-                if self.heap.is_raw_json(*object)? {
-                    let text = self.get_property(value, &"rawJSON".into())?;
-                    let Value::String(text) = text else {
-                        unreachable!("a branded raw JSON object retains its frozen text");
-                    };
-                    return Ok(Some(text));
+                if self.heap.is_raw_json(*object).expect(LIVE) {
+                    // A branded raw JSON object's `rawJSON` is a frozen String.
+                    let text = self.get_property(value, &"rawJSON".into()).expect(LIVE);
+                    return Ok(Some(string_of(text).expect("raw JSON text is a String")));
                 }
-                if self.heap.boxed_string(*object)?.is_some() {
+                if self.heap.boxed_string(*object).expect(LIVE).is_some() {
                     let string = Value::String(self.coerce_string(value)?);
                     return self.json_serialize(&string, state, indent);
                 }
                 if let Some(primitive) = self
                     .heap
-                    .boxed_primitive(*object)?
-                    .or(self.test262_foreign_boxed_primitive(*object)?)
+                    .boxed_primitive(*object)
+                    .expect(LIVE)
+                    .or(self.test262_foreign_boxed_primitive(*object).expect(LIVE))
                 {
                     return match primitive {
                         Value::Number(_) => {
                             let number = Value::Number(self.coerce_number(value)?);
                             self.json_serialize(&number, state, indent)
                         }
-                        Value::String(_) => {
-                            let string = Value::String(self.coerce_string(value)?);
-                            self.json_serialize(&string, state, indent)
-                        }
+                        // A boxed String has its own slot, handled above.
                         primitive => self.json_serialize(&primitive, state, indent),
                     };
                 }
-                if self.is_callable(value)? {
+                if self.is_callable(value).expect(LIVE) {
                     return Ok(None);
                 }
                 if state.stack.borrow().contains(object) {
@@ -796,7 +798,8 @@ impl<'a> JsonSourceParser<'a> {
     }
 
     fn array(&mut self) -> Result<JsonNode, ()> {
-        self.expect(b'[')?;
+        // The caller peeked the opening bracket.
+        self.index += 1;
         self.skip_whitespace();
         if self.take(b']') {
             return Ok(JsonNode::Array(Vec::new()));
@@ -814,7 +817,8 @@ impl<'a> JsonSourceParser<'a> {
     }
 
     fn object(&mut self) -> Result<JsonNode, ()> {
-        self.expect(b'{')?;
+        // The caller peeked the opening brace.
+        self.index += 1;
         self.skip_whitespace();
         if self.take(b'}') {
             return Ok(JsonNode::Object(Vec::new()));
@@ -883,7 +887,7 @@ impl<'a> JsonSourceParser<'a> {
         let source: JsString = self.input[start..self.index].into();
         let value = self.input[start..self.index]
             .parse::<f64>()
-            .map_err(|_| ())?;
+            .expect("a scanned JSON number parses as f64");
         Ok(JsonNode::Primitive {
             value: Value::Number(value),
             source,
@@ -924,7 +928,10 @@ impl<'a> JsonSourceParser<'a> {
                 }
                 Some(byte) if byte < 0x20 => return Err(()),
                 Some(_) => {
-                    let character = self.input[self.index..].chars().next().ok_or(())?;
+                    let character = self.input[self.index..]
+                        .chars()
+                        .next()
+                        .expect("a peeked byte starts a character");
                     self.index += character.len_utf8();
                 }
                 None => return Err(()),
@@ -967,6 +974,14 @@ struct JsonStringifyState {
     stack: std::cell::RefCell<Vec<ObjectId>>,
 }
 
+/// A value's text when it is a String.
+fn string_of(value: Value) -> Option<JsString> {
+    match value {
+        Value::String(text) => Some(text),
+        _ => None,
+    }
+}
+
 fn json_quote(value: &JsString) -> String {
     let mut text = String::from("\"");
     let units = value.as_code_units();
@@ -1003,4 +1018,15 @@ fn json_quote(value: &JsString) -> String {
     }
     text.push('\"');
     text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_string_values_have_text() {
+        assert_eq!(string_of(Value::String("a".into())), Some("a".into()));
+        assert_eq!(string_of(Value::Number(1.0)), None);
+    }
 }
