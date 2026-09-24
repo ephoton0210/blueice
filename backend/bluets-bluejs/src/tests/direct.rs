@@ -168,6 +168,32 @@ fn resolves_a_ts_byte_position_to_the_next_verified_safe_point_or_unbound() {
 }
 
 #[test]
+fn safe_point_map_retains_original_utf16_coordinates_without_source_text() {
+    let source = "// original\r\n/* 🚀 */ const answer: number = 42;";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut registry = bluejs::BlueJsProgramRegistry::default();
+    let attachment = artifact.attach_in(&mut registry).unwrap();
+    let entry = &attachment.safe_point_map.entries[0];
+    assert_eq!(entry.start_byte, source.find("const answer").unwrap());
+    assert_eq!(entry.location.start.line, 1);
+    assert_eq!(entry.location.start.column_utf16, 9);
+    assert_eq!(entry.location.end.line, 1);
+    assert!(entry.location.end.column_utf16 > entry.location.start.column_utf16);
+    assert!(!format!("{entry:?}").contains("const answer"));
+
+    let mut malformed = attachment.safe_point_map.clone();
+    malformed.entries[0].location.end.column_utf16 = usize::MAX;
+    assert!(malformed
+        .validate_against(&registry, attachment.handle)
+        .is_err());
+}
+
+#[test]
 fn rejects_object_methods_without_reparsing_emitted_javascript() {
     let result = compile_direct_script(
         ENTRY,

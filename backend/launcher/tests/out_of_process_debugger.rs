@@ -34,6 +34,7 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
 const FIRST_BLUETS_SOURCE: &str = "export interface PrivateContract { enabled: boolean; }\r\n/* 🚀 */ const privateBlueTsMetadata: number = 42;";
 const SOURCE_STEP_BLUETS_SOURCE: &str =
     "const first: number = 1; const second: number = first + 1; const third: number = second + 1;";
+const MODULE_BLUETS_SOURCE: &str = "/* 🚀 */\r\nexport const moduleAnswer: number = 42;";
 
 fn unique_path(label: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -463,6 +464,28 @@ fn serve_two_bluets_source_step_documents(listener: TcpListener) -> thread::Join
                 )
                 .expect("fixture must reply with typed source");
         }
+    })
+}
+
+fn serve_bluets_module_document(listener: TcpListener) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let (mut stream, _) = listener
+            .accept()
+            .expect("local module fixture must connect");
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let body = format!(
+            "<script type=\"application/x-blueice-typescript-module\">{MODULE_BLUETS_SOURCE}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .expect("fixture must reply with a local typed module");
     })
 }
 
@@ -2002,6 +2025,10 @@ fn launcher_exposes_exact_bluets_safe_point_spans_only_after_same_stream_source_
         .get(span.start_byte as usize..span.end_byte as usize)
         .expect("the verified span must have original UTF-8 boundaries");
     assert!(source_span.contains("privateBlueTsMetadata"));
+    assert_eq!(span.coordinates.start_line, 1);
+    assert_eq!(span.coordinates.start_column_utf16, 9);
+    assert_eq!(span.coordinates.end_line, 1);
+    assert!(span.coordinates.end_column_utf16 > 9);
     assert!(!format!("{span:?}").contains("privateBlueTsMetadata"));
     assert!(!format!("{span:?}").contains("inline-0.ts"));
 
@@ -2096,6 +2123,112 @@ fn launcher_exposes_exact_bluets_safe_point_spans_only_after_same_stream_source_
         DebuggerReply::Unsupported { .. }
     ));
     drop(separate);
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_maps_a_real_bluets_module_safe_point_to_original_coordinates() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = serve_bluets_module_document(listener);
+    let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            inventory: true,
+            source_inventory: true,
+            safe_point_span: true,
+            ..StaticMetadataPolicy::default()
+        },
+    );
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
+    navigate(&mut browser, &url);
+    fixture.join().expect("fixture must serve the typed module");
+
+    let manifest = DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: manifest.clone(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: manifest,
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let program = one_program(
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    let DebuggerReply::StaticMetadata(metadata) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadata { program },
+    ) else {
+        panic!("the live BlueTS module must retain static metadata")
+    };
+    let DebuggerReply::StaticMetadataSources(sources) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataSources {
+            metadata: metadata[0],
+        },
+    ) else {
+        panic!("the module's original source must be receipted")
+    };
+    let points = safe_points(
+        debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+        program,
+    );
+    let mut mapped = None;
+    for safe_point in points {
+        for source in &sources {
+            let target = blueice_ipc::debugger::DebuggerStaticMetadataSafePointSpanTarget {
+                safe_point,
+                source: *source,
+            };
+            if let DebuggerReply::StaticMetadataSafePointSpan(span) = debugger_request(
+                &mut debugger,
+                DebuggerRequest::DescribeStaticMetadataSafePointSpan { target },
+            ) {
+                mapped = Some(span);
+                break;
+            }
+        }
+        if mapped.is_some() {
+            break;
+        }
+    }
+    let span = mapped.expect("module root must map to an original BlueTS source span");
+    // HTML normalizes CRLF before handing inline script text to BlueTS.
+    let normalized_source = MODULE_BLUETS_SOURCE.replace("\r\n", "\n");
+    let source_span = normalized_source
+        .get(span.start_byte as usize..span.end_byte as usize)
+        .expect("module span must have original UTF-8 boundaries");
+    assert!(source_span.contains("moduleAnswer"));
+    assert!(span.is_well_formed());
+    let line_start = normalized_source.find("export").unwrap();
+    assert_eq!(span.coordinates.start_line, 1);
+    assert_eq!(span.coordinates.end_line, 1);
+    assert_eq!(span.coordinates.start_column_utf16, 0);
+    assert_eq!(span.start_byte as usize, line_start);
+    assert_eq!(
+        span.coordinates.end_column_utf16,
+        normalized_source[line_start..span.end_byte as usize]
+            .encode_utf16()
+            .count() as u32
+    );
+    assert!(!format!("{span:?}").contains("moduleAnswer"));
+
+    drop(debugger);
     launcher.shutdown();
     let _ = std::fs::remove_file(gatekeeper_socket);
 }

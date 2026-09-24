@@ -164,6 +164,7 @@ pub struct JavaScriptPageDebuggerStaticMetadataSafePointSpan {
     pub source_id: u32,
     pub start_byte: u32,
     pub end_byte: u32,
+    pub coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates,
 }
 
 /// The exact public tuple accepted by core only after the debugger stream

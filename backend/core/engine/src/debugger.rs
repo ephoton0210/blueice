@@ -1934,6 +1934,7 @@ fn describe_child_static_metadata_safe_point_span(
                 source: target.source,
                 start_byte: span.start_byte,
                 end_byte: span.end_byte,
+                coordinates: span.coordinates,
             };
             if !result.is_well_formed() {
                 return DebuggerReply::Error {
@@ -4326,6 +4327,12 @@ mod tests {
                     source_id: 0,
                     start_byte: 6,
                     end_byte: 31,
+                    coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                        start_line: 0,
+                        start_column_utf16: 6,
+                        end_line: 0,
+                        end_column_utf16: 31,
+                    },
                 },
             )
         }
@@ -5540,6 +5547,12 @@ mod tests {
                 source,
                 start_byte: 6,
                 end_byte: 31,
+                coordinates: DebuggerSourceCoordinates {
+                    start_line: 0,
+                    start_column_utf16: 6,
+                    end_line: 0,
+                    end_column_utf16: 31,
+                },
             })
         );
         let separate_session =

@@ -199,7 +199,10 @@ channel with explicit owner/client grants.
 
 - [ ] Map nested/module locations, breakpoints, symbols, and type
   displays to the exact original source set; distinguish static types
-  from runtime values.
+  from runtime values. Partial: exact safe-point span replies now include
+  bounded original UTF-16 coordinates for classic and module roots under the
+  existing default-denied capability and same-stream source receipt; nested
+  frame mapping and complete module execution control remain open.
 - [ ] On reload, close, cache eviction, or hibernation, invalidate or
   restore the same checked generation; never attach old metadata to a
   successor.

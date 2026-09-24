@@ -108,7 +108,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 31;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 32;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -293,7 +293,8 @@ pub struct PageHostDebuggerBlueTsMetadataContractLocation {
     pub coordinates: DebuggerSourceCoordinates,
 }
 
-/// A child-private exact lowering association for one verified instruction.
+/// A child-private exact lowering association and original UTF-16 coordinates
+/// for one verified instruction.
 /// The enclosing reply repeats the live safe-point and metadata handles; this
 /// payload contains no module identity, source text, AST node, or VM value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -301,6 +302,7 @@ pub struct PageHostDebuggerBlueTsSafePointSpan {
     pub source_id: u32,
     pub start_byte: u32,
     pub end_byte: u32,
+    pub coordinates: DebuggerSourceCoordinates,
 }
 
 /// One exact child-verified relation between a compiler symbol and type.
@@ -1682,6 +1684,12 @@ mod tests {
                 source_id: 0,
                 start_byte: 0,
                 end_byte: 25,
+                coordinates: DebuggerSourceCoordinates {
+                    start_line: 0,
+                    start_column_utf16: 0,
+                    end_line: 0,
+                    end_column_utf16: 25,
+                },
             },
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();

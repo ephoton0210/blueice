@@ -2353,10 +2353,16 @@ impl BlueJsChildHost {
                 ) else {
                     return invalid_request();
                 };
+                let Some(coordinates) =
+                    debugger_source_coordinates(entry.location, start_byte, end_byte)
+                else {
+                    return invalid_request();
+                };
                 PageHostDebuggerBlueTsSafePointSpan {
                     source_id: source.id.0,
                     start_byte,
                     end_byte,
+                    coordinates,
                 }
             }
             Err(_) => {
@@ -7496,6 +7502,9 @@ mod tests {
         );
         assert!(span.start_byte < span.end_byte);
         assert!(span.end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES);
+        assert!(span
+            .coordinates
+            .is_well_formed_for_range(span.start_byte, span.end_byte));
         assert!(!format!("{span:?}").contains("const first"));
         assert!(!format!("{span:?}").contains("inline-0.ts"));
 

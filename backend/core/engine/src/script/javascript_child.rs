@@ -3250,8 +3250,9 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             || reply_generation != document_generation
             || metadata != child_metadata
             || echoed_safe_point != safe_point
-            || span.start_byte >= span.end_byte
-            || span.end_byte > DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+            || !span
+                .coordinates
+                .is_well_formed_for_range(span.start_byte, span.end_byte)
         {
             return Err(JavaScriptPageDebuggerError::NoLiveRealm);
         }
@@ -3262,6 +3263,7 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             source_id: span.source_id,
             start_byte: span.start_byte,
             end_byte: span.end_byte,
+            coordinates: span.coordinates,
         })
     }
 
@@ -6975,6 +6977,7 @@ mod tests {
                 source_id: span.source_id,
                 start_byte: span.start_byte,
                 end_byte: span.end_byte,
+                coordinates: span.coordinates,
             }
         );
         assert!(executor.debugger_static_metadata_source_breakpoint_available());
@@ -7279,6 +7282,12 @@ mod tests {
             source_id: 3,
             start_byte: 0,
             end_byte: 5,
+            coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 0,
+                end_line: 0,
+                end_column_utf16: 5,
+            },
         };
         let span_reply = |reply_tab_id, reply_generation, metadata, safe_point, span| {
             PageHostReply::DebuggerBlueTsSafePointSpan {
@@ -7333,6 +7342,7 @@ mod tests {
                 source_id: 3,
                 start_byte: 0,
                 end_byte: 5,
+                coordinates: span.coordinates,
             }
         );
         for malformed in [
@@ -7381,6 +7391,19 @@ mod tests {
                 child_safe_point,
                 page_host::PageHostDebuggerBlueTsSafePointSpan {
                     end_byte: DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES + 1,
+                    ..span
+                },
+            ),
+            span_reply(
+                tab_id.as_u64(),
+                1,
+                child_metadata,
+                child_safe_point,
+                page_host::PageHostDebuggerBlueTsSafePointSpan {
+                    coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                        start_column_utf16: span.end_byte + 1,
+                        ..span.coordinates
+                    },
                     ..span
                 },
             ),

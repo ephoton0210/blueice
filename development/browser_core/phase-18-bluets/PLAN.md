@@ -176,6 +176,17 @@ generation. A real launcher/core/child socket regression covers those gates,
 the next distinct bound span, and resumed completion. Modules, nested frames,
 stack, scope, and values remain outside this seam.
 
+**Original-coordinate safe-point metadata:** Page-host protocol v32 and
+debugger protocol v31 extend the separately default-denied
+`OpaqueSafePointSpan` result with zero-based UTF-16 line/column coordinates.
+The BlueTS-to-BlueJS bridge computes them in one scan of the checked original
+source before discarding text; the live child retains only the location and
+byte span. Child and core validate the bounded coordinates against the exact
+range, safe point, metadata handle, and same-stream source receipt before a
+public reply. Real HTTP classic and ESM tests verify CRLF/HTML normalization,
+module source ownership, redaction, and existing stale/unauthorized rejection.
+This does not add arbitrary source-map reads or module execution control.
+
 **HTTP source-cache accounting update:** The core-owned HTTP(S) page-script
 authorizer now retains at most 4 MiB of verified source payload across its
 documents. Its private deterministic least-recently-used cache evicts old

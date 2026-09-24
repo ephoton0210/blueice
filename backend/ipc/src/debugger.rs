@@ -70,7 +70,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 30;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 31;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -400,7 +400,7 @@ impl DebuggerStaticMetadataSymbolDisplay {
 }
 
 /// Bounded zero-based original-source coordinates for one compiler-produced
-/// declaration range. Columns count UTF-16 code units; a caller cannot ask
+/// declaration or lowering range. Columns count UTF-16 code units; a caller cannot ask
 /// this protocol to map an arbitrary byte offset or read source text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DebuggerSourceCoordinates {
@@ -479,15 +479,17 @@ impl DebuggerStaticMetadataSafePointSpanTarget {
     }
 }
 
-/// An exact original BlueTS half-open UTF-8 byte span, bound to the caller's
-/// verified safe point and separately receipted source ID. This is not source
-/// text, module identity, generated source, or a general source-map read.
+/// An exact original BlueTS half-open UTF-8 byte span and UTF-16 coordinates,
+/// bound to the caller's verified safe point and separately receipted source
+/// ID. This is not source text, module identity, generated source, or a
+/// general source-map read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DebuggerStaticMetadataSafePointSpan {
     pub safe_point: DebuggerSafePoint,
     pub source: DebuggerStaticMetadataSourceId,
     pub start_byte: u32,
     pub end_byte: u32,
+    pub coordinates: DebuggerSourceCoordinates,
 }
 
 impl DebuggerStaticMetadataSafePointSpan {
@@ -497,8 +499,9 @@ impl DebuggerStaticMetadataSafePointSpan {
             source: self.source,
         }
         .is_well_formed()
-            && self.start_byte < self.end_byte
-            && self.end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+            && self
+                .coordinates
+                .is_well_formed_for_range(self.start_byte, self.end_byte)
     }
 }
 
@@ -4445,6 +4448,12 @@ mod tests {
             source,
             start_byte: 6,
             end_byte: 31,
+            coordinates: DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 6,
+                end_line: 0,
+                end_column_utf16: 31,
+            },
         };
         assert!(span.is_well_formed());
         assert!(!DebuggerStaticMetadataSafePointSpan {
@@ -4454,6 +4463,14 @@ mod tests {
         .is_well_formed());
         assert!(!DebuggerStaticMetadataSafePointSpan {
             end_byte: DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES + 1,
+            ..span
+        }
+        .is_well_formed());
+        assert!(!DebuggerStaticMetadataSafePointSpan {
+            coordinates: DebuggerSourceCoordinates {
+                start_column_utf16: 32,
+                ..span.coordinates
+            },
             ..span
         }
         .is_well_formed());
