@@ -137,8 +137,9 @@ fn parse_minute_offset(source: &str) -> Option<i32> {
     {
         return None;
     }
-    let hour: i32 = hour.parse().ok()?;
-    let minute: i32 = minute.parse().ok()?;
+    // Both are one or two ASCII digits, checked above.
+    let hour: i32 = hour.parse().expect("ASCII digits parse");
+    let minute: i32 = minute.parse().expect("ASCII digits parse");
     (hour <= 23 && minute <= 59).then_some(sign * (hour * 60 + minute))
 }
 
@@ -396,7 +397,9 @@ impl TimeZone {
         let zone = database()
             .get(name)
             .expect("a named zone only ever comes from this same pinned database");
-        let nanoseconds = i128::try_from(epoch_nanoseconds).ok()?;
+        // Every instant is within Temporal's ±8.64e21 ns range.
+        let nanoseconds =
+            i128::try_from(epoch_nanoseconds).expect("an instant's nanoseconds fit in an i128");
         // Offsets only ever change on a whole-second boundary, and Jiff's
         // `following`/`preceding` are unreliable for a pre-1970 instant with a
         // sub-second part (its `Timestamp` stores the second rounded toward
@@ -415,7 +418,8 @@ impl TimeZone {
         } else {
             seconds + 1
         };
-        let timestamp = jiff_timestamp(i64::try_from(seconds).ok()?)?;
+        let timestamp =
+            jiff_timestamp(i64::try_from(seconds).expect("an instant's seconds fit in an i64"))?;
         // The TZif data records every change of *rule*, including ones that
         // leave the total UTC offset alone (Europe/London's 1968 switch from
         // "BST as daylight time" to "British Standard Time", both +01:00).
@@ -519,7 +523,7 @@ mod tests {
     }
 
     fn zone(name: &str) -> TimeZone {
-        parse_identifier(name).unwrap_or_else(|| panic!("{name} is a bundled zone"))
+        parse_identifier(name).expect("a bundled zone")
     }
 
     #[test]
@@ -703,13 +707,13 @@ mod tests {
         assert_eq!(TimeZone::Iana("UTC").offset_nanoseconds_for(&far_future), 0);
         let projected = TimeZone::Iana("America/New_York").offset_nanoseconds_for(&far_future);
         assert!(
-            projected == -4 * 3_600_000_000_000 || projected == -5 * 3_600_000_000_000,
+            [-4 * 3_600_000_000_000, -5 * 3_600_000_000_000].contains(&projected),
             "projected offset should still be a real New York offset, got {projected}",
         );
         let far_past = -(BigInt::from(8_640_000_000_000_000_i64) * 1_000_000_u32);
         let projected = TimeZone::Iana("Europe/Madrid").offset_nanoseconds_for(&far_past);
         assert!(
-            projected == 3_600_000_000_000 || projected == 2 * 3_600_000_000_000,
+            [3_600_000_000_000, 2 * 3_600_000_000_000].contains(&projected),
             "projected offset should still be a real Madrid offset, got {projected}",
         );
     }

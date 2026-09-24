@@ -14,20 +14,15 @@ impl Vm {
         time_zone: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.toZonedDateTime requires a plain receiver".into())
-        })?;
-        let mut value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.toZonedDateTime requires a plain receiver".into())
-        })?;
-        if !matches!(
-            value.kind,
-            TemporalKind::PlainDate | TemporalKind::PlainDateTime
-        ) {
-            return Err(RuntimeError::TypeError(
-                "Temporal.toZonedDateTime requires a plain receiver".into(),
-            ));
-        }
+        // The dispatcher has already required a PlainDate or PlainDateTime.
+        let object = receiver
+            .object_id()
+            .expect("a toZonedDateTime receiver is an object");
+        let mut value = self
+            .heap
+            .temporal_value(object)
+            .expect("a toZonedDateTime receiver is a live heap object")
+            .expect("a toZonedDateTime receiver carries a Temporal slot");
         // `Temporal.PlainDate.prototype.toZonedDateTime` takes one `item`
         // argument (a bare identifier or a `{ timeZone, plainTime }` bag) and
         // no options object; `Temporal.PlainDateTime.prototype` takes a bare
@@ -117,20 +112,19 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.ZonedDateTime method requires a receiver".into())
-        })?;
-        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.ZonedDateTime method requires a receiver".into())
-        })?;
-        if value.kind != TemporalKind::ZonedDateTime {
-            return Err(RuntimeError::TypeError(
-                "Temporal.ZonedDateTime method requires a receiver".into(),
-            ));
-        }
+        // The dispatcher has already required a ZonedDateTime.
+        let object = receiver
+            .object_id()
+            .expect("a ZonedDateTime receiver is an object");
+        let value = self
+            .heap
+            .temporal_value(object)
+            .expect("a ZonedDateTime receiver is a live heap object")
+            .expect("a ZonedDateTime receiver carries a Temporal slot");
+        // An instant's milliseconds are within ±8.64e15, exact in f64.
         let milliseconds = (&value.epoch_nanoseconds / 1_000_000_u32)
             .to_f64()
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))?;
+            .expect("an instant's milliseconds fit in an f64");
         let stack_base = self.stack.len();
         let result = (|| {
             let mut options = self.date_time_format_options(native::argument(args, 1))?;

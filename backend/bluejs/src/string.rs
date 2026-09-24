@@ -88,9 +88,9 @@ impl JsString {
     /// followed by nothing, an IdentifierName, or a bracketed computed name
     /// such as `[Symbol.species]`.
     fn is_native_function_name(&self) -> bool {
-        let Ok(name) = self.to_utf8() else {
-            return false;
-        };
+        // A lone surrogate reads as U+FFFD, which cannot start or continue an
+        // identifier, so it is judged like any other non-identifier character.
+        let name = String::from_utf16_lossy(&self.0);
         let name = name
             .strip_prefix("get ")
             .or_else(|| name.strip_prefix("set "))
@@ -164,5 +164,61 @@ impl PartialEq<str> for JsString {
 impl PartialEq<&str> for JsString {
     fn eq(&self, other: &&str) -> bool {
         self == *other
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::JsString;
+
+    fn source(name: Option<&str>) -> String {
+        let name = name.map(JsString::from);
+        JsString::native_function_source(name.as_ref())
+            .to_utf8()
+            .unwrap()
+    }
+
+    #[test]
+    fn a_native_function_source_names_only_what_its_grammar_can_spell() {
+        assert_eq!(source(None), "function () { [native code] }");
+        assert_eq!(source(Some("")), "function () { [native code] }");
+        assert_eq!(source(Some("push")), "function push() { [native code] }");
+        assert_eq!(
+            source(Some("get size")),
+            "function get size() { [native code] }"
+        );
+        assert_eq!(
+            source(Some("set size")),
+            "function set size() { [native code] }"
+        );
+        assert_eq!(
+            source(Some("[Symbol.species]")),
+            "function [Symbol.species]() { [native code] }"
+        );
+        // A name the grammar cannot spell is left out.
+        assert_eq!(source(Some("get $&")), "function () { [native code] }");
+        assert_eq!(source(Some("a b")), "function () { [native code] }");
+        assert_eq!(source(Some("[unclosed")), "function () { [native code] }");
+        // Including one holding a lone surrogate.
+        let lone = JsString::from_code_units(vec![0x61, 0xd800]);
+        assert_eq!(
+            JsString::native_function_source(Some(&lone))
+                .to_utf8()
+                .unwrap(),
+            "function () { [native code] }"
+        );
+    }
+
+    #[test]
+    fn an_index_string_must_be_canonical_and_fit_in_usize() {
+        let index = |text: &str| JsString::from(text).index();
+        assert_eq!(index("0"), Some(0));
+        assert_eq!(index("42"), Some(42));
+        assert_eq!(index(""), None);
+        assert_eq!(index("01"), None);
+        assert_eq!(index("4x"), None);
+        assert_eq!(index(&usize::MAX.to_string()), Some(usize::MAX));
+        assert_eq!(index("18446744073709551616"), None);
+        assert_eq!(index("99999999999999999999999"), None);
     }
 }

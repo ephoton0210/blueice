@@ -91,7 +91,11 @@ impl Vm {
             return Ok("iso8601".into());
         }
         if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("a script-visible value is a live heap object")
+            {
                 if matches!(
                     temporal.kind,
                     TemporalKind::PlainDate
@@ -502,12 +506,16 @@ impl Vm {
         receiver: &Value,
         calendar: &Value,
     ) -> Result<Value, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.withCalendar requires a Temporal receiver".into())
-        })?;
-        let mut value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError("Temporal.withCalendar requires a Temporal receiver".into())
-        })?;
+        // The dispatcher has already required a Temporal receiver of a kind
+        // that has a calendar.
+        let object = receiver
+            .object_id()
+            .expect("a withCalendar receiver is an object");
+        let mut value = self
+            .heap
+            .temporal_value(object)
+            .expect("a withCalendar receiver is a live heap object")
+            .expect("a withCalendar receiver carries a Temporal slot");
         // Unlike a property bag's optional `calendar` field, `withCalendar`'s
         // argument is required: `ToTemporalCalendarIdentifier(undefined)` is a
         // `TypeError`, not the ISO default (`withCalendar/missing-argument.js`).

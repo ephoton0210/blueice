@@ -16,12 +16,14 @@ impl Vm {
         receiver: &Value,
         getter: native::TemporalGetter,
     ) -> Result<Value, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("Temporal getter requires a Temporal receiver".into())
-        })?;
-        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError("Temporal getter requires a Temporal receiver".into())
-        })?;
+        let object = receiver
+            .object_id()
+            .expect("a Temporal getter receiver is an object");
+        let value = self
+            .heap
+            .temporal_value(object)
+            .expect("a Temporal getter receiver is a live heap object")
+            .expect("a Temporal getter receiver carries a Temporal slot");
         match getter {
             native::TemporalGetter::DurationYears
             | native::TemporalGetter::DurationMonths
@@ -47,8 +49,8 @@ impl Vm {
                     native::TemporalGetter::DurationSeconds => duration.seconds,
                     native::TemporalGetter::DurationMilliseconds => duration.milliseconds,
                     native::TemporalGetter::DurationMicroseconds => duration.microseconds,
-                    native::TemporalGetter::DurationNanoseconds => duration.nanoseconds,
-                    _ => unreachable!("all Temporal.Duration getters are listed above"),
+                    // DurationNanoseconds, the last of the ten.
+                    _ => duration.nanoseconds,
                 };
                 Ok(Value::Number(field as f64))
             }
@@ -76,10 +78,12 @@ impl Vm {
                 {
                     milliseconds -= 1;
                 }
-                milliseconds
-                    .to_f64()
-                    .map(Value::Number)
-                    .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))
+                // An instant's milliseconds are within ±8.64e15, exact in f64.
+                Ok(Value::Number(
+                    milliseconds
+                        .to_f64()
+                        .expect("an instant's milliseconds fit in an f64"),
+                ))
             }
             native::TemporalGetter::EpochNanoseconds => Ok(Value::BigInt(value.epoch_nanoseconds)),
             native::TemporalGetter::TimeZoneId => Ok(Value::String(value.time_zone.into())),
@@ -94,8 +98,8 @@ impl Vm {
                 native::TemporalGetter::Second => value.second.into(),
                 native::TemporalGetter::Millisecond => value.millisecond.into(),
                 native::TemporalGetter::Microsecond => value.microsecond.into(),
-                native::TemporalGetter::Nanosecond => value.nanosecond.into(),
-                _ => unreachable!("all Temporal.PlainTime getters are listed above"),
+                // Nanosecond, the last of the six.
+                _ => value.nanosecond.into(),
             })),
             native::TemporalGetter::DayOfWeek
             | native::TemporalGetter::DayOfYear
@@ -130,8 +134,8 @@ impl Vm {
                     native::TemporalGetter::WeekOfYear | native::TemporalGetter::YearOfWeek => {
                         Value::Undefined
                     }
-                    native::TemporalGetter::DaysInWeek => Value::Number(7.0),
-                    _ => unreachable!("all week-date getters are listed above"),
+                    // DaysInWeek, the last of the five.
+                    _ => Value::Number(7.0),
                 })
             }
             native::TemporalGetter::OffsetNanoseconds | native::TemporalGetter::Offset => {
@@ -163,7 +167,11 @@ impl Vm {
                 Ok(Value::Number(length as f64 / 3_600_000_000_000.0))
             }
             getter => {
-                let fields = self.temporal_calendar_fields(&value)?;
+                // Every representable date has calendar fields in every
+                // supported calendar.
+                let fields = self
+                    .temporal_calendar_fields(&value)
+                    .expect("a representable date has calendar fields");
                 match getter {
                     native::TemporalGetter::Year => Ok(Value::Number(fields.year.into())),
                     native::TemporalGetter::Month => Ok(Value::Number(fields.month.into())),
@@ -186,8 +194,8 @@ impl Vm {
                     native::TemporalGetter::DaysInYear => {
                         Ok(Value::Number(fields.days_in_year.into()))
                     }
-                    native::TemporalGetter::InLeapYear => Ok(Value::Bool(fields.in_leap_year)),
-                    _ => unreachable!("every other Temporal getter is handled above"),
+                    // InLeapYear, the last getter.
+                    _ => Ok(Value::Bool(fields.in_leap_year)),
                 }
             }
         }

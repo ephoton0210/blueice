@@ -13,7 +13,10 @@ impl Vm {
         receiver: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        // The dispatcher has already required a PlainDate or PlainDateTime.
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("a PlainDate receiver was validated");
         let resolved_options = self.temporal_options(options)?;
         // `calendarName` is read before the time-precision options
         // (`fractionalSecondDigits`, `roundingMode`, `smallestUnit`),
@@ -124,9 +127,10 @@ impl Vm {
             day_carry as i64,
             false,
         )
-        .ok_or_else(|| {
-            RuntimeError::RangeError("Temporal.PlainDateTime.toString is out of range".into())
-        })?;
+        // A carry of at most one day from a representable date stays inside
+        // the date-time margin around Temporal's range; the range check below
+        // reports the date-times that are outside it.
+        .expect("a one-day carry stays inside the date-time margin");
         let (hour, minute, second, millisecond, microsecond, nanosecond) =
             duration_math::time_fields_from_nanoseconds(ns_of_day);
         // `RoundISODateTime`'s result must itself be representable: rounding
@@ -189,7 +193,10 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        // The dispatcher has already required a PlainDate or PlainDateTime.
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("a PlainDate receiver was validated");
         let stack_base = self.stack.len();
         let result = (|| {
             let formatter = self.create_date_time_format(
@@ -203,7 +210,8 @@ impl Vm {
             self.stack.push(formatter.clone());
             if existing.kind == TemporalKind::PlainDate
                 && self
-                    .date_time_format_data(&formatter)?
+                    .date_time_format_data(&formatter)
+                    .expect("the formatter was just created")
                     .options()
                     .time_style
                     .is_some()

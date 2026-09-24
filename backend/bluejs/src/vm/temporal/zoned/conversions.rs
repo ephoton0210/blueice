@@ -23,7 +23,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("a ZonedDateTime receiver was validated");
         self.instant_from_epoch_nanoseconds(existing.epoch_nanoseconds)
     }
 
@@ -31,7 +33,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("a ZonedDateTime receiver was validated");
         let value = Self::temporal_date_value(
             TemporalKind::PlainDate,
             existing.calendar,
@@ -44,7 +48,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("a ZonedDateTime receiver was validated");
         let fields = (
             existing.hour,
             existing.minute,
@@ -60,7 +66,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("a ZonedDateTime receiver was validated");
         let value = Self::temporal_date_time_value(
             TemporalKind::PlainDateTime,
             existing.calendar,
@@ -81,7 +89,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let mut existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let mut existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("a ZonedDateTime receiver was validated");
         let zone = temporal_zoned_date_time_zone(&existing);
         let date = (existing.year, existing.month, existing.day);
         existing.epoch_nanoseconds = temporal_checked_start_of_day(&zone, date)?;
@@ -104,7 +114,9 @@ impl Vm {
         receiver: &Value,
         direction_param: &Value,
     ) -> Result<Value, RuntimeError> {
-        let mut existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let mut existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("a ZonedDateTime receiver was validated");
         if *direction_param == Value::Undefined {
             return Err(RuntimeError::TypeError(
                 "Temporal.ZonedDateTime.prototype.getTimeZoneTransition requires a direction"

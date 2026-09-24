@@ -4,15 +4,24 @@
 
 use super::*;
 
+/// The heap accesses so marked run on a buffer or view the calling method has
+/// just validated (or was handed by running script), so the only failure the
+/// heap can report, a handle it does not own, cannot happen.
+const LIVE: &str = "a validated buffer or view is a live heap object";
+
 impl Vm {
     pub(in super::super) fn buffer_prototype(
         &mut self,
         constructor: &str,
     ) -> Result<ObjectId, RuntimeError> {
         let constructor = self.global(constructor)?;
-        self.get_property(&constructor, &"prototype".into())?
+        // Every binary constructor's `prototype` is a non-writable,
+        // non-configurable data property holding an object.
+        Ok(self
+            .get_property(&constructor, &"prototype".into())
+            .expect("a constructor's prototype is a plain data property")
             .object_id()
-            .ok_or_else(|| RuntimeError::TypeError("buffer prototype is unavailable".into()))
+            .expect("a binary constructor's prototype is an object"))
     }
 
     /// OrdinaryCreateFromConstructor for concrete binary constructors. The
@@ -37,7 +46,7 @@ impl Vm {
         let object_prototype = self.object_prototype;
         let function_prototype = self.function_prototype()?;
         let typed_prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let root = self.heap.root(typed_prototype)?;
+        let root = self.heap.root(typed_prototype).expect(LIVE);
         let base = self.stack.len();
         self.stack.push(Value::Object(typed_prototype));
         let result = (|| {
@@ -153,7 +162,10 @@ impl Vm {
             }
             // The specified initial value is the exact same function object
             // as Array.prototype.toString, not a TypedArray-specific wrapper.
-            let array_to_string = self.heap.get(self.array_prototype, "toString")?;
+            let array_to_string = self
+                .heap
+                .get(self.array_prototype, "toString")
+                .expect("Array.prototype is a live heap object");
             self.define_data(
                 typed_prototype,
                 "toString",
@@ -211,7 +223,7 @@ impl Vm {
                 Ok(intrinsics)
             }
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.heap.unroot(root).expect(LIVE);
                 Err(error)
             }
         }
@@ -333,7 +345,7 @@ impl Vm {
         let object = receiver.object_id().ok_or_else(|| {
             RuntimeError::TypeError("ArrayBuffer method requires an ArrayBuffer receiver".into())
         })?;
-        if !self.heap.is_array_buffer(object)? {
+        if !self.heap.is_array_buffer(object).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer method requires an ArrayBuffer receiver".into(),
             ));
@@ -350,7 +362,7 @@ impl Vm {
                 "SharedArrayBuffer method requires a SharedArrayBuffer receiver".into(),
             )
         })?;
-        if !self.heap.is_shared_array_buffer(object)? {
+        if !self.heap.is_shared_array_buffer(object).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "SharedArrayBuffer method requires a SharedArrayBuffer receiver".into(),
             ));
@@ -364,13 +376,13 @@ impl Vm {
         length: &Value,
     ) -> Result<Value, RuntimeError> {
         let buffer = self.array_buffer_receiver(receiver)?;
-        if self.heap.buffer_is_immutable(buffer)? {
+        if self.heap.buffer_is_immutable(buffer).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer is immutable and cannot be resized".into(),
             ));
         }
         let length = self.buffer_index(length)?;
-        if !self.heap.buffer_resizable(buffer)? {
+        if !self.heap.buffer_resizable(buffer).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer is not resizable".into(),
             ));
@@ -391,9 +403,9 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let (source, source_length, length) =
             self.array_buffer_copy_and_detach_source(receiver, args)?;
-        let resizable = !fixed_length && self.heap.buffer_resizable(source)?;
+        let resizable = !fixed_length && self.heap.buffer_resizable(source).expect(LIVE);
         let maximum = if resizable {
-            self.heap.buffer_max_byte_length(source)?
+            self.heap.buffer_max_byte_length(source).expect(LIVE)
         } else {
             length
         };
@@ -411,9 +423,14 @@ impl Vm {
             }
         })?;
         let copy_length = source_length.min(length);
-        let bytes = self.heap.array_buffer_copy(source, 0, copy_length)?;
-        self.with_roots(|heap| heap.array_buffer_write(target, 0, &bytes))?;
-        self.with_roots(|heap| heap.detach_array_buffer(source))?;
+        let bytes = self
+            .heap
+            .array_buffer_copy(source, 0, copy_length)
+            .expect(LIVE);
+        self.with_roots(|heap| heap.array_buffer_write(target, 0, &bytes))
+            .expect(LIVE);
+        self.with_roots(|heap| heap.detach_array_buffer(source))
+            .expect(LIVE);
         Ok(Value::Object(target))
     }
 
@@ -424,7 +441,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let buffer = self.shared_array_buffer_receiver(receiver)?;
         let length = self.buffer_index(length)?;
-        if !self.heap.buffer_growable(buffer)? {
+        if !self.heap.buffer_growable(buffer).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "SharedArrayBuffer is not growable".into(),
             ));
@@ -450,7 +467,7 @@ impl Vm {
         if matches!(species, Value::Undefined | Value::Null) {
             return self.global("ArrayBuffer");
         }
-        if !self.is_constructor(&species)? {
+        if !self.is_constructor(&species).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer species must be a constructor".into(),
             ));
@@ -475,7 +492,7 @@ impl Vm {
         if matches!(species, Value::Undefined | Value::Null) {
             return self.global("SharedArrayBuffer");
         }
-        if !self.is_constructor(&species)? {
+        if !self.is_constructor(&species).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "SharedArrayBuffer species must be a constructor".into(),
             ));
@@ -489,7 +506,7 @@ impl Vm {
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let buffer = self.array_buffer_receiver(receiver)?;
-        let length = self.heap.array_buffer_byte_length(buffer)?;
+        let length = self.heap.array_buffer_byte_length(buffer).expect(LIVE);
         let start = self.relative_buffer_index(native::argument(args, 0), length)?;
         let end = if args.get(1).is_some_and(|value| *value != Value::Undefined) {
             self.relative_buffer_index(native::argument(args, 1), length)?
@@ -497,7 +514,7 @@ impl Vm {
             length
         };
         let width = end.saturating_sub(start);
-        if self.heap.array_buffer_is_detached(buffer)? {
+        if self.heap.array_buffer_is_detached(buffer).expect(LIVE) {
             return Err(RuntimeError::TypeError("ArrayBuffer is detached".into()));
         }
         let constructor = self.array_buffer_species_constructor(receiver)?;
@@ -516,7 +533,7 @@ impl Vm {
         // already does (`typed_arrays.rs`), write through the mirror, then
         // sync it into the real Realm-owned buffer.
         let (result_buffer, foreign_realm) = self.species_result_buffer(&result)?;
-        if self.heap.buffer_is_immutable(result_buffer)? {
+        if self.heap.buffer_is_immutable(result_buffer).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer species returned an immutable buffer".into(),
             ));
@@ -526,7 +543,9 @@ impl Vm {
                 "ArrayBuffer species returned the source buffer".into(),
             ));
         }
-        if self.heap.array_buffer_is_detached(buffer)?
+        // A species result from another realm may be a SharedArrayBuffer
+        // mirror, which these ArrayBuffer-only reads refuse.
+        if self.heap.array_buffer_is_detached(buffer).expect(LIVE)
             || self.heap.array_buffer_is_detached(result_buffer)?
         {
             return Err(RuntimeError::TypeError("ArrayBuffer is detached".into()));
@@ -536,10 +555,16 @@ impl Vm {
                 "ArrayBuffer species result is too small".into(),
             ));
         }
+        // The species constructor may have shrunk a resizable source.
         let bytes = self.heap.array_buffer_copy(buffer, start, width)?;
-        self.with_roots(|heap| heap.array_buffer_write(result_buffer, 0, &bytes))?;
+        self.with_roots(|heap| heap.array_buffer_write(result_buffer, 0, &bytes))
+            .expect(LIVE);
         if let Some(realm_id) = foreign_realm {
-            self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+            // Every mirror's local buffer is rooted by the mirror itself and
+            // its foreign twin by the realm, so the sync can only fail for a
+            // handle no heap owns.
+            self.test262_sync_foreign_buffer_mirrors(realm_id)
+                .expect(LIVE);
         }
         Ok(result)
     }
@@ -558,7 +583,10 @@ impl Vm {
         let invalid = || {
             RuntimeError::TypeError("ArrayBuffer method requires an ArrayBuffer receiver".into())
         };
-        let object = result.object_id().ok_or_else(invalid)?;
+        // `Construct` always returns an object.
+        let object = result
+            .object_id()
+            .expect("a constructor call returns an object");
         if let Some((realm_id, ..)) = self.test262_foreign_reference(object) {
             let mirror = self
                 .test262_foreign_buffer_clone(object)?
@@ -574,7 +602,7 @@ impl Vm {
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let buffer = self.shared_array_buffer_receiver(receiver)?;
-        let length = self.heap.buffer_byte_length(buffer)?;
+        let length = self.heap.buffer_byte_length(buffer).expect(LIVE);
         let start = self.relative_buffer_index(native::argument(args, 0), length)?;
         let end = if args.get(1).is_some_and(|value| *value != Value::Undefined) {
             self.relative_buffer_index(native::argument(args, 1), length)?
@@ -601,13 +629,18 @@ impl Vm {
                 "SharedArrayBuffer species returned the source buffer".into(),
             ));
         }
-        if self.heap.buffer_byte_length(result_buffer)? < width {
+        if self.heap.buffer_byte_length(result_buffer).expect(LIVE) < width {
             return Err(RuntimeError::TypeError(
                 "SharedArrayBuffer species result is too small".into(),
             ));
         }
-        let bytes = self.heap.array_buffer_copy(buffer, start, width)?;
-        self.with_roots(|heap| heap.array_buffer_write(result_buffer, 0, &bytes))?;
+        // A shared buffer never shrinks, so the source still holds the range.
+        let bytes = self
+            .heap
+            .array_buffer_copy(buffer, start, width)
+            .expect(LIVE);
+        self.with_roots(|heap| heap.array_buffer_write(result_buffer, 0, &bytes))
+            .expect(LIVE);
         Ok(result)
     }
 
@@ -622,7 +655,10 @@ impl Vm {
                 "SharedArrayBuffer method requires a SharedArrayBuffer receiver".into(),
             )
         };
-        let object = result.object_id().ok_or_else(invalid)?;
+        // `Construct` always returns an object.
+        let object = result
+            .object_id()
+            .expect("a constructor call returns an object");
         if let Some((realm_id, ..)) = self.test262_foreign_reference(object) {
             let mirror = self
                 .test262_foreign_buffer_clone(object)?
@@ -673,7 +709,7 @@ impl Vm {
         })?;
         // An ArrayBuffer of another Test262 realm is viewed through a local
         // mirror, exactly as TypedArray construction does.
-        let buffer = if self.heap.is_buffer(buffer)? {
+        let buffer = if self.heap.is_buffer(buffer).expect(LIVE) {
             buffer
         } else {
             self.test262_foreign_buffer_clone(buffer)?.ok_or_else(|| {
@@ -687,12 +723,12 @@ impl Vm {
         } else {
             0
         };
-        if self.heap.buffer_is_detached(buffer)? {
+        if self.heap.buffer_is_detached(buffer).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "DataView buffer is detached".into(),
             ));
         }
-        let total = self.heap.buffer_byte_length(buffer)?;
+        let total = self.heap.buffer_byte_length(buffer).expect(LIVE);
         if offset > total {
             return Err(RuntimeError::RangeError(
                 "DataView offset is outside its buffer".into(),
@@ -715,12 +751,12 @@ impl Vm {
         // repeats the detached and range checks against the buffer's length as
         // it stands afterwards, and a length-tracking view takes that length.
         let prototype = self.constructed_buffer_prototype("DataView")?;
-        if self.heap.buffer_is_detached(buffer)? {
+        if self.heap.buffer_is_detached(buffer).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "DataView buffer is detached".into(),
             ));
         }
-        let total = self.heap.buffer_byte_length(buffer)?;
+        let total = self.heap.buffer_byte_length(buffer).expect(LIVE);
         if offset > total {
             return Err(RuntimeError::RangeError(
                 "DataView offset is outside its buffer".into(),
@@ -761,14 +797,10 @@ impl Vm {
         let object = receiver.object_id().ok_or_else(|| {
             RuntimeError::TypeError("DataView method requires a DataView receiver".into())
         })?;
-        self.heap
-            .data_view_raw_info(object)
-            .map_err(|error| match error {
-                HeapError::InvalidObject(_) | HeapError::InvalidInternalSlot(_) => {
-                    RuntimeError::TypeError("DataView method requires a DataView receiver".into())
-                }
-                error => error.into(),
-            })
+        // The only failures are a handle that is not a DataView.
+        self.heap.data_view_raw_info(object).map_err(|_| {
+            RuntimeError::TypeError("DataView method requires a DataView receiver".into())
+        })
     }
 
     pub(super) fn data_view_get(
@@ -783,19 +815,22 @@ impl Vm {
         self.data_view_raw_receiver(receiver)?;
         let index = self.buffer_index(native::argument(args, 0))?;
         let (buffer, offset, length) = self.data_view_receiver(receiver)?;
-        let end = index.checked_add(width).ok_or_else(|| {
-            RuntimeError::RangeError("DataView access is outside its view".into())
-        })?;
+        // `index` is at most 2^53 - 1, so this saturates only on a 32-bit host,
+        // where it is just as far outside the view.
+        let end = index.saturating_add(width);
         if end > length {
             return Err(RuntimeError::RangeError(
                 "DataView access is outside its view".into(),
             ));
         }
         let little_endian = match args.get(1) {
-            Some(value) => self.to_boolean(value)?,
+            Some(value) => self.to_boolean(value).expect(LIVE),
             None => false,
         };
-        let bytes = self.heap.array_buffer_copy(buffer, offset + index, width)?;
+        let bytes = self
+            .heap
+            .array_buffer_copy(buffer, offset + index, width)
+            .expect(LIVE);
         Ok(data_view_value(
             &bytes,
             signed,
@@ -815,7 +850,7 @@ impl Vm {
         bigint: bool,
     ) -> Result<Value, RuntimeError> {
         let (viewed_buffer, _, _) = self.data_view_raw_receiver(receiver)?;
-        if self.heap.buffer_is_immutable(viewed_buffer)? {
+        if self.heap.buffer_is_immutable(viewed_buffer).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "DataView is backed by an immutable ArrayBuffer".into(),
             ));
@@ -834,20 +869,21 @@ impl Vm {
         };
         let value = self.typed_array_element_value(kind, native::argument(args, 1))?;
         let (buffer, offset, length) = self.data_view_receiver(receiver)?;
-        let end = index.checked_add(width).ok_or_else(|| {
-            RuntimeError::RangeError("DataView access is outside its view".into())
-        })?;
+        // `index` is at most 2^53 - 1, so this saturates only on a 32-bit host,
+        // where it is just as far outside the view.
+        let end = index.saturating_add(width);
         if end > length {
             return Err(RuntimeError::RangeError(
                 "DataView access is outside its view".into(),
             ));
         }
         let little_endian = match args.get(2) {
-            Some(value) => self.to_boolean(value)?,
+            Some(value) => self.to_boolean(value).expect(LIVE),
             None => false,
         };
         let bytes = data_view_bytes(&value, width, signed, floating, little_endian, bigint);
-        self.with_roots(|heap| heap.array_buffer_write(buffer, offset + index, &bytes))?;
+        self.with_roots(|heap| heap.array_buffer_write(buffer, offset + index, &bytes))
+            .expect(LIVE);
         Ok(Value::Undefined)
     }
 
@@ -866,18 +902,18 @@ impl Vm {
         let object = native::argument(args, 0).object_id().ok_or_else(|| {
             RuntimeError::TypeError("Atomics requires an integer TypedArray".into())
         })?;
-        if !self.heap.is_typed_array(object)? {
+        if !self.heap.is_typed_array(object).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "Atomics requires an integer TypedArray".into(),
             ));
         }
-        let (_, _, length, kind) = self.heap.typed_array_info(object)?;
+        let (_, _, length, kind) = self.heap.typed_array_info(object).expect(LIVE);
         if !kind.atomic() || (waitable && !kind.waitable()) {
             return Err(RuntimeError::TypeError(
                 "Atomics requires an integer TypedArray of the correct kind".into(),
             ));
         }
-        if self.heap.typed_array_is_out_of_bounds(object)? {
+        if self.heap.typed_array_is_out_of_bounds(object).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "TypedArray is out of bounds".into(),
             ));
@@ -906,18 +942,18 @@ impl Vm {
         let object = native::argument(args, 0).object_id().ok_or_else(|| {
             RuntimeError::TypeError("Atomics requires an integer TypedArray".into())
         })?;
-        if !self.heap.is_typed_array(object)? {
+        if !self.heap.is_typed_array(object).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "Atomics requires an integer TypedArray".into(),
             ));
         }
-        let (buffer, _, length, kind) = self.heap.typed_array_info(object)?;
-        if !kind.waitable() || !self.heap.buffer_is_shared(buffer)? {
+        let (buffer, _, length, kind) = self.heap.typed_array_info(object).expect(LIVE);
+        if !kind.waitable() || !self.heap.buffer_is_shared(buffer).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "Atomics.wait requires a shared Int32Array or BigInt64Array".into(),
             ));
         }
-        if self.heap.typed_array_is_out_of_bounds(object)? {
+        if self.heap.typed_array_is_out_of_bounds(object).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "TypedArray is out of bounds".into(),
             ));
@@ -940,28 +976,30 @@ impl Vm {
         modify: impl FnOnce(Value) -> (Option<Value>, T),
     ) -> Result<T, RuntimeError> {
         self.atomics_revalidate(object, index)?;
-        let (buffer, _, _, _) = self.heap.typed_array_info(object)?;
-        if self.heap.buffer_is_shared(buffer)? {
+        let (buffer, _, _, _) = self.heap.typed_array_info(object).expect(LIVE);
+        // The element was just revalidated, so neither backing store can
+        // reject the access.
+        Ok(if self.heap.buffer_is_shared(buffer).expect(LIVE) {
             self.heap
                 .shared_typed_array_atomic_modify(object, index, modify)
-                .map_err(Into::into)
+                .expect(LIVE)
         } else {
             self.heap
                 .typed_array_atomic_modify(object, index, modify)
-                .map_err(Into::into)
-        }
+                .expect(LIVE)
+        })
     }
 
     /// `RevalidateAtomicAccess`: coercing the index or an operand can run
     /// user code that detaches or shrinks the buffer after `atomics_access`
     /// validated the view, so re-check before touching the element.
     fn atomics_revalidate(&self, object: ObjectId, index: usize) -> Result<(), RuntimeError> {
-        if self.heap.typed_array_is_out_of_bounds(object)? {
+        if self.heap.typed_array_is_out_of_bounds(object).expect(LIVE) {
             return Err(RuntimeError::TypeError(
                 "TypedArray is out of bounds".into(),
             ));
         }
-        let (_, _, length, _) = self.heap.typed_array_info(object)?;
+        let (_, _, length, _) = self.heap.typed_array_info(object).expect(LIVE);
         if index >= length {
             return Err(RuntimeError::RangeError(
                 "Atomics index is outside TypedArray".into(),
@@ -979,10 +1017,14 @@ impl Vm {
         Ok(self.heap.typed_array_normalize_value(kind, &value))
     }
 
-    fn atomics_read(&self, object: ObjectId, index: usize) -> Result<Value, RuntimeError> {
+    /// The element `Atomics.wait`/`waitAsync` compares against. Both require a
+    /// shared buffer, which never shrinks or detaches, so the index that
+    /// validated stays in bounds however the operands convert.
+    fn atomics_read(&self, object: ObjectId, index: usize) -> Value {
         self.heap
-            .typed_array_index_value(object, index)?
-            .ok_or_else(|| RuntimeError::TypeError("TypedArray is out of bounds".into()))
+            .typed_array_index_value(object, index)
+            .expect(LIVE)
+            .expect("a shared TypedArray's validated index stays in bounds")
     }
 
     fn atomics_binary_value(
@@ -1000,8 +1042,8 @@ impl Vm {
                 AtomicOp::And => old & value,
                 AtomicOp::Or => old | value,
                 AtomicOp::Sub => old - value,
-                AtomicOp::Xor => old ^ value,
-                _ => unreachable!("only read-modify-write operations reach this helper"),
+                // Xor, the last of the five read-modify-write operations.
+                _ => old ^ value,
             });
         }
         let (Value::Number(old), Value::Number(value)) = (old, value) else {
@@ -1013,8 +1055,8 @@ impl Vm {
             AtomicOp::And => old & value,
             AtomicOp::Or => old | value,
             AtomicOp::Sub => old.wrapping_sub(value),
-            AtomicOp::Xor => old ^ value,
-            _ => unreachable!("only read-modify-write operations reach this helper"),
+            // Xor, the last of the five read-modify-write operations.
+            _ => old ^ value,
         } as f64)
     }
 
@@ -1082,7 +1124,7 @@ impl Vm {
 
     pub(super) fn atomics_notify(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (object, index, kind) = self.atomics_access(args, true)?;
-        let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object)?;
+        let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object).expect(LIVE);
         let count = if args.len() < 3 || args[2] == Value::Undefined {
             usize::MAX
         } else {
@@ -1095,10 +1137,10 @@ impl Vm {
                 count.trunc() as usize
             }
         };
-        if !self.heap.buffer_is_shared(buffer)? {
+        if !self.heap.buffer_is_shared(buffer).expect(LIVE) {
             return Ok(Value::Number(0.0));
         }
-        let backing = self.heap.shared_buffer_backing(buffer)?;
+        let backing = self.heap.shared_buffer_backing(buffer).expect(LIVE);
         let position = byte_offset + index * kind.byte_width();
         Ok(Value::Number(backing.notify(position, count) as f64))
     }
@@ -1106,7 +1148,7 @@ impl Vm {
     fn atomics_wait_status(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (object, index, kind) = self.atomics_wait_access(args)?;
         let expected = self.atomics_element_value(kind, native::argument(args, 2))?;
-        let observed = self.atomics_read(object, index)?;
+        let observed = self.atomics_read(object, index);
         if observed != expected {
             return Ok(Value::String("not-equal".into()));
         }
@@ -1120,8 +1162,8 @@ impl Vm {
                 Some(std::time::Duration::from_secs_f64(timeout / 1_000.0))
             })
         })?;
-        let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object)?;
-        let backing = self.heap.shared_buffer_backing(buffer)?;
+        let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object).expect(LIVE);
+        let backing = self.heap.shared_buffer_backing(buffer).expect(LIVE);
         let position = byte_offset + index * kind.byte_width();
         Ok(Value::String(
             match backing.wait(position, timeout) {
@@ -1139,7 +1181,7 @@ impl Vm {
     pub(super) fn atomics_wait_async(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (object, index, kind) = self.atomics_wait_access(args)?;
         let expected = self.atomics_element_value(kind, native::argument(args, 2))?;
-        let observed = self.atomics_read(object, index)?;
+        let observed = self.atomics_read(object, index);
         let prototype = self.object_prototype;
         let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         // The result record is held nowhere else while its properties are
@@ -1181,9 +1223,9 @@ impl Vm {
                 )?;
                 return Ok(());
             }
-            let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object)?;
+            let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object).expect(LIVE);
             let position = byte_offset + index * kind.byte_width();
-            let backing = self.heap.shared_buffer_backing(buffer)?;
+            let backing = self.heap.shared_buffer_backing(buffer).expect(LIVE);
             let promise = self.new_promise()?;
             self.stack.push(Value::Object(promise));
             self.schedule_test262_async_wait(backing, position, timeout, promise);
@@ -1223,13 +1265,13 @@ impl Vm {
         let prototype = self.constructed_buffer_prototype(kind.name())?;
         let (buffer, byte_offset, length, length_tracking, initial_values) =
             if let Value::Object(buffer) = input {
-                let source_buffer = if self.heap.is_buffer(*buffer)? {
+                let source_buffer = if self.heap.is_buffer(*buffer).expect(LIVE) {
                     Some(*buffer)
                 } else {
                     self.test262_foreign_buffer_clone(*buffer)?
                 };
                 if let Some(source_buffer) = source_buffer {
-                    let bytes = self.heap.buffer_byte_length(source_buffer)?;
+                    let bytes = self.heap.buffer_byte_length(source_buffer).expect(LIVE);
                     let offset = if args.len() > 1 {
                         self.buffer_index(native::argument(args, 1))?
                     } else {
@@ -1238,7 +1280,7 @@ impl Vm {
                     // An unaligned byteOffset is rejected before the later
                     // IsDetachedBuffer check. All range checks that require
                     // the current byte length wait until after that check.
-                    if offset % kind.byte_width() != 0 {
+                    if !offset.is_multiple_of(kind.byte_width()) {
                         return Err(RuntimeError::RangeError(
                             "invalid TypedArray byte offset".into(),
                         ));
@@ -1248,7 +1290,7 @@ impl Vm {
                     let requested_length = (!length_tracking)
                         .then(|| self.buffer_index(native::argument(args, 2)))
                         .transpose()?;
-                    if self.heap.buffer_is_detached(source_buffer)? {
+                    if self.heap.buffer_is_detached(source_buffer).expect(LIVE) {
                         return Err(RuntimeError::TypeError(
                             "TypedArray buffer is detached".into(),
                         ));
@@ -1267,9 +1309,9 @@ impl Vm {
                         // partial trailing element is permitted and may
                         // become complete after a later grow. Ordinary fixed
                         // buffers retain the alignment requirement.
-                        let auto_length = self.heap.buffer_resizable(source_buffer)?
-                            || self.heap.buffer_growable(source_buffer)?;
-                        if remaining % kind.byte_width() != 0 && !auto_length {
+                        let auto_length = self.heap.buffer_resizable(source_buffer).expect(LIVE)
+                            || self.heap.buffer_growable(source_buffer).expect(LIVE);
+                        if !remaining.is_multiple_of(kind.byte_width()) && !auto_length {
                             return Err(RuntimeError::RangeError(
                                 "invalid TypedArray buffer length".into(),
                             ));
@@ -1277,17 +1319,17 @@ impl Vm {
                         remaining / kind.byte_width()
                     };
                     (source_buffer, offset, length, length_tracking, None)
-                } else if self.heap.is_typed_array(*buffer)? {
+                } else if self.heap.is_typed_array(*buffer).expect(LIVE) {
                     let (source_buffer, _, source_length, _) =
-                        self.heap.typed_array_info(*buffer)?;
-                    if self.heap.buffer_is_detached(source_buffer)?
-                        || self.heap.typed_array_is_out_of_bounds(*buffer)?
+                        self.heap.typed_array_info(*buffer).expect(LIVE);
+                    if self.heap.buffer_is_detached(source_buffer).expect(LIVE)
+                        || self.heap.typed_array_is_out_of_bounds(*buffer).expect(LIVE)
                     {
                         return Err(RuntimeError::TypeError(
                             "TypedArray source is detached or out of bounds".into(),
                         ));
                     }
-                    let values = self.typed_array_values(*buffer, source_length)?;
+                    let values = self.typed_array_values(*buffer, source_length);
                     let result = self.new_typed_array_buffer(source_length, kind)?;
                     (result, 0, source_length, false, Some(values))
                 } else {
@@ -1351,9 +1393,9 @@ impl Vm {
         length: usize,
         kind: TypedArrayKind,
     ) -> Result<ObjectId, RuntimeError> {
-        let bytes = length
-            .checked_mul(kind.byte_width())
-            .ok_or_else(|| RuntimeError::RangeError("TypedArray length is too large".into()))?;
+        // `length` is at most 2^53 - 1, so this saturates only on a 32-bit
+        // host, where it is just as far over the limit.
+        let bytes = length.saturating_mul(kind.byte_width());
         if bytes > self.heap.max_array_buffer_byte_length() {
             return Err(RuntimeError::RangeError(
                 "TypedArray length is too large".into(),
@@ -1363,22 +1405,18 @@ impl Vm {
         self.with_roots(|heap| heap.alloc_array_buffer(bytes, Some(prototype)))
     }
 
-    pub(super) fn typed_array_values(
-        &mut self,
-        source: ObjectId,
-        length: usize,
-    ) -> Result<Vec<Value>, RuntimeError> {
+    /// The elements of a TypedArray `source`. Reading an index of a TypedArray
+    /// runs no user code, so it cannot fail.
+    pub(super) fn typed_array_values(&mut self, source: ObjectId, length: usize) -> Vec<Value> {
         self.stack.push(Value::Object(source));
-        let result = (|| {
-            let mut values = Vec::with_capacity(length);
-            for index in 0..length {
-                let value = self.get_property(&Value::Object(source), &index.to_string().into())?;
-                values.push(value);
-            }
-            Ok(values)
-        })();
+        let values = (0..length)
+            .map(|index| {
+                self.get_property(&Value::Object(source), &index.to_string().into())
+                    .expect("reading a TypedArray element runs no user code")
+            })
+            .collect();
         self.stack.pop();
-        result
+        values
     }
 
     pub(super) fn typed_array_array_like_values(

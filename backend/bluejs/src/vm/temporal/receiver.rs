@@ -126,7 +126,10 @@ impl Vm {
         kind: TemporalKind,
     ) -> Result<(), RuntimeError> {
         let actual = match receiver.object_id() {
-            Some(object) => self.heap.temporal_kind(object)?,
+            Some(object) => self
+                .heap
+                .temporal_kind(object)
+                .expect("a script-visible value is a live heap object"),
             None => None,
         };
         if actual == Some(kind) {
