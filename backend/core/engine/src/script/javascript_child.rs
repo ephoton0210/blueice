@@ -633,6 +633,22 @@ pub trait PageHostClient {
         ))
     }
 
+    fn debugger_stepping_available(&self) -> bool {
+        false
+    }
+
+    fn step_debugger_root_instruction(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger root stepping",
+        ))
+    }
+
     fn advance_debugger_execution(
         &mut self,
         _tab_id: u64,
@@ -1117,6 +1133,23 @@ impl PageHostClient for PageHostConnection {
         program: PageHostDebuggerProgram,
     ) -> io::Result<PageHostReply> {
         self.request(PageHostRequest::ResumeDebuggerExecution {
+            tab_id,
+            document_generation,
+            program,
+        })
+    }
+
+    fn debugger_stepping_available(&self) -> bool {
+        true
+    }
+
+    fn step_debugger_root_instruction(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::StepDebuggerRootInstruction {
             tab_id,
             document_generation,
             program,
@@ -3082,6 +3115,10 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         self.native_debugger_execution_control && self.child.debugger_execution_control_available()
     }
 
+    fn debugger_stepping_available(&self) -> bool {
+        self.debugger_execution_control_available() && self.child.debugger_stepping_available()
+    }
+
     fn arm_debugger_root_safe_point_breakpoint(
         &mut self,
         tab_id: TabId,
@@ -3168,6 +3205,9 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             PageHostDebuggerExecutionState::Pending => {
                 Ok(JavaScriptPageDebuggerExecutionState::Pending)
             }
+            PageHostDebuggerExecutionState::Stepping => {
+                Ok(JavaScriptPageDebuggerExecutionState::Stepping)
+            }
             PageHostDebuggerExecutionState::Resuming => {
                 Ok(JavaScriptPageDebuggerExecutionState::Resuming)
             }
@@ -3211,6 +3251,42 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
         match reply {
             PageHostReply::DebuggerExecutionResumed {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                program: reply_program,
+            } if reply_tab_id == tab_id.as_u64()
+                && reply_generation == document_generation
+                && reply_program == program =>
+            {
+                Ok(())
+            }
+            PageHostReply::Error { .. } => Err(child_debugger_reply_error(&reply)),
+            _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
+        }
+    }
+
+    fn step_debugger_root_instruction(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_stepping_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let reply = self
+            .child
+            .step_debugger_root_instruction(tab_id.as_u64(), document_generation, program)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerExecutionStepRequested {
                 tab_id: reply_tab_id,
                 document_generation: reply_generation,
                 program: reply_program,

@@ -69,8 +69,8 @@ pub use debugger_support::{
 /// The launcher-supervised child supports a bounded, exact breakpoint
 /// configuration table in addition to location discovery. The table neither
 /// pauses nor executes its VM unless an explicitly selected child execution
-/// controller implements the separate root-classic methods below. Stepping,
-/// stacks, scopes, source, bytecode, and runtime values remain excluded.
+/// controller implements the separate root-classic methods below. Nested
+/// stepping, stacks, scopes, source, bytecode, and runtime values remain excluded.
 pub trait PageJavaScriptDebuggerLocations {
     /// Whether this owner currently has the exact live tab/document realm.
     fn debugger_has_live_realm(&mut self, tab_id: TabId, document_generation: u64) -> bool;
@@ -523,6 +523,21 @@ pub trait PageJavaScriptDebuggerLocations {
 
     /// Marks a paused root-classic continuation for the next child advance.
     fn resume_debugger_execution(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Whether this route can advance one retained classic-root instruction.
+    fn debugger_stepping_available(&self) -> bool {
+        false
+    }
+
+    fn step_debugger_root_instruction(
         &mut self,
         _tab_id: TabId,
         _document_generation: u64,

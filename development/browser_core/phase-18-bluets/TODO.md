@@ -23,7 +23,8 @@ host now also supports a bounded private debugger program-location inventory,
 exact live safe-point validation, lifecycle-bound breakpoint configuration, and
 an opt-in root-code-unit pause/resume seam. It can stop a pending classic
 declaration at a verified non-entry root instruction while retaining its VM
-root frame; it is not arbitrary interpreter suspension or stepping.
+root frame and step one root instruction; it is not arbitrary interpreter
+suspension or nested/source-level stepping.
 A launcher-supervised, capability-authenticated out-of-process BlueJS child
 can execute caller-authorized inline JavaScript and explicit BlueTS declarations
 in one bounded realm and DOM order. Its default core route rejects external
@@ -59,7 +60,7 @@ tab, document generation, private program, or safe point does not exactly
 match that mapping; it checks exact child echoes for set/clear and revalidates
 every listed private record before re-minting it. The child table is capped at
 256 idempotent records and is discarded on realm replacement or close. The
-ordinary child route has no pause/resume, stepping,
+ordinary child route without debugger selection has no pause/resume, stepping,
 stack/scope/value/source/bytecode operation. When the same trusted core also
 owns a debugger socket, it selects only the bounded root-classic lifecycle;
 the child route also has a concrete but deliberately narrow
@@ -422,7 +423,7 @@ or second module resolver to bypass them.
   and their GC roots; the paused VM rejects another execution until
   `ResumeExecution` completes the same frame. The reply contains no source,
   bytecode, stack, scope, object, or completion value. Modules, top-level
-  await, child function code units, re-arming/loop hits, stepping, arbitrary
+  await, child function code units, re-arming/loop hits, source-level stepping, arbitrary
   nested-frame interruption, stack, scopes, exception policy, and bounded
   values remain planned. Unit coverage proves malformed-boundary rejection,
   same-document cross-tab rejection, realm replacement discarding a paused
@@ -454,13 +455,13 @@ or second module resolver to bypass them.
   document lifecycle, which may defer document-order declarations for one
   turn, then arm only a pending
   classic program at an exact root-code-unit safe point. The child returns
-  only `Pending`/`Paused`/`Resuming`/`Completed`; core validates the paused
+  only `Pending`/`Paused`/`Stepping`/`Resuming`/`Completed`; core validates the paused
   private tuple again before publishing its reminted public tuple, and only a
-  later core-owned advance turn can resume the same root frame. It does not
+  later core-owned advance turn can resume or step the same root frame. It does not
   let polling a non-`Pending` state renew that hold; the OOP route additionally
   has the fixed 64-turn per-document discovery/configuration budget. It does
   not proxy `ArmEntryBreakpoint`, generic interruption, modules, child code
-  units, re-arms/loop hits, stepping, stacks, scopes, exception policy, or
+  units, re-arms/loop hits, nested/source-level stepping, stacks, scopes, exception policy, or
   values. Real Unix-socket child/core tests cover location discovery, exact
   validation, configuration lifecycle, non-entry root pause/resume, cross-tab
   rejection, malformed response rejection, and navigation-stale rejection
@@ -483,9 +484,8 @@ or second module resolver to bypass them.
   values. The child regression proves a following JavaScript declaration
   cannot overtake the paused BlueTS declaration, and a real launcher/public
   debugger regression proves metadata publication, pause/resume, and stale
-  handle rejection after HTTP reload. BlueTS modules, nested frames,
-  isolated-child stepping, stack, scopes, and values remain outside this
-  execution seam.
+  handle rejection after HTTP reload. BlueTS modules, nested frames, stack,
+  scopes, and values remain outside this execution seam.
 
   BlueJS VM and `BlueJsPageRuntime` now have the next stepping foundation:
   one paused classic-root continuation can execute exactly one root
@@ -500,14 +500,23 @@ or second module resolver to bypass them.
   handle, observe a one-turn `Stepping` state, and then see the real successor
   safe point or `Completed`. Entry-only pauses first create a real VM
   continuation; duplicate requests and stale handles fail before execution.
-  The direct route advertises `Stepping` as available, but the isolated child
-  still reports it as planned and explicitly rejects step requests. No
-  nested-frame, module, source-level, stack, scope, or value step is exposed.
+  Page-host v27 now carries the same exact-program step across the
+  launcher-supervised child boundary. The child accepts only a paused
+  document-order classic at the queue head, verifies each successor against
+  its private compiler safe-point inventory, and keeps any attached BlueTS
+  static metadata live through each step until realm replacement or close.
+  Core remints the private program identity into the public opaque handle,
+  checks the exact reply and live generation, and advertises `Stepping` only
+  for an execution-controlled transport that actually implements the request. A real child
+  and debugger socket regression covers `Paused` → `Stepping` → successor
+  `Paused` → resumed completion. No nested-frame, module, source-level,
+  stack, scope, or value step is exposed.
 
   Acceptance for the delivered seam: a classic JS page fixture pauses at a
   verified root-code-unit safe point and resumes its same frame; realm
   replacement discards that continuation, and it cannot pause another tab or
-  render transport. Stepping plus frame/value handles remain outside this
+  render transport. Root-classic stepping is bounded to one verified
+  instruction per owner turn; frame/value handles remain outside this
   capability and therefore have no acceptance claim yet.
   A separate launcher subprocess regression selects both
   `--out-of-process-bluejs` and `--debugger-socket`, drives the public

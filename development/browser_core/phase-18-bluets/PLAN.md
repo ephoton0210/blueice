@@ -633,7 +633,8 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 - [x] Define the initial reifiable-contract boundary and explicit non-reifiable failures
 - [x] Define cache keys, resource accounting, debugger metadata and gatekeeper visibility requirements
 - [ ] Complete Phase 13 page-script host and Phase 17 source-map prerequisites
-- [x] Expose one exact classic-root instruction step through debugger v26 on the in-process page route, retaining the BlueJS continuation and reporting only opaque safe points; isolated-child stepping and source-level mapping remain Phase 13/17 work
+- [x] Expose one exact classic-root instruction step through debugger v26 on the in-process page route, retaining the BlueJS continuation and reporting only opaque safe points; source-level mapping remains Phase 13/17 work
+- [x] Carry the exact classic-root step through page-host v27 and the supervised child route, including retained BlueTS classic metadata and a public source-free debugger transition; nested-frame and source-level stepping remain Phase 13/17 work
 - [x] Create the standalone `blueice-bluets` crate and pin the initial `blue-ts-0.1` compatibility matrix
 - [x] Publish the versioned BlueJS AST/IR hand-off, bytecode-safe-point-map and host-typing compatibility contract
 - [x] Implement the first public BlueJS structured-program hand-off for bounded host-neutral classic-script and resolver-preserving ESM-module-graph subsets, without emitted-source reparsing

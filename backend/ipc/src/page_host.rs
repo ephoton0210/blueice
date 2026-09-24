@@ -12,6 +12,8 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
+//! Version 27 adds an exact-program, source-free single-root-instruction
+//! debugger step and a transient `Stepping` state for the isolated child.
 //! Version 26 adds bounded compiler-produced original-source UTF-16
 //! coordinates to the existing child-private symbol and contract location
 //! replies. Version 25 adds the compiler's export classification to the existing
@@ -31,8 +33,9 @@
 //! channel. Apart from the two fixed JavaScript primitive snapshot callbacks,
 //! version 10 exposes only a core-proxied, source-free debugger location
 //! inventory and configuration records. A core-selected document may opt in
-//! to the one-shot root-classic arm/state/resume lifecycle; the child admits
-//! no generic interruption, stepping, nested continuation, stack, scope,
+//! to the root-classic arm/state/resume lifecycle and, since v27, one
+//! root-instruction step per explicit request; the child admits no generic
+//! interruption, nested-frame stepping, stack, scope,
 //! bytecode, source, runtime value transport, general host callback,
 //! fetch/cache, or client-facing API. Version 7 additionally lets that
 //! authenticated core enumerate one separately minted opaque static-metadata
@@ -87,7 +90,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 26;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 27;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -329,6 +332,7 @@ pub enum PageHostDebuggerExecutionState {
     Paused {
         safe_point: PageHostDebuggerSafePoint,
     },
+    Stepping,
     Resuming,
     Completed,
 }
@@ -731,6 +735,13 @@ pub enum PageHostRequest {
         document_generation: u64,
         program: PageHostDebuggerProgram,
     },
+    /// Schedules one root instruction on the retained classic continuation;
+    /// the next advance yields a verified root boundary or completion.
+    StepDebuggerRootInstruction {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    },
     /// Advances one exact opted-in realm in document order. It returns only
     /// fixed execution categories and never exposes a completion value.
     AdvanceDebuggerExecution {
@@ -947,6 +958,11 @@ pub enum PageHostReply {
         state: PageHostDebuggerExecutionState,
     },
     DebuggerExecutionResumed {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    },
+    DebuggerExecutionStepRequested {
         tab_id: u64,
         document_generation: u64,
         program: PageHostDebuggerProgram,
@@ -1397,6 +1413,14 @@ mod tests {
                     program_generation: 13,
                 },
             },
+            PageHostRequest::StepDebuggerRootInstruction {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+            },
             PageHostRequest::AdvanceDebuggerExecution {
                 tab_id: 7,
                 document_generation: 3,
@@ -1686,6 +1710,29 @@ mod tests {
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();
         assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+        for debugger_reply in [
+            PageHostReply::DebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                state: PageHostDebuggerExecutionState::Stepping,
+            },
+            PageHostReply::DebuggerExecutionStepRequested {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+            },
+        ] {
+            let (mut writer, mut reader) = UnixStream::pair().unwrap();
+            write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+            assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+        }
     }
 
     #[test]

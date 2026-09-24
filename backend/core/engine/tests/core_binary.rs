@@ -114,6 +114,17 @@ fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
     false
 }
 
+fn connect_with_retry(path: &std::path::Path, timeout: Duration) -> std::io::Result<UnixStream> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match UnixStream::connect(path) {
+            Ok(stream) => return Ok(stream),
+            Err(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 /// Sends one complete native-debugger request/response pair over the real
 /// socket and asserts that the raw public reply has not reflected this
 /// fixture's page-controlled secret, a VM/completion representation, or a
@@ -149,6 +160,29 @@ fn debugger_request(
         "debugger reply must not disclose a VM value, completion payload, or bytecode opcode: {rendered}"
     );
     serde_json::from_slice(&payload).expect("real core must return a debugger reply JSON shape")
+}
+
+fn wait_for_debugger_state(
+    stream: &mut UnixStream,
+    program: blueice_ipc::debugger::DebuggerProgram,
+    state: blueice_ipc::debugger::DebuggerExecutionState,
+    page_secret: &str,
+) {
+    let expected = blueice_ipc::debugger::DebuggerReply::ExecutionState { program, state };
+    let mut observed = None;
+    for _ in 0..20 {
+        let reply = debugger_request(
+            stream,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            page_secret,
+        );
+        if reply == expected {
+            return;
+        }
+        observed = Some(reply);
+        thread::sleep(Duration::from_millis(50));
+    }
+    panic!("expected debugger state {expected:?}, last observed {observed:?}");
 }
 
 #[test]
@@ -193,12 +227,12 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
         wait_for(&script_socket_path, Duration::from_secs(5)),
         "blueice-core never created its script socket"
     );
-    let mut frontend = UnixStream::connect(&socket_path)
+    let mut frontend = connect_with_retry(&socket_path, Duration::from_secs(5))
         .expect("failed to connect to the real core frontend socket");
     blueice_ipc::client_handshake(&mut frontend)
         .expect("the real subprocess must complete the frontend handshake");
 
-    let mut invalid = UnixStream::connect(&script_socket_path)
+    let mut invalid = connect_with_retry(&script_socket_path, Duration::from_secs(5))
         .expect("failed to connect an unhandshaken script client");
     blueice_ipc::script::write_script_request(
         &mut invalid,
@@ -214,8 +248,8 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
     ));
     drop(invalid);
 
-    let mut script =
-        UnixStream::connect(&script_socket_path).expect("failed to connect the real script host");
+    let mut script = connect_with_retry(&script_socket_path, Duration::from_secs(5))
+        .expect("failed to connect the real script host");
     blueice_ipc::script::write_script_request(
         &mut script,
         &blueice_ipc::script::ScriptRequest::Hello,
@@ -310,13 +344,13 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
         0o600,
         "compiler metadata socket must not rely on the ambient umask"
     );
-    let mut frontend = UnixStream::connect(&socket_path).unwrap();
+    let mut frontend = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
 
     // A query before Hello is rejected at the listener and cannot reach the
     // catalog. This request supplies only an opaque numeric ID, never source
     // or any registration field.
-    let mut invalid = UnixStream::connect(&compiler_socket_path).unwrap();
+    let mut invalid = connect_with_retry(&compiler_socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::compiler::write_compiler_request(
         &mut invalid,
         &blueice_ipc::compiler::CompilerRequest::Check {
@@ -335,7 +369,7 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
 
     // Obsolete compiler IPC versions cannot silently negotiate with the v5
     // core-minted stream attestation and fixed query-only manifest.
-    let mut v1 = UnixStream::connect(&compiler_socket_path).unwrap();
+    let mut v1 = connect_with_retry(&compiler_socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::compiler::write_compiler_request(
         &mut v1,
         &blueice_ipc::compiler::CompilerRequest::Hello {
@@ -352,7 +386,7 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
     ));
     drop(v1);
 
-    let mut v2 = UnixStream::connect(&compiler_socket_path).unwrap();
+    let mut v2 = connect_with_retry(&compiler_socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::compiler::write_compiler_request(
         &mut v2,
         &blueice_ipc::compiler::CompilerRequest::Hello {
@@ -369,7 +403,7 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
     ));
     drop(v2);
 
-    let mut v3 = UnixStream::connect(&compiler_socket_path).unwrap();
+    let mut v3 = connect_with_retry(&compiler_socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::compiler::write_compiler_request(
         &mut v3,
         &blueice_ipc::compiler::CompilerRequest::Hello {
@@ -386,7 +420,7 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
     ));
     drop(v3);
 
-    let mut compiler = UnixStream::connect(&compiler_socket_path).unwrap();
+    let mut compiler = connect_with_retry(&compiler_socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::compiler::write_compiler_request(
         &mut compiler,
         &blueice_ipc::compiler::CompilerRequest::Hello {
@@ -558,7 +592,7 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
     // The listener accepts only one stream at a time, but a cursor abandoned
     // by that stream must not become usable (or retain a cursor slot) on the
     // next accepted, separately attested stream.
-    let mut successor = UnixStream::connect(&compiler_socket_path).unwrap();
+    let mut successor = connect_with_retry(&compiler_socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::compiler::write_compiler_request(
         &mut successor,
         &blueice_ipc::compiler::CompilerRequest::Hello {
@@ -695,7 +729,7 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
 
     assert!(wait_for(&socket_path, Duration::from_secs(5)));
     assert!(wait_for(&debugger_socket_path, Duration::from_secs(5)));
-    let mut frontend = UnixStream::connect(&socket_path).unwrap();
+    let mut frontend = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
     blueice_ipc::write_client_message(
         &mut frontend,
@@ -713,7 +747,8 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
         blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
     ));
 
-    let mut invalid_debugger = UnixStream::connect(&debugger_socket_path).unwrap();
+    let mut invalid_debugger =
+        connect_with_retry(&debugger_socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::debugger::write_debugger_request(
         &mut invalid_debugger,
         &blueice_ipc::debugger::DebuggerRequest::DescribeCapabilities {
@@ -734,7 +769,7 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
     ));
     drop(invalid_debugger);
 
-    let mut debugger = UnixStream::connect(&debugger_socket_path).unwrap();
+    let mut debugger = connect_with_retry(&debugger_socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::debugger::write_debugger_request(
         &mut debugger,
         &blueice_ipc::debugger::DebuggerRequest::Hello {
@@ -846,19 +881,6 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
         other => panic!("expected verified debugger safe points, got {other:?}"),
     };
     assert_eq!(first_safe_point.program, first_program);
-    blueice_ipc::debugger::write_debugger_request(
-        &mut debugger,
-        &blueice_ipc::debugger::DebuggerRequest::ValidateSafePoint {
-            safe_point: first_safe_point,
-        },
-    )
-    .unwrap();
-    assert_eq!(
-        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
-        blueice_ipc::debugger::DebuggerReply::SafePointValidated {
-            safe_point: first_safe_point,
-        }
-    );
     // The core process has not entered this program yet: with the debugger
     // socket selected, its page scheduler gives this handshaken peer one turn
     // to arm the compiler-verified root instruction boundary.
@@ -875,20 +897,25 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
             safe_point: first_safe_point,
         }
     );
+    wait_for_debugger_state(
+        &mut debugger,
+        first_program,
+        blueice_ipc::debugger::DebuggerExecutionState::Paused {
+            safe_point: first_safe_point,
+        },
+        "firstDebuggerLocation",
+    );
     blueice_ipc::debugger::write_debugger_request(
         &mut debugger,
-        &blueice_ipc::debugger::DebuggerRequest::GetExecutionState {
-            program: first_program,
+        &blueice_ipc::debugger::DebuggerRequest::ValidateSafePoint {
+            safe_point: first_safe_point,
         },
     )
     .unwrap();
     assert_eq!(
         blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
-        blueice_ipc::debugger::DebuggerReply::ExecutionState {
-            program: first_program,
-            state: blueice_ipc::debugger::DebuggerExecutionState::Paused {
-                safe_point: first_safe_point,
-            },
+        blueice_ipc::debugger::DebuggerReply::SafePointValidated {
+            safe_point: first_safe_point,
         }
     );
     blueice_ipc::debugger::write_debugger_request(
@@ -918,22 +945,29 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
             state: blueice_ipc::debugger::DebuggerExecutionState::Stepping,
         }
     );
-    thread::sleep(Duration::from_millis(100));
-    blueice_ipc::debugger::write_debugger_request(
-        &mut debugger,
-        &blueice_ipc::debugger::DebuggerRequest::GetExecutionState {
-            program: first_program,
-        },
-    )
-    .unwrap();
+    let mut stepped_safe_point = None;
+    for _ in 0..20 {
+        let reply = debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState {
+                program: first_program,
+            },
+            "firstDebuggerLocation",
+        );
+        if let blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Paused { safe_point },
+        } = reply
+        {
+            if program == first_program {
+                stepped_safe_point = Some(safe_point);
+                break;
+            }
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
     let stepped_safe_point =
-        match blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap() {
-            blueice_ipc::debugger::DebuggerReply::ExecutionState {
-                program,
-                state: blueice_ipc::debugger::DebuggerExecutionState::Paused { safe_point },
-            } if program == first_program => safe_point,
-            other => panic!("expected paused successor after one root step, got {other:?}"),
-        };
+        stepped_safe_point.expect("one root step must pause at its verified successor");
     assert_ne!(stepped_safe_point, first_safe_point);
     assert_eq!(stepped_safe_point.program, first_program);
     blueice_ipc::debugger::write_debugger_request(
@@ -963,22 +997,13 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
             state: blueice_ipc::debugger::DebuggerExecutionState::Resuming,
         }
     );
-    // Every successful v5 resume has one observable source-free transition
-    // turn. The following idle scheduler turn runs the retained entry frame.
-    thread::sleep(Duration::from_millis(100));
-    blueice_ipc::debugger::write_debugger_request(
+    // The source-free transition is observable for one owner turn; then the
+    // scheduler completes the retained frame without a timing assumption.
+    wait_for_debugger_state(
         &mut debugger,
-        &blueice_ipc::debugger::DebuggerRequest::GetExecutionState {
-            program: first_program,
-        },
-    )
-    .unwrap();
-    assert_eq!(
-        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
-        blueice_ipc::debugger::DebuggerReply::ExecutionState {
-            program: first_program,
-            state: blueice_ipc::debugger::DebuggerExecutionState::Completed,
-        }
+        first_program,
+        blueice_ipc::debugger::DebuggerExecutionState::Completed,
+        "firstDebuggerLocation",
     );
     blueice_ipc::debugger::write_debugger_request(
         &mut debugger,
@@ -1187,7 +1212,7 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
     assert!(wait_for(&socket_path, Duration::from_secs(5)));
     assert!(wait_for(&debugger_socket_path, Duration::from_secs(5)));
 
-    let mut frontend = UnixStream::connect(&socket_path).unwrap();
+    let mut frontend = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
     blueice_ipc::write_client_message(
         &mut frontend,
@@ -1205,7 +1230,7 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
         blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
     ));
 
-    let mut debugger = UnixStream::connect(&debugger_socket_path).unwrap();
+    let mut debugger = connect_with_retry(&debugger_socket_path, Duration::from_secs(5)).unwrap();
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -1374,18 +1399,13 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
             safe_point: root_safe_point,
         }
     );
-    assert_eq!(
-        debugger_request(
-            &mut debugger,
-            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
-            PAGE_SECRET,
-        ),
-        blueice_ipc::debugger::DebuggerReply::ExecutionState {
-            program,
-            state: blueice_ipc::debugger::DebuggerExecutionState::Paused {
-                safe_point: root_safe_point,
-            },
-        }
+    wait_for_debugger_state(
+        &mut debugger,
+        program,
+        blueice_ipc::debugger::DebuggerExecutionState::Paused {
+            safe_point: root_safe_point,
+        },
+        PAGE_SECRET,
     );
     // Once BlueJS has paused, a second arm cannot change the target or create
     // loop-hit/re-arm behavior. It fails before another bytecode run.
@@ -1587,8 +1607,8 @@ fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
         wait_for(&socket_path, Duration::from_secs(5)),
         "blueice-core never created its socket"
     );
-    let mut stream =
-        UnixStream::connect(&socket_path).expect("failed to connect to the real subprocess");
+    let mut stream = connect_with_retry(&socket_path, Duration::from_secs(5))
+        .expect("failed to connect to the real subprocess");
     blueice_ipc::client_handshake(&mut stream)
         .expect("the real subprocess must complete the protocol_version handshake");
 
@@ -1721,8 +1741,8 @@ fn real_subprocess_executes_an_opted_in_inline_bluets_profile_and_reports_source
         wait_for(&socket_path, Duration::from_secs(5)),
         "blueice-core never created its socket"
     );
-    let mut stream =
-        UnixStream::connect(&socket_path).expect("failed to connect to the real subprocess");
+    let mut stream = connect_with_retry(&socket_path, Duration::from_secs(5))
+        .expect("failed to connect to the real subprocess");
     blueice_ipc::client_handshake(&mut stream)
         .expect("the real subprocess must complete the protocol_version handshake");
 
@@ -1849,7 +1869,7 @@ fn real_subprocess_executes_opted_in_standard_javascript_and_reports_source_free
         .expect("failed to spawn blueice-core");
 
     assert!(wait_for(&socket_path, Duration::from_secs(5)));
-    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    let mut stream = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut stream).unwrap();
     let url = format!("http://{addr}");
     blueice_ipc::write_client_message(
@@ -1973,7 +1993,7 @@ fn real_subprocess_routes_an_explicit_page_lifecycle_to_the_private_bluejs_host(
         .expect("failed to spawn blueice-core");
 
     assert!(wait_for(&socket_path, Duration::from_secs(5)));
-    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    let mut stream = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut stream).unwrap();
     let url = format!("http://{addr}");
     blueice_ipc::write_client_message(
@@ -2115,7 +2135,7 @@ fn real_subprocess_installs_the_fixed_core_http_profile_in_the_private_page_host
         .expect("must spawn core with the fixed HTTP page-script profile");
 
     assert!(wait_for(&socket_path, Duration::from_secs(5)));
-    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    let mut stream = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut stream).unwrap();
     let url = format!("http://{addr}/app/index.html");
     blueice_ipc::write_client_message(
@@ -2235,7 +2255,7 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
     assert!(wait_for(&socket_path, Duration::from_secs(5)));
     assert!(wait_for(&debugger_socket_path, Duration::from_secs(5)));
 
-    let mut frontend = UnixStream::connect(&socket_path).unwrap();
+    let mut frontend = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
     blueice_ipc::write_client_message(
         &mut frontend,
@@ -2253,7 +2273,7 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
         blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
     ));
 
-    let mut debugger = UnixStream::connect(&debugger_socket_path).unwrap();
+    let mut debugger = connect_with_retry(&debugger_socket_path, Duration::from_secs(5)).unwrap();
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -2308,8 +2328,11 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
             && report.detail.contains("root-code-unit")
     }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::Stepping
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
     for capability in [
-        blueice_ipc::debugger::DebuggerCapability::Stepping,
         blueice_ipc::debugger::DebuggerCapability::Stack,
         blueice_ipc::debugger::DebuggerCapability::Scopes,
         blueice_ipc::debugger::DebuggerCapability::BoundedValues,
@@ -2354,6 +2377,27 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
     assert_eq!(
         debugger_request(
             &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ArmRootSafePointBreakpoint {
+                safe_point: root_safe_point,
+            },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::RootSafePointBreakpointArmed {
+            safe_point: root_safe_point,
+        }
+    );
+    // The supervised child may need another owner turn after the arm reply.
+    wait_for_debugger_state(
+        &mut debugger,
+        program,
+        blueice_ipc::debugger::DebuggerExecutionState::Paused {
+            safe_point: root_safe_point,
+        },
+        PAGE_SECRET,
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
             &blueice_ipc::debugger::DebuggerRequest::SetBreakpoint { safe_point },
             PAGE_SECRET,
         ),
@@ -2365,7 +2409,7 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
             &blueice_ipc::debugger::DebuggerRequest::ListBreakpoints { realm },
             PAGE_SECRET,
         ),
-        blueice_ipc::debugger::DebuggerReply::Breakpoints(vec![safe_point])
+        blueice_ipc::debugger::DebuggerReply::Breakpoints(vec![safe_point, root_safe_point])
     );
     assert_eq!(
         debugger_request(
@@ -2400,6 +2444,30 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
             ..
         }
     ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::StepRootInstruction {
+                program: blueice_ipc::debugger::DebuggerProgram {
+                    program_generation: program.program_generation + 1,
+                    ..program
+                },
+            },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::Error {
+            code: blueice_ipc::debugger::DebuggerErrorCode::InvalidTarget,
+            ..
+        }
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::StepRootInstruction { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionStepRequested { program }
+    );
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -2408,54 +2476,31 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
         ),
         blueice_ipc::debugger::DebuggerReply::ExecutionState {
             program,
-            state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Stepping,
         }
     );
-    assert_eq!(
-        debugger_request(
-            &mut debugger,
-            &blueice_ipc::debugger::DebuggerRequest::ArmRootSafePointBreakpoint {
-                safe_point: root_safe_point,
-            },
-            PAGE_SECRET,
-        ),
-        blueice_ipc::debugger::DebuggerReply::RootSafePointBreakpointArmed {
-            safe_point: root_safe_point,
-        }
-    );
-    // The supervised child may need another owner turn after the arm reply.
-    let expected_pause = blueice_ipc::debugger::DebuggerReply::ExecutionState {
-        program,
-        state: blueice_ipc::debugger::DebuggerExecutionState::Paused {
-            safe_point: root_safe_point,
-        },
-    };
-    let mut observed = None;
+    let mut stepped_state = None;
     for _ in 0..20 {
         let reply = debugger_request(
             &mut debugger,
             &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
             PAGE_SECRET,
         );
-        if reply == expected_pause {
-            observed = Some(reply);
-            break;
+        if let blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program: reply_program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Paused { safe_point },
+        } = reply
+        {
+            if reply_program == program {
+                stepped_state = Some(safe_point);
+                break;
+            }
         }
-        observed = Some(reply);
         thread::sleep(Duration::from_millis(50));
     }
-    assert_eq!(observed, Some(expected_pause));
-    assert!(matches!(
-        debugger_request(
-            &mut debugger,
-            &blueice_ipc::debugger::DebuggerRequest::StepRootInstruction { program },
-            PAGE_SECRET,
-        ),
-        blueice_ipc::debugger::DebuggerReply::Error {
-            code: blueice_ipc::debugger::DebuggerErrorCode::CapabilityUnavailable,
-            ..
-        }
-    ));
+    let stepped_safe_point = stepped_state.expect("one isolated child root step must pause again");
+    assert_ne!(stepped_safe_point, root_safe_point);
+    assert_eq!(stepped_safe_point.program, program);
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -2475,16 +2520,11 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
             state: blueice_ipc::debugger::DebuggerExecutionState::Resuming,
         }
     );
-    assert_eq!(
-        debugger_request(
-            &mut debugger,
-            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
-            PAGE_SECRET,
-        ),
-        blueice_ipc::debugger::DebuggerReply::ExecutionState {
-            program,
-            state: blueice_ipc::debugger::DebuggerExecutionState::Completed,
-        }
+    wait_for_debugger_state(
+        &mut debugger,
+        program,
+        blueice_ipc::debugger::DebuggerExecutionState::Completed,
+        PAGE_SECRET,
     );
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
@@ -2573,7 +2613,7 @@ fn real_subprocess_rebinds_inline_javascript_document_context_after_replacement(
         .expect("failed to spawn blueice-core");
 
     assert!(wait_for(&socket_path, Duration::from_secs(5)));
-    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    let mut stream = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut stream).unwrap();
 
     for (expected_generation, url) in [(1, url_one), (2, url_two)] {
@@ -2674,7 +2714,7 @@ fn real_subprocess_rejects_an_oversized_document_text_binding_before_inline_admi
         .expect("failed to spawn blueice-core");
 
     assert!(wait_for(&socket_path, Duration::from_secs(5)));
-    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    let mut stream = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut stream).unwrap();
     blueice_ipc::write_client_message(
         &mut stream,
@@ -2791,7 +2831,7 @@ fn real_subprocess_keeps_opted_in_inline_bluets_reports_isolated_by_tab() {
         .expect("failed to spawn blueice-core");
 
     assert!(wait_for(&socket_path, Duration::from_secs(5)));
-    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    let mut stream = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut stream).unwrap();
 
     blueice_ipc::write_client_message(
@@ -2953,7 +2993,7 @@ fn real_subprocess_reexecutes_opted_in_inline_bluets_for_a_replacement_document(
         .expect("failed to spawn blueice-core");
 
     assert!(wait_for(&socket_path, Duration::from_secs(5)));
-    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    let mut stream = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut stream).unwrap();
 
     for (expected_generation, address) in [(1, addr_one), (2, addr_two)] {
@@ -3072,8 +3112,8 @@ fn real_subprocess_serves_two_independently_addressed_tabs_without_cross_contami
         wait_for(&socket_path, Duration::from_secs(5)),
         "blueice-core never created its socket"
     );
-    let mut stream =
-        UnixStream::connect(&socket_path).expect("failed to connect to the real subprocess");
+    let mut stream = connect_with_retry(&socket_path, Duration::from_secs(5))
+        .expect("failed to connect to the real subprocess");
     blueice_ipc::client_handshake(&mut stream)
         .expect("the real subprocess must complete the protocol_version handshake");
 
@@ -3191,7 +3231,7 @@ fn a_client_disconnecting_without_shutdown_still_lets_the_subprocess_exit_cleanl
         .expect("failed to spawn blueice-core");
 
     assert!(wait_for(&socket_path, Duration::from_secs(5)));
-    let stream = UnixStream::connect(&socket_path).unwrap();
+    let stream = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     drop(stream); // disconnect without ever sending Shutdown
 
     let status = child.wait_timeout_or_kill();

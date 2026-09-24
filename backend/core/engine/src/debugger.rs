@@ -506,11 +506,13 @@ fn handle_debugger_request_with_child_locations(
         DebuggerRequest::ResumeExecution { program } => {
             resume_child_execution(tabs, locations, program)
         }
-        DebuggerRequest::StepRootInstruction { .. } => unavailable_stepping(),
+        DebuggerRequest::StepRootInstruction { program } => {
+            step_child_root_instruction(tabs, locations, program)
+        }
         // `ArmEntryBreakpoint` remains an in-process compatibility operation.
         // The isolated route deliberately exposes only its separately named
         // root-classic continuation seam, never generic interruption,
-        // stepping, stacks, scopes, source, bytecode, or values.
+        // nested stepping, stacks, scopes, source, bytecode, or values.
         other => handle_debugger_request_with_javascript_executor(tabs, None, other),
     }
 }
@@ -660,7 +662,8 @@ fn describe_child_location_capabilities(
             program_locations_available: locations_available,
             breakpoint_configuration_available,
             entry_execution_control_available: execution_control_available,
-            stepping_available: false,
+            stepping_available: execution_control_available
+                && locations.debugger_stepping_available(),
             static_metadata_inventory_available,
             static_metadata_summary_available,
             static_metadata_lowering_summary_available,
@@ -2421,6 +2424,38 @@ fn resume_child_execution(
         program.program_generation,
     ) {
         Ok(()) => DebuggerReply::ExecutionResumed { program },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn step_child_root_instruction(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    program: DebuggerProgram,
+) -> DebuggerReply {
+    if !program.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger program target".to_string(),
+        };
+    }
+    let tab_id = match resolve_live_realm(tabs, program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, program.realm.realm_generation)
+        || !locations.debugger_execution_control_available()
+        || !locations.debugger_stepping_available()
+    {
+        return unavailable_stepping();
+    }
+    match locations.step_debugger_root_instruction(
+        tab_id,
+        program.realm.realm_generation,
+        program.program_handle,
+        program.program_generation,
+    ) {
+        Ok(()) => DebuggerReply::ExecutionStepRequested { program },
         Err(error) => debugger_program_error(error),
     }
 }

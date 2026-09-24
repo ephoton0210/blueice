@@ -340,6 +340,32 @@ fn await_completed_execution(debugger: &mut UnixStream, program: DebuggerProgram
     }
 }
 
+fn await_paused_execution(
+    debugger: &mut UnixStream,
+    program: DebuggerProgram,
+    safe_point: DebuggerSafePoint,
+) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match debugger_request(debugger, DebuggerRequest::GetExecutionState { program }) {
+            DebuggerReply::ExecutionState {
+                program: reply_program,
+                state:
+                    blueice_ipc::debugger::DebuggerExecutionState::Paused {
+                        safe_point: reply_safe_point,
+                    },
+            } if reply_program == program && reply_safe_point == safe_point => return,
+            DebuggerReply::ExecutionState {
+                program: reply_program,
+                state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+            } if reply_program == program && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            other => panic!("expected bounded root-frame pause, got {other:?}"),
+        }
+    }
+}
+
 fn serve_two_classic_documents(listener: TcpListener) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         for _ in 0..2 {
@@ -451,33 +477,10 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
         first_program,
     );
     let first_safe_point = first_safe_points[0];
-    assert_eq!(
-        debugger_request(
-            &mut debugger,
-            DebuggerRequest::ValidateSafePoint {
-                safe_point: first_safe_point,
-            },
-        ),
-        DebuggerReply::SafePointValidated {
-            safe_point: first_safe_point,
-        }
-    );
     let root_safe_point = *first_safe_points
         .iter()
         .find(|safe_point| safe_point.code_unit_ordinal == 0 && safe_point.bytecode_offset != 0)
         .expect("classic program must expose a resumable non-entry root safe point");
-    assert_eq!(
-        debugger_request(
-            &mut debugger,
-            DebuggerRequest::GetExecutionState {
-                program: first_program,
-            },
-        ),
-        DebuggerReply::ExecutionState {
-            program: first_program,
-            state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
-        }
-    );
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -489,18 +492,16 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
             safe_point: root_safe_point,
         }
     );
+    await_paused_execution(&mut debugger, first_program, root_safe_point);
     assert_eq!(
         debugger_request(
             &mut debugger,
-            DebuggerRequest::GetExecutionState {
-                program: first_program,
+            DebuggerRequest::ValidateSafePoint {
+                safe_point: first_safe_point,
             },
         ),
-        DebuggerReply::ExecutionState {
-            program: first_program,
-            state: blueice_ipc::debugger::DebuggerExecutionState::Paused {
-                safe_point: root_safe_point,
-            },
+        DebuggerReply::SafePointValidated {
+            safe_point: first_safe_point,
         }
     );
     assert_eq!(
@@ -688,16 +689,7 @@ fn launcher_exposes_bluets_metadata_while_its_root_frame_is_pending_and_paused()
         ),
         DebuggerReply::RootSafePointBreakpointArmed { safe_point: target }
     );
-    assert_eq!(
-        debugger_request(
-            &mut debugger,
-            DebuggerRequest::GetExecutionState { program },
-        ),
-        DebuggerReply::ExecutionState {
-            program,
-            state: blueice_ipc::debugger::DebuggerExecutionState::Paused { safe_point: target },
-        }
-    );
+    await_paused_execution(&mut debugger, program, target);
     let paused_summary = debugger_request(
         &mut debugger,
         DebuggerRequest::DescribeStaticMetadata { metadata },
