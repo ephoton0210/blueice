@@ -100,6 +100,9 @@ mod unix {
         /// lookup route. It exposes only a boolean JavaScript test callback,
         /// not node handles or the general DOM wrapper API.
         core_dom_lookup_probe_fixture: bool,
+        /// Owner-selected first live DOM text profile; page and frontend
+        /// traffic cannot select it or supply its private script socket.
+        core_dom_text_fixture: bool,
         /// A caller-selected Unix endpoint for a sealed core compiler catalog.
         /// The default builder selects the fixed compiled-in fixture; the
         /// separate trusted-owner builder may supply a complete closed graph.
@@ -238,6 +241,15 @@ mod unix {
         pub fn supervise_out_of_process_bluejs_with_dom_lookup_probe_fixture(mut self) -> Self {
             self.supervise_out_of_process_bluejs = true;
             self.core_dom_lookup_probe_fixture = true;
+            self
+        }
+
+        /// Selects the JavaScript-only live-DOM text proof profile for this
+        /// supervised child. BlueTS remains denied until its exact method
+        /// typings and capability manifest are implemented.
+        pub fn supervise_out_of_process_bluejs_with_dom_text_fixture(mut self) -> Self {
+            self.supervise_out_of_process_bluejs = true;
+            self.core_dom_text_fixture = true;
             self
         }
 
@@ -1670,6 +1682,7 @@ mod unix {
                     &script_socket,
                     options.bluejs_host_runtime_limits,
                     options.core_dom_lookup_probe_fixture,
+                    options.core_dom_text_fixture,
                 )?;
             Ok(Some(Self {
                 host,

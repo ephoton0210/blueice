@@ -69,7 +69,7 @@ impl Vm {
                 self.host_function_call(index, receiver, &args, construct)
             }
             NativeFunction::HostObjectFactory(index) => {
-                self.host_object_factory_call(index, &args, construct)
+                self.host_object_factory_call(index, receiver, &args, construct)
             }
             NativeFunction::HostObjectMethod(index) => {
                 self.host_object_method_call(index, receiver, &args, construct)

@@ -63,6 +63,7 @@ use blueice_ipc::page_host::{
 };
 use blueice_ipc::script::{
     self, ScriptDocumentTarget, ScriptReply, ScriptRequest, SCRIPT_MAX_NAME_BYTES,
+    SCRIPT_MAX_TEXT_BYTES,
 };
 use blueice_net::canonical_http_origin;
 use std::cell::RefCell;
@@ -278,6 +279,7 @@ struct ScriptDomCapability {
     socket_path: PathBuf,
     session_token: String,
     enable_lookup_probe: bool,
+    enable_dom_text_profile: bool,
 }
 
 /// Child-only script IPC. The core still owns every DOM node and validates
@@ -374,6 +376,64 @@ impl ScriptDomClient {
         }
     }
 
+    fn get_text_content(&mut self, target: ScriptDocumentTarget, node: u64) -> io::Result<String> {
+        match self.call(target, ScriptRequest::GetTextContent { target, node })? {
+            ScriptReply::Text { value } if value.len() <= SCRIPT_MAX_TEXT_BYTES => Ok(value),
+            ScriptReply::Error { .. } => {
+                self.stream = None;
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "core denied child DOM text read",
+                ))
+            }
+            _ => {
+                self.stream = None;
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "core returned an invalid child DOM text result",
+                ))
+            }
+        }
+    }
+
+    fn set_text_content(
+        &mut self,
+        target: ScriptDocumentTarget,
+        node: u64,
+        value: String,
+    ) -> io::Result<()> {
+        if value.len() > SCRIPT_MAX_TEXT_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "script DOM text exceeds its fixed limit",
+            ));
+        }
+        match self.call(
+            target,
+            ScriptRequest::SetTextContent {
+                target,
+                node,
+                value,
+            },
+        )? {
+            ScriptReply::Ack => Ok(()),
+            ScriptReply::Error { .. } => {
+                self.stream = None;
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "core denied child DOM text write",
+                ))
+            }
+            _ => {
+                self.stream = None;
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "core returned an invalid child DOM text mutation result",
+                ))
+            }
+        }
+    }
+
     fn call(
         &mut self,
         target: ScriptDocumentTarget,
@@ -429,9 +489,9 @@ impl ScriptDomClient {
 /// It accepts only fully selected source records. It has no filesystem or
 /// network resolver and gives the parent no VM/program handle. Ordinary
 /// realms install only the two fixed core-validated string snapshots; an
-/// explicit owner-only proof profile can additionally make boolean and
-/// opaque-wrapper DOM lookups through the private script socket, without
-/// exposing numeric node IDs to page code.
+/// explicit owner-only proof profile can additionally make boolean or
+/// opaque-wrapper DOM lookups, or live text reads/writes, through the private
+/// script socket without exposing numeric node IDs to page code.
 pub struct BlueJsChildHost {
     runtime: BlueJsPageRuntime,
     limits: BlueJsHostRuntimeLimits,
@@ -476,18 +536,20 @@ impl BlueJsChildHost {
     }
 
     /// Installs only a launcher-originated, generation-private script socket.
-    /// The optional lookup probes are an explicit DOM proof lane; they are
-    /// not the general DOM wrapper profile.
+    /// The two mutually exclusive page-visible proof profiles are owner-only;
+    /// neither grants the general typed DOM/event profile.
     pub fn configure_script_dom_capability(
         &mut self,
         socket_path: PathBuf,
         session_token: String,
         enable_lookup_probe: bool,
+        enable_dom_text_profile: bool,
     ) -> io::Result<()> {
         if !self.documents.is_empty()
             || self.script_dom_capability.is_some()
             || !socket_path.is_absolute()
             || !script::valid_script_session_token(&session_token)
+            || (enable_lookup_probe && enable_dom_text_profile)
         {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -498,6 +560,7 @@ impl BlueJsChildHost {
             socket_path,
             session_token,
             enable_lookup_probe,
+            enable_dom_text_profile,
         });
         Ok(())
     }
@@ -870,7 +933,15 @@ impl BlueJsChildHost {
         // while a later declaration remains eligible exactly as browser
         // document-order execution requires. No candidate program enters a
         // new realm until source/graph preflight has completed.
-        let prepared: Vec<_> = document.scripts.into_iter().map(prepare_script).collect();
+        let js_only_dom_text = self
+            .script_dom_capability
+            .as_ref()
+            .is_some_and(|capability| capability.enable_dom_text_profile);
+        let prepared: Vec<_> = document
+            .scripts
+            .into_iter()
+            .map(|script| prepare_script(script, js_only_dom_text))
+            .collect();
 
         let lifecycle = if self.documents.contains_key(&document.tab_id) {
             self.runtime.navigate(document.tab_id, origin.clone())
@@ -3730,10 +3801,10 @@ fn validated_document_origin(
 }
 
 /// Installs the two immutable callbacks verified by the BlueTS artifact.
-/// An explicit launcher DOM-lookup fixture may additionally install
-/// JavaScript-only boolean and opaque-object lookup probes. They forward
-/// exact-document requests to core without exposing raw node IDs or the
-/// socket/token, and are not the eventual `document` binding profile.
+/// Owner-selected JavaScript proof profiles may additionally expose lookup
+/// probes or a first live `document`/`textContent` slice. The latter rejects
+/// BlueTS scripts until an exact compiler-supported method type exists; no
+/// raw node ID, socket, or capability reaches page code.
 fn install_document_snapshot_bindings(
     runtime: &mut BlueJsPageRuntime,
     tab_id: u64,
@@ -3780,8 +3851,9 @@ fn install_document_snapshot_bindings(
                 }
             }
         }
-        if let Some(capability) =
-            script_dom_capability.filter(|capability| capability.enable_lookup_probe)
+        if let Some(capability) = script_dom_capability
+            .clone()
+            .filter(|capability| capability.enable_lookup_probe)
         {
             let client = Rc::new(RefCell::new(ScriptDomClient::new(capability)));
             let target = ScriptDocumentTarget {
@@ -3837,6 +3909,70 @@ fn install_document_snapshot_bindings(
                 },
             )?;
         }
+        if let Some(capability) =
+            script_dom_capability.filter(|capability| capability.enable_dom_text_profile)
+        {
+            let target = ScriptDocumentTarget {
+                tab_id,
+                document_generation,
+            };
+            let client = Rc::new(RefCell::new(ScriptDomClient::new(capability)));
+            let document = bindings.install_global_object("document")?;
+            let family = bindings.create_host_object_family()?;
+            let lookup_client = Rc::clone(&client);
+            bindings.install_host_object_factory_method(
+                document,
+                "getElementById",
+                1,
+                family,
+                move |arguments: &[HostValue]| {
+                    let id = dom_lookup_id(arguments, "document.getElementById")?;
+                    lookup_client
+                        .borrow_mut()
+                        .get_element_by_id(target, id)
+                        .map(|node| {
+                            node.map(|node| HostObjectKey::new(tab_id, document_generation, node))
+                        })
+                        .map_err(|_| HostFunctionError::new("child DOM lookup unavailable"))
+                },
+            )?;
+            let read_client = Rc::clone(&client);
+            bindings.install_host_object_accessor(
+                family,
+                "textContent",
+                move |key: HostObjectKey, arguments: &[HostValue]| {
+                    require_no_arguments(arguments, "node.textContent getter")?;
+                    if !key.matches_owner(tab_id, document_generation) {
+                        return Err(HostFunctionError::new(
+                            "child DOM node belongs to another document",
+                        ));
+                    }
+                    read_client
+                        .borrow_mut()
+                        .get_text_content(target, key.object())
+                        .map(|text| HostValue::String(text.into()))
+                        .map_err(|_| HostFunctionError::new("child DOM text read unavailable"))
+                },
+                move |key: HostObjectKey, arguments: &[HostValue]| {
+                    let [HostValue::String(value)] = arguments else {
+                        return Err(HostFunctionError::new("node.textContent requires a string"));
+                    };
+                    if !key.matches_owner(tab_id, document_generation) {
+                        return Err(HostFunctionError::new(
+                            "child DOM node belongs to another document",
+                        ));
+                    }
+                    let value = value.to_utf8().map_err(|_| {
+                        HostFunctionError::new("node.textContent requires valid UTF-16")
+                    })?;
+                    client
+                        .borrow_mut()
+                        .set_text_content(target, key.object(), value)
+                        .map_err(|_| HostFunctionError::new("child DOM text write unavailable"))?;
+                    Ok(HostValue::Undefined)
+                },
+            )?;
+        }
         Ok(())
     })
 }
@@ -3888,10 +4024,18 @@ enum PreparedScript {
     },
 }
 
-fn prepare_script(script: PageHostScript) -> PreparedScript {
+fn prepare_script(script: PageHostScript, js_only_dom_text: bool) -> PreparedScript {
     let ordinal = script.ordinal;
     let language = script.language;
     let kind = script.kind;
+    if js_only_dom_text && language == PageHostScriptLanguage::BlueTs {
+        return PreparedScript::Rejected {
+            ordinal,
+            language,
+            kind,
+            category: "BlueTS is unavailable in the JavaScript-only DOM text proof profile",
+        };
+    }
     let prepared = match (language, kind) {
         (PageHostScriptLanguage::JavaScript, PageHostScriptKind::Classic) => {
             prepare_classic(script.graph).map(|(source, program)| {
@@ -4653,14 +4797,22 @@ impl SpawnedBlueJsHost {
         script_socket: &Path,
         limits: BlueJsHostRuntimeLimits,
         enable_dom_lookup_probe: bool,
+        enable_dom_text_profile: bool,
     ) -> io::Result<(Self, BlueJsHostCoreConfig)> {
-        if !script_socket.is_absolute() {
+        if !script_socket.is_absolute() || (enable_dom_lookup_probe && enable_dom_text_profile) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "child script socket path must be absolute",
+                "child script socket must be absolute and DOM profiles exclusive",
             ));
         }
-        let host = Self::spawn_unconnected(limits, Some((script_socket, enable_dom_lookup_probe)))?;
+        let host = Self::spawn_unconnected(
+            limits,
+            Some((
+                script_socket,
+                enable_dom_lookup_probe,
+                enable_dom_text_profile,
+            )),
+        )?;
         let config = BlueJsHostCoreConfig {
             socket_path: host.socket_path.clone(),
             session_token: host.session_token.clone(),
@@ -4670,7 +4822,7 @@ impl SpawnedBlueJsHost {
 
     fn spawn_unconnected(
         limits: BlueJsHostRuntimeLimits,
-        script_socket: Option<(&Path, bool)>,
+        script_socket: Option<(&Path, bool, bool)>,
     ) -> io::Result<Self> {
         limits
             .runtime_config()
@@ -4700,10 +4852,15 @@ impl SpawnedBlueJsHost {
             .arg(limits.max_reserved_bytecode_bytes.to_string())
             .arg("--max-reserved-heap-bytes")
             .arg(limits.max_reserved_heap_bytes.to_string());
-        if let Some((script_socket, enable_dom_lookup_probe)) = script_socket {
+        if let Some((script_socket, enable_dom_lookup_probe, enable_dom_text_profile)) =
+            script_socket
+        {
             command.arg("--script-socket").arg(script_socket);
             if enable_dom_lookup_probe {
                 command.arg("--enable-dom-lookup-probe");
+            }
+            if enable_dom_text_profile {
+                command.arg("--enable-dom-text-profile");
             }
         }
         let mut child = command.spawn()?;
@@ -4988,7 +5145,7 @@ mod tests {
         });
 
         let mut host = BlueJsChildHost::default();
-        host.configure_script_dom_capability(socket_path.clone(), capability, true)
+        host.configure_script_dom_capability(socket_path.clone(), capability, true, false)
             .unwrap();
         let outcomes = |reply: PageHostReply| match reply {
             PageHostReply::Synchronized { reports, .. } => reports
@@ -5123,7 +5280,7 @@ mod tests {
         });
 
         let mut host = BlueJsChildHost::default();
-        host.configure_script_dom_capability(socket_path.clone(), capability, true)
+        host.configure_script_dom_capability(socket_path.clone(), capability, true, false)
             .unwrap();
         let script = |ordinal| {
             classic(
@@ -5225,6 +5382,7 @@ mod tests {
                     socket_path: PathBuf::new(),
                     session_token: String::new(),
                     enable_lookup_probe: true,
+                    enable_dom_text_profile: false,
                 },
                 stream: Some(client_stream),
                 next_call_id: 1,

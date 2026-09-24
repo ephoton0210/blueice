@@ -24,6 +24,7 @@ struct Args {
     session_token: String,
     script_socket: Option<PathBuf>,
     enable_dom_lookup_probe: bool,
+    enable_dom_text_profile: bool,
     runtime_limits: BlueJsHostRuntimeLimits,
 }
 
@@ -33,6 +34,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut session_token = None;
     let mut script_socket = None;
     let mut enable_dom_lookup_probe = false;
+    let mut enable_dom_text_profile = false;
     let mut max_realms = None;
     let mut max_programs_per_realm = None;
     let mut max_bytecode_bytes_per_realm = None;
@@ -60,6 +62,12 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                     return Err("--enable-dom-lookup-probe may be supplied only once".to_string());
                 }
                 enable_dom_lookup_probe = true;
+            }
+            "--enable-dom-text-profile" => {
+                if enable_dom_text_profile {
+                    return Err("--enable-dom-text-profile may be supplied only once".to_string());
+                }
+                enable_dom_text_profile = true;
             }
             "--max-realms" => {
                 if max_realms.is_some() {
@@ -122,6 +130,12 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if enable_dom_lookup_probe && script_socket.is_none() {
         return Err("--enable-dom-lookup-probe requires --script-socket".to_string());
     }
+    if enable_dom_text_profile && script_socket.is_none() {
+        return Err("--enable-dom-text-profile requires --script-socket".to_string());
+    }
+    if enable_dom_lookup_probe && enable_dom_text_profile {
+        return Err("DOM lookup and live text profiles are mutually exclusive".to_string());
+    }
     if let Some(script_socket) = script_socket.as_ref() {
         if !script_socket.is_absolute() {
             return Err("--script-socket must be absolute".to_string());
@@ -167,6 +181,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         session_token,
         script_socket,
         enable_dom_lookup_probe,
+        enable_dom_text_profile,
         runtime_limits,
     })
 }
@@ -203,6 +218,7 @@ fn main() -> ExitCode {
             script_socket,
             args.session_token.clone(),
             args.enable_dom_lookup_probe,
+            args.enable_dom_text_profile,
         ) {
             eprintln!("blueice-bluejs-host: invalid private script capability: {error}");
             return ExitCode::FAILURE;
@@ -319,6 +335,47 @@ mod tests {
             Some(PathBuf::from("/tmp/script.sock"))
         );
         assert!(parsed.enable_dom_lookup_probe);
+        assert!(!parsed.enable_dom_text_profile);
+    }
+
+    #[test]
+    fn live_dom_text_profile_requires_a_socket_and_excludes_the_lookup_probe() {
+        let token = "0123456789abcdef".repeat(4);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/host.sock",
+                "--session-token",
+                &token,
+                "--enable-dom-text-profile",
+            ]),
+            Err("--enable-dom-text-profile requires --script-socket".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/host.sock",
+                "--session-token",
+                &token,
+                "--script-socket",
+                "/tmp/script.sock",
+                "--enable-dom-text-profile",
+                "--enable-dom-lookup-probe",
+            ]),
+            Err("DOM lookup and live text profiles are mutually exclusive".to_string())
+        );
+        let parsed = args(&[
+            "--socket",
+            "/tmp/host.sock",
+            "--session-token",
+            &token,
+            "--script-socket",
+            "/tmp/script.sock",
+            "--enable-dom-text-profile",
+        ])
+        .unwrap();
+        assert!(parsed.enable_dom_text_profile);
+        assert!(!parsed.enable_dom_lookup_probe);
     }
 
     #[test]

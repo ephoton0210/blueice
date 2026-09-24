@@ -402,6 +402,80 @@ fn opaque_host_object_methods_require_an_exact_live_wrapper_receiver() {
 }
 
 #[test]
+fn host_document_factory_and_node_accessor_verify_both_receivers() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let mut vm = Vm::default();
+    let document = vm.install_host_object("document").unwrap();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory_method(
+        document,
+        "getElementById",
+        1,
+        family,
+        |args: &[HostValue]| {
+            let [HostValue::String(id)] = args else {
+                return Err(HostFunctionError::new("a string ID is required"));
+            };
+            Ok((id.to_utf8().ok().as_deref() == Some("present"))
+                .then_some(HostObjectKey::new(7, 3, 42)))
+        },
+    )
+    .unwrap();
+    let text = Rc::new(RefCell::new(String::from("before")));
+    let getter_text = Rc::clone(&text);
+    let setter_text = Rc::clone(&text);
+    vm.install_host_object_accessor(
+        family,
+        "textContent",
+        move |key, args: &[HostValue]| {
+            if key != HostObjectKey::new(7, 3, 42) || !args.is_empty() {
+                return Err(HostFunctionError::new("invalid text getter"));
+            }
+            Ok(HostValue::String(getter_text.borrow().clone().into()))
+        },
+        move |key, args: &[HostValue]| {
+            let [HostValue::String(value)] = args else {
+                return Err(HostFunctionError::new("text setter requires a string"));
+            };
+            if key != HostObjectKey::new(7, 3, 42) {
+                return Err(HostFunctionError::new("invalid text setter"));
+            }
+            *setter_text.borrow_mut() = value.to_utf8().unwrap();
+            Ok(HostValue::Undefined)
+        },
+    )
+    .unwrap();
+    let code = crate::compile(
+        &crate::parse(
+            "let node = document.getElementById('present'); \
+             if (node !== document.getElementById('present')) throw 'identity'; \
+             if (document.getElementById('absent') !== null) throw 'miss'; \
+             if (node.textContent !== 'before') throw 'getter'; \
+             node.textContent = 'after'; node.textContent;",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        vm.execute_script(&code).unwrap(),
+        Value::String("after".into())
+    );
+    assert_eq!(&*text.borrow(), "after");
+    for source in [
+        "document.getElementById.call({}, 'present');",
+        "node.textContent = {};",
+        "Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), 'textContent').get.call({});",
+        "Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), 'textContent').set.call(Object.create(node), 'forged');",
+    ] {
+        let code = crate::compile(&crate::parse(source).unwrap()).unwrap();
+        assert!(matches!(vm.execute_script(&code), Err(RuntimeError::TypeError(_))), "{source}");
+    }
+    assert_eq!(&*text.borrow(), "after");
+}
+
+#[test]
 fn opaque_host_object_family_has_a_fixed_root_limit() {
     let mut vm = Vm::default();
     let family = vm.create_host_object_family().unwrap();

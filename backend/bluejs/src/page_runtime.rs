@@ -141,6 +141,19 @@ impl BlueJsHostBindingRegistrar<'_> {
             .install_host_object_factory(name, length, family, factory)
     }
 
+    /// Installs a realm-local wrapper-returning method on a host object.
+    pub fn install_host_object_factory_method(
+        &mut self,
+        owner: HostObject,
+        name: &str,
+        length: u32,
+        family: HostObjectFamily,
+        factory: impl HostObjectFactory,
+    ) -> Result<(), RuntimeError> {
+        self.vm
+            .install_host_object_factory_method(owner, name, length, family, factory)
+    }
+
     /// Installs an operation whose receiver is an exact wrapper from this
     /// realm-local family. The callback receives only its private key.
     pub fn install_host_object_method(
@@ -152,6 +165,19 @@ impl BlueJsHostBindingRegistrar<'_> {
     ) -> Result<(), RuntimeError> {
         self.vm
             .install_host_object_method(family, name, length, method)
+    }
+
+    /// Installs a private wrapper getter/setter pair with exact receiver
+    /// checks. The accessors remain in the creating realm only.
+    pub fn install_host_object_accessor(
+        &mut self,
+        family: HostObjectFamily,
+        name: &str,
+        getter: impl HostObjectMethod,
+        setter: impl HostObjectMethod,
+    ) -> Result<(), RuntimeError> {
+        self.vm
+            .install_host_object_accessor(family, name, getter, setter)
     }
 
     /// Installs one non-constructable callback on a host object created by

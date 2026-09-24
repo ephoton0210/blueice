@@ -102,6 +102,7 @@ pub(super) struct HostObjectFamilyState {
 
 pub(super) struct HostObjectFactoryRegistration {
     family_index: u32,
+    required_receiver: Option<ObjectId>,
     factory: Box<dyn HostObjectFactory>,
 }
 
@@ -171,11 +172,97 @@ impl Vm {
         Ok(())
     }
 
+    /// Installs a genuine JavaScript accessor on the private wrapper
+    /// prototype. Both native callbacks resolve the exact minted receiver
+    /// before invoking a host getter or setter; no object argument crosses
+    /// the primitive-only callback boundary.
+    pub fn install_host_object_accessor(
+        &mut self,
+        family: HostObjectFamily,
+        name: &str,
+        getter: impl HostObjectMethod,
+        setter: impl HostObjectMethod,
+    ) -> Result<(), RuntimeError> {
+        if family.heap != self.object_prototype.heap || !host_property_name_is_valid(name) {
+            return Err(RuntimeError::TypeError(
+                "host-object family or accessor name is invalid".into(),
+            ));
+        }
+        let prototype = self
+            .host_object_families
+            .get(family.index as usize)
+            .ok_or_else(|| RuntimeError::TypeError("host-object family is unavailable".into()))?
+            .prototype;
+        if self.heap.get_own(prototype, name)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "host-object accessor is already defined".into(),
+            ));
+        }
+        let getter_index = u32::try_from(self.host_object_methods.len())
+            .map_err(|_| RuntimeError::RangeError("too many host-object methods".into()))?;
+        let setter_index = getter_index
+            .checked_add(1)
+            .ok_or_else(|| RuntimeError::RangeError("too many host-object methods".into()))?;
+        let function_prototype = self.function_prototype()?;
+        self.install_native_accessor(
+            prototype,
+            function_prototype,
+            name,
+            NativeFunction::HostObjectMethod(getter_index),
+            NativeFunction::HostObjectMethod(setter_index),
+        )?;
+        self.host_object_methods.extend([
+            HostObjectMethodRegistration {
+                family_index: family.index,
+                method: Box::new(getter),
+            },
+            HostObjectMethodRegistration {
+                family_index: family.index,
+                method: Box::new(setter),
+            },
+        ]);
+        Ok(())
+    }
+
     /// Installs one non-constructable global factory. Only private keys cross
     /// its callback boundary; a miss becomes JS `null`. Repeated keys in the
     /// same family return the identical rooted wrapper.
     pub fn install_host_object_factory(
         &mut self,
+        name: &str,
+        length: u32,
+        family: HostObjectFamily,
+        factory: impl HostObjectFactory,
+    ) -> Result<(), RuntimeError> {
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("globalThis is always an object");
+        self.install_host_object_factory_on(global, None, name, length, family, factory)
+    }
+
+    /// Installs a wrapper-returning method on an exact realm-owned object.
+    /// Extracted calls with another `this` never enter the host callback.
+    pub fn install_host_object_factory_method(
+        &mut self,
+        owner: HostObject,
+        name: &str,
+        length: u32,
+        family: HostObjectFamily,
+        factory: impl HostObjectFactory,
+    ) -> Result<(), RuntimeError> {
+        if owner.0.heap != self.object_prototype.heap {
+            return Err(RuntimeError::TypeError(
+                "host object belongs to a different realm".into(),
+            ));
+        }
+        self.install_host_object_factory_on(owner.0, Some(owner.0), name, length, family, factory)
+    }
+
+    fn install_host_object_factory_on(
+        &mut self,
+        owner: ObjectId,
+        required_receiver: Option<ObjectId>,
         name: &str,
         length: u32,
         family: HostObjectFamily,
@@ -191,19 +278,15 @@ impl Vm {
                 "host-object family belongs to a different realm".into(),
             ));
         }
-        let global = self
-            .global("globalThis")?
-            .object_id()
-            .expect("globalThis is always an object");
-        if !host_property_name_is_valid(name) || self.heap.get_own(global, name)?.is_some() {
+        if !host_property_name_is_valid(name) || self.heap.get_own(owner, name)?.is_some() {
             return Err(RuntimeError::TypeError(
-                "host global name is invalid or already defined".into(),
+                "host factory name is invalid or already defined".into(),
             ));
         }
         let index = u32::try_from(self.host_object_factories.len())
             .map_err(|_| RuntimeError::RangeError("too many host-object factories".into()))?;
         self.install_host_callable_native(
-            global,
+            owner,
             name,
             length,
             NativeFunction::HostObjectFactory(index),
@@ -211,6 +294,7 @@ impl Vm {
         self.host_object_factories
             .push(HostObjectFactoryRegistration {
                 family_index: family.index,
+                required_receiver,
                 factory: Box::new(factory),
             });
         Ok(())
@@ -219,6 +303,7 @@ impl Vm {
     pub(super) fn host_object_factory_call(
         &mut self,
         index: u32,
+        receiver: Value,
         args: &[Value],
         construct: bool,
     ) -> Result<Value, RuntimeError> {
@@ -236,6 +321,14 @@ impl Vm {
             .host_object_factories
             .get_mut(index as usize)
             .ok_or_else(|| RuntimeError::TypeError("host-object factory is unavailable".into()))?;
+        if registration
+            .required_receiver
+            .is_some_and(|required| receiver.object_id() != Some(required))
+        {
+            return Err(RuntimeError::TypeError(
+                "invalid host-object factory receiver".into(),
+            ));
+        }
         let family_index = registration.family_index as usize;
         let Some(key) = registration
             .factory

@@ -190,3 +190,150 @@ fn supervised_child_script_completes_a_synchronous_core_dom_lookup() {
     let _ = std::fs::remove_file(&gatekeeper_path);
     let _ = std::fs::remove_dir_all(&frame_dir);
 }
+
+#[test]
+fn supervised_child_dom_text_profile_renders_live_text_and_denies_untyped_bluets() {
+    let gatekeeper_path = std::env::temp_dir().join(format!(
+        "bi-dom-text-gatekeeper-{}.sock",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&gatekeeper_path);
+    let gatekeeper = UnixListener::bind(&gatekeeper_path).unwrap();
+    thread::spawn(move || {
+        for incoming in gatekeeper.incoming() {
+            let Ok(mut stream) = incoming else { break };
+            let _ = blueice_ai_gatekeeper::handle_one_check(&mut stream);
+        }
+    });
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/dom-text.html", listener.local_addr().unwrap());
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0u8; 1024];
+        let _ = stream.read(&mut request).unwrap();
+        let body = concat!(
+            "<div id='target'><span id='inner'>before</span></div>",
+            "<script>",
+            "if (typeof fetch !== 'undefined' || typeof blueiceTestGetElementById !== 'undefined') throw 'ambient';",
+            "let node = document.getElementById('target');",
+            "let removed = document.getElementById('inner');",
+            "if (node === null || node.textContent !== 'before') throw 'lookup';",
+            "if (removed === null || removed.textContent !== 'before') throw 'inner lookup';",
+            "if (node !== document.getElementById('target')) throw 'identity';",
+            "if (Object.keys(node).length !== 0 || node.nodeId !== undefined) throw 'node ID';",
+            "if (document.getElementById('absent') !== null) throw 'miss';",
+            "if (typeof document.createElement !== 'undefined') throw 'unsupported DOM';",
+            "node.textContent = 'from JavaScript';",
+            "if (node.textContent !== 'from JavaScript') throw 'write';",
+            "try { removed.textContent; throw 'removed wrapper survived'; } catch (error) { if (!(error instanceof TypeError)) throw error; }",
+            "globalThis.domTextScriptCompleted = true;",
+            "</script>",
+            "<script type='application/x-blueice-typescript'>",
+            "document.getElementById('target');",
+            "</script>",
+            "<script>",
+            "if (!globalThis.domTextScriptCompleted) throw 'order';",
+            "const finalNode = document.getElementById('target');",
+            "if (finalNode === null || finalNode.textContent !== 'from JavaScript') throw 'order';",
+            "finalNode.textContent = 'rendered text';",
+            "</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-launcher-dom-text-frames-{}",
+        std::process::id()
+    ));
+    let core = SpawnedCore::spawn_with_options(
+        320.0,
+        200.0,
+        &frame_dir,
+        CoreLaunchOptions::default()
+            .with_gatekeeper_socket(gatekeeper_path.clone())
+            .supervise_out_of_process_bluejs_with_dom_text_fixture(),
+    )
+    .expect("launcher must supervise the real core and child");
+    let mut stream = core.stream.try_clone().unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url }
+    );
+    let blueice_ipc::ServerMessage::FrameReady { shm_path, .. } =
+        blueice_ipc::read_server_message(&mut stream).unwrap()
+    else {
+        panic!("expected a rendered frame after the DOM text mutation");
+    };
+    assert!(std::fs::metadata(shm_path).unwrap().len() > 0);
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueJsScriptReports,
+    )
+    .unwrap();
+    let blueice_ipc::ServerMessage::BlueJsScriptReports(reports) =
+        blueice_ipc::read_server_message(&mut stream).unwrap()
+    else {
+        panic!("expected page script reports");
+    };
+    assert_eq!(reports.len(), 2);
+    assert!(
+        reports.iter().all(|report| matches!(
+            report.outcome,
+            blueice_ipc::BlueJsScriptExecutionOutcome::Executed
+        )),
+        "{reports:?}"
+    );
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueTsScriptReports,
+    )
+    .unwrap();
+    let blueice_ipc::ServerMessage::BlueTsScriptReports(typed_reports) =
+        blueice_ipc::read_server_message(&mut stream).unwrap()
+    else {
+        panic!("expected BlueTS page script reports");
+    };
+    assert_eq!(typed_reports.len(), 1);
+    assert!(
+        matches!(
+            typed_reports[0].outcome,
+            blueice_ipc::BlueTsScriptExecutionOutcome::Rejected { .. }
+        ),
+        "{typed_reports:?}"
+    );
+    blueice_ipc::write_client_message_with_ids(
+        &mut stream,
+        Some(1),
+        Some(301),
+        &blueice_ipc::ClientMessage::GetDom,
+    )
+    .unwrap();
+    let (_, reply_id, dom_reply) = blueice_ipc::read_server_message_with_ids(&mut stream).unwrap();
+    assert_eq!(reply_id, Some(301));
+    let blueice_ipc::ServerMessage::Dom(dom) = dom_reply else {
+        panic!("expected the live DOM dump");
+    };
+    assert!(dom.contains("\"rendered text\""), "{dom}");
+    assert!(!dom.contains("\"before\""), "{dom}");
+    server.join().unwrap();
+    drop(core);
+    let _ = std::fs::remove_file(&gatekeeper_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+}
