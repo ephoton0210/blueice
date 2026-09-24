@@ -5529,6 +5529,92 @@ mod tests {
     }
 
     #[test]
+    fn default_history_reload_rechecks_the_live_gatekeeper_before_a_second_fetch() {
+        use blueice_ipc::gatekeeper::GatekeeperSettingsChange;
+
+        let dir = temp_frame_dir("history-live-policy");
+        let gatekeeper = unique_gatekeeper_socket_path("history-live-policy");
+        let _ = std::fs::remove_file(&gatekeeper);
+        let listener = UnixListener::bind(&gatekeeper).unwrap();
+        let service = Arc::new(blueice_ai_gatekeeper::GatekeeperService::new(None).unwrap());
+        let reviewer = thread::spawn({
+            let service = Arc::clone(&service);
+            move || {
+                // First visit: URL + content. Then one settings update. The
+                // history reload must ask the same live service about its URL.
+                for _ in 0..4 {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    service.handle_connection(&mut stream).unwrap();
+                }
+            }
+        });
+
+        let http_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = http_listener.local_addr().unwrap();
+        let http_peer = http_listener.try_clone().unwrap();
+        let http = thread::spawn(move || {
+            let (mut stream, _) = http_peer.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = std::io::Read::read(&mut stream, &mut request);
+            let body = "<p>original page</p>";
+            std::io::Write::write_all(
+                &mut stream,
+                format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes(),
+            ).unwrap();
+        });
+
+        let (mut client, mut server) = client_pair();
+        let session_gatekeeper = gatekeeper.clone();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation, &session_gatekeeper).unwrap();
+            dir
+        });
+        handshake(&mut client);
+        let url = format!("http://{address}/history");
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: url.clone() }).unwrap();
+        assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Navigated { url: url.clone() });
+        assert!(matches!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }));
+        http.join().unwrap();
+        http_listener.set_nonblocking(true).unwrap();
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate {
+            url: "about:credits".into(),
+        }).unwrap();
+        assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Navigated { url: "about:credits".into() });
+        assert!(matches!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }));
+
+        let source = crate::gatekeeper_settings_page::GatekeeperSettingsSource::at(gatekeeper.clone());
+        let effective = source.update(GatekeeperSettingsChange::AddBlockedHost {
+            host: "127.0.0.1".into(),
+        }).unwrap();
+        assert_eq!(effective.custom_blocked_hosts, ["127.0.0.1"]);
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GoBack).unwrap();
+        assert!(matches!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::GatekeeperBlocked { url: blocked_url, category, .. }
+                if blocked_url == url && category == "custom-blocked-domain"));
+        assert_eq!(http_listener.accept().unwrap_err().kind(), std::io::ErrorKind::WouldBlock,
+            "history reload must be blocked before a second network connection");
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
+        let ServerMessage::Tabs(tabs) = blueice_ipc::read_server_message(&mut client).unwrap() else {
+            panic!("expected tab state after the blocked history reload")
+        };
+        assert_eq!(tabs[0].url.as_deref(), Some("about:credits"),
+            "a rejected reload must keep the current document visible");
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        reviewer.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_file(gatekeeper);
+    }
+
+    #[test]
     fn opted_in_history_snapshot_restores_when_the_original_url_is_unavailable() {
         let dir = temp_frame_dir("history-snapshot");
         let gatekeeper = clearing_gatekeeper("history-snapshot");
