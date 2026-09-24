@@ -588,6 +588,37 @@ fn frame_evidence_from(text: &str) -> Result<FrameEvidence, String> {
     Ok(FrameEvidence { tab_id, generation })
 }
 
+fn frame_evidence_from_snapshot(snapshot: &Value) -> Result<FrameEvidence, String> {
+    let tab_id = snapshot["tab_id"]
+        .as_u64()
+        .ok_or_else(|| "MCP snapshot has no numeric tab ID".to_string())?;
+    let generation = snapshot["generation"]
+        .as_u64()
+        .ok_or_else(|| "MCP snapshot has no numeric frame generation".to_string())?;
+    Ok(FrameEvidence { tab_id, generation })
+}
+
+fn require_highlight_frame(before: FrameEvidence, after: FrameEvidence) -> Result<(), String> {
+    if before.tab_id != after.tab_id || after.generation <= before.generation {
+        return Err(format!(
+            "highlight did not produce a newer frame on the same tab: before {before:?}, after {after:?}"
+        ));
+    }
+    Ok(())
+}
+
+fn require_matching_highlight_screenshot(
+    highlight: FrameEvidence,
+    screenshot: FrameEvidence,
+) -> Result<(), String> {
+    if screenshot != highlight {
+        return Err(format!(
+            "post-highlight screenshot does not match the highlighted core frame: highlight {highlight:?}, screenshot {screenshot:?}"
+        ));
+    }
+    Ok(())
+}
+
 fn named_node(snapshot: &Value, role: &str, name: &str) -> Result<u64, String> {
     snapshot["nodes"]
         .as_array()
@@ -734,6 +765,7 @@ fn next_tool_choice(completed: &BTreeSet<ScenarioAction>) -> &'static str {
 struct ToolExecution {
     output: String,
     screenshot: Option<(Vec<u8>, PathBuf, FrameEvidence)>,
+    highlight_frame: Option<FrameEvidence>,
     action: ScenarioAction,
 }
 
@@ -743,6 +775,7 @@ fn execute_tool(
     demo_url: &str,
     evidence_dir: &Path,
     highlight_hold: Duration,
+    expected_highlight_frame: Option<FrameEvidence>,
     transcript: &mut Transcript,
 ) -> Result<ToolExecution, String> {
     let call = |mcp: &mut McpProcess, tool: &str, arguments: Value, transcript: &mut Transcript| {
@@ -763,6 +796,7 @@ fn execute_tool(
             Ok(ToolExecution {
                 output: result.text,
                 screenshot: None,
+                highlight_frame: None,
                 action: ScenarioAction::Navigate,
             })
         }
@@ -771,12 +805,16 @@ fn execute_tool(
             Ok(ToolExecution {
                 output: result.text,
                 screenshot: None,
+                highlight_frame: None,
                 action: ScenarioAction::Inspect,
             })
         }
         "take_screenshot" => {
             let result = call(mcp, "screenshot", json!({}), transcript)?;
             let frame = frame_evidence_from(&result.text)?;
+            if let Some(highlight) = expected_highlight_frame {
+                require_matching_highlight_screenshot(highlight, frame)?;
+            }
             let png = result
                 .image
                 .ok_or_else(|| "MCP screenshot did not include a PNG image".to_string())?;
@@ -784,6 +822,7 @@ fn execute_tool(
             Ok(ToolExecution {
                 output: format!("{}\nA PNG from the same core-rendered frame was captured and attached for visual inspection.", result.text),
                 screenshot: Some((png, path, frame)),
+                highlight_frame: None,
                 action: ScenarioAction::Screenshot,
             })
         }
@@ -800,13 +839,24 @@ fn execute_tool(
             Ok(ToolExecution {
                 output: result.text,
                 screenshot: None,
+                highlight_frame: None,
                 action: ScenarioAction::SetName,
             })
         }
         "highlight_name" => {
             let before = call(mcp, "get_page_representation", json!({}), transcript)?;
-            let id = named_node(&snapshot_from(&before)?, "TextBox", "Name")?;
+            let before_snapshot = snapshot_from(&before)?;
+            let before_frame = frame_evidence_from_snapshot(&before_snapshot)?;
+            let id = named_node(&before_snapshot, "TextBox", "Name")?;
             let result = call(mcp, "highlight", json!({ "node_id": id }), transcript)?;
+            let after_snapshot = snapshot_from(&result)?;
+            let highlight_frame = frame_evidence_from_snapshot(&after_snapshot)?;
+            require_highlight_frame(before_frame, highlight_frame)?;
+            ensure_name_value(&after_snapshot)?;
+            transcript.record(
+                "highlight_frame",
+                json!({ "tab_id": highlight_frame.tab_id, "generation": highlight_frame.generation }),
+            )?;
             if !highlight_hold.is_zero() {
                 transcript.record(
                     "highlight_hold",
@@ -817,6 +867,7 @@ fn execute_tool(
             Ok(ToolExecution {
                 output: result.text,
                 screenshot: None,
+                highlight_frame: Some(highlight_frame),
                 action: ScenarioAction::Highlight,
             })
         }
@@ -828,6 +879,7 @@ fn execute_tool(
             Ok(ToolExecution {
                 output: result.text,
                 screenshot: None,
+                highlight_frame: None,
                 action: ScenarioAction::Continue,
             })
         }
@@ -901,6 +953,7 @@ fn run(args: Args) -> Result<(String, Vec<PathBuf>), String> {
     let mut evidence = Vec::new();
     let mut screenshot_before_write = false;
     let mut screenshot_after_highlight = false;
+    let mut highlight_frame = None;
 
     for turn in 1..=args.max_turns {
         let request = json!({
@@ -983,8 +1036,12 @@ fn run(args: Args) -> Result<(String, Vec<PathBuf>), String> {
                 &args.demo_url,
                 &args.evidence_dir,
                 Duration::from_secs(args.highlight_hold_secs),
+                highlight_frame,
                 &mut transcript,
             )?;
+            if let Some(frame) = execution.highlight_frame {
+                highlight_frame = Some(frame);
+            }
             if execution.action == ScenarioAction::Screenshot
                 && completed.contains(&ScenarioAction::Highlight)
             {
@@ -1239,5 +1296,31 @@ mod tests {
         assert!(frame_evidence_from(&format!(
             "{FRAME_EVIDENCE_PREFIX}{{\"tab_id\":7,\"generation\":42}}"
         )).is_err());
+    }
+
+    #[test]
+    fn highlighted_screenshot_must_match_the_new_snapshot_frame_exactly() {
+        let before = frame_evidence_from_snapshot(&json!({
+            "tab_id": 7, "generation": 41,
+        })).unwrap();
+        let highlight = frame_evidence_from_snapshot(&json!({
+            "tab_id": 7, "generation": 42,
+        })).unwrap();
+        require_highlight_frame(before, highlight).unwrap();
+        require_matching_highlight_screenshot(highlight, highlight).unwrap();
+        assert!(require_highlight_frame(before, before).is_err());
+        assert!(require_highlight_frame(
+            before,
+            FrameEvidence { tab_id: 8, generation: 42 },
+        ).is_err());
+        assert!(require_matching_highlight_screenshot(
+            highlight,
+            FrameEvidence { tab_id: 7, generation: 43 },
+        ).is_err());
+        assert!(require_matching_highlight_screenshot(
+            highlight,
+            FrameEvidence { tab_id: 8, generation: 42 },
+        ).is_err());
+        assert!(frame_evidence_from_snapshot(&json!({ "tab_id": 7 })).is_err());
     }
 }

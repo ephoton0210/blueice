@@ -35,9 +35,12 @@ Start the frontend with `--show-generation` so its native lower-right badge
 shows `TAB:<id> GEN:<generation>` for the selected core frame. The MCP
 `screenshot` tool reports the exact cached tab/generation used for its PNG;
 the agent transcript records that metadata alongside each saved PNG path as
-`evidence_saved`. Compare the human screenshot's badge with the second PNG's
-transcript entry and the highlight snapshot generation. A mismatch is evidence
-of different frames, not a successful common-observer proof.
+`evidence_saved`. The runner also records `highlight_frame` and automatically
+rejects a second PNG whose tab or generation differs from the highlight
+snapshot, before saving it as evidence. Compare the human screenshot's badge
+with the matching second PNG and `highlight_frame` transcript entries. A
+mismatch is evidence of different frames, not a successful common-observer
+proof.
 
 ## Live-model runbook
 
@@ -99,6 +102,6 @@ seconds by default (`--highlight-hold-seconds 0` disables that pause only when
 no human capture is required). Preserve the JSONL transcript, retained PNGs,
 and a human-window screenshot taken during that hold. The transcript's
 `evidence_saved` entries identify each MCP PNG by path, tab ID, and exact core
-frame generation. Record the human badge, highlight snapshot generation, and
-second PNG's metadata in the final result note; they must match for the
+frame generation. Record the human badge, `highlight_frame` snapshot generation,
+and second PNG's metadata in the final result note; they must match for the
 same-frame claim.

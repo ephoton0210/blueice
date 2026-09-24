@@ -92,7 +92,10 @@ they do not claim to be an LLM provider run.
 response now precedes its untrusted-image warning with trusted metadata naming
 the exact cached core `tab_id` and `generation` encoded into the PNG. The
 runner requires that metadata and writes an `evidence_saved` JSONL event with
-the PNG path and frame identity. The reference human frontend's opt-in
+the PNG path and frame identity. It records the highlight's post-action
+snapshot as `highlight_frame` and refuses to save or count a post-highlight
+screenshot unless that PNG's tab and generation match the snapshot exactly.
+The reference human frontend's opt-in
 `--show-generation` flag draws the selected tab and generation in native
 window chrome, without changing the core page frame or MCP PNG. During a live
 run, a human screenshot of the highlighted page must show the same tab and
