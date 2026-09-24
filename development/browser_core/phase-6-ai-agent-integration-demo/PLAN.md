@@ -165,6 +165,18 @@ plus the attestation to a create-new JSON report. Five black-box verifier
 tests run locally and in CI. This is evidence bookkeeping, not an automated
 claim that the image visibly contains a browser window.
 
+**Local-model readiness preflight (2026-09-25).** Before starting the demo
+site or opening the human window, the runbook now invokes the same Phase 6
+agent with `--preflight-only`. It validates the selected Ollama, local Hugging
+Face TGI, or llama.cpp loopback base using the agent's normal URL rules, then
+checks only that its TCP endpoint accepts a connection. It sends no prompt or
+model request and does not create a transcript. A real run still has to prove
+that the named model itself responds. The agent's ten tests pass, including a
+listening and a closed loopback endpoint; a full-script negative preflight
+exited before launching the site or frontend when given a closed endpoint.
+This removes one avoidable interruption to person-driven evidence collection,
+but does not fill the outstanding human screenshot or real-model proof.
+
 Run prerequisites are deliberately explicit: an operator must run a loopback
 Ollama, Hugging Face TGI, or llama.cpp server with a local vision-and-tool-capable
 model (and a matching vision projector for the llama.cpp GGUF path). In every

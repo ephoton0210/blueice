@@ -19,6 +19,7 @@ use std::collections::BTreeSet;
 use std::env;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
@@ -49,6 +50,7 @@ struct Args {
     evidence_dir: PathBuf,
     max_turns: usize,
     highlight_hold_secs: u64,
+    preflight_only: bool,
 }
 
 fn usage() -> &'static str {
@@ -58,7 +60,7 @@ fn usage() -> &'static str {
   [--ollama-base <http://127.0.0.1:11434/v1/>]
   [--huggingface-base <http://127.0.0.1:8080/v1/>]
   [--llamacpp-base <http://127.0.0.1:8080/v1/>]
-  [--max-turns <n>] [--highlight-hold-seconds <n>]"#
+  [--max-turns <n>] [--highlight-hold-seconds <n>] [--preflight-only]"#
 }
 
 /// The model backend is deliberately a local server implementation, rather
@@ -160,6 +162,25 @@ fn parse_loopback_chat_base(
     Ok(base)
 }
 
+/// Check only whether a previously validated local endpoint accepts TCP.
+/// Do not send a model request: readiness of a particular model is confirmed
+/// by the actual run, and no task content should leave the run before then.
+fn preflight_local_model(base: &Url) -> Result<(), String> {
+    let host = base.host_str().ok_or("the local model URL has no host")?;
+    let port = base.port_or_known_default()
+        .ok_or("the local model URL has no usable port")?;
+    let addresses = (host, port).to_socket_addrs()
+        .map_err(|error| format!("resolving the local model endpoint: {error}"))?;
+    for address in addresses.filter(|address| address.ip().is_loopback()) {
+        if TcpStream::connect_timeout(&address, Duration::from_secs(2)).is_ok() {
+            return Ok(());
+        }
+    }
+    Err(format!(
+        "the local model endpoint {base} is not accepting loopback TCP connections; start the selected provider before opening the human evidence window"
+    ))
+}
+
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut model = None;
     let mut demo_url = None;
@@ -173,6 +194,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut llamacpp_base = None;
     let mut max_turns = None;
     let mut highlight_hold_secs = None;
+    let mut preflight_only = false;
     let mut args = args;
     while let Some(flag) = args.next() {
         match flag.as_str() {
@@ -212,6 +234,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                     "--highlight-hold-seconds must be a non-negative integer".to_string()
                 })?);
             }
+            "--preflight-only" => preflight_only = true,
             "--help" | "-h" => return Err(usage().to_string()),
             _ => return Err(format!("unknown argument {flag:?}\n{}", usage())),
         }
@@ -275,6 +298,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             .ok_or_else(|| format!("--evidence-dir is required\n{}", usage()))?,
         max_turns: max_turns.unwrap_or(MAX_TURNS_DEFAULT),
         highlight_hold_secs: highlight_hold_secs.unwrap_or(10),
+        preflight_only,
     })
 }
 
@@ -1123,6 +1147,19 @@ fn main() {
         eprintln!("blueice-phase6-agent: {error}");
         std::process::exit(2);
     });
+    if args.preflight_only {
+        match preflight_local_model(&args.provider_base) {
+            Ok(()) => {
+                println!("Local {} endpoint accepts loopback TCP connections: {}",
+                    args.provider.name(), args.provider_base);
+                return;
+            }
+            Err(error) => {
+                eprintln!("blueice-phase6-agent: {error}");
+                std::process::exit(1);
+            }
+        }
+    }
     match run(args) {
         Ok((report, evidence)) => {
             println!("Phase 6 model report:\n{report}");
@@ -1249,6 +1286,24 @@ mod tests {
         ] {
             assert!(parse_args(common.into_iter().chain(extra.iter().copied()).map(str::to_string)).is_err());
         }
+    }
+
+    #[test]
+    fn preflight_checks_only_a_validated_listening_loopback_endpoint() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = Url::parse(&format!(
+            "http://127.0.0.1:{}/v1/", listener.local_addr().unwrap().port()
+        )).unwrap();
+        assert!(preflight_local_model(&base).is_ok());
+        let closed = Url::parse("http://127.0.0.1:0/v1/").unwrap();
+        assert!(preflight_local_model(&closed).is_err());
+
+        let parsed = parse_args([
+            "--model", "local-model", "--demo-url", "http://127.0.0.1:4312/index.html",
+            "--launcher-socket", "/tmp/phase6.sock", "--transcript", "/tmp/run.jsonl",
+            "--evidence-dir", "/tmp/evidence", "--preflight-only",
+        ].into_iter().map(str::to_string)).unwrap();
+        assert!(parsed.preflight_only);
     }
 
     #[test]

@@ -164,6 +164,13 @@ printf 'Building the local BlueIce binaries...\n'
         -p blueice-bluejs -p blueice-ai-gatekeeper -p blueice-mcp-server --bins
 )
 
+# Validate the same provider URL that the real driver will use, and fail
+# before opening the human window if its local server is not listening.
+"$bin_dir/blueice-phase6-agent" --provider "$provider" "${provider_args[@]}" \
+    --model "$model" --demo-url "http://127.0.0.1:$demo_port/index.html" \
+    --launcher-socket "$launcher_socket" --mcp-server "$bin_dir/blueice-mcp-server" \
+    --transcript "$transcript" --evidence-dir "$evidence_dir" --preflight-only
+
 python3 -m http.server "$demo_port" --bind 127.0.0.1 \
     --directory "$script_dir/demo-site" >"$run_dir/site.log" 2>&1 &
 site_pid=$!
