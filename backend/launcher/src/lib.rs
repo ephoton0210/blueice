@@ -960,16 +960,13 @@ fn handle_trusted_window_request(
     request: trusted_window::TrustedWindowRequest,
     broker: &Arc<Broker>,
 ) -> trusted_window::TrustedWindowReply {
-    let result = (|| -> Result<(u64, Option<control::InstalledExtensionPermissions>), String> {
-        let change = match request {
-            trusted_window::TrustedWindowRequest::Inspect => None,
-            trusted_window::TrustedWindowRequest::Change {
-                expected_core_generation, expected_extension_id, capability, action,
-            } => Some((expected_core_generation, expected_extension_id, capability, action)),
-        };
+    let result = (|| -> Result<trusted_window::TrustedWindowReply, String> {
+        let mutating = matches!(&request,
+            trusted_window::TrustedWindowRequest::Change { .. }
+                | trusted_window::TrustedWindowRequest::ArmEphemeral { .. });
         // A mutation must not race a capture/replay/swap. A busy cutover
         // rejects it; the person can inspect the new generation afterward.
-        let _cutover_guard = if change.is_some() {
+        let _cutover_guard = if mutating {
             Some(broker.cutover_gate.try_acquire().ok_or_else(||
                 "a core cutover is in progress; inspect permissions again".to_string())?)
         } else { None };
@@ -979,24 +976,72 @@ fn handle_trusted_window_request(
         let core = active.as_mut().ok_or_else(|| "the active core is unavailable".to_string())?;
         let installed = core.inspect_installed_extension()
             .map_err(|error| format!("the active core permission state is unavailable: {error}"))?;
-        let Some((expected_generation, expected_id, capability, action)) = change else {
-            return Ok((generation, installed));
-        };
-        trusted_window::validate_change_target(
-            generation, installed.as_ref(), expected_generation, &expected_id, &capability,
-        ).map_err(str::to_string)?;
-        let updated = core.apply_optional_change(action, &capability)
-            .map_err(|error| format!("the active core could not confirm the permission change: {error}"))?;
-        if updated.extension_id != expected_id {
-            let _ = core.child.kill();
-            return Err("the installed extension changed during permission confirmation".into());
+        match request {
+            trusted_window::TrustedWindowRequest::Inspect => {
+                Ok(trusted_window::TrustedWindowReply::State {
+                    core_generation: generation, installed,
+                })
+            }
+            trusted_window::TrustedWindowRequest::Change {
+                expected_core_generation, expected_extension_id, capability, action,
+            } => {
+                trusted_window::validate_change_target(
+                    generation, installed.as_ref(), expected_core_generation,
+                    &expected_extension_id, &capability,
+                ).map_err(str::to_string)?;
+                let updated = core.apply_optional_change(action, &capability)
+                    .map_err(|error| format!("the active core could not confirm the permission change: {error}"))?;
+                if updated.extension_id != expected_extension_id {
+                    let _ = core.child.kill();
+                    return Err("the installed extension changed during permission confirmation".into());
+                }
+                Ok(trusted_window::TrustedWindowReply::State {
+                    core_generation: generation, installed: Some(updated),
+                })
+            }
+            trusted_window::TrustedWindowRequest::InspectEphemeral {
+                expected_core_generation, expected_extension_id, capability, tab_id,
+            } => {
+                trusted_window::validate_ephemeral_target(
+                    generation, installed.as_ref(), expected_core_generation,
+                    &expected_extension_id, &capability, tab_id,
+                ).map_err(str::to_string)?;
+                let (document_epoch, url) = core.inspect_document(tab_id)
+                    .map_err(|error| format!("the live document is unavailable: {error}"))?;
+                let url = url.filter(|url| url.starts_with("http://") || url.starts_with("https://"))
+                    .ok_or_else(|| "one-shot DOM reads require a live HTTP(S) page".to_string())?;
+                Ok(trusted_window::TrustedWindowReply::EphemeralReview {
+                    core_generation: generation,
+                    installed: installed.expect("a validated one-shot target has an installed package"),
+                    capability, tab_id, document_epoch, url,
+                })
+            }
+            trusted_window::TrustedWindowRequest::ArmEphemeral {
+                expected_core_generation, expected_extension_id, capability,
+                tab_id, document_epoch,
+            } => {
+                trusted_window::validate_ephemeral_target(
+                    generation, installed.as_ref(), expected_core_generation,
+                    &expected_extension_id, &capability, tab_id,
+                ).map_err(str::to_string)?;
+                let (current_epoch, url) = core.inspect_document(tab_id)
+                    .map_err(|error| format!("the live document is unavailable: {error}"))?;
+                if current_epoch != document_epoch || !url.as_deref().is_some_and(|url|
+                    url.starts_with("http://") || url.starts_with("https://")) {
+                    return Err("the reviewed HTTP(S) document changed before confirmation".into());
+                }
+                core.arm_ephemeral(&capability, tab_id, document_epoch)
+                    .map_err(|error| format!("the active core could not confirm the one-shot read: {error}"))??;
+                Ok(trusted_window::TrustedWindowReply::EphemeralArmed {
+                    core_generation: generation,
+                    installed: installed.expect("a validated one-shot target has an installed package"),
+                    capability, tab_id, document_epoch,
+                })
+            }
         }
-        Ok((generation, Some(updated)))
     })();
     match result {
-        Ok((core_generation, installed)) => trusted_window::TrustedWindowReply::State {
-            core_generation, installed,
-        },
+        Ok(reply) => reply,
         Err(reason) => trusted_window::TrustedWindowReply::Rejected { reason },
     }
 }
@@ -1527,15 +1572,66 @@ impl SpawnedCore {
             return Ok(None);
         };
         match channel.inspect()? {
-            PermissionControlReply::State { extension_id, name, version, optional } => {
+            PermissionControlReply::State { extension_id, name, version, optional, runtime_ephemeral } => {
                 Ok(Some(control::InstalledExtensionPermissions {
-                    extension_id, name, version, optional,
+                    extension_id, name, version, optional, runtime_ephemeral,
                 }))
             }
-            other => Err(io::Error::other(format!(
-                "core returned a non-state permission inspection reply: {other:?}"
-            ))),
+            _ => Err(io::Error::other(
+                "core returned a non-state permission inspection reply"
+            )),
         }
+    }
+
+    fn inspect_document(&self, tab_id: u64) -> io::Result<(u64, Option<String>)> {
+        let channel = self.permission_control.as_ref().ok_or_else(|| {
+            io::Error::other("the active core has no installed permission channel")
+        })?;
+        match channel.exchange(
+            PermissionControlRequest::InspectDocument { tab_id }, PERMISSION_INSPECT_TIMEOUT,
+        )? {
+            PermissionControlReply::Document { tab_id: observed, document_epoch, url }
+                if observed == tab_id => Ok((document_epoch, url)),
+            PermissionControlReply::Rejected { reason } => Err(io::Error::other(reason)),
+            _ => Err(io::Error::other(
+                "core returned an unexpected document inspection reply"
+            )),
+        }
+    }
+
+    /// A core rejection (for example, a navigation after native review) is
+    /// expected and leaves the core serving. Only an uncertain transport or
+    /// malformed success kills the generation, preventing a late lease from
+    /// outliving its trusted window.
+    fn arm_ephemeral(
+        &mut self, capability: &str, tab_id: u64, document_epoch: u64,
+    ) -> io::Result<Result<(), String>> {
+        let outcome = (|| {
+            let channel = self.permission_control.as_ref().ok_or_else(|| {
+                io::Error::other("the active core has no installed permission channel")
+            })?;
+            match channel.exchange(
+                PermissionControlRequest::ArmEphemeral {
+                    capability: capability.to_string(), tab_id, document_epoch,
+                },
+                PERMISSION_CHANGE_TIMEOUT,
+            )? {
+                PermissionControlReply::EphemeralArmed {
+                    capability: armed, tab_id: armed_tab,
+                    document_epoch: armed_epoch, ticket,
+                } if armed == capability && armed_tab == tab_id
+                    && armed_epoch == document_epoch && ticket.len() == 64
+                    && ticket.bytes().all(|byte| byte.is_ascii_hexdigit()) => Ok(Ok(())),
+                PermissionControlReply::Rejected { reason } => Ok(Err(reason)),
+                _ => Err(io::Error::other(
+                    "core returned an inconsistent one-shot permission reply"
+                )),
+            }
+        })();
+        if outcome.is_err() {
+            let _ = self.child.kill();
+        }
+        outcome
     }
 
     /// The caller must hold the broker's cutover gate and active-core lock
@@ -1563,9 +1659,9 @@ impl SpawnedCore {
                 PermissionControlReply::Updated { capability: updated, granted, .. }
                     if updated == capability && granted == expected_granted => {}
                 PermissionControlReply::Rejected { reason } => return Err(io::Error::other(reason)),
-                other => return Err(io::Error::other(format!(
-                    "core returned an unexpected permission change reply: {other:?}"
-                ))),
+                _ => return Err(io::Error::other(
+                    "core returned an unexpected permission change reply"
+                )),
             }
             let installed = self.inspect_installed_extension()?.ok_or_else(|| {
                 io::Error::other("the installed extension disappeared after a permission change")
@@ -1651,6 +1747,7 @@ mod tests {
                         name: "Notes".into(),
                         version: "1".into(),
                         optional: vec![],
+                        runtime_ephemeral: vec![],
                     },
                     PermissionControlRequest::InspectDocument { tab_id } => PermissionControlReply::Document {
                         tab_id, document_epoch: 3, url: Some("https://example.test/".into()),
@@ -1689,7 +1786,7 @@ mod tests {
     }
 
     #[test]
-    fn native_pipe_changes_only_the_exact_active_optional_grant_outside_cutover() {
+    fn native_pipe_scopes_optional_grants_and_one_shot_reads_outside_cutover() {
         use std::sync::atomic::AtomicBool;
         let root = std::env::temp_dir().join(format!(
             "blueice-native-permission-unit-{}-{}",
@@ -1704,9 +1801,13 @@ mod tests {
         });
         let granted = Arc::new(AtomicBool::new(false));
         let grant_count = Arc::new(AtomicU64::new(0));
+        let document_epoch = Arc::new(AtomicU64::new(12));
+        let arm_count = Arc::new(AtomicU64::new(0));
         let simulated_core = thread::spawn({
             let granted = Arc::clone(&granted);
             let grant_count = Arc::clone(&grant_count);
+            let document_epoch = Arc::clone(&document_epoch);
+            let arm_count = Arc::clone(&arm_count);
             move || {
                 while let Some(request) = read_permission_control_request(&mut child_input).unwrap() {
                     let reply = match request {
@@ -1719,12 +1820,25 @@ mod tests {
                                 granted: granted.load(Ordering::SeqCst),
                                 origins: vec!["https://example.test".into()],
                             }],
+                            runtime_ephemeral: vec![blueice_ipc::permission_control::EphemeralCapabilityInfo {
+                                capability: "dom:read".into(),
+                                origins: vec!["https://example.test".into()],
+                            }],
                         },
                         PermissionControlRequest::InspectDocument { tab_id } => PermissionControlReply::Document {
-                            tab_id, document_epoch: 0, url: None,
+                            tab_id, document_epoch: document_epoch.load(Ordering::SeqCst),
+                            url: Some("https://example.test/page".into()),
                         },
-                        PermissionControlRequest::ArmEphemeral { .. } => PermissionControlReply::Rejected {
-                            reason: "the test worker has no ephemeral declaration".into(),
+                        PermissionControlRequest::ArmEphemeral { capability, tab_id, document_epoch: expected } => {
+                            if expected != document_epoch.load(Ordering::SeqCst) {
+                                PermissionControlReply::Rejected { reason: "stale document".into() }
+                            } else {
+                                arm_count.fetch_add(1, Ordering::SeqCst);
+                                PermissionControlReply::EphemeralArmed {
+                                    capability, tab_id, document_epoch: expected,
+                                    ticket: "a".repeat(64),
+                                }
+                            }
                         },
                         PermissionControlRequest::Grant { capability } => {
                             grant_count.fetch_add(1, Ordering::SeqCst);
@@ -1798,6 +1912,49 @@ mod tests {
         assert!(matches!(revoked_reply, trusted_window::TrustedWindowReply::State {
             core_generation: 3, installed: Some(ref installed),
         } if !installed.optional[0].granted));
+        let review = |generation, id: &str, tab_id| {
+            trusted_window::TrustedWindowRequest::InspectEphemeral {
+                expected_core_generation: generation,
+                expected_extension_id: id.into(),
+                capability: "dom:read".into(), tab_id,
+            }
+        };
+        for invalid in [
+            review(2, "sha256:installed", 7),
+            review(3, "sha256:other", 7),
+            review(3, "sha256:installed", 0),
+        ] {
+            assert!(matches!(handle_trusted_window_request(invalid, &broker),
+                trusted_window::TrustedWindowReply::Rejected { .. }));
+        }
+        let reviewed = handle_trusted_window_request(review(3, "sha256:installed", 7), &broker);
+        assert!(matches!(reviewed, trusted_window::TrustedWindowReply::EphemeralReview {
+            core_generation: 3, tab_id: 7, document_epoch: 12,
+            ref url, ref installed, ..
+        } if url == "https://example.test/page"
+            && installed.runtime_ephemeral[0].origins == ["https://example.test"]));
+        let arm = |epoch| trusted_window::TrustedWindowRequest::ArmEphemeral {
+            expected_core_generation: 3,
+            expected_extension_id: "sha256:installed".into(),
+            capability: "dom:read".into(), tab_id: 7, document_epoch: epoch,
+        };
+        document_epoch.store(13, Ordering::SeqCst);
+        assert!(matches!(handle_trusted_window_request(arm(12), &broker),
+            trusted_window::TrustedWindowReply::Rejected { .. }));
+        assert_eq!(arm_count.load(Ordering::SeqCst), 0,
+            "navigation after review must prevent arming");
+        let cutover = broker.cutover_gate.try_acquire().unwrap();
+        assert!(matches!(handle_trusted_window_request(arm(13), &broker),
+            trusted_window::TrustedWindowReply::Rejected { .. }));
+        drop(cutover);
+        assert_eq!(arm_count.load(Ordering::SeqCst), 0);
+        assert!(matches!(handle_trusted_window_request(review(3, "sha256:installed", 7), &broker),
+            trusted_window::TrustedWindowReply::EphemeralReview { document_epoch: 13, .. }));
+        assert!(matches!(handle_trusted_window_request(arm(13), &broker),
+            trusted_window::TrustedWindowReply::EphemeralArmed {
+                core_generation: 3, tab_id: 7, document_epoch: 13, ..
+            }));
+        assert_eq!(arm_count.load(Ordering::SeqCst), 1);
         let mut inbound = Vec::new();
         trusted_window::write_request(&mut inbound, &trusted_window::TrustedWindowRequest::Inspect).unwrap();
         let mut outbound = Vec::new();

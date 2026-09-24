@@ -74,8 +74,17 @@ shows the package hash, core generation, capability, grant state, and full
 manifest origin scope. Review and Confirm use separate native pointer targets;
 keyboard auto-repeat and a window too small to show the panel cannot confirm.
 Its anonymous launcher-owned pipe is not an extension
-API, public frontend/MCP message, operator-control request, or page action;
-it cannot grant `runtime_ephemeral` declarations. The launcher rechecks the
+API, public frontend/MCP message, operator-control request, or page action.
+For an installed `runtime_ephemeral` `dom:read` declaration, the F8 panel also
+offers a separate **Review one-shot DOM read** pointer target for the selected
+tab. The launcher obtains the live HTTP(S) URL and document epoch through
+core's private parent pipe; the panel shows the package hash, full pageable
+URL and installed origin scope before a distinct **Confirm one read** pointer
+target can arm that exact document. Keyboard confirmation cannot arm it. The
+launcher rechecks the epoch, package, and core generation, rejects cutover
+races, and returns no bearer token to the window. Core expires an unspent
+lease after ten seconds and spends it on at most one matching snapshot read.
+Other `runtime_ephemeral` capabilities remain unavailable. The launcher rechecks the
 package/generation and rejects cutover races before using its separate private
 core-parent stdio protocol. A failed or uncertain mutation kills that core
 generation, and loss of the native window pipe stops the broker/core. The
@@ -94,16 +103,16 @@ shared launcher IPC accepts both human frontend
 and AI clients, so an ordinary client message or toolbar activation cannot by
 itself prove human approval; only the separately launched native panel uses
 the private permission path. A real person-driven Grant/Revoke window test and
-runtime-ephemeral gesture lifecycle remain open; see the [Phase 9 plan](PLAN.md).
-An internal core-parent-only `ArmEphemeral` test path can bind one
+real person-driven one-shot read proof remain open; see the [Phase 9 plan](PLAN.md).
+A core-parent-only `ArmEphemeral` path can bind one
 `dom:read` v3 operation to a live tab/document epoch. On success core queues a
 private `TrustedEphemeralDomRead` event for its authenticated installed host.
 The host keeps the opaque token in invocation state and presents it on the v3
 request; the guest sees only the event kind and tab ID, and core spends the
-token at the snapshot read. No native gesture invokes this path yet, so an
-installed extension cannot obtain such a lease through the ordinary
-frontend/MCP protocol or the current F8 panel. Other runtime-ephemeral
-capabilities remain ungrantable.
+token at the snapshot read. The opt-in trusted native F8 confirmation above
+is the only user-accessible arming path; ordinary frontend/MCP messages,
+toolbar/popup activation, page content, guest code, and operator control
+cannot arm it. Other runtime-ephemeral capabilities remain ungrantable.
 The host derives an ID from the exact manifest and
 module bytes; the package cannot choose its identity. In production, core
 starts the host and authenticates that child with a fresh environment-only
@@ -127,7 +136,7 @@ is separate from the independently negotiated **capability API versions**:
 
 | Capability | Supported versions | Core-spawned guest version | Implemented effects |
 | --- | --- | --- | --- |
-| `dom:read` | 1–3 | 3 | A live tab's AI-facing representation, addressed by explicit tab ID in v2; v3 adds a private token-bearing one-shot read that is not yet reachable from the guest ABI. |
+| `dom:read` | 1–3 | 3 | A live tab's AI-facing representation, addressed by explicit tab ID in v2; v3 adds a private token-bearing one-shot read exposed to an installed guest only during its trusted event. |
 | `dom:write` | 1–9 | 9 | Bounded native form-control, semantic text-leaf, and noninteractive inline textContent operations; legacy generic v1 mutation has no core effect. |
 | `network:observe` | 1–2 | 2 | Committed main-frame final response (v1) and initial request/redirect trace (v2). |
 | `network:intercept` | 1–6 | 6 | Exact navigation URL block (v2), clearing own rules (v3), ASCII host/subdomain block (v4), literal host/path-prefix block (v5), and exact same-origin navigation rewrite (v6); legacy v1 registration has no core effect. |

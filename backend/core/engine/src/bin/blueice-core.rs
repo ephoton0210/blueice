@@ -30,7 +30,7 @@ use blueice_extension_host::{
 };
 use blueice_ipc::extension::{ExtensionRuntimeEvent, NetworkResponseInfo, NetworkTraceInfo};
 use blueice_ipc::permission_control::{
-    read_permission_control_request, write_permission_control_reply, OptionalCapabilityInfo,
+    read_permission_control_request, write_permission_control_reply, EphemeralCapabilityInfo, OptionalCapabilityInfo,
     PermissionControlReply, PermissionControlRequest,
 };
 use std::io::{self, Read, Write};
@@ -94,7 +94,7 @@ struct PermissionControlMetadata {
     name: String,
     version: String,
     optional: Vec<OptionalCapabilityInfo>,
-    ephemeral: Vec<String>,
+    ephemeral: Vec<EphemeralCapabilityInfo>,
 }
 
 struct ExtensionService {
@@ -210,6 +210,7 @@ fn permission_control_reply(
                 granted: registry.has_capability(&metadata.extension_id, &entry.capability),
                 origins: entry.origins.clone(),
             }).collect(),
+            runtime_ephemeral: metadata.ephemeral.clone(),
         },
         PermissionControlRequest::InspectDocument { tab_id } => {
             match inspect_live_document(session_requests, tab_id) {
@@ -220,7 +221,7 @@ fn permission_control_reply(
             }
         }
         PermissionControlRequest::ArmEphemeral { capability, tab_id, document_epoch } => {
-            if !metadata.ephemeral.contains(&capability) {
+            if !metadata.ephemeral.iter().any(|entry| entry.capability == capability) {
                 return PermissionControlReply::Rejected {
                     reason: "capability is not an installed runtime-ephemeral declaration".into(),
                 };
@@ -311,8 +312,8 @@ fn serve_permission_control<R: Read, W: Write>(
     for entry in &metadata.optional {
         let _ = registry.revoke_optional(&metadata.extension_id, &entry.capability);
     }
-    for capability in &metadata.ephemeral {
-        let _ = registry.revoke_runtime_ephemeral(&metadata.extension_id, capability);
+    for entry in &metadata.ephemeral {
+        let _ = registry.revoke_runtime_ephemeral(&metadata.extension_id, &entry.capability);
     }
     result
 }
@@ -1024,8 +1025,15 @@ fn main() -> ExitCode {
                             .unwrap_or_default(),
                     }
                 }).collect(),
-                ephemeral: installed.manifest().capabilities().runtime_ephemeral()
-                    .iter().cloned().collect(),
+                ephemeral: installed.manifest().capabilities().runtime_ephemeral().iter().map(|capability| {
+                    EphemeralCapabilityInfo {
+                        capability: capability.clone(),
+                        origins: installed.manifest().capability_origins()
+                            .get(capability)
+                            .map(|origins| origins.iter().cloned().collect())
+                            .unwrap_or_default(),
+                    }
+                }).collect(),
             });
             if let Some(parent) = socket.parent() {
                 if let Err(error) = blueice_ipc::local_socket::ensure_private_socket_dir(parent) {
@@ -1523,7 +1531,9 @@ mod tests {
             optional: vec![OptionalCapabilityInfo {
                 capability: "storage".into(), granted: false, origins: Vec::new(),
             }],
-            ephemeral: vec!["dom:read".into()],
+            ephemeral: vec![EphemeralCapabilityInfo {
+                capability: "dom:read".into(), origins: Vec::new(),
+            }],
         };
         let (live_tx, live_rx) = mpsc::channel();
         let live_session = thread::spawn(move || {

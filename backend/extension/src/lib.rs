@@ -75,7 +75,7 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// The one hardcoded identity used only when no installed manifest is supplied.
 pub const MINIMAL_SLICE_EXTENSION_ID: &str = "minimal-slice-extension";
@@ -347,6 +347,9 @@ const PLACEHOLDER_DOM_READ_VALUE: &str =
     "<blueice-extension-host: no real Page is wired into this minimal slice>";
 
 const GATEKEEPER_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
+/// A native one-shot decision must not remain usable indefinitely if the
+/// authenticated host stalls before running its queued invocation.
+const RUNTIME_EPHEMERAL_TTL: Duration = Duration::from_secs(10);
 
 /// Which capabilities each connected extension has been granted. The registry
 /// is keyed by an installed package's derived ID when used by
@@ -367,6 +370,7 @@ struct EphemeralLease {
     ticket: String,
     tab_id: u64,
     document_epoch: u64,
+    expires_at: Instant,
 }
 
 #[derive(Default)]
@@ -488,17 +492,23 @@ impl ExtensionRegistry {
         let state = self.ephemeral_state(extension_id, capability)?;
         let mut slot = state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let ticket = new_ephemeral_ticket()?;
-        slot.lease = Some(EphemeralLease { ticket: ticket.clone(), tab_id, document_epoch });
+        slot.lease = Some(EphemeralLease {
+            ticket: ticket.clone(), tab_id, document_epoch,
+            expires_at: Instant::now() + RUNTIME_EPHEMERAL_TTL,
+        });
         Ok(ticket)
     }
 
     /// Inspection reveals only whether a lease remains, never its bearer.
     /// Only `ArmEphemeral`'s private parent reply carries the secret token.
     pub fn has_unspent_runtime_ephemeral_lease(&self, extension_id: &str, capability: &str) -> bool {
-        self.ephemeral_state(extension_id, capability).ok()
-            .is_some_and(|state| state.lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .lease.is_some())
+        self.ephemeral_state(extension_id, capability).ok().is_some_and(|state| {
+            let mut slot = state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            if slot.lease.as_ref().is_some_and(|lease| Instant::now() >= lease.expires_at) {
+                slot.lease = None;
+            }
+            slot.lease.is_some()
+        })
     }
 
     pub fn has_runtime_ephemeral_declaration(&self, extension_id: &str, capability: &str) -> bool {
@@ -520,6 +530,10 @@ impl ExtensionRegistry {
             return false;
         };
         let mut slot = state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if slot.lease.as_ref().is_some_and(|lease| Instant::now() >= lease.expires_at) {
+            slot.lease = None;
+            return false;
+        }
         match slot.lease.as_ref() {
             Some(current) if constant_time_authentication_matches(&current.ticket, expected_ticket)
                 && current.tab_id == tab_id => {
@@ -2991,6 +3005,15 @@ mod tests {
         assert!(registry.revoke_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ).unwrap());
         assert!(!registry.revoke_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ).unwrap());
         assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &last_ticket, 1, 3));
+        let expired_ticket = registry.arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 3).unwrap();
+        {
+            let state = registry.ephemeral_state("sha256:installed", CAPABILITY_DOM_READ).unwrap();
+            let mut slot = state.lock().unwrap();
+            slot.lease.as_mut().unwrap().expires_at = Instant::now() - Duration::from_nanos(1);
+        }
+        assert!(!registry.has_unspent_runtime_ephemeral_lease("sha256:installed", CAPABILITY_DOM_READ));
+        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &expired_ticket, 1, 3),
+            "an event delayed past the gesture deadline must not read the document");
     }
 
     #[test]

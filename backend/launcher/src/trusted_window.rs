@@ -38,6 +38,23 @@ pub enum TrustedWindowRequest {
         capability: String,
         action: PermissionAction,
     },
+    /// First native review step. The launcher obtains the live document
+    /// identity from its private core-parent pipe, not the shared client IPC.
+    InspectEphemeral {
+        expected_core_generation: u64,
+        expected_extension_id: String,
+        capability: String,
+        tab_id: u64,
+    },
+    /// Second, distinct native confirmation. Core rejects a changed document
+    /// epoch before arming, and the launcher never returns the bearer ticket.
+    ArmEphemeral {
+        expected_core_generation: u64,
+        expected_extension_id: String,
+        capability: String,
+        tab_id: u64,
+        document_epoch: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,6 +65,23 @@ pub enum TrustedWindowReply {
     State {
         core_generation: u64,
         installed: Option<InstalledExtensionPermissions>,
+    },
+    EphemeralReview {
+        core_generation: u64,
+        installed: InstalledExtensionPermissions,
+        capability: String,
+        tab_id: u64,
+        document_epoch: u64,
+        url: String,
+    },
+    /// Acknowledges only that core armed an internal one-shot event. The
+    /// opaque bearer ticket is deliberately absent from the native pipe.
+    EphemeralArmed {
+        core_generation: u64,
+        installed: InstalledExtensionPermissions,
+        capability: String,
+        tab_id: u64,
+        document_epoch: u64,
     },
     Rejected { reason: String },
 }
@@ -74,6 +108,31 @@ pub(crate) fn validate_change_target(
     }
     if !installed.optional.iter().any(|entry| entry.capability == capability) {
         return Err("the capability is not an installed optional declaration");
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_ephemeral_target(
+    current_generation: u64,
+    installed: Option<&InstalledExtensionPermissions>,
+    expected_generation: u64,
+    expected_extension_id: &str,
+    capability: &str,
+    tab_id: u64,
+) -> Result<(), &'static str> {
+    if expected_generation != current_generation {
+        return Err("the core changed after this one-shot permission was inspected");
+    }
+    let Some(installed) = installed else {
+        return Err("there is no installed extension in the active core");
+    };
+    if installed.extension_id != expected_extension_id {
+        return Err("the installed extension changed after this one-shot permission was inspected");
+    }
+    if tab_id == 0 || capability != "dom:read"
+        || !installed.runtime_ephemeral.iter().any(|entry| entry.capability == capability)
+    {
+        return Err("the target is not a supported installed one-shot declaration");
     }
     Ok(())
 }
@@ -125,7 +184,7 @@ pub fn read_reply<R: Read>(reader: &mut R) -> io::Result<Option<TrustedWindowRep
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blueice_ipc::permission_control::OptionalCapabilityInfo;
+    use blueice_ipc::permission_control::{EphemeralCapabilityInfo, OptionalCapabilityInfo};
 
     fn installed() -> InstalledExtensionPermissions {
         InstalledExtensionPermissions {
@@ -136,6 +195,10 @@ mod tests {
                 capability: "storage".into(),
                 granted: false,
                 origins: vec![],
+            }],
+            runtime_ephemeral: vec![EphemeralCapabilityInfo {
+                capability: "dom:read".into(),
+                origins: vec!["https://example.test".into()],
             }],
         }
     }
@@ -156,6 +219,16 @@ mod tests {
                 capability: "storage".into(),
                 action: PermissionAction::Revoke,
             },
+            TrustedWindowRequest::InspectEphemeral {
+                expected_core_generation: 4,
+                expected_extension_id: "sha256:package-a".into(),
+                capability: "dom:read".into(), tab_id: 7,
+            },
+            TrustedWindowRequest::ArmEphemeral {
+                expected_core_generation: 4,
+                expected_extension_id: "sha256:package-a".into(),
+                capability: "dom:read".into(), tab_id: 7, document_epoch: 12,
+            },
         ] {
             let mut wire = Vec::new();
             write_request(&mut wire, &request).unwrap();
@@ -168,6 +241,23 @@ mod tests {
         let mut wire = Vec::new();
         write_reply(&mut wire, &reply).unwrap();
         assert_eq!(read_reply(&mut wire.as_slice()).unwrap(), Some(reply));
+        for reply in [
+            TrustedWindowReply::EphemeralReview {
+                core_generation: 4, installed: installed(),
+                capability: "dom:read".into(), tab_id: 7, document_epoch: 12,
+                url: "https://example.test/page".into(),
+            },
+            TrustedWindowReply::EphemeralArmed {
+                core_generation: 4, installed: installed(),
+                capability: "dom:read".into(), tab_id: 7, document_epoch: 12,
+            },
+        ] {
+            let mut wire = Vec::new();
+            write_reply(&mut wire, &reply).unwrap();
+            assert_eq!(read_reply(&mut wire.as_slice()).unwrap(), Some(reply));
+            let wire_text = String::from_utf8_lossy(&wire);
+            assert!(!wire_text.contains("ticket"), "the native reply must not expose a bearer");
+        }
     }
 
     #[test]
@@ -178,6 +268,16 @@ mod tests {
         assert!(validate_change_target(4, Some(&package), 4, "sha256:other", "storage").is_err());
         assert!(validate_change_target(4, Some(&package), 4, &package.extension_id, "ui:inject").is_err());
         assert!(validate_change_target(4, None, 4, &package.extension_id, "storage").is_err());
+        assert_eq!(validate_ephemeral_target(4, Some(&package), 4,
+            &package.extension_id, "dom:read", 7), Ok(()));
+        assert!(validate_ephemeral_target(5, Some(&package), 4,
+            &package.extension_id, "dom:read", 7).is_err());
+        assert!(validate_ephemeral_target(4, Some(&package), 4,
+            "sha256:other", "dom:read", 7).is_err());
+        assert!(validate_ephemeral_target(4, Some(&package), 4,
+            &package.extension_id, "storage", 7).is_err());
+        assert!(validate_ephemeral_target(4, Some(&package), 4,
+            &package.extension_id, "dom:read", 0).is_err());
     }
 
     #[test]

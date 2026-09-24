@@ -18,7 +18,7 @@
 //! inspection, but never a permission grant/revoke operation.
 
 use serde::{Deserialize, Serialize};
-use blueice_ipc::permission_control::OptionalCapabilityInfo;
+use blueice_ipc::permission_control::{EphemeralCapabilityInfo, OptionalCapabilityInfo};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
@@ -50,6 +50,9 @@ pub struct InstalledExtensionPermissions {
     pub name: String,
     pub version: String,
     pub optional: Vec<OptionalCapabilityInfo>,
+    /// Installed one-shot declarations, never persistent grants.
+    #[serde(default)]
+    pub runtime_ephemeral: Vec<EphemeralCapabilityInfo>,
 }
 
 /// The launcher's reply to a [`ControlRequest`].

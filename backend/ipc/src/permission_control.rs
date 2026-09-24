@@ -36,6 +36,16 @@ pub struct OptionalCapabilityInfo {
     pub origins: Vec<String>,
 }
 
+/// An installed one-shot declaration is visible to the native consent UI,
+/// but never reported as a persistent grant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EphemeralCapabilityInfo {
+    pub capability: String,
+    /// Empty means the validated manifest did not restrict this capability
+    /// to a list of exact origins. Core still checks the live page at use.
+    pub origins: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum PermissionControlReply {
@@ -44,6 +54,8 @@ pub enum PermissionControlReply {
         name: String,
         version: String,
         optional: Vec<OptionalCapabilityInfo>,
+        #[serde(default)]
+        runtime_ephemeral: Vec<EphemeralCapabilityInfo>,
     },
     Document {
         tab_id: u64,
@@ -169,6 +181,10 @@ mod tests {
             optional: vec![OptionalCapabilityInfo {
                 capability: "dom:read".into(),
                 granted: false,
+                origins: vec!["https://example.test".into()],
+            }],
+            runtime_ephemeral: vec![EphemeralCapabilityInfo {
+                capability: "dom:read".into(),
                 origins: vec!["https://example.test".into()],
             }],
         };

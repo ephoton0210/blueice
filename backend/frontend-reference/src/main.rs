@@ -549,6 +549,11 @@ impl App {
                 format!(" · Extension: {} ({} optional)",
                     permission_panel::safe_extension_name(&package.name), package.optional.len())
             }
+            Some(trusted_window::TrustedWindowReply::EphemeralReview { installed: package, .. })
+            | Some(trusted_window::TrustedWindowReply::EphemeralArmed { installed: package, .. }) => {
+                format!(" · Extension: {} ({} optional)",
+                    permission_panel::safe_extension_name(&package.name), package.optional.len())
+            }
             Some(trusted_window::TrustedWindowReply::State { installed: None, .. }) => {
                 " · No installed extension".to_string()
             }
@@ -1256,9 +1261,10 @@ impl ApplicationHandler<UserEvent> for App {
             } => {
                 let (x, y) = self.cursor;
                 if self.permission_panel.is_open() {
-                    let command = self.permission_panel.click(
+                    let command = self.permission_panel.click_with_tab(
                         x, y, self.window_size.0, self.window_size.1,
                         self.trusted_permissions.as_ref(), self.trusted_request_pending,
+                        self.selected_tab,
                     );
                     self.handle_permission_panel_command(command);
                     return;

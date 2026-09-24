@@ -40,10 +40,58 @@ const MANUAL_UI_WAT: &str = r#"(module
             drop
         end))"#;
 
+const MANUAL_EPHEMERAL_WAT: &str = r#"(module
+    (import "blueice" "runtime_event_kind" (func $kind (result i32)))
+    (import "blueice" "runtime_event_tab_id" (func $tab (result i64)))
+    (import "blueice" "dom_read_ephemeral_utf8" (func $read (param i64 i32 i32) (result i32)))
+    (import "blueice" "set_toolbar_button_utf8" (func $toolbar (param i32 i32) (result i32)))
+    (memory (export "memory") 2)
+    (data (i32.const 0) "Read Ready")
+    (data (i32.const 32) "Read Succeeded")
+    (func (export "blueice_start")
+        call $kind
+        i32.const 0
+        i32.eq
+        if
+            i32.const 0
+            i32.const 10
+            call $toolbar
+            i32.const 0
+            i32.ne
+            if unreachable end
+        end
+        call $kind
+        i32.const 4
+        i32.eq
+        if
+            call $tab
+            i32.const 128
+            i32.const 65536
+            call $read
+            i32.const 0
+            i32.le_s
+            if unreachable end
+            call $tab
+            i32.const 128
+            i32.const 65536
+            call $read
+            i32.const -1
+            i32.ne
+            if unreachable end
+            i32.const 32
+            i32.const 14
+            call $toolbar
+            i32.const 0
+            i32.ne
+            if unreachable end
+        end))"#;
+
 #[test]
 fn manual_consent_fixture_compiles_to_a_real_wasm_module() {
     let bytes = wat::parse_str(MANUAL_UI_WAT).unwrap();
     assert_eq!(&bytes[..4], b"\0asm");
+    let ephemeral = wat::parse_str(MANUAL_EPHEMERAL_WAT).unwrap();
+    assert_eq!(&ephemeral[..4], b"\0asm");
 }
 
 struct TestLauncher(Child, PathBuf);
@@ -280,6 +328,138 @@ fn real_installed_wasm_toolbar_follows_private_optional_grant_and_revoke() {
         core.0.try_wait().unwrap().is_some(),
         "core did not exit after Shutdown"
     );
+}
+
+/// Headless companion to the person-driven F8 proof below. It arms through
+/// core's private parent pipe, so this proves the real core/host/WASM effect
+/// and second-read denial, but deliberately does not prove a human gesture.
+#[test]
+fn real_installed_wasm_consumes_a_private_one_shot_dom_read_once() {
+    use blueice_ipc::permission_control::{
+        read_permission_control_reply, write_permission_control_request,
+        PermissionControlReply, PermissionControlRequest,
+    };
+    use std::process::Stdio;
+
+    let launcher_bin = PathBuf::from(env!("CARGO_BIN_EXE_blueice-launcher"));
+    let core_bin = launcher_bin.with_file_name("blueice-core");
+    let host_bin = launcher_bin.with_file_name("blueice-extension-host");
+    let gatekeeper_bin = launcher_bin.with_file_name("blueice-ai-gatekeeper");
+    for binary in [&core_bin, &host_bin, &gatekeeper_bin] {
+        assert!(binary.exists(), "build {} beside the launcher first", binary.display());
+    }
+    let root = std::env::temp_dir().join(format!(
+        "bte-{}-{}", std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            .unwrap().as_nanos(),
+    ));
+    std::fs::create_dir(&root).unwrap();
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let root = TestRoot(root);
+    let core_socket = root.0.join("core.sock");
+    let extension_socket = root.0.join("extension.sock");
+    let gatekeeper_socket = root.0.join("gatekeeper.sock");
+    let frames = root.0.join("frames");
+    let manifest = root.0.join("extension.json");
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let url = format!("{origin}/one-shot-proof");
+    std::fs::write(&manifest, format!(
+        r#"{{"name":"Native one-shot proof","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{{"declared":["ui:inject"],"runtime_ephemeral":["dom:read"]}},"capability_origins":{{"dom:read":["{origin}"]}}}}"#,
+    )).unwrap();
+    std::fs::write(root.0.join("extension.wasm"),
+        wat::parse_str(MANUAL_EPHEMERAL_WAT).unwrap()).unwrap();
+    let gatekeeper = Command::new(gatekeeper_bin)
+        .args(["--socket", gatekeeper_socket.to_str().unwrap(),
+            "--settings", root.0.join("gatekeeper-settings.json").to_str().unwrap()])
+        .spawn().unwrap();
+    let _gatekeeper = TestProcess(gatekeeper);
+    wait_for_path(&gatekeeper_socket, Instant::now() + Duration::from_secs(5));
+    let core = Command::new(core_bin)
+        .args([
+            "--socket", core_socket.to_str().unwrap(),
+            "--extension-socket", extension_socket.to_str().unwrap(),
+            "--extension-manifest", manifest.to_str().unwrap(),
+            "--extension-host", host_bin.to_str().unwrap(),
+            "--permission-control-stdio",
+            "--gatekeeper-socket", gatekeeper_socket.to_str().unwrap(),
+            "--frame-dir", frames.to_str().unwrap(),
+        ])
+        .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    let mut core = TestProcess(core);
+    wait_for_path(&core_socket, Instant::now() + Duration::from_secs(15));
+    let mut parent_input = core.0.stdin.take().unwrap();
+    let mut parent_output = core.0.stdout.take().unwrap();
+    write_permission_control_request(&mut parent_input, &PermissionControlRequest::Inspect).unwrap();
+    assert!(matches!(read_permission_control_reply(&mut parent_output).unwrap(),
+        PermissionControlReply::State { optional, runtime_ephemeral, .. }
+            if optional.is_empty() && runtime_ephemeral.len() == 1
+                && runtime_ephemeral[0].capability == "dom:read"
+                && runtime_ephemeral[0].origins == [origin.clone()]));
+    let mut client = UnixStream::connect(&core_socket).unwrap();
+    blueice_ipc::client_handshake(&mut client).unwrap();
+    let mut reader = client.try_clone().unwrap();
+    let (message_tx, message_rx) = mpsc::channel();
+    thread::spawn(move || {
+        while let Ok(message) = blueice_ipc::read_server_message(&mut reader) {
+            if message_tx.send(message).is_err() { break; }
+        }
+    });
+    blueice_ipc::write_client_message(&mut client, &blueice_ipc::ClientMessage::GetExtensionToolbar).unwrap();
+    await_toolbar(&message_rx, Some("Read Ready"), Instant::now() + Duration::from_secs(5));
+    let server = thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+                    && Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+                Err(error) => panic!("one-shot fixture was not fetched: {error}"),
+            }
+        };
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let body = b"<h1>One-shot proof</h1>";
+        stream.write_all(format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len(),
+        ).as_bytes()).unwrap();
+        stream.write_all(body).unwrap();
+    });
+    blueice_ipc::write_client_message(&mut client,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() }).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let mut frame_ready = false;
+    while !frame_ready && Instant::now() < deadline {
+        let message = message_rx.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .expect("the fixture page did not render");
+        frame_ready = matches!(message, blueice_ipc::ServerMessage::FrameReady { .. });
+    }
+    assert!(frame_ready);
+    server.join().unwrap();
+    write_permission_control_request(&mut parent_input,
+        &PermissionControlRequest::InspectDocument { tab_id: 1 }).unwrap();
+    let PermissionControlReply::Document { tab_id: 1, document_epoch, url: Some(live_url) } =
+        read_permission_control_reply(&mut parent_output).unwrap() else {
+        panic!("core did not expose the committed document identity")
+    };
+    assert_eq!(live_url, url);
+    write_permission_control_request(&mut parent_input,
+        &PermissionControlRequest::ArmEphemeral {
+            capability: "dom:read".into(), tab_id: 1, document_epoch,
+        }).unwrap();
+    assert!(matches!(read_permission_control_reply(&mut parent_output).unwrap(),
+        PermissionControlReply::EphemeralArmed {
+            capability, tab_id: 1, document_epoch: armed_epoch, ..
+        } if capability == "dom:read" && armed_epoch == document_epoch));
+    await_toolbar(&message_rx, Some("Read Succeeded"), Instant::now() + Duration::from_secs(5));
+    blueice_ipc::write_client_message(&mut client, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while core.0.try_wait().unwrap().is_none() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert!(core.0.try_wait().unwrap().is_some());
 }
 
 #[test]
@@ -599,4 +779,124 @@ fn manual_native_grant_and_revoke_retire_published_toolbar() {
     assert!(!rendezvous.exists());
     assert!(!control.exists());
     assert!(!frames.exists());
+}
+
+/// Run only with a person at the graphical desktop. The test process never
+/// writes the private trusted-window pipe or calls `ArmEphemeral`: a real
+/// F8-panel pointer review and distinct confirm must drive the one-shot read.
+///
+/// cargo test -p blueice-launcher --test trusted_native_window \
+///   manual_native_one_shot_dom_read_reaches_installed_wasm -- --ignored --nocapture
+#[test]
+#[ignore = "requires a person to review and confirm the native one-shot DOM read"]
+fn manual_native_one_shot_dom_read_reaches_installed_wasm() {
+    let launcher_bin = PathBuf::from(env!("CARGO_BIN_EXE_blueice-launcher"));
+    for sibling in [
+        "blueice-frontend", "blueice-extension-host", "blueice-core",
+        "blueice-ai-gatekeeper", "bluejs",
+    ] {
+        assert!(launcher_bin.with_file_name(sibling).exists(),
+            "build {sibling} beside the launcher first");
+    }
+    let root = std::env::temp_dir().join(format!(
+        "btw-e-{}-{}", std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            .unwrap().as_nanos(),
+    ));
+    std::fs::create_dir(&root).unwrap();
+    let root = TestRoot(root);
+    let rendezvous = root.0.join("core.sock");
+    let control = root.0.join("control.sock");
+    let frames = root.0.join("frames");
+    let manifest = root.0.join("extension.json");
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let url = format!("{origin}/one-shot-proof");
+    std::fs::write(&manifest, format!(
+        r#"{{"name":"Native one-shot proof","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{{"declared":["ui:inject"],"runtime_ephemeral":["dom:read"]}},"capability_origins":{{"dom:read":["{origin}"]}}}}"#,
+    )).unwrap();
+    std::fs::write(root.0.join("extension.wasm"),
+        wat::parse_str(MANUAL_EPHEMERAL_WAT).unwrap()).unwrap();
+    let server = thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+                    && Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+                Err(error) => panic!("one-shot fixture was not fetched: {error}"),
+            }
+        };
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let body = b"<h1>One-shot proof</h1>";
+        stream.write_all(format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len(),
+        ).as_bytes()).unwrap();
+        stream.write_all(body).unwrap();
+    });
+    let launcher = Command::new(&launcher_bin)
+        .args([
+            "--socket", rendezvous.to_str().unwrap(),
+            "--control-socket", control.to_str().unwrap(),
+            "--frame-dir", frames.to_str().unwrap(),
+            "--extension-manifest", manifest.to_str().unwrap(),
+            "--trusted-frontend",
+        ])
+        .spawn()
+        .expect("failed to spawn the graphical trusted-window launcher");
+    let mut launcher = TestLauncher(launcher, launcher_bin.with_file_name("blueice-frontend"));
+    wait_for_path(&rendezvous, Instant::now() + Duration::from_secs(15));
+    wait_for_path(&control, Instant::now() + Duration::from_secs(15));
+    thread::sleep(Duration::from_secs(11));
+    assert!(launcher.0.try_wait().unwrap().is_none(),
+        "the native window did not pass its private inspection deadline");
+    let mut inspector = UnixStream::connect(&control).unwrap();
+    write_control_request(&mut inspector, &ControlRequest::InspectExtensionPermissions).unwrap();
+    assert!(matches!(read_control_reply(&mut inspector).unwrap(),
+        ControlReply::ExtensionPermissions { installed: Some(ref package), .. }
+            if package.optional.is_empty()
+                && package.runtime_ephemeral.len() == 1
+                && package.runtime_ephemeral[0].capability == "dom:read"
+                && package.runtime_ephemeral[0].origins == [origin.clone()]));
+
+    let mut client = UnixStream::connect(&rendezvous).unwrap();
+    blueice_ipc::client_handshake(&mut client).unwrap();
+    let mut reader = client.try_clone().unwrap();
+    let (message_tx, message_rx) = mpsc::channel();
+    thread::spawn(move || {
+        while let Ok(message) = blueice_ipc::read_server_message(&mut reader) {
+            if message_tx.send(message).is_err() { break; }
+        }
+    });
+    blueice_ipc::write_client_message(&mut client, &blueice_ipc::ClientMessage::GetExtensionToolbar).unwrap();
+    await_toolbar(&message_rx, Some("Read Ready"), Instant::now() + Duration::from_secs(5));
+    blueice_ipc::write_client_message(&mut client,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() }).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let mut navigated = false;
+    let mut frame_ready = false;
+    while !(navigated && frame_ready) && Instant::now() < deadline {
+        let message = message_rx.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .expect("the selected tab did not render the one-shot fixture");
+        match message {
+            blueice_ipc::ServerMessage::Navigated { url: observed } if observed == url => navigated = true,
+            blueice_ipc::ServerMessage::FrameReady { .. } => frame_ready = true,
+            _ => {}
+        }
+    }
+    assert!(navigated && frame_ready);
+    server.join().unwrap();
+    eprintln!("In the launcher-owned window, press F8; click REVIEW ONE-SHOT DOM READ for the selected fixture tab, inspect the URL/scope, then click CONFIRM ONE READ (90 seconds).");
+    await_toolbar(&message_rx, Some("Read Succeeded"), Instant::now() + Duration::from_secs(90));
+    eprintln!("The installed WASM read the exact document once and its second read was denied.");
+    blueice_ipc::write_client_message(&mut client, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while launcher.0.try_wait().unwrap().is_none() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert!(launcher.0.try_wait().unwrap().is_some());
+    assert!(!rendezvous.exists() && !control.exists() && !frames.exists());
 }

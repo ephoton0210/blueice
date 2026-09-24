@@ -20,6 +20,7 @@ const PANEL_WIDTH: u32 = 660;
 const PANEL_HEIGHT: u32 = 480;
 const SCOPE_PAGE_LINES: usize = 7;
 const SCOPE_LINE_CHARS: usize = 96;
+const EPHEMERAL_PAGE_LINES: usize = 17;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum PanelCommand {
@@ -95,6 +96,14 @@ impl PermissionPanel {
                 self.scope_offset = 0;
                 self.notice = None;
             }
+            TrustedWindowReply::EphemeralReview { .. } => {
+                self.scope_offset = 0;
+                self.notice = None;
+            }
+            TrustedWindowReply::EphemeralArmed { tab_id, .. } => {
+                self.scope_offset = 0;
+                self.notice = Some(format!("ONE-SHOT DOM READ ARMED FOR TAB {tab_id}"));
+            }
             TrustedWindowReply::Rejected { reason } => {
                 self.notice = Some(reason.chars().take(160).collect());
             }
@@ -132,19 +141,22 @@ impl PermissionPanel {
                 PanelCommand::None
             }
             Key::Named(NamedKey::PageUp) => {
-                self.scope_offset = self.scope_offset.saturating_sub(SCOPE_PAGE_LINES);
+                self.scope_offset = self.scope_offset.saturating_sub(page_lines(reply));
                 PanelCommand::None
             }
             Key::Named(NamedKey::PageDown) => {
                 self.scope_offset = self
                     .scope_offset
-                    .saturating_add(SCOPE_PAGE_LINES)
+                    .saturating_add(page_lines(reply))
                     .min(self.max_scope_offset(reply));
                 PanelCommand::None
             }
             Key::Named(NamedKey::Enter | NamedKey::Space)
                 if !repeat && panel_rect(viewport.0, viewport.1).is_some() =>
             {
+                if matches!(reply, Some(TrustedWindowReply::EphemeralReview { .. })) {
+                    return PanelCommand::None;
+                }
                 self.review_or_confirm(reply, pending)
             }
             Key::Character(value) if value.eq_ignore_ascii_case("r") => PanelCommand::Refresh,
@@ -167,7 +179,15 @@ impl PermissionPanel {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn click(
+        &mut self, x: f64, y: f64, width: u32, height: u32,
+        reply: Option<&TrustedWindowReply>, pending: bool,
+    ) -> PanelCommand {
+        self.click_with_tab(x, y, width, height, reply, pending, None)
+    }
+
+    pub(super) fn click_with_tab(
         &mut self,
         x: f64,
         y: f64,
@@ -175,6 +195,7 @@ impl PermissionPanel {
         height: u32,
         reply: Option<&TrustedWindowReply>,
         pending: bool,
+        selected_tab: Option<u64>,
     ) -> PanelCommand {
         let Some(panel) = panel_rect(width, height) else {
             return PanelCommand::None;
@@ -188,6 +209,25 @@ impl PermissionPanel {
             self.confirming = false;
             return PanelCommand::Refresh;
         }
+        if let Some(TrustedWindowReply::EphemeralReview {
+            core_generation, installed, capability, tab_id, document_epoch, ..
+        }) = reply {
+            if pending {
+                return PanelCommand::None;
+            }
+            if button(panel, 20, 439, 190).contains(x, y) {
+                return PanelCommand::Refresh;
+            }
+            if button(panel, 230, 439, 190).contains(x, y) {
+                return PanelCommand::Change(TrustedWindowRequest::ArmEphemeral {
+                    expected_core_generation: *core_generation,
+                    expected_extension_id: installed.extension_id.clone(),
+                    capability: capability.clone(),
+                    tab_id: *tab_id,
+                    document_epoch: *document_epoch,
+                });
+            }
+        }
         if self.confirming && button(panel, 20, 439, 190).contains(x, y) {
             self.confirming = false;
             return PanelCommand::None;
@@ -199,20 +239,33 @@ impl PermissionPanel {
             return self.review_or_confirm(reply, pending);
         }
         if button(panel, 20, 374, 75).contains(x, y) {
-            self.scope_offset = self.scope_offset.saturating_sub(SCOPE_PAGE_LINES);
+            self.scope_offset = self.scope_offset.saturating_sub(page_lines(reply));
             return PanelCommand::None;
         }
         if button(panel, 105, 374, 75).contains(x, y) {
             self.scope_offset = self
                 .scope_offset
-                .saturating_add(SCOPE_PAGE_LINES)
+                .saturating_add(page_lines(reply))
                 .min(self.max_scope_offset(reply));
+            return PanelCommand::None;
+        }
+        if matches!(reply, Some(TrustedWindowReply::EphemeralReview { .. })) {
             return PanelCommand::None;
         }
         if self.confirming || pending {
             return PanelCommand::None;
         }
-        if let Some((_, installed)) = state(reply) {
+        if let Some((generation, installed)) = state(reply) {
+            if button(panel, 20, 402, 330).contains(x, y)
+                && installed.runtime_ephemeral.iter().any(|entry| entry.capability == "dom:read")
+            {
+                let Some(tab_id) = selected_tab else { return PanelCommand::None };
+                return PanelCommand::Change(TrustedWindowRequest::InspectEphemeral {
+                    expected_core_generation: generation,
+                    expected_extension_id: installed.extension_id.clone(),
+                    capability: "dom:read".into(), tab_id,
+                });
+            }
             for index in 0..installed.optional.len().min(6) {
                 if button(panel, 20, 106 + index as u32 * 22, 620).contains(x, y) {
                     self.selected = index;
@@ -225,6 +278,12 @@ impl PermissionPanel {
     }
 
     fn max_scope_offset(&self, reply: Option<&TrustedWindowReply>) -> usize {
+        if let Some(TrustedWindowReply::EphemeralReview {
+            installed, capability, tab_id, document_epoch, url, ..
+        }) = reply {
+            return ephemeral_review_lines(installed, capability, *tab_id, *document_epoch, url)
+                .len().saturating_sub(EPHEMERAL_PAGE_LINES);
+        }
         state(reply)
             .and_then(|(_, installed)| installed.optional.get(self.selected))
             .map(|entry| {
@@ -330,6 +389,8 @@ impl PermissionPanel {
         );
         let title = if self.confirming {
             "CONFIRM EXTENSION PERMISSION CHANGE"
+        } else if matches!(reply, Some(TrustedWindowReply::EphemeralReview { .. })) {
+            "CONFIRM ONE-SHOT DOM READ"
         } else {
             "INSTALLED EXTENSION PERMISSIONS"
         };
@@ -351,7 +412,7 @@ impl PermissionPanel {
             "REFRESH",
             0x003A_526C,
         );
-        if pending {
+        if pending && !matches!(reply, Some(TrustedWindowReply::EphemeralReview { .. })) {
             draw_text_line(
                 pixels,
                 width,
@@ -362,6 +423,38 @@ impl PermissionPanel {
                 95,
                 0x0020_2228,
             );
+        }
+        if let Some(TrustedWindowReply::EphemeralReview {
+            installed, capability, tab_id, document_epoch, url, ..
+        }) = reply {
+            draw_text_line(pixels, width, height, panel.x + 20, panel.y + 44,
+                &format!("{}  VERSION {}", safe_extension_name(&installed.name),
+                    safe_extension_name(&installed.version)), 98, 0x0020_2228);
+            draw_text_line(pixels, width, height, panel.x + 20, panel.y + 61,
+                &installed.extension_id, 98, 0x0020_2228);
+            let lines = ephemeral_review_lines(installed, capability, *tab_id, *document_epoch, url);
+            let offset = self.scope_offset.min(lines.len().saturating_sub(EPHEMERAL_PAGE_LINES));
+            for (index, line) in lines.iter().skip(offset).take(EPHEMERAL_PAGE_LINES).enumerate() {
+                draw_text_line(pixels, width, height, panel.x + 20,
+                    panel.y + 106 + index as u32 * 14, line, SCOPE_LINE_CHARS, 0x0020_2228);
+            }
+            draw_button(pixels, width, height, button(panel, 20, 374, 75), "PREV", 0x003A_526C);
+            draw_button(pixels, width, height, button(panel, 105, 374, 75), "NEXT", 0x003A_526C);
+            draw_text_line(pixels, width, height, panel.x + 195, panel.y + 382,
+                &format!("DETAIL LINES {}-{} OF {}", offset + 1,
+                    (offset + EPHEMERAL_PAGE_LINES).min(lines.len()), lines.len()),
+                65, 0x0020_2228);
+            draw_text_line(pixels, width, height, panel.x + 20, panel.y + 413,
+                if pending { "WAITING FOR LAUNCHER CONFIRMATION" }
+                else { "ONE READ ONLY; A CHANGED DOCUMENT WILL BE REJECTED" },
+                100, 0x008B_0000);
+            draw_button(pixels, width, height, button(panel, 20, 439, 190),
+                "CANCEL REVIEW", 0x003A_526C);
+            draw_button(pixels, width, height, button(panel, 230, 439, 190),
+                "CONFIRM ONE READ", if pending { 0x0080_8790 } else { 0x008B_0000 });
+            draw_button(pixels, width, height, button(panel, 500, 439, 135),
+                "CLOSE", 0x003A_526C);
+            return;
         }
         match state(reply) {
             Some((generation, installed)) => {
@@ -511,6 +604,11 @@ impl PermissionPanel {
                         0x0020_2228,
                     );
                 }
+                if !pending && self.notice.is_none() && !self.confirming
+                    && installed.runtime_ephemeral.iter().any(|entry| entry.capability == "dom:read") {
+                    draw_button(pixels, width, height, button(panel, 20, 402, 330),
+                        "REVIEW ONE-SHOT DOM READ", 0x003A_526C);
+                }
             }
             None => {
                 let label = if pending {
@@ -597,8 +695,42 @@ fn state(reply: Option<&TrustedWindowReply>) -> Option<(u64, &InstalledExtension
             core_generation,
             installed: Some(installed),
         } => Some((*core_generation, installed)),
+        TrustedWindowReply::EphemeralReview { core_generation, installed, .. }
+        | TrustedWindowReply::EphemeralArmed { core_generation, installed, .. } => {
+            Some((*core_generation, installed))
+        }
         _ => None,
     }
+}
+
+fn page_lines(reply: Option<&TrustedWindowReply>) -> usize {
+    if matches!(reply, Some(TrustedWindowReply::EphemeralReview { .. })) {
+        EPHEMERAL_PAGE_LINES
+    } else {
+        SCOPE_PAGE_LINES
+    }
+}
+
+fn ephemeral_review_lines(
+    installed: &InstalledExtensionPermissions,
+    capability: &str,
+    tab_id: u64,
+    document_epoch: u64,
+    url: &str,
+) -> Vec<String> {
+    let mut lines = vec![
+        format!("CAPABILITY: {capability} (ONE READ)"),
+        format!("TAB {tab_id}  DOCUMENT {document_epoch}"),
+        "LIVE URL:".into(),
+    ];
+    for chunk in safe_extension_name(url).chars().collect::<Vec<_>>().chunks(SCOPE_LINE_CHARS - 5) {
+        lines.push(format!("    {}", chunk.iter().collect::<String>()));
+    }
+    lines.push("INSTALLED ORIGIN SCOPE:".into());
+    if let Some(entry) = installed.runtime_ephemeral.iter().find(|entry| entry.capability == capability) {
+        lines.extend(scope_lines(&entry.origins));
+    }
+    lines
 }
 
 fn panel_rect(width: u32, height: u32) -> Option<Rect> {
@@ -667,7 +799,7 @@ fn scope_lines(origins: &[String]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blueice_ipc::permission_control::OptionalCapabilityInfo;
+    use blueice_ipc::permission_control::{EphemeralCapabilityInfo, OptionalCapabilityInfo};
 
     fn installed() -> TrustedWindowReply {
         TrustedWindowReply::State {
@@ -681,6 +813,7 @@ mod tests {
                     granted: false,
                     origins: vec!["https://example.test".into()],
                 }],
+                runtime_ephemeral: vec![],
             }),
         }
     }
@@ -747,6 +880,66 @@ mod tests {
                 action: PermissionAction::Grant,
             })
         );
+    }
+
+    #[test]
+    fn native_one_shot_dom_read_requires_a_separate_live_document_review_and_pointer_confirm() {
+        let mut inspected = installed();
+        let TrustedWindowReply::State { installed: Some(ref mut package), .. } = inspected else {
+            unreachable!()
+        };
+        package.runtime_ephemeral.push(EphemeralCapabilityInfo {
+            capability: "dom:read".into(),
+            origins: vec!["https://example.test".into()],
+        });
+        let package = package.clone();
+        let mut panel = PermissionPanel::default();
+        panel.toggle();
+        let rect = panel_rect(800, 600).unwrap();
+        let review_x = f64::from(rect.x + 25);
+        let review_y = f64::from(rect.y + 408);
+        assert_eq!(panel.click_with_tab(review_x, review_y, 500, 400,
+            Some(&inspected), false, Some(7)), PanelCommand::None);
+        assert_eq!(panel.click_with_tab(review_x, review_y, 800, 600,
+            Some(&inspected), false, None), PanelCommand::None);
+        assert_eq!(panel.click_with_tab(review_x, review_y, 800, 600,
+            Some(&inspected), true, Some(7)), PanelCommand::None);
+        assert_eq!(panel.click_with_tab(review_x, review_y, 800, 600,
+            Some(&inspected), false, Some(7)),
+            PanelCommand::Change(TrustedWindowRequest::InspectEphemeral {
+                expected_core_generation: 7,
+                expected_extension_id: package.extension_id.clone(),
+                capability: "dom:read".into(), tab_id: 7,
+            }));
+        let long_url = format!("https://example.test/{}", "path".repeat(75));
+        let review = TrustedWindowReply::EphemeralReview {
+            core_generation: 7, installed: package.clone(),
+            capability: "dom:read".into(), tab_id: 7,
+            document_epoch: 12, url: long_url.clone(),
+        };
+        panel.on_reply(&review);
+        let lines = ephemeral_review_lines(&package, "dom:read", 7, 12, &long_url);
+        let url_lines = lines.iter().skip_while(|line| *line != "LIVE URL:")
+            .skip(1).take_while(|line| *line != "INSTALLED ORIGIN SCOPE:")
+            .map(|line| line.trim_start()).collect::<String>();
+        assert_eq!(url_lines, long_url, "native review must expose the full live URL");
+        assert!(lines.iter().any(|line| line.contains("https://example.test")));
+        assert_eq!(panel.key(&Key::Named(NamedKey::Enter), Some(&review),
+            false, (800, 600), false), PanelCommand::None,
+            "a keyboard shortcut must not confirm a one-shot read");
+        assert_eq!(panel.click_with_tab(f64::from(rect.x + 235),
+            f64::from(rect.y + 445), 500, 400, Some(&review), false, Some(7)),
+            PanelCommand::None);
+        assert_eq!(panel.click_with_tab(f64::from(rect.x + 235),
+            f64::from(rect.y + 445), 800, 600, Some(&review), true, Some(7)),
+            PanelCommand::None);
+        assert_eq!(panel.click_with_tab(f64::from(rect.x + 235),
+            f64::from(rect.y + 445), 800, 600, Some(&review), false, Some(7)),
+            PanelCommand::Change(TrustedWindowRequest::ArmEphemeral {
+                expected_core_generation: 7,
+                expected_extension_id: package.extension_id,
+                capability: "dom:read".into(), tab_id: 7, document_epoch: 12,
+            }));
     }
 
     #[test]
