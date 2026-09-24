@@ -52,6 +52,11 @@ pub const MAX_NETWORK_OBSERVATION_BYTES: usize = 4 * 1024;
 /// selected coordinate. The host and core both enforce this bound.
 pub const MAX_EXTENSION_TOOLBAR_LABEL_BYTES: usize = 20;
 
+/// A popup is native, non-interactive text. Both strings remain bounded before
+/// they cross the extension host and core session boundaries.
+pub const MAX_EXTENSION_POPUP_TITLE_BYTES: usize = 20;
+pub const MAX_EXTENSION_POPUP_BODY_BYTES: usize = 120;
+
 /// Metadata for the final HTTP response of one committed navigation. Response
 /// bodies and sensitive headers are intentionally excluded.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -150,6 +155,15 @@ pub enum ExtensionRequest {
     SetToolbarButton { label: String },
     /// Remove only this extension connection's native toolbar button.
     ClearToolbarButton,
+    /// Version 2 of `ui:inject`: publish one bounded native text popup for a
+    /// live tab. This action is reviewed by the gatekeeper before core sees it.
+    ShowPopup {
+        tab_id: u64,
+        title: String,
+        body: String,
+    },
+    /// Hide the caller connection's popup, if any.
+    ClearPopup,
     /// Mutate something DOM-shaped -- requires the `dom:write`
     /// capability, deliberately not granted to this minimal slice's one
     /// hardcoded extension, so this is the request that proves

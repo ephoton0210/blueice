@@ -35,7 +35,7 @@
 //! built-in informational pages, plus Phase 16's `tab-new`/`tab-close`/`tab
 //! N` and group commands. The ordinary pointer focus and keyboard path writes
 //! only to the core-owned currently focused native text input, so the
-//! `about:settings` custom blocked-host field is usable without turning the
+//! `about:settings` custom blocked-host and phrase fields are usable without turning the
 //! frontend into an arbitrary DOM-writing client. These remain a testable
 //! stand-in for native menu/toolbar controls.
 //! `frontend` doesn't depend on `blueice-engine` to know that URL --
@@ -45,7 +45,7 @@
 //! would.
 
 use blueice_ipc::downloads::{default_downloads_socket_path, DownloadsClient, TransferInfo};
-use blueice_ipc::{shm, ClientMessage, ServerMessage, TabGroupSummary, TabSummary};
+use blueice_ipc::{shm, ClientMessage, ExtensionPopup, ServerMessage, TabGroupSummary, TabSummary};
 use blueice_launcher::default_rendezvous_socket_path;
 use softbuffer::{Context, Surface};
 use std::collections::{HashMap, HashSet};
@@ -284,6 +284,7 @@ struct App {
     history: HashMap<u64, (bool, bool)>,
     groups: Vec<TabGroupSummary>,
     extension_toolbar_label: Option<String>,
+    extension_popup: Option<ExtensionPopup>,
     selected_tab: Option<u64>,
     pending_open: HashSet<u64>,
     next_request_id: u64,
@@ -511,7 +512,8 @@ impl App {
             size.width,
             self.extension_toolbar_label.as_deref(),
         );
-        let pixels = compose_window(size.width, size.height, self.selected_frame(), &strip);
+        let popup = self.extension_popup.as_ref().filter(|popup| Some(popup.tab_id) == self.selected_tab);
+        let pixels = compose_window(size.width, size.height, self.selected_frame(), &strip, popup);
         let Some(surface) = &mut self.surface else {
             return;
         };
@@ -693,6 +695,7 @@ fn compose_window(
     height: u32,
     frame: Option<&CurrentFrame>,
     strip: &TabStrip,
+    popup: Option<&ExtensionPopup>,
 ) -> Vec<u32> {
     let mut pixels = vec![0x00FF_FFFF; width as usize * height as usize];
     if let Some(frame) = frame {
@@ -816,7 +819,38 @@ fn compose_window(
         draw_rect(&mut pixels, width, height, *rect, 0x003A_526C);
         draw_label(&mut pixels, width, height, rect.x + 8, rect.y + 12, label, TEXT);
     }
+    if let Some(popup) = popup {
+        draw_extension_popup(&mut pixels, width, height, popup);
+    }
     pixels
+}
+
+/// A browser-owned, non-interactive panel. Guest text can only fill bounded
+/// lines; it cannot supply HTML, links, controls, coordinates, or chrome colors.
+fn draw_extension_popup(pixels: &mut [u32], width: u32, height: u32, popup: &ExtensionPopup) {
+    if width < 120 || height < TAB_STRIP_HEIGHT + 100 {
+        return;
+    }
+    let panel_width = width.saturating_sub(16).min(360);
+    let chars_per_line = ((panel_width.saturating_sub(20)) / 6).min(50) as usize;
+    let line_count = popup.body.len().div_ceil(chars_per_line.max(1));
+    let panel = Rect {
+        x: (width - panel_width) / 2,
+        y: TAB_STRIP_HEIGHT + 8,
+        width: panel_width,
+        height: 70 + line_count as u32 * 14,
+    };
+    draw_rect(pixels, width, height, panel, 0x0020_2228);
+    let inner = Rect { x: panel.x + 2, y: panel.y + 2, width: panel.width - 4, height: panel.height - 4 };
+    draw_rect(pixels, width, height, inner, 0x00F5_F5_EB);
+    let header = Rect { x: inner.x, y: inner.y, width: inner.width, height: 19 };
+    draw_rect(pixels, width, height, header, 0x003A_526C);
+    draw_text_line(pixels, width, height, inner.x + 8, inner.y + 6, "EXTENSION MESSAGE", chars_per_line, 0x00FF_FFFF);
+    draw_text_line(pixels, width, height, inner.x + 8, inner.y + 30, &popup.title, chars_per_line.min(20), TEXT);
+    for (line, chunk) in popup.body.as_bytes().chunks(chars_per_line.max(1)).enumerate() {
+        let text = std::str::from_utf8(chunk).unwrap_or_default();
+        draw_text_line(pixels, width, height, inner.x + 8, inner.y + 51 + line as u32 * 14, text, chars_per_line, TEXT);
+    }
 }
 
 fn draw_rect(pixels: &mut [u32], width: u32, height: u32, rect: Rect, color: u32) {
@@ -837,7 +871,11 @@ fn draw_close(pixels: &mut [u32], width: u32, height: u32, x: u32, y: u32) {
 }
 
 fn draw_label(pixels: &mut [u32], width: u32, height: u32, x: u32, y: u32, text: &str, color: u32) {
-    for (index, character) in text.chars().take(15).enumerate() {
+    draw_text_line(pixels, width, height, x, y, text, 15, color);
+}
+
+fn draw_text_line(pixels: &mut [u32], width: u32, height: u32, x: u32, y: u32, text: &str, limit: usize, color: u32) {
+    for (index, character) in text.chars().take(limit).enumerate() {
         let glyph_x = x + index as u32 * 6;
         for (row, bits) in glyph(character).iter().enumerate() {
             for column in 0..5 {
@@ -1083,10 +1121,14 @@ impl ApplicationHandler<UserEvent> for App {
                         None => {}
                     }
                 } else {
-                    self.send_selected(&ClientMessage::Click {
-                        x,
-                        y: y - f64::from(TAB_STRIP_HEIGHT),
-                    });
+                    if self.extension_popup.as_ref().is_some_and(|popup| Some(popup.tab_id) == self.selected_tab) {
+                        self.send_selected(&ClientMessage::DismissExtensionPopup);
+                    } else {
+                        self.send_selected(&ClientMessage::Click {
+                            x,
+                            y: y - f64::from(TAB_STRIP_HEIGHT),
+                        });
+                    }
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
@@ -1098,6 +1140,9 @@ impl ApplicationHandler<UserEvent> for App {
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 match event.logical_key {
+                    Key::Named(NamedKey::Escape) if self.extension_popup.as_ref().is_some_and(|popup| Some(popup.tab_id) == self.selected_tab) => {
+                        self.send_selected(&ClientMessage::DismissExtensionPopup);
+                    }
                     Key::Named(NamedKey::Backspace) => {
                         self.send_selected(&ClientMessage::DeleteBackward);
                     }
@@ -1181,6 +1226,10 @@ impl ApplicationHandler<UserEvent> for App {
                 ServerMessage::TabGroups(groups) => self.replace_groups(groups),
                 ServerMessage::ExtensionToolbar { label } => {
                     self.extension_toolbar_label = label;
+                    self.request_redraw();
+                }
+                ServerMessage::ExtensionPopup { popup } => {
+                    self.extension_popup = popup;
                     self.request_redraw();
                 }
                 ServerMessage::Error { message } => {
@@ -1654,6 +1703,7 @@ fn main() {
         history: HashMap::new(),
         groups: Vec::new(),
         extension_toolbar_label: None,
+        extension_popup: None,
         selected_tab: None,
         pending_open: HashSet::new(),
         next_request_id: 0,
@@ -1664,6 +1714,7 @@ fn main() {
     app.send_unscoped(&ClientMessage::ListTabs);
     app.send_unscoped(&ClientMessage::ListTabGroups);
     app.send_unscoped(&ClientMessage::GetExtensionToolbar);
+    app.send_unscoped(&ClientMessage::GetExtensionPopup);
     app.send_selected(&ClientMessage::Navigate { url });
 
     event_loop
@@ -1936,7 +1987,7 @@ mod tests {
             pixels_xrgb: vec![0x0011_2233; 4],
         };
         let strip = tab_strip(&[], &[], None, &HashMap::new(), 2, None);
-        let pixels = compose_window(2, TAB_STRIP_HEIGHT + 2, Some(&frame), &strip);
+        let pixels = compose_window(2, TAB_STRIP_HEIGHT + 2, Some(&frame), &strip, None);
         assert_eq!(pixels[0], CHROME_BG);
         assert_eq!(pixels[TAB_STRIP_HEIGHT as usize * 2], 0x0011_2233);
     }
@@ -1953,11 +2004,26 @@ mod tests {
         assert_eq!(label, "Ext: Notes");
         assert_eq!(strip.hit(f64::from(button.x + 2), 10.0), Some(TabStripHit::ExtensionToolbar));
         assert_eq!(strip.hit(790.0, 10.0), Some(TabStripHit::NewTab));
-        let pixels = compose_window(800, TAB_STRIP_HEIGHT, None, &strip);
+        let pixels = compose_window(800, TAB_STRIP_HEIGHT, None, &strip, None);
         assert_eq!(pixels[10 * 800 + (button.x + 2) as usize], 0x003A_526C);
 
         let narrow = tab_strip(&tabs, &[], Some(1), &HashMap::new(), 300, Some("Notes"));
         assert!(narrow.extension_toolbar.is_none());
+    }
+
+    #[test]
+    fn extension_popup_is_a_browser_framed_overlay_not_page_html() {
+        let strip = tab_strip(&[], &[], None, &HashMap::new(), 400, None);
+        let popup = ExtensionPopup {
+            tab_id: 7,
+            title: "Notes".to_string(),
+            body: "Saved locally".to_string(),
+        };
+        let plain = compose_window(400, 260, None, &strip, None);
+        let shown = compose_window(400, 260, None, &strip, Some(&popup));
+        assert_eq!(plain[(TAB_STRIP_HEIGHT as usize + 8) * 400 + 20], 0x00FF_FFFF);
+        assert_eq!(shown[(TAB_STRIP_HEIGHT as usize + 8) * 400 + 20], 0x0020_2228);
+        assert_eq!(shown[(TAB_STRIP_HEIGHT as usize + 10) * 400 + 22], 0x003A_526C);
     }
 
     #[test]

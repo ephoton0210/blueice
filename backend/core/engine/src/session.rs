@@ -58,7 +58,7 @@ use crate::{GroupId, Page, TabGroup, TabId, TabManager};
 use blueice_dom::NodeId;
 use blueice_ipc::downloads::TransferInfo;
 use blueice_ipc::extension::ExtensionRuntimeEvent;
-use blueice_ipc::{shm, ClientMessage, NodeAction, ServerMessage, TabGroupSummary, TabSummary};
+use blueice_ipc::{shm, ClientMessage, ExtensionPopup, NodeAction, ServerMessage, TabGroupSummary, TabSummary};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -109,6 +109,15 @@ pub enum ExtensionPageRequest {
         reply: mpsc::Sender<Result<(), String>>,
     },
     ClearToolbarButton {
+        connection_id: u64,
+        reply: mpsc::Sender<()>,
+    },
+    ShowPopup {
+        connection_id: u64,
+        popup: ExtensionPopup,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    ClearPopup {
         connection_id: u64,
         reply: mpsc::Sender<()>,
     },
@@ -382,6 +391,7 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
     let mut downloads_refresher = DownloadsRefresher::default();
     // Only the connection that published the native button can remove it.
     let mut extension_toolbar: Option<(u64, String)> = None;
+    let mut extension_popup: Option<(u64, ExtensionPopup)> = None;
 
     loop {
         match blueice_ipc::read_client_message_with_ids(stream) {
@@ -738,6 +748,18 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                                     tab_id: target.as_u64(),
                                 },
                             )?;
+                            if extension_popup
+                                .as_ref()
+                                .is_some_and(|(_, popup)| popup.tab_id == target.as_u64())
+                            {
+                                extension_popup = None;
+                                blueice_ipc::write_server_message_with_ids(
+                                    stream,
+                                    None,
+                                    None,
+                                    &ServerMessage::ExtensionPopup { popup: None },
+                                )?;
+                            }
                         } else {
                             write_unknown_tab_error(stream, request_id, target)?;
                         }
@@ -945,6 +967,30 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                             )?;
                         }
                     }
+                    ClientMessage::GetExtensionPopup => {
+                        blueice_ipc::write_server_message_with_ids(
+                            stream,
+                            None,
+                            request_id,
+                            &ServerMessage::ExtensionPopup {
+                                popup: extension_popup.as_ref().map(|(_, popup)| popup.clone()),
+                            },
+                        )?;
+                    }
+                    ClientMessage::DismissExtensionPopup => {
+                        if extension_popup
+                            .as_ref()
+                            .is_some_and(|(_, popup)| popup.tab_id == target.as_u64())
+                        {
+                            extension_popup = None;
+                            blueice_ipc::write_server_message_with_ids(
+                                stream,
+                                None,
+                                None,
+                                &ServerMessage::ExtensionPopup { popup: None },
+                            )?;
+                        }
+                    }
                     // Chrome commands (window show/hide) operate on
                     // `frontend`'s own window, not on anything `core`
                     // owns -- see module docs.
@@ -1013,6 +1059,7 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                     generation,
                     script_scheduler,
                     &mut extension_toolbar,
+                    &mut extension_popup,
                     request,
                 )?;
             }
@@ -1032,6 +1079,7 @@ fn handle_extension_page_request<S: Write>(
     generation: &mut u64,
     script_scheduler: &mut dyn ScriptScheduler,
     extension_toolbar: &mut Option<(u64, String)>,
+    extension_popup: &mut Option<(u64, ExtensionPopup)>,
     request: ExtensionPageRequest,
 ) -> io::Result<()> {
     match request {
@@ -1063,6 +1111,19 @@ fn handle_extension_page_request<S: Write>(
             reply,
         } => {
             let result = blueice_extension_host::validate_toolbar_label(&label).and_then(|()| {
+                if extension_popup
+                    .as_ref()
+                    .is_some_and(|(owner, _)| *owner != connection_id)
+                {
+                    blueice_ipc::write_server_message_with_ids(
+                        stream,
+                        None,
+                        None,
+                        &ServerMessage::ExtensionPopup { popup: None },
+                    )
+                    .map_err(|error| format!("could not remove old extension popup: {error}"))?;
+                    *extension_popup = None;
+                }
                 blueice_ipc::write_server_message_with_ids(
                     stream,
                     None,
@@ -1082,12 +1143,66 @@ fn handle_extension_page_request<S: Write>(
             reply,
         } => {
             if extension_toolbar.as_ref().is_some_and(|(owner, _)| *owner == connection_id) {
+                if extension_popup.as_ref().is_some_and(|(owner, _)| *owner == connection_id) {
+                    *extension_popup = None;
+                    blueice_ipc::write_server_message_with_ids(
+                        stream,
+                        None,
+                        None,
+                        &ServerMessage::ExtensionPopup { popup: None },
+                    )?;
+                }
                 *extension_toolbar = None;
                 blueice_ipc::write_server_message_with_ids(
                     stream,
                     None,
                     None,
                     &ServerMessage::ExtensionToolbar { label: None },
+                )?;
+            }
+            let _ = reply.send(());
+        }
+        ExtensionPageRequest::ShowPopup {
+            connection_id,
+            popup,
+            reply,
+        } => {
+            let result = blueice_extension_host::validate_popup_text(&popup.title, &popup.body)
+                .and_then(|()| {
+                    if !extension_toolbar
+                        .as_ref()
+                        .is_some_and(|(owner, _)| *owner == connection_id)
+                    {
+                        return Err("a popup requires this connection's toolbar button".to_string());
+                    }
+                    if tabs.get(TabId::from_u64(popup.tab_id)).is_none() {
+                        return Err(format!("unknown tab {}", popup.tab_id));
+                    }
+                    blueice_ipc::write_server_message_with_ids(
+                        stream,
+                        None,
+                        None,
+                        &ServerMessage::ExtensionPopup {
+                            popup: Some(popup.clone()),
+                        },
+                    )
+                    .map_err(|error| format!("could not publish extension popup: {error}"))?;
+                    *extension_popup = Some((connection_id, popup));
+                    Ok(())
+                });
+            let _ = reply.send(result);
+        }
+        ExtensionPageRequest::ClearPopup {
+            connection_id,
+            reply,
+        } => {
+            if extension_popup.as_ref().is_some_and(|(owner, _)| *owner == connection_id) {
+                *extension_popup = None;
+                blueice_ipc::write_server_message_with_ids(
+                    stream,
+                    None,
+                    None,
+                    &ServerMessage::ExtensionPopup { popup: None },
                 )?;
             }
             let _ = reply.send(());
@@ -2519,6 +2634,47 @@ mod tests {
             }
         );
         reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
+        let popup = ExtensionPopup {
+            tab_id: 1,
+            title: "Tasks".to_string(),
+            body: "Saved locally".to_string(),
+        };
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ShowPopup {
+                connection_id: 5,
+                popup: popup.clone(),
+                reply: reply_tx,
+            })
+            .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionPopup { popup: Some(popup.clone()) }
+        );
+        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetExtensionPopup).unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionPopup { popup: Some(popup.clone()) }
+        );
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::DismissExtensionPopup).unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionPopup { popup: None }
+        );
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ShowPopup {
+                connection_id: 5,
+                popup: popup.clone(),
+                reply: reply_tx,
+            })
+            .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionPopup { popup: Some(popup) }
+        );
+        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
         let (reply_tx, reply_rx) = mpsc::channel();
         extension_tx
             .send(ExtensionPageRequest::ClearToolbarButton {
@@ -2542,10 +2698,8 @@ mod tests {
                 reply: reply_tx,
             })
             .unwrap();
-        assert_eq!(
-            blueice_ipc::read_server_message(&mut client).unwrap(),
-            ServerMessage::ExtensionToolbar { label: None }
-        );
+        assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(), ServerMessage::ExtensionPopup { popup: None });
+        assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(), ServerMessage::ExtensionToolbar { label: None });
         reply_rx.recv_timeout(Duration::from_secs(1)).unwrap();
         blueice_ipc::write_client_message(&mut client, &ClientMessage::ActivateExtensionToolbar)
             .unwrap();

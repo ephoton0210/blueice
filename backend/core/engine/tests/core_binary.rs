@@ -175,7 +175,7 @@ fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
         &mut stream,
         &ExtensionRequest::HelloAuthenticated {
             extension_id: installed.extension_id().to_string(),
-            capability_versions: BTreeMap::from([("ui:inject".to_string(), 1)]),
+            capability_versions: BTreeMap::from([("ui:inject".to_string(), 2)]),
             authentication,
         },
     )
@@ -208,6 +208,18 @@ fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
         },
     )
     .unwrap();
+    assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
+    write_extension_request(
+        &mut stream,
+        &ExtensionRequest::ShowPopup {
+            tab_id: 1,
+            title: "Notes".to_string(),
+            body: "Saved locally".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
+    write_extension_request(&mut stream, &ExtensionRequest::ClearPopup).unwrap();
     assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
     write_extension_request(&mut stream, &ExtensionRequest::ClearToolbarButton).unwrap();
     assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
@@ -851,6 +863,7 @@ fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
         std::process::id()
     ));
     let (package_root, manifest, _) = extension_manifest_package("native-ui", &["ui:inject"]);
+    let gatekeeper_socket = clearing_gatekeeper("ui-gk");
     let extension_host = core_extension_host_probe_script(
         &package_root,
         "extension_host_probe_child_publishes_toolbar_and_handles_activation",
@@ -868,6 +881,8 @@ fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
             manifest.to_str().unwrap(),
             "--extension-host",
             extension_host.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_socket.to_str().unwrap(),
             "--frame-dir",
             frame_dir.to_str().unwrap(),
         ])
@@ -896,6 +911,20 @@ fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
     );
     assert_eq!(
         blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::ExtensionPopup {
+            popup: Some(blueice_ipc::ExtensionPopup {
+                tab_id: 1,
+                title: "Notes".to_string(),
+                body: "Saved locally".to_string(),
+            }),
+        }
+    );
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::ExtensionPopup { popup: None }
+    );
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
         blueice_ipc::ServerMessage::ExtensionToolbar { label: None }
     );
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
@@ -904,6 +933,7 @@ fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
     assert!(!core_socket.exists());
     assert!(!extension_socket.exists());
     assert!(!frame_dir.exists());
+    let _ = std::fs::remove_file(gatekeeper_socket);
     let _ = std::fs::remove_dir_all(package_root);
 }
 

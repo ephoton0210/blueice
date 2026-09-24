@@ -22,6 +22,7 @@ use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     MAX_NETWORK_BLOCK_URL_BYTES, MAX_STORAGE_KEY_BYTES, MAX_STORAGE_VALUE_BYTES,
     MAX_TEXT_WRITE_BYTES, MAX_NETWORK_OBSERVATION_BYTES, MAX_EXTENSION_TOOLBAR_LABEL_BYTES,
+    MAX_EXTENSION_POPUP_TITLE_BYTES, MAX_EXTENSION_POPUP_BODY_BYTES,
 };
 use std::os::unix::net::UnixStream;
 use wasmtime::{
@@ -198,6 +199,22 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
             |mut caller: Caller<'_, RuntimeState>| clear_toolbar_button(&mut caller),
         )
         .map_err(|error| format!("could not define the clear_toolbar_button ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
+            "show_popup_utf8",
+            |mut caller: Caller<'_, RuntimeState>, tab_id: i64, title_ptr: i32, title_len: i32, body_ptr: i32, body_len: i32| {
+                show_popup_utf8(&mut caller, tab_id, title_ptr, title_len, body_ptr, body_len)
+            },
+        )
+        .map_err(|error| format!("could not define the show_popup_utf8 ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
+            "clear_popup",
+            |mut caller: Caller<'_, RuntimeState>| clear_popup(&mut caller),
+        )
+        .map_err(|error| format!("could not define the clear_popup ABI import: {error}"))?;
     linker
         .func_wrap(
             "blueice",
@@ -430,6 +447,45 @@ fn set_toolbar_button_utf8(
 
 fn clear_toolbar_button(caller: &mut Caller<'_, RuntimeState>) -> i32 {
     match request_core(caller, ExtensionRequest::ClearToolbarButton) {
+        Ok(ExtensionReply::UiInjectAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
+fn show_popup_utf8(
+    caller: &mut Caller<'_, RuntimeState>,
+    tab_id: i64,
+    title_ptr: i32,
+    title_len: i32,
+    body_ptr: i32,
+    body_len: i32,
+) -> i32 {
+    let Ok(tab_id) = stable_id(tab_id) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let (Ok((title_ptr, title_len)), Ok((body_ptr, body_len))) = (
+        guest_range(title_ptr, title_len, MAX_EXTENSION_POPUP_TITLE_BYTES),
+        guest_range(body_ptr, body_len, MAX_EXTENSION_POPUP_BODY_BYTES),
+    ) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let (Ok(title), Ok(body)) = (
+        read_guest_bytes(caller, title_ptr, title_len),
+        read_guest_bytes(caller, body_ptr, body_len),
+    ) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let (Ok(title), Ok(body)) = (String::from_utf8(title), String::from_utf8(body)) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    match request_core(caller, ExtensionRequest::ShowPopup { tab_id, title, body }) {
+        Ok(ExtensionReply::UiInjectAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
+fn clear_popup(caller: &mut Caller<'_, RuntimeState>) -> i32 {
+    match request_core(caller, ExtensionRequest::ClearPopup) {
         Ok(ExtensionReply::UiInjectAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
@@ -855,6 +911,60 @@ mod tests {
             assert_eq!(
                 blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
                 ExtensionRequest::ClearToolbarButton
+            );
+            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::UiInjectAck)
+                .unwrap();
+        });
+        execute_installed_extension_for_invocation(
+            &extension,
+            guest,
+            RuntimeInvocation::ToolbarActivated { tab_id: 9 },
+        )
+        .unwrap();
+        core_thread.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn popup_import_forwards_bounded_text_and_clear_to_core() {
+        let (root, extension) = installed_extension(
+            "popup-activation",
+            r#"(module
+                (import "blueice" "show_popup_utf8" (func $show (param i64 i32 i32 i32 i32) (result i32)))
+                (import "blueice" "clear_popup" (func $clear (result i32)))
+                (memory (export "memory") 1)
+                (data (i32.const 0) "Notes")
+                (data (i32.const 16) "Saved locally")
+                (func (export "blueice_start")
+                    i64.const 9
+                    i32.const 0
+                    i32.const 5
+                    i32.const 16
+                    i32.const 13
+                    call $show
+                    i32.const 0
+                    i32.ne
+                    if unreachable end
+                    call $clear
+                    i32.const 0
+                    i32.ne
+                    if unreachable end))"#,
+        );
+        let (guest, mut core) = UnixStream::pair().unwrap();
+        let core_thread = thread::spawn(move || {
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::ShowPopup {
+                    tab_id: 9,
+                    title: "Notes".to_string(),
+                    body: "Saved locally".to_string(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::UiInjectAck)
+                .unwrap();
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::ClearPopup
             );
             blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::UiInjectAck)
                 .unwrap();

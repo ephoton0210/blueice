@@ -436,6 +436,37 @@ fn clear_toolbar_button(
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())
 }
 
+fn request_show_popup(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    connection_id: u64,
+    tab_id: u64,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::ShowPopup {
+        connection_id,
+        popup: blueice_ipc::ExtensionPopup { tab_id, title, body },
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
+fn clear_popup(tx: &mpsc::Sender<ExtensionPageRequest>, connection_id: u64) -> Result<(), String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::ClearPopup {
+        connection_id,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())
+}
+
 /// Serves extension connections outside the session thread, but asks that
 /// thread for the one piece of real `Page` data Phase 9 currently supports.
 /// This keeps a `Page` single-thread-owned just like navigation and frontend
@@ -482,6 +513,8 @@ fn spawn_extension_listener(
                 let clear_tx = request_tx.clone();
                 let toolbar_tx = request_tx.clone();
                 let toolbar_clear_tx = request_tx.clone();
+                let popup_tx = request_tx.clone();
+                let popup_clear_tx = request_tx.clone();
                 let _ =
                     handle_extension_connection_with_actions_and_authentication_and_network_rules(
                         &registry,
@@ -555,9 +588,16 @@ fn spawn_extension_listener(
                         })
                         .with_toolbar_clearer(move || {
                             clear_toolbar_button(&toolbar_clear_tx, connection_id)
-                        }),
+                        })
+                        .with_popup(
+                            move |tab_id, title, body| {
+                                request_show_popup(&popup_tx, connection_id, tab_id, title, body)
+                            },
+                            move || clear_popup(&popup_clear_tx, connection_id),
+                        ),
                     );
                 let _ = clear_network_block_urls(&request_tx, connection_id);
+                let _ = clear_popup(&request_tx, connection_id);
                 let _ = clear_toolbar_button(&request_tx, connection_id);
             });
         }

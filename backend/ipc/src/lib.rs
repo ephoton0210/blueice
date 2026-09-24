@@ -231,6 +231,10 @@ pub enum ClientMessage {
     /// Activate the visible extension toolbar button for the addressed tab.
     /// This is a UI action, not an authenticated user-gesture capability.
     ActivateExtensionToolbar,
+    /// Query the current core-owned extension popup, if any.
+    GetExtensionPopup,
+    /// Dismiss a popup only when it belongs to the addressed live tab.
+    DismissExtensionPopup,
     Chrome(ChromeCommand),
     Shutdown,
     /// Catch-all for a variant this build doesn't recognize (e.g. sent
@@ -319,6 +323,9 @@ pub enum ServerMessage {
     /// Current native toolbar label, returned for a query or broadcast when
     /// the installed extension changes/disconnects. `None` removes it.
     ExtensionToolbar { label: Option<String> },
+    /// A native, non-interactive extension message associated with a tab.
+    /// Frontends must distinguish it visually from browser-owned UI.
+    ExtensionPopup { popup: Option<ExtensionPopup> },
     Error {
         message: String,
     },
@@ -352,6 +359,13 @@ pub struct TabSummary {
     /// first-class.
     #[serde(default)]
     pub group_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtensionPopup {
+    pub tab_id: u64,
+    pub title: String,
+    pub body: String,
 }
 
 /// One tab group's observable state, as reported by

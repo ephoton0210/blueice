@@ -26,6 +26,7 @@ use blueice_extension_host::{
     handle_extension_connection_with_gatekeeper, load_installed_extension,
     registry_for_installed_extension, ExtensionRegistry, RuntimeInvocation, CAPABILITY_DOM_READ,
     CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT, CAPABILITY_STORAGE,
+    CAPABILITY_UI_INJECT,
 };
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
@@ -189,6 +190,7 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
                 CAPABILITY_DOM_READ => 2,
                 CAPABILITY_DOM_WRITE => 7,
                 CAPABILITY_NETWORK_INTERCEPT => 3,
+                CAPABILITY_UI_INJECT => 2,
                 CAPABILITY_STORAGE => 1,
                 _ => 1,
             };
