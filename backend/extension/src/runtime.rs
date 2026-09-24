@@ -20,7 +20,7 @@
 use crate::InstalledExtension;
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
-    MAX_NETWORK_BLOCK_URL_BYTES, MAX_NETWORK_BLOCK_HOST_BYTES, MAX_STORAGE_KEY_BYTES, MAX_STORAGE_VALUE_BYTES,
+    MAX_NETWORK_BLOCK_URL_BYTES, MAX_NETWORK_BLOCK_HOST_BYTES, MAX_NETWORK_BLOCK_PATH_BYTES, MAX_STORAGE_KEY_BYTES, MAX_STORAGE_VALUE_BYTES,
     MAX_TEXT_WRITE_BYTES, MAX_NETWORK_OBSERVATION_BYTES, MAX_NETWORK_TRACE_BYTES,
     MAX_EXTENSION_TOOLBAR_LABEL_BYTES,
     MAX_EXTENSION_POPUP_TITLE_BYTES, MAX_EXTENSION_POPUP_BODY_BYTES,
@@ -323,6 +323,17 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
         )
         .map_err(|error| {
             format!("could not define the register_network_block_host ABI import: {error}")
+        })?;
+    linker
+        .func_wrap(
+            "blueice",
+            "register_network_block_path_prefix",
+            |mut caller: Caller<'_, RuntimeState>, host_ptr: i32, host_len: i32, path_ptr: i32, path_len: i32| {
+                register_network_block_path_prefix(&mut caller, host_ptr, host_len, path_ptr, path_len)
+            },
+        )
+        .map_err(|error| {
+            format!("could not define the register_network_block_path_prefix ABI import: {error}")
         })?;
     linker
         .func_wrap(
@@ -709,7 +720,7 @@ fn register_network_block_url(
     }
 }
 
-/// Removes only the caller connection's declarative URL and host block rules. This
+/// Removes only the caller connection's declarative URL, host, and path block rules. This
 /// version-3 operation supplies no URL or other extension-controlled policy
 /// input and therefore merely reduces the caller's own active rule set.
 fn clear_network_block_urls(caller: &mut Caller<'_, RuntimeState>) -> i32 {
@@ -737,6 +748,33 @@ fn register_network_block_host(
         return RESULT_INVALID_ARGUMENT;
     };
     match request_core(caller, ExtensionRequest::RegisterNetworkBlockHost { host }) {
+        Ok(ExtensionReply::NetworkInterceptAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
+/// Registers one version-5 literal host/path-prefix rule. Both guest ranges
+/// are independently bounded before either payload reaches core.
+fn register_network_block_path_prefix(
+    caller: &mut Caller<'_, RuntimeState>,
+    host_ptr: i32,
+    host_len: i32,
+    path_ptr: i32,
+    path_len: i32,
+) -> i32 {
+    let Ok((host_ptr, host_len)) = guest_range(host_ptr, host_len, MAX_NETWORK_BLOCK_HOST_BYTES) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok((path_ptr, path_len)) = guest_range(path_ptr, path_len, MAX_NETWORK_BLOCK_PATH_BYTES) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(host) = read_guest_bytes(caller, host_ptr, host_len).and_then(|bytes| String::from_utf8(bytes).map_err(|_| ())) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(path_prefix) = read_guest_bytes(caller, path_ptr, path_len).and_then(|bytes| String::from_utf8(bytes).map_err(|_| ())) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    match request_core(caller, ExtensionRequest::RegisterNetworkBlockPathPrefix { host, path_prefix }) {
         Ok(ExtensionReply::NetworkInterceptAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
@@ -1299,6 +1337,42 @@ mod tests {
             .unwrap();
         });
 
+        execute_installed_extension(&extension, guest).unwrap();
+        core_thread.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reactor_forwards_a_bounded_path_prefix_rule_to_core() {
+        let (root, extension) = installed_extension(
+            "network-block-path-prefix",
+            r#"(module
+                (import "blueice" "register_network_block_path_prefix" (func $block (param i32 i32 i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (data (i32.const 0) "example.test")
+                (data (i32.const 16) "/private")
+                (func (export "blueice_start")
+                    i32.const 0
+                    i32.const 12
+                    i32.const 16
+                    i32.const 8
+                    call $block
+                    i32.const 0
+                    i32.ne
+                    if unreachable end))"#,
+        );
+        let (guest, mut core) = UnixStream::pair().unwrap();
+        let core_thread = thread::spawn(move || {
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::RegisterNetworkBlockPathPrefix {
+                    host: "example.test".into(), path_prefix: "/private".into(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(
+                &mut core, &ExtensionReply::NetworkInterceptAck,
+            ).unwrap();
+        });
         execute_installed_extension(&extension, guest).unwrap();
         core_thread.join().unwrap();
         let _ = fs::remove_dir_all(root);

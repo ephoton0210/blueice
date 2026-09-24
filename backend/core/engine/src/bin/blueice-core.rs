@@ -421,6 +421,25 @@ fn request_network_block_host(
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
 }
 
+fn request_network_block_path_prefix(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    connection_id: u64,
+    host: String,
+    path_prefix: String,
+) -> Result<(), String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::RegisterNetworkBlockPathPrefix {
+        connection_id,
+        host,
+        path_prefix,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
 fn clear_network_block_urls(
     tx: &mpsc::Sender<ExtensionPageRequest>,
     connection_id: u64,
@@ -544,6 +563,7 @@ fn spawn_extension_listener(
                 let write_tx = request_tx.clone();
                 let rule_tx = request_tx.clone();
                 let host_rule_tx = request_tx.clone();
+                let path_rule_tx = request_tx.clone();
                 let clear_tx = request_tx.clone();
                 let toolbar_tx = request_tx.clone();
                 let toolbar_clear_tx = request_tx.clone();
@@ -622,6 +642,11 @@ fn spawn_extension_listener(
                         })
                         .with_network_block_host(move |host| {
                             request_network_block_host(&host_rule_tx, connection_id, host)
+                        })
+                        .with_network_block_path_prefix(move |host, path_prefix| {
+                            request_network_block_path_prefix(
+                                &path_rule_tx, connection_id, host, path_prefix,
+                            )
                         })
                         .with_toolbar_button(move |label| {
                             request_toolbar_button(&toolbar_tx, connection_id, label)

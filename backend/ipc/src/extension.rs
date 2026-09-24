@@ -47,6 +47,9 @@ pub const MAX_NETWORK_BLOCK_URL_BYTES: usize = 2 * 1024;
 /// A version-4 declarative host rule accepts one bounded ASCII host, never
 /// a URL, wildcard expression, or arbitrary routing script.
 pub const MAX_NETWORK_BLOCK_HOST_BYTES: usize = 253;
+/// A path-prefix rule has a deliberately small, literal ASCII path rather
+/// than an arbitrary URL pattern, regular expression, or request callback.
+pub const MAX_NETWORK_BLOCK_PATH_BYTES: usize = 512;
 
 /// Maximum serialized response metadata returned to an extension guest.
 pub const MAX_NETWORK_OBSERVATION_BYTES: usize = 4 * 1024;
@@ -271,6 +274,12 @@ pub enum ExtensionRequest {
     /// its subdomains at the initial navigation or any redirect target.
     /// Core validates the host independently before installing the rule.
     RegisterNetworkBlockHost { host: String },
+    /// Version 5 of `network:intercept`: block navigation to `host` or a
+    /// dot-boundary subdomain only when its canonical URL path equals the
+    /// literal prefix or begins at the next `/` segment boundary. Query and
+    /// fragment do not affect the match. Core validates both fields; there
+    /// is no guest-supplied pattern language or request callback.
+    RegisterNetworkBlockPathPrefix { host: String, path_prefix: String },
     /// Version 3 of `network:intercept`: remove every exact-URL or host
     /// navigation-block rule owned by this connection. This cannot affect rules installed by a
     /// different extension connection and has no extension-controlled payload,
@@ -575,6 +584,10 @@ mod tests {
             },
             ExtensionRequest::RegisterNetworkBlockHost {
                 host: "example.test".to_string(),
+            },
+            ExtensionRequest::RegisterNetworkBlockPathPrefix {
+                host: "example.test".to_string(),
+                path_prefix: "/private".to_string(),
             },
             ExtensionRequest::ClearNetworkBlockUrls,
             ExtensionRequest::StorageGet {

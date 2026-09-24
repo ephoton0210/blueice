@@ -180,6 +180,14 @@ pub enum ExtensionPageRequest {
         host: String,
         reply: mpsc::Sender<Result<(), String>>,
     },
+    /// Adds one core-validated, connection-scoped literal host/path-prefix
+    /// rule without granting the guest a callback or arbitrary URL pattern.
+    RegisterNetworkBlockPathPrefix {
+        connection_id: u64,
+        host: String,
+        path_prefix: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
     /// Clears the rule set when the associated extension socket disconnects.
     /// The acknowledgement makes disconnect cleanup ordered with respect to
     /// subsequent frontend navigation work on this session thread.
@@ -1438,6 +1446,16 @@ fn handle_extension_page_request<S: Write>(
             reply,
         } => {
             let _ = reply.send(tabs.add_extension_navigation_block_host_rule(connection_id, host));
+        }
+        ExtensionPageRequest::RegisterNetworkBlockPathPrefix {
+            connection_id,
+            host,
+            path_prefix,
+            reply,
+        } => {
+            let _ = reply.send(tabs.add_extension_navigation_block_path_prefix_rule(
+                connection_id, host, path_prefix,
+            ));
         }
         ExtensionPageRequest::ClearNetworkBlockUrls {
             connection_id,

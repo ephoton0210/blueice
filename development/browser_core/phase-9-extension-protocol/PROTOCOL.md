@@ -63,7 +63,7 @@ is separate from the independently negotiated **capability API versions**:
 | `dom:read` | 1–2 | 2 | A live tab's AI-facing representation, addressed by explicit tab ID in v2. |
 | `dom:write` | 1–7 | 7 | Bounded native form-control operations; legacy generic v1 mutation has no core effect. |
 | `network:observe` | 1–2 | 2 | Committed main-frame final response (v1) and initial request/redirect trace (v2). |
-| `network:intercept` | 1–4 | 4 | Exact declarative navigation URL block (v2), clearing own rules (v3), and ASCII host/subdomain block (v4); legacy v1 registration has no core effect. |
+| `network:intercept` | 1–5 | 5 | Exact navigation URL block (v2), clearing own rules (v3), ASCII host/subdomain block (v4), and literal host/path-prefix block (v5); legacy v1 registration has no core effect. |
 | `ui:inject` | 1–2 | 2 | Native toolbar button (v1) and fixed-text native popup (v2). |
 | `storage` | 1 | 1 | Core-owned, process-lifetime key/value bucket for the derived extension ID. |
 
@@ -115,8 +115,9 @@ effect in the guest.
 | `network_response_utf8(tab_id:i64, dst:i32, cap:i32) -> i32` | `network:observe` v1 | Final committed GET response JSON, at most 4 KiB; `-4` for a non-HTTP page. |
 | `network_trace_utf8(tab_id:i64, dst:i32, cap:i32) -> i32` | `network:observe` v2 | Initial GET URL, redirect hops, and final response JSON, at most 32 KiB. |
 | `register_network_block_url(ptr:i32, len:i32) -> i32` | `network:intercept` v2 | At most 2 KiB absolute credential-free HTTP(S) URL; exact canonical navigation match. |
-| `clear_network_block_urls() -> i32` | `network:intercept` v3 | Clears this connection's exact-URL and host rules. |
+| `clear_network_block_urls() -> i32` | `network:intercept` v3 | Clears this connection's exact-URL, host, and path-prefix rules. |
 | `register_network_block_host(ptr:i32, len:i32) -> i32` | `network:intercept` v4 | At most 253 ASCII bytes, plain canonical DNS/IPv4 spelling without a URL, wildcard, or Unicode; matches the host and dot-boundary subdomains before connection. IPv4 literals match exactly. |
+| `register_network_block_path_prefix(host_ptr:i32, host_len:i32, path_ptr:i32, path_len:i32) -> i32` | `network:intercept` v5 | Host uses v4's grammar; path is 1–512 literal ASCII bytes beginning with `/`, with no empty/dot segments, percent escapes, query, or fragment. Matches the canonical URL path at a `/` segment boundary on that host or a dot-boundary subdomain; IPv4 matches exactly. |
 | `set_toolbar_button_utf8(ptr:i32, len:i32) -> i32` | `ui:inject` v1 | One 1–20-byte label: ASCII letters/digits, spaces, `-`, `_`, no outer spaces. |
 | `clear_toolbar_button() -> i32` | `ui:inject` v1 | Removes only this connection's button and popup. |
 | `show_popup_utf8(tab_id:i64, title_ptr:i32, title_len:i32, body_ptr:i32, body_len:i32) -> i32` | `ui:inject` v2 | Requires own live toolbar; title uses label grammar, body is 1–120 printable ASCII bytes without outer spaces. |
@@ -142,7 +143,11 @@ in-flight, rejected, or superseded traffic. They expose no arbitrary headers,
 cookies, bodies, or subresource requests; URLs may still contain sensitive
 paths/query strings, so grant `network:observe` deliberately. Exact navigation
 URL rules ignore fragments; host rules cover that host and its dot-boundary
-subdomains. Both kinds cover redirect targets, share a 64-rule quota per
+subdomains. Path-prefix rules additionally require a case-sensitive literal
+canonical URL path match: `/private` covers `/private` and `/private/report`,
+not `/privateer`; query and fragment do not matter. This is URL-path matching,
+not server-side route normalization: a percent-encoded or rewritten path does
+not match its decoded spelling. All three kinds cover redirect targets, share a 64-rule quota per
 connection, and disappear on clear or disconnect. They cannot rewrite headers/bodies,
 redirect traffic, or observe an interception callback.
 

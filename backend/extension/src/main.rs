@@ -190,7 +190,7 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
             let version = match capability.as_str() {
                 CAPABILITY_DOM_READ => 2,
                 CAPABILITY_DOM_WRITE => 7,
-                CAPABILITY_NETWORK_INTERCEPT => 4,
+                CAPABILITY_NETWORK_INTERCEPT => 5,
                 CAPABILITY_NETWORK_OBSERVE => 2,
                 CAPABILITY_UI_INJECT => 2,
                 CAPABILITY_STORAGE => 1,

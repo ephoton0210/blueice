@@ -239,6 +239,37 @@ fn network_host_rule_manifest_package(label: &str) -> (PathBuf, PathBuf, String)
     (root, manifest, extension_id)
 }
 
+fn network_path_prefix_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "blueice-extension-host-path-package-{label}-{}-{id}", std::process::id()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let manifest = root.join("extension.json");
+    std::fs::write(&manifest,
+        r#"{"name":"Network path rule","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["network:intercept"]}}"#,
+    ).unwrap();
+    std::fs::write(root.join("extension.wasm"), wat::parse_str(
+        r#"(module
+            (import "blueice" "register_network_block_path_prefix" (func $block (param i32 i32 i32 i32) (result i32)))
+            (memory (export "memory") 1)
+            (data (i32.const 0) "example.test")
+            (data (i32.const 16) "/private")
+            (func (export "blueice_start")
+                i32.const 0
+                i32.const 12
+                i32.const 16
+                i32.const 8
+                call $block
+                i32.const 0
+                i32.ne
+                if unreachable end))"#,
+    ).unwrap()).unwrap();
+    let extension_id = load_installed_extension(&manifest).unwrap().extension_id().to_string();
+    (root, manifest, extension_id)
+}
+
 fn storage_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
@@ -534,7 +565,7 @@ fn core_connection_mode_authenticates_then_runs_a_navigation_event_reactor_over_
 }
 
 #[test]
-fn core_connection_mode_negotiates_v4_and_runs_v3_network_rule_clear_over_real_ipc() {
+fn core_connection_mode_negotiates_v5_and_runs_v3_network_rule_clear_over_real_ipc() {
     let (root, manifest, extension_id) = network_rule_clear_manifest_package("core-connect");
     let socket = unique_socket_path("core-network-clear");
     let _ = std::fs::remove_file(&socket);
@@ -556,7 +587,7 @@ fn core_connection_mode_negotiates_v4_and_runs_v3_network_rule_clear_over_real_i
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::HelloAuthenticated {
             extension_id,
-            capability_versions: BTreeMap::from([("network:intercept".to_string(), 4)]),
+            capability_versions: BTreeMap::from([("network:intercept".to_string(), 5)]),
             authentication: authentication.to_string(),
         }
     );
@@ -598,7 +629,7 @@ fn core_connection_mode_negotiates_v4_and_runs_v3_network_rule_clear_over_real_i
 }
 
 #[test]
-fn core_connection_mode_negotiates_v4_and_runs_host_rule_over_real_ipc() {
+fn core_connection_mode_negotiates_v5_and_runs_host_rule_over_real_ipc() {
     let (root, manifest, extension_id) = network_host_rule_manifest_package("core-connect");
     let socket = unique_socket_path("core-network-host");
     let _ = std::fs::remove_file(&socket);
@@ -618,7 +649,7 @@ fn core_connection_mode_negotiates_v4_and_runs_host_rule_over_real_ipc() {
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::HelloAuthenticated {
             extension_id,
-            capability_versions: BTreeMap::from([("network:intercept".to_string(), 4)]),
+            capability_versions: BTreeMap::from([("network:intercept".to_string(), 5)]),
             authentication: authentication.to_string(),
         }
     );
@@ -646,6 +677,46 @@ fn core_connection_mode_negotiates_v4_and_runs_host_rule_over_real_ipc() {
     blueice_ipc::extension::write_extension_reply(
         &mut stream, &ExtensionReply::RuntimeEventStreamClosed,
     ).unwrap();
+    drop(listener);
+    assert!(host.wait().unwrap().success());
+    let _ = std::fs::remove_file(socket);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn core_connection_mode_runs_v5_path_prefix_import_over_real_ipc() {
+    let (root, manifest, extension_id) = network_path_prefix_manifest_package("core-connect");
+    let socket = unique_socket_path("core-path");
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
+    let authentication = "test-only-network-path-credential";
+    let mut host = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
+        .args(["--connect", socket.to_str().unwrap(), "--manifest", manifest.to_str().unwrap()])
+        .env("BLUEICE_EXTENSION_AUTH_TOKEN", authentication)
+        .spawn()
+        .expect("failed to launch extension host for the v5 path rule");
+
+    let (mut stream, _) = listener.accept().unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::HelloAuthenticated {
+            extension_id,
+            capability_versions: BTreeMap::from([("network:intercept".to_string(), 5)]),
+            authentication: authentication.to_string(),
+        });
+    blueice_ipc::extension::write_extension_reply(&mut stream,
+        &ExtensionReply::HelloAck { unsupported_capabilities: BTreeMap::new() },
+    ).unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::RuntimeReady);
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeStart).unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::RegisterNetworkBlockPathPrefix {
+            host: "example.test".into(), path_prefix: "/private".into(),
+        });
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::NetworkInterceptAck).unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent);
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeEventStreamClosed).unwrap();
     drop(listener);
     assert!(host.wait().unwrap().success());
     let _ = std::fs::remove_file(socket);

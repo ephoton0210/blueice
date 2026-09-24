@@ -326,11 +326,11 @@ impl ExtensionRegistry {
         let mut registry = Self::new();
         let v1 = CapabilityVersionWindow::new(1, 1).expect("literal version window is valid");
         let v1_to_v2 = CapabilityVersionWindow::new(1, 2).expect("literal version window is valid");
-        let v1_to_v4 = CapabilityVersionWindow::new(1, 4).expect("literal version window is valid");
+        let v1_to_v5 = CapabilityVersionWindow::new(1, 5).expect("literal version window is valid");
         let v1_to_v7 = CapabilityVersionWindow::new(1, 7).expect("literal version window is valid");
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v7);
-        registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v4);
+        registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v5);
         registry.register_capability_version_window(CAPABILITY_NETWORK_OBSERVE, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_UI_INJECT, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_STORAGE, v1);
@@ -625,6 +625,7 @@ pub struct ExtensionActionDelegates<R, W, N, B, C> {
     register_network_intercept: N,
     register_network_block_url: B,
     register_network_block_host: Box<dyn FnMut(String) -> Result<(), String> + Send>,
+    register_network_block_path_prefix: Box<dyn FnMut(String, String) -> Result<(), String> + Send>,
     clear_network_block_urls: C,
     observe_network: Box<dyn FnMut(u64) -> Result<Option<NetworkResponseInfo>, String> + Send>,
     observe_network_trace: Box<dyn FnMut(u64) -> Result<Option<NetworkTraceInfo>, String> + Send>,
@@ -653,6 +654,9 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
             register_network_block_url,
             register_network_block_host: Box::new(|_| {
                 Err("network:intercept v4 needs a core-backed host rule store".to_string())
+            }),
+            register_network_block_path_prefix: Box::new(|_, _| {
+                Err("network:intercept v5 needs a core-backed path-prefix rule store".to_string())
             }),
             clear_network_block_urls,
             observe_network: Box::new(|_| {
@@ -711,6 +715,15 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
         blocker: impl FnMut(String) -> Result<(), String> + Send + 'static,
     ) -> Self {
         self.register_network_block_host = Box::new(blocker);
+        self
+    }
+
+    /// Binds v5 literal host/path-prefix blocking to core's owned rule set.
+    pub fn with_network_block_path_prefix(
+        mut self,
+        blocker: impl FnMut(String, String) -> Result<(), String> + Send + 'static,
+    ) -> Self {
+        self.register_network_block_path_prefix = Box::new(blocker);
         self
     }
 
@@ -913,6 +926,7 @@ where
         mut register_network_intercept,
         mut register_network_block_url,
         mut register_network_block_host,
+        mut register_network_block_path_prefix,
         mut clear_network_block_urls,
         mut observe_network,
         mut observe_network_trace,
@@ -1909,6 +1923,59 @@ where
                                 category: "gatekeeper-unavailable".to_string(),
                             },
                         )?;
+                    }
+                }
+            }
+            ExtensionRequest::RegisterNetworkBlockPathPrefix { host, path_prefix } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 5)
+                {
+                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                        reason,
+                    })?;
+                    continue;
+                }
+                if host.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_HOST_BYTES
+                    || path_prefix.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_PATH_BYTES
+                {
+                    write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                        reason: "navigation-block host or path prefix exceeds its protocol bound".to_string(),
+                    })?;
+                    continue;
+                }
+                // Only the fixed action class reaches the gatekeeper. The
+                // guest-controlled host/path are validated again by core,
+                // after review and before a rule can become active.
+                match check_extension_action(
+                    gatekeeper_socket,
+                    &identity.extension_id,
+                    CAPABILITY_NETWORK_INTERCEPT,
+                    "action=register-path-prefix-navigation-block".to_string(),
+                ) {
+                    Ok(GatekeeperReply::Cleared) => {
+                        match register_network_block_path_prefix(host, path_prefix) {
+                            Ok(()) => write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?,
+                            Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                            })?,
+                        }
+                    }
+                    Ok(GatekeeperReply::Rejected { reason, category }) => {
+                        write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                            reason,
+                            category,
+                        })?;
+                    }
+                    Err(reason) => {
+                        write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                            reason,
+                            category: "gatekeeper-unavailable".to_string(),
+                        })?;
                     }
                 }
             }
@@ -4009,6 +4076,79 @@ mod tests {
             }
             other => panic!("expected a v4 version denial, got {other:?}"),
         }
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn v5_path_prefix_is_reviewed_then_delegated_without_exposing_guest_fields() {
+        let registry = registry_with_network_intercept_granted();
+        let (gatekeeper_socket, gatekeeper) =
+            start_gatekeeper("clear-path-prefix-block", GatekeeperReply::Cleared);
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = gatekeeper_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry,
+                &socket_for_handler,
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    |_| Ok("unused".into()), unused_write_delegate, || Ok(()),
+                    |_| panic!("a path request must not register an exact URL"), || Ok(()),
+                ).with_network_block_path_prefix(move |host, path_prefix| {
+                    seen_tx.send((host, path_prefix)).unwrap();
+                    Ok(())
+                }),
+            )
+        });
+        write_extension_request(&mut client, &hello_with_capabilities(
+            MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_INTERCEPT, 5)],
+        )).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::RegisterNetworkBlockPathPrefix {
+            host: "Example.test".into(), path_prefix: "/private".into(),
+        }).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::NetworkInterceptAck);
+        assert_eq!(seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            ("Example.test".to_string(), "/private".to_string()));
+        drop(client);
+        handle.join().unwrap().unwrap();
+        assert_eq!(gatekeeper.join().unwrap(), GatekeeperRequest::CheckExtensionAction {
+            extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+            detail: "action=register-path-prefix-navigation-block".to_string(),
+        });
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v5_path_prefix_is_denied_after_a_v4_handshake_before_gatekeeper_or_core() {
+        let registry = registry_with_network_intercept_granted();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry,
+                Path::new("/not-reached-for-v4-path-rule-denial.sock"),
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    |_| Ok("unused".into()), unused_write_delegate, || Ok(()),
+                    |_| Ok(()), || Ok(()),
+                ).with_network_block_path_prefix(|_, _| panic!("v4 must not reach core")),
+            )
+        });
+        write_extension_request(&mut client, &hello_with_capabilities(
+            MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_INTERCEPT, 4)],
+        )).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::RegisterNetworkBlockPathPrefix {
+            host: "example.test".into(), path_prefix: "/private".into(),
+        }).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, reason }
+                if capability == CAPABILITY_NETWORK_INTERCEPT && reason.contains("requires version 5")));
         drop(client);
         handle.join().unwrap().unwrap();
     }

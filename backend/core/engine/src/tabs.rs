@@ -35,6 +35,7 @@ const MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION: usize = 64;
 pub(crate) enum ExtensionNavigationBlockRule {
     ExactUrl(String),
     Host(String),
+    PathPrefix { host: String, path_prefix: String },
 }
 
 /// Stable identity for a tab, assigned once at [`TabManager::open_tab`]
@@ -303,6 +304,23 @@ impl TabManager {
         self.add_extension_navigation_rule(
             connection_id,
             ExtensionNavigationBlockRule::Host(canonical_navigation_block_host(&host)?),
+        )
+    }
+
+    /// Adds a literal, segment-boundary path prefix under a canonical host.
+    /// The rule shares the same per-connection quota and cleanup as v2/v4.
+    pub(crate) fn add_extension_navigation_block_path_prefix_rule(
+        &mut self,
+        connection_id: u64,
+        host: String,
+        path_prefix: String,
+    ) -> Result<(), String> {
+        self.add_extension_navigation_rule(
+            connection_id,
+            ExtensionNavigationBlockRule::PathPrefix {
+                host: canonical_navigation_block_host(&host)?,
+                path_prefix: canonical_navigation_block_path_prefix(&path_prefix)?,
+            },
         )
     }
 
@@ -783,12 +801,34 @@ pub(crate) fn extension_navigation_rules_block_url(
     let canonical_url = parsed.to_string();
     rules.iter().any(|rule| match rule {
         ExtensionNavigationBlockRule::ExactUrl(blocked) => !has_credentials && blocked == &canonical_url,
-        ExtensionNavigationBlockRule::Host(blocked) => {
-            host == *blocked
-                || (blocked.parse::<std::net::Ipv4Addr>().is_err()
-                    && host.strip_suffix(blocked).is_some_and(|prefix| prefix.ends_with('.')))
-        }
+        ExtensionNavigationBlockRule::Host(blocked) => host_matches_block_rule(&host, blocked),
+        ExtensionNavigationBlockRule::PathPrefix { host: blocked, path_prefix } => {
+            host_matches_block_rule(&host, blocked)
+                && (parsed.path() == path_prefix
+                    || (path_prefix.ends_with('/') && parsed.path().starts_with(path_prefix))
+                    || parsed.path().strip_prefix(path_prefix).is_some_and(|rest| rest.starts_with('/')))
+        },
     })
+}
+
+fn host_matches_block_rule(host: &str, blocked: &str) -> bool {
+    host == blocked
+        || (blocked.parse::<std::net::Ipv4Addr>().is_err()
+            && host.strip_suffix(blocked).is_some_and(|prefix| prefix.ends_with('.')))
+}
+
+fn canonical_navigation_block_path_prefix(input: &str) -> Result<String, String> {
+    if input.is_empty() || input.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_PATH_BYTES
+        || !input.starts_with('/')
+        || !input.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'-' | b'_' | b'.' | b'~')
+        })
+        || input.split('/').skip(1).any(|segment| segment == "." || segment == "..")
+        || input.contains("//")
+    {
+        return Err("navigation-block path prefixes must be literal ASCII paths of 1–512 bytes, without empty or dot segments, queries, fragments, or percent escapes".to_string());
+    }
+    Ok(input.to_string())
 }
 
 fn canonical_navigation_block_host(input: &str) -> Result<String, String> {
@@ -908,6 +948,55 @@ mod tests {
                 "accepted invalid host {host:?}"
             );
         }
+    }
+
+    #[test]
+    fn extension_path_prefix_rules_use_host_and_path_segment_boundaries() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        tabs.add_extension_navigation_block_path_prefix_rule(
+            41, "EXAMPLE.test.".into(), "/private".into(),
+        ).unwrap();
+        for url in [
+            "https://example.test/private",
+            "https://sub.example.test/private/report?download=1#section",
+        ] {
+            assert!(tabs.is_extension_navigation_blocked(url), "missed {url}");
+        }
+        for url in [
+            "https://example.test/privateer",
+            "https://notexample.test/private",
+            "https://example.test.evil/private",
+            "https://example.test/public/private",
+            "https://example.test/%70rivate",
+        ] {
+            assert!(!tabs.is_extension_navigation_blocked(url), "overmatched {url}");
+        }
+        tabs.clear_extension_navigation_block_rules(41);
+        assert!(!tabs.is_extension_navigation_blocked("https://example.test/private"));
+        tabs.add_extension_navigation_block_path_prefix_rule(
+            42, "127.0.0.1".into(), "/private".into(),
+        ).unwrap();
+        assert!(tabs.is_extension_navigation_blocked("http://127.0.0.1/private/child"));
+        assert!(!tabs.is_extension_navigation_blocked("http://sub.127.0.0.1/private/child"));
+    }
+
+    #[test]
+    fn extension_path_prefix_rules_reject_ambiguous_paths_and_share_the_quota() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        for path in ["", "private", "/a//b", "/./x", "/../x", "/a?x=1", "/a#frag", "/a%2fb", "/é"] {
+            assert!(tabs.add_extension_navigation_block_path_prefix_rule(
+                7, "example.test".into(), path.into(),
+            ).is_err(), "accepted {path:?}");
+        }
+        assert!(tabs.add_extension_navigation_block_path_prefix_rule(
+            7, "example.test".into(), format!("/{}", "x".repeat(512)),
+        ).is_err());
+        for index in 0..MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION {
+            tabs.add_extension_navigation_block_path_prefix_rule(
+                7, "example.test".into(), format!("/private/{index}"),
+            ).unwrap();
+        }
+        assert!(tabs.add_extension_navigation_block_host_rule(7, "overflow.test".into()).is_err());
     }
 
     #[test]
