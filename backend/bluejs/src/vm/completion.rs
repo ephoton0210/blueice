@@ -170,3 +170,94 @@ pub(super) fn call_stack_exhausted(remaining_stack: Option<usize>, call_depth: u
         None => call_depth >= UNMEASURED_STACK_MAX_CALL_DEPTH,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every catchable completion survives being parked in a suspended
+    /// generator and taken back out unchanged.
+    #[test]
+    fn catchable_completions_round_trip_through_a_suspended_generator() {
+        let round_trip = |completion: Completion| {
+            Completion::from_generator_pending(completion.into_generator_pending().ok().unwrap())
+        };
+        let throw = |error| Completion::Throw(error);
+
+        assert!(matches!(
+            round_trip(throw(RuntimeError::Thrown(Value::Number(1.0)))),
+            Completion::Throw(RuntimeError::Thrown(Value::Number(n))) if n == 1.0
+        ));
+        assert!(matches!(
+            round_trip(throw(RuntimeError::ReferenceError("r".into()))),
+            Completion::Throw(RuntimeError::ReferenceError(message)) if message == "r"
+        ));
+        assert!(matches!(
+            round_trip(throw(RuntimeError::TypeError("t".into()))),
+            Completion::Throw(RuntimeError::TypeError(message)) if message == "t"
+        ));
+        assert!(matches!(
+            round_trip(throw(RuntimeError::RangeError("g".into()))),
+            Completion::Throw(RuntimeError::RangeError(message)) if message == "g"
+        ));
+        assert!(matches!(
+            round_trip(throw(RuntimeError::SyntaxError("s".into()))),
+            Completion::Throw(RuntimeError::SyntaxError(message)) if message == "s"
+        ));
+        assert!(matches!(
+            round_trip(throw(RuntimeError::Test262("x".into()))),
+            Completion::Throw(RuntimeError::Test262(message)) if message == "x"
+        ));
+        assert!(matches!(
+            round_trip(Completion::Return(Value::Number(2.0))),
+            Completion::Return(Value::Number(n)) if n == 2.0
+        ));
+        assert!(matches!(
+            round_trip(Completion::TailRecur(vec![Value::Number(3.0)])),
+            Completion::TailRecur(values) if matches!(values[..], [Value::Number(n)] if n == 3.0)
+        ));
+        assert!(matches!(
+            round_trip(Completion::Jump {
+                cleanup: 4,
+                target: 5
+            }),
+            Completion::Jump {
+                cleanup: 4,
+                target: 5
+            }
+        ));
+    }
+
+    /// A host abort is not catchable, so it comes back as the error itself;
+    /// completions internal to the interpreter cannot be suspended at all.
+    #[test]
+    fn host_aborts_and_internal_completions_refuse_to_suspend() {
+        assert!(matches!(
+            Completion::Throw(RuntimeError::InstructionLimit).into_generator_pending(),
+            Err(RuntimeError::InstructionLimit)
+        ));
+        let internal = [
+            Completion::TailCall(vec![Value::Undefined]),
+            Completion::Yield(Value::Undefined),
+            Completion::Resume(0),
+            Completion::Halt(Value::Undefined),
+        ];
+        for completion in internal {
+            assert!(matches!(
+                completion.into_generator_pending(),
+                Err(RuntimeError::Unsupported(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn call_stack_guard_follows_bytes_when_measured_and_depth_when_not() {
+        assert!(call_stack_exhausted(Some(CALL_STACK_RED_ZONE - 1), 0));
+        assert!(!call_stack_exhausted(Some(CALL_STACK_RED_ZONE), 1_000));
+        assert!(!call_stack_exhausted(
+            None,
+            UNMEASURED_STACK_MAX_CALL_DEPTH - 1
+        ));
+        assert!(call_stack_exhausted(None, UNMEASURED_STACK_MAX_CALL_DEPTH));
+    }
+}
