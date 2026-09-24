@@ -785,6 +785,12 @@ fn manual_native_grant_and_revoke_retire_published_toolbar() {
 /// writes the private trusted-window pipe or calls `ArmEphemeral`: a real
 /// F8-panel pointer review and distinct confirm must drive the one-shot read.
 ///
+/// First rebuild all sibling binaries; `cargo test` alone does not refresh
+/// `target/debug/blueice-frontend`, and a stale window has no one-shot button:
+///   cargo build -p blueice-launcher -p blueice-frontend-reference \
+///     -p blueice-engine -p blueice-ai-gatekeeper \
+///     -p blueice-extension-host -p blueice-bluejs --bins
+/// Then, from `backend/`:
 /// cargo test -p blueice-launcher --test trusted_native_window \
 ///   manual_native_one_shot_dom_read_reaches_installed_wasm -- --ignored --nocapture
 #[test]
