@@ -34,8 +34,9 @@ capability name may appear once in exactly one tier. The accepted names are
 `dom:read`, `dom:write`, `network:observe`, `network:intercept`, `ui:inject`, and
 `storage`.
 
-For a declared grant that reads or changes a page or intercepts navigation,
+For a page-facing capability named in any manifest tier,
 `capability_origins` can restrict that capability to exact HTTP(S) origins.
+The scope does not itself grant the capability.
 For example:
 
 ```json
@@ -46,8 +47,9 @@ For example:
 }
 ```
 
-Only declared `dom:read`, `dom:write`, `network:observe`, and
-`network:intercept` may be scoped.
+Only manifest-listed `dom:read`, `dom:write`, `network:observe`, and
+`network:intercept` may be scoped, including optional or runtime-ephemeral
+declarations that remain ungranted today.
 Each list must contain 1–32 unique canonical origins (scheme, host, optional
 nonzero port): no path, trailing slash, query, fragment, credentials,
 wildcards, or implicit subdomains. Core compares the scope to the **live
@@ -63,7 +65,10 @@ pre-existing all-origin grant for backward compatibility; `ui:inject` and
 Only `declared` grants a capability today. `optional` and
 `runtime_ephemeral` are parsed, but **neither can be requested or exercised**:
 there is no user-consent or authenticated gesture flow yet. Do not interpret
-their presence as a grant. The shared launcher IPC accepts both human frontend
+their presence as a grant. The host now retains optional declarations in an
+internal, process-lifetime registry with a live revocation transition, but
+no client, guest, or public core IPC path can invoke that transition. The
+shared launcher IPC accepts both human frontend
 and AI clients, so an ordinary client message or toolbar activation cannot by
 itself prove human approval; see the [Phase 9 plan](PLAN.md) before designing
 an optional-grant flow. The host derives an ID from the exact manifest and

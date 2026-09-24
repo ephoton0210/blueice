@@ -79,8 +79,9 @@ pub struct ExtensionManifest {
     blueice_api_version: u32,
     entry_point: PathBuf,
     capabilities: ManifestCapabilities,
-    /// Exact canonical HTTP(S) origins for page-facing declared grants.
-    /// Absence means the legacy unrestricted grant for that capability.
+    /// Exact canonical HTTP(S) origins for page-facing capabilities declared
+    /// in any tier. This restricts a later optional/ephemeral grant too; it
+    /// never turns a declaration into authority on its own.
     capability_origins: BTreeMap<String, BTreeSet<String>>,
 }
 
@@ -246,11 +247,15 @@ pub fn load_installed_extension(
 
 /// Registers all host-supported Phase 9 capability windows and grants just an
 /// installed manifest's persistent `declared` capabilities to its derived
-/// identity. Optional/runtime declarations intentionally add no authority.
+/// identity. Optional declarations are retained but ungranted; runtime
+/// ephemeral declarations still have no grant path.
 pub fn registry_for_installed_extension(extension: &InstalledExtension) -> ExtensionRegistry {
     let mut registry = ExtensionRegistry::with_supported_capabilities();
     for capability in extension.manifest().capabilities().declared() {
         registry.grant(extension.extension_id(), capability);
+    }
+    for capability in extension.manifest().capabilities().optional() {
+        registry.declare_optional(extension.extension_id(), capability);
     }
     registry
 }
@@ -297,10 +302,12 @@ fn validate_capability_origins(
                 | CAPABILITY_NETWORK_OBSERVE
                 | CAPABILITY_NETWORK_INTERCEPT
         )
-            || !capabilities.declared().contains(&capability)
+            || !(capabilities.declared().contains(&capability)
+                || capabilities.optional().contains(&capability)
+                || capabilities.runtime_ephemeral().contains(&capability))
         {
             return Err(ManifestError::Invalid(format!(
-                "capability_origins can scope only a declared origin-aware capability, not {capability}"
+                "capability_origins can scope only an origin-aware capability declared in the manifest, not {capability}"
             )));
         }
         if origins.is_empty() || origins.len() > 32 {
@@ -511,6 +518,28 @@ mod tests {
         let original_id = extension.extension_id().to_string();
         std::fs::write(&path, source.replace("https://example.test", "https://other.test")).unwrap();
         assert_ne!(load_installed_extension(&path).unwrap().extension_id(), original_id);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn optional_and_ephemeral_origin_scopes_are_retained_without_granting_authority() {
+        let source = r#"{"name":"Scoped tiers","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["dom:read"],"runtime_ephemeral":["network:observe"]},"capability_origins":{"dom:read":["https://example.test"],"network:observe":["https://example.test"]}}"#;
+        let (root, path) = temporary_package("scoped-tiers", source, WASM_V1);
+        let extension = load_installed_extension(&path).unwrap();
+        let id = extension.extension_id();
+        assert_eq!(extension.manifest().capability_origins()[CAPABILITY_DOM_READ],
+            BTreeSet::from(["https://example.test".to_string()]));
+        assert_eq!(extension.manifest().capability_origins()[CAPABILITY_NETWORK_OBSERVE],
+            BTreeSet::from(["https://example.test".to_string()]));
+        let registry = registry_for_installed_extension(&extension);
+        assert!(!registry.has_capability(id, CAPABILITY_DOM_READ));
+        assert!(!registry.has_capability(id, CAPABILITY_NETWORK_OBSERVE));
+        assert!(registry.grant_optional(id, CAPABILITY_NETWORK_OBSERVE).is_err());
+        assert!(registry.grant_optional(id, CAPABILITY_DOM_READ).unwrap());
+        assert!(registry.has_capability(id, CAPABILITY_DOM_READ));
+        assert!(!registry.has_capability(id, CAPABILITY_NETWORK_OBSERVE));
+        assert!(registry.revoke_optional(id, CAPABILITY_DOM_READ).unwrap());
+        assert!(!registry.has_capability(id, CAPABILITY_DOM_READ));
         let _ = std::fs::remove_dir_all(root);
     }
 

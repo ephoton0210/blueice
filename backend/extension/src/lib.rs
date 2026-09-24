@@ -73,7 +73,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::time::Duration;
 
 /// The one hardcoded identity used only when no installed manifest is supplied.
@@ -356,6 +356,8 @@ const GATEKEEPER_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 /// boundary; standalone/manual protocol development intentionally does not.
 pub struct ExtensionRegistry {
     grants: HashMap<String, HashSet<String>>,
+    optional_declarations: HashMap<String, HashSet<String>>,
+    optional_grants: RwLock<HashMap<String, HashSet<String>>>,
     supported_versions: HashMap<String, CapabilityVersionWindow>,
 }
 
@@ -370,6 +372,8 @@ impl ExtensionRegistry {
     pub fn new() -> Self {
         Self {
             grants: HashMap::new(),
+            optional_declarations: HashMap::new(),
+            optional_grants: RwLock::new(HashMap::new()),
             supported_versions: HashMap::new(),
         }
     }
@@ -413,6 +417,48 @@ impl ExtensionRegistry {
             .insert(capability.into());
     }
 
+    /// Retains an install-validated optional declaration without granting it.
+    /// Only the installed-manifest loader should seed this table. No guest or
+    /// ordinary client message can write to it.
+    pub(crate) fn declare_optional(
+        &mut self,
+        extension_id: impl Into<String>,
+        capability: impl Into<String>,
+    ) {
+        self.optional_declarations
+            .entry(extension_id.into())
+            .or_default()
+            .insert(capability.into());
+    }
+
+    /// Internal grant transition for a future separately authenticated human
+    /// approval channel. This deliberately has crate-only visibility until
+    /// that authority exists; merely negotiating or requesting a declared
+    /// optional capability cannot call it. Returns whether state changed.
+    #[allow(dead_code)] // Wired only after a separately authenticated approval channel exists.
+    pub(crate) fn grant_optional(&self, extension_id: &str, capability: &str) -> Result<bool, String> {
+        if !self.optional_declarations.get(extension_id)
+            .is_some_and(|caps| caps.contains(capability)) {
+            return Err(format!("{capability} is not an installed optional declaration for {extension_id}"));
+        }
+        let mut grants = self.optional_grants.write()
+            .map_err(|_| "optional grant state is unavailable".to_string())?;
+        Ok(grants.entry(extension_id.to_string()).or_default().insert(capability.to_string()))
+    }
+
+    /// Revocation is live even for an already-negotiated connection: every
+    /// later operation checks the registry again, not a handshake snapshot.
+    #[allow(dead_code)] // Wired only after a separately authenticated approval channel exists.
+    pub(crate) fn revoke_optional(&self, extension_id: &str, capability: &str) -> Result<bool, String> {
+        if !self.optional_declarations.get(extension_id)
+            .is_some_and(|caps| caps.contains(capability)) {
+            return Err(format!("{capability} is not an installed optional declaration for {extension_id}"));
+        }
+        let mut grants = self.optional_grants.write()
+            .map_err(|_| "optional grant state is unavailable".to_string())?;
+        Ok(grants.get_mut(extension_id).is_some_and(|caps| caps.remove(capability)))
+    }
+
     /// The actual enforcement point: does `extension_id` currently hold
     /// `capability`? An unrecognized `extension_id` (never granted
     /// anything) simply has no capabilities -- see this crate's module
@@ -422,6 +468,10 @@ impl ExtensionRegistry {
         self.grants
             .get(extension_id)
             .is_some_and(|caps| caps.contains(capability))
+            || self.optional_grants.read().ok()
+                .and_then(|grants| grants.get(extension_id)
+                    .map(|caps| caps.contains(capability)))
+                .unwrap_or(false)
     }
 
     /// Returns why a declared API version is unavailable, if it cannot
@@ -3055,6 +3105,42 @@ mod tests {
         assert!(!registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ));
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
         assert!(registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ));
+    }
+
+    #[test]
+    fn optional_grant_and_revocation_take_effect_on_an_existing_negotiated_connection() {
+        let mut registry = ExtensionRegistry::with_supported_capabilities();
+        registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
+        assert!(registry.grant_optional("other-extension", CAPABILITY_DOM_READ).is_err());
+        assert!(registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE).is_err());
+        let registry = Arc::new(registry);
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handler_registry = Arc::clone(&registry);
+        let handle = thread::spawn(move || {
+            handle_extension_connection(&handler_registry, &mut server)
+        });
+        write_extension_request(&mut client, &hello_with_capabilities(
+            MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_READ, 1)],
+        )).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+
+        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_DOM_READ));
+        assert!(registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
+        assert!(!registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
+        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomReadResult {
+            value: PLACEHOLDER_DOM_READ_VALUE.to_string(),
+        });
+
+        assert!(registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
+        assert!(!registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
+        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_DOM_READ));
+        drop(client);
+        handle.join().unwrap().unwrap();
     }
 
     #[test]
