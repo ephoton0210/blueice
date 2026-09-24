@@ -37,6 +37,9 @@ struct Args {
     width: f64,
     height: f64,
     frame_dir: Option<PathBuf>,
+    /// One installed package is validated and hosted by each core generation.
+    /// Optional grants remain process-lifetime and do not cross a cutover.
+    extension_manifest: Option<PathBuf>,
     /// Test/debug-only: use a [`memory_pressure::FixedMemorySource`]
     /// reporting zero availability instead of real host memory, so the
     /// memory-pressure-response path can be exercised deterministically
@@ -59,6 +62,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut width = 800.0;
     let mut height = 600.0;
     let mut frame_dir = None;
+    let mut extension_manifest = None;
     let mut simulate_low_memory = false;
     let mut memory_poll_interval = memory_pressure::DEFAULT_POLL_INTERVAL;
 
@@ -79,6 +83,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                     .map_err(|_| "--height must be a number".to_string())?
             }
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
+            "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
             "--simulate-low-memory" => simulate_low_memory = true,
             "--memory-poll-interval-ms" => {
                 let ms: u64 = value()?
@@ -98,6 +103,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         width,
         height,
         frame_dir,
+        extension_manifest,
         simulate_low_memory,
         memory_poll_interval,
     })
@@ -124,11 +130,12 @@ fn main() -> ExitCode {
         }
     };
 
-    let core = match SpawnedCore::spawn_with_gatekeeper(
+    let core = match SpawnedCore::spawn_with_gatekeeper_and_extension(
         args.width,
         args.height,
         &frame_dir,
         gatekeeper.socket_path(),
+        args.extension_manifest.as_deref(),
     ) {
         Ok(core) => core,
         Err(e) => {
@@ -233,6 +240,7 @@ mod tests {
         assert_eq!(parsed.width, 800.0);
         assert_eq!(parsed.height, 600.0);
         assert_eq!(parsed.frame_dir, None);
+        assert_eq!(parsed.extension_manifest, None);
         assert!(!parsed.simulate_low_memory);
         assert_eq!(
             parsed.memory_poll_interval,
@@ -253,6 +261,8 @@ mod tests {
             "50",
             "--frame-dir",
             "/tmp/frames",
+            "--extension-manifest",
+            "/tmp/extension.json",
             "--simulate-low-memory",
             "--memory-poll-interval-ms",
             "50",
@@ -266,6 +276,7 @@ mod tests {
                 width: 100.0,
                 height: 50.0,
                 frame_dir: Some(PathBuf::from("/tmp/frames")),
+                extension_manifest: Some(PathBuf::from("/tmp/extension.json")),
                 simulate_low_memory: true,
                 memory_poll_interval: Duration::from_millis(50),
             }

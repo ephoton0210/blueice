@@ -310,6 +310,9 @@ struct Broker {
     /// cutover cannot accidentally turn the fail-closed navigation
     /// checkpoint into an unreachable default socket.
     gatekeeper_socket: PathBuf,
+    /// The installed package, if any, must be revalidated in each fresh core
+    /// generation rather than silently disappearing after a cutover.
+    extension_manifest: Option<PathBuf>,
     /// Signaled exactly once, by whichever generation-tagged broadcast
     /// thread's own death is NOT a deliberate cutover supersession --
     /// what [`run_broker`] blocks on to know when the whole launcher
@@ -643,7 +646,7 @@ fn perform_swap(broker: &Arc<Broker>, v2: SpawnedCore, target_generation: u64) {
         // recognizes as an expected supersession, not a fault, since
         // `generation` was already bumped above.
         let _ = v1.stream.shutdown(Shutdown::Both);
-        drop(v1); // kills v1's process, cleans up its socket + frame_dir
+        drop(v1); // reaps v1 and cleans up its socket + frame_dir
     }
 }
 
@@ -666,11 +669,12 @@ fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
 
     let target_generation = broker.generation.load(Ordering::SeqCst) + 1;
     let frame_dir = v2_frame_dir(&broker.frame_dir, target_generation);
-    let mut v2 = match SpawnedCore::spawn_with_gatekeeper(
+    let mut v2 = match SpawnedCore::spawn_with_gatekeeper_and_extension(
         broker.width,
         broker.height,
         &frame_dir,
         &broker.gatekeeper_socket,
+        broker.extension_manifest.as_deref(),
     ) {
         Ok(v2) => v2,
         Err(e) => {
@@ -719,7 +723,7 @@ fn handle_control_connection(mut conn: UnixStream, broker: &Arc<Broker>) -> io::
 ///
 /// `core` (v1) is fully owned by this call from here on: whichever
 /// `SpawnedCore` is active when this function is about to return is
-/// explicitly torn down (killed, socket/frame_dir cleaned up) before
+/// explicitly torn down (reaped, socket/frame_dir cleaned up) before
 /// returning, mirroring the `drop(core)` `main()` used to do itself
 /// before this function grew cutover support.
 ///
@@ -739,6 +743,7 @@ pub fn run_broker(
     gatekeeper_socket: PathBuf,
 ) -> io::Result<()> {
     let frame_dir = core.frame_dir.clone();
+    let extension_manifest = core.extension_manifest.clone();
     let core_writer = Arc::new(Mutex::new(core.stream.try_clone()?));
     let broadcast_stream = core.stream.try_clone()?;
     let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
@@ -755,6 +760,7 @@ pub fn run_broker(
         height,
         frame_dir,
         gatekeeper_socket,
+        extension_manifest,
         done: done_tx.clone(),
     });
 
@@ -842,6 +848,23 @@ fn sibling_bluejs_binary(this_exe: &Path) -> PathBuf {
     dir.join(name)
 }
 
+/// The authenticated extension host must be from the same installed build as
+/// launcher and core; never resolve a different executable from `$PATH`.
+fn sibling_extension_host_binary(this_exe: &Path) -> PathBuf {
+    let name = if cfg!(windows) {
+        "blueice-extension-host.exe"
+    } else {
+        "blueice-extension-host"
+    };
+    let dir = this_exe.parent().unwrap_or_else(|| Path::new("."));
+    let dir = if dir.file_name().is_some_and(|n| n == "deps") {
+        dir.parent().unwrap_or(dir)
+    } else {
+        dir
+    };
+    dir.join(name)
+}
+
 /// The always-resident safety-gatekeeper daemon lives beside `core` and
 /// BlueJS. Resolve it relative to the launcher rather than `$PATH`, so
 /// one installed BlueIce release never launches another release's policy
@@ -884,6 +907,16 @@ fn unique_internal_script_socket_path() -> PathBuf {
     std::env::temp_dir().join(format!(
         "blueice-launcher-bluejs-{}-{n}.sock",
         std::process::id()
+    ))
+}
+
+fn unique_internal_extension_socket_path() -> PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    // Core's extension listener requires a private directory, and Darwin's
+    // AF_UNIX path limit leaves little room for the leaf name.
+    blueice_ipc::local_socket::default_socket_dir().join(format!(
+        "l-ext-{}-{n}.sock", std::process::id()
     ))
 }
 
@@ -971,6 +1004,8 @@ pub struct SpawnedCore {
     script_child: Child,
     internal_socket_path: PathBuf,
     script_socket_path: PathBuf,
+    extension_socket_path: Option<PathBuf>,
+    extension_manifest: Option<PathBuf>,
     frame_dir: PathBuf,
     pub stream: UnixStream,
 }
@@ -994,16 +1029,36 @@ impl SpawnedCore {
         frame_dir: &Path,
         gatekeeper_socket: &Path,
     ) -> io::Result<Self> {
+        Self::spawn_with_gatekeeper_and_extension(
+            width, height, frame_dir, gatekeeper_socket, None,
+        )
+    }
+
+    /// Starts an installed package through core's authenticated extension
+    /// host when a manifest is supplied. Each cutover gets a fresh private
+    /// extension socket and core-generated child credential. Optional grants
+    /// are not copied to v2; a new core starts from manifest-declared grants.
+    pub fn spawn_with_gatekeeper_and_extension(
+        width: f64,
+        height: f64,
+        frame_dir: &Path,
+        gatekeeper_socket: &Path,
+        extension_manifest: Option<&Path>,
+    ) -> io::Result<Self> {
         let this_exe = std::env::current_exe()?;
         let core_bin = sibling_core_binary(&this_exe);
         let bluejs_bin = sibling_bluejs_binary(&this_exe);
         let internal_socket_path = unique_internal_socket_path();
         let script_socket_path = unique_internal_script_socket_path();
+        let extension_socket_path = extension_manifest.map(|_| unique_internal_extension_socket_path());
         let _ = std::fs::remove_file(&internal_socket_path);
         let _ = std::fs::remove_file(&script_socket_path);
+        if let Some(path) = extension_socket_path.as_deref() {
+            let _ = std::fs::remove_file(path);
+        }
 
-        let child = Command::new(&core_bin)
-            .arg("--socket")
+        let mut command = Command::new(&core_bin);
+        command.arg("--socket")
             .arg(&internal_socket_path)
             .arg("--width")
             .arg(width.to_string())
@@ -1014,10 +1069,28 @@ impl SpawnedCore {
             .arg("--gatekeeper-socket")
             .arg(gatekeeper_socket)
             .arg("--script-socket")
-            .arg(&script_socket_path)
-            .spawn()?;
+            .arg(&script_socket_path);
+        if let (Some(manifest), Some(socket)) = (extension_manifest, extension_socket_path.as_deref()) {
+            command.arg("--extension-socket").arg(socket)
+                .arg("--extension-manifest").arg(manifest)
+                .arg("--extension-host").arg(sibling_extension_host_binary(&this_exe));
+        }
+        let mut child = command.spawn()?;
 
-        if !wait_for_socket(&internal_socket_path, Duration::from_secs(5)) {
+        // Core itself gives its authenticated extension host five seconds to
+        // connect, then stops that child on failure. Leave a little margin
+        // before launcher's fallback kill so we do not interrupt that cleanup.
+        let startup_timeout = if extension_manifest.is_some() {
+            Duration::from_secs(7)
+        } else {
+            Duration::from_secs(5)
+        };
+        if !wait_for_socket(&internal_socket_path, startup_timeout) {
+            let _ = child.kill();
+            let _ = child.wait();
+            if let Some(path) = extension_socket_path.as_deref() {
+                let _ = std::fs::remove_file(path);
+            }
             return Err(io::Error::other(format!(
                 "blueice-core never created its socket at {}",
                 internal_socket_path.display()
@@ -1035,6 +1108,9 @@ impl SpawnedCore {
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&internal_socket_path);
                 let _ = std::fs::remove_file(&script_socket_path);
+                if let Some(path) = extension_socket_path.as_deref() {
+                    let _ = std::fs::remove_file(path);
+                }
                 return Err(io::Error::new(
                     error.kind(),
                     format!(
@@ -1044,7 +1120,22 @@ impl SpawnedCore {
                 ));
             }
         };
-        let mut stream = UnixStream::connect(&internal_socket_path)?;
+        let mut stream = match UnixStream::connect(&internal_socket_path) {
+            Ok(stream) => stream,
+            Err(error) => {
+                let mut script_child = script_child;
+                let _ = script_child.kill();
+                let _ = script_child.wait();
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = std::fs::remove_file(&internal_socket_path);
+                let _ = std::fs::remove_file(&script_socket_path);
+                if let Some(path) = extension_socket_path.as_deref() {
+                    let _ = std::fs::remove_file(path);
+                }
+                return Err(error);
+            }
+        };
         // `core` requires the very first message on a fresh connection
         // to be `Hello` (`phase-1-ai-representation-layer/PLAN.md` §3);
         // this launcher is the connection's one and only direct client,
@@ -1054,12 +1145,26 @@ impl SpawnedCore {
         // this already-past-its-handshake connection, `core` just
         // answers it again rather than re-gating (see `blueice_engine::
         // session::run_session`'s own docs).
-        blueice_ipc::client_handshake(&mut stream)?;
+        if let Err(error) = blueice_ipc::client_handshake(&mut stream) {
+            let mut script_child = script_child;
+            let _ = script_child.kill();
+            let _ = script_child.wait();
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(&internal_socket_path);
+            let _ = std::fs::remove_file(&script_socket_path);
+            if let Some(path) = extension_socket_path.as_deref() {
+                let _ = std::fs::remove_file(path);
+            }
+            return Err(error);
+        }
         Ok(SpawnedCore {
             child,
             script_child,
             internal_socket_path,
             script_socket_path,
+            extension_socket_path,
+            extension_manifest: extension_manifest.map(Path::to_path_buf),
             frame_dir: frame_dir.to_path_buf(),
             stream,
         })
@@ -1068,17 +1173,31 @@ impl SpawnedCore {
 
 impl Drop for SpawnedCore {
     fn drop(&mut self) {
+        // Let core observe its private client disconnect and reap its own
+        // extension-host child before the force-kill fallback. SIGKILL first
+        // would orphan that child during every successful cutover.
+        let _ = self.stream.shutdown(Shutdown::Both);
+        let deadline = Instant::now() + Duration::from_millis(750);
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+                _ => {
+                    let _ = self.child.kill();
+                    let _ = self.child.wait();
+                    break;
+                }
+            }
+        }
         let _ = self.script_child.kill();
         let _ = self.script_child.wait();
-        let _ = self.child.kill();
-        let _ = self.child.wait();
         let _ = std::fs::remove_file(&self.internal_socket_path);
         let _ = std::fs::remove_file(&self.script_socket_path);
-        // `child.kill()` sends SIGKILL, which never lets `blueice-core`
-        // run its own graceful-exit cleanup (which would otherwise
-        // remove this itself) -- matters specifically for a cutover's
-        // forcefully-superseded v1, which never gets the chance to exit
-        // on its own.
+        if let Some(path) = self.extension_socket_path.as_deref() {
+            let _ = std::fs::remove_file(path);
+        }
+        // The bounded fallback still needs launcher-owned cleanup if core
+        // did not get to remove its own frame directory before termination.
         let _ = std::fs::remove_dir_all(&self.frame_dir);
     }
 }

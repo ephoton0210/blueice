@@ -84,6 +84,10 @@ struct Launcher {
 
 impl Launcher {
     fn spawn() -> Self {
+        Self::spawn_with_manifest(None)
+    }
+
+    fn spawn_with_manifest(manifest: Option<&Path>) -> Self {
         let rendezvous_socket = unique_path("rendezvous.sock");
         let control_socket = unique_path("control.sock");
         let frame_dir = unique_path("frames");
@@ -91,8 +95,8 @@ impl Launcher {
         let _ = std::fs::remove_file(&control_socket);
         let _ = std::fs::remove_dir_all(&frame_dir);
 
-        let child = Command::new(env!("CARGO_BIN_EXE_blueice-launcher"))
-            .args([
+        let mut command = Command::new(env!("CARGO_BIN_EXE_blueice-launcher"));
+        command.args([
                 "--socket",
                 rendezvous_socket.to_str().unwrap(),
                 "--control-socket",
@@ -103,8 +107,11 @@ impl Launcher {
                 "200",
                 "--frame-dir",
                 frame_dir.to_str().unwrap(),
-            ])
-            .spawn()
+            ]);
+        if let Some(manifest) = manifest {
+            command.arg("--extension-manifest").arg(manifest);
+        }
+        let child = command.spawn()
             .expect("failed to spawn blueice-launcher");
 
         assert!(
@@ -139,10 +146,20 @@ impl Launcher {
     /// cutover, making v1's spawn the very first call in the launcher
     /// process's lifetime (its internal per-call counter starts at 0).
     /// Used to prove v1 is actually torn down after a successful
-    /// cutover: `SpawnedCore::Drop` removes this file, and only runs
-    /// once the process has actually been killed and reaped.
+    /// cutover: `SpawnedCore::Drop` removes this file after the process
+    /// has exited and been reaped (with a bounded force-kill fallback).
     fn v1_internal_socket_path(&self) -> PathBuf {
         std::env::temp_dir().join(format!("blueice-launcher-core-{}-0.sock", self.child.id()))
+    }
+
+    /// `SpawnedCore` gives each generation a fresh private extension socket.
+    /// Its counter starts at zero in each launcher process, independently of
+    /// the ordinary core IPC socket counter.
+    fn extension_socket_path(&self, generation_index: u64) -> PathBuf {
+        blueice_ipc::local_socket::default_socket_dir().join(format!(
+            "l-ext-{}-{generation_index}.sock",
+            self.child.id()
+        ))
     }
 
     /// Waits for the launcher to exit on its own (e.g. after a
@@ -442,8 +459,7 @@ fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
     assert_eq!(tabs_migrated, 2);
 
     // (c) v1's process is actually dead: `SpawnedCore::Drop` removes
-    // its internal socket file, and only runs once the child has
-    // actually been killed and reaped.
+    // its internal socket file only after the child has been reaped.
     assert!(
         !v1_internal_socket.exists(),
         "v1's internal socket must be gone once cutover has torn it down"
@@ -484,6 +500,84 @@ fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
 
     write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
     launcher.wait_or_kill(Duration::from_secs(5));
+}
+
+#[test]
+fn an_installed_extension_survives_cutover_with_a_fresh_authenticated_host() {
+    let package_root = unique_path("extension-package");
+    std::fs::create_dir_all(&package_root).unwrap();
+    let manifest = package_root.join("extension.json");
+    std::fs::write(
+        &manifest,
+        r#"{"name":"Launcher cutover test","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read"],"optional":["storage"]}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        package_root.join("extension.wasm"),
+        wat::parse_str(r#"(module (func (export "blueice_start")))"#).unwrap(),
+    )
+    .unwrap();
+
+    let mut launcher = Launcher::spawn_with_manifest(Some(&manifest));
+    let v1_extension_socket = launcher.extension_socket_path(0);
+    let v2_extension_socket = launcher.extension_socket_path(1);
+    assert!(
+        v1_extension_socket.exists(),
+        "launcher readiness must include a live, authenticated v1 extension host"
+    );
+    assert!(
+        !v2_extension_socket.exists(),
+        "v2's private extension socket must not predate the cutover"
+    );
+
+    let mut client = launcher.connect();
+    write_client_message(
+        &mut client,
+        &ClientMessage::Navigate {
+            url: "about:credits".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_server_message(&mut client).unwrap(),
+        ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        read_server_message(&mut client).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
+
+    let mut control = launcher.connect_control();
+    write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
+    let reply = read_control_reply(&mut control).unwrap();
+    assert!(matches!(reply, ControlReply::CutoverDone { tabs_migrated: 1 }), "{reply:?}");
+    assert!(
+        !v1_extension_socket.exists(),
+        "v1's extension listener must be removed during the cutover"
+    );
+    assert!(
+        v2_extension_socket.exists(),
+        "v2 must revalidate the same package and start a fresh authenticated host"
+    );
+
+    write_client_message_with_id(&mut client, Some(900), &ClientMessage::ListTabs).unwrap();
+    let tabs = loop {
+        let (reply_id, message) = read_server_message_with_id(&mut client).unwrap();
+        if matches!(reply_id, Some(id) if id != 900) {
+            continue;
+        }
+        match message {
+            ServerMessage::Tabs(tabs) => break tabs,
+            other => panic!("expected Tabs after extension cutover, got {other:?}"),
+        }
+    };
+    assert_eq!(tabs.len(), 1);
+    assert_eq!(tabs[0].url.as_deref(), Some("about:credits"));
+
+    write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+    launcher.wait_or_kill(Duration::from_secs(5));
+    assert!(!v2_extension_socket.exists());
+    std::fs::remove_dir_all(&package_root).unwrap();
 }
 
 #[test]
