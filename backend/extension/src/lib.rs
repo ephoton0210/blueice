@@ -655,6 +655,45 @@ fn network_registration_generation(
         ))
 }
 
+fn commit_dom_write<W>(
+    registry: &ExtensionRegistry,
+    identity: &ConnectionIdentity,
+    captured_generation: Option<u64>,
+    write_dom: &mut W,
+    target: Option<(u64, u64)>,
+    value: String,
+    kind: &blueice_ipc::extension::DomWriteTarget,
+) -> Result<(), String>
+where
+    W: FnMut(Option<(u64, u64)>, String, &blueice_ipc::extension::DomWriteTarget, u64)
+        -> Result<(), String>,
+{
+    let generation = captured_generation.ok_or_else(|| grant_changed_reason(CAPABILITY_DOM_WRITE))?;
+    if registry.capability_generation(&identity.extension_id, CAPABILITY_DOM_WRITE)
+        != Some(generation)
+    {
+        return Err(grant_changed_reason(CAPABILITY_DOM_WRITE));
+    }
+    // The core-backed delegate carries this original generation to the
+    // session's final guarded mutation. A host-side check alone would not
+    // protect a request left in the session queue after a timeout.
+    write_dom(target, value, kind, generation)
+}
+
+fn write_dom_effect_reply<S: Write>(stream: &mut S, result: Result<(), String>) -> io::Result<()> {
+    match result {
+        Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck),
+        Err(reason) if reason == grant_changed_reason(CAPABILITY_DOM_WRITE) => {
+            write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                capability: CAPABILITY_DOM_WRITE.to_string(), reason,
+            })
+        }
+        Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+            capability: CAPABILITY_DOM_WRITE.to_string(), reason,
+        }),
+    }
+}
+
 fn write_network_registration_reply<S: Write>(
     stream: &mut S,
     result: Result<(), String>,
@@ -754,7 +793,7 @@ pub fn handle_extension_connection_with_gatekeeper<S: Read + Write>(
         gatekeeper_socket,
         stream,
         |_| Ok(PLACEHOLDER_DOM_READ_VALUE.to_string()),
-        |_, _, _| Ok(()),
+        |_, _, _, _| Ok(()),
         || Ok(()),
     )
 }
@@ -785,6 +824,7 @@ where
         Option<(u64, u64)>,
         String,
         &blueice_ipc::extension::DomWriteTarget,
+        u64,
     ) -> Result<(), String>,
     N: FnMut() -> Result<(), String>,
 {
@@ -1083,6 +1123,7 @@ where
         Option<(u64, u64)>,
         String,
         &blueice_ipc::extension::DomWriteTarget,
+        u64,
     ) -> Result<(), String>,
     N: FnMut() -> Result<(), String>,
 {
@@ -1137,6 +1178,7 @@ where
         Option<(u64, u64)>,
         String,
         &blueice_ipc::extension::DomWriteTarget,
+        u64,
     ) -> Result<(), String>,
     N: FnMut() -> Result<(), String>,
     B: FnMut(String, u64) -> Result<(), String>,
@@ -1182,6 +1224,11 @@ where
             Ok(request) => request,
             Err(_) => return Ok(()),
         };
+        // Capture the grant that existed when this request arrived. A later
+        // revoke/regrant cannot lend its authority to a reviewed write.
+        let dom_write_generation = registry.capability_generation(
+            &identity.extension_id, CAPABILITY_DOM_WRITE,
+        );
         match request {
             ExtensionRequest::Hello {
                 extension_id,
@@ -1681,16 +1728,8 @@ where
                             "only gatekeeper-triggering targets reach extension action review",
                         ),
                     ) {
-                        Ok(GatekeeperReply::Cleared) => match write_dom(None, value, &target) {
-                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
-                            Err(reason) => write_extension_reply(
-                                stream,
-                                &ExtensionReply::OperationUnavailable {
-                                    capability: CAPABILITY_DOM_WRITE.to_string(),
-                                    reason,
-                                },
-                            )?,
-                        },
+                        Ok(GatekeeperReply::Cleared) => write_dom_effect_reply(stream,
+                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, None, value, &target))?,
                         Ok(GatekeeperReply::Rejected { reason, category }) => {
                             write_extension_reply(
                                 stream,
@@ -1713,16 +1752,8 @@ where
                         }
                     }
                 } else {
-                    match write_dom(None, value, &target) {
-                        Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
-                        Err(reason) => write_extension_reply(
-                            stream,
-                            &ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_DOM_WRITE.to_string(),
-                                reason,
-                            },
-                        )?,
-                    }
+                    write_dom_effect_reply(stream,
+                        commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, None, value, &target))?;
                 }
             }
             ExtensionRequest::SetTextInputValue {
@@ -1768,16 +1799,8 @@ where
                         let target = blueice_ipc::extension::DomWriteTarget::FormInput {
                             input_type: "text".to_string(),
                         };
-                        match write_dom(Some((tab_id, node_id)), value, &target) {
-                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
-                            Err(reason) => write_extension_reply(
-                                stream,
-                                &ExtensionReply::OperationUnavailable {
-                                    capability: CAPABILITY_DOM_WRITE.to_string(),
-                                    reason,
-                                },
-                            )?,
-                        }
+                        write_dom_effect_reply(stream,
+                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), value, &target))?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -1833,16 +1856,8 @@ where
                             input_type: "checkbox".to_string(),
                         };
                         let checked = if checked { "true" } else { "false" }.to_string();
-                        match write_dom(Some((tab_id, node_id)), checked, &target) {
-                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
-                            Err(reason) => write_extension_reply(
-                                stream,
-                                &ExtensionReply::OperationUnavailable {
-                                    capability: CAPABILITY_DOM_WRITE.to_string(),
-                                    reason,
-                                },
-                            )?,
-                        }
+                        write_dom_effect_reply(stream,
+                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), checked, &target))?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -1909,16 +1924,8 @@ where
                         let target = blueice_ipc::extension::DomWriteTarget::FormInput {
                             input_type: "textarea".to_string(),
                         };
-                        match write_dom(Some((tab_id, node_id)), value, &target) {
-                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
-                            Err(reason) => write_extension_reply(
-                                stream,
-                                &ExtensionReply::OperationUnavailable {
-                                    capability: CAPABILITY_DOM_WRITE.to_string(),
-                                    reason,
-                                },
-                            )?,
-                        }
+                        write_dom_effect_reply(stream,
+                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), value, &target))?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -1973,16 +1980,8 @@ where
                         let target = blueice_ipc::extension::DomWriteTarget::FormInput {
                             input_type: "range".to_string(),
                         };
-                        match write_dom(Some((tab_id, node_id)), value.to_string(), &target) {
-                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
-                            Err(reason) => write_extension_reply(
-                                stream,
-                                &ExtensionReply::OperationUnavailable {
-                                    capability: CAPABILITY_DOM_WRITE.to_string(),
-                                    reason,
-                                },
-                            )?,
-                        }
+                        write_dom_effect_reply(stream,
+                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), value.to_string(), &target))?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -2049,12 +2048,8 @@ where
                 let detail = format!("action={action}; text={value}");
                 match check_extension_action(gatekeeper_socket, &identity.extension_id, CAPABILITY_DOM_WRITE, detail) {
                     Ok(GatekeeperReply::Cleared) => {
-                        match write_dom(Some((tab_id, node_id)), value, &target) {
-                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
-                            Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_DOM_WRITE.to_string(), reason,
-                            })?,
-                        }
+                        write_dom_effect_reply(stream,
+                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), value, &target))?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
@@ -2095,16 +2090,8 @@ where
                         let target = blueice_ipc::extension::DomWriteTarget::FormInput {
                             input_type: "radio".to_string(),
                         };
-                        match write_dom(Some((tab_id, node_id)), "true".to_string(), &target) {
-                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
-                            Err(reason) => write_extension_reply(
-                                stream,
-                                &ExtensionReply::OperationUnavailable {
-                                    capability: CAPABILITY_DOM_WRITE.to_string(),
-                                    reason,
-                                },
-                            )?,
-                        }
+                        write_dom_effect_reply(stream,
+                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), "true".to_string(), &target))?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -2155,16 +2142,8 @@ where
                         let target = blueice_ipc::extension::DomWriteTarget::FormInput {
                             input_type: "select".to_string(),
                         };
-                        match write_dom(Some((tab_id, node_id)), "true".to_string(), &target) {
-                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
-                            Err(reason) => write_extension_reply(
-                                stream,
-                                &ExtensionReply::OperationUnavailable {
-                                    capability: CAPABILITY_DOM_WRITE.to_string(),
-                                    reason,
-                                },
-                            )?,
-                        }
+                        write_dom_effect_reply(stream,
+                            commit_dom_write(registry, &identity, dom_write_generation, &mut write_dom, Some((tab_id, node_id)), "true".to_string(), &target))?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
@@ -3208,6 +3187,7 @@ mod tests {
         _: Option<(u64, u64)>,
         _: String,
         _: &DomWriteTarget,
+        _: u64,
     ) -> Result<(), String> {
         Ok(())
     }
@@ -3718,7 +3698,7 @@ mod tests {
                 &socket_for_handler,
                 &mut server,
                 |_| Ok("unused in this test".to_string()),
-                move |target, value, _| {
+                move |target, value, _, _| {
                     seen_tx.send((target, value)).unwrap();
                     Ok(())
                 },
@@ -3786,7 +3766,7 @@ mod tests {
                 &socket_for_handler,
                 &mut server,
                 |_| Ok("unused in this test".to_string()),
-                move |_, _, _| {
+                move |_, _, _, _| {
                     delegated_for_handler.store(true, std::sync::atomic::Ordering::SeqCst);
                     Ok(())
                 },
@@ -3849,7 +3829,7 @@ mod tests {
                 &socket_for_handler,
                 &mut server,
                 |_| Ok("unused in this test".to_string()),
-                move |target, value, write_target| {
+                move |target, value, write_target, _| {
                     seen_tx.send((target, value, write_target.clone())).unwrap();
                     Ok(())
                 },
@@ -3917,7 +3897,7 @@ mod tests {
                 &socket_for_handler,
                 &mut server,
                 |_| Ok("unused in this test".to_string()),
-                move |target, value, write_target| {
+                move |target, value, write_target, _| {
                     seen_tx.send((target, value, write_target.clone())).unwrap();
                     Ok(())
                 },
@@ -3984,7 +3964,7 @@ mod tests {
                 &socket_for_handler,
                 &mut server,
                 |_| Ok("unused in this test".to_string()),
-                move |target, value, write_target| {
+                move |target, value, write_target, _| {
                     seen_tx.send((target, value, write_target.clone())).unwrap();
                     Ok(())
                 },
@@ -4049,7 +4029,7 @@ mod tests {
             handle_extension_connection_with_actions(
                 &registry, &socket_for_handler, &mut server,
                 |_| Ok("unused".to_string()),
-                move |target, value, kind| { seen_tx.send((target, value, kind.clone())).unwrap(); Ok(()) },
+                move |target, value, kind, _| { seen_tx.send((target, value, kind.clone())).unwrap(); Ok(()) },
                 || Ok(()),
             )
         });
@@ -4074,7 +4054,7 @@ mod tests {
         let handle = thread::spawn(move || handle_extension_connection_with_actions(
             &registry, Path::new("/not-reached-for-v7-visible-leaf.sock"), &mut server,
             |_| Ok("unused".to_string()),
-            |_, _, _| panic!("v7 cannot delegate a v8 request"),
+            |_, _, _, _| panic!("v7 cannot delegate a v8 request"),
             || Ok(()),
         ));
         write_extension_request(&mut client, &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 7)])).unwrap();
@@ -4099,7 +4079,7 @@ mod tests {
                 &socket_for_handler,
                 &mut server,
                 |_| Ok("unused".to_string()),
-                move |target, value, kind| {
+                move |target, value, kind, _| {
                     seen_tx.send((target, value, kind.clone())).unwrap();
                     Ok(())
                 },
@@ -4150,7 +4130,7 @@ mod tests {
                 Path::new("/not-reached-for-v8-text-content.sock"),
                 &mut server,
                 |_| Ok("unused".to_string()),
-                |_, _, _| panic!("v8 cannot delegate a v9 request"),
+                |_, _, _, _| panic!("v8 cannot delegate a v9 request"),
                 || Ok(()),
             )
         });
@@ -4188,7 +4168,7 @@ mod tests {
                 Path::new("/not-reached-for-legacy-visible-text.sock"),
                 &mut server,
                 |_| Ok("unused".to_string()),
-                |_, _, _| panic!("legacy mutation must not reach a visible text delegate"),
+                |_, _, _, _| panic!("legacy mutation must not reach a visible text delegate"),
                 || Ok(()),
             )
         });
@@ -4228,7 +4208,7 @@ mod tests {
         let handle = thread::spawn(move || handle_extension_connection_with_actions(
             &registry, &socket_for_handler, &mut server,
             |_| Ok("unused".to_string()),
-            |_, _, _| panic!("a gatekeeper rejection must not mutate core"),
+            |_, _, _, _| panic!("a gatekeeper rejection must not mutate core"),
             || Ok(()),
         ));
         write_extension_request(&mut client, &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 8)])).unwrap();
@@ -4253,7 +4233,7 @@ mod tests {
                 Path::new("/not-reached-for-v6-range-version-denial.sock"),
                 &mut server,
                 |_| Ok("unused in this test".to_string()),
-                |_, _, _| panic!("a v6 connection must not delegate a v7 range request"),
+                |_, _, _, _| panic!("a v6 connection must not delegate a v7 range request"),
                 || Ok(()),
             )
         });
@@ -4302,7 +4282,7 @@ mod tests {
                 &socket_for_handler,
                 &mut server,
                 |_| Ok("unused in this test".to_string()),
-                move |target, value, write_target| {
+                move |target, value, write_target, _| {
                     seen_tx.send((target, value, write_target.clone())).unwrap();
                     Ok(())
                 },
@@ -4365,7 +4345,7 @@ mod tests {
                 Path::new("/not-reached-for-v5-select-version-denial.sock"),
                 &mut server,
                 |_| Ok("unused in this test".to_string()),
-                |_, _, _| panic!("a v5 connection must not delegate a v6 select request"),
+                |_, _, _, _| panic!("a v5 connection must not delegate a v6 select request"),
                 || Ok(()),
             )
         });
@@ -4409,7 +4389,7 @@ mod tests {
                 Path::new("/not-reached-for-v4-radio-version-denial.sock"),
                 &mut server,
                 |_| Ok("unused in this test".to_string()),
-                |_, _, _| panic!("a v4 connection must not delegate a v5 radio request"),
+                |_, _, _, _| panic!("a v4 connection must not delegate a v5 radio request"),
                 || Ok(()),
             )
         });
@@ -4453,7 +4433,7 @@ mod tests {
                 Path::new("/not-reached-for-v2-checkbox-version-denial.sock"),
                 &mut server,
                 |_| Ok("unused in this test".to_string()),
-                |_, _, _| panic!("a v2 connection must not delegate a v3 request"),
+                |_, _, _, _| panic!("a v2 connection must not delegate a v3 request"),
                 || Ok(()),
             )
         });
@@ -4502,7 +4482,7 @@ mod tests {
                 &socket_for_handler,
                 &mut server,
                 |_| Ok("unused in this test".to_string()),
-                move |target, value, write_target| {
+                move |target, value, write_target, _| {
                     seen_tx.send((target, value, write_target.clone())).unwrap();
                     Ok(())
                 },
@@ -4566,7 +4546,7 @@ mod tests {
                 Path::new("/not-reached-for-oversized-text-writes.sock"),
                 &mut server,
                 |_| Ok("unused in this test".to_string()),
-                |_, _, _| panic!("an oversized write must not reach core"),
+                |_, _, _, _| panic!("an oversized write must not reach core"),
                 || Ok(()),
             )
         });
@@ -4670,7 +4650,7 @@ mod tests {
                 Path::new("/not-used-by-dom-read"),
                 &mut server,
                 |_| Err("the core session has ended".to_string()),
-                |_, _, _| Ok(()),
+                |_, _, _, _| Ok(()),
                 || Ok(()),
             )
         });
@@ -5039,6 +5019,71 @@ mod tests {
             handler.join().unwrap().unwrap();
             gatekeeper.join().unwrap();
             let _ = std::fs::remove_file(gatekeeper_socket);
+        }
+    }
+
+    #[test]
+    fn reviewed_dom_writes_cannot_borrow_a_regranted_optional_permission() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        for (request, version) in [
+            (ExtensionRequest::SetTextInputValue {
+                tab_id: 1, node_id: 2, value: "new value".into(),
+            }, 2),
+            (ExtensionRequest::SetVisibleTextContent {
+                tab_id: 1, node_id: 2, value: "New heading".into(),
+            }, 9),
+        ] {
+            let mut registry = ExtensionRegistry::with_supported_capabilities();
+            registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE);
+            registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE).unwrap();
+            let registry = Arc::new(registry);
+            let socket = unique_gatekeeper_socket("optional-dom-write-race");
+            let _ = std::fs::remove_file(&socket);
+            let listener = UnixListener::bind(&socket).unwrap();
+            let (reviewed_tx, reviewed_rx) = mpsc::channel();
+            let (release_tx, release_rx) = mpsc::channel();
+            let gatekeeper = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                reviewed_tx.send(read_gatekeeper_request(&mut stream).unwrap()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                write_gatekeeper_reply(&mut stream, &GatekeeperReply::Cleared).unwrap();
+            });
+            let invoked = Arc::new(AtomicUsize::new(0));
+            let invoked_by_handler = Arc::clone(&invoked);
+            let handler_registry = Arc::clone(&registry);
+            let handler_socket = socket.clone();
+            let (mut client, mut server) = UnixStream::pair().unwrap();
+            let handler = thread::spawn(move || {
+                handle_extension_connection_with_actions(
+                    &handler_registry, &handler_socket, &mut server,
+                    |_| Ok(String::new()),
+                    move |_, _, _, _| {
+                        invoked_by_handler.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
+                    },
+                    || Ok(()),
+                )
+            });
+            write_extension_request(&mut client, &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, version)],
+            )).unwrap();
+            assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+            write_extension_request(&mut client, &request).unwrap();
+            assert!(matches!(reviewed_rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+                GatekeeperRequest::CheckExtensionAction { capability, .. }
+                    if capability == CAPABILITY_DOM_WRITE));
+            registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE).unwrap();
+            registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE).unwrap();
+            release_tx.send(()).unwrap();
+            assert!(matches!(read_extension_reply(&mut client).unwrap(),
+                ExtensionReply::CapabilityDenied { capability, reason }
+                    if capability == CAPABILITY_DOM_WRITE && reason.contains("grant changed")));
+            assert_eq!(invoked.load(Ordering::SeqCst), 0);
+            drop(client);
+            handler.join().unwrap().unwrap();
+            gatekeeper.join().unwrap();
+            let _ = std::fs::remove_file(socket);
         }
     }
 
@@ -5603,7 +5648,7 @@ mod tests {
                 &mut server,
                 ExtensionConnectionAuthentication::required(&expected),
                 |_| Ok(PLACEHOLDER_DOM_READ_VALUE.to_string()),
-                |_, _, _| Ok(()),
+                |_, _, _, _| Ok(()),
                 || Ok(()),
             )
         });
@@ -5629,7 +5674,7 @@ mod tests {
                 ExtensionConnectionAuthentication::required(&expected)
                     .with_ready_notification(ready_tx),
                 |_| Ok(PLACEHOLDER_DOM_READ_VALUE.to_string()),
-                |_, _, _| Ok(()),
+                |_, _, _, _| Ok(()),
                 || Ok(()),
             )
         });
@@ -5675,7 +5720,7 @@ mod tests {
                     .with_runtime_start_receiver(runtime_start_rx)
                     .with_runtime_event_receiver(runtime_event_rx),
                 |_| Ok(PLACEHOLDER_DOM_READ_VALUE.to_string()),
-                |_, _, _| Ok(()),
+                |_, _, _, _| Ok(()),
                 || Ok(()),
             )
         });

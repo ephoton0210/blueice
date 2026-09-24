@@ -285,12 +285,14 @@ fn request_text_input_value(
     tab_id: u64,
     node_id: u64,
     value: String,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::SetTextInputValue {
         tab_id,
         node_id,
         value,
+        grant_generation,
         reply: reply_tx,
     })
     .map_err(|_| "blueice-core session is no longer available".to_string())?;
@@ -304,12 +306,14 @@ fn request_checkbox_checked(
     tab_id: u64,
     node_id: u64,
     checked: bool,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::SetCheckboxChecked {
         tab_id,
         node_id,
         checked,
+        grant_generation,
         reply: reply_tx,
     })
     .map_err(|_| "blueice-core session is no longer available".to_string())?;
@@ -322,11 +326,13 @@ fn request_radio_checked(
     tx: &mpsc::Sender<ExtensionPageRequest>,
     tab_id: u64,
     node_id: u64,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::SetRadioChecked {
         tab_id,
         node_id,
+        grant_generation,
         reply: reply_tx,
     })
     .map_err(|_| "blueice-core session is no longer available".to_string())?;
@@ -339,11 +345,13 @@ fn request_select_option(
     tx: &mpsc::Sender<ExtensionPageRequest>,
     tab_id: u64,
     node_id: u64,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::SelectOption {
         tab_id,
         node_id,
+        grant_generation,
         reply: reply_tx,
     })
     .map_err(|_| "blueice-core session is no longer available".to_string())?;
@@ -357,12 +365,14 @@ fn request_textarea_value(
     tab_id: u64,
     node_id: u64,
     value: String,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::SetTextareaValue {
         tab_id,
         node_id,
         value,
+        grant_generation,
         reply: reply_tx,
     })
     .map_err(|_| "blueice-core session is no longer available".to_string())?;
@@ -376,12 +386,14 @@ fn request_visible_leaf_text(
     tab_id: u64,
     node_id: u64,
     value: String,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::SetVisibleLeafText {
         tab_id,
         node_id,
         value,
+        grant_generation,
         reply: reply_tx,
     })
     .map_err(|_| "blueice-core session is no longer available".to_string())?;
@@ -395,12 +407,14 @@ fn request_visible_text_content(
     tab_id: u64,
     node_id: u64,
     value: String,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::SetVisibleTextContent {
         tab_id,
         node_id,
         value,
+        grant_generation,
         reply: reply_tx,
     })
     .map_err(|_| "blueice-core session is no longer available".to_string())?;
@@ -414,12 +428,14 @@ fn request_range_input_value(
     tab_id: u64,
     node_id: u64,
     value: i64,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::SetRangeInputValue {
         tab_id,
         node_id,
         value,
+        grant_generation,
         reply: reply_tx,
     })
     .map_err(|_| "blueice-core session is no longer available".to_string())?;
@@ -660,7 +676,8 @@ fn spawn_extension_listener(
                             move |tab_id| request_tab_representation(&read_tx, tab_id),
                             move |target,
                                   value,
-                                  write_target: &blueice_ipc::extension::DomWriteTarget| {
+                                  write_target: &blueice_ipc::extension::DomWriteTarget,
+                                  grant_generation| {
                                 match target {
                                 Some((tab_id, node_id)) => match write_target {
                                     blueice_ipc::extension::DomWriteTarget::FormInput {
@@ -671,22 +688,23 @@ fn spawn_extension_listener(
                                             tab_id,
                                             node_id,
                                             value == "true",
+                                            grant_generation,
                                         )
                                     }
                                     blueice_ipc::extension::DomWriteTarget::FormInput {
                                         input_type,
                                     } if input_type.eq_ignore_ascii_case("radio") => {
-                                        request_radio_checked(&write_tx, tab_id, node_id)
+                                        request_radio_checked(&write_tx, tab_id, node_id, grant_generation)
                                     }
                                     blueice_ipc::extension::DomWriteTarget::FormInput {
                                         input_type,
                                     } if input_type.eq_ignore_ascii_case("select") => {
-                                        request_select_option(&write_tx, tab_id, node_id)
+                                        request_select_option(&write_tx, tab_id, node_id, grant_generation)
                                     }
                                     blueice_ipc::extension::DomWriteTarget::FormInput {
                                         input_type,
                                     } if input_type.eq_ignore_ascii_case("textarea") => {
-                                        request_textarea_value(&write_tx, tab_id, node_id, value)
+                                        request_textarea_value(&write_tx, tab_id, node_id, value, grant_generation)
                                     }
                                     blueice_ipc::extension::DomWriteTarget::FormInput {
                                         input_type,
@@ -695,15 +713,15 @@ fn spawn_extension_listener(
                                             "core-backed range input values must be integers"
                                                 .to_string()
                                         })?;
-                                        request_range_input_value(&write_tx, tab_id, node_id, value)
+                                        request_range_input_value(&write_tx, tab_id, node_id, value, grant_generation)
                                     }
                                     blueice_ipc::extension::DomWriteTarget::VisibleTextLeaf => {
-                                        request_visible_leaf_text(&write_tx, tab_id, node_id, value)
+                                        request_visible_leaf_text(&write_tx, tab_id, node_id, value, grant_generation)
                                     }
                                     blueice_ipc::extension::DomWriteTarget::VisibleTextContent => {
-                                        request_visible_text_content(&write_tx, tab_id, node_id, value)
+                                        request_visible_text_content(&write_tx, tab_id, node_id, value, grant_generation)
                                     }
-                                    _ => request_text_input_value(&write_tx, tab_id, node_id, value),
+                                    _ => request_text_input_value(&write_tx, tab_id, node_id, value, grant_generation),
                                 },
                                 None => Err(
                                     "core-backed legacy dom:write has no stable target node; negotiate dom:write version 2 or 3 and use an explicit control operation"
