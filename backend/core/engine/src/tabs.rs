@@ -370,11 +370,16 @@ impl TabManager {
         }
     }
 
-    fn prune_stale_extension_navigation_rules(&mut self) {
+    pub(crate) fn prune_stale_extension_navigation_rules(&mut self) {
         let current = self.intercept_generation();
         self.extension_navigation_block_rules.retain(|_, (generation, _)| {
             current == Some(*generation)
         });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn extension_navigation_rule_owner_count(&self) -> usize {
+        self.extension_navigation_block_rules.len()
     }
 
     pub fn set_extension_capability_origins(&mut self, scopes: BTreeMap<String, BTreeSet<String>>) {
@@ -1176,6 +1181,11 @@ mod tests {
         assert!(registry.revoke_optional(&id, "network:intercept").unwrap());
         assert!(!extension_navigation_rules_block_url(&captured, "https://old.example.test/page"));
         assert_eq!(extension_navigation_rules_redirect_url(&captured, "https://example.test/old"), None);
+        assert_eq!(tabs.extension_navigation_block_rules.len(), 1,
+            "revocation invalidates the captured rules before session cleanup");
+        tabs.prune_stale_extension_navigation_rules();
+        assert!(tabs.extension_navigation_block_rules.is_empty(),
+            "the next session tick must physically remove revoked rules");
         assert!(registry.grant_optional(&id, "network:intercept").unwrap());
         assert!(!extension_navigation_rules_block_url(&captured, "https://old.example.test/page"));
         assert_eq!(extension_navigation_rules_redirect_url(&captured, "https://example.test/old"), None);

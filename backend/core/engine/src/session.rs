@@ -449,7 +449,7 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
     loop {
         let incoming = blueice_ipc::read_client_message_with_ids(stream);
         if !matches!(&incoming, Err(error) if !is_timeout(error)) {
-            clear_stale_extension_ui(tabs, stream, &mut extension_toolbar, &mut extension_popup)?;
+            prune_stale_extension_effects(tabs, stream, &mut extension_toolbar, &mut extension_popup)?;
         }
         match incoming {
             Ok((tab_id, request_id, msg)) => {
@@ -1162,15 +1162,16 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
     }
 }
 
-/// Removes UI published under an earlier optional-grant generation before
-/// another client command can observe or activate it. The loop polls even
-/// without client traffic, so a revoke does not need a public IPC trigger.
-fn clear_stale_extension_ui<S: Write>(
-    tabs: &TabManager,
+/// Removes connection-owned effects published under an earlier optional
+/// grant generation. The session polls even without client traffic, so a
+/// revoke does not need a public IPC trigger to retire UI or network rules.
+fn prune_stale_extension_effects<S: Write>(
+    tabs: &mut TabManager,
     stream: &mut S,
     toolbar: &mut Option<(u64, String, u64)>,
     popup: &mut Option<(u64, ExtensionPopup, u64)>,
 ) -> io::Result<()> {
+    tabs.prune_stale_extension_navigation_rules();
     let current = tabs.extension_capability_generation("ui:inject");
     let toolbar_is_stale = toolbar.as_ref().is_some_and(|(_, _, generation)| {
         current != Some(*generation)
@@ -3256,7 +3257,7 @@ mod tests {
         result.recv().unwrap().unwrap();
 
         registry.revoke_optional(&id, "ui:inject").unwrap();
-        clear_stale_extension_ui(&tabs, &mut wire, &mut toolbar, &mut popup).unwrap();
+        prune_stale_extension_effects(&mut tabs, &mut wire, &mut toolbar, &mut popup).unwrap();
         assert!(toolbar.is_none() && popup.is_none());
         registry.grant_optional(&id, "ui:inject").unwrap();
         let new_generation = registry.capability_generation(&id, "ui:inject").unwrap();
@@ -3371,6 +3372,55 @@ mod tests {
         result.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         session.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn idle_session_physically_prunes_revoked_optional_navigation_rules() {
+        let root = temp_frame_dir("idle-optional-network-revoke");
+        std::fs::create_dir_all(&root).unwrap();
+        let manifest = root.join("extension.json");
+        std::fs::write(&manifest,
+            r#"{"name":"Optional network","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["network:intercept"]}}"#
+        ).unwrap();
+        std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0").unwrap();
+        let installed = blueice_extension_host::load_installed_extension(&manifest).unwrap();
+        let id = installed.extension_id().to_string();
+        let registry = Arc::new(blueice_extension_host::registry_for_installed_extension(&installed));
+        registry.grant_optional(&id, "network:intercept").unwrap();
+        let grant_generation = registry.capability_generation(&id, "network:intercept").unwrap();
+        let (mut client, mut server) = client_pair();
+        let (extension_tx, extension_rx) = mpsc::channel();
+        let session_registry = Arc::clone(&registry);
+        let session = thread::spawn({
+            let id = id.clone();
+            let root = root.clone();
+            move || {
+                let mut tabs = TabManager::new(320.0, 200.0);
+                tabs.set_extension_permission_registry(session_registry, id);
+                let mut generation = 0;
+                let result = run_session_with_extension_requests(
+                    &mut tabs, &mut server, &root, &mut generation,
+                    Path::new("/not-used-for-optional-network"), &extension_rx,
+                );
+                (result, tabs.extension_navigation_rule_owner_count())
+            }
+        });
+        handshake(&mut client);
+        let (reply, result) = mpsc::channel();
+        extension_tx.send(ExtensionPageRequest::RegisterNetworkBlockHost {
+            connection_id: 7, grant_generation, host: "old.example.test".into(), reply,
+        }).unwrap();
+        result.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+        registry.revoke_optional(&id, "network:intercept").unwrap();
+        // No client or extension message follows. The 25 ms session poll
+        // removes the now-inert rule before this client disconnects; the EOF
+        // branch itself deliberately does not run cleanup.
+        thread::sleep(Duration::from_millis(125));
+        drop(client);
+        let (result, remaining_rule_owners) = session.join().unwrap();
+        result.unwrap();
+        assert_eq!(remaining_rule_owners, 0);
         let _ = std::fs::remove_dir_all(root);
     }
 
