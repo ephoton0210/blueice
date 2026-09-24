@@ -700,6 +700,14 @@ or second module resolver to bypass them.
   `require_declared_global_calls` policy, so static metadata checked under an
   empty or verified host profile cannot be mistaken for metadata compiled
   under the standalone policy.
+  The compiler now retains zero-based UTF-16 start/end coordinates for each
+  symbol and reifiable contract alongside its original half-open UTF-8 byte
+  span. It computes only declaration boundaries in one temporary linear
+  source scan; the retained metadata has no source text or general line-map
+  oracle. CRLF, supplementary-plane Unicode, and Unicode block comments have
+  regressions. Carrying these positions through independently authorized
+  debugger location replies and generation-bound compiler/MCP queries remains
+  open.
   `DirectModuleGraph::attach_debug_in_page_realm` now derives a module-local
   static subset (one source, that module's symbols, and their referenced type
   IDs) for every graph generation and rolls back all retained records/programs

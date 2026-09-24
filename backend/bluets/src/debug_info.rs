@@ -50,6 +50,21 @@ pub struct DebugType {
     pub display: String,
 }
 
+/// Zero-based original-source position. Columns count UTF-16 code units, as
+/// in BlueTS's emitted source maps; no source text is retained here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DebugSourcePosition {
+    pub line: usize,
+    pub column_utf16: usize,
+}
+
+/// Half-open original-source position range for one declaration span.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DebugSourceLocation {
+    pub start: DebugSourcePosition,
+    pub end: DebugSourcePosition,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DebugSymbol {
     pub id: SymbolId,
@@ -58,6 +73,7 @@ pub struct DebugSymbol {
     /// The checker's exact module-export classification for this declaration.
     pub exported: bool,
     pub span: SourceSpan,
+    pub location: DebugSourceLocation,
     pub static_type: Option<TypeId>,
     /// The source record that owns this source span. It is a source-free
     /// provenance handle, not a source-read capability.
@@ -77,7 +93,74 @@ pub struct DebugContract {
     pub source: SourceId,
     pub name: String,
     pub span: SourceSpan,
+    pub location: DebugSourceLocation,
     pub plan: ContractPlan,
+}
+
+/// Resolves only compiler-produced declaration boundaries in one linear scan
+/// of the source. The temporary index is discarded after static metadata is
+/// built; the retained records contain coordinates, never source bytes.
+struct SourcePositionIndex {
+    positions: BTreeMap<usize, DebugSourcePosition>,
+}
+
+impl SourcePositionIndex {
+    fn new<'a>(source: &str, spans: impl IntoIterator<Item = &'a SourceSpan>) -> Self {
+        let mut requested = BTreeMap::<usize, Option<DebugSourcePosition>>::new();
+        for span in spans {
+            requested.insert(span.start, None);
+            requested.insert(span.end, None);
+        }
+        let mut position = DebugSourcePosition {
+            line: 0,
+            column_utf16: 0,
+        };
+        let mut previous_was_cr = false;
+        for (offset, character) in source.char_indices() {
+            if let Some(slot) = requested.get_mut(&offset) {
+                *slot = Some(position);
+            }
+            match character {
+                '\r' => {
+                    position.line += 1;
+                    position.column_utf16 = 0;
+                    previous_was_cr = true;
+                }
+                '\n' => {
+                    if !previous_was_cr {
+                        position.line += 1;
+                    }
+                    position.column_utf16 = 0;
+                    previous_was_cr = false;
+                }
+                _ => {
+                    position.column_utf16 += character.len_utf16();
+                    previous_was_cr = false;
+                }
+            }
+        }
+        if let Some(slot) = requested.get_mut(&source.len()) {
+            *slot = Some(position);
+        }
+        Self {
+            positions: requested
+                .into_iter()
+                .map(|(offset, position)| {
+                    (
+                        offset,
+                        position.expect("checked declaration spans must end at UTF-8 boundaries"),
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    fn location(&self, span: &SourceSpan) -> DebugSourceLocation {
+        DebugSourceLocation {
+            start: self.positions[&span.start],
+            end: self.positions[&span.end],
+        }
+    }
 }
 
 /// The host-neutral part of the Phase 18 debugger product.  BlueJS bytecode
@@ -116,8 +199,31 @@ pub(crate) fn build(checked: &CheckedProject, options: &CompilerOptions) -> Blue
 
     for (module_id, checked_module) in &checked.modules {
         let source = source_ids[module_id];
-        let local_contracts =
-            local_contracts(module_id, source, &checked_module.module, &mut contracts);
+        let positions = SourcePositionIndex::new(
+            &checked_module.module.source,
+            checked_module
+                .symbols
+                .iter()
+                .map(|symbol| &symbol.span)
+                .chain(
+                    checked_module
+                        .module
+                        .declarations
+                        .iter()
+                        .filter_map(|declaration| match declaration {
+                            Declaration::TypeAlias(alias) => Some(&alias.span),
+                            Declaration::Interface(interface) => Some(&interface.span),
+                            _ => None,
+                        }),
+                ),
+        );
+        let local_contracts = local_contracts(
+            module_id,
+            source,
+            &checked_module.module,
+            &positions,
+            &mut contracts,
+        );
         contracts_by_declaration.extend(
             local_contracts
                 .into_iter()
@@ -135,6 +241,7 @@ pub(crate) fn build(checked: &CheckedProject, options: &CompilerOptions) -> Blue
                 kind: symbol.kind,
                 exported: symbol.exported,
                 span: symbol.span.clone(),
+                location: positions.location(&symbol.span),
                 static_type,
                 source,
                 contract: matches!(symbol.kind, SymbolKind::TypeAlias | SymbolKind::Interface)
@@ -165,6 +272,7 @@ fn local_contracts(
     module_id: &str,
     source: SourceId,
     module: &Module,
+    positions: &SourcePositionIndex,
     contracts: &mut Vec<DebugContract>,
 ) -> BTreeMap<String, ContractId> {
     let definitions = local_contract_definitions(module);
@@ -188,6 +296,7 @@ fn local_contracts(
             source,
             name: name.clone(),
             span: span.clone(),
+            location: positions.location(span),
             plan,
         });
         retained.insert(name.clone(), id);
@@ -333,6 +442,47 @@ mod tests {
             source_hash("abc"),
             "bts-sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn declaration_locations_retain_original_utf16_columns_without_source_text() {
+        let source = "const 值: number = 1; /* 🚀 */ const after: number = 2;\r\ninterface Settings { enabled: boolean; }";
+        let loader = MapLoader::from([ModuleSource::new("memory:///app.ts", source)]);
+        let compilation = compile("memory:///app.ts", &loader, CompilerOptions::default());
+        let debug = compilation.debug_info.unwrap();
+        let first = debug
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "值")
+            .expect("first-line declaration must retain a symbol");
+        assert_eq!(first.location.start.line, 0);
+        assert_eq!(first.location.start.column_utf16, 0);
+        let after = debug
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "after")
+            .expect("same-line declaration must retain a symbol");
+        assert_eq!(after.location.start.line, 0);
+        assert_eq!(
+            after.location.start.column_utf16,
+            "const 值: number = 1; /* 🚀 */ ".encode_utf16().count()
+        );
+        let interface = debug
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Settings")
+            .expect("second-line declaration must retain a symbol");
+        assert_eq!(interface.location.start.line, 1);
+        assert_eq!(interface.location.start.column_utf16, 0);
+        let contract = debug
+            .contracts
+            .iter()
+            .find(|contract| contract.name == "Settings")
+            .expect("the interface must retain a reifiable contract");
+        assert_eq!(contract.location.start, interface.location.start);
+        assert_eq!(contract.location.end, interface.location.end);
+        assert!(interface.location.end.column_utf16 > interface.location.start.column_utf16);
+        assert_ne!(debug.sources[0].content_hash, source);
     }
 
     #[test]

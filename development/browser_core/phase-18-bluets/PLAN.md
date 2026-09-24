@@ -2,6 +2,15 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+**Original-source coordinate foundation:** `BlueTsDebugInfo` now retains
+zero-based UTF-16 start/end positions beside each compiler-minted symbol and
+reifiable contract's existing half-open UTF-8 byte span. A one-pass temporary
+position index derives coordinates from only the compiler's original source;
+the retained record still contains no source text or general line-map query.
+CRLF and supplementary-plane Unicode are covered. A Unicode block-comment
+fixture also fixed a lexer byte-scan panic. Public page-host, debugger, and
+compiler/MCP location replies do not carry these coordinates yet.
+
 **Symbol export update:** Page-host v25 and debugger v24 carry the BlueTS
 checker's exact `exported` boolean in the existing bounded symbol-display
 reply. This remains under the independently default-denied

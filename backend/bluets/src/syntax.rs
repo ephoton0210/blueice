@@ -157,7 +157,7 @@ pub(crate) fn lex_with_limits(
         if source[index..].starts_with("/*") {
             let start = index;
             index += 2;
-            while index + 1 < bytes.len() && !source[index..].starts_with("*/") {
+            while index + 1 < bytes.len() && !(bytes[index] == b'*' && bytes[index + 1] == b'/') {
                 index += 1;
             }
             if index + 1 >= bytes.len() {
@@ -371,6 +371,17 @@ mod tests {
         assert_eq!(tokens[0].text, "const");
         assert_eq!(tokens[1].text, "名");
         assert_eq!(&source[tokens[1].start..tokens[1].end], "名");
+    }
+
+    #[test]
+    fn scans_multibyte_block_comments_without_slicing_inside_utf8() {
+        let source = "/* 🚀 comment */ const answer = 42;";
+        let tokens = lex("memory:///a.ts", source).unwrap();
+        assert_eq!(tokens[0].text, "const");
+        assert_eq!(&source[tokens[0].start..tokens[0].end], "const");
+
+        let diagnostics = lex("memory:///a.ts", "/* 🚀 unterminated").unwrap_err();
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseError);
     }
 
     #[test]
