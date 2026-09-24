@@ -192,7 +192,7 @@ fn extension_host_probe_child_observes_optional_and_ephemeral_grants() {
     write_extension_request(&mut extension, &ExtensionRequest::HelloAuthenticated {
         extension_id: installed.extension_id().to_string(),
         capability_versions: BTreeMap::from([
-            ("storage".to_string(), 1), ("dom:read".to_string(), 2),
+            ("storage".to_string(), 1), ("dom:read".to_string(), 3),
         ]),
         authentication,
     }).unwrap();
@@ -216,10 +216,17 @@ fn extension_host_probe_child_observes_optional_and_ephemeral_grants() {
                     other => panic!("unexpected optional storage result: {other:?}"),
                 }
             }
-            b'r' | b's' | b'v' => {
+            b'r' | b's' | b'v' | b'w' => {
                 let request = match command[0] {
-                    b'r' => ExtensionRequest::DomReadTab { tab_id: 1 },
-                    b's' => ExtensionRequest::DomReadTab { tab_id: 2 },
+                    b'r' | b's' => {
+                        let mut bytes = [0_u8; 64];
+                        probe.read_exact(&mut bytes).unwrap();
+                        ExtensionRequest::DomReadTabEphemeral {
+                            tab_id: if command[0] == b'r' { 1 } else { 2 },
+                            ticket: String::from_utf8(bytes.to_vec()).unwrap(),
+                        }
+                    }
+                    b'v' => ExtensionRequest::DomReadTab { tab_id: 1 },
                     _ => ExtensionRequest::DomRead,
                 };
                 write_extension_request(&mut extension, &request).unwrap();
@@ -1955,14 +1962,21 @@ fn private_parent_pipe_grants_optional_and_consumes_ephemeral_once_in_a_real_cor
     probe.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
     let mut control_in = core.stdin.take().unwrap();
     let mut control_out = core.stdout.take().unwrap();
-    let probe_get = |probe: &mut UnixStream, command: u8| {
+    let probe_get = |probe: &mut UnixStream, command: u8, ticket: Option<&str>| {
         probe.write_all(&[command]).unwrap();
+        if matches!(command, b'r' | b's') {
+            let ticket = ticket.expect("an ephemeral read probe needs a bearer token");
+            assert_eq!(ticket.len(), 64);
+            probe.write_all(ticket.as_bytes()).unwrap();
+        }
         let mut result = [0_u8; 1];
         probe.read_exact(&mut result).unwrap();
         result[0]
     };
-    assert_eq!(probe_get(&mut probe, b'g'), b'D', "optional declaration must not grant itself");
-    assert_eq!(probe_get(&mut probe, b'r'), b'D', "ephemeral declaration must not grant itself");
+    assert_eq!(probe_get(&mut probe, b'g', None), b'D', "optional declaration must not grant itself");
+    let guessed_ticket = "0".repeat(64);
+    assert_eq!(probe_get(&mut probe, b'r', Some(&guessed_ticket)), b'D',
+        "an extension cannot guess an unarmed ephemeral token");
 
     write_permission_control_request(&mut control_in, &PermissionControlRequest::Inspect).unwrap();
     let state = read_permission_control_reply(&mut control_out).unwrap();
@@ -2007,23 +2021,36 @@ fn private_parent_pipe_grants_optional_and_consumes_ephemeral_once_in_a_real_cor
     write_permission_control_request(&mut control_in, &PermissionControlRequest::ArmEphemeral {
         capability: "dom:read".into(), tab_id: 1, document_epoch: 2,
     }).unwrap();
-    assert_eq!(read_permission_control_reply(&mut control_out).unwrap(),
-        PermissionControlReply::EphemeralArmed {
-            capability: "dom:read".into(), tab_id: 1, document_epoch: 2, ticket: 1,
-        });
-    assert_eq!(probe_get(&mut probe, b'v'), b'D',
+    let PermissionControlReply::EphemeralArmed {
+        capability, tab_id, document_epoch, ticket,
+    } = read_permission_control_reply(&mut control_out).unwrap() else {
+        panic!("the private pipe should arm the live document");
+    };
+    assert_eq!((capability.as_str(), tab_id, document_epoch), ("dom:read", 1, 2));
+    assert_eq!(ticket.len(), 64);
+    assert_ne!(ticket, guessed_ticket);
+    assert_eq!(probe_get(&mut probe, b'w', None), b'D',
         "legacy implicit-tab read must not consume a document-bound lease");
-    assert_eq!(probe_get(&mut probe, b's'), b'D',
+    assert_eq!(probe_get(&mut probe, b'v', None), b'D',
+        "ordinary v2 explicit-tab read must not consume a document-bound lease");
+    assert_eq!(probe_get(&mut probe, b'r', Some(&guessed_ticket)), b'D',
+        "a guessed token must not consume the valid lease");
+    assert_eq!(probe_get(&mut probe, b's', Some(&ticket)), b'D',
         "another tab must not consume the lease");
-    assert_eq!(probe_get(&mut probe, b'r'), b'A',
+    assert_eq!(probe_get(&mut probe, b'r', Some(&ticket)), b'A',
         "the authenticated host may read the exact document once");
-    assert_eq!(probe_get(&mut probe, b'r'), b'D',
+    assert_eq!(probe_get(&mut probe, b'r', Some(&ticket)), b'D',
         "a second read must not reuse the consumed ticket");
     write_permission_control_request(&mut control_in, &PermissionControlRequest::ArmEphemeral {
         capability: "dom:read".into(), tab_id: 1, document_epoch: 2,
     }).unwrap();
-    assert!(matches!(read_permission_control_reply(&mut control_out).unwrap(),
-        PermissionControlReply::EphemeralArmed { ticket: 2, .. }));
+    let PermissionControlReply::EphemeralArmed { ticket: next_ticket, .. } =
+        read_permission_control_reply(&mut control_out).unwrap() else {
+            panic!("a second private arming should replace the spent lease");
+        };
+    assert_ne!(ticket, next_ticket);
+    assert_eq!(probe_get(&mut probe, b'r', Some(&ticket)), b'D',
+        "an old token cannot borrow a newer arming");
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
         url: "about:credits".into(),
     }).unwrap();
@@ -2031,30 +2058,30 @@ fn private_parent_pipe_grants_optional_and_consumes_ephemeral_once_in_a_real_cor
         blueice_ipc::ServerMessage::Navigated { .. }));
     assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
         blueice_ipc::ServerMessage::FrameReady { .. }));
-    assert_eq!(probe_get(&mut probe, b'r'), b'D',
+    assert_eq!(probe_get(&mut probe, b'r', Some(&next_ticket)), b'D',
         "same-URL navigation must expire an unspent lease");
 
     write_permission_control_request(&mut control_in, &PermissionControlRequest::Grant { capability: "dom:read".into() }).unwrap();
     assert!(matches!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Rejected { .. }));
-    assert_eq!(probe_get(&mut probe, b'g'), b'D');
+    assert_eq!(probe_get(&mut probe, b'g', None), b'D');
     write_permission_control_request(&mut control_in, &PermissionControlRequest::Grant { capability: "storage".into() }).unwrap();
     assert_eq!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Updated {
         capability: "storage".into(), granted: true, changed: true,
     });
-    assert_eq!(probe_get(&mut probe, b'g'), b'A', "the same authenticated host connection must gain the optional capability");
+    assert_eq!(probe_get(&mut probe, b'g', None), b'A', "the same authenticated host connection must gain the optional capability");
 
     write_permission_control_request(&mut control_in, &PermissionControlRequest::Revoke { capability: "storage".into() }).unwrap();
     assert_eq!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Updated {
         capability: "storage".into(), granted: false, changed: true,
     });
-    assert_eq!(probe_get(&mut probe, b'g'), b'D', "the completed revoke must deny the existing host connection");
+    assert_eq!(probe_get(&mut probe, b'g', None), b'D', "the completed revoke must deny the existing host connection");
     write_permission_control_request(&mut control_in, &PermissionControlRequest::Grant { capability: "storage".into() }).unwrap();
     assert!(matches!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Updated { granted: true, .. }));
-    assert_eq!(probe_get(&mut probe, b'g'), b'A');
+    assert_eq!(probe_get(&mut probe, b'g', None), b'A');
     drop(control_in);
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
-        if probe_get(&mut probe, b'g') == b'D' {
+        if probe_get(&mut probe, b'g', None) == b'D' {
             break;
         }
         assert!(Instant::now() < deadline, "parent pipe EOF must revoke its optional grants");

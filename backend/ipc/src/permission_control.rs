@@ -54,7 +54,7 @@ pub enum PermissionControlReply {
         capability: String,
         tab_id: u64,
         document_epoch: u64,
-        ticket: u64,
+        ticket: String,
     },
     Updated {
         capability: String,
@@ -187,7 +187,8 @@ mod tests {
         write_permission_control_reply(&mut wire, &document).unwrap();
         assert_eq!(read_permission_control_reply(&mut wire.as_slice()).unwrap(), document);
         let armed = PermissionControlReply::EphemeralArmed {
-            capability: "dom:read".into(), tab_id: 7, document_epoch: 12, ticket: 1,
+            capability: "dom:read".into(), tab_id: 7, document_epoch: 12,
+            ticket: "0123456789abcdef".repeat(4),
         };
         let mut wire = Vec::new();
         write_permission_control_reply(&mut wire, &armed).unwrap();

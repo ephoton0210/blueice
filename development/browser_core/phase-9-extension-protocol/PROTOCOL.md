@@ -96,8 +96,8 @@ itself prove human approval; only the separately launched native panel uses
 the private permission path. A real person-driven Grant/Revoke window test and
 runtime-ephemeral gesture lifecycle remain open; see the [Phase 9 plan](PLAN.md).
 An internal core-parent-only `ArmEphemeral` test path can bind one
-`dom:read` v2 operation to a live tab/document epoch. The authenticated host
-must use an explicit tab ID, and core spends the captured one-shot ticket at
+`dom:read` v3 operation to a live tab/document epoch. The authenticated host
+must use an explicit tab ID and present the opaque token; core spends it at
 the snapshot read. No native gesture invokes this path yet, so an installed
 extension cannot obtain such a lease through its guest ABI, the ordinary
 frontend/MCP protocol, or the current F8 panel. Other runtime-ephemeral
@@ -125,7 +125,7 @@ is separate from the independently negotiated **capability API versions**:
 
 | Capability | Supported versions | Core-spawned guest version | Implemented effects |
 | --- | --- | --- | --- |
-| `dom:read` | 1–2 | 2 | A live tab's AI-facing representation, addressed by explicit tab ID in v2. |
+| `dom:read` | 1–3 | 3 | A live tab's AI-facing representation, addressed by explicit tab ID in v2; v3 adds a private token-bearing one-shot read that is not yet reachable from the guest ABI. |
 | `dom:write` | 1–9 | 9 | Bounded native form-control, semantic text-leaf, and noninteractive inline textContent operations; legacy generic v1 mutation has no core effect. |
 | `network:observe` | 1–2 | 2 | Committed main-frame final response (v1) and initial request/redirect trace (v2). |
 | `network:intercept` | 1–6 | 6 | Exact navigation URL block (v2), clearing own rules (v3), ASCII host/subdomain block (v4), literal host/path-prefix block (v5), and exact same-origin navigation rewrite (v6); legacy v1 registration has no core effect. |

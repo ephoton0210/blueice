@@ -541,8 +541,8 @@ mod tests {
         let ticket = registry.arm_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, 1, 0).unwrap();
         assert!(!registry.has_capability(id, CAPABILITY_NETWORK_OBSERVE),
             "arming the one-shot slot must not become a persistent grant");
-        assert!(registry.consume_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, ticket, 1, 0));
-        assert!(!registry.consume_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, ticket, 1, 0));
+        assert!(registry.consume_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, &ticket, 1, 0));
+        assert!(!registry.consume_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, &ticket, 1, 0));
         assert!(registry.grant_optional(id, CAPABILITY_DOM_READ).unwrap());
         assert!(registry.has_capability(id, CAPABILITY_DOM_READ));
         assert!(!registry.has_capability(id, CAPABILITY_NETWORK_OBSERVE));
@@ -658,11 +658,11 @@ mod tests {
         let extension = load_installed_extension(&path).unwrap();
         let registry = registry_for_installed_extension(&extension);
         assert_eq!(
-            registry.unsupported_capability_version(CAPABILITY_DOM_READ, 3),
+            registry.unsupported_capability_version(CAPABILITY_DOM_READ, 4),
             Some(
                 blueice_ipc::extension::UnsupportedCapabilityVersion::OutsideSupportedRange {
                     min_inclusive: 1,
-                    max_inclusive: 2,
+                    max_inclusive: 3,
                 }
             )
         );

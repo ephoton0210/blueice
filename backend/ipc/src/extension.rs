@@ -185,6 +185,11 @@ pub enum ExtensionRequest {
     /// must keep using [`Self::DomRead`], preserving the original default-tab
     /// behavior rather than gaining a new addressing convention silently.
     DomReadTab { tab_id: u64 },
+    /// Version 3: one explicitly targeted, runtime-ephemeral representation
+    /// read. The opaque 256-bit bearer is delivered only by a later trusted
+    /// native gesture event, never by a public frontend action or manifest.
+    /// Core spends it at the live document's actual snapshot read.
+    DomReadTabEphemeral { tab_id: u64, ticket: String },
     /// Version 1 of `network:observe`: read only the final response metadata
     /// associated with the currently committed page in an explicit tab.
     /// `None` means this page did not come from an HTTP fetch.
@@ -625,6 +630,9 @@ mod tests {
             ExtensionRequest::NextRuntimeEvent,
             ExtensionRequest::DomRead,
             ExtensionRequest::DomReadTab { tab_id: 42 },
+            ExtensionRequest::DomReadTabEphemeral {
+                tab_id: 42, ticket: "0123456789abcdef".repeat(4),
+            },
             ExtensionRequest::ReadNetworkResponse { tab_id: 42 },
             ExtensionRequest::ReadNetworkTrace { tab_id: 42 },
             ExtensionRequest::ShowPopupAction {
@@ -746,7 +754,7 @@ mod tests {
                         "dom:read".to_string(),
                         UnsupportedCapabilityVersion::OutsideSupportedRange {
                             min_inclusive: 1,
-                            max_inclusive: 2,
+                            max_inclusive: 3,
                         },
                     ),
                     (

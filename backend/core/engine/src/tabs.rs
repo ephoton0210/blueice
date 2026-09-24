@@ -364,7 +364,7 @@ impl TabManager {
         &self,
         capability: &str,
         tab_id: TabId,
-        expected_ticket: u64,
+        expected_ticket: &str,
     ) -> Result<(), String> {
         let view = self.extension_permissions.as_ref()
             .ok_or_else(|| "no installed extension can hold an ephemeral lease".to_string())?;

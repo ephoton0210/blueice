@@ -116,7 +116,7 @@ pub enum ExtensionPageRequest {
     },
     ReadEphemeralRepresentation {
         tab_id: u64,
-        ticket: u64,
+        ticket: String,
         reply: mpsc::Sender<Result<String, String>>,
     },
     ReadNetworkResponse {
@@ -1289,7 +1289,7 @@ fn handle_extension_page_request<S: Write>(
         ExtensionPageRequest::ReadEphemeralRepresentation { tab_id, ticket, reply } => {
             let id = TabId::from_u64(tab_id);
             let result = tabs.check_extension_origin("dom:read", id)
-                .and_then(|()| tabs.consume_extension_runtime_ephemeral("dom:read", id, ticket))
+                .and_then(|()| tabs.consume_extension_runtime_ephemeral("dom:read", id, &ticket))
                 .and_then(|()| {
                     let page = tabs.get(id).expect("the consumed lease names a live tab");
                     let mut snapshot = page.snapshot(page.frame_generation(), tab_id);

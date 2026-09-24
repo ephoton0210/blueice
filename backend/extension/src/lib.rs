@@ -362,16 +362,15 @@ pub struct ExtensionRegistry {
     supported_versions: HashMap<String, CapabilityVersionWindow>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct EphemeralLease {
-    ticket: u64,
+    ticket: String,
     tab_id: u64,
     document_epoch: u64,
 }
 
 #[derive(Default)]
 struct EphemeralSlot {
-    last_ticket: u64,
     lease: Option<EphemeralLease>,
 }
 
@@ -412,7 +411,7 @@ impl ExtensionRegistry {
         let v1_to_v3 = CapabilityVersionWindow::new(1, 3).expect("literal version window is valid");
         let v1_to_v6 = CapabilityVersionWindow::new(1, 6).expect("literal version window is valid");
         let v1_to_v9 = CapabilityVersionWindow::new(1, 9).expect("literal version window is valid");
-        registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
+        registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v3);
         registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v9);
         registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v6);
         registry.register_capability_version_window(CAPABILITY_NETWORK_OBSERVE, v1_to_v2);
@@ -482,25 +481,24 @@ impl ExtensionRegistry {
         capability: &str,
         tab_id: u64,
         document_epoch: u64,
-    ) -> Result<u64, String> {
+    ) -> Result<String, String> {
         if tab_id == 0 {
             return Err("an ephemeral lease requires a live tab ID".to_string());
         }
         let state = self.ephemeral_state(extension_id, capability)?;
         let mut slot = state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        let ticket = slot.last_ticket.checked_add(1)
-            .ok_or_else(|| "ephemeral ticket space is exhausted".to_string())?;
-        slot.last_ticket = ticket;
-        slot.lease = Some(EphemeralLease { ticket, tab_id, document_epoch });
+        let ticket = new_ephemeral_ticket()?;
+        slot.lease = Some(EphemeralLease { ticket: ticket.clone(), tab_id, document_epoch });
         Ok(ticket)
     }
 
-    /// Captured by a request when it arrives. A later gesture gets a
-    /// different ticket, so a previously queued request cannot borrow it.
-    pub fn runtime_ephemeral_ticket(&self, extension_id: &str, capability: &str) -> Option<u64> {
-        self.ephemeral_state(extension_id, capability).ok()?
-            .lock().unwrap_or_else(|poisoned| poisoned.into_inner())
-            .lease.map(|lease| lease.ticket)
+    /// Inspection reveals only whether a lease remains, never its bearer.
+    /// Only `ArmEphemeral`'s private parent reply carries the secret token.
+    pub fn has_unspent_runtime_ephemeral_lease(&self, extension_id: &str, capability: &str) -> bool {
+        self.ephemeral_state(extension_id, capability).ok()
+            .is_some_and(|state| state.lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .lease.is_some())
     }
 
     pub fn has_runtime_ephemeral_declaration(&self, extension_id: &str, capability: &str) -> bool {
@@ -514,7 +512,7 @@ impl ExtensionRegistry {
         &self,
         extension_id: &str,
         capability: &str,
-        expected_ticket: u64,
+        expected_ticket: &str,
         tab_id: u64,
         document_epoch: u64,
     ) -> bool {
@@ -522,10 +520,12 @@ impl ExtensionRegistry {
             return false;
         };
         let mut slot = state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        match slot.lease {
-            Some(current) if current.ticket == expected_ticket && current.tab_id == tab_id => {
+        match slot.lease.as_ref() {
+            Some(current) if constant_time_authentication_matches(&current.ticket, expected_ticket)
+                && current.tab_id == tab_id => {
+                let correct_epoch = current.document_epoch == document_epoch;
                 slot.lease = None;
-                current.document_epoch == document_epoch
+                correct_epoch
             }
             _ => false,
         }
@@ -693,6 +693,24 @@ impl ExtensionRegistry {
 
 fn grant_changed_reason(capability: &str) -> String {
     format!("{capability} grant changed during review")
+}
+
+/// A lease bearer must be unpredictable to the extension before the trusted
+/// gesture delivers it. The core's host authentication uses the same Unix
+/// kernel entropy source; entropy failure rejects arming rather than issuing
+/// a predictable fallback token.
+fn new_ephemeral_ticket() -> Result<String, String> {
+    let mut random = [0_u8; 32];
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut source| source.read_exact(&mut random))
+        .map_err(|error| format!("could not obtain ephemeral lease entropy: {error}"))?;
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut ticket = String::with_capacity(random.len() * 2);
+    for byte in random {
+        ticket.push(HEX[(byte >> 4) as usize] as char);
+        ticket.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    Ok(ticket)
 }
 
 /// Connection-scoped identity plus the subset of capability declarations
@@ -1026,7 +1044,7 @@ pub struct ExtensionConnectionAuthentication<'a> {
 /// time a new, independently reviewed operation is added.
 pub struct ExtensionActionDelegates<R, W, N, B, C> {
     read_dom: R,
-    read_ephemeral_dom: Box<dyn FnMut(u64, u64) -> Result<String, String> + Send>,
+    read_ephemeral_dom: Box<dyn FnMut(u64, String) -> Result<String, String> + Send>,
     write_dom: W,
     register_network_intercept: N,
     register_network_block_url: B,
@@ -1111,7 +1129,7 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
     /// and ticket check. The ordinary read delegate cannot authorize it.
     pub fn with_ephemeral_dom_reader(
         mut self,
-        reader: impl FnMut(u64, u64) -> Result<String, String> + Send + 'static,
+        reader: impl FnMut(u64, String) -> Result<String, String> + Send + 'static,
     ) -> Self {
         self.read_ephemeral_dom = Box::new(reader);
         self
@@ -1418,9 +1436,6 @@ where
         let dom_read_generation = registry.capability_generation(
             &identity.extension_id, CAPABILITY_DOM_READ,
         );
-        let dom_read_ephemeral_ticket = registry.runtime_ephemeral_ticket(
-            &identity.extension_id, CAPABILITY_DOM_READ,
-        );
         let network_observe_generation = registry.capability_generation(
             &identity.extension_id, CAPABILITY_NETWORK_OBSERVE,
         );
@@ -1558,27 +1573,7 @@ where
                 }
             }
             ExtensionRequest::DomReadTab { tab_id } => {
-                let ephemeral_ready = authentication.expected().is_some()
-                    && registry.has_runtime_ephemeral_declaration(
-                        &identity.extension_id, CAPABILITY_DOM_READ,
-                    )
-                    && identity.negotiated_capabilities.get(CAPABILITY_DOM_READ)
-                        .is_some_and(|version| *version >= 2);
-                if dom_read_generation.is_none() && ephemeral_ready {
-                    let reply = match dom_read_ephemeral_ticket {
-                        Some(ticket) => match read_ephemeral_dom(tab_id, ticket) {
-                            Ok(value) => ExtensionReply::DomReadResult { value },
-                            Err(reason) => ExtensionReply::CapabilityDenied {
-                                capability: CAPABILITY_DOM_READ.to_string(), reason,
-                            },
-                        },
-                        None => ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_DOM_READ.to_string(),
-                            reason: "no live runtime-ephemeral dom:read lease was present when the request arrived".to_string(),
-                        },
-                    };
-                    write_extension_reply(stream, &reply)?;
-                } else if let Some(reason) =
+                if let Some(reason) =
                     capability_denial_reason(registry, &identity, CAPABILITY_DOM_READ, 2)
                 {
                     write_extension_reply(
@@ -1597,6 +1592,28 @@ where
                             },
                         })?;
                 }
+            }
+            ExtensionRequest::DomReadTabEphemeral { tab_id, ticket } => {
+                let authorized_mode = authentication.expected().is_some()
+                    && registry.has_runtime_ephemeral_declaration(
+                        &identity.extension_id, CAPABILITY_DOM_READ,
+                    )
+                    && identity.negotiated_capabilities.get(CAPABILITY_DOM_READ)
+                        .is_some_and(|version| *version >= 3);
+                let reply = if !authorized_mode {
+                    ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_DOM_READ.to_string(),
+                        reason: "runtime-ephemeral dom:read requires an authenticated installed declaration and API v3".to_string(),
+                    }
+                } else {
+                    match read_ephemeral_dom(tab_id, ticket) {
+                        Ok(value) => ExtensionReply::DomReadResult { value },
+                        Err(reason) => ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_DOM_READ.to_string(), reason,
+                        },
+                    }
+                };
+                write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::ReadNetworkResponse { tab_id } => {
                 if let Some(reason) =
@@ -2950,26 +2967,30 @@ mod tests {
         assert!(registry.grant_optional("sha256:installed", CAPABILITY_DOM_READ).is_err());
 
         let ticket = registry.arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 2).unwrap();
+        assert_eq!(ticket.len(), 64);
+        assert!(ticket.bytes().all(|byte| byte.is_ascii_hexdigit()));
         assert!(!registry.has_capability("sha256:installed", CAPABILITY_DOM_READ));
         assert_eq!(registry.capability_generation("sha256:installed", CAPABILITY_DOM_READ), None);
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, ticket, 2, 2),
+        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &ticket, 2, 2),
             "another tab cannot use or spend the lease");
-        assert!(registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, ticket, 1, 2));
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, ticket, 1, 2),
+        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &"0".repeat(64), 1, 2),
+            "an invalid bearer must not spend a valid lease");
+        assert!(registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &ticket, 1, 2));
+        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &ticket, 1, 2),
             "one gesture never authorizes a second operation");
 
         let next_ticket = registry.arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 2).unwrap();
         assert_ne!(ticket, next_ticket);
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, ticket, 1, 2),
+        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &ticket, 1, 2),
             "a request queued before a later gesture cannot borrow it");
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, next_ticket, 1, 3),
+        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &next_ticket, 1, 3),
             "a same-tab document replacement invalidates the old lease");
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, next_ticket, 1, 2),
+        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &next_ticket, 1, 2),
             "a stale identity cannot be revived after replacement");
         let last_ticket = registry.arm_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, 1, 3).unwrap();
         assert!(registry.revoke_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ).unwrap());
         assert!(!registry.revoke_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ).unwrap());
-        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, last_ticket, 1, 3));
+        assert!(!registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &last_ticket, 1, 3));
     }
 
     #[test]
@@ -2984,9 +3005,10 @@ mod tests {
         let workers: Vec<_> = (0..8).map(|_| {
             let registry = Arc::clone(&registry);
             let barrier = Arc::clone(&barrier);
+            let ticket = ticket.clone();
             thread::spawn(move || {
                 barrier.wait();
-                registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, ticket, 1, 4)
+                registry.consume_runtime_ephemeral("sha256:installed", CAPABILITY_DOM_READ, &ticket, 1, 4)
             })
         }).collect();
         assert_eq!(workers.into_iter().map(|worker| worker.join().unwrap()).filter(|won| *won).count(), 1);
@@ -3002,13 +3024,18 @@ mod tests {
         let worker_registry = Arc::clone(&registry);
         let worker = thread::spawn(move || handle_extension_connection(&worker_registry, &mut server));
         write_extension_request(&mut client, &hello_with_capabilities(
-            "sha256:installed", [(CAPABILITY_DOM_READ, 2)],
+            "sha256:installed", [(CAPABILITY_DOM_READ, 3)],
         )).unwrap();
         assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
         write_extension_request(&mut client, &ExtensionRequest::DomReadTab { tab_id: 1 }).unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_DOM_READ));
-        assert_eq!(registry.runtime_ephemeral_ticket("sha256:installed", CAPABILITY_DOM_READ), Some(ticket));
+        write_extension_request(&mut client, &ExtensionRequest::DomReadTabEphemeral {
+            tab_id: 1, ticket: ticket.clone(),
+        }).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_DOM_READ));
+        assert!(registry.has_unspent_runtime_ephemeral_lease("sha256:installed", CAPABILITY_DOM_READ));
         drop(client);
         worker.join().unwrap().unwrap();
     }
@@ -4157,7 +4184,7 @@ mod tests {
 
         write_extension_request(
             &mut client,
-            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_READ, 3)]),
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_READ, 4)]),
         )
         .unwrap();
         assert_eq!(
@@ -4167,7 +4194,7 @@ mod tests {
                     CAPABILITY_DOM_READ.to_string(),
                     UnsupportedCapabilityVersion::OutsideSupportedRange {
                         min_inclusive: 1,
-                        max_inclusive: 2
+                        max_inclusive: 3
                     },
                 )]),
             }

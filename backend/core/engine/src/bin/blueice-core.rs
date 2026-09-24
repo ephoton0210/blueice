@@ -394,7 +394,7 @@ fn request_tab_representation(
 fn request_ephemeral_tab_representation(
     tx: &mpsc::Sender<ExtensionPageRequest>,
     tab_id: u64,
-    ticket: u64,
+    ticket: String,
 ) -> Result<String, String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::ReadEphemeralRepresentation {
@@ -1525,10 +1525,14 @@ mod tests {
         assert!(matches!(arm("storage", 1, 2), PermissionControlReply::Rejected { .. }));
         assert!(matches!(arm("dom:read", 99, 2), PermissionControlReply::Rejected { .. }));
         assert!(matches!(arm("dom:read", 1, 1), PermissionControlReply::Rejected { .. }));
-        assert_eq!(arm("dom:read", 1, 2), PermissionControlReply::EphemeralArmed {
-            capability: "dom:read".into(), tab_id: 1, document_epoch: 2, ticket: 1,
-        });
-        assert_eq!(registry.runtime_ephemeral_ticket(&id, "dom:read"), Some(1));
+        let PermissionControlReply::EphemeralArmed {
+            capability, tab_id, document_epoch, ticket,
+        } = arm("dom:read", 1, 2) else {
+            panic!("the live document should arm an ephemeral lease");
+        };
+        assert_eq!((capability.as_str(), tab_id, document_epoch), ("dom:read", 1, 2));
+        assert_eq!(ticket.len(), 64);
+        assert!(registry.has_unspent_runtime_ephemeral_lease(&id, "dom:read"));
         assert!(!registry.has_capability(&id, "dom:read"));
         drop(live_tx);
         live_session.join().unwrap();
@@ -1566,7 +1570,7 @@ mod tests {
             PermissionControlReply::Updated { capability: "storage".into(), granted: true, changed: true });
         assert!(!registry.has_capability(&id, "storage"), "parent-pipe EOF must withdraw even a newly granted permission");
         assert!(!registry.has_capability(&id, "dom:read"), "ephemeral declarations are never optional grants");
-        assert_eq!(registry.runtime_ephemeral_ticket(&id, "dom:read"), None,
+        assert!(!registry.has_unspent_runtime_ephemeral_lease(&id, "dom:read"),
             "parent-pipe EOF must withdraw an unspent ephemeral lease");
 
         let malformed_registry = Arc::new(registry_for_installed_extension(&installed));
