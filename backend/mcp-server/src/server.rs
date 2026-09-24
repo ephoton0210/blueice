@@ -583,27 +583,28 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
-        description = "Take a PNG screenshot of the most recently rendered frame for a tab (call navigate/open_tab on it first; there is nothing to screenshot before that). Omit tab_id for the tab most recently rendered by this MCP connection's own request; an unsolicited human-tab refresh never changes that default."
+        description = "Take a PNG screenshot of the most recently rendered frame for a tab (call navigate/open_tab on it first; there is nothing to screenshot before that). The text result identifies the exact tab_id and core frame generation encoded in the PNG. Omit tab_id for the tab most recently rendered by this MCP connection's own request; an unsolicited human-tab refresh never changes that default."
     )]
     async fn screenshot(
         &self,
         Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let png = blocking(self.core.clone(), move |conn| {
-            let Some(frame) = conn.last_frame(tab_id).cloned() else {
+        let screenshot = blocking(self.core.clone(), move |conn| {
+            let Some((resolved_tab_id, frame)) = conn.last_frame_with_tab_id(tab_id) else {
                 return Ok(None);
             };
             let mapped = blueice_ipc::shm::map_frame(std::path::Path::new(&frame.shm_path))?;
-            Ok(Some(crate::frame_to_png_bytes(
+            let png = crate::frame_to_png_bytes(
                 &mapped,
                 frame.width,
                 frame.height,
-            )?))
+            )?;
+            Ok(Some((png, resolved_tab_id, frame.generation)))
         })
         .await?;
 
-        match png {
-            Some(bytes) => {
+        match screenshot {
+            Some((bytes, resolved_tab_id, generation)) => {
                 let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
                 // A rendered page can bake adversarial text directly
                 // into its pixels (visual prompt injection against a
@@ -613,8 +614,12 @@ impl BlueIceMcpServer {
                 // warning as a leading text block, not just the text
                 // tools.
                 let warning = crate::wrap_untrusted_page_content("(see attached image)");
+                let metadata = format!(
+                    "{}{{\"tab_id\":{resolved_tab_id},\"generation\":{generation}}}",
+                    crate::FRAME_EVIDENCE_PREFIX
+                );
                 Ok(CallToolResult::success(vec![
-                    Content::text(warning),
+                    Content::text(format!("{metadata}\n{warning}")),
                     Content::image(b64, "image/png"),
                 ]))
             }

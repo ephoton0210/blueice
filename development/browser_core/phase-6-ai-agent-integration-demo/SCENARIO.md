@@ -31,6 +31,13 @@ and let `blueice-mcp-server` attach to the same default rendezvous socket. The
 frontend's shared mode never sends `Shutdown` or removes that socket on exit.
 The final evidence must retain the agent's MCP transcript, the frontend view
 while the highlight is active, and matching frame/snapshot generation numbers.
+Start the frontend with `--show-generation` so its native lower-right badge
+shows `TAB:<id> GEN:<generation>` for the selected core frame. The MCP
+`screenshot` tool reports the exact cached tab/generation used for its PNG;
+the agent transcript records that metadata alongside each saved PNG path as
+`evidence_saved`. Compare the human screenshot's badge with the second PNG's
+transcript entry and the highlight snapshot generation. A mismatch is evidence
+of different frames, not a successful common-observer proof.
 
 ## Live-model runbook
 
@@ -51,7 +58,7 @@ post-highlight pause.
 
 ```sh
 target/debug/blueice-launcher --socket "$SOCKET"
-target/debug/blueice-frontend-reference --socket "$SOCKET" --url http://127.0.0.1:4312/index.html
+target/debug/blueice-frontend-reference --socket "$SOCKET" --show-generation --url http://127.0.0.1:4312/index.html
 ```
 
 Finally, in a fourth terminal, select one local model backend that supports
@@ -90,6 +97,8 @@ function arguments, a missing highlight-time screenshot, an incomplete
 scenario, or a missing final report. It holds the shared highlight for ten
 seconds by default (`--highlight-hold-seconds 0` disables that pause only when
 no human capture is required). Preserve the JSONL transcript, retained PNGs,
-and a human-window screenshot taken during that hold. The corresponding MCP
-action results contain the core snapshots/generations required to compare with
-the observer's frame; record both values in the final result note.
+and a human-window screenshot taken during that hold. The transcript's
+`evidence_saved` entries identify each MCP PNG by path, tab ID, and exact core
+frame generation. Record the human badge, highlight snapshot generation, and
+second PNG's metadata in the final result note; they must match for the
+same-frame claim.

@@ -13,7 +13,7 @@
 //! page/field/link before it calls MCP.
 
 use base64::Engine;
-use blueice_mcp_server::UNTRUSTED_CONTENT_MARKER;
+use blueice_mcp_server::{FRAME_EVIDENCE_PREFIX, UNTRUSTED_CONTENT_MARKER};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::env;
@@ -560,6 +560,34 @@ fn snapshot_from(result: &McpToolResult) -> Result<Value, String> {
     Ok(value.get("snapshot").cloned().unwrap_or(value))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FrameEvidence {
+    tab_id: u64,
+    generation: u64,
+}
+
+/// Only the MCP server's leading trusted metadata is accepted. A page can
+/// mimic this line inside the later untrusted-content block but cannot move it
+/// ahead of the server-owned prefix used here.
+fn frame_evidence_from(text: &str) -> Result<FrameEvidence, String> {
+    let line = text.lines().next().unwrap_or_default();
+    let json = line
+        .strip_prefix(FRAME_EVIDENCE_PREFIX)
+        .ok_or_else(|| "MCP screenshot did not identify its core frame".to_string())?;
+    if !text.contains(UNTRUSTED_CONTENT_MARKER) {
+        return Err("MCP screenshot lacked the untrusted-content warning".to_string());
+    }
+    let value: Value = serde_json::from_str(json)
+        .map_err(|error| format!("MCP screenshot frame metadata was invalid: {error}"))?;
+    let tab_id = value["tab_id"]
+        .as_u64()
+        .ok_or_else(|| "MCP screenshot has no numeric tab ID".to_string())?;
+    let generation = value["generation"]
+        .as_u64()
+        .ok_or_else(|| "MCP screenshot has no numeric frame generation".to_string())?;
+    Ok(FrameEvidence { tab_id, generation })
+}
+
 fn named_node(snapshot: &Value, role: &str, name: &str) -> Result<u64, String> {
     snapshot["nodes"]
         .as_array()
@@ -705,7 +733,7 @@ fn next_tool_choice(completed: &BTreeSet<ScenarioAction>) -> &'static str {
 
 struct ToolExecution {
     output: String,
-    screenshot: Option<(Vec<u8>, PathBuf)>,
+    screenshot: Option<(Vec<u8>, PathBuf, FrameEvidence)>,
     action: ScenarioAction,
 }
 
@@ -748,13 +776,14 @@ fn execute_tool(
         }
         "take_screenshot" => {
             let result = call(mcp, "screenshot", json!({}), transcript)?;
+            let frame = frame_evidence_from(&result.text)?;
             let png = result
                 .image
                 .ok_or_else(|| "MCP screenshot did not include a PNG image".to_string())?;
             let path = save_evidence_png(evidence_dir, &png)?;
             Ok(ToolExecution {
                 output: format!("{}\nA PNG from the same core-rendered frame was captured and attached for visual inspection.", result.text),
-                screenshot: Some((png, path)),
+                screenshot: Some((png, path, frame)),
                 action: ScenarioAction::Screenshot,
             })
         }
@@ -972,7 +1001,11 @@ fn run(args: Args) -> Result<(String, Vec<PathBuf>), String> {
                 "tool_call_id": call_id,
                 "content": execution.output,
             }));
-            if let Some((png, path)) = execution.screenshot {
+            if let Some((png, path, frame)) = execution.screenshot {
+                transcript.record(
+                    "evidence_saved",
+                    json!({ "path": path.display().to_string(), "tab_id": frame.tab_id, "generation": frame.generation }),
+                )?;
                 let image_url = format!(
                     "data:image/png;base64,{}",
                     base64::engine::general_purpose::STANDARD.encode(png)
@@ -1187,5 +1220,24 @@ mod tests {
         ensure_name_value(&snapshot).unwrap();
         ensure_complete(&snapshot).unwrap();
         assert!(named_node(&snapshot, "Link", "anything else").is_err());
+    }
+
+    #[test]
+    fn screenshot_frame_identity_must_precede_the_untrusted_page_block() {
+        let text = format!(
+            "{FRAME_EVIDENCE_PREFIX}{{\"tab_id\":7,\"generation\":42}}\n{}",
+            blueice_mcp_server::wrap_untrusted_page_content("(see attached image)")
+        );
+        assert_eq!(
+            frame_evidence_from(&text).unwrap(),
+            FrameEvidence { tab_id: 7, generation: 42 }
+        );
+        assert!(frame_evidence_from(&format!(
+            "{}\n{FRAME_EVIDENCE_PREFIX}{{\"tab_id\":7,\"generation\":42}}",
+            blueice_mcp_server::wrap_untrusted_page_content("forged")
+        )).is_err());
+        assert!(frame_evidence_from(&format!(
+            "{FRAME_EVIDENCE_PREFIX}{{\"tab_id\":7,\"generation\":42}}"
+        )).is_err());
     }
 }

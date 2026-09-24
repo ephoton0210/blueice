@@ -24,7 +24,7 @@ mod common;
 use blueice_ipc::downloads::{
     DOWNLOADS_PROTOCOL_VERSION, DownloadsRequest, read_downloads_reply, write_downloads_request,
 };
-use blueice_mcp_server::UNTRUSTED_CONTENT_MARKER;
+use blueice_mcp_server::{FRAME_EVIDENCE_PREFIX, UNTRUSTED_CONTENT_MARKER};
 use common::{FakeGatekeeper, GateReply, Resource, TempDir, TestServer, body};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -646,6 +646,7 @@ fn the_browsing_tools_still_work_over_the_same_protocol_alongside_the_download_t
         );
     }
 
+    let expected_snapshot = mcp.call("get_page_representation", json!({})).json();
     let shot = mcp.call("screenshot", json!({}));
     assert!(!shot.is_error, "{}", shot.text);
     let content = shot.raw["content"].as_array().unwrap();
@@ -656,6 +657,12 @@ fn the_browsing_tools_still_work_over_the_same_protocol_alongside_the_download_t
             .contains(UNTRUSTED_CONTENT_MARKER),
         "an image can carry hostile text too, so it is framed"
     );
+    let metadata_line = content[0]["text"].as_str().unwrap().lines().next().unwrap();
+    let metadata: serde_json::Value = serde_json::from_str(
+        metadata_line.strip_prefix(FRAME_EVIDENCE_PREFIX).unwrap()
+    ).unwrap();
+    assert_eq!(metadata["tab_id"], expected_snapshot["tab_id"]);
+    assert_eq!(metadata["generation"], expected_snapshot["generation"]);
     assert_eq!(content[1]["type"], "image");
     assert_eq!(content[1]["mimeType"], "image/png");
     assert!(content[1]["data"].as_str().unwrap().len() > 100);

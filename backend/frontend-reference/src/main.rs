@@ -285,6 +285,8 @@ struct App {
     groups: Vec<TabGroupSummary>,
     extension_toolbar_label: Option<String>,
     extension_popup: Option<ExtensionPopup>,
+    /// Opt-in Phase 6 evidence badge, never drawn into core-owned page pixels.
+    show_generation: bool,
     selected_tab: Option<u64>,
     pending_open: HashSet<u64>,
     next_request_id: u64,
@@ -513,7 +515,13 @@ impl App {
             self.extension_toolbar_label.as_deref(),
         );
         let popup = self.extension_popup.as_ref().filter(|popup| Some(popup.tab_id) == self.selected_tab);
-        let pixels = compose_window(size.width, size.height, self.selected_frame(), &strip, popup);
+        let frame = self.selected_frame();
+        let generation_badge = if self.show_generation {
+            self.selected_tab.zip(frame.map(|frame| frame.generation))
+        } else {
+            None
+        };
+        let pixels = compose_window(size.width, size.height, frame, &strip, popup, generation_badge);
         let Some(surface) = &mut self.surface else {
             return;
         };
@@ -696,6 +704,7 @@ fn compose_window(
     frame: Option<&CurrentFrame>,
     strip: &TabStrip,
     popup: Option<&ExtensionPopup>,
+    generation_badge: Option<(u64, u64)>,
 ) -> Vec<u32> {
     let mut pixels = vec![0x00FF_FFFF; width as usize * height as usize];
     if let Some(frame) = frame {
@@ -822,7 +831,24 @@ fn compose_window(
     if let Some(popup) = popup {
         draw_extension_popup(&mut pixels, width, height, popup);
     }
+    if let Some((tab_id, generation)) = generation_badge {
+        draw_generation_badge(&mut pixels, width, height, tab_id, generation);
+    }
     pixels
+}
+
+/// Identifies the exact core frame the human window is currently presenting.
+/// This is window chrome for evidence capture, not a mutation of shared page
+/// pixels, so the MCP screenshot remains the unadorned core-rendered frame.
+fn draw_generation_badge(pixels: &mut [u32], width: u32, height: u32, tab_id: u64, generation: u64) {
+    let label = format!("TAB:{tab_id} GEN:{generation}");
+    let badge_width = label.len() as u32 * 6 + 12;
+    if badge_width + 8 > width || height < TAB_STRIP_HEIGHT + 28 {
+        return;
+    }
+    let rect = Rect { x: width - badge_width - 8, y: height - 24, width: badge_width, height: 17 };
+    draw_rect(pixels, width, height, rect, 0x003A_526C);
+    draw_text_line(pixels, width, height, rect.x + 6, rect.y + 5, &label, label.len(), 0x00FF_FFFF);
 }
 
 /// A browser-owned, non-interactive panel. Guest text can only fill bounded
@@ -1347,12 +1373,15 @@ struct Args {
     socket: Option<PathBuf>,
     /// Join the launcher's conventional per-user rendezvous socket.
     launcher: bool,
+    /// Draws the selected tab and exact frame generation in native chrome.
+    show_generation: bool,
 }
 
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut url = None;
     let mut socket = None;
     let mut launcher = false;
+    let mut show_generation = false;
     let mut args = args;
     while let Some(argument) = args.next() {
         match argument.as_str() {
@@ -1371,6 +1400,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 }
                 launcher = true;
             }
+            "--show-generation" => show_generation = true,
             "--url" => {
                 let value = args
                     .next()
@@ -1393,6 +1423,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         url: url.unwrap_or_else(|| "https://example.com".to_string()),
         socket,
         launcher,
+        show_generation,
     })
 }
 
@@ -1636,6 +1667,7 @@ fn main() {
         url,
         socket,
         launcher,
+        show_generation,
     } = args;
     let shared_socket = socket.or_else(|| launcher.then(default_rendezvous_socket_path));
     let (core, socket_path, owns_socket) = if let Some(socket) = shared_socket {
@@ -1704,6 +1736,7 @@ fn main() {
         groups: Vec::new(),
         extension_toolbar_label: None,
         extension_popup: None,
+        show_generation,
         selected_tab: None,
         pending_open: HashSet::new(),
         next_request_id: 0,
@@ -1742,6 +1775,7 @@ mod tests {
                 url: "https://example.com".to_string(),
                 socket: None,
                 launcher: false,
+                show_generation: false,
             }
         );
         assert_eq!(
@@ -1750,6 +1784,7 @@ mod tests {
                 url: "https://blueice.example/demo".to_string(),
                 socket: None,
                 launcher: false,
+                show_generation: false,
             }
         );
     }
@@ -1768,6 +1803,7 @@ mod tests {
                 url: "http://127.0.0.1:4000/index.html".to_string(),
                 socket: Some(PathBuf::from("/tmp/blueice-shared.sock")),
                 launcher: false,
+                show_generation: false,
             }
         );
     }
@@ -1780,8 +1816,17 @@ mod tests {
                 url: "https://example.com".to_string(),
                 socket: None,
                 launcher: true,
+                show_generation: false,
             })
         );
+    }
+
+    #[test]
+    fn generation_badge_is_explicitly_opted_in() {
+        let parsed = args(&["--launcher", "--show-generation"]).unwrap();
+        assert!(parsed.launcher);
+        assert!(parsed.show_generation);
+        assert!(!args(&["--launcher"]).unwrap().show_generation);
     }
 
     #[test]
@@ -1987,9 +2032,23 @@ mod tests {
             pixels_xrgb: vec![0x0011_2233; 4],
         };
         let strip = tab_strip(&[], &[], None, &HashMap::new(), 2, None);
-        let pixels = compose_window(2, TAB_STRIP_HEIGHT + 2, Some(&frame), &strip, None);
+        let pixels = compose_window(2, TAB_STRIP_HEIGHT + 2, Some(&frame), &strip, None, None);
         assert_eq!(pixels[0], CHROME_BG);
         assert_eq!(pixels[TAB_STRIP_HEIGHT as usize * 2], 0x0011_2233);
+    }
+
+    #[test]
+    fn evidence_badge_names_the_selected_tab_and_exact_core_frame() {
+        let strip = tab_strip(&[], &[], None, &HashMap::new(), 800, None);
+        let plain = compose_window(800, 600, None, &strip, None, None);
+        let shown = compose_window(800, 600, None, &strip, None, Some((7, 42)));
+        let changed_generation = compose_window(800, 600, None, &strip, None, Some((7, 43)));
+        let badge_width = "TAB:7 GEN:42".len() * 6 + 12;
+        let badge_x = 800 - badge_width - 8;
+        assert_eq!(plain[576 * 800 + badge_x], 0x00FF_FFFF);
+        assert_eq!(shown[576 * 800 + badge_x], 0x003A_526C);
+        assert_ne!(shown, changed_generation, "the visible digits must follow the core generation");
+        assert_eq!(shown[0], plain[0], "the page and tab strip remain unchanged");
     }
 
     #[test]
@@ -2004,7 +2063,7 @@ mod tests {
         assert_eq!(label, "Ext: Notes");
         assert_eq!(strip.hit(f64::from(button.x + 2), 10.0), Some(TabStripHit::ExtensionToolbar));
         assert_eq!(strip.hit(790.0, 10.0), Some(TabStripHit::NewTab));
-        let pixels = compose_window(800, TAB_STRIP_HEIGHT, None, &strip, None);
+        let pixels = compose_window(800, TAB_STRIP_HEIGHT, None, &strip, None, None);
         assert_eq!(pixels[10 * 800 + (button.x + 2) as usize], 0x003A_526C);
 
         let narrow = tab_strip(&tabs, &[], Some(1), &HashMap::new(), 300, Some("Notes"));
@@ -2019,8 +2078,8 @@ mod tests {
             title: "Notes".to_string(),
             body: "Saved locally".to_string(),
         };
-        let plain = compose_window(400, 260, None, &strip, None);
-        let shown = compose_window(400, 260, None, &strip, Some(&popup));
+        let plain = compose_window(400, 260, None, &strip, None, None);
+        let shown = compose_window(400, 260, None, &strip, Some(&popup), None);
         assert_eq!(plain[(TAB_STRIP_HEIGHT as usize + 8) * 400 + 20], 0x00FF_FFFF);
         assert_eq!(shown[(TAB_STRIP_HEIGHT as usize + 8) * 400 + 20], 0x0020_2228);
         assert_eq!(shown[(TAB_STRIP_HEIGHT as usize + 10) * 400 + 22], 0x003A_526C);

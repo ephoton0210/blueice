@@ -875,10 +875,15 @@ impl<S: Read + Write> CoreConnection<S> {
     /// available only by naming that tab and cannot redirect the
     /// unqualified fallback.
     pub fn last_frame(&self, tab_id: Option<u64>) -> Option<&FrameInfo> {
-        match tab_id {
-            Some(tab_id) => self.last_frames.get(&tab_id),
-            None => self.last_seen_tab.and_then(|id| self.last_frames.get(&id)),
-        }
+        self.last_frame_with_tab_id(tab_id).map(|(_, frame)| frame)
+    }
+
+    /// The same cached frame plus the *resolved* tab identity. A screenshot
+    /// without an explicit tab must record this identity with its generation
+    /// so evidence cannot be attributed to another observer's tab.
+    pub fn last_frame_with_tab_id(&self, tab_id: Option<u64>) -> Option<(u64, &FrameInfo)> {
+        let tab_id = tab_id.or(self.last_seen_tab)?;
+        self.last_frames.get(&tab_id).map(|frame| (tab_id, frame))
     }
 
     pub fn shutdown(&mut self) -> io::Result<()> {
@@ -901,6 +906,9 @@ impl<S: Read + Write> CoreConnection<S> {
 /// a test) can locate exactly where the warning ends and the page's
 /// own content begins.
 pub const UNTRUSTED_CONTENT_MARKER: &str = "--- BEGIN UNTRUSTED PAGE CONTENT ---";
+/// Trusted MCP screenshot metadata precedes the untrusted page warning and
+/// carries the exact cached core frame identity used to encode the PNG.
+pub const FRAME_EVIDENCE_PREFIX: &str = "BLUEICE_FRAME_METADATA ";
 
 /// Wraps page-derived content (an `AiSnapshot`'s node names/text, a raw
 /// DOM dump) before it's returned as an MCP tool result, with an
@@ -2382,6 +2390,10 @@ mod tests {
             "/tmp/b",
             "the unqualified lookup follows this MCP connection's most recent request"
         );
+        let (tab_id, frame) = conn.last_frame_with_tab_id(None).unwrap();
+        assert_eq!((tab_id, frame.shm_path.as_str()), (2, "/tmp/b"));
+        let (tab_id, frame) = conn.last_frame_with_tab_id(Some(1)).unwrap();
+        assert_eq!((tab_id, frame.shm_path.as_str()), (1, "/tmp/a"));
     }
 
     #[test]
@@ -2441,6 +2453,7 @@ mod tests {
         let mut conn = CoreConnection::new(client);
         conn.navigate("https://ai.example", None).unwrap();
         assert_eq!(conn.last_frame(None).unwrap().shm_path, "/tmp/ai-page");
+        assert_eq!(conn.last_frame_with_tab_id(None).unwrap().0, 1);
         assert!(
             conn.last_frame(Some(2)).is_none(),
             "a broadcast frame is not accepted as an MCP reply"

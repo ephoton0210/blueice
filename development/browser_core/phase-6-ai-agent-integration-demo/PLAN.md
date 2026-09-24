@@ -88,13 +88,27 @@ occurred. Its local tests cover URL containment, refusal of model-supplied
 arguments, live-node assertions, and required-launcher no-fallback behavior;
 they do not claim to be an LLM provider run.
 
+**Common-frame evidence instrumentation (2026-09-24).** The MCP screenshot
+response now precedes its untrusted-image warning with trusted metadata naming
+the exact cached core `tab_id` and `generation` encoded into the PNG. The
+runner requires that metadata and writes an `evidence_saved` JSONL event with
+the PNG path and frame identity. The reference human frontend's opt-in
+`--show-generation` flag draws the selected tab and generation in native
+window chrome, without changing the core page frame or MCP PNG. During a live
+run, a human screenshot of the highlighted page must show the same tab and
+generation as the second MCP PNG entry and highlight snapshot. This closes an
+evidence gap but does not substitute for the outstanding actual model/human
+run.
+
 Run prerequisites are deliberately explicit: an operator must either install
 and run a loopback Ollama server with a local vision-and-tool-capable lightweight
 model, or operate a loopback Hugging Face TGI server with a model configured by
 the operator. In both cases the model name passed through `--model` must match
 the local server's configuration. No API key is accepted, needed, or recorded.
 No local model/human observer was configured in this development environment on
-2026-09-23, so no live model transcript or human screenshot is claimed yet.
+2026-09-23; checks on 2026-09-24 still found no Ollama service at `11434` or
+TGI service at `8080`, so no live model transcript or human screenshot is
+claimed yet.
 
 - Pick a small, concrete demo task and site/page scope, within what the Phase 2 MVP scope can actually render.
 - Wire an LLM-driven agent to consume the Phase 5 API as its only channel for perceiving and acting on the page (no fallback to CDP/Puppeteer, since that would undermine what's being demonstrated).
@@ -107,6 +121,7 @@ No local model/human observer was configured in this development environment on
 - [x] Confirm the demo's target site(s)/page(s) are in-scope for the Phase 2 MVP and cleared under the Phase 5/plan §5 access policy — first-party `demo-site/`, loopback only
 - [x] Pick and scope a concrete demo task — see `SCENARIO.md`: inspect/describe the visible MVP elements, set and confirm the labelled text-box value, highlight it, and follow the local confirmation link
 - [x] Wire an LLM-driven agent to the Phase 5 API (no CDP/Puppeteer path) — `blueice-phase6-agent` confines a loopback Ollama or Hugging Face TGI Chat Completions function-calling loop to scenario-specific operations that each invoke the standard MCP adapter; targeted tests and MCP/core integration tests pass
+- [x] Instrument common-frame evidence — MCP screenshots identify the exact tab/generation behind each PNG; the agent transcript pairs that identity with its saved file; the human frontend can display the same core frame identity using `--show-generation`
 - [ ] Demonstrate human + agent observing the same page/state simultaneously
 - [ ] Record results (what worked, what broke, what surprised)
 - [ ] Feed findings back into earlier phases' plans as needed
