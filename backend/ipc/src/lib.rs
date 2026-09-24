@@ -332,7 +332,21 @@ pub struct BlueJsScriptExecutionReport {
 }
 
 fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
+    write_framed_with_limit(w, msg, usize::MAX)
+}
+
+pub(crate) fn write_framed_with_limit<W: Write, T: Serialize>(
+    w: &mut W,
+    msg: &T,
+    max_bytes: usize,
+) -> io::Result<()> {
     let bytes = serde_json::to_vec(msg).map_err(io::Error::other)?;
+    if bytes.len() > max_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "frame exceeds protocol byte limit",
+        ));
+    }
     let len = u32::try_from(bytes.len()).map_err(io::Error::other)?;
     w.write_all(&len.to_le_bytes())?;
     w.write_all(&bytes)?;

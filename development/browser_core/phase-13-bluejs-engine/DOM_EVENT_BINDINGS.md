@@ -111,5 +111,12 @@ unchanged.
    queued callbacks. Repeat the route with a supported direct BlueTS page
    using the same host profile, without a second DOM bridge.
 
+The legacy proof-of-mechanism script channel now has v2 negotiation, an exact
+tab/document-generation target on every DOM request, capped frames and
+name/text fields, and a real-core regression rejecting a stale socket request
+after navigation. This does not satisfy step 1: the listener still needs a
+launcher-owned child authentication grant and a bounded reentrant session wait
+before a page VM may call it.
+
 These are acceptance gates for the existing Phase 13/18 runtime items; this
 document closes only the Phase 13 **design** checklist item.

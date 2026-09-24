@@ -237,7 +237,10 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
     blueice_ipc::script::write_script_request(
         &mut invalid,
         &blueice_ipc::script::ScriptRequest::CreateTextNode {
-            tab_id: 1,
+            target: blueice_ipc::script::ScriptDocumentTarget {
+                tab_id: 1,
+                document_generation: 0,
+            },
             data: "must not run".to_string(),
         },
     )
@@ -248,21 +251,59 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
     ));
     drop(invalid);
 
+    let mut old_version = connect_with_retry(&script_socket_path, Duration::from_secs(5))
+        .expect("failed to connect an obsolete script peer");
+    blueice_ipc::script::write_script_request(
+        &mut old_version,
+        &blueice_ipc::script::ScriptRequest::Hello {
+            protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION - 1,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::script::read_script_reply(&mut old_version).unwrap(),
+        blueice_ipc::script::ScriptReply::Error { .. }
+    ));
+    drop(old_version);
+
     let mut script = connect_with_retry(&script_socket_path, Duration::from_secs(5))
         .expect("failed to connect the real script host");
     blueice_ipc::script::write_script_request(
         &mut script,
-        &blueice_ipc::script::ScriptRequest::Hello,
+        &blueice_ipc::script::ScriptRequest::Hello {
+            protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION,
+        },
     )
     .unwrap();
     assert_eq!(
         blueice_ipc::script::read_script_reply(&mut script).unwrap(),
-        blueice_ipc::script::ScriptReply::HelloAck
+        blueice_ipc::script::ScriptReply::HelloAck {
+            protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION,
+        }
     );
+    let target = blueice_ipc::script::ScriptDocumentTarget {
+        tab_id: 1,
+        document_generation: 0,
+    };
     blueice_ipc::script::write_script_request(
         &mut script,
         &blueice_ipc::script::ScriptRequest::CreateTextNode {
-            tab_id: 1,
+            target: blueice_ipc::script::ScriptDocumentTarget {
+                document_generation: 1,
+                ..target
+            },
+            data: "wrong-generation".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::script::read_script_reply(&mut script).unwrap(),
+        blueice_ipc::script::ScriptReply::Error { .. }
+    ));
+    blueice_ipc::script::write_script_request(
+        &mut script,
+        &blueice_ipc::script::ScriptRequest::CreateTextNode {
+            target,
             data: "from script socket".to_string(),
         },
     )
@@ -273,7 +314,7 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
     };
     blueice_ipc::script::write_script_request(
         &mut script,
-        &blueice_ipc::script::ScriptRequest::GetTextContent { tab_id: 1, node },
+        &blueice_ipc::script::ScriptRequest::GetTextContent { target, node },
     )
     .unwrap();
     assert_eq!(
@@ -282,6 +323,51 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
             value: "from script socket".to_string(),
         }
     );
+
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: "about:blank".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated {
+            url: "about:blank".to_string(),
+        }
+    );
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+    blueice_ipc::script::write_script_request(
+        &mut script,
+        &blueice_ipc::script::ScriptRequest::CreateTextNode {
+            target,
+            data: "stale socket must not mutate replacement".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::script::read_script_reply(&mut script).unwrap(),
+        blueice_ipc::script::ScriptReply::Error { .. }
+    ));
+    blueice_ipc::script::write_script_request(
+        &mut script,
+        &blueice_ipc::script::ScriptRequest::CreateTextNode {
+            target: blueice_ipc::script::ScriptDocumentTarget {
+                document_generation: 1,
+                ..target
+            },
+            data: "new document".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::script::read_script_reply(&mut script).unwrap(),
+        blueice_ipc::script::ScriptReply::NodeCreated { .. }
+    ));
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
         .unwrap();

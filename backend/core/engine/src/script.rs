@@ -10,7 +10,10 @@
 //! resolved against one current tab/document rather than a process-global DOM.
 
 use crate::{TabId, TabManager};
-use blueice_ipc::script::{ScriptReply, ScriptRequest};
+use blueice_ipc::script::{
+    ScriptDocumentTarget, ScriptReply, ScriptRequest, SCRIPT_MAX_NAME_BYTES, SCRIPT_MAX_TEXT_BYTES,
+    SCRIPT_PROTOCOL_VERSION,
+};
 use std::io;
 use std::sync::mpsc;
 
@@ -116,69 +119,110 @@ fn dispatch_script_request(tabs: &mut TabManager, envelope: ScriptRequestEnvelop
 /// replaced the old document and invalidated its node IDs.
 pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> ScriptReply {
     match request {
-        ScriptRequest::Hello => ScriptReply::HelloAck,
-        ScriptRequest::GetElementById { tab_id, id } => {
-            with_tab(tabs, tab_id, |page| ScriptReply::Node {
+        ScriptRequest::Hello { protocol_version }
+            if protocol_version == SCRIPT_PROTOCOL_VERSION =>
+        {
+            ScriptReply::HelloAck {
+                protocol_version: SCRIPT_PROTOCOL_VERSION,
+            }
+        }
+        ScriptRequest::Hello { .. } => script_error("unsupported script protocol version"),
+        ScriptRequest::GetElementById { target, id } => {
+            if id.len() > SCRIPT_MAX_NAME_BYTES {
+                return script_error("script DOM name exceeds its fixed byte limit");
+            }
+            with_document(tabs, target, |page| ScriptReply::Node {
                 node: page.script_get_element_by_id(&id).map(|node| node.as_u64()),
             })
         }
-        ScriptRequest::CreateElement { tab_id, tag_name } => with_tab(tabs, tab_id, |page| {
-            page.script_create_element(tag_name).map_or_else(
-                |message| ScriptReply::Error { message },
-                |node| ScriptReply::NodeCreated {
-                    node: node.as_u64(),
-                },
-            )
-        }),
-        ScriptRequest::CreateTextNode { tab_id, data } => {
-            with_tab(tabs, tab_id, |page| ScriptReply::NodeCreated {
+        ScriptRequest::CreateElement { target, tag_name } => {
+            if tag_name.len() > SCRIPT_MAX_NAME_BYTES {
+                return script_error("script DOM name exceeds its fixed byte limit");
+            }
+            with_document(tabs, target, |page| {
+                page.script_create_element(tag_name).map_or_else(
+                    |message| ScriptReply::Error { message },
+                    |node| ScriptReply::NodeCreated {
+                        node: node.as_u64(),
+                    },
+                )
+            })
+        }
+        ScriptRequest::CreateTextNode { target, data } => {
+            if data.len() > SCRIPT_MAX_TEXT_BYTES {
+                return script_error("script DOM text exceeds its fixed byte limit");
+            }
+            with_document(tabs, target, |page| ScriptReply::NodeCreated {
                 node: page.script_create_text_node(data).as_u64(),
             })
         }
         ScriptRequest::AppendChild {
-            tab_id,
+            target,
             parent,
             child,
-        } => with_tab(tabs, tab_id, |page| {
+        } => with_document(tabs, target, |page| {
             page.script_append_child(parent, child).map_or_else(
                 |message| ScriptReply::Error { message },
                 |_| ScriptReply::Ack,
             )
         }),
-        ScriptRequest::GetTextContent { tab_id, node } => with_tab(tabs, tab_id, |page| {
+        ScriptRequest::GetTextContent { target, node } => with_document(tabs, target, |page| {
             page.script_text_content(node).map_or_else(
                 |message| ScriptReply::Error { message },
-                |value| ScriptReply::Text { value },
+                |value| {
+                    if value.len() > SCRIPT_MAX_TEXT_BYTES {
+                        script_error("script DOM text exceeds its fixed byte limit")
+                    } else {
+                        ScriptReply::Text { value }
+                    }
+                },
             )
         }),
         ScriptRequest::SetTextContent {
-            tab_id,
+            target,
             node,
             value,
-        } => with_tab(tabs, tab_id, |page| {
-            page.script_set_text_content(node, value).map_or_else(
-                |message| ScriptReply::Error { message },
-                |_| ScriptReply::Ack,
-            )
-        }),
+        } => {
+            if value.len() > SCRIPT_MAX_TEXT_BYTES {
+                return script_error("script DOM text exceeds its fixed byte limit");
+            }
+            with_document(tabs, target, |page| {
+                page.script_set_text_content(node, value).map_or_else(
+                    |message| ScriptReply::Error { message },
+                    |_| ScriptReply::Ack,
+                )
+            })
+        }
     }
 }
 
-fn with_tab(
+fn script_error(message: &'static str) -> ScriptReply {
+    ScriptReply::Error {
+        message: message.to_string(),
+    }
+}
+
+fn with_document(
     tabs: &mut TabManager,
-    raw_tab_id: u64,
+    target: ScriptDocumentTarget,
     operation: impl FnOnce(&mut crate::Page) -> ScriptReply,
 ) -> ScriptReply {
-    tabs.get_mut(TabId::from_u64(raw_tab_id))
-        .map(operation)
-        .unwrap_or_else(|| ScriptReply::Error {
-            message: format!("unknown tab {raw_tab_id}"),
-        })
+    match tabs.get_mut(TabId::from_u64(target.tab_id)) {
+        Some(page) if page.document_generation() == target.document_generation => operation(page),
+        _ => script_error("script document is stale or unavailable"),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn target(tab: TabId, document_generation: u64) -> ScriptDocumentTarget {
+        ScriptDocumentTarget {
+            tab_id: tab.as_u64(),
+            document_generation,
+        }
+    }
 
     fn loaded_tabs() -> (TabManager, TabId) {
         let mut tabs = TabManager::new(320.0, 200.0);
@@ -194,13 +238,20 @@ mod tests {
     fn hello_and_lookup_are_scoped_to_the_current_tab_document() {
         let (mut tabs, tab) = loaded_tabs();
         assert_eq!(
-            handle_script_request(&mut tabs, ScriptRequest::Hello),
-            ScriptReply::HelloAck
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::Hello {
+                    protocol_version: SCRIPT_PROTOCOL_VERSION,
+                },
+            ),
+            ScriptReply::HelloAck {
+                protocol_version: SCRIPT_PROTOCOL_VERSION,
+            }
         );
         let ScriptReply::Node { node: Some(label) } = handle_script_request(
             &mut tabs,
             ScriptRequest::GetElementById {
-                tab_id: tab.as_u64(),
+                target: target(tab, 1),
                 id: "label".to_string(),
             },
         ) else {
@@ -210,7 +261,7 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::GetTextContent {
-                    tab_id: tab.as_u64(),
+                    target: target(tab, 1),
                     node: label,
                 },
             ),
@@ -226,7 +277,7 @@ mod tests {
         let ScriptReply::Node { node: Some(app) } = handle_script_request(
             &mut tabs,
             ScriptRequest::GetElementById {
-                tab_id: tab.as_u64(),
+                target: target(tab, 1),
                 id: "app".to_string(),
             },
         ) else {
@@ -235,7 +286,7 @@ mod tests {
         let ScriptReply::NodeCreated { node: child } = handle_script_request(
             &mut tabs,
             ScriptRequest::CreateElement {
-                tab_id: tab.as_u64(),
+                target: target(tab, 1),
                 tag_name: "p".to_string(),
             },
         ) else {
@@ -245,7 +296,7 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::AppendChild {
-                    tab_id: tab.as_u64(),
+                    target: target(tab, 1),
                     parent: app,
                     child,
                 },
@@ -256,7 +307,7 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::SetTextContent {
-                    tab_id: tab.as_u64(),
+                    target: target(tab, 1),
                     node: child,
                     value: "new".to_string(),
                 },
@@ -267,7 +318,7 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::GetTextContent {
-                    tab_id: tab.as_u64(),
+                    target: target(tab, 1),
                     node: app,
                 },
             ),
@@ -285,7 +336,7 @@ mod tests {
         let ScriptReply::Node { node: Some(label) } = handle_script_request(
             &mut tabs,
             ScriptRequest::GetElementById {
-                tab_id: first.as_u64(),
+                target: target(first, 1),
                 id: "label".to_string(),
             },
         ) else {
@@ -295,22 +346,93 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::GetTextContent {
-                    tab_id: second.as_u64(),
+                    target: target(second, 0),
                     node: label,
                 },
             ),
             ScriptReply::Error { .. }
         ));
         tabs.get_mut(first).unwrap().load_html_str(
-            "<p>replacement</p>",
+            "<p id=\"fresh\">replacement</p>",
             Some("https://example.test/new".to_string()),
         );
+        let replacement_before = tabs.get(first).unwrap().dom_dump();
         assert!(matches!(
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::GetTextContent {
-                    tab_id: first.as_u64(),
+                    target: target(first, 1),
                     node: label,
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::CreateTextNode {
+                    target: target(first, 1),
+                    data: "must not enter successor".to_string(),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::SetTextContent {
+                    target: target(first, 1),
+                    node: label,
+                    value: "must not replace successor".to_string(),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(first).unwrap().dom_dump(), replacement_before);
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::GetElementById {
+                    target: target(first, 2),
+                    id: "fresh".to_string(),
+                },
+            ),
+            ScriptReply::Node { node: Some(_) }
+        ));
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::GetElementById {
+                    target: ScriptDocumentTarget {
+                        tab_id: 99_999,
+                        document_generation: 1,
+                    },
+                    id: "app".to_string(),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+    }
+
+    #[test]
+    fn oversized_dom_inputs_fail_before_mutating_the_current_document() {
+        let (mut tabs, tab) = loaded_tabs();
+        let before = tabs.get(tab).unwrap().dom_dump();
+        let ScriptReply::Node { node: Some(label) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target: target(tab, 1),
+                id: "label".to_string(),
+            },
+        ) else {
+            panic!("the page label must resolve")
+        };
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::CreateTextNode {
+                    target: target(tab, 1),
+                    data: "x".repeat(SCRIPT_MAX_TEXT_BYTES + 1),
                 },
             ),
             ScriptReply::Error { .. }
@@ -319,8 +441,35 @@ mod tests {
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::GetElementById {
-                    tab_id: 99_999,
-                    id: "app".to_string(),
+                    target: target(tab, 1),
+                    id: "x".repeat(SCRIPT_MAX_NAME_BYTES + 1),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::SetTextContent {
+                    target: target(tab, 1),
+                    node: label,
+                    value: "x".repeat(SCRIPT_MAX_TEXT_BYTES + 1),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(tab).unwrap().dom_dump(), before);
+
+        let oversized = tabs
+            .get_mut(tab)
+            .unwrap()
+            .script_create_text_node("x".repeat(SCRIPT_MAX_TEXT_BYTES + 1));
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::GetTextContent {
+                    target: target(tab, 1),
+                    node: oversized.as_u64(),
                 },
             ),
             ScriptReply::Error { .. }
@@ -336,7 +485,7 @@ mod tests {
         let (sender, receiver) = script_request_channel();
         let worker = thread::spawn(move || {
             sender.request(ScriptRequest::CreateTextNode {
-                tab_id: tab.as_u64(),
+                target: target(tab, 1),
                 data: "from-worker".to_string(),
             })
         });

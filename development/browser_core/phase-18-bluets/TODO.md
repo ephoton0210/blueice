@@ -318,6 +318,12 @@ or second module resolver to bypass them.
   can advertise it. The Phase 13 design checklist is complete; this runtime
   item remains open until the listed operations and click behavior work
   through the launcher/core/child page route.
+  The existing proof-of-mechanism script IPC is now v2: every DOM operation
+  carries an exact core document generation, with version negotiation and
+  fixed frame/name/text bounds. A real core subprocess rejects a still-open
+  script socket's old-generation mutation after navigation. This is not yet
+  the authenticated launcher-child route, reentrant session wait, VM-owned
+  wrapper/callback layer, or a BlueTS-visible host profile.
 
   Foundation delivered: `blueice_bluejs::Vm` now has a realm-local host
   callback ABI. An embedder can install an opaque global host object and

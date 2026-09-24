@@ -778,11 +778,15 @@ fn serve_script_connection(
     sender: script::ScriptRequestSender,
 ) -> io::Result<()> {
     let first = blueice_ipc::script::read_script_request(&mut stream)?;
-    if !matches!(first, blueice_ipc::script::ScriptRequest::Hello) {
+    if !matches!(
+        first,
+        blueice_ipc::script::ScriptRequest::Hello { protocol_version }
+            if protocol_version == blueice_ipc::script::SCRIPT_PROTOCOL_VERSION
+    ) {
         blueice_ipc::script::write_script_reply(
             &mut stream,
             &blueice_ipc::script::ScriptReply::Error {
-                message: "script protocol requires Hello as its first request".to_string(),
+                message: "script protocol requires the current Hello version".to_string(),
             },
         )?;
         return Ok(());
@@ -795,6 +799,15 @@ fn serve_script_connection(
             Err(error) if matches!(error.kind(), io::ErrorKind::UnexpectedEof) => return Ok(()),
             Err(error) => return Err(error),
         };
+        if matches!(request, blueice_ipc::script::ScriptRequest::Hello { .. }) {
+            blueice_ipc::script::write_script_reply(
+                &mut stream,
+                &blueice_ipc::script::ScriptReply::Error {
+                    message: "script Hello may only be sent once".to_string(),
+                },
+            )?;
+            return Ok(());
+        }
         let reply = sender.request(request)?;
         blueice_ipc::script::write_script_reply(&mut stream, &reply)?;
     }
