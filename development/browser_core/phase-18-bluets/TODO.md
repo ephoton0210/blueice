@@ -71,7 +71,12 @@ an executor exists. It admits only direct `200`, identity-encoded UTF-8
 JavaScript/BlueTS MIME responses with matching bounded `Content-Length` and
 integrity, disallows redirects, and parses only manifest-covered static edges.
 Its verified private cache uses deterministic URL/integrity/language keys and
-the finished graph fingerprint covers the whole policy. The page, child,
+now retains at most 4 MiB of verified source payload using deterministic LRU
+eviction. Evicted resources are fetched and integrity-checked again; the
+`core-page-http-resource-authorizer-v2` graph fingerprint covers that fixed
+cache budget as well as the rest of the policy. Cache-key/allocator overhead,
+finished graph copies, VM memory, and process RSS are not included in this
+payload cap. The page, child,
 frontend, and MCP receive neither that authority nor its cache/manifest—only
 a completed graph. The real core-to-child route can now also select one fixed
 compiled `core-page-http-fixture-v1` profile at trusted startup: it permits
@@ -261,7 +266,12 @@ or second module resolver to bypass them.
   core-owned implementation is the direct BlueTS external-source authorizer,
   not a duplicate loader. Its child process and direct core-session loopback
   regressions cover cache/integrity/MIME/redirect/cross-origin boundaries
-  without source reflection. Core now caches each accepted child realm's
+  without source reflection. Core now caps its retained verified HTTP source
+  payload at 4 MiB with deterministic LRU eviction; an evicted URL is
+  refetched and must pass the same integrity check before reuse. Focused tests
+  prove the byte cap, eviction order, and changed-response rejection. This is
+  not an allocator, graph-copy, VM, or process-RSS bound. Core separately
+  caches each accepted child realm's
   source-free `(tab, document_generation)` program/bytecode/heap totals, then
   drops that record on replacement, tab removal, child error, transport loss,
   or a malformed/mismatched reply; it is never reflected to a page, frontend,

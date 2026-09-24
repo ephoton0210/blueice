@@ -2,6 +2,18 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+**HTTP source-cache accounting update:** The core-owned HTTP(S) page-script
+authorizer now retains at most 4 MiB of verified source payload across its
+documents. Its private deterministic least-recently-used cache evicts old
+entries before admitting newly verified bytes; an evicted URL is fetched again
+under the same canonical URL, MIME, direct-response, length, and SHA-256 checks.
+The policy fingerprint advances to `core-page-http-resource-authorizer-v2`
+and includes this fixed budget. Focused tests cover bounded accounting,
+eviction order, and a changed response being rejected after eviction. The
+budget does not count cache-key/allocator overhead, completed graph copies,
+BlueJS VM memory, or process RSS; broader page-host resource accounting is
+still open.
+
 **Trusted owner HTTP page-resource policy update:** The public launcher now
 accepts `--page-http-policy-file <absolute-json-path>` only with
 `--out-of-process-bluejs`; an embedding owner can supply the same bounded typed

@@ -634,6 +634,7 @@ fn owner_http_manifest_admits_closed_page_graphs_and_rejects_unlisted_or_tampere
                 thread::sleep(Duration::from_millis(10));
                 continue;
             };
+            stream.set_nonblocking(false).unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
