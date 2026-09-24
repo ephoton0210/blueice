@@ -59,10 +59,10 @@ pub enum GatekeeperRequest {
     /// A high-risk action initiated by a process-isolated extension.
     /// The capability-enforcing host constructs `detail` from reviewed
     /// action metadata rather than accepting a second arbitrary detail
-    /// field from the extension process. The initial trigger set is
-    /// intentionally narrow: `network:intercept` registrations and
-    /// `dom:write` operations targeting a form/input or causing a
-    /// network action (Phase 9's resolved design).
+    /// field from the extension process. Triggers include
+    /// `network:intercept` registrations, sensitive `dom:write` effects,
+    /// and bounded native extension popup text. The popup text is untrusted
+    /// guest input, but is validated and length-limited before review.
     CheckExtensionAction {
         extension_id: String,
         capability: String,
@@ -90,6 +90,9 @@ pub struct GatekeeperRuleInfo {
     pub id: String,
     pub category: String,
     pub description: String,
+    /// Shipped signatures or human-readable matching conditions, reported by the enforcing
+    /// process rather than independently transcribed by the settings page.
+    pub conditions: Vec<String>,
     pub mandatory: bool,
 }
 
@@ -105,14 +108,18 @@ pub struct GatekeeperWorkflowStep {
 }
 
 /// Complete inspectable gatekeeper policy. The compiled rules and workflow are
-/// immutable for a running release; `custom_blocked_hosts` is the deliberately
-/// narrow, additive adjustment surface a user controls locally.
+/// immutable for a running release; the custom host and phrase lists are the
+/// deliberately narrow, additive adjustment surfaces a user controls locally.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GatekeeperSettings {
     pub ruleset_version: String,
+    /// This release's deterministic layer is active; the separate local
+    /// model-review layer has not been wired into the enforcement path yet.
+    pub model_review_active: bool,
     pub baseline_rules: Vec<GatekeeperRuleInfo>,
     pub workflow: Vec<GatekeeperWorkflowStep>,
     pub custom_blocked_hosts: Vec<String>,
+    pub custom_blocked_phrases: Vec<String>,
 }
 
 /// A user-requested, strictly additive local policy adjustment. There is no
@@ -121,6 +128,8 @@ pub struct GatekeeperSettings {
 pub enum GatekeeperSettingsChange {
     AddBlockedHost { host: String },
     RemoveBlockedHost { host: String },
+    AddBlockedPhrase { phrase: String },
+    RemoveBlockedPhrase { phrase: String },
 }
 
 /// The settings-control protocol shares the private gatekeeper socket with

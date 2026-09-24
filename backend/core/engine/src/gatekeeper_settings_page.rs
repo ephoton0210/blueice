@@ -162,18 +162,36 @@ pub fn gatekeeper_settings_html(
                 escape_html(&settings.ruleset_version)
             ));
             body.push_str(&format!(
+                "<p>{} <b>{}</b></p>",
+                escape_html(&t("model-review")),
+                escape_html(&t(if settings.model_review_active { "model-active" } else { "model-inactive" })),
+            ));
+            body.push_str(&format!(
                 "<div class=\"section\"><h2>{}</h2>",
                 escape_html(&t("baseline-rules-heading"))
             ));
             for rule in &settings.baseline_rules {
+                let (status_class, status_label) = if rule.mandatory {
+                    ("mandatory", t("mandatory"))
+                } else {
+                    ("adjustable", t("adjustable"))
+                };
                 body.push_str(&format!(
-                    "<div class=\"item\"><p class=\"name\">{}</p><p class=\"mandatory\">{}</p><p class=\"detail\">{} {}</p><p class=\"detail\">{}</p></div>",
+                    "<div class=\"item\"><p class=\"name\">{}</p><p class=\"{status_class}\">{}</p><p class=\"detail\">{} {}</p><p class=\"detail\">{}</p>",
                     escape_html(&rule.id),
-                    escape_html(&t("mandatory")),
+                    escape_html(&status_label),
                     escape_html(&t("category")),
                     escape_html(&rule.category),
                     escape_html(&rule.description),
                 ));
+                body.push_str(&format!(
+                    "<p class=\"detail\">{}</p><ul>",
+                    escape_html(&t("conditions"))
+                ));
+                for condition in &rule.conditions {
+                    body.push_str(&format!("<li><code>{}</code></li>", escape_html(condition)));
+                }
+                body.push_str("</ul></div>");
             }
             body.push_str("</div>");
 
@@ -182,10 +200,15 @@ pub fn gatekeeper_settings_html(
                 escape_html(&t("workflow-heading"))
             ));
             for step in &settings.workflow {
+                let (status_class, status_label) = if step.mandatory {
+                    ("mandatory", t("mandatory"))
+                } else {
+                    ("adjustable", t("adjustable"))
+                };
                 body.push_str(&format!(
-                    "<div class=\"item\"><p class=\"name\">{}</p><p class=\"mandatory\">{}</p><p class=\"detail\">{} {}</p><p class=\"detail\">{}</p></div>",
+                    "<div class=\"item\"><p class=\"name\">{}</p><p class=\"{status_class}\">{}</p><p class=\"detail\">{} {}</p><p class=\"detail\">{}</p></div>",
                     escape_html(&step.id),
-                    escape_html(&t("mandatory")),
+                    escape_html(&status_label),
                     escape_html(&t("trigger")),
                     escape_html(&step.trigger),
                     escape_html(&step.description),
@@ -218,6 +241,29 @@ pub fn gatekeeper_settings_html(
                 body.push_str("</ul>");
             }
             body.push_str("</div>");
+
+            body.push_str(&format!(
+                "<div class=\"section\"><h2>{}</h2><p class=\"adjustable\">{}</p><label for=\"gatekeeper-custom-phrase\">{}</label><input id=\"gatekeeper-custom-phrase\" type=\"text\" value=\"\"><button data-gatekeeper-action=\"add-phrase\">{}</button>",
+                escape_html(&t("custom-phrases-heading")),
+                escape_html(&t("adjustable")),
+                escape_html(&t("add-phrase-label")),
+                escape_html(&t("add-phrase-button")),
+            ));
+            if settings.custom_blocked_phrases.is_empty() {
+                body.push_str(&format!("<p>{}</p>", escape_html(&t("custom-phrases-empty"))));
+            } else {
+                body.push_str("<ul>");
+                for phrase in &settings.custom_blocked_phrases {
+                    body.push_str(&format!(
+                        "<li>{}<button data-gatekeeper-action=\"remove-phrase\" data-gatekeeper-phrase=\"{}\">{}</button></li>",
+                        escape_html(phrase),
+                        escape_html(phrase),
+                        escape_html(&t("remove-phrase-button")),
+                    ));
+                }
+                body.push_str("</ul>");
+            }
+            body.push_str("</div>");
         }
     }
     format!(
@@ -234,10 +280,12 @@ mod tests {
     fn settings() -> GatekeeperSettings {
         GatekeeperSettings {
             ruleset_version: "2026.09.23.1".to_string(),
+            model_review_active: false,
             baseline_rules: vec![GatekeeperRuleInfo {
                 id: "domain-rule".to_string(),
                 category: "known-bad-domain".to_string(),
                 description: "Blocks <unsafe> text.".to_string(),
+                conditions: vec!["<unsafe>".to_string()],
                 mandatory: true,
             }],
             workflow: vec![GatekeeperWorkflowStep {
@@ -247,6 +295,7 @@ mod tests {
                 mandatory: true,
             }],
             custom_blocked_hosts: vec!["tracker.example".to_string()],
+            custom_blocked_phrases: vec!["ignore <instructions>".to_string()],
         }
     }
 
@@ -263,7 +312,11 @@ mod tests {
         assert!(html.contains("tracker.example"));
         assert!(html.contains("data-gatekeeper-action=\"add-host\""));
         assert!(html.contains("data-gatekeeper-action=\"remove-host\""));
+        assert!(html.contains("data-gatekeeper-action=\"add-phrase\""));
+        assert!(html.contains("data-gatekeeper-action=\"remove-phrase\""));
         assert!(html.contains("Blocks &lt;unsafe&gt; text."));
+        assert!(html.contains("&lt;unsafe&gt;"));
+        assert!(html.contains("ignore &lt;instructions&gt;"));
     }
 
     #[test]

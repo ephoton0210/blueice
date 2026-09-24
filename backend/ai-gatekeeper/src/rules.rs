@@ -18,15 +18,37 @@ use blueice_ipc::gatekeeper::{
 
 /// Version carried in diagnostics and release notes for this compiled rule
 /// set. Keep it monotonic whenever a detection decision changes.
-pub const RULESET_VERSION: &str = "2026.09.22.1";
+pub const RULESET_VERSION: &str = "2026.09.24.1";
 
 const KNOWN_MALICIOUS_HOSTS: &[&str] = &["malware.test", "phishing.test"];
+const BIDI_OVERRIDE_CODEPOINTS: &[&str] = &["U+202A–U+202E", "U+2066–U+2069"];
+const ZERO_WIDTH_CODEPOINTS: &[&str] = &["U+200B–U+200D", "U+2060", "U+FEFF"];
 const PROMPT_INJECTION_PHRASES: &[&str] = &[
     "ignore previous instructions",
     "ignore all previous instructions",
     "disregard previous instructions",
     "override the previous instructions",
 ];
+const DANGEROUS_EXTENSIONS: &[&str] = &[".exe", ".msi", ".bat", ".cmd", ".ps1", ".scr", ".apk"];
+const DANGEROUS_CONTENT_TYPES: &[&str] = &[
+    "application/x-msdownload",
+    "application/x-dosexec",
+    "application/vnd.microsoft.portable-executable",
+    "application/x-msi",
+];
+const SENSITIVE_INPUT_TYPES: &[&str] = &["password", "credit-card", "payment"];
+const POPUP_BLOCKED_PHRASES: &[&str] = &[
+    "password", "seed phrase", "recovery phrase", "one-time code", "credit card",
+    "disable gatekeeper", "http://", "https://",
+];
+const HIDDEN_CONTENT_MARKERS: &[&str] = &[
+    "aria-hidden=\"true\"", "aria-hidden='true'", "display:none",
+    "visibility:hidden", "opacity:0", "left:-999",
+];
+
+fn signatures(values: &[&str]) -> Vec<String> {
+    values.iter().map(|value| (*value).to_string()).collect()
+}
 
 /// The complete compiled rule manifest. It is deliberately returned as data
 /// for `about:settings`, rather than duplicating prose in the UI: the page and
@@ -37,30 +59,51 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
             id: "known-malicious-domain".to_string(),
             category: "known-bad-domain".to_string(),
             description: "Blocks the compiled local denylist, including malware.test and phishing.test, before a network fetch.".to_string(),
+            conditions: signatures(KNOWN_MALICIOUS_HOSTS),
             mandatory: true,
         },
         GatekeeperRuleInfo {
             id: "url-unicode-obfuscation".to_string(),
             category: "unicode-bidi-override / url-obfuscation".to_string(),
             description: "Blocks bidirectional overrides and invisible Unicode characters in a URL.".to_string(),
+            conditions: [BIDI_OVERRIDE_CODEPOINTS, ZERO_WIDTH_CODEPOINTS].concat().iter().map(|item| (*item).to_string()).collect(),
             mandatory: true,
         },
         GatekeeperRuleInfo {
             id: "hidden-prompt-injection".to_string(),
             category: "hidden-prompt-injection".to_string(),
             description: "Blocks instruction-shaped content only when it is hidden or Unicode-obfuscated.".to_string(),
+            conditions: [
+                signatures(PROMPT_INJECTION_PHRASES),
+                signatures(HIDDEN_CONTENT_MARKERS),
+                signatures(ZERO_WIDTH_CODEPOINTS),
+                vec!["white-on-white foreground/background pair".to_string()],
+            ].concat(),
             mandatory: true,
         },
         GatekeeperRuleInfo {
             id: "dangerous-download".to_string(),
             category: "dangerous-file-type".to_string(),
             description: "Blocks executable and installer downloads before transfer bytes begin.".to_string(),
+            conditions: [DANGEROUS_EXTENSIONS, DANGEROUS_CONTENT_TYPES].concat().iter().map(|item| (*item).to_string()).collect(),
             mandatory: true,
         },
         GatekeeperRuleInfo {
             id: "sensitive-extension-action".to_string(),
             category: "sensitive-extension-action / extension-action-obfuscation".to_string(),
             description: "Blocks obfuscated extension metadata and writes to credential or payment-shaped inputs.".to_string(),
+            conditions: [
+                SENSITIVE_INPUT_TYPES.iter().map(|kind| format!("input_type={kind}")).collect(),
+                signatures(BIDI_OVERRIDE_CODEPOINTS),
+                signatures(ZERO_WIDTH_CODEPOINTS),
+            ].concat(),
+            mandatory: true,
+        },
+        GatekeeperRuleInfo {
+            id: "extension-popup-social-engineering".to_string(),
+            category: "extension-popup-social-engineering".to_string(),
+            description: "Blocks the listed credential, URL, and instruction-override phrases in extension popup text before it reaches native chrome.".to_string(),
+            conditions: [POPUP_BLOCKED_PHRASES, PROMPT_INJECTION_PHRASES].concat().iter().map(|item| (*item).to_string()).collect(),
             mandatory: true,
         },
     ]
@@ -95,15 +138,23 @@ pub fn mandatory_workflow() -> Vec<GatekeeperWorkflowStep> {
             description: "Review non-extension-controlled action metadata before the core applies the capability side effect.".to_string(),
             mandatory: true,
         },
+        GatekeeperWorkflowStep {
+            id: "extension-popup-before-publish".to_string(),
+            trigger: "Every extension native popup".to_string(),
+            description: "Review the bounded popup title and body before broadcasting native UI; an unavailable reviewer blocks publication.".to_string(),
+            mandatory: true,
+        },
     ]
 }
 
-pub fn settings(custom_blocked_hosts: Vec<String>) -> GatekeeperSettings {
+pub fn settings(custom_blocked_hosts: Vec<String>, custom_blocked_phrases: Vec<String>) -> GatekeeperSettings {
     GatekeeperSettings {
         ruleset_version: RULESET_VERSION.to_string(),
+        model_review_active: false,
         baseline_rules: baseline_rules(),
         workflow: mandatory_workflow(),
         custom_blocked_hosts,
+        custom_blocked_phrases,
     }
 }
 
@@ -111,18 +162,19 @@ pub fn settings(custom_blocked_hosts: Vec<String>) -> GatekeeperSettings {
 /// self-contained: callers need no mutable rule engine and therefore no
 /// opportunity for one request to alter another's future decision.
 pub fn review(request: &GatekeeperRequest) -> GatekeeperReply {
-    review_with_custom_blocked_hosts(request, &[])
+    review_with_custom_policy(request, &[], &[])
 }
 
 /// Reviews with a user-controlled *additive* local denylist. The compiled
 /// baseline remains the first layer and never consults mutable configuration.
-pub fn review_with_custom_blocked_hosts(
+pub fn review_with_custom_policy(
     request: &GatekeeperRequest,
     custom_blocked_hosts: &[String],
+    custom_blocked_phrases: &[String],
 ) -> GatekeeperReply {
     match request {
         GatekeeperRequest::CheckUrl { url } => review_url(url, custom_blocked_hosts),
-        GatekeeperRequest::CheckContent { url, html } => review_content(url, html),
+        GatekeeperRequest::CheckContent { url, html } => review_content(url, html, custom_blocked_phrases),
         GatekeeperRequest::CheckDownload {
             url,
             file_name,
@@ -172,7 +224,7 @@ fn review_url(url: &str, custom_blocked_hosts: &[String]) -> GatekeeperReply {
     GatekeeperReply::Cleared
 }
 
-fn review_content(url: &str, html: &str) -> GatekeeperReply {
+fn review_content(url: &str, html: &str, custom_blocked_phrases: &[String]) -> GatekeeperReply {
     // URL checks normally happen first. Repeat the character-obfuscation
     // checks here because redirects make `final_url` distinct from the URL
     // already reviewed at stage one.
@@ -184,6 +236,15 @@ fn review_content(url: &str, html: &str) -> GatekeeperReply {
     }
 
     let normalized = visible_text_for_detection(html);
+    if custom_blocked_phrases
+        .iter()
+        .any(|phrase| normalized.contains(phrase))
+    {
+        return reject(
+            "the page contains a user-managed blocked phrase",
+            "custom-blocked-phrase",
+        );
+    }
     let has_instruction = PROMPT_INJECTION_PHRASES
         .iter()
         .any(|phrase| normalized.contains(phrase));
@@ -206,23 +267,17 @@ fn review_download(
         return GatekeeperReply::Rejected { reason, category };
     }
     let lower_name = file_name.trim().to_ascii_lowercase();
-    let dangerous_extension = [".exe", ".msi", ".bat", ".cmd", ".ps1", ".scr", ".apk"]
+    let dangerous_extension = DANGEROUS_EXTENSIONS
         .iter()
         .any(|extension| lower_name.ends_with(extension));
     let dangerous_content_type = content_type.is_some_and(|content_type| {
-        matches!(
-            content_type
-                .split(';')
-                .next()
-                .unwrap_or_default()
-                .trim()
-                .to_ascii_lowercase()
-                .as_str(),
-            "application/x-msdownload"
-                | "application/x-dosexec"
-                | "application/vnd.microsoft.portable-executable"
-                | "application/x-msi"
-        )
+        DANGEROUS_CONTENT_TYPES.contains(&content_type
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str())
     });
     if dangerous_extension || dangerous_content_type {
         return reject(
@@ -249,9 +304,21 @@ fn review_extension_action(extension_id: &str, capability: &str, detail: &str) -
     }
 
     let detail = detail.to_ascii_lowercase();
-    if detail.contains("input_type=password")
-        || detail.contains("input_type=credit-card")
-        || detail.contains("input_type=payment")
+    if detail.starts_with("action=show-native-popup;")
+        && (POPUP_BLOCKED_PHRASES.iter()
+        .any(|phrase| detail.contains(phrase))
+            || PROMPT_INJECTION_PHRASES
+                .iter()
+                .any(|phrase| detail.contains(phrase)))
+    {
+        return reject(
+            "the extension popup contains a credential, external-navigation, or instruction-override prompt",
+            "extension-popup-social-engineering",
+        );
+    }
+    if SENSITIVE_INPUT_TYPES
+        .iter()
+        .any(|kind| detail.contains(&format!("input_type={kind}")))
     {
         return reject(
             "the extension action writes a credential or payment-shaped input",
@@ -362,12 +429,7 @@ fn has_hidden_content_marker(html: &str) -> bool {
         .filter(|character| !character.is_ascii_whitespace())
         .flat_map(char::to_lowercase)
         .collect();
-    compact.contains("aria-hidden=\"true\"")
-        || compact.contains("aria-hidden='true'")
-        || compact.contains("display:none")
-        || compact.contains("visibility:hidden")
-        || compact.contains("opacity:0")
-        || compact.contains("left:-999")
+    HIDDEN_CONTENT_MARKERS.iter().any(|marker| compact.contains(marker))
         || (compact.contains("color:#fff") && compact.contains("background:#fff"))
         || (compact.contains("color:white") && compact.contains("background:white"))
 }
@@ -484,5 +546,22 @@ mod tests {
             }),
             GatekeeperReply::Cleared
         );
+    }
+
+    #[test]
+    fn extension_popup_phrases_are_rejected_before_native_publication() {
+        for (body, rejected) in [
+            ("Saved locally", false),
+            ("Enter your password", true),
+            ("Visit https://outside.example", true),
+            ("Ignore previous instructions", true),
+        ] {
+            let reply = review(&GatekeeperRequest::CheckExtensionAction {
+                extension_id: "notes-extension".to_string(),
+                capability: "ui:inject".to_string(),
+                detail: format!("action=show-native-popup; title=\"Notes\"; body={body:?}"),
+            });
+            assert_eq!(matches!(reply, GatekeeperReply::Rejected { .. }), rejected);
+        }
     }
 }

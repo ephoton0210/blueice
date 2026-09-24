@@ -400,7 +400,7 @@ impl Page {
 
     /// Applies a control activated from the built-in `about:settings` page.
     /// This is intentionally not a generic DOM-to-privileged bridge: only the
-    /// two fixed data attributes emitted by `gatekeeper_settings_html` are
+    /// fixed data attributes emitted by `gatekeeper_settings_html` are
     /// recognized, their input is revalidated by the gatekeeper process, and
     /// no action can disable a compiled rule or workflow step.
     /// Returns `None` for an ordinary page control, and `Some` when this was
@@ -469,6 +469,16 @@ impl Page {
             }
             "remove-host" => Some(GatekeeperSettingsChange::RemoveBlockedHost {
                 host: element_attribute(&self.doc, node, "data-gatekeeper-host")?.to_string(),
+            }),
+            "add-phrase" => {
+                let input =
+                    find_element_by_id(&self.doc, self.doc.root(), "gatekeeper-custom-phrase")?;
+                Some(GatekeeperSettingsChange::AddBlockedPhrase {
+                    phrase: element_attribute(&self.doc, input, "value")?.to_string(),
+                })
+            }
+            "remove-phrase" => Some(GatekeeperSettingsChange::RemoveBlockedPhrase {
+                phrase: element_attribute(&self.doc, node, "data-gatekeeper-phrase")?.to_string(),
             }),
             _ => None,
         }
@@ -1808,7 +1818,7 @@ mod tests {
             move || {
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
                 let mut handled = 0;
-                while handled < 2 && std::time::Instant::now() < deadline {
+                while handled < 4 && std::time::Instant::now() < deadline {
                     match listener.accept() {
                         Ok((mut stream, _)) => {
                             service.handle_connection(&mut stream).unwrap();
@@ -1821,8 +1831,8 @@ mod tests {
                     }
                 }
                 assert_eq!(
-                    handled, 2,
-                    "the page must read then update the real service"
+                    handled, 4,
+                    "the page must read and apply every control through the real service"
                 );
             }
         });
@@ -1853,6 +1863,34 @@ mod tests {
         assert_eq!(page.apply_gatekeeper_settings_control(add), Some(Ok(())));
         assert!(page.dom_dump().contains("tracker.example"));
         assert!(page.dom_dump().contains("Gatekeeper settings saved"));
+        let phrase_input = find_element_by_id(
+            page.doc(),
+            page.doc().root(),
+            "gatekeeper-custom-phrase",
+        ).unwrap();
+        let add_phrase = find_by_attribute(
+            page.doc(),
+            page.doc().root(),
+            "data-gatekeeper-action",
+            "add-phrase",
+        ).unwrap();
+        page.act(phrase_input, NodeAction::SetValue("Private Code".to_string()));
+        assert_eq!(
+            page.gatekeeper_settings_change_for(add_phrase),
+            Some(GatekeeperSettingsChange::AddBlockedPhrase {
+                phrase: "Private Code".to_string(),
+            })
+        );
+        assert_eq!(page.apply_gatekeeper_settings_control(add_phrase), Some(Ok(())));
+        assert!(page.dom_dump().contains("private code"));
+        let remove_phrase = find_by_attribute(
+            page.doc(),
+            page.doc().root(),
+            "data-gatekeeper-action",
+            "remove-phrase",
+        ).unwrap();
+        assert_eq!(page.apply_gatekeeper_settings_control(remove_phrase), Some(Ok(())));
+        assert!(service.settings().custom_blocked_phrases.is_empty());
         worker.join().unwrap();
         let _ = std::fs::remove_file(socket);
     }
