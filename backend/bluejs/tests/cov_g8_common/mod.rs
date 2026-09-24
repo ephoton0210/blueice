@@ -184,3 +184,94 @@ pub fn check_cases(cases: &[(&str, &str)], harness: bool) {
         .collect();
     assert_eq!(mismatches, Vec::<(&str, &str, String)>::new());
 }
+
+/// Parses every prefix of `source` (as a script, or as a module when `module`),
+/// so each place the grammar can run out of input or meet an unexpected token
+/// reports its error. Returns how many prefixes were rejected.
+pub fn parse_prefixes(source: &str, module: bool) -> usize {
+    let mut rejected = 0;
+    for end in (0..=source.len()).filter(|end| source.is_char_boundary(*end)) {
+        let prefix = &source[..end];
+        let failed = if module {
+            blueice_bluejs::parse_module(prefix).is_err()
+        } else {
+            parse(prefix).is_err()
+        };
+        rejected += usize::from(failed);
+    }
+    rejected
+}
+
+/// Compiles `source` under every bytecode limit from zero up to the smallest
+/// one that suffices, so each instruction the compiler emits is in turn the
+/// one that does not fit. Sources that do not parse or compile are skipped
+/// (`None`); otherwise returns that smallest limit.
+pub fn compile_limit_sweep(source: &str, module: bool) -> Option<u32> {
+    let compile_at = |limit: u32| -> Result<(), blueice_bluejs::CompileError> {
+        if module {
+            let module = blueice_bluejs::parse_module(source).expect("checked below");
+            blueice_bluejs::compile_module_with_limit(&module, limit).map(|_| ())
+        } else {
+            let program = parse(source).expect("checked below");
+            blueice_bluejs::compile_with_limit(&program, limit).map(|_| ())
+        }
+    };
+    let parses = if module {
+        blueice_bluejs::parse_module(source).is_ok()
+    } else {
+        parse(source).is_ok()
+    };
+    if !parses || compile_at(u32::MAX).is_err() {
+        return None;
+    }
+    let (mut low, mut high) = (0, 1 << 20);
+    assert!(compile_at(high).is_ok(), "{source}");
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if compile_at(middle).is_ok() {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    for limit in 0..high {
+        assert_eq!(
+            compile_at(limit),
+            Err(blueice_bluejs::CompileError::ProgramTooLarge),
+            "{source} at {limit}"
+        );
+    }
+    Some(high)
+}
+
+/// `ok`, or the error text, of parsing `source` as a script (or module).
+pub fn parse_outcome(source: &str, module: bool) -> String {
+    let result = if module {
+        blueice_bluejs::parse_module(source).map(|_| ())
+    } else {
+        parse(source).map(|_| ())
+    };
+    match result {
+        Ok(()) => "ok".to_string(),
+        Err(error) => format!("{error:?}"),
+    }
+}
+
+/// Like [`check_cases`], for `(source, expected outcome)` pairs where the
+/// source starts with `P:` (a script) or `M:` (a module) and the outcome is
+/// [`parse_outcome`]'s text.
+pub fn check_parse_cases(cases: &[(&str, &str)]) {
+    let mismatches: Vec<_> = cases
+        .iter()
+        .map(|(tagged, expected)| {
+            let (module, source) = match tagged.split_once(':') {
+                Some(("M", source)) => (true, source),
+                Some((_, source)) => (false, source),
+                None => (false, *tagged),
+            };
+            (*tagged, *expected, parse_outcome(source, module))
+        })
+        .filter(|(_, expected, actual)| actual != expected)
+        .collect();
+    assert_eq!(mismatches, Vec::<(&str, &str, String)>::new());
+}

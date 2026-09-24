@@ -41,8 +41,12 @@ fn validate_private_statement(
         | Stmt::Break(_)
         | Stmt::Continue(_)
         | Stmt::ClassPrivateBrand(_)
-        | Stmt::ClassExtraInitializers(_) => Ok(()),
-        Stmt::ClassDecoratedField { field, .. } => validate_private_statement(field, names),
+        | Stmt::ClassExtraInitializers(_)
+        // The compiler's own class-field wrappers exist only after lowering,
+        // by which time the field's initializer has been validated as part of
+        // its class element.
+        | Stmt::ClassField(_)
+        | Stmt::ClassDecoratedField { .. } => Ok(()),
         Stmt::Expr(expr) | Stmt::Throw(expr) => validate_private_expression(expr, names),
         Stmt::Block(statements) => validate_private_statements(statements, names),
         Stmt::VarDecl(_, declarations) => {
@@ -134,7 +138,6 @@ fn validate_private_statement(
             validate_private_function(function, names)
         }
         Stmt::ClassDecl(class) => validate_private_class(class, names),
-        Stmt::ClassField(statement) => validate_private_statement(statement, names),
     }
 }
 
@@ -153,10 +156,10 @@ fn validate_private_for_init(init: &ForInit, names: &HashSet<String>) -> Result<
 fn validate_private_for_head(head: &ForHead, names: &HashSet<String>) -> Result<(), CompileError> {
     match head {
         ForHead::Decl(_, pattern) => validate_private_pattern(pattern, names),
-        ForHead::AnnexBVarInit(pattern, initializer) => {
-            validate_private_pattern(pattern, names)?;
-            validate_private_expression(initializer, names)
-        }
+        // An Annex B initializer belongs to a plain identifier binding, which
+        // has nothing to validate.
+        ForHead::AnnexBVarInit(pattern, initializer) => validate_private_pattern(pattern, names)
+            .and(validate_private_expression(initializer, names)),
         ForHead::Assignment(pattern) => validate_private_assignment_pattern(pattern, names),
         ForHead::Expr(expression) => validate_private_expression(expression, names),
     }
@@ -425,16 +428,15 @@ fn validate_private_expression(expr: &Expr, names: &HashSet<String>) -> Result<(
             if *computed {
                 validate_private_expression(property, names)?;
             }
-            if !*computed {
-                if let Expr::Identifier(name) = property.as_ref() {
-                    if let Some(name) = name.strip_prefix('#') {
-                        if matches!(object.as_ref(), Expr::Super) {
-                            return Err(CompileError::InvalidSyntax(
-                                "super cannot access a private element",
-                            ));
-                        }
-                        validate_private_name(name, names)?;
+            // A non-computed property is always an identifier.
+            if let (false, Expr::Identifier(name)) = (*computed, property.as_ref()) {
+                if let Some(name) = name.strip_prefix('#') {
+                    if matches!(object.as_ref(), Expr::Super) {
+                        return Err(CompileError::InvalidSyntax(
+                            "super cannot access a private element",
+                        ));
                     }
+                    validate_private_name(name, names)?;
                 }
             }
             Ok(())

@@ -483,7 +483,8 @@ impl Vm {
         let constructor = self.globals["%Intl.NumberFormat%"];
         let default = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("the Intl.NumberFormat constructor is live")
             .object_id()
             .expect("Intl.NumberFormat.prototype is an object");
         let legacy_receiver =

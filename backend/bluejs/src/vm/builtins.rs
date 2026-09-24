@@ -474,3 +474,17 @@ fn strip_dynamic_function_html_comments(source: &str) -> String {
 #[cfg(test)]
 #[path = "builtins/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod bigint_of_tests {
+    use super::*;
+
+    #[test]
+    fn only_a_bigint_value_holds_a_bigint() {
+        assert_eq!(
+            bigint_of(&Value::BigInt(BigInt::from(7))),
+            Some(&BigInt::from(7))
+        );
+        assert_eq!(bigint_of(&Value::Number(7.0)), None);
+    }
+}

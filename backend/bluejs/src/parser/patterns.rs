@@ -138,7 +138,9 @@ impl Parser {
                 self.expect_punct(Punct::Comma)?;
             }
         }
-        self.expect_punct(Punct::RBracket)?;
+        // The loop only ends at the `]` (or after a final rest element that
+        // is followed by it).
+        self.advance();
         Ok(Pattern::Array(elements))
     }
 
@@ -198,7 +200,9 @@ impl Parser {
                 self.expect_punct(Punct::Comma)?;
             }
         }
-        self.expect_punct(Punct::RBrace)?;
+        // The loop only ends at the `}` (or after a final rest property that
+        // is followed by it).
+        self.advance();
         Ok(Pattern::Object(props))
     }
 

@@ -24,8 +24,9 @@ const RECEIVERS: [&str; 6] = [
 ];
 
 /// Receivers for the resource sweeps: a genuine array and an array-like.
-const PLAIN_RECEIVERS: [&str; 2] = [
+const PLAIN_RECEIVERS: [&str; 3] = [
     "[3, 1, 2, [4], 5]",
+    "[3, undefined, 1, , 2]",
     "{ length: 5, 0: 3, 1: 1, 2: 2, 3: [4], 4: 5 }",
 ];
 
@@ -98,6 +99,11 @@ const CALLS: &[(&str, &str)] = &[
     ("toSorted", ""),
     ("toSpliced", "V(1), V(1), 7"),
     ("with", "V(1), V(9)"),
+    ("with", "NaN, 9"),
+    ("with", "V(-1), 9"),
+    ("toSpliced", ""),
+    ("toSpliced", "V(1)"),
+    ("toSpliced", "V(0), V(2), 8"),
     ("keys", ""),
     ("entries", ""),
     ("values", ""),
@@ -252,6 +258,17 @@ const CASES: &[(&str, &str)] = &[
     ("Array.prototype.concat.call({ length: 1 }, { length: 2 ** 53 - 1, [Symbol.isConcatSpreadable]: true })", "throws TypeError: concatenated Array length exceeds the safe integer limit"),
     ("Array.prototype.splice.call({ length: 2 ** 53 - 1 }, 0, 0, 1)", "throws TypeError: invalid Array length"),
     ("Array.prototype.push.call({ length: 2 ** 53 - 1 }, 1)", "throws TypeError: Array.prototype.push would exceed the maximum array-like length"),
+    // splice moves elements it cannot delete the destination of.
+    ("(function () { var a = [0, 1, 2, 3]; delete a[3]; Object.defineProperty(a, 2, { value: 2, configurable: false, writable: true, enumerable: true }); a.splice(1, 1) })()", "throws TypeError: cannot delete Array property"),
+    ("(function () { var a = [0, , 2]; Object.defineProperty(a, 2, { value: 2, configurable: false, writable: true, enumerable: true }); a.splice(0, 0, 'x') })()", "throws TypeError: cannot delete Array property"),
+    // copies of array-likes that are too long.
+    ("Array.prototype.toReversed.call({ length: 2 ** 32 })", "throws RangeError: invalid Array length"),
+    ("Array.prototype.toSpliced.call({ length: 2 ** 53 - 1 }, 0, 0, 1)", "throws TypeError: invalid Array length"),
+    ("Array.prototype.toSorted.call([], 5)", "throws TypeError: Array toSorted comparator must be callable"),
+    ("[1, 2, 3].with(NaN, 9).join()", "9,2,3"),
+    ("[1, 2, 3].with(-1, 9).join()", "1,2,9"),
+    ("[1, 2, 3].with(3, 9)", "throws RangeError: Array.prototype.with index is out of range"),
+    ("[1, 2, 3].with(-4, 9)", "throws RangeError: Array.prototype.with index is out of range"),
     // callbacks that are not callable.
     ("[1].forEach(5)", "throws TypeError: Array.prototype.forEach callback must be callable"),
 ];
@@ -268,7 +285,12 @@ const REALM_CASES: &[(&str, &str)] = &[
     ("(function () { var other = $262.createRealm().global; return Object.getPrototypeOf(other.Array.prototype.map.call(new other.Array(1, 2), function (x) { return x })) === other.Array.prototype })()", "true"),
     // A TypedArray of another realm.
     ("(function () { var other = $262.createRealm().global; return Array.prototype.toLocaleString.call(new other.Uint8Array([10, 20])) })()", "10,20"),
+    // A method of another realm working on a plain object creates its result with that realm's prototype.
+    ("(function () { var map = $262.createRealm().global.eval('Array.prototype.map'); return map.call({ length: 2, 0: 1, 1: 2 }, function (x) { return x; }).length })()", "2"),
+    ("(function () { var toReversed = $262.createRealm().global.eval('Array.prototype.toReversed'); return toReversed.call({ length: 2, 0: 1, 1: 2 }).join() })()", "2,1"),
     ("(function () { var other = $262.createRealm().global; return other.Uint8Array.prototype.toLocaleString.call(new other.Uint8Array([10, 20])) })()", "10,20"),
+    ("(function () { var other = $262.createRealm().global; var ta = new other.Uint8Array(2); $262.detachArrayBuffer(ta.buffer); return Array.prototype.toLocaleString.call(ta) })()", "throws TypeError: foreign TypedArray is detached or out of bounds"),
+    ("(function () { var r = Proxy.revocable([], {}); r.revoke(); return Array.prototype.concat.call(r.proxy) })()", "throws TypeError: operation attempted on a revoked Proxy"),
 ];
 
 #[test]
@@ -292,8 +314,6 @@ fn joined_text_is_bounded_by_the_string_limit() {
     for source in [
         "['aaaaaa', 'bbbbbb'].join('-')",
         "['aaaaaa', 'bbbbbb'].join('--------')",
-        "['aaaaaa', 'bbbbbb'].toLocaleString()",
-        "['aaaaaaaa', 'b'].toLocaleString()",
     ] {
         assert_eq!(
             run_with(limit(16), source),
@@ -301,13 +321,39 @@ fn joined_text_is_bounded_by_the_string_limit() {
             "{source}"
         );
     }
+    // 'toLocaleString' itself is twenty-eight bytes of the limit: the first
+    // string fills it so the comma does not fit, the second one overflows it.
+    for source in [
+        "['aaaaaaaaaaaaaa', 'b'].toLocaleString()",
+        "['a', 'bbbbbbbbbbbbbb'].toLocaleString()",
+    ] {
+        assert_eq!(
+            run_with(limit(28), source),
+            Err(RuntimeError::StringLimit { limit: 28 }),
+            "{source}"
+        );
+    }
+}
+
+/// A child realm whose heap is nearly full before a method asks it for an
+/// intrinsic it has not created yet, so the child's own allocation fails.
+const HEAVY_CHILD_CASES: &[&str] = &[
+    "var other = $262.createRealm().global; other.eval('globalThis.filler = []; for (var i = 0; i < 600; i++) filler.push({});'); var a = []; a.constructor = other.Object; Array.prototype.concat.call(a);",
+    "var other = $262.createRealm().global; other.eval('globalThis.filler = []; for (var i = 0; i < 600; i++) filler.push({});'); other.Array.prototype.map.call(new other.Array(1, 2), function (x) { return x; });",
+];
+
+#[test]
+fn a_full_child_realm_reports_the_heap_limit() {
+    let mut stopped = 0;
+    for source in HEAVY_CHILD_CASES {
+        stopped += heap_sweep_with(source, 6000, 8, true);
+    }
+    assert!(stopped > 0, "{stopped}");
 }
 
 #[test]
-fn arrays_of_other_realms_run_out_of_heap_at_every_allocation() {
-    let mut stopped = 0;
-    for case in REALM_CASES {
-        stopped += heap_sweep_with(case.0, 12000, 8, true);
-    }
-    assert!(stopped > 100, "{stopped}");
+fn the_unscopables_object_is_built_from_an_almost_full_heap() {
+    let stopped = heap_sweep("Array.prototype[Symbol.unscopables]", 250_000, 16)
+        + heap_sweep("with ({}) { }", 250_000, 16);
+    assert!(stopped > 10, "{stopped}");
 }

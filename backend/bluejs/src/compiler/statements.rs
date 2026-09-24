@@ -43,6 +43,26 @@ fn is_function_declaration(statement: &Stmt) -> bool {
 }
 
 impl Compiler {
+    /// The end of the code emitted so far. `emit` keeps the code within its
+    /// `u32` limit, so the offset always fits.
+    fn here(&self) -> u32 {
+        self.offset()
+            .expect("the emitted code stays within the u32 limit")
+    }
+
+    /// The index of a constant this statement is about to use. Every constant
+    /// is used by an instruction, and the instructions fit the `u32` limit.
+    fn name_const(&mut self, name: &str) -> u32 {
+        self.name_constant(name)
+            .expect("the emitted code stays within the u32 limit")
+    }
+
+    /// A count of emitted things (handlers, jumps, arguments) as an operand:
+    /// each takes at least one byte of the code, which fits the `u32` limit.
+    fn operand(count: usize) -> u32 {
+        u32::try_from(count).expect("the emitted code stays within the u32 limit")
+    }
+
     /// Emits the value of decorated field: `value` on the stack becomes the
     /// value after every initializer function the decorators returned (in
     /// `record[1]`) has been applied with `this` the instance.
@@ -189,8 +209,7 @@ impl Compiler {
         is_async: bool,
         compile_body: impl FnOnce(&mut Self) -> Result<(), CompileError>,
     ) -> Result<(), CompileError> {
-        let handler_index = u32::try_from(self.bytecode.handlers.len())
-            .map_err(|_| CompileError::ProgramTooLarge)?;
+        let handler_index = Self::operand(self.bytecode.handlers.len());
         self.bytecode.handlers.push(Handler {
             try_start: 0,
             try_end: 0,
@@ -206,16 +225,16 @@ impl Compiler {
         // statement list's own, and disposal returns that completion
         // unchanged (`DisposeResources`). Clearing would turn `4; {using x =
         // null;}` into `undefined` instead of `4`.
-        self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
+        self.bytecode.handlers[handler_index as usize].try_start = self.here();
         // Disposal runs after the block's return value is computed.
         self.tail_call_blockers += 1;
         let body = compile_body(self);
         self.tail_call_blockers -= 1;
         body?;
-        self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
+        self.bytecode.handlers[handler_index as usize].try_end = self.here();
         self.emit(Opcode::EnterFinalizer, 0)?;
         let normal_exit = self.emit(Opcode::Jump, 0)?;
-        let finally_start = self.offset()?;
+        let finally_start = self.here();
         self.bytecode.handlers[handler_index as usize].finally = Some(finally_start);
         if is_async {
             self.compile_async_dispose_finally(handler_index)?;
@@ -223,7 +242,7 @@ impl Compiler {
             self.emit(Opcode::DisposeResources, handler_index)?;
         }
         self.emit(Opcode::ResumeCompletion, handler_index)?;
-        self.bytecode.handlers[handler_index as usize].finally_end = Some(self.offset()?);
+        self.bytecode.handlers[handler_index as usize].finally_end = Some(self.here());
         self.patch(normal_exit, finally_start);
         Ok(())
     }
@@ -478,7 +497,7 @@ impl Compiler {
             if !is_function_declaration(statement) {
                 continue;
             }
-            offsets[index] = Some(self.offset()?);
+            offsets[index] = Some(self.here());
             self.function_declaration(statement)?;
         }
         Ok(())
@@ -508,7 +527,7 @@ impl Compiler {
             // A sloppy direct eval re-declaring a function that an earlier eval
             // in the same function created: the binding is dynamic, so the new
             // function object replaces its value.
-            let index = self.name_constant(binding_name)?;
+            let index = self.name_const(binding_name);
             self.emit(Opcode::SetUnboundName, index)?;
             self.emit(Opcode::Pop, 0)?;
             return Ok(());
@@ -566,9 +585,9 @@ impl Compiler {
             if is_function_declaration(statement) {
                 continue;
             }
-            let start = self.offset()?;
+            let start = self.here();
             self.statement(statement, true)?;
-            if self.offset()? > start {
+            if self.here() > start {
                 offsets[index] = Some(start);
             }
         }
@@ -737,11 +756,11 @@ impl Compiler {
                 let no = self.emit(Opcode::JumpIfFalse, 0)?;
                 self.if_clause_statement(consequent)?;
                 let end = self.emit(Opcode::Jump, 0)?;
-                self.patch(no, self.offset()?);
+                self.patch(no, self.here());
                 if let Some(alternate) = alternate {
                     self.if_clause_statement(alternate)?;
                 }
-                self.patch(end, self.offset()?);
+                self.patch(end, self.here());
             }
             Stmt::While { test, body } => {
                 self.loop_statement(None, Some(test), None, body, false, Vec::new())?
@@ -830,7 +849,7 @@ impl Compiler {
                 self.expression(test)?;
                 let no = self.emit(Opcode::JumpIfFalse, 0)?;
                 self.tail_position_return_or_value(consequent)?;
-                self.patch(no, self.offset()?);
+                self.patch(no, self.here());
                 self.tail_position_return_or_value(alternate)?;
             }
             Expr::Logical { op, left, right } => {
@@ -846,7 +865,7 @@ impl Compiler {
                 )?;
                 self.emit(Opcode::Pop, 0)?;
                 self.tail_position_return_or_value(right)?;
-                self.patch(short_circuit, self.offset()?);
+                self.patch(short_circuit, self.here());
                 self.emit_return_epilogue()?;
             }
             Expr::Sequence(expressions) => {
@@ -889,10 +908,7 @@ impl Compiler {
                     self.emit(Opcode::GetBinding, iterator)?;
                     self.emit(Opcode::IteratorClose, 0)?;
                 }
-                self.emit(
-                    Opcode::TailRecur,
-                    u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
-                )?;
+                self.emit(Opcode::TailRecur, Self::operand(args.len()))?;
             }
         }
         Ok(true)
@@ -1062,7 +1078,7 @@ impl Compiler {
                     iterator: None,
                 });
                 self.statement(item, false)?;
-                let end = self.offset()?;
+                let end = self.here();
                 let context = self.loops.pop().expect("label control is active");
                 for (jump, control) in context.breaks {
                     self.patch(jump, end);
@@ -1115,13 +1131,13 @@ impl Compiler {
         // A direct jump would skip a surrounding `finally`. Route to a local
         // cleanup gateway first; handlers resume there only after finalizers.
         let control = self.bytecode.abrupt_jumps.len();
-        let control_operand = u32::try_from(control).map_err(|_| CompileError::ProgramTooLarge)?;
+        let control_operand = Self::operand(control);
         self.bytecode.abrupt_jumps.push(AbruptJump {
             cleanup: 0,
             target: 0,
         });
         self.emit(Opcode::AbruptJump, control_operand)?;
-        let cleanup = self.offset()?;
+        let cleanup = self.here();
         self.bytecode.abrupt_jumps[control].cleanup = cleanup;
         for iterator in iterators {
             // A handler crossed on the way to this cleanup gateway closes
@@ -1190,18 +1206,18 @@ impl Compiler {
                 self.emit(Opcode::StrictEqual, 0)?;
                 let no_match = self.emit(Opcode::JumpIfFalse, 0)?;
                 case_entries[index] = Some(self.emit(Opcode::Jump, 0)?);
-                self.patch(no_match, self.offset()?);
+                self.patch(no_match, self.here());
             }
         }
         let no_match = self.emit(Opcode::Jump, 0)?;
-        let no_match_cleanup = self.offset()?;
+        let no_match_cleanup = self.here();
         self.emit(Opcode::Pop, 0)?;
         let no_match_exit = self.emit(Opcode::Jump, 0)?;
 
         let mut case_stubs = Vec::with_capacity(cases.len());
         let mut body_jumps = Vec::with_capacity(cases.len());
         for _ in cases {
-            case_stubs.push(self.offset()?);
+            case_stubs.push(self.here());
             self.emit(Opcode::Pop, 0)?;
             body_jumps.push(self.emit(Opcode::Jump, 0)?);
         }
@@ -1227,10 +1243,10 @@ impl Compiler {
             iterator: None,
         });
         for (case, jump) in cases.iter().zip(body_jumps) {
-            self.patch(jump, self.offset()?);
+            self.patch(jump, self.here());
             self.statements_after_function_declarations(&case.consequent)?;
         }
-        let end = self.offset()?;
+        let end = self.here();
         self.patch(no_match_exit, end);
         let context = self.loops.pop().expect("switch control is active");
         for (jump, control) in context.breaks {
@@ -1250,8 +1266,7 @@ impl Compiler {
         handler: Option<&CatchClause>,
         finalizer: Option<&[Stmt]>,
     ) -> Result<(), CompileError> {
-        let handler_index = u32::try_from(self.bytecode.handlers.len())
-            .map_err(|_| CompileError::ProgramTooLarge)?;
+        let handler_index = Self::operand(self.bytecode.handlers.len());
         self.bytecode.handlers.push(Handler {
             try_start: 0,
             try_end: 0,
@@ -1266,14 +1281,14 @@ impl Compiler {
         // the value of the preceding statement into TryStatement's
         // UpdateEmpty step.
         self.emit(Opcode::ClearCompletion, 0)?;
-        self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
+        self.bytecode.handlers[handler_index as usize].try_start = self.here();
         // A call in the try block is not a tail call: the catch and finally
         // clauses have to observe how it ends.
         self.tail_call_blockers += 1;
         let try_block = self.scoped_statements(block);
         self.tail_call_blockers -= 1;
         try_block?;
-        self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
+        self.bytecode.handlers[handler_index as usize].try_end = self.here();
         self.emit(
             if finalizer.is_some() {
                 Opcode::EnterFinalizer
@@ -1285,7 +1300,7 @@ impl Compiler {
         let normal_exit = self.emit(Opcode::Jump, 0)?;
 
         let catch_exit = if let Some(catch) = handler {
-            let start = self.offset()?;
+            let start = self.here();
             self.bytecode.handlers[handler_index as usize].catch = Some(start);
             let parameter_bound_names = catch.param.as_ref().map(pattern_names).unwrap_or_default();
             if self.bytecode.strict
@@ -1344,7 +1359,7 @@ impl Compiler {
                 .pop()
                 .expect("catch var override is active");
             self.leave_scope()?;
-            self.bytecode.handlers[handler_index as usize].catch_end = Some(self.offset()?);
+            self.bytecode.handlers[handler_index as usize].catch_end = Some(self.here());
             self.emit(
                 if finalizer.is_some() {
                     Opcode::EnterFinalizer
@@ -1359,7 +1374,7 @@ impl Compiler {
         };
 
         if let Some(finalizer) = finalizer {
-            let start = self.offset()?;
+            let start = self.here();
             self.bytecode.handlers[handler_index as usize].finally = Some(start);
             // A normal finally restores its saved prior Completion only when
             // this block remains empty; a non-empty finalizer keeps its own.
@@ -1369,7 +1384,7 @@ impl Compiler {
             // restores the preceding non-empty completion. On an abrupt entry
             // it replays the pending completion after the finalizer finishes.
             self.emit(Opcode::ResumeCompletion, handler_index)?;
-            let end = self.offset()?;
+            let end = self.here();
             self.bytecode.handlers[handler_index as usize].finally_end = Some(end);
             self.patch(normal_exit, start);
             if let Some(exit) = catch_exit {
@@ -1377,7 +1392,7 @@ impl Compiler {
             }
             debug_assert!(end as usize <= self.bytecode.code.len());
         } else {
-            let end = self.offset()?;
+            let end = self.here();
             self.patch(normal_exit, end);
             if let Some(exit) = catch_exit {
                 self.patch(exit, end);
@@ -1421,7 +1436,7 @@ impl Compiler {
                 (kind, &declaration.pattern, &declaration.init)
             {
                 if self.with_depth != 0 && self.resolve_inside_innermost_with(name).is_none() {
-                    let index = self.name_constant(name)?;
+                    let index = self.name_const(name);
                     self.emit(Opcode::ResolveWithReference, index)?;
                     self.expression_with_name(value, Some(name.as_str()))?;
                     self.emit(Opcode::StoreWithReference, 0)?;
@@ -1491,7 +1506,7 @@ impl Compiler {
             // environments first (ResolveBinding), so its value can land on a
             // with object instead of the variable.
             Pattern::Identifier(name) if self.var_binding_resolves_through_with(kind, name) => {
-                let index = self.name_constant(name)?;
+                let index = self.name_const(name);
                 self.emit(Opcode::ResolveWithReference, index)?;
                 self.emit(Opcode::StoreResolvedWithReference, 0)?;
                 self.emit(Opcode::Pop, 0)?;
@@ -1512,7 +1527,7 @@ impl Compiler {
                         // an earlier eval already added to the function's
                         // VariableEnvironment: it has no static slot, and the
                         // initializer assigns to that dynamic binding.
-                        let index = self.name_constant(name)?;
+                        let index = self.name_const(name);
                         self.emit(Opcode::SetUnboundName, index)?;
                         self.emit(Opcode::Pop, 0)?;
                         return Ok(());
@@ -1571,7 +1586,7 @@ impl Compiler {
                                 Pattern::Identifier(name)
                                     if self.var_binding_resolves_through_with(kind, name) =>
                                 {
-                                    let index = self.name_constant(name)?;
+                                    let index = self.name_const(name);
                                     self.emit(Opcode::Dup, 0)?;
                                     self.emit(Opcode::ResolveWithReference, index)?;
                                     self.emit(Opcode::DestructurePropertyReference, 0)?;
@@ -1621,9 +1636,9 @@ impl Compiler {
         self.emit(Opcode::Dup, 0)?;
         let exhausted = self.emit(Opcode::IteratorStep, 0)?;
         let joined = self.emit(Opcode::Jump, 0)?;
-        self.patch(exhausted, self.offset()?);
+        self.patch(exhausted, self.here());
         self.constant(Value::Undefined)?;
-        self.patch(joined, self.offset()?);
+        self.patch(joined, self.here());
         Ok(())
     }
 
@@ -1654,7 +1669,7 @@ impl Compiler {
                 _ => None,
             },
         )?;
-        self.patch(skip, self.offset()?);
+        self.patch(skip, self.here());
         Ok(())
     }
 
@@ -1678,7 +1693,7 @@ impl Compiler {
                 _ => None,
             },
         )?;
-        self.patch(skip, self.offset()?);
+        self.patch(skip, self.here());
         Ok(())
     }
 
@@ -1761,7 +1776,7 @@ impl Compiler {
                 .expect("lexical for scope remains active");
             self.emit(Opcode::CloneScope, scope)?;
         }
-        let start = self.offset()?;
+        let start = self.here();
         let mut exit = None;
         if !do_first {
             if let Some(test) = test {
@@ -1778,7 +1793,7 @@ impl Compiler {
             iterator: None,
         });
         self.statement(body, false)?;
-        let continue_at = self.offset()?;
+        let continue_at = self.here();
         // CreatePerIterationEnvironment happens after the body and before
         // the update expression.  That leaves closures made by this turn
         // attached to its old cells while the update writes into the next
@@ -1800,7 +1815,7 @@ impl Compiler {
         } else {
             self.emit(Opcode::Jump, start)?;
         }
-        let end = self.offset()?;
+        let end = self.here();
         if let Some(exit) = exit {
             self.patch(exit, end);
         }

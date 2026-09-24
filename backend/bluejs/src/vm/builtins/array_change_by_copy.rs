@@ -86,7 +86,7 @@ impl Vm {
         receiver: &Value,
         compare: &Value,
     ) -> Result<Value, RuntimeError> {
-        if *compare != Value::Undefined && !self.is_callable(compare)? {
+        if *compare != Value::Undefined && !self.is_callable(compare).unwrap_or(false) {
             return Err(RuntimeError::TypeError(
                 "Array toSorted comparator must be callable".into(),
             ));

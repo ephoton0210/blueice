@@ -190,6 +190,11 @@ fn precision_string(value: f64, precision: usize) -> String {
     text
 }
 
+/// The `RangeError` a NumberFormat that cannot format a Number is reported as.
+fn number_format_error(error: blueice_ecma402::NumberFormatError) -> RuntimeError {
+    RuntimeError::RangeError(error.to_string())
+}
+
 impl Vm {
     pub(in super::super) fn number_receiver(
         &mut self,
@@ -240,7 +245,8 @@ impl Vm {
         let number = self.number_receiver(receiver)?;
         // Number formatting canonicalizes -0 before producing a string.
         let canonical = number + 0.0;
-        let source_string = || primitive::string(&Value::Number(canonical));
+        let source_string =
+            || primitive::string(&Value::Number(canonical)).expect("a Number has a string form");
         match method {
             NumberMethod::LocaleString => {
                 let formatter = self
@@ -248,7 +254,7 @@ impl Vm {
                 formatter
                     .format_f64(number)
                     .map(|formatted| Value::String(formatted.into()))
-                    .map_err(|error| RuntimeError::RangeError(error.to_string()))
+                    .map_err(number_format_error)
             }
             NumberMethod::ToString => {
                 let radix = native::argument(args, 0);
@@ -275,7 +281,7 @@ impl Vm {
                 let digits = self.number_digits_argument(native::argument(args, 0))?;
                 let digits = Self::number_digits_in_range(digits, 0.0, "toFixed")?;
                 if !canonical.is_finite() || canonical.abs() >= 1e21 {
-                    return Ok(Value::String(source_string()?));
+                    return Ok(Value::String(source_string()));
                 }
                 Ok(Value::String(fixed_string(canonical, digits).into()))
             }
@@ -287,7 +293,7 @@ impl Vm {
                     Some(self.number_digits_argument(requested)?)
                 };
                 if !canonical.is_finite() {
-                    return Ok(Value::String(source_string()?));
+                    return Ok(Value::String(source_string()));
                 }
                 match digits {
                     None => Ok(Value::String(normalized_exponential(canonical).into())),
@@ -299,15 +305,30 @@ impl Vm {
             }
             NumberMethod::Precision => {
                 if native::argument(args, 0) == &Value::Undefined {
-                    return Ok(Value::String(source_string()?));
+                    return Ok(Value::String(source_string()));
                 }
                 let precision = self.number_digits_argument(native::argument(args, 0))?;
                 if !canonical.is_finite() {
-                    return Ok(Value::String(source_string()?));
+                    return Ok(Value::String(source_string()));
                 }
                 let precision = Self::number_digits_in_range(precision, 1.0, "toPrecision")?;
                 Ok(Value::String(precision_string(canonical, precision).into()))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_number_that_cannot_be_formatted_is_a_range_error() {
+        assert_eq!(
+            number_format_error(blueice_ecma402::NumberFormatError::FormattingFailed),
+            RuntimeError::RangeError(
+                blueice_ecma402::NumberFormatError::FormattingFailed.to_string()
+            )
+        );
     }
 }

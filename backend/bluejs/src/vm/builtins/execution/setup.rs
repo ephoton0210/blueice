@@ -520,7 +520,7 @@ impl Vm {
                 "Iterator helper requires an object receiver".into(),
             ));
         }
-        if !self.is_callable(callback)? {
+        if !self.is_callable(callback).unwrap_or(false) {
             // Terminal helpers validate their callback before GetIteratorDirect.
             // An invalid callback closes the receiver but must not observe
             // the cached `next` property.
@@ -932,7 +932,7 @@ impl Vm {
                 "Iterator helper requires an object receiver".into(),
             ));
         }
-        if !self.is_callable(callback)? {
+        if !self.is_callable(callback).unwrap_or(false) {
             // Iterator helpers close an object receiver when argument
             // validation fails, but must not observe its `next` property.
             self.iterator_close_direct(receiver)?;

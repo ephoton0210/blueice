@@ -10,52 +10,33 @@ use super::*;
 /// concurrently editing for `PlainDate`/`PlainDateTime` bug fixes -- per this
 /// document's own repeatedly-recorded "git diff misalignment" merge pattern.
 impl Vm {
-    /// Brand check shared by every `Temporal.PlainYearMonth` prototype
-    /// method, mirroring `temporal_date_receiver`'s own pattern for
-    /// `PlainDate`/`PlainDateTime`.
+    /// The value of a `Temporal.PlainYearMonth` receiver. The brand check
+    /// itself happened before the method was called
+    /// (`NativeFunction::temporal_receiver_kind`), so the receiver is known to
+    /// be a live object carrying a PlainYearMonth value.
     pub(in super::super) fn temporal_year_month_receiver(
         &mut self,
         receiver: &Value,
-    ) -> Result<TemporalValue, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError(
-                "Temporal.PlainYearMonth method requires a matching receiver".into(),
-            )
-        })?;
-        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError(
-                "Temporal.PlainYearMonth method requires a matching receiver".into(),
-            )
-        })?;
-        if value.kind != TemporalKind::PlainYearMonth {
-            return Err(RuntimeError::TypeError(
-                "Temporal.PlainYearMonth method requires a matching receiver".into(),
-            ));
-        }
-        Ok(value)
+    ) -> TemporalValue {
+        self.checked_temporal_receiver(receiver)
     }
 
     /// Same as [`Self::temporal_year_month_receiver`], for `PlainMonthDay`.
     pub(in super::super) fn temporal_month_day_receiver(
         &mut self,
         receiver: &Value,
-    ) -> Result<TemporalValue, RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError(
-                "Temporal.PlainMonthDay method requires a matching receiver".into(),
-            )
-        })?;
-        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
-            RuntimeError::TypeError(
-                "Temporal.PlainMonthDay method requires a matching receiver".into(),
-            )
-        })?;
-        if value.kind != TemporalKind::PlainMonthDay {
-            return Err(RuntimeError::TypeError(
-                "Temporal.PlainMonthDay method requires a matching receiver".into(),
-            ));
-        }
-        Ok(value)
+    ) -> TemporalValue {
+        self.checked_temporal_receiver(receiver)
+    }
+
+    fn checked_temporal_receiver(&mut self, receiver: &Value) -> TemporalValue {
+        let object = receiver
+            .object_id()
+            .expect("the dispatcher required a Temporal object receiver");
+        self.heap
+            .temporal_value(object)
+            .expect("the receiver is live")
+            .expect("the dispatcher required a Temporal receiver")
     }
 
     /// `CalendarYearMonthFromFields`'s property-bag entry point --
@@ -221,13 +202,6 @@ impl Vm {
         // a well-formed-but-unsuitable one (`"M99L"`, judged later, once a
         // calendar resolution is attempted) lets `year`'s `TypeError` win.
         let month_code_s = self.temporal_read_month_code(bag)?;
-        if let Some(code) = month_code_s.as_deref() {
-            if !plain_month_day::is_well_formed_month_code(code) {
-                return Err(RuntimeError::RangeError(
-                    "invalid Temporal month code".into(),
-                ));
-            }
-        }
         // `ToIntegerWithTruncation`, unbounded here: `epoch::is_date_within_limits`
         // below still range-checks the resolved date.
         let requested_year =
@@ -325,7 +299,7 @@ impl Vm {
             let month = requested_month
                 .map(|value| value.min(i32::from(u8::MAX)) as u8)
                 .or(month_code_ordinal)
-                .ok_or_else(|| RuntimeError::RangeError("invalid Temporal month code".into()))?;
+                .expect("a month or a monthCode was checked to be present");
             plain_month_day::iso_month_day_from_fields(
                 month,
                 day_num_u8,
@@ -370,7 +344,11 @@ impl Vm {
         options: &Value,
     ) -> Result<TemporalValue, RuntimeError> {
         if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("the object is live")
+            {
                 if temporal.kind == TemporalKind::PlainYearMonth {
                     let resolved_options = self.temporal_options(options)?;
                     self.temporal_overflow_option(&resolved_options)?;
@@ -427,7 +405,11 @@ impl Vm {
         options: &Value,
     ) -> Result<TemporalValue, RuntimeError> {
         if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
+            if let Some(temporal) = self
+                .heap
+                .temporal_value(object)
+                .expect("the object is live")
+            {
                 if temporal.kind == TemporalKind::PlainMonthDay {
                     let resolved_options = self.temporal_options(options)?;
                     self.temporal_overflow_option(&resolved_options)?;
@@ -489,11 +471,16 @@ impl Vm {
         like: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_year_month_receiver(receiver)?;
+        let existing = self.temporal_year_month_receiver(receiver);
         let like_object = like
             .object_id()
             .ok_or_else(|| RuntimeError::TypeError("Temporal.with requires an object".into()))?;
-        if self.heap.temporal_value(like_object)?.is_some() {
+        if self
+            .heap
+            .temporal_value(like_object)
+            .expect("the object is live")
+            .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "Temporal.with does not accept a Temporal-like object".into(),
             ));
@@ -624,11 +611,16 @@ impl Vm {
         like: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_month_day_receiver(receiver)?;
+        let existing = self.temporal_month_day_receiver(receiver);
         let like_object = like
             .object_id()
             .ok_or_else(|| RuntimeError::TypeError("Temporal.with requires an object".into()))?;
-        if self.heap.temporal_value(like_object)?.is_some() {
+        if self
+            .heap
+            .temporal_value(like_object)
+            .expect("the object is live")
+            .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "Temporal.with does not accept a Temporal-like object".into(),
             ));
@@ -746,7 +738,7 @@ impl Vm {
             // a newly supplied `month`.
             let month_code_ordinal = month_code_s
                 .as_deref()
-                .and_then(|code| code.strip_prefix('M')?.parse::<u8>().ok());
+                .and_then(|code| code[1..].parse::<u8>().ok());
             if let (Some(month_num), Some(code_num)) = (requested_month, month_code_ordinal) {
                 if month_num != i32::from(code_num) {
                     return Err(RuntimeError::RangeError(
@@ -759,9 +751,9 @@ impl Vm {
                 .or_else(|| {
                     month_code
                         .as_deref()
-                        .and_then(|code| code.strip_prefix('M')?.parse().ok())
+                        .and_then(|code| code[1..].parse().ok())
                 })
-                .ok_or_else(|| RuntimeError::RangeError("invalid Temporal month code".into()))?;
+                .expect("the base fields carry a month code");
             plain_month_day::iso_month_day_from_fields(
                 month,
                 day_for_fields,
@@ -795,7 +787,7 @@ impl Vm {
         options: &Value,
         negate: bool,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_year_month_receiver(receiver)?;
+        let existing = self.temporal_year_month_receiver(receiver);
         let mut duration = self.temporal_duration_from_value(duration_value)?;
         if negate {
             duration.years = -duration.years;
@@ -839,7 +831,7 @@ impl Vm {
             ordinal_month: None,
         };
         let anchor = plain_year_month::year_month_from_fields(calendar_kind, &anchor_fields, false)
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
+            .expect("the fields of an existing year-month resolve to it");
         // `AddDurationToYearMonth` resolves the month's *first day* as a date
         // (`CalendarDateFromFields`) before doing anything else, so a
         // year-month whose first day precedes the earliest representable date
@@ -885,7 +877,7 @@ impl Vm {
         options: &Value,
         since: bool,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_year_month_receiver(receiver)?;
+        let existing = self.temporal_year_month_receiver(receiver);
         let other = self.temporal_to_plain_year_month(other_value, &Value::Undefined)?;
         if existing.calendar != other.calendar {
             return Err(RuntimeError::RangeError(
@@ -973,10 +965,10 @@ impl Vm {
                 false,
             )
         };
-        let from_date = resolve(&from_fields)
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
-        let to_date = resolve(&to_fields)
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
+        let from_date =
+            resolve(&from_fields).expect("the fields of an existing year-month resolve to it");
+        let to_date =
+            resolve(&to_fields).expect("the fields of an existing year-month resolve to it");
         // The difference is taken between the two months' *first days*, so
         // both must be valid dates: a wider range than a `PlainYearMonth`
         // itself may hold (`-271821-04` is one, but starts before the earliest
@@ -1055,7 +1047,7 @@ impl Vm {
             0,
             0,
         )
-        .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        .expect("a difference of two year-months fits a duration record");
         self.alloc_temporal_value(Self::temporal_duration_value(record), false)
     }
 
@@ -1064,7 +1056,7 @@ impl Vm {
         receiver: &Value,
         other_value: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_year_month_receiver(receiver)?;
+        let existing = self.temporal_year_month_receiver(receiver);
         let other = self.temporal_to_plain_year_month(other_value, &Value::Undefined)?;
         let equal = existing.year == other.year
             && existing.month == other.month
@@ -1093,7 +1085,7 @@ impl Vm {
         receiver: &Value,
         other_value: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_month_day_receiver(receiver)?;
+        let existing = self.temporal_month_day_receiver(receiver);
         let other = self.temporal_to_plain_month_day(other_value, &Value::Undefined)?;
         let equal = existing.year == other.year
             && existing.month == other.month
@@ -1107,7 +1099,7 @@ impl Vm {
         receiver: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_year_month_receiver(receiver)?;
+        let existing = self.temporal_year_month_receiver(receiver);
         let resolved_options = self.temporal_options(options)?;
         let show_calendar_raw = self.temporal_string_option(
             &resolved_options,
@@ -1131,7 +1123,7 @@ impl Vm {
         receiver: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_month_day_receiver(receiver)?;
+        let existing = self.temporal_month_day_receiver(receiver);
         let resolved_options = self.temporal_options(options)?;
         let show_calendar_raw = self.temporal_string_option(
             &resolved_options,
@@ -1161,7 +1153,6 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        self.temporal_year_month_receiver(receiver)?;
         let stack_base = self.stack.len();
         let result = (|| {
             let formatter = self.create_date_time_format(
@@ -1174,7 +1165,8 @@ impl Vm {
             )?;
             self.stack.push(formatter.clone());
             if self
-                .date_time_format_data(&formatter)?
+                .date_time_format_data(&formatter)
+                .expect("the formatter was just created")
                 .options()
                 .time_style
                 .is_some()
@@ -1200,7 +1192,6 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        self.temporal_month_day_receiver(receiver)?;
         let stack_base = self.stack.len();
         let result = (|| {
             let formatter = self.create_date_time_format(
@@ -1213,7 +1204,8 @@ impl Vm {
             )?;
             self.stack.push(formatter.clone());
             if self
-                .date_time_format_data(&formatter)?
+                .date_time_format_data(&formatter)
+                .expect("the formatter was just created")
                 .options()
                 .time_style
                 .is_some()
@@ -1248,7 +1240,7 @@ impl Vm {
         receiver: &Value,
         item: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_year_month_receiver(receiver)?;
+        let existing = self.temporal_year_month_receiver(receiver);
         if item.object_id().is_none() {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainYearMonth.prototype.toPlainDate requires an object".into(),
@@ -1297,7 +1289,7 @@ impl Vm {
         receiver: &Value,
         item: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_month_day_receiver(receiver)?;
+        let existing = self.temporal_month_day_receiver(receiver);
         if item.object_id().is_none() {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainMonthDay.prototype.toPlainDate requires an object".into(),
