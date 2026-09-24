@@ -1777,6 +1777,7 @@ fn describe_child_static_metadata_symbol_location(
                 source: target.source,
                 start_byte: location.start_byte,
                 end_byte: location.end_byte,
+                coordinates: location.coordinates,
             };
             if !location.is_well_formed() {
                 return DebuggerReply::Error {
@@ -1868,6 +1869,7 @@ fn describe_child_static_metadata_contract_location(
                 source: target.source,
                 start_byte: location.start_byte,
                 end_byte: location.end_byte,
+                coordinates: location.coordinates,
             };
             if !location.is_well_formed() {
                 return DebuggerReply::Error {
@@ -3400,6 +3402,7 @@ fn capability_reports(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use blueice_ipc::debugger::DebuggerSourceCoordinates;
 
     struct MetadataLocations {
         malformed_summary: bool,
@@ -3727,6 +3730,12 @@ mod tests {
                     source_id: target.source_id,
                     start_byte: 6,
                     end_byte: 31,
+                    coordinates: DebuggerSourceCoordinates {
+                        start_line: 0,
+                        start_column_utf16: 6,
+                        end_line: 0,
+                        end_column_utf16: 31,
+                    },
                 },
             )
         }
@@ -3753,6 +3762,12 @@ mod tests {
                     source_id: target.source_id,
                     start_byte: 6,
                     end_byte: 31,
+                    coordinates: DebuggerSourceCoordinates {
+                        start_line: 0,
+                        start_column_utf16: 6,
+                        end_line: 0,
+                        end_column_utf16: 31,
+                    },
                 },
             )
         }
@@ -4769,6 +4784,12 @@ mod tests {
                 source,
                 start_byte: 6,
                 end_byte: 31,
+                coordinates: DebuggerSourceCoordinates {
+                    start_line: 0,
+                    start_column_utf16: 6,
+                    end_line: 0,
+                    end_column_utf16: 31,
+                },
             })
         );
         assert_eq!(
@@ -4898,6 +4919,12 @@ mod tests {
                 source,
                 start_byte: 6,
                 end_byte: 31,
+                coordinates: DebuggerSourceCoordinates {
+                    start_line: 0,
+                    start_column_utf16: 6,
+                    end_line: 0,
+                    end_column_utf16: 31,
+                },
             }),
         );
         assert_eq!(

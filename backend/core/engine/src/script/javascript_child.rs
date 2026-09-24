@@ -2665,6 +2665,7 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             source_id: location.source_id,
             start_byte: location.start_byte,
             end_byte: location.end_byte,
+            coordinates: location.coordinates,
         })
     }
 
@@ -2717,6 +2718,9 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             || metadata != child_metadata
             || location.start_byte >= location.end_byte
             || location.end_byte > DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+            || !location
+                .coordinates
+                .is_well_formed_for_range(location.start_byte, location.end_byte)
         {
             return Err(JavaScriptPageDebuggerError::NoLiveRealm);
         }
@@ -2728,6 +2732,7 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             source_id: location.source_id,
             start_byte: location.start_byte,
             end_byte: location.end_byte,
+            coordinates: location.coordinates,
         })
     }
 
@@ -3384,8 +3389,9 @@ fn valid_child_static_metadata_symbol_location(
 ) -> bool {
     location.symbol_id == symbol_id
         && location.source_id == source_id
-        && location.start_byte < location.end_byte
-        && location.end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+        && location
+            .coordinates
+            .is_well_formed_for_range(location.start_byte, location.end_byte)
 }
 
 fn valid_child_static_metadata_symbol_type(
@@ -4075,6 +4081,46 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread;
+
+    #[test]
+    fn child_symbol_location_rejects_malformed_original_coordinates() {
+        let location = PageHostDebuggerBlueTsMetadataSymbolLocation {
+            symbol_id: 3,
+            source_id: 5,
+            start_byte: 8,
+            end_byte: 31,
+            coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 8,
+                end_line: 1,
+                end_column_utf16: 9,
+            },
+        };
+        assert!(valid_child_static_metadata_symbol_location(location, 3, 5));
+        assert!(!valid_child_static_metadata_symbol_location(
+            PageHostDebuggerBlueTsMetadataSymbolLocation {
+                coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                    end_line: 0,
+                    end_column_utf16: 8,
+                    ..location.coordinates
+                },
+                ..location
+            },
+            3,
+            5,
+        ));
+        assert!(!valid_child_static_metadata_symbol_location(
+            PageHostDebuggerBlueTsMetadataSymbolLocation {
+                coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                    end_line: 32,
+                    ..location.coordinates
+                },
+                ..location
+            },
+            3,
+            5,
+        ));
+    }
 
     fn unique_socket_path(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);

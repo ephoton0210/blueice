@@ -12,7 +12,9 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
-//! Version 25 adds the compiler's export classification to the existing
+//! Version 26 adds bounded compiler-produced original-source UTF-16
+//! coordinates to the existing child-private symbol and contract location
+//! replies. Version 25 adds the compiler's export classification to the existing
 //! child-private symbol display. Version 24 adds a fixed root-shape
 //! classification to the existing contract-display reply for an exact
 //! child-private metadata attachment.
@@ -77,12 +79,15 @@
 //! contract plan, or structural failure detail.
 
 use crate::compiler::CompilerContractValue;
-use crate::debugger::{DebuggerStaticMetadataContractRootKind, DebuggerStaticMetadataSymbolKind};
+use crate::debugger::{
+    DebuggerSourceCoordinates, DebuggerStaticMetadataContractRootKind,
+    DebuggerStaticMetadataSymbolKind,
+};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 25;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 26;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -252,6 +257,7 @@ pub struct PageHostDebuggerBlueTsMetadataSymbolLocation {
     pub source_id: u32,
     pub start_byte: u32,
     pub end_byte: u32,
+    pub coordinates: DebuggerSourceCoordinates,
 }
 
 /// One child-local, source-text-free declaration range for a retained
@@ -263,6 +269,7 @@ pub struct PageHostDebuggerBlueTsMetadataContractLocation {
     pub source_id: u32,
     pub start_byte: u32,
     pub end_byte: u32,
+    pub coordinates: DebuggerSourceCoordinates,
 }
 
 /// One exact child-verified relation between a compiler symbol and type.
@@ -1588,6 +1595,12 @@ mod tests {
                 source_id: 0,
                 start_byte: 6,
                 end_byte: 31,
+                coordinates: DebuggerSourceCoordinates {
+                    start_line: 0,
+                    start_column_utf16: 6,
+                    end_line: 0,
+                    end_column_utf16: 31,
+                },
             },
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
@@ -1773,6 +1786,12 @@ mod tests {
                 source_id: 0,
                 start_byte: 6,
                 end_byte: 31,
+                coordinates: DebuggerSourceCoordinates {
+                    start_line: 0,
+                    start_column_utf16: 6,
+                    end_line: 0,
+                    end_column_utf16: 31,
+                },
             },
         };
         assert!(!format!("{reply:?}").contains("PrivateContract"));

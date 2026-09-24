@@ -705,9 +705,9 @@ or second module resolver to bypass them.
   span. It computes only declaration boundaries in one temporary linear
   source scan; the retained metadata has no source text or general line-map
   oracle. CRLF, supplementary-plane Unicode, and Unicode block comments have
-  regressions. Carrying these positions through independently authorized
-  debugger location replies and generation-bound compiler/MCP queries remains
-  open.
+  regressions. The independently authorized debugger location replies now
+  carry these positions; generation-bound compiler/MCP location queries do
+  not yet.
   `DirectModuleGraph::attach_debug_in_page_realm` now derives a module-local
   static subset (one source, that module's symbols, and their referenced type
   IDs) for every graph generation and rolls back all retained records/programs
@@ -868,7 +868,8 @@ or second module resolver to bypass them.
   request contains only that receipted symbol/source pair; it returns only
   the same opaque IDs and a non-empty half-open UTF-8 byte range capped at
   1 MiB. Core verifies the child's echoed pair and range before re-minting
-  it. No source text, module/path identity, line/column mapping, symbol
+  it. This initial v19 reply had no line/column mapping. No source text,
+  module/path identity, symbol
   name, type, contract, bytecode, runtime value, source-map translation, or
   general static-record read crosses this layer. The private child regression
   proves source-free disclosure plus unknown-target and reload rejection.
@@ -914,8 +915,8 @@ or second module resolver to bypass them.
   receipts for both IDs, a live realm/program/metadata tuple, and a child
   capability report. The child validates the retained reifiable contract's
   source ownership and declaration span; core rejects a changed child tuple,
-  unrequested source ID, empty range, or end offset above 1 MiB. Only the two
-  opaque IDs and half-open UTF-8 byte range cross the public boundary. The
+  unrequested source ID, empty range, or end offset above 1 MiB. The v23 reply
+  carried only the two opaque IDs and half-open UTF-8 byte range. The
   private-child and launcher-supervised tests cover valid disclosure,
   guessed targets, and reload staleness without exposing source text, module
   identity, contract name/plan, validation result, or runtime values.
@@ -932,6 +933,15 @@ or second module resolver to bypass them.
   payload. The compiler and real launcher-supervised regressions distinguish
   an exported interface from a local variable without revealing either
   declaration's source text or runtime value.
+  Page-host v26/debugger v25 now extend only the separately default-denied,
+  same-stream-receipted `OpaqueSymbolLocation` and `OpaqueContractLocation`
+  replies with bounded, zero-based UTF-16 start/end coordinates from the
+  original BlueTS declaration. The child derives them from the exact retained
+  compiler metadata; the core checks ordering and range consistency before
+  reminting the public tuple. There is no arbitrary byte-offset conversion,
+  source text, module identity, source-map read, runtime value, or new grant.
+  Real launcher-supervised coverage checks CRLF and Unicode columns, exact
+  source ownership, and reload staleness.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

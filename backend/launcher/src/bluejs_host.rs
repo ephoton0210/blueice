@@ -32,8 +32,8 @@ use blueice_bluets_bluejs::{
 };
 use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
-    DebuggerStaticMetadataContractRootKind, DebuggerStaticMetadataSymbolKind,
-    DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES,
+    DebuggerSourceCoordinates, DebuggerStaticMetadataContractRootKind,
+    DebuggerStaticMetadataSymbolKind, DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES,
     DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_COLLECTION_ENTRIES,
     DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_DEPTH,
     DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_NODES,
@@ -1763,11 +1763,17 @@ impl BlueJsChildHost {
                 let Ok(end_byte) = u32::try_from(symbol.span.end) else {
                     return invalid_request();
                 };
+                let Some(coordinates) =
+                    debugger_source_coordinates(symbol.location, start_byte, end_byte)
+                else {
+                    return invalid_request();
+                };
                 PageHostDebuggerBlueTsMetadataSymbolLocation {
                     symbol_id,
                     source_id: source.id.0,
                     start_byte,
                     end_byte,
+                    coordinates,
                 }
             }
             Err(_) => {
@@ -1852,11 +1858,17 @@ impl BlueJsChildHost {
                 let Ok(end_byte) = u32::try_from(contract.span.end) else {
                     return invalid_request();
                 };
+                let Some(coordinates) =
+                    debugger_source_coordinates(contract.location, start_byte, end_byte)
+                else {
+                    return invalid_request();
+                };
                 PageHostDebuggerBlueTsMetadataContractLocation {
                     contract_id,
                     source_id: source.id.0,
                     start_byte,
                     end_byte,
+                    coordinates,
                 }
             }
             Err(_) => {
@@ -3342,6 +3354,22 @@ fn parse_category(_: ParseError) -> &'static str {
 
 fn compile_category(_: CompileError) -> &'static str {
     "BlueJS compilation rejected the page script"
+}
+
+fn debugger_source_coordinates(
+    location: blueice_bluets::DebugSourceLocation,
+    start_byte: u32,
+    end_byte: u32,
+) -> Option<DebuggerSourceCoordinates> {
+    let coordinates = DebuggerSourceCoordinates {
+        start_line: u32::try_from(location.start.line).ok()?,
+        start_column_utf16: u32::try_from(location.start.column_utf16).ok()?,
+        end_line: u32::try_from(location.end.line).ok()?,
+        end_column_utf16: u32::try_from(location.end.column_utf16).ok()?,
+    };
+    coordinates
+        .is_well_formed_for_range(start_byte, end_byte)
+        .then_some(coordinates)
 }
 
 fn bluets_bridge_category(error: BridgeError) -> &'static str {
@@ -5012,6 +5040,8 @@ mod tests {
             .any(|source| source.source_id == location.source_id));
         assert!(location.start_byte < location.end_byte);
         assert!(location.end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES);
+        assert_eq!(location.coordinates.start_line, 0);
+        assert_eq!(location.coordinates.end_line, 0);
         assert!(!format!("{location:?}").contains("PrivateContract"));
         assert!(!format!("{location:?}").contains("enabled"));
         assert!(matches!(
@@ -5123,17 +5153,32 @@ mod tests {
                 PageHostReply::DebuggerBlueTsMetadataSources { sources, .. } => sources,
                 reply => panic!("expected private source-ID inventory, got {reply:?}"),
             };
-        let symbol = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataSymbols {
-            tab_id: 7,
-            document_generation: 1,
-            program,
-            metadata,
-        }) {
-            PageHostReply::DebuggerBlueTsMetadataSymbols { symbols, .. } => *symbols
-                .first()
-                .expect("the BlueTS attachment retains a declared symbol"),
-            reply => panic!("expected private symbol-ID inventory, got {reply:?}"),
-        };
+        let symbols =
+            match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataSymbols {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                metadata,
+            }) {
+                PageHostReply::DebuggerBlueTsMetadataSymbols { symbols, .. } => symbols,
+                reply => panic!("expected private symbol-ID inventory, got {reply:?}"),
+            };
+        let symbol = symbols
+            .into_iter()
+            .find(|candidate| {
+                matches!(
+                    host.handle_request(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbol {
+                        tab_id: 7,
+                        document_generation: 1,
+                        program,
+                        metadata,
+                        symbol_id: candidate.symbol_id,
+                    }),
+                    PageHostReply::DebuggerBlueTsMetadataSymbol { symbol, .. }
+                        if symbol.display == "typedAnswer"
+                )
+            })
+            .expect("the page declaration must retain its own symbol ID");
         let reply = host.handle_request(
             PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
                 tab_id: 7,
@@ -5152,7 +5197,9 @@ mod tests {
             .any(|source| source.source_id == location.source_id));
         assert!(location.start_byte < location.end_byte);
         assert!(location.end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES);
-        // The result is deliberately only ID/range structure, even inside the
+        assert_eq!(location.coordinates.start_line, 0);
+        assert_eq!(location.coordinates.end_line, 0);
+        // The result is deliberately only ID/range/coordinate structure, even inside the
         // private bridge: no source text, module identity, name, or type leaks.
         assert!(!format!("{location:?}").contains("typedAnswer"));
         assert!(!format!("{location:?}").contains("inline-0.ts"));

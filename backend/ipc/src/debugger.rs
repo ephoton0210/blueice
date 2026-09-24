@@ -9,7 +9,10 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version twenty-four adds
+//! and an opt-in root-code-unit pause/resume seam. Version twenty-five adds
+//! bounded original-source UTF-16 coordinates to the existing separately
+//! authorized symbol/contract location replies, with no arbitrary offset
+//! query. Version twenty-four adds
 //! the compiler's export classification to the existing opt-in, receipt-bound
 //! symbol display without adding a target or a new disclosure grant. Version
 //! twenty-three adds a fixed root-shape classification to the already default-denied, receipt-
@@ -48,7 +51,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 24;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 25;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -377,10 +380,35 @@ impl DebuggerStaticMetadataSymbolDisplay {
     }
 }
 
+/// Bounded zero-based original-source coordinates for one compiler-produced
+/// declaration range. Columns count UTF-16 code units; a caller cannot ask
+/// this protocol to map an arbitrary byte offset or read source text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerSourceCoordinates {
+    pub start_line: u32,
+    pub start_column_utf16: u32,
+    pub end_line: u32,
+    pub end_column_utf16: u32,
+}
+
+impl DebuggerSourceCoordinates {
+    pub fn is_well_formed_for_range(self, start_byte: u32, end_byte: u32) -> bool {
+        start_byte < end_byte
+            && end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+            && self.start_line <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+            && self.end_line <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+            && self.start_column_utf16 <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+            && self.end_column_utf16 <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+            && (self.start_line, self.start_column_utf16) < (self.end_line, self.end_column_utf16)
+            && self.start_line + self.start_column_utf16 <= start_byte
+            && self.end_line + self.end_column_utf16 <= end_byte
+    }
+}
+
 /// One owner-authorized location for a compiler-minted symbol that the exact
 /// debugger stream previously inventoried. The range is a half-open UTF-8
 /// byte range under a separately receipted source ID: it is not source text,
-/// a module identity, a line/column conversion, a bytecode position, or a
+/// a module identity, an arbitrary line/column conversion, a bytecode position, or a
 /// source-read capability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DebuggerStaticMetadataSymbolLocation {
@@ -388,6 +416,7 @@ pub struct DebuggerStaticMetadataSymbolLocation {
     pub source: DebuggerStaticMetadataSourceId,
     pub start_byte: u32,
     pub end_byte: u32,
+    pub coordinates: DebuggerSourceCoordinates,
 }
 
 impl DebuggerStaticMetadataSymbolLocation {
@@ -398,8 +427,9 @@ impl DebuggerStaticMetadataSymbolLocation {
         self.symbol.is_well_formed()
             && self.source.is_well_formed()
             && self.symbol.metadata == self.source.metadata
-            && self.start_byte < self.end_byte
-            && self.end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+            && self
+                .coordinates
+                .is_well_formed_for_range(self.start_byte, self.end_byte)
     }
 }
 
@@ -430,6 +460,7 @@ pub struct DebuggerStaticMetadataContractLocation {
     pub source: DebuggerStaticMetadataSourceId,
     pub start_byte: u32,
     pub end_byte: u32,
+    pub coordinates: DebuggerSourceCoordinates,
 }
 
 impl DebuggerStaticMetadataContractLocation {
@@ -437,8 +468,9 @@ impl DebuggerStaticMetadataContractLocation {
         self.contract.is_well_formed()
             && self.source.is_well_formed()
             && self.contract.metadata == self.source.metadata
-            && self.start_byte < self.end_byte
-            && self.end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+            && self
+                .coordinates
+                .is_well_formed_for_range(self.start_byte, self.end_byte)
     }
 }
 
@@ -2710,6 +2742,12 @@ mod tests {
                 },
                 start_byte: 6,
                 end_byte: 31,
+                coordinates: DebuggerSourceCoordinates {
+                    start_line: 0,
+                    start_column_utf16: 6,
+                    end_line: 0,
+                    end_column_utf16: 31,
+                },
             }),
             DebuggerReply::StaticMetadataContracts(vec![DebuggerStaticMetadataContractId {
                 metadata: DebuggerStaticMetadataHandle {
@@ -3933,8 +3971,32 @@ mod tests {
             source: target.source,
             start_byte: 6,
             end_byte: 31,
+            coordinates: DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 6,
+                end_line: 0,
+                end_column_utf16: 31,
+            },
         };
         assert!(location.is_well_formed());
+        assert!(!DebuggerStaticMetadataContractLocation {
+            coordinates: DebuggerSourceCoordinates {
+                end_line: 0,
+                end_column_utf16: 6,
+                ..location.coordinates
+            },
+            ..location
+        }
+        .is_well_formed());
+        assert!(!DebuggerStaticMetadataContractLocation {
+            coordinates: DebuggerSourceCoordinates {
+                end_line: 32,
+                end_column_utf16: 0,
+                ..location.coordinates
+            },
+            ..location
+        }
+        .is_well_formed());
         assert!(!DebuggerStaticMetadataContractLocation {
             end_byte: 6,
             ..location

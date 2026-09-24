@@ -370,7 +370,7 @@ fn serve_two_bluets_documents(listener: TcpListener) -> thread::JoinHandle<()> {
         for (ordinal, source) in [
             (
                 "first",
-                "export interface PrivateContract { enabled: boolean; } const privateBlueTsMetadata: number = 42;",
+                "export interface PrivateContract { enabled: boolean; }\r\n/* 🚀 */ const privateBlueTsMetadata: number = 42;",
             ),
             (
                 "second",
@@ -1170,6 +1170,8 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     );
     let mut saw_interface = false;
     let mut saw_variable = false;
+    let mut interface_symbol = None;
+    let mut variable_symbol = None;
     for symbol in &symbols {
         let symbol_display_reply = debugger_request(
             &mut debugger,
@@ -1188,6 +1190,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                 );
                 assert!(symbol_display.exported);
                 saw_interface = true;
+                interface_symbol = Some(*symbol);
             }
             "privateBlueTsMetadata" => {
                 assert_eq!(
@@ -1196,6 +1199,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                 );
                 assert!(!symbol_display.exported);
                 saw_variable = true;
+                variable_symbol = Some(*symbol);
             }
             _ => {}
         }
@@ -1386,6 +1390,8 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
         contract_location.end_byte
             <= blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
     );
+    assert_eq!(contract_location.coordinates.start_line, 0);
+    assert_eq!(contract_location.coordinates.end_line, 0);
     assert!(!format!("{contract_location:?}").contains("PrivateContract"));
     assert!(!format!("{contract_location:?}").contains("enabled"));
     for source in &sources {
@@ -1411,8 +1417,8 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
         );
     }
     let location_target = blueice_ipc::debugger::DebuggerStaticMetadataSymbolLocationTarget {
-        symbol: symbols[0],
-        source: sources[0],
+        symbol: interface_symbol.expect("fixture must retain its interface symbol"),
+        source: contract_location_target.source,
     };
     let guessed_location_reply = debugger_request(
         &mut debugger,
@@ -1420,7 +1426,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             target: blueice_ipc::debugger::DebuggerStaticMetadataSymbolLocationTarget {
                 source: blueice_ipc::debugger::DebuggerStaticMetadataSourceId {
                     source_id: u32::MAX,
-                    ..sources[0]
+                    ..contract_location_target.source
                 },
                 ..location_target
             },
@@ -1439,18 +1445,50 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     let DebuggerReply::StaticMetadataSymbolLocation(location) = location_reply else {
         panic!("expected a bounded public static symbol location")
     };
-    assert_eq!(location.symbol, symbols[0]);
-    assert_eq!(location.source, sources[0]);
+    assert_eq!(location.symbol, location_target.symbol);
+    assert_eq!(location.source, location_target.source);
     assert!(location.start_byte < location.end_byte);
     assert!(
         location.end_byte <= blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
     );
+    assert_eq!(location.coordinates.start_line, 0);
+    assert_eq!(location.coordinates.end_line, 0);
     assert!(
         !format!("{location:?}").contains("privateBlueTsMetadata")
             && !format!("{location:?}").contains("inline-0.ts")
             && !format!("{location:?}").contains("number"),
         "symbol location must expose only opaque IDs and a bounded byte range"
     );
+    let variable_symbol = variable_symbol.expect("fixture must retain its local variable");
+    let mut variable_locations = Vec::new();
+    for source in &sources {
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+                target: blueice_ipc::debugger::DebuggerStaticMetadataSymbolLocationTarget {
+                    symbol: variable_symbol,
+                    source: *source,
+                },
+            },
+        ) {
+            DebuggerReply::StaticMetadataSymbolLocation(location) => {
+                variable_locations.push(location);
+            }
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget | DebuggerErrorCode::CapabilityUnavailable,
+                ..
+            } => {}
+            reply => panic!("unexpected variable/source location reply: {reply:?}"),
+        }
+    }
+    assert_eq!(variable_locations.len(), 1);
+    let variable_location = variable_locations[0];
+    assert_eq!(variable_location.coordinates.start_line, 1);
+    assert_eq!(
+        variable_location.coordinates.start_column_utf16,
+        "/* 🚀 */ ".encode_utf16().count() as u32
+    );
+    assert_eq!(variable_location.coordinates.end_line, 1);
     let guessed_type_relation = blueice_ipc::debugger::DebuggerStaticMetadataSymbolType {
         symbol: symbols[0],
         static_type: blueice_ipc::debugger::DebuggerStaticMetadataTypeId {
