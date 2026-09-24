@@ -576,6 +576,21 @@ pub trait PageJavaScriptDebuggerLocations {
         false
     }
 
+    /// Exact, compiler-bound BlueTS source-span stepping is separate from
+    /// ordinary source-free single-instruction stepping.
+    fn debugger_source_span_stepping_available(&self) -> bool {
+        false
+    }
+
+    fn step_debugger_bluets_source_span(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
     fn step_debugger_root_instruction(
         &mut self,
         _tab_id: TabId,

@@ -9,7 +9,9 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version twenty-nine adds
+//! and an opt-in root-code-unit pause/resume seam. Version thirty adds an
+//! independently authorized BlueTS source-span step for one exact paused
+//! root safe point, with a distinct bounded-limit stop reason. Version twenty-nine adds
 //! an atomic source-position arm request: one session turn must first pass
 //! the independently default-denied metadata grant and same-stream opaque
 //! source receipt, then bind an exact root safe point and arm only a pending
@@ -68,7 +70,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 29;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 30;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -792,6 +794,8 @@ pub enum DebuggerCapability {
     /// safe-point binding. It can reveal lowering structure and therefore is
     /// distinct from an exact safe-point span read or execution control.
     StaticMetadataSourceBreakpoint,
+    /// An exact, receipt-bound BlueTS source-span step from a paused root.
+    StaticMetadataSourceSpanStep,
 }
 
 /// One narrowly scoped static-metadata operation a debugger client may ask
@@ -880,6 +884,9 @@ pub enum DebuggerMetadataCapability {
     /// separately receipted source ID. This source-position oracle needs an
     /// independent owner policy and same-stream client grant.
     OpaqueSourceBreakpoint,
+    /// Steps one paused root-classic BlueTS span only after exact metadata and
+    /// source receipts and an independent owner/client execution grant.
+    OpaqueSourceSpanStep,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -917,6 +924,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueSourceBreakpoint => {
                 Some(DebuggerCapability::StaticMetadataSourceBreakpoint)
             }
+            Self::OpaqueSourceSpanStep => Some(DebuggerCapability::StaticMetadataSourceSpanStep),
             Self::Unknown => None,
         }
     }
@@ -941,6 +949,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueContractLocation => Some(15),
             Self::OpaqueSafePointSpan => Some(16),
             Self::OpaqueSourceBreakpoint => Some(17),
+            Self::OpaqueSourceSpanStep => Some(18),
             Self::Unknown => None,
         }
     }
@@ -950,7 +959,7 @@ impl DebuggerMetadataCapability {
 /// capability manifest. It is intentionally separate from the transport
 /// version so future metadata operations cannot be inferred from a transport
 /// upgrade alone.
-pub const DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION: u32 = 3;
+pub const DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION: u32 = 4;
 
 /// A canonical requested or granted metadata-capability set for one debugger
 /// transport session. It carries capability identifiers only: no realm,
@@ -989,6 +998,7 @@ pub struct DebuggerMetadataCapabilitySelection {
     pub symbol_contract: bool,
     pub safe_point_span: bool,
     pub source_breakpoint: bool,
+    pub source_span_step: bool,
 }
 
 impl DebuggerMetadataCapabilityManifest {
@@ -1231,6 +1241,20 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants the exact source-span step only with inventory and span-read
+    /// prerequisites; execution control remains a separate live capability.
+    pub fn opaque_source_span_step() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSourceInventory,
+                DebuggerMetadataCapability::OpaqueSafePointSpan,
+                DebuggerMetadataCapability::OpaqueSourceSpanStep,
+            ],
+        }
+    }
+
     /// Grants one symbol-to-static-type relation only with its parent,
     /// symbol, and type inventory prerequisites.
     pub fn opaque_symbol_type() -> Self {
@@ -1281,6 +1305,7 @@ impl DebuggerMetadataCapabilityManifest {
             symbol_contract,
             safe_point_span,
             source_breakpoint,
+            source_span_step,
         } = selection;
         let any = summary
             || source_inventory
@@ -1298,7 +1323,8 @@ impl DebuggerMetadataCapabilityManifest {
             || symbol_type
             || symbol_contract
             || safe_point_span
-            || source_breakpoint;
+            || source_breakpoint
+            || source_span_step;
         let mut capabilities = Vec::new();
         if any {
             capabilities.push(DebuggerMetadataCapability::OpaqueInventory);
@@ -1311,6 +1337,7 @@ impl DebuggerMetadataCapabilityManifest {
             || contract_location
             || safe_point_span
             || source_breakpoint
+            || source_span_step
         {
             capabilities.push(DebuggerMetadataCapability::OpaqueSourceInventory);
         }
@@ -1358,11 +1385,14 @@ impl DebuggerMetadataCapabilityManifest {
         if contract_location {
             capabilities.push(DebuggerMetadataCapability::OpaqueContractLocation);
         }
-        if safe_point_span {
+        if safe_point_span || source_span_step {
             capabilities.push(DebuggerMetadataCapability::OpaqueSafePointSpan);
         }
         if source_breakpoint {
             capabilities.push(DebuggerMetadataCapability::OpaqueSourceBreakpoint);
+        }
+        if source_span_step {
+            capabilities.push(DebuggerMetadataCapability::OpaqueSourceSpanStep);
         }
         let manifest = Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
@@ -1549,6 +1579,18 @@ impl DebuggerMetadataCapabilityManifest {
                     && self
                         .capabilities
                         .contains(&DebuggerMetadataCapability::OpaqueSourceInventory)))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueSourceSpanStep)
+                || (self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueSourceInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueSafePointSpan)))
     }
 
     /// Whether this well-formed manifest contains one exact capability.
@@ -2100,7 +2142,14 @@ impl DebuggerCapabilities {
 #[serde(rename_all = "kebab-case")]
 pub enum DebuggerExecutionState {
     Pending,
-    Paused { safe_point: DebuggerSafePoint },
+    Paused {
+        safe_point: DebuggerSafePoint,
+    },
+    /// A source-span step stopped at its fixed instruction budget; the
+    /// continuation remains paused at this verified root safe point.
+    SourceStepLimitReached {
+        safe_point: DebuggerSafePoint,
+    },
     Stepping,
     Resuming,
     Completed,
@@ -2308,6 +2357,12 @@ pub enum DebuggerRequest {
     StepRootInstruction {
         program: DebuggerProgram,
     },
+    /// Steps from one exact paused BlueTS root safe point to the next distinct
+    /// compiler-bound source span, completion, or a bounded-limit stop.
+    /// Requires a separate metadata grant and same-stream source receipt.
+    StepStaticMetadataSourceSpan {
+        target: DebuggerStaticMetadataSafePointSpanTarget,
+    },
     /// Catch-all for a newer request variant. Like the frontend protocol, a
     /// receiver preserves connection framing and replies with `Unsupported`
     /// rather than deserializing an unknown command as an unrelated request.
@@ -2418,6 +2473,9 @@ pub enum DebuggerReply {
     ExecutionStepRequested {
         program: DebuggerProgram,
     },
+    ExecutionSourceSpanStepRequested {
+        safe_point: DebuggerSafePoint,
+    },
     Unsupported {
         operation: String,
         reason: String,
@@ -2507,6 +2565,7 @@ pub fn negotiate(
         | DebuggerRequest::GetExecutionState { .. }
         | DebuggerRequest::ResumeExecution { .. }
         | DebuggerRequest::StepRootInstruction { .. }
+        | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
         | DebuggerRequest::Unknown => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
             message: "debugger protocol requires Hello as its first request".to_string(),
@@ -4406,6 +4465,66 @@ mod tests {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+    }
+
+    #[test]
+    fn source_span_step_requires_its_own_grant_and_round_trips_limit_state() {
+        let manifest = DebuggerMetadataCapabilityManifest::opaque_source_span_step();
+        assert!(manifest.is_well_formed());
+        assert_eq!(
+            manifest,
+            DebuggerMetadataCapabilityManifest::opaque_selected(
+                DebuggerMetadataCapabilitySelection {
+                    source_span_step: true,
+                    ..DebuggerMetadataCapabilitySelection::default()
+                }
+            )
+        );
+        assert!(!DebuggerMetadataCapabilityManifest {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSourceInventory,
+                DebuggerMetadataCapability::OpaqueSourceSpanStep,
+            ],
+        }
+        .is_well_formed());
+        let program = DebuggerProgram {
+            realm: realm(),
+            program_handle: 12,
+            program_generation: 5,
+        };
+        let safe_point = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 4,
+        };
+        let target = DebuggerStaticMetadataSafePointSpanTarget {
+            safe_point,
+            source: DebuggerStaticMetadataSourceId {
+                metadata: DebuggerStaticMetadataHandle {
+                    program,
+                    metadata_handle: 24,
+                    metadata_generation: 7,
+                },
+                source_id: 0,
+            },
+        };
+        let request = DebuggerRequest::StepStaticMetadataSourceSpan { target };
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_request(&mut sender, &request).unwrap();
+        assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
+        for reply in [
+            DebuggerReply::ExecutionSourceSpanStepRequested { safe_point },
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::SourceStepLimitReached { safe_point },
+            },
+        ] {
+            let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+            write_debugger_reply(&mut sender, &reply).unwrap();
+            assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+        }
     }
 
     #[test]

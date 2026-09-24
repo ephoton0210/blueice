@@ -32,6 +32,8 @@ use std::time::{Duration, Instant};
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
 const FIRST_BLUETS_SOURCE: &str = "export interface PrivateContract { enabled: boolean; }\r\n/* 🚀 */ const privateBlueTsMetadata: number = 42;";
+const SOURCE_STEP_BLUETS_SOURCE: &str =
+    "const first: number = 1; const second: number = first + 1; const third: number = second + 1;";
 
 fn unique_path(label: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -84,6 +86,7 @@ struct StaticMetadataPolicy {
     symbol_location: bool,
     safe_point_span: bool,
     source_breakpoint: bool,
+    source_span_step: bool,
     contract_location: bool,
     symbol_type: bool,
     symbol_contract: bool,
@@ -171,6 +174,9 @@ impl LauncherProcess {
         }
         if policy.source_breakpoint {
             command.arg("--debugger-static-metadata-source-breakpoint");
+        }
+        if policy.source_span_step {
+            command.arg("--debugger-static-metadata-source-span-step");
         }
         if policy.contract_location {
             command.arg("--debugger-static-metadata-contract-location");
@@ -434,6 +440,28 @@ fn serve_two_bluets_documents(listener: TcpListener) -> thread::JoinHandle<()> {
                     .as_bytes(),
                 )
                 .expect("fixture must reply with a local typed document");
+        }
+    })
+}
+
+fn serve_two_bluets_source_step_documents(listener: TcpListener) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().expect("local HTTP fixture must connect");
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let body = format!(
+                "<script type=\"application/x-blueice-typescript\">{SOURCE_STEP_BLUETS_SOURCE}</script>"
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .expect("fixture must reply with typed source");
         }
     })
 }
@@ -762,6 +790,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             symbol_location: true,
             safe_point_span: false,
             source_breakpoint: false,
+            source_span_step: false,
             contract_location: true,
             symbol_type: true,
             symbol_contract: true,
@@ -796,6 +825,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                             symbol_location: true,
                             safe_point_span: false,
                             source_breakpoint: true,
+                            source_span_step: false,
                             contract_location: true,
                             symbol_type: true,
                             symbol_contract: true,
@@ -821,6 +851,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                     symbol_location: true,
                     safe_point_span: false,
                     source_breakpoint: false,
+                    source_span_step: false,
                     contract_location: true,
                     symbol_type: true,
                     symbol_contract: true,
@@ -2020,6 +2051,13 @@ fn launcher_exposes_exact_bluets_safe_point_spans_only_after_same_stream_source_
         DebuggerReply::StaticMetadataSafePointSpan(span),
         "the paused BlueJS frame must retain the same original BlueTS position"
     );
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::StepStaticMetadataSourceSpan { target },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
     assert_eq!(
         debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
         DebuggerReply::ExecutionResumed { program }
@@ -2331,6 +2369,257 @@ fn launcher_resolves_receipted_bluets_source_positions_to_live_breakpoints() {
             DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target },
         ),
         DebuggerReply::Unsupported { .. }
+    ));
+    drop(separate);
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_steps_only_receipted_paused_bluets_source_spans() {
+    use blueice_ipc::debugger::{
+        DebuggerCapability, DebuggerCapabilityState, DebuggerExecutionState,
+        DebuggerStaticMetadataSafePointSpanTarget, DebuggerStaticMetadataSourceId,
+    };
+
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = serve_two_bluets_source_step_documents(listener);
+    let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            inventory: true,
+            source_inventory: true,
+            safe_point_span: true,
+            source_span_step: true,
+            ..StaticMetadataPolicy::default()
+        },
+    );
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
+    navigate(&mut browser, &url);
+
+    let manifest = DebuggerMetadataCapabilityManifest::opaque_source_span_step();
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: manifest.clone(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: manifest.clone(),
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let program = one_program(
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    let DebuggerReply::Capabilities(capabilities) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeCapabilities { realm },
+    ) else {
+        panic!("the live child must report debugger capabilities");
+    };
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == DebuggerCapability::StaticMetadataSourceSpanStep
+            && report.state == DebuggerCapabilityState::Available
+    }));
+    let DebuggerReply::StaticMetadata(metadata) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadata { program },
+    ) else {
+        panic!("BlueTS program must have metadata");
+    };
+    let metadata = metadata[0];
+    let points = safe_points(
+        debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+        program,
+    );
+    let guessed = DebuggerStaticMetadataSafePointSpanTarget {
+        safe_point: points[0],
+        source: DebuggerStaticMetadataSourceId {
+            metadata,
+            source_id: 0,
+        },
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::StepStaticMetadataSourceSpan { target: guessed },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
+    let DebuggerReply::StaticMetadataSources(sources) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataSources { metadata },
+    ) else {
+        panic!("the stream must receive source receipts");
+    };
+    let mut mapped = Vec::new();
+    for safe_point in points {
+        if safe_point.code_unit_ordinal != 0 || safe_point.bytecode_offset == 0 {
+            continue;
+        }
+        for source in &sources {
+            let target = DebuggerStaticMetadataSafePointSpanTarget {
+                safe_point,
+                source: *source,
+            };
+            if let DebuggerReply::StaticMetadataSafePointSpan(span) = debugger_request(
+                &mut debugger,
+                DebuggerRequest::DescribeStaticMetadataSafePointSpan { target },
+            ) {
+                mapped.push((target, span));
+                break;
+            }
+        }
+    }
+    let (target, original_span) = mapped
+        .iter()
+        .find(|(_, span)| {
+            mapped.iter().any(|(_, later)| {
+                later.safe_point.bytecode_offset > span.safe_point.bytecode_offset
+                    && (later.start_byte, later.end_byte) != (span.start_byte, span.end_byte)
+            })
+        })
+        .copied()
+        .expect("fixture must expose two distinct bound root spans");
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmRootSafePointBreakpoint {
+                safe_point: target.safe_point,
+            },
+        ),
+        DebuggerReply::RootSafePointBreakpointArmed {
+            safe_point: target.safe_point,
+        }
+    );
+    await_paused_execution(&mut debugger, program, target.safe_point);
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::StepStaticMetadataSourceSpan { target },
+        ),
+        DebuggerReply::ExecutionSourceSpanStepRequested {
+            safe_point: target.safe_point,
+        }
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let successor = loop {
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program },
+        ) {
+            DebuggerReply::ExecutionState {
+                program: reply_program,
+                state: DebuggerExecutionState::Paused { safe_point },
+            } if reply_program == program => break safe_point,
+            DebuggerReply::ExecutionState {
+                program: reply_program,
+                state: DebuggerExecutionState::Stepping,
+            } if reply_program == program && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            other => panic!("source step must pause at a new bound span: {other:?}"),
+        }
+    };
+    let successor_target = DebuggerStaticMetadataSafePointSpanTarget {
+        safe_point: successor,
+        source: target.source,
+    };
+    let DebuggerReply::StaticMetadataSafePointSpan(successor_span) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeStaticMetadataSafePointSpan {
+            target: successor_target,
+        },
+    ) else {
+        panic!("source-step stop must remain compiler-bound");
+    };
+    assert_ne!(
+        (original_span.start_byte, original_span.end_byte),
+        (successor_span.start_byte, successor_span.end_byte)
+    );
+    assert_eq!(
+        debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
+        DebuggerReply::ExecutionResumed { program }
+    );
+    await_completed_execution(&mut debugger, program);
+    drop(debugger);
+    let mut separate = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert!(matches!(
+        debugger_request(
+            &mut separate,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: manifest,
+            },
+        ),
+        DebuggerReply::HelloAck { .. }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut separate,
+            DebuggerRequest::StepStaticMetadataSourceSpan { target },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
+    assert_eq!(
+        one_program(
+            debugger_request(&mut separate, DebuggerRequest::ListPrograms { realm }),
+            realm,
+        ),
+        program
+    );
+    let DebuggerReply::StaticMetadata(second_metadata) = debugger_request(
+        &mut separate,
+        DebuggerRequest::ListStaticMetadata { program },
+    ) else {
+        panic!("second stream must inventory live metadata independently");
+    };
+    assert_eq!(second_metadata.len(), 1);
+    assert_ne!(
+        second_metadata[0], metadata,
+        "metadata handles are stream-local"
+    );
+    let DebuggerReply::StaticMetadataSources(second_sources) = debugger_request(
+        &mut separate,
+        DebuggerRequest::ListStaticMetadataSources {
+            metadata: second_metadata[0],
+        },
+    ) else {
+        panic!("second stream must inventory source IDs independently");
+    };
+    let second_source = *second_sources
+        .iter()
+        .find(|source| source.source_id == target.source.source_id)
+        .expect("same compiler source remains attached under a new stream-local handle");
+    let second_target = DebuggerStaticMetadataSafePointSpanTarget {
+        source: second_source,
+        ..target
+    };
+    navigate(&mut browser, &url);
+    fixture.join().expect("fixture must serve both documents");
+    assert!(matches!(
+        debugger_request(
+            &mut separate,
+            DebuggerRequest::StepStaticMetadataSourceSpan {
+                target: second_target,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
     ));
     drop(separate);
     launcher.shutdown();

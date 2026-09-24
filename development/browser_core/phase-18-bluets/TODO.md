@@ -24,7 +24,9 @@ exact live safe-point validation, lifecycle-bound breakpoint configuration, and
 an opt-in root-code-unit pause/resume seam. It can stop a pending classic
 declaration at a verified non-entry root instruction while retaining its VM
 root frame and step one root instruction; it is not arbitrary interpreter
-suspension or nested/source-level stepping.
+suspension. A separately authorized out-of-process BlueTS route now steps one
+compiler-bound classic-root source span under exact same-stream receipts; it
+does not cover modules, nested frames, stack, scope, or values.
 A launcher-supervised, capability-authenticated out-of-process BlueJS child
 can execute caller-authorized inline JavaScript and explicit BlueTS declarations
 in one bounded realm and DOM order. Its default core route rejects external
@@ -531,18 +533,21 @@ or second module resolver to bypass them.
   `Paused` → resumed completion. No nested-frame, module, source-level,
   stack, scope, or value step is exposed.
 
-  The isolated child now has a v30 private source-span step foundation for a
+  The isolated child has a v30 source-span step for a
   paused BlueTS classic root. It requires the exact live metadata attachment,
   compiler source ID, and current verified safe point; it derives the span
   internally, then executes one root instruction per core-owned turn until a
   different compiler-bound span or completion. After 256 instructions it yields
   an explicit source-free limit state with the continuation intact. Unit and
   real child-socket regressions cover a bound-span transition, wrong receipt,
-  stale document, redaction, and the fixed budget. Core does not yet expose
-  this private request through the public debugger: same-stream metadata/source
-  receipts, capability intersection, opaque reminting, and a public limit stop
-  reason are still required. Modules, nested frames, stack, scope, and values
-  remain outside the seam.
+  stale document, redaction, and the fixed budget. Debugger v30 and metadata
+  manifest v4 now expose it only under independent owner/client source-step
+  and safe-point-span grants, same-stream metadata/source receipts, an exact
+  core-reminted paused root, and a verified child reply. The public limit stop
+  reason remains distinct and source-free. A real launcher/debugger socket
+  regression covers cross-span pause, denied owner or cross-stream access,
+  resumed completion, and stale generation. Modules, nested frames, stack,
+  scope, and values remain outside the seam.
 
   Acceptance for the delivered seam: a classic JS page fixture pauses at a
   verified root-code-unit safe point and resumes its same frame; realm

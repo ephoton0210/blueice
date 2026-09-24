@@ -174,6 +174,7 @@ impl DebuggerRequestReceiver {
                     | DebuggerRequest::ArmStaticMetadataSourceBreakpoint { .. }
                     | DebuggerRequest::ResumeExecution { .. }
                     | DebuggerRequest::StepRootInstruction { .. }
+                    | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
             );
             let reply = handle_debugger_request_with_page_javascript_executor_and_metadata_session(
                 tabs,
@@ -192,6 +193,7 @@ impl DebuggerRequestReceiver {
                         | DebuggerReply::RootSafePointBreakpointArmed { .. }
                         | DebuggerReply::ExecutionResumed { .. }
                         | DebuggerReply::ExecutionStepRequested { .. }
+                        | DebuggerReply::ExecutionSourceSpanStepRequested { .. }
                 );
             // A state observation after the bounded lifecycle has already
             // left `Pending` must not renew the scheduler hold. In particular
@@ -203,6 +205,7 @@ impl DebuggerRequestReceiver {
                 &reply,
                 DebuggerReply::ExecutionState {
                     state: DebuggerExecutionState::Paused { .. }
+                        | DebuggerExecutionState::SourceStepLimitReached { .. }
                         | DebuggerExecutionState::Stepping
                         | DebuggerExecutionState::Resuming
                         | DebuggerExecutionState::Completed,
@@ -219,6 +222,7 @@ impl DebuggerRequestReceiver {
                 &reply,
                 DebuggerReply::ExecutionResumed { .. }
                     | DebuggerReply::ExecutionStepRequested { .. }
+                    | DebuggerReply::ExecutionSourceSpanStepRequested { .. }
             );
             let _ = envelope.reply.send(reply);
             if executes_or_releases_entry {
@@ -350,6 +354,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         }
         DebuggerRequest::StepRootInstruction { program } => {
             step_root_instruction(tabs, javascript_executor, program)
+        }
+        DebuggerRequest::StepStaticMetadataSourceSpan { .. } => {
+            unavailable_static_metadata_source_span_step()
         }
         DebuggerRequest::Hello { .. } => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
@@ -542,6 +549,9 @@ fn handle_debugger_request_with_child_locations(
         DebuggerRequest::StepRootInstruction { program } => {
             step_child_root_instruction(tabs, locations, program)
         }
+        DebuggerRequest::StepStaticMetadataSourceSpan { target } => {
+            step_child_static_metadata_source_span(tabs, locations, metadata_session, target)
+        }
         // `ArmEntryBreakpoint` remains an in-process compatibility operation.
         // The isolated route deliberately exposes only its separately named
         // root-classic continuation seam, never generic interruption,
@@ -671,6 +681,12 @@ fn describe_child_location_capabilities(
             session.permits(DebuggerMetadataCapability::OpaqueSafePointSpan)
         })
         && locations.debugger_static_metadata_safe_point_span_available();
+    let static_metadata_source_span_step_available = static_metadata_safe_point_span_available
+        && execution_control_available
+        && metadata_session.is_some_and(|session| {
+            session.permits(DebuggerMetadataCapability::OpaqueSourceSpanStep)
+        })
+        && locations.debugger_source_span_stepping_available();
     let static_metadata_source_breakpoint_available = static_metadata_source_inventory_available
         && metadata_session.is_some_and(|session| {
             session.permits(DebuggerMetadataCapability::OpaqueSourceBreakpoint)
@@ -721,6 +737,7 @@ fn describe_child_location_capabilities(
             static_metadata_symbol_display_available,
             static_metadata_symbol_location_available,
             static_metadata_safe_point_span_available,
+            static_metadata_source_span_step_available,
             static_metadata_source_breakpoint_available,
             static_metadata_contract_location_available,
             static_metadata_symbol_type_available,
@@ -2707,6 +2724,109 @@ fn step_child_root_instruction(
     }
 }
 
+fn step_child_static_metadata_source_span(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    target: DebuggerStaticMetadataSafePointSpanTarget,
+) -> DebuggerReply {
+    if !target.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger BlueTS source-span step target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_source_span_step();
+    };
+    if !metadata_session.observed_metadata(target.source.metadata)
+        || !metadata_session.observed_source(target.source)
+    {
+        return unavailable_static_metadata_source_span_step();
+    }
+    let realm = target.safe_point.program.realm;
+    let capabilities =
+        describe_child_location_capabilities(tabs, locations, Some(metadata_session), realm);
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueSourceSpanStep,
+    ) else {
+        return unavailable_static_metadata_source_span_step();
+    };
+    if !authorization.permits(realm, DebuggerMetadataCapability::OpaqueSourceSpanStep) {
+        return unavailable_static_metadata_source_span_step();
+    }
+    // Revalidate the compiler's exact source binding in the same core turn,
+    // under the independently authorized span-read capability, before any
+    // child execution transition is requested.
+    if !matches!(
+        describe_child_static_metadata_safe_point_span(
+            tabs,
+            locations,
+            Some(metadata_session),
+            target,
+        ),
+        DebuggerReply::StaticMetadataSafePointSpan(_)
+    ) {
+        return unavailable_static_metadata_source_span_step();
+    }
+    let tab_id = match resolve_live_realm(tabs, realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, realm.realm_generation)
+        || !locations.debugger_execution_control_available()
+        || !locations.debugger_source_span_stepping_available()
+    {
+        return unavailable_static_metadata_source_span_step();
+    }
+    let program = target.safe_point.program;
+    let state = locations.debugger_execution_state(
+        tab_id,
+        realm.realm_generation,
+        program.program_handle,
+        program.program_generation,
+    );
+    if !matches!(
+        state,
+        Ok(JavaScriptPageDebuggerExecutionState::Paused {
+            code_unit_ordinal,
+            bytecode_offset,
+        } | JavaScriptPageDebuggerExecutionState::SourceStepLimitReached {
+            code_unit_ordinal,
+            bytecode_offset,
+        }) if code_unit_ordinal == target.safe_point.code_unit_ordinal
+            && bytecode_offset == target.safe_point.bytecode_offset
+    ) {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "BlueTS source-span step requires the exact paused root safe point"
+                .to_string(),
+        };
+    }
+    match locations.step_debugger_bluets_source_span(
+        tab_id,
+        realm.realm_generation,
+        JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+            program_handle: program.program_handle,
+            program_generation: program.program_generation,
+            metadata_handle: target.source.metadata.metadata_handle,
+            metadata_generation: target.source.metadata.metadata_generation,
+            source_id: target.source.source_id,
+            code_unit_ordinal: target.safe_point.code_unit_ordinal,
+            bytecode_offset: target.safe_point.bytecode_offset,
+        },
+    ) {
+        Ok(()) => DebuggerReply::ExecutionSourceSpanStepRequested {
+            safe_point: target.safe_point,
+        },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
 fn describe_capabilities(
     tabs: &TabManager,
     javascript_executor: Option<&JavaScriptPageExecutor>,
@@ -2752,6 +2872,7 @@ fn describe_capabilities(
             static_metadata_symbol_display_available: false,
             static_metadata_symbol_location_available: false,
             static_metadata_safe_point_span_available: false,
+            static_metadata_source_span_step_available: false,
             static_metadata_source_breakpoint_available: false,
             static_metadata_contract_location_available: false,
             static_metadata_symbol_type_available: false,
@@ -3290,6 +3411,13 @@ fn unavailable_static_metadata_safe_point_span() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_source_span_step() -> DebuggerReply {
+    DebuggerReply::Unsupported {
+        operation: "step static metadata source span".to_string(),
+        reason: "BlueTS source-span stepping requires independent owner/client and span grants, prior same-stream metadata/source receipts, and a paused live child root".to_string(),
+    }
+}
+
 fn unavailable_static_metadata_source_breakpoint() -> DebuggerReply {
     DebuggerReply::Unsupported {
         operation: "resolve static metadata source breakpoint".to_string(),
@@ -3413,6 +3541,16 @@ fn debugger_execution_state(
                 bytecode_offset,
             },
         },
+        JavaScriptPageDebuggerExecutionState::SourceStepLimitReached {
+            code_unit_ordinal,
+            bytecode_offset,
+        } => DebuggerExecutionState::SourceStepLimitReached {
+            safe_point: DebuggerSafePoint {
+                program,
+                code_unit_ordinal,
+                bytecode_offset,
+            },
+        },
         JavaScriptPageDebuggerExecutionState::Stepping => DebuggerExecutionState::Stepping,
         JavaScriptPageDebuggerExecutionState::Resuming => DebuggerExecutionState::Resuming,
         JavaScriptPageDebuggerExecutionState::Completed => DebuggerExecutionState::Completed,
@@ -3438,6 +3576,7 @@ struct DebuggerCapabilityAvailability {
     static_metadata_symbol_display_available: bool,
     static_metadata_symbol_location_available: bool,
     static_metadata_safe_point_span_available: bool,
+    static_metadata_source_span_step_available: bool,
     static_metadata_source_breakpoint_available: bool,
     static_metadata_contract_location_available: bool,
     static_metadata_symbol_type_available: bool,
@@ -3464,6 +3603,7 @@ fn capability_reports(
         static_metadata_symbol_display_available,
         static_metadata_symbol_location_available,
         static_metadata_safe_point_span_available,
+        static_metadata_source_span_step_available,
         static_metadata_source_breakpoint_available,
         static_metadata_contract_location_available,
         static_metadata_symbol_type_available,
@@ -3736,6 +3876,19 @@ fn capability_reports(
                 "exact BlueTS safe-point spans are installed for prior metadata and source-ID receipts"
             } else {
                 "exact BlueTS safe-point spans require separate inventory, source-inventory, and span grants plus a live child attachment"
+            },
+        ),
+        (
+            DebuggerCapability::StaticMetadataSourceSpanStep,
+            if static_metadata_source_span_step_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_metadata_source_span_step_available {
+                "exact BlueTS source-span stepping is installed for paused root safe points under separate metadata and execution grants"
+            } else {
+                "BlueTS source-span stepping requires independent owner/client and safe-point-span grants plus a live stepping child"
             },
         ),
         (
@@ -7357,5 +7510,31 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn source_step_budget_stop_keeps_a_distinct_verified_public_reason() {
+        let (_, realm) = loaded_tabs();
+        let program = DebuggerProgram {
+            realm,
+            program_handle: 7,
+            program_generation: 1,
+        };
+        assert_eq!(
+            debugger_execution_state(
+                JavaScriptPageDebuggerExecutionState::SourceStepLimitReached {
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 19,
+                },
+                program,
+            ),
+            DebuggerExecutionState::SourceStepLimitReached {
+                safe_point: DebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 19,
+                },
+            }
+        );
     }
 }

@@ -302,6 +302,10 @@ pub trait PageHostClient {
         false
     }
 
+    fn debugger_bluets_source_span_step_available(&self) -> bool {
+        false
+    }
+
     /// Whether this private peer can verify an exact symbol/type pair.
     fn debugger_bluets_metadata_symbol_type_available(&self) -> bool {
         false
@@ -688,6 +692,20 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement debugger root stepping",
+        ))
+    }
+
+    fn step_debugger_bluets_source_span(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _source_id: u32,
+        _safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS source-span stepping",
         ))
     }
 
@@ -1227,6 +1245,10 @@ impl PageHostClient for PageHostConnection {
         true
     }
 
+    fn debugger_bluets_source_span_step_available(&self) -> bool {
+        true
+    }
+
     fn step_debugger_root_instruction(
         &mut self,
         tab_id: u64,
@@ -1237,6 +1259,23 @@ impl PageHostClient for PageHostConnection {
             tab_id,
             document_generation,
             program,
+        })
+    }
+
+    fn step_debugger_bluets_source_span(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::StepDebuggerBlueTsSourceSpan {
+            tab_id,
+            document_generation,
+            metadata,
+            source_id,
+            safe_point,
         })
     }
 
@@ -3348,6 +3387,12 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         self.debugger_execution_control_available() && self.child.debugger_stepping_available()
     }
 
+    fn debugger_source_span_stepping_available(&self) -> bool {
+        self.debugger_stepping_available()
+            && self.debugger_static_metadata_safe_point_span_available()
+            && self.child.debugger_bluets_source_span_step_available()
+    }
+
     fn arm_debugger_root_safe_point_breakpoint(
         &mut self,
         tab_id: TabId,
@@ -3444,7 +3489,6 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                 Ok(JavaScriptPageDebuggerExecutionState::Completed)
             }
             PageHostDebuggerExecutionState::Paused { safe_point }
-            | PageHostDebuggerExecutionState::SourceStepLimitReached { safe_point }
                 if safe_point.program == program && safe_point.code_unit_ordinal == 0 =>
             {
                 validate_child_safe_point_reply(self, tab_id, document_generation, safe_point)?;
@@ -3452,6 +3496,17 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                     code_unit_ordinal: safe_point.code_unit_ordinal,
                     bytecode_offset: safe_point.bytecode_offset,
                 })
+            }
+            PageHostDebuggerExecutionState::SourceStepLimitReached { safe_point }
+                if safe_point.program == program && safe_point.code_unit_ordinal == 0 =>
+            {
+                validate_child_safe_point_reply(self, tab_id, document_generation, safe_point)?;
+                Ok(
+                    JavaScriptPageDebuggerExecutionState::SourceStepLimitReached {
+                        code_unit_ordinal: safe_point.code_unit_ordinal,
+                        bytecode_offset: safe_point.bytecode_offset,
+                    },
+                )
             }
             PageHostDebuggerExecutionState::Paused { .. }
             | PageHostDebuggerExecutionState::SourceStepLimitReached { .. } => {
@@ -3524,6 +3579,63 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             } if reply_tab_id == tab_id.as_u64()
                 && reply_generation == document_generation
                 && reply_program == program =>
+            {
+                Ok(())
+            }
+            PageHostReply::Error { .. } => Err(child_debugger_reply_error(&reply)),
+            _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
+        }
+    }
+
+    fn step_debugger_bluets_source_span(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_source_span_stepping_available() || target.source_id == 0 {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let safe_point = PageHostDebuggerSafePoint {
+            program: child_program,
+            code_unit_ordinal: target.code_unit_ordinal,
+            bytecode_offset: target.bytecode_offset,
+        };
+        let reply = self
+            .child
+            .step_debugger_bluets_source_span(
+                tab_id.as_u64(),
+                document_generation,
+                child_metadata,
+                target.source_id,
+                safe_point,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerBlueTsSourceStepRequested {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                metadata,
+                source_id,
+                safe_point: reply_safe_point,
+            } if reply_tab_id == tab_id.as_u64()
+                && reply_generation == document_generation
+                && metadata == child_metadata
+                && source_id == target.source_id
+                && reply_safe_point == safe_point =>
             {
                 Ok(())
             }

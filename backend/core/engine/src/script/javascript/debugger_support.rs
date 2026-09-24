@@ -334,6 +334,10 @@ pub enum JavaScriptPageDebuggerExecutionState {
         code_unit_ordinal: u32,
         bytecode_offset: u32,
     },
+    SourceStepLimitReached {
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    },
     Stepping,
     Resuming,
     Completed,

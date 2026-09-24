@@ -167,6 +167,8 @@ mod unix {
         /// Separate owner-only policy for bounded original BlueTS source
         /// positions under exact metadata/source receipts.
         debugger_static_metadata_source_breakpoint: bool,
+        /// Independent owner grant for paused BlueTS source-span stepping.
+        debugger_static_metadata_source_span_step: bool,
         /// Owner-only policy for a bounded contract declaration range under
         /// separate contract and source receipts; no plan or source text.
         debugger_static_metadata_contract_location: bool,
@@ -432,6 +434,14 @@ mod unix {
             self.debugger_static_metadata_inventory = true;
             self.debugger_static_metadata_source_inventory = true;
             self.debugger_static_metadata_source_breakpoint = true;
+            self
+        }
+
+        pub fn with_debugger_static_metadata_source_span_step(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_source_inventory = true;
+            self.debugger_static_metadata_safe_point_span = true;
+            self.debugger_static_metadata_source_span_step = true;
             self
         }
 
@@ -1867,6 +1877,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_source_breakpoint {
                     command.arg("--debugger-static-metadata-source-breakpoint");
+                }
+                if options.debugger_static_metadata_source_span_step {
+                    command.arg("--debugger-static-metadata-source-span-step");
                 }
                 if options.debugger_static_metadata_contract_location {
                     command.arg("--debugger-static-metadata-contract-location");
