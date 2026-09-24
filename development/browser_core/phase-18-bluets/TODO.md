@@ -306,6 +306,15 @@ or second module resolver to bypass them.
   it in TypeScript. Do not expose a broad `lib.dom.d.ts` or add bindings merely
   to satisfy a checker fixture.
 
+  Design decision delivered: [the first page DOM/event boundary](../phase-13-bluejs-engine/DOM_EVENT_BINDINGS.md)
+  fixes a narrow `document`/node text and tree vocabulary plus click listeners,
+  separates `dom-read`, `dom-write`, and `dom-event`, and requires exact live
+  document identity, child authentication, bounded synchronous DOM calls,
+  VM-owned event callbacks, and real-page tests before the generated typings
+  can advertise it. The Phase 13 design checklist is complete; this runtime
+  item remains open until the listed operations and click behavior work
+  through the launcher/core/child page route.
+
   Foundation delivered: `blueice_bluejs::Vm` now has a realm-local host
   callback ABI. An embedder can install an opaque global host object and
   non-constructable methods, backed by a VM-private callback registry. The
@@ -1066,7 +1075,9 @@ or second module resolver to bypass them.
   or already-running program cannot start the pending declaration. The reply
   acknowledges only the verified root safe point. This requires no new child
   protocol operation or metadata grant and does not imply general TypeScript
-  breakpoint or source-level stepping support.
+  breakpoint or general source-level stepping support. The separate,
+  receipt-bound classic-root source-span step described above is available;
+  module and nested-frame source stepping are still absent.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

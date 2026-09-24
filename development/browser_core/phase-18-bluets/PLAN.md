@@ -2,6 +2,14 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+**First DOM/event binding decision:** Phase 13 now fixes the initial
+[page DOM/event boundary](../phase-13-bluejs-engine/DOM_EVENT_BINDINGS.md),
+including the core-owned DOM, child-owned wrappers and click callbacks,
+authenticated generation-bound script calls, session scheduling, capability
+policy, and real-page acceptance order. The design checklist is complete;
+runtime binding, event delivery, and Phase 18's P0 host-binding acceptance
+remain open.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
