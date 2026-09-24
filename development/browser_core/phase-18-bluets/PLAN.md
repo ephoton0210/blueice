@@ -2,6 +2,15 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+**Native debugger step foundation:** BlueJS now retains the same paused
+classic-root continuation across a one-instruction step and reports the actual
+next verified root bytecode boundary, including branch and loop successors.
+The VM executes nested calls to completion as one root instruction, never
+exports operands or completion values, and discards the continuation on realm
+replacement. This is available through the internal `BlueJsPageRuntime` seam;
+public debugger/page-host step routing and capability advertisement remain
+open, so clients must still treat `Stepping` as unavailable.
+
 **Compiler/MCP original-location update:** Compiler IPC v8 and its fixed
 query-only manifest v4 add separate symbol- and contract-location operations.
 The MCP tools require the same opaque session receipt, an observed exact

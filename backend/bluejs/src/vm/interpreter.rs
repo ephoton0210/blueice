@@ -11,7 +11,7 @@ impl Vm {
         iterators: &mut Vec<Value>,
         start_pc: usize,
         resume_value: Option<Value>,
-        suspend_at: Option<usize>,
+        suspend_at: Option<InterpreterSuspensionPoint>,
         restored_handlers: Option<(Vec<HandlerFrame>, usize)>,
     ) -> Result<InterpreterExit, RuntimeError> {
         let stack_base = self.stack.len();
@@ -31,8 +31,12 @@ impl Vm {
             handler.stack_depth += handler_stack_base;
         }
         let mut suspended_await = None;
+        let mut executed_root_instruction = false;
         loop {
-            if suspend_at == Some(pc) {
+            if matches!(suspend_at, Some(InterpreterSuspensionPoint::Offset(target)) if target == pc)
+                || (executed_root_instruction
+                    && suspend_at == Some(InterpreterSuspensionPoint::AfterRootInstruction))
+            {
                 // The caller owns the returned records while execution is
                 // suspended. Handler stack depths are relative to this
                 // frame's operand-stack base, exactly like `Yield`, so a
@@ -1752,6 +1756,7 @@ impl Vm {
                     CompletionAction::Throw(error) => return Err(error),
                 }
             }
+            executed_root_instruction = true;
         }
     }
 }

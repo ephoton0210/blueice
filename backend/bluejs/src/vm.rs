@@ -47,6 +47,15 @@ use debugger::DebuggerContinuation;
 pub use debugger::VmDebuggerExecutionState;
 use std::fmt;
 
+/// A private interpreter suspension boundary. `Offset` is also used by
+/// generator/module setup; only the debugger requests one executed root
+/// instruction before the next suspension.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InterpreterSuspensionPoint {
+    Offset(usize),
+    AfterRootInstruction,
+}
+
 /// An opaque object created by [`Vm::install_host_object`]. It can only be
 /// populated through the VM that created it, preventing an embedder from
 /// accidentally attaching a host method to an object from another realm.

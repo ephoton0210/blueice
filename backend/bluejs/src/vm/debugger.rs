@@ -18,8 +18,9 @@ use super::*;
 ///
 /// `Paused` means no instruction at `bytecode_offset` has executed yet. The
 /// VM owns the complete root interpreter frame until
-/// [`Vm::resume_debugger_execution`] finishes it. This is intentionally not a
-/// stepping, stack-inspection, or nested-function control surface.
+/// [`Vm::resume_debugger_execution`] finishes it. A root-instruction step may
+/// instead suspend the same continuation again; stack inspection and nested
+/// function control remain outside this surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VmDebuggerExecutionState {
     Paused { bytecode_offset: u32 },
@@ -92,29 +93,64 @@ impl Vm {
     }
 
     /// Resumes the one debugger-paused root script to terminal completion.
-    /// It does not accept another breakpoint target, which prevents callers
-    /// from interpreting this one-shot continuation as a stepping interface
-    /// or as a persistent loop breakpoint facility.
+    /// It does not accept another breakpoint target or preserve a persistent
+    /// loop breakpoint.
     pub fn resume_debugger_execution(&mut self) -> Result<VmDebuggerExecutionState, RuntimeError> {
+        self.continue_debugger_execution(None)
+    }
+
+    /// Executes exactly one root-code-unit instruction from the suspended
+    /// frame, then pauses before its actual successor. Control flow may jump
+    /// to an earlier offset, and a nested call runs to completion as one root
+    /// instruction. A terminal instruction completes instead of fabricating
+    /// another pause. The caller receives only the next source-free offset.
+    pub fn step_debugger_root_instruction(
+        &mut self,
+    ) -> Result<VmDebuggerExecutionState, RuntimeError> {
+        self.continue_debugger_execution(Some(InterpreterSuspensionPoint::AfterRootInstruction))
+    }
+
+    fn continue_debugger_execution(
+        &mut self,
+        suspension_point: Option<InterpreterSuspensionPoint>,
+    ) -> Result<VmDebuggerExecutionState, RuntimeError> {
         let continuation = self
             .debugger_continuation
             .take()
             .ok_or(RuntimeError::Unsupported(
                 "no debugger-paused root script is available",
             ))?;
-        let mut iterators = continuation.iterators;
+        let DebuggerContinuation {
+            code,
+            pc,
+            mut iterators,
+            handlers,
+        } = continuation;
         let result = match self.interpret(
-            &continuation.code,
+            &code,
             &mut iterators,
-            continuation.pc,
+            pc,
             None,
-            None,
-            Some((continuation.handlers, 0)),
+            suspension_point,
+            Some((handlers, 0)),
         ) {
+            Ok(InterpreterExit::Suspend {
+                pc,
+                iterators,
+                handlers,
+            }) => {
+                self.debugger_continuation = Some(DebuggerContinuation {
+                    code,
+                    pc,
+                    iterators,
+                    handlers,
+                });
+                return Ok(VmDebuggerExecutionState::Paused {
+                    bytecode_offset: u32::try_from(pc)
+                        .expect("verified BlueJS bytecode offsets fit the debugger wire range"),
+                });
+            }
             Ok(InterpreterExit::Return(value)) => Ok(value),
-            Ok(InterpreterExit::Suspend { .. }) => Err(RuntimeError::Unsupported(
-                "debugger resume encountered an unexpected suspension boundary",
-            )),
             Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
                 "yield requires a generator function".into(),
             )),
@@ -145,7 +181,14 @@ impl Vm {
         let pending_base = self.pending_completions.len();
         let save_base = self.completion_saves.len();
         let mut iterators = Vec::new();
-        match self.interpret(code, &mut iterators, 0, None, Some(target), None) {
+        match self.interpret(
+            code,
+            &mut iterators,
+            0,
+            None,
+            Some(InterpreterSuspensionPoint::Offset(target)),
+            None,
+        ) {
             Ok(InterpreterExit::Suspend {
                 pc,
                 iterators,
@@ -319,6 +362,93 @@ mod tests {
                 "no debugger-paused root script is available"
             ))
         ));
+    }
+
+    #[test]
+    fn root_step_preserves_one_continuation_across_branches_and_loop_hits() {
+        let program =
+            code("let index = 0; while (index < 2) { index++; } globalThis.steppedResult = index;");
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_script_until_debugger_pause(&program, 0).unwrap(),
+            VmDebuggerExecutionState::Paused { bytecode_offset: 0 }
+        );
+        let instruction_offsets: Vec<_> = program
+            .instructions()
+            .map(|instruction| instruction.offset as u32)
+            .collect();
+        let first = vm.step_debugger_root_instruction().unwrap();
+        assert_eq!(
+            first,
+            VmDebuggerExecutionState::Paused {
+                bytecode_offset: instruction_offsets[1],
+            }
+        );
+        assert!(matches!(
+            vm.execute_script(&code("globalThis.forbidden = true;")),
+            Err(RuntimeError::Unsupported(
+                "a debugger-paused root script must resume before another execution starts"
+            ))
+        ));
+        let mut offsets = vec![0, instruction_offsets[1]];
+        let mut completed = false;
+        for _ in 0..256 {
+            match vm.step_debugger_root_instruction().unwrap() {
+                VmDebuggerExecutionState::Paused { bytecode_offset } => {
+                    assert!(instruction_offsets.contains(&bytecode_offset));
+                    offsets.push(bytecode_offset);
+                }
+                VmDebuggerExecutionState::Completed => {
+                    completed = true;
+                    break;
+                }
+            }
+        }
+        assert!(
+            completed,
+            "bounded root steps must reach terminal completion"
+        );
+        assert!(
+            offsets
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                < offsets.len(),
+            "a loop must revisit at least one real root instruction"
+        );
+        assert_eq!(
+            vm.execute_script(&code("globalThis.steppedResult"))
+                .unwrap(),
+            Value::Number(2.0)
+        );
+        assert!(matches!(
+            vm.step_debugger_root_instruction(),
+            Err(RuntimeError::Unsupported(
+                "no debugger-paused root script is available"
+            ))
+        ));
+    }
+
+    #[test]
+    fn root_step_can_resume_to_completion_without_restarting_the_script() {
+        let program = code("globalThis.once = (globalThis.once || 0) + 1;");
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_script_until_debugger_pause(&program, 0).unwrap(),
+            VmDebuggerExecutionState::Paused { bytecode_offset: 0 }
+        );
+        assert!(matches!(
+            vm.step_debugger_root_instruction().unwrap(),
+            VmDebuggerExecutionState::Paused { .. }
+        ));
+        assert_eq!(
+            vm.resume_debugger_execution().unwrap(),
+            VmDebuggerExecutionState::Completed
+        );
+        assert_eq!(
+            vm.execute_script(&code("globalThis.once")).unwrap(),
+            Value::Number(1.0)
+        );
     }
 
     #[test]

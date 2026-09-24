@@ -523,6 +523,25 @@ impl BlueJsPageRuntime {
             .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
+    /// Advances one instruction in the paused classic root frame, then
+    /// returns its actual next verified bytecode boundary or terminal state.
+    /// The VM keeps the same continuation; this operation cannot inspect a
+    /// nested frame or expose its operands, source, or completion value.
+    pub fn step_debugger_root_instruction(
+        &mut self,
+        tab_id: u64,
+    ) -> Result<BlueJsPageDebuggerExecutionState, BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        realm
+            .vm
+            .step_debugger_root_instruction()
+            .map(page_debugger_execution_state)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
     /// Executes an already-admitted ESM module graph in one tab realm. Every
     /// handle must belong to that realm, name a module root, and have a unique
     /// canonical module identity; BlueJS never re-resolves an import specifier
@@ -900,6 +919,59 @@ mod tests {
             runtime.execute_program(7, probe).unwrap(),
             Value::Number(3.0)
         );
+    }
+
+    #[test]
+    fn steps_only_the_paused_tab_root_and_remains_generation_bound() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        runtime.open_realm(8, origin()).unwrap();
+        let program = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///stepped.js"),
+                &BlueJsProgramV1::Script(
+                    parse("globalThis.stepped = (globalThis.stepped || 0) + 1;").unwrap(),
+                ),
+            )
+            .unwrap();
+        let root_offsets: Vec<_> = runtime
+            .safe_points(7, program, 128)
+            .unwrap()
+            .into_iter()
+            .filter(|point| point.code_unit.ordinal() == 0)
+            .map(|point| point.bytecode_offset)
+            .collect();
+        assert!(root_offsets.len() > 2);
+        assert_eq!(
+            runtime
+                .execute_program_until_debugger_pause_at_root_offset(7, program, root_offsets[0])
+                .unwrap(),
+            BlueJsPageDebuggerExecutionState::Paused {
+                bytecode_offset: root_offsets[0]
+            }
+        );
+        assert!(matches!(
+            runtime.step_debugger_root_instruction(8),
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Unsupported(
+                "no debugger-paused root script is available"
+            )))
+        ));
+        assert_eq!(
+            runtime.step_debugger_root_instruction(7).unwrap(),
+            BlueJsPageDebuggerExecutionState::Paused {
+                bytecode_offset: root_offsets[1]
+            }
+        );
+        assert!(runtime.close_realm(7));
+        runtime.open_realm(7, origin()).unwrap();
+        assert!(matches!(
+            runtime.step_debugger_root_instruction(7),
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Unsupported(
+                "no debugger-paused root script is available"
+            )))
+        ));
     }
 
     #[test]

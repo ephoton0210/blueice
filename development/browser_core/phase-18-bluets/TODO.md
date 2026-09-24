@@ -486,6 +486,16 @@ or second module resolver to bypass them.
   handle rejection after HTTP reload. BlueTS modules, nested frames,
   stepping, stack, scopes, and values remain outside this execution seam.
 
+  BlueJS VM and `BlueJsPageRuntime` now have the next stepping foundation:
+  one paused classic-root continuation can execute exactly one root
+  instruction and suspend before its actual successor, including branch or
+  loop destinations. The same frame and GC roots survive repeated steps;
+  terminal instructions complete without fabricating a pause, and a later
+  ordinary resume still finishes that frame. Cross-tab and replaced-realm
+  attempts fail. Nested calls run as one root instruction, with no stack,
+  operands, source, or completion value disclosed. This internal seam is not
+  yet routed through debugger/page-host IPC or advertised as `Stepping`.
+
   Acceptance for the delivered seam: a classic JS page fixture pauses at a
   verified root-code-unit safe point and resumes its same frame; realm
   replacement discards that continuation, and it cannot pause another tab or
