@@ -96,11 +96,13 @@ itself prove human approval; only the separately launched native panel uses
 the private permission path. A real person-driven Grant/Revoke window test and
 runtime-ephemeral gesture lifecycle remain open; see the [Phase 9 plan](PLAN.md).
 An internal core-parent-only `ArmEphemeral` test path can bind one
-`dom:read` v3 operation to a live tab/document epoch. The authenticated host
-must use an explicit tab ID and present the opaque token; core spends it at
-the snapshot read. No native gesture invokes this path yet, so an installed
-extension cannot obtain such a lease through its guest ABI, the ordinary
-frontend/MCP protocol, or the current F8 panel. Other runtime-ephemeral
+`dom:read` v3 operation to a live tab/document epoch. On success core queues a
+private `TrustedEphemeralDomRead` event for its authenticated installed host.
+The host keeps the opaque token in invocation state and presents it on the v3
+request; the guest sees only the event kind and tab ID, and core spends the
+token at the snapshot read. No native gesture invokes this path yet, so an
+installed extension cannot obtain such a lease through the ordinary
+frontend/MCP protocol or the current F8 panel. Other runtime-ephemeral
 capabilities remain ungrantable.
 The host derives an ID from the exact manifest and
 module bytes; the package cannot choose its identity. In production, core
@@ -150,14 +152,17 @@ fuel units. A trap or missing/unknown import fails that invocation; there is
 no ambient fallback.
 
 `runtime_event_kind() -> i32` returns `0` for startup, `1` for a committed
-navigation, `2` for toolbar activation, or `3` for activation of a native
-popup's action button. `runtime_event_tab_id() -> i64`
+navigation, `2` for toolbar activation, `3` for activation of a native
+popup's action button, or `4` for the private, core-parent-armed one-shot DOM
+read. `runtime_event_tab_id() -> i64`
 returns `-1` at startup and the event's opaque live tab ID otherwise. A
 navigation event is advisory: core keeps at most 16 queued events and may drop
-events if the extension cannot drain them. None of these events proves an
-authenticated human gesture: the launcher also accepts client messages from
-external AI/MCP clients. They cannot grant `optional` or `runtime_ephemeral`
-capabilities. Re-read a live representation before acting on
+events if the extension cannot drain them. The public navigation/toolbar/popup
+events do not prove an authenticated human gesture: the launcher also accepts
+client messages from external AI/MCP clients. They cannot grant `optional` or
+`runtime_ephemeral` capabilities. Kind `4` is generated only by the private
+core-parent permission path, which still lacks a native human gesture control.
+Re-read a live representation before acting on
 a node ID.
 
 All pointers and lengths below are `i32` offsets/counts into exported guest
@@ -174,6 +179,7 @@ effect in the guest.
 | Import (`blueice`) | Capability/version | Result and bounds |
 | --- | --- | --- |
 | `dom_read_utf8(tab_id:i64, dst:i32, cap:i32) -> i32` | `dom:read` v2 | JSON AI snapshot; at most 64 KiB. |
+| `dom_read_ephemeral_utf8(tab_id:i64, dst:i32, cap:i32) -> i32` | `dom:read` v3, `runtime_ephemeral` | JSON AI snapshot; at most 64 KiB. Only works during kind `4` for the matching tab; the host supplies the one-shot ticket without exposing it to guest memory. Core still verifies the live document epoch and consumes the lease. Other invocations return `-1` without sending a request. |
 | `set_text_input_value(tab_id:i64, node_id:i64, ptr:i32, len:i32) -> i32` | `dom:write` v2 | At most 4 KiB UTF-8; only a supported live native text input. |
 | `set_checkbox_checked(tab_id:i64, node_id:i64, checked:i32) -> i32` | `dom:write` v3 | `checked` is exactly `0` or `1`; only an enabled native checkbox. |
 | `set_textarea_value(tab_id:i64, node_id:i64, ptr:i32, len:i32) -> i32` | `dom:write` v4 | At most 4 KiB UTF-8; only an enabled native textarea. |

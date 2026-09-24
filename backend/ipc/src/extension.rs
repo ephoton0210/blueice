@@ -549,6 +549,15 @@ pub enum ExtensionRuntimeEvent {
         #[serde(default)]
         grant_generation: u64,
     },
+    /// Created only after a private core-parent permission request. Unlike
+    /// toolbar or popup activation, this event is not reachable through the
+    /// shared frontend/MCP socket. The opaque token stays in the host's
+    /// invocation state and is never copied into guest linear memory.
+    TrustedEphemeralDomRead {
+        tab_id: u64,
+        document_epoch: u64,
+        ticket: String,
+    },
 }
 
 /// A capability declaration the host could not negotiate during an
@@ -765,6 +774,9 @@ mod tests {
             },
             ExtensionReply::RuntimeStart,
             ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::NavigationCommitted { tab_id: 42 }),
+            ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::TrustedEphemeralDomRead {
+                tab_id: 42, document_epoch: 7, ticket: "0123456789abcdef".repeat(4),
+            }),
             ExtensionReply::RuntimeEventStreamClosed,
             ExtensionReply::DomReadResult {
                 value: "placeholder".to_string(),

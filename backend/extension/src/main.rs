@@ -271,6 +271,11 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
                     ExtensionRuntimeEvent::PopupActionActivated { tab_id, .. } => {
                         RuntimeInvocation::PopupActionActivated { tab_id }
                     }
+                    ExtensionRuntimeEvent::TrustedEphemeralDomRead {
+                        tab_id, document_epoch, ticket,
+                    } => RuntimeInvocation::TrustedEphemeralDomRead {
+                        tab_id, document_epoch, ticket,
+                    },
                 };
                 let event_stream = stream.try_clone().map_err(|error| {
                     format!(

@@ -208,6 +208,31 @@ fn extension_host_probe_child_observes_optional_and_ephemeral_grants() {
             break;
         }
         let result = match command[0] {
+            b'e' => {
+                let mut trusted_ticket = None;
+                for _ in 0..4 {
+                    write_extension_request(&mut extension, &ExtensionRequest::NextRuntimeEvent).unwrap();
+                    match read_extension_reply(&mut extension).unwrap() {
+                        ExtensionReply::RuntimeEvent(
+                            blueice_ipc::extension::ExtensionRuntimeEvent::TrustedEphemeralDomRead {
+                                tab_id: 1, document_epoch: 2, ticket,
+                            }
+                        ) => {
+                            trusted_ticket = Some(ticket);
+                            break;
+                        }
+                        ExtensionReply::RuntimeEvent(
+                            blueice_ipc::extension::ExtensionRuntimeEvent::NavigationCommitted { tab_id: 1 }
+                        ) => {}
+                        other => panic!("unexpected event while waiting for a trusted DOM read: {other:?}"),
+                    }
+                }
+                let ticket = trusted_ticket.expect("core must deliver its parent-armed event");
+                assert_eq!(ticket.len(), 64);
+                probe.write_all(b"E").unwrap();
+                probe.write_all(ticket.as_bytes()).unwrap();
+                continue;
+            }
             b'g' => {
                 write_extension_request(&mut extension, &ExtensionRequest::StorageGet { key: "sample".into() }).unwrap();
                 match read_extension_reply(&mut extension).unwrap() {
@@ -2029,6 +2054,14 @@ fn private_parent_pipe_grants_optional_and_consumes_ephemeral_once_in_a_real_cor
     assert_eq!((capability.as_str(), tab_id, document_epoch), ("dom:read", 1, 2));
     assert_eq!(ticket.len(), 64);
     assert_ne!(ticket, guessed_ticket);
+    probe.write_all(b"e").unwrap();
+    let mut event_marker = [0_u8; 1];
+    probe.read_exact(&mut event_marker).unwrap();
+    assert_eq!(event_marker, *b"E");
+    let mut event_ticket = [0_u8; 64];
+    probe.read_exact(&mut event_ticket).unwrap();
+    assert_eq!(event_ticket.as_slice(), ticket.as_bytes(),
+        "the authenticated host must receive the exact core-parent-armed ticket");
     assert_eq!(probe_get(&mut probe, b'w', None), b'D',
         "legacy implicit-tab read must not consume a document-bound lease");
     assert_eq!(probe_get(&mut probe, b'v', None), b'D',

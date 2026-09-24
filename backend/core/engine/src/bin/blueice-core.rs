@@ -198,6 +198,7 @@ fn permission_control_reply(
     metadata: &PermissionControlMetadata,
     registry: &ExtensionRegistry,
     session_requests: &mpsc::Sender<ExtensionPageRequest>,
+    runtime_events: Option<&mpsc::SyncSender<ExtensionRuntimeEvent>>,
 ) -> PermissionControlReply {
     match request {
         PermissionControlRequest::Inspect => PermissionControlReply::State {
@@ -224,6 +225,11 @@ fn permission_control_reply(
                     reason: "capability is not an installed runtime-ephemeral declaration".into(),
                 };
             }
+            let Some(runtime_events) = runtime_events else {
+                return PermissionControlReply::Rejected {
+                    reason: "the authenticated extension runtime event channel is unavailable".into(),
+                };
+            };
             match inspect_live_document(session_requests, tab_id) {
                 Ok((current_epoch, _)) if current_epoch == document_epoch => {}
                 Ok(_) => return PermissionControlReply::Rejected {
@@ -234,9 +240,20 @@ fn permission_control_reply(
             match registry.arm_runtime_ephemeral(
                 &metadata.extension_id, &capability, tab_id, document_epoch,
             ) {
-                Ok(ticket) => PermissionControlReply::EphemeralArmed {
-                    capability, tab_id, document_epoch, ticket,
-                },
+                Ok(ticket) => {
+                    let event = ExtensionRuntimeEvent::TrustedEphemeralDomRead {
+                        tab_id, document_epoch, ticket: ticket.clone(),
+                    };
+                    if runtime_events.try_send(event).is_err() {
+                        let _ = registry.revoke_runtime_ephemeral(&metadata.extension_id, &capability);
+                        return PermissionControlReply::Rejected {
+                            reason: "the authenticated extension runtime cannot accept a trusted gesture".into(),
+                        };
+                    }
+                    PermissionControlReply::EphemeralArmed {
+                        capability, tab_id, document_epoch, ticket,
+                    }
+                }
                 Err(reason) => PermissionControlReply::Rejected { reason },
             }
         }
@@ -280,10 +297,13 @@ fn serve_permission_control<R: Read, W: Write>(
     metadata: PermissionControlMetadata,
     registry: Arc<ExtensionRegistry>,
     session_requests: mpsc::Sender<ExtensionPageRequest>,
+    runtime_events: Option<mpsc::SyncSender<ExtensionRuntimeEvent>>,
 ) -> io::Result<()> {
     let result = (|| {
         while let Some(request) = read_permission_control_request(&mut reader)? {
-            let reply = permission_control_reply(request, &metadata, &registry, &session_requests);
+            let reply = permission_control_reply(
+                request, &metadata, &registry, &session_requests, runtime_events.as_ref(),
+            );
             write_permission_control_reply(&mut writer, &reply)?;
         }
         Ok(())
@@ -1184,9 +1204,10 @@ fn main() -> ExitCode {
         let (registry, _) = extension_permissions.as_ref().expect("permission control requires a registry");
         let registry = Arc::clone(registry);
         let requests = permission_session_requests.take().expect("permission control requires a session channel");
+        let runtime_events = extension_runtime_events.clone();
         thread::spawn(move || {
             if let Err(error) = serve_permission_control(
-                io::stdin(), io::stdout(), metadata, registry, requests,
+                io::stdin(), io::stdout(), metadata, registry, requests, runtime_events,
             ) {
                 eprintln!("blueice-core: private permission control ended: {error}");
             }
@@ -1516,11 +1537,27 @@ mod tests {
                 }
             }
         });
+        let (event_tx, event_rx) = mpsc::sync_channel(1);
+        assert!(matches!(permission_control_reply(
+            PermissionControlRequest::ArmEphemeral {
+                capability: "dom:read".into(), tab_id: 1, document_epoch: 2,
+            },
+            &metadata, &registry, &live_tx, None,
+        ), PermissionControlReply::Rejected { .. }));
+        let (unready_event_tx, _unready_event_rx) = mpsc::sync_channel(0);
+        assert!(matches!(permission_control_reply(
+            PermissionControlRequest::ArmEphemeral {
+                capability: "dom:read".into(), tab_id: 1, document_epoch: 2,
+            },
+            &metadata, &registry, &live_tx, Some(&unready_event_tx),
+        ), PermissionControlReply::Rejected { .. }));
+        assert!(!registry.has_unspent_runtime_ephemeral_lease(&id, "dom:read"),
+            "a full or unready event channel must revoke the newly armed lease");
         let arm = |capability: &str, tab_id, document_epoch| permission_control_reply(
             PermissionControlRequest::ArmEphemeral {
                 capability: capability.into(), tab_id, document_epoch,
             },
-            &metadata, &registry, &live_tx,
+            &metadata, &registry, &live_tx, Some(&event_tx),
         );
         assert!(matches!(arm("storage", 1, 2), PermissionControlReply::Rejected { .. }));
         assert!(matches!(arm("dom:read", 99, 2), PermissionControlReply::Rejected { .. }));
@@ -1532,6 +1569,9 @@ mod tests {
         };
         assert_eq!((capability.as_str(), tab_id, document_epoch), ("dom:read", 1, 2));
         assert_eq!(ticket.len(), 64);
+        assert_eq!(event_rx.try_recv().unwrap(), ExtensionRuntimeEvent::TrustedEphemeralDomRead {
+            tab_id: 1, document_epoch: 2, ticket: ticket.clone(),
+        });
         assert!(registry.has_unspent_runtime_ephemeral_lease(&id, "dom:read"));
         assert!(!registry.has_capability(&id, "dom:read"));
         drop(live_tx);
@@ -1552,7 +1592,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         drop(rx); // revoke must fail closed when the session is unavailable
         let mut output = Vec::new();
-        serve_permission_control(input.as_slice(), &mut output, metadata, Arc::clone(&registry), tx).unwrap();
+        serve_permission_control(input.as_slice(), &mut output, metadata, Arc::clone(&registry), tx, None).unwrap();
         let mut replies = output.as_slice();
         assert!(matches!(read_permission_control_reply(&mut replies).unwrap(),
             PermissionControlReply::State { optional, .. } if !optional[0].granted));
@@ -1581,7 +1621,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         drop(rx);
         assert!(serve_permission_control(malformed_input.as_slice(), Vec::new(), malformed_metadata,
-            Arc::clone(&malformed_registry), tx).is_err());
+            Arc::clone(&malformed_registry), tx, None).is_err());
         assert!(!malformed_registry.has_capability(&id, "storage"),
             "a malformed parent frame must withdraw an earlier grant");
         std::fs::remove_dir_all(root).unwrap();

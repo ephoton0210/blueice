@@ -52,31 +52,36 @@ const RESULT_NOT_FOUND: i32 = -4;
 /// The core-defined context for one fresh `blueice_start` invocation. The
 /// integer values exposed through the ABI are stable: `0` is startup, `1`
 /// is a successfully committed navigation, `2` is toolbar activation, and
-/// `3` is activation of a native popup's single action button.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// `3` is activation of a native popup's single action button, and `4` is a
+/// private, launcher-owned one-shot document read. Only the host holds its
+/// bearer ticket; the guest sees the event kind and tab, never the ticket.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeInvocation {
     Startup,
     NavigationCommitted { tab_id: u64 },
     ToolbarActivated { tab_id: u64 },
     PopupActionActivated { tab_id: u64 },
+    TrustedEphemeralDomRead { tab_id: u64, document_epoch: u64, ticket: String },
 }
 
 impl RuntimeInvocation {
-    fn kind(self) -> i32 {
+    fn kind(&self) -> i32 {
         match self {
             Self::Startup => 0,
             Self::NavigationCommitted { .. } => 1,
             Self::ToolbarActivated { .. } => 2,
             Self::PopupActionActivated { .. } => 3,
+            Self::TrustedEphemeralDomRead { .. } => 4,
         }
     }
 
-    fn tab_id(self) -> i64 {
+    fn tab_id(&self) -> i64 {
         match self {
             Self::Startup => -1,
-            Self::NavigationCommitted { tab_id } => i64::try_from(tab_id).unwrap_or(-1),
-            Self::ToolbarActivated { tab_id } => i64::try_from(tab_id).unwrap_or(-1),
-            Self::PopupActionActivated { tab_id } => i64::try_from(tab_id).unwrap_or(-1),
+            Self::NavigationCommitted { tab_id }
+            | Self::ToolbarActivated { tab_id }
+            | Self::PopupActionActivated { tab_id }
+            | Self::TrustedEphemeralDomRead { tab_id, .. } => i64::try_from(*tab_id).unwrap_or(-1),
         }
     }
 }
@@ -180,6 +185,15 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
             },
         )
         .map_err(|error| format!("could not define the dom_read_utf8 ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
+            "dom_read_ephemeral_utf8",
+            |mut caller: Caller<'_, RuntimeState>, tab_id: i64, destination: i32, capacity: i32| {
+                dom_read_ephemeral_utf8(&mut caller, tab_id, destination, capacity)
+            },
+        )
+        .map_err(|error| format!("could not define the dom_read_ephemeral_utf8 ABI import: {error}"))?;
     linker
         .func_wrap(
             "blueice",
@@ -487,6 +501,43 @@ fn dom_read_utf8(
         return RESULT_INVALID_ARGUMENT;
     };
     let value = match request_core(caller, ExtensionRequest::DomReadTab { tab_id }) {
+        Ok(ExtensionReply::DomReadResult { value }) => value,
+        Ok(_) | Err(()) => return RESULT_ERROR,
+    };
+    let bytes = value.as_bytes();
+    if bytes.len() > MAX_DOM_READ_BYTES || bytes.len() > capacity {
+        return RESULT_BUFFER_TOO_SMALL;
+    }
+    if write_guest_bytes(caller, destination, bytes).is_err() {
+        return RESULT_INVALID_ARGUMENT;
+    }
+    i32::try_from(bytes.len()).unwrap_or(RESULT_ERROR)
+}
+
+/// Consumes the core-parent-armed, document-scoped one-shot lease. The guest
+/// supplies only the live tab ID; the opaque ticket is taken from this fresh
+/// invocation's host state and is never made available through guest memory.
+fn dom_read_ephemeral_utf8(
+    caller: &mut Caller<'_, RuntimeState>,
+    tab_id: i64,
+    destination: i32,
+    capacity: i32,
+) -> i32 {
+    let Ok(tab_id) = stable_id(tab_id) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok((destination, capacity)) = guest_range(destination, capacity, MAX_DOM_READ_BYTES) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let RuntimeInvocation::TrustedEphemeralDomRead { tab_id: event_tab, ticket, .. } =
+        &caller.data().invocation else {
+        return RESULT_ERROR;
+    };
+    if *event_tab != tab_id {
+        return RESULT_ERROR;
+    }
+    let ticket = ticket.clone();
+    let value = match request_core(caller, ExtensionRequest::DomReadTabEphemeral { tab_id, ticket }) {
         Ok(ExtensionReply::DomReadResult { value }) => value,
         Ok(_) | Err(()) => return RESULT_ERROR,
     };
@@ -1481,6 +1532,91 @@ mod tests {
             RuntimeInvocation::PopupActionActivated { tab_id: 9 },
         )
         .unwrap();
+        core_thread.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ordinary_runtime_events_cannot_borrow_an_ephemeral_dom_ticket() {
+        let (root, extension) = installed_extension(
+            "ephemeral-denied",
+            r#"(module
+                (import "blueice" "dom_read_ephemeral_utf8" (func $read (param i64 i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (func (export "blueice_start")
+                    i64.const 9
+                    i32.const 0
+                    i32.const 65536
+                    call $read
+                    i32.const -1
+                    i32.ne
+                    if unreachable end))"#,
+        );
+        for invocation in [
+            RuntimeInvocation::Startup,
+            RuntimeInvocation::NavigationCommitted { tab_id: 9 },
+            RuntimeInvocation::ToolbarActivated { tab_id: 9 },
+            RuntimeInvocation::PopupActionActivated { tab_id: 9 },
+        ] {
+            let (guest, mut core) = UnixStream::pair().unwrap();
+            execute_installed_extension_for_invocation(&extension, guest, invocation).unwrap();
+            assert!(blueice_ipc::extension::read_extension_request(&mut core).is_err(),
+                "a non-trusted runtime event must not send a core read request");
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn trusted_ephemeral_dom_event_keeps_its_ticket_in_host_state() {
+        let (root, extension) = installed_extension(
+            "ephemeral-read",
+            r#"(module
+                (import "blueice" "runtime_event_kind" (func $kind (result i32)))
+                (import "blueice" "runtime_event_tab_id" (func $tab (result i64)))
+                (import "blueice" "dom_read_ephemeral_utf8" (func $read (param i64 i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (func (export "blueice_start")
+                    call $kind
+                    i32.const 4
+                    i32.ne
+                    if unreachable end
+                    call $tab
+                    i64.const 9
+                    i64.ne
+                    if unreachable end
+                    i64.const 10
+                    i32.const 0
+                    i32.const 65536
+                    call $read
+                    i32.const -1
+                    i32.ne
+                    if unreachable end
+                    i64.const 9
+                    i32.const 0
+                    i32.const 65536
+                    call $read
+                    i32.const 8
+                    i32.ne
+                    if unreachable end))"#,
+        );
+        let (guest, mut core) = UnixStream::pair().unwrap();
+        let ticket = "a".repeat(64);
+        let expected_ticket = ticket.clone();
+        let core_thread = thread::spawn(move || {
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::DomReadTabEphemeral { tab_id: 9, ticket: expected_ticket },
+            );
+            blueice_ipc::extension::write_extension_reply(
+                &mut core, &ExtensionReply::DomReadResult { value: "snapshot".into() },
+            ).unwrap();
+            assert!(blueice_ipc::extension::read_extension_request(&mut core).is_err(),
+                "the invocation must not send an extra request");
+        });
+        execute_installed_extension_for_invocation(
+            &extension, guest,
+            RuntimeInvocation::TrustedEphemeralDomRead { tab_id: 9, document_epoch: 12, ticket },
+        ).unwrap();
         core_thread.join().unwrap();
         let _ = fs::remove_dir_all(root);
     }
