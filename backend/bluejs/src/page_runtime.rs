@@ -804,6 +804,10 @@ fn page_debugger_execution_state(
 
 #[cfg(test)]
 mod tests {
+    pub(super) fn debug_starts_with(value: &impl std::fmt::Debug, prefix: &str) -> bool {
+        format!("{value:?}").starts_with(prefix)
+    }
+
     use super::*;
     use crate::{parse, parse_module, BlueJsProgramV1, BlueJsSafePoint};
 
@@ -886,12 +890,12 @@ mod tests {
                 bytecode_offset: safe_point.bytecode_offset
             }
         );
-        assert!(matches!(
+        assert_eq!(
             runtime.execute_program(7, probe),
             Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Unsupported(
                 "a debugger-paused root script must resume before another execution starts"
             )))
-        ));
+        );
         assert_eq!(
             runtime.resume_debugger_execution(7).unwrap(),
             BlueJsPageDebuggerExecutionState::Completed
@@ -920,9 +924,9 @@ mod tests {
             .into_iter()
             .find(|safe_point| safe_point.code_unit.ordinal() == 0)
             .unwrap();
-        assert!(matches!(
-            runtime.execute_program_until_debugger_pause(7, paused_program, safe_point),
-            Ok(BlueJsPageDebuggerExecutionState::Paused { .. })
+        assert!(debug_starts_with(
+            &runtime.execute_program_until_debugger_pause(7, paused_program, safe_point),
+            "Ok(Paused { "
         ));
 
         assert!(runtime.close_realm(7));
@@ -976,7 +980,7 @@ mod tests {
         runtime.open_realm(7, origin()).unwrap();
         runtime
             .configure_realm_bindings(7, |bindings| {
-                let host = bindings.install_global_object("pageHost")?;
+                let host = bindings.install_global_object("pageHost").unwrap();
                 bindings.install_method(host, "answer", 0, |_args: &[crate::HostValue]| {
                     Ok(crate::HostValue::Number(42.0))
                 })
@@ -1009,10 +1013,6 @@ mod tests {
             Err(BlueJsPageRuntimeError::Runtime(RuntimeError::ReferenceError(name)))
                 if name == "pageHost"
         ));
-        assert_eq!(
-            runtime.configure_realm_bindings(8, |_| Ok(())),
-            Err(BlueJsPageRuntimeError::UnknownRealm(8))
-        );
     }
 
     #[test]
@@ -1081,9 +1081,9 @@ mod tests {
                 &BlueJsProgramV1::Module(parse_module("throw 1;").unwrap()),
             )
             .unwrap();
-        assert!(matches!(
-            runtime.execute_module_graph(7, failed, [failed]),
-            Err(BlueJsPageRuntimeError::Runtime(_))
+        assert!(debug_starts_with(
+            &runtime.execute_module_graph(7, failed, [failed]),
+            "Err(Runtime("
         ));
         runtime.discard_program(7, failed).unwrap();
 
@@ -1126,9 +1126,9 @@ mod tests {
             runtime.validate_safe_point(3, handle, safe_point),
             Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { tab_id: 3, handle })
         );
-        assert!(matches!(
-            runtime.program_registry().get(handle),
-            Err(BlueJsProgramDebugError::UnknownProgram)
+        assert!(debug_starts_with(
+            &runtime.program_registry().get(handle).err(),
+            "Some(UnknownProgram)"
         ));
     }
 
@@ -1147,9 +1147,9 @@ mod tests {
 
         assert!(runtime.close_realm(3));
         assert!(!runtime.close_realm(3));
-        assert!(matches!(
-            runtime.program_registry().get(handle),
-            Err(BlueJsProgramDebugError::UnknownProgram)
+        assert!(debug_starts_with(
+            &runtime.program_registry().get(handle).err(),
+            "Some(UnknownProgram)"
         ));
     }
 
@@ -1194,9 +1194,9 @@ mod tests {
         runtime.discard_program(1, handle).unwrap();
         assert_eq!(runtime.realm_stats(1).unwrap().program_count, 0);
         assert_eq!(runtime.realm_stats(1).unwrap().bytecode_bytes, 0);
-        assert!(matches!(
-            runtime.program_registry().get(handle),
-            Err(BlueJsProgramDebugError::UnknownProgram)
+        assert!(debug_starts_with(
+            &runtime.program_registry().get(handle).err(),
+            "Some(UnknownProgram)"
         ));
         assert_eq!(
             runtime.execute_program(1, handle),
@@ -1267,6 +1267,7 @@ mod tests {
 
 #[cfg(test)]
 mod coverage_tests {
+    use super::tests::debug_starts_with;
     use super::*;
     use crate::{parse, parse_module, BlueJsProgramV1, HostValue, JsString};
     use std::error::Error;
@@ -1328,9 +1329,9 @@ mod coverage_tests {
                 ..valid
             },
         ] {
-            assert!(matches!(
-                BlueJsPageRuntime::new(config),
-                Err(BlueJsPageRuntimeError::InvalidConfiguration)
+            assert!(debug_starts_with(
+                &BlueJsPageRuntime::new(config).err(),
+                "Some(InvalidConfiguration)"
             ));
         }
     }
@@ -1361,31 +1362,43 @@ mod coverage_tests {
         let mut invalid = BlueJsPageRuntimeConfig::default();
         invalid.vm.heap.nursery_capacity = 0;
         let mut runtime = BlueJsPageRuntime::new(invalid).unwrap();
-        assert!(matches!(
-            runtime.open_realm(1, origin()),
-            Err(BlueJsPageRuntimeError::VmInitialization(_))
+        assert!(debug_starts_with(
+            &runtime.open_realm(1, origin()),
+            "Err(VmInitialization("
         ));
     }
 
     #[test]
     fn a_host_function_and_a_failing_configuration_are_installed_per_realm() {
-        let mut runtime = BlueJsPageRuntime::default();
-        runtime.open_realm(1, origin()).unwrap();
-        runtime
-            .configure_realm_bindings(1, |bindings| {
+        // One closure type serves every call, so a single instantiation of the
+        // generic method observes the unknown-realm, success and failure paths.
+        fn configure(
+            runtime: &mut BlueJsPageRuntime,
+            tab_id: u64,
+            install_object: bool,
+        ) -> Result<(), BlueJsPageRuntimeError> {
+            runtime.configure_realm_bindings(tab_id, |bindings| {
+                if install_object {
+                    bindings.install_global_object("answer")?;
+                    return Ok(());
+                }
                 bindings.install_global_function("answer", 1, |args: &[HostValue]| {
                     Ok(HostValue::Number(args.len() as f64 + 41.0))
                 })
             })
-            .unwrap();
+        }
+
+        let mut runtime = BlueJsPageRuntime::default();
+        assert_eq!(
+            configure(&mut runtime, 1, false),
+            Err(BlueJsPageRuntimeError::UnknownRealm(1))
+        );
+        runtime.open_realm(1, origin()).unwrap();
+        assert_eq!(configure(&mut runtime, 1, false), Ok(()));
         let handle = install(&mut runtime, 1, "page:///a.js", &script("answer(1)"));
         assert_eq!(runtime.execute_program(1, handle), Ok(Value::Number(42.0)));
-        let failure = runtime.configure_realm_bindings(1, |bindings| {
-            bindings.install_global_object("answer")?;
-            Ok(())
-        });
         assert_eq!(
-            failure,
+            configure(&mut runtime, 1, true),
             Err(BlueJsPageRuntimeError::HostBinding(
                 RuntimeError::TypeError("host global name is invalid or already defined".into())
             ))
@@ -1406,9 +1419,9 @@ mod coverage_tests {
         runtime.open_realm(1, origin()).unwrap();
         // `new.target` is not valid at the top level of a script.
         let broken = BlueJsProgramV1::Script(parse("new.target;").unwrap());
-        assert!(matches!(
-            runtime.install_program(1, &origin(), source("page:///broken.js"), &broken),
-            Err(BlueJsPageRuntimeError::ProgramRegistry(_))
+        assert!(debug_starts_with(
+            &runtime.install_program(1, &origin(), source("page:///broken.js"), &broken),
+            "Err(ProgramRegistry("
         ));
         install(&mut runtime, 1, "page:///a.js", &script("1"));
         assert_eq!(
@@ -1518,9 +1531,9 @@ mod coverage_tests {
                 handle: elsewhere
             })
         );
-        assert!(matches!(
-            runtime.execute_program_until_debugger_pause(1, other, root),
-            Err(BlueJsPageRuntimeError::ProgramRegistry(_))
+        assert!(debug_starts_with(
+            &runtime.execute_program_until_debugger_pause(1, other, root),
+            "Err(ProgramRegistry("
         ));
         assert_eq!(
             runtime.execute_program_until_debugger_pause(1, esm, module_point),
@@ -1531,9 +1544,9 @@ mod coverage_tests {
             Err(BlueJsPageRuntimeError::DebuggerRootCodeUnitOnly)
         );
         assert_eq!(runtime.validate_safe_point(1, classic, root), Ok(()));
-        assert!(matches!(
-            runtime.validate_safe_point(1, other, root),
-            Err(BlueJsPageRuntimeError::ProgramRegistry(_))
+        assert!(debug_starts_with(
+            &runtime.validate_safe_point(1, other, root),
+            "Err(ProgramRegistry("
         ));
 
         // The offset form finds the safe point itself.
@@ -1590,36 +1603,36 @@ mod coverage_tests {
         );
         let classic = install(&mut runtime, 1, "page:///classic.js", &script("1"));
         assert_eq!(
-            runtime.execute_module_graph(2, entry, [entry, dep]),
+            runtime.execute_module_graph(2, entry, vec![entry, dep]),
             Err(BlueJsPageRuntimeError::UnknownRealm(2))
         );
         assert_eq!(
-            runtime.execute_module_graph(1, entry, [entry, classic]),
+            runtime.execute_module_graph(1, entry, vec![entry, classic]),
             Err(BlueJsPageRuntimeError::ProgramShape)
         );
         assert_eq!(
-            runtime.execute_module_graph(1, entry, [dep]),
+            runtime.execute_module_graph(1, entry, vec![dep]),
             Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm {
                 tab_id: 1,
                 handle: entry
             })
         );
         assert_eq!(
-            runtime.execute_module_graph(1, entry, [entry, dep, dep]),
+            runtime.execute_module_graph(1, entry, vec![entry, dep, dep]),
             Err(BlueJsPageRuntimeError::DuplicateModuleIdentity(
                 source("page:///dep.js").canonical_module_id().to_string()
             ))
         );
         runtime.discard_program(1, classic).unwrap();
         assert_eq!(
-            runtime.execute_module_graph(1, entry, [entry, classic]),
+            runtime.execute_module_graph(1, entry, vec![entry, classic]),
             Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm {
                 tab_id: 1,
                 handle: classic
             })
         );
         runtime
-            .execute_module_graph(1, entry, [entry, dep])
+            .execute_module_graph(1, entry, vec![entry, dep])
             .unwrap();
     }
 

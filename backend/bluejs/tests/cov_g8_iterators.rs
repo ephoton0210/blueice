@@ -58,11 +58,18 @@ const OPS: &[&str] = &[
     "Iterator.from(iterable(2)).toArray()",
     "(function () { var w = Iterator.from(plain()); w.next(); return w.return(); })()",
     "Iterator.from(P('ab'))",
-    "Iterator.zip(P([iterable(2), iterable(1)]), P({ mode: V('longest'), padding: P([V(0), V(9)]) })).toArray()",
-    "Iterator.zip([iterable(2), iterable(2)], P({ mode: V('strict') })).toArray()",
-    "Iterator.zip([iterable(2), iterable(1)], P({ mode: V('shortest') })).toArray()",
-    "Iterator.zipKeyed(P({ a: iterable(2), b: iterable(1) }), P({ mode: V('longest'), padding: P({ a: V(0), b: V(9) }) })).toArray()",
-    "Iterator.zipKeyed({ a: iterable(2), b: iterable(2) }, P({ mode: V('strict') })).toArray()",
+    "Iterator.zip(P([iterable(2), iterable(1)]), P({ mode: 'longest', padding: P([V(0), V(9)]) })).toArray()",
+    "Iterator.zip([iterable(2), iterable(2)], P({ mode: 'strict' })).toArray()",
+    "Iterator.zip([iterable(2), iterable(1)], P({ mode: 'shortest' })).toArray()",
+    "Iterator.zipKeyed(P({ a: iterable(2), b: iterable(1) }), P({ mode: 'longest', padding: P({ a: V(0), b: V(9) }) })).toArray()",
+    "Iterator.zipKeyed({ a: iterable(2), b: iterable(2) }, P({ mode: 'strict' })).toArray()",
+    "Iterator.zip([iterable(2), iterable(1)], { mode: 'longest', padding: P([0]) }).toArray()",
+    "Iterator.zip([iterable(2), iterable(1)], { mode: 'longest', padding: P([0, 1, 2]) }).toArray()",
+    "Iterator.zip([iterable(1), iterable(1), 5])",
+    "Iterator.zipKeyed({ a: iterable(2) }, { mode: 'longest', padding: P({}) }).toArray()",
+    "Iterator.zipKeyed(P({ a: iterable(1), b: 5 }))",
+    "Iterator.zipKeyed(P({ a: iterable(1), b: undefined, c: iterable(1) }))",
+    "Iterator.zip(P([iterable(1), iterable(1)]), { mode: 'longest', padding: { [Symbol.iterator]() { fault(); return mk(3); } } }).toArray()",
     "Iterator.concat(iterable(2), iterable(1)).toArray()",
     "(function () { var c = Iterator.concat(iterable(2), iterable(1)); c.next(); return c.return(); })()",
     "Iterator.prototype[Symbol.dispose].call(P({ return() { fault(); return {}; } }))",
@@ -151,4 +158,37 @@ fn iterator_functions_reject_receivers_and_arguments_of_the_wrong_kind() {
         vm.execute(&compile(&parse(script).unwrap()).unwrap()),
         Ok(Value::String("".into()))
     );
+}
+
+/// Programs that use every stage of the setup helpers, swept over instruction
+/// budgets and over heaps that are nearly full when each allocation is made.
+const SETUP_SOURCES: &[&str] = &[
+    "Iterator.zip([[1, 2].values(), [3].values()], { mode: 'longest', padding: [0] }).toArray().join('|')",
+    "Iterator.zip([[1, 2].values(), [3].values()], { mode: 'longest', padding: [0, 9, 8] }).toArray().join('|')",
+    "Iterator.zip([[1].values()], { mode: 'longest' }).toArray().join('|')",
+    "Iterator.zip([[1].values()]).toArray().join('|')",
+    "Iterator.zipKeyed({ a: [1, 2].values(), b: [3].values(), c: undefined }, { mode: 'longest', padding: { a: 0, b: 9 } }).toArray().length",
+    "Iterator.zipKeyed({ a: [1].values() }, { mode: 'longest' }).toArray().length",
+    "var A = Object.getPrototypeOf(Object.getPrototypeOf((async function* () { }).prototype)); A[Symbol.asyncDispose].call({ return() { return 1; } }); A[Symbol.asyncDispose].call({ return() { throw new Error('x'); } }); A[Symbol.asyncDispose].call({});",
+    "var w = Iterator.from({ next() { return { done: true }; }, return() { return {}; } }); w.next(); w.return(); Iterator.from({ next() { return { done: true }; } }).return();",
+    "Reflect.apply(function () { return arguments.length; }, null, { length: 3, 0: 1 })",
+    "[1, 2, 3].values().windows(2).toArray().length + [1, 2, 3].values().chunks(2).toArray().length",
+    "Object.getOwnPropertyDescriptor(Iterator.prototype, 'windows').value.length + Iterator.prototype.flatMap.length + Iterator.prototype.chunks.length",
+];
+
+#[test]
+fn the_setup_helpers_run_out_of_instructions_and_heap() {
+    for source in SETUP_SOURCES {
+        assert!(budget_sweep(source) > 0, "{source}");
+        assert!(heap_sweep(source, 30_000, 8) > 0, "{source}");
+    }
+}
+
+#[test]
+fn the_setup_helpers_build_their_prototypes_on_an_almost_full_heap() {
+    let mut stopped = 0;
+    for source in SETUP_SOURCES {
+        stopped += heap_sweep(source, 350_000, 16);
+    }
+    assert!(stopped > 1000, "{stopped}");
 }

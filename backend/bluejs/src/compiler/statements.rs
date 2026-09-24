@@ -897,8 +897,7 @@ impl Compiler {
                     .expect("contains_tail_call found a self tail call");
                 for argument in args {
                     // Self tail calls exclude spread arguments.
-                    let (Argument::Normal(value) | Argument::Spread(value)) = argument;
-                    self.expression(value)?;
+                    self.expression(argument_expression(argument))?;
                 }
                 let iterators: Vec<_> = self
                     .loops
@@ -1308,15 +1307,9 @@ impl Compiler {
             let start = self.here();
             self.bytecode.handlers[handler_index as usize].catch = Some(start);
             let parameter_bound_names = catch.param.as_ref().map(pattern_names).unwrap_or_default();
-            if self.bytecode.strict
-                && parameter_bound_names
-                    .iter()
-                    .any(|name| matches!(name.as_str(), "eval" | "arguments"))
-            {
-                return Err(CompileError::InvalidSyntax(
-                    "strict catch parameters cannot bind eval or arguments",
-                ));
-            }
+            // A strict catch parameter named `eval` or `arguments` was already
+            // rejected with the rest of the strict code's restricted-name
+            // assignments (`strict_assignment_to_restricted_name`).
             if catch_lexical_names(&catch.body)
                 .into_iter()
                 .any(|name| parameter_bound_names.contains(&name))
@@ -1379,7 +1372,9 @@ impl Compiler {
             None
         };
 
-        if let Some(finalizer) = finalizer {
+        // Both exits of the try and catch blocks join at the finally clause,
+        // or after the statement when there is none.
+        let join = if let Some(finalizer) = finalizer {
             let start = self.here();
             self.bytecode.handlers[handler_index as usize].finally = Some(start);
             // A normal finally restores its saved prior Completion only when
@@ -1392,17 +1387,14 @@ impl Compiler {
             self.emit(Opcode::ResumeCompletion, handler_index)?;
             let end = self.here();
             self.bytecode.handlers[handler_index as usize].finally_end = Some(end);
-            self.patch(normal_exit, start);
-            if let Some(exit) = catch_exit {
-                self.patch(exit, start);
-            }
             debug_assert!(end as usize <= self.bytecode.code.len());
+            start
         } else {
-            let end = self.here();
-            self.patch(normal_exit, end);
-            if let Some(exit) = catch_exit {
-                self.patch(exit, end);
-            }
+            self.here()
+        };
+        self.patch(normal_exit, join);
+        if let Some(exit) = catch_exit {
+            self.patch(exit, join);
         }
         Ok(())
     }
@@ -1629,7 +1621,7 @@ impl Compiler {
         if self.function {
             return None;
         }
-        let slot = *self.names.first()?.get(name)?;
+        let slot = *self.names[0].get(name)?;
         self.bytecode.bindings[slot as usize]
             .catch_parameter
             .then_some(slot)
@@ -1854,4 +1846,29 @@ fn is_labelled_function(statement: &Stmt) -> bool {
         item = inner;
     }
     matches!(item, Stmt::FunctionDecl(_))
+}
+
+/// The expression of a call argument, whether or not it is spread.
+fn argument_expression(argument: &Argument) -> &Expr {
+    match argument {
+        Argument::Normal(value) | Argument::Spread(value) => value,
+    }
+}
+
+#[cfg(test)]
+mod argument_tests {
+    use super::*;
+
+    #[test]
+    fn an_argument_yields_its_expression_spread_or_not() {
+        let value = Expr::Number(1.0);
+        assert_eq!(
+            argument_expression(&Argument::Normal(value.clone())),
+            &value
+        );
+        assert_eq!(
+            argument_expression(&Argument::Spread(value.clone())),
+            &value
+        );
+    }
 }

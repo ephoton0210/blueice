@@ -357,3 +357,18 @@ fn the_unscopables_object_is_built_from_an_almost_full_heap() {
         + heap_sweep("with ({}) { }", 250_000, 16);
     assert!(stopped > 10, "{stopped}");
 }
+
+/// A method of another realm run on a plain object asks that realm for its
+/// `%Array.prototype%`, which the running realm must import; the heap may be
+/// too full for the import.
+#[test]
+fn importing_a_foreign_array_prototype_can_hit_the_heap_limit() {
+    let mut stopped = 0;
+    for method in ["map", "toReversed", "toSorted", "with", "toSpliced"] {
+        let source = format!(
+            "var m = $262.createRealm().global.eval('Array.prototype.{method}'); m.call({{ length: 2, 0: 1, 1: 2 }}, function (x) {{ return x; }}, 1);"
+        );
+        stopped += heap_sweep_with(&source, 30_000, 8, true);
+    }
+    assert!(stopped > 0, "{stopped}");
+}

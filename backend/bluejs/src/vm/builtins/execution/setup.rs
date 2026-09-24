@@ -137,7 +137,11 @@ impl Vm {
         // Once offered, the helper is an ordinary property: a script that has
         // deleted it must not see it come back.
         if self.iterator_helpers_installed.contains(&name)
-            || self.heap.get_own_property_descriptor(owner, key)?.is_some()
+            || self
+                .heap
+                .get_own_property_descriptor(owner, key)
+                .expect("the Iterator prototype is live")
+                .is_some()
         {
             return Ok(());
         }
@@ -850,7 +854,8 @@ impl Vm {
             } else {
                 let key = self
                     .heap
-                    .get_own(metadata, format!("zipKey{index}"))?
+                    .get_own(metadata, format!("zipKey{index}"))
+                    .expect("the zipKeyed metadata object is live")
                     .expect("zipKeyed metadata stores every source key");
                 let key = self.coerce_property_key(&key)?;
                 self.get_property(padding_option, &key)?

@@ -151,4 +151,11 @@ const SCRIPTS: &[&str] = &[
     "var a = 1; a++; ++a; a--; --a; var b = { c: 1 }; b.c++; b['c']--;",
     "var [a = 1] = [], { b = 2 } = {}; [a, b] = [b, a]; ({ a, b } = { a: 1, b: 2 }); [a = 1, [b] = [2]] = [];",
     "var o = { a: 1 }; ({ a: o.b, ...o.c } = o); [o.d, ...o.e] = [1, 2, 3];",
+    // `var` initializers inside `with`, resolved through the object environment
+    "with ({}) { var wx = 1; }",
+    "with ({}) { var { a: wy = 2 } = { a: undefined }; }",
+    "with ({}) { var { a: wz } = { a: 1 }, [wv] = [1]; }",
+    // `using` in a C-style for head
+    "for (using a = null; false; ) { }",
+    "async function f() { for (await using a = null; false; ) { } }",
 ];

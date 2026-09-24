@@ -15,10 +15,15 @@ impl Heap {
         if let Some(numeric) = self.typed_array_numeric_key(object, &key)? {
             match numeric {
                 TypedArrayNumericKey::Index(index) => {
-                    if let Some(value) = self.typed_array_index_value(object, index)? {
+                    if let Some(value) = self
+                        .typed_array_index_value(object, index)
+                        .expect("a typed array's buffer is live")
+                    {
                         // An element of an immutable-buffer view is neither
                         // writable nor configurable.
-                        let mutable = !self.typed_array_is_immutable(object)?;
+                        let mutable = !self
+                            .typed_array_is_immutable(object)
+                            .expect("a typed array's buffer is live");
                         return Ok(Some(PropertyDescriptor::data(
                             value, mutable, true, mutable,
                         )));
@@ -28,19 +33,27 @@ impl Heap {
             }
             return Ok(None);
         }
-        if let Some(cell) = self.module_namespace_export_cell(object, &key)? {
+        if let Some(cell) = self
+            .module_namespace_export_cell(object, &key)
+            .expect("the object was checked above")
+        {
             let value = self
-                .get_own(cell, "value")?
+                .get_own_key(cell, "value".into())
+                .expect("an export cell is live")
                 .ok_or(HeapError::UninitializedModuleExport)?;
             return Ok(Some(PropertyDescriptor::data(value, true, true, false)));
         }
-        let mapped_cell = self.arguments_parameter_cell(object, &key)?;
-        let obj = self.object(object)?;
+        let mapped_cell = self
+            .arguments_parameter_cell(object, &key)
+            .expect("the object was checked above");
+        let obj = self.object(object).expect("the object was checked above");
         if let Some(descriptor) = obj.attributes.get(&key) {
             let mut descriptor = descriptor.clone();
             if !descriptor.accessor() {
                 descriptor.value = match mapped_cell {
-                    Some(cell) => self.get_own(cell, "value")?,
+                    Some(cell) => self
+                        .get_own_key(cell, "value".into())
+                        .expect("a parameter cell is live"),
                     None => obj.own_property(&key),
                 };
             }
@@ -50,7 +63,10 @@ impl Heap {
             return Ok(None);
         };
         let value = match mapped_cell {
-            Some(cell) => self.get_own(cell, "value")?.unwrap_or(value),
+            Some(cell) => self
+                .get_own_key(cell, "value".into())
+                .expect("a parameter cell is live")
+                .unwrap_or(value),
             None => value,
         };
         let string_virtual =
@@ -85,7 +101,8 @@ impl Heap {
         }
         if let Some(cell) = self.module_namespace_export_cell(object, &key)? {
             let current = self
-                .get_own(cell, "value")?
+                .get_own_key(cell, "value".into())
+                .expect("an export cell is live")
                 .ok_or(HeapError::UninitializedModuleExport)?;
             if descriptor.configurable == Some(true)
                 || descriptor.enumerable == Some(false)
@@ -99,15 +116,23 @@ impl Heap {
                 .as_ref()
                 .is_none_or(|value| same_value(value, &current)));
         }
-        if self.is_module_namespace(object)? && matches!(key, PropertyName::String(_)) {
+        if self
+            .is_module_namespace(object)
+            .expect("the object was checked above")
+            && matches!(key, PropertyName::String(_))
+        {
             return Ok(false);
         }
-        let mapped_cell = self.arguments_parameter_cell(object, &key)?;
-        let old = self.get_own_property_descriptor(object, &key)?;
-        if old.is_none() && !self.object(object)?.extensible {
+        let mapped_cell = self
+            .arguments_parameter_cell(object, &key)
+            .expect("the object was checked above");
+        let old = self
+            .get_own_property_descriptor(object, &key)
+            .expect("the object was checked above");
+        let obj = self.object(object).expect("the object was checked above");
+        if old.is_none() && !obj.extensible {
             return Ok(false);
         }
-        let obj = self.object(object)?;
         if let ObjectKind::Array { length } = obj.kind {
             if array_index(&key).is_some_and(|index| index >= length)
                 && obj
@@ -178,7 +203,7 @@ impl Heap {
         }
         macro_rules! merge { ($($field:ident),*) => { $(if descriptor.$field.is_some() { merged.$field = descriptor.$field; })* }; }
         merge!(value, writable, get, set, enumerable, configurable);
-        let obj = self.object(object)?;
+        let obj = self.object(object).expect("the object was checked above");
         if matches!(&obj.kind, ObjectKind::String(s) if string_property(s, &key).is_some()) {
             return Ok(true);
         }
@@ -252,7 +277,8 @@ impl Heap {
                     }
                 }
                 if descriptor_is_accessor || descriptor_non_writable {
-                    self.unmap_arguments_property(object, &key)?;
+                    self.unmap_arguments_property(object, &key)
+                        .expect("the object was checked above");
                 }
             }
         }
@@ -449,25 +475,34 @@ impl Heap {
         object: ObjectId,
         key: impl Into<PropertyName>,
     ) -> Result<Option<Value>, HeapError> {
-        let key = key.into();
+        self.get_own_key(object, key.into())
+    }
+
+    pub(super) fn get_own_key(
+        &self,
+        object: ObjectId,
+        key: PropertyName,
+    ) -> Result<Option<Value>, HeapError> {
         if let Some(numeric) = self.typed_array_numeric_key(object, &key)? {
             return match numeric {
                 TypedArrayNumericKey::Index(index) => self.typed_array_index_value(object, index),
                 TypedArrayNumericKey::Invalid => Ok(None),
             };
         }
-        if let Some(index) = key.index() {
-            if let Some(value) = self.typed_array_index_value(object, index)? {
-                return Ok(Some(value));
-            }
-        }
-        if let Some(cell) = self.module_namespace_export_cell(object, &key)? {
+        if let Some(cell) = self
+            .module_namespace_export_cell(object, &key)
+            .expect("the object was checked above")
+        {
             return self
-                .get_own(cell, "value")?
+                .get_own_key(cell, "value".into())
+                .expect("an export cell is live")
                 .map(Some)
                 .ok_or(HeapError::UninitializedModuleExport);
         }
-        Ok(self.object(object)?.own_property(&key))
+        Ok(self
+            .object(object)
+            .expect("the object was checked above")
+            .own_property(&key))
     }
 
     /// Ordinary data-property lookup through the prototype chain.
@@ -481,25 +516,31 @@ impl Heap {
             if let Some(numeric) = self.typed_array_numeric_key(id, &key)? {
                 return match numeric {
                     TypedArrayNumericKey::Index(index) => Ok(self
-                        .typed_array_index_value(id, index)?
+                        .typed_array_index_value(id, index)
+                        .expect("a typed array's buffer is live")
                         .unwrap_or(Value::Undefined)),
                     TypedArrayNumericKey::Invalid => Ok(Value::Undefined),
                 };
             }
-            if let Some(index) = key.index() {
-                if let Some(value) = self.typed_array_index_value(id, index)? {
-                    return Ok(value);
-                }
-            }
-            if let Some(cell) = self.module_namespace_export_cell(id, &key)? {
+            if let Some(cell) = self
+                .module_namespace_export_cell(id, &key)
+                .expect("the object was checked above")
+            {
                 return self
-                    .get_own(cell, "value")?
+                    .get_own_key(cell, "value".into())
+                    .expect("an export cell is live")
                     .ok_or(HeapError::UninitializedModuleExport);
             }
-            if let Some(cell) = self.arguments_parameter_cell(id, &key)? {
-                return Ok(self.get_own(cell, "value")?.unwrap_or(Value::Undefined));
+            if let Some(cell) = self
+                .arguments_parameter_cell(id, &key)
+                .expect("the object was checked above")
+            {
+                return Ok(self
+                    .get_own_key(cell, "value".into())
+                    .expect("a parameter cell is live")
+                    .unwrap_or(Value::Undefined));
             }
-            let obj = self.object(id)?;
+            let obj = self.object(id).expect("the object was checked above");
             if let Some(value) = obj.own_property(&key) {
                 return Ok(value);
             }
@@ -532,11 +573,17 @@ impl Heap {
         if self.typed_array_numeric_key(object, &key)?.is_some() {
             return Err(HeapError::ReadOnlyProperty);
         }
-        if self.module_namespace_export_cell(object, &key)?.is_some() {
+        if self
+            .module_namespace_export_cell(object, &key)
+            .expect("the object was checked above")
+            .is_some()
+        {
             return Err(HeapError::ReadOnlyProperty);
         }
-        let mapped_cell = self.arguments_parameter_cell(object, &key)?;
-        let obj = self.object(object)?;
+        let mapped_cell = self
+            .arguments_parameter_cell(object, &key)
+            .expect("the object was checked above");
+        let obj = self.object(object).expect("the object was checked above");
         if obj
             .attributes
             .get(&key)
@@ -621,20 +668,35 @@ impl Heap {
             let TypedArrayNumericKey::Index(index) = numeric else {
                 return Ok(true);
             };
-            let (buffer, _, length, _) = self.typed_array_info(object)?;
-            return Ok(self.buffer_is_detached(buffer)? || index >= length);
+            let (buffer, _, length, _) = self
+                .typed_array_info(object)
+                .expect("a typed array's buffer is live");
+            return Ok(self
+                .buffer_is_detached(buffer)
+                .expect("a typed array's buffer is live")
+                || index >= length);
         }
-        if self.module_namespace_export_cell(object, &key)?.is_some() {
+        if self
+            .module_namespace_export_cell(object, &key)
+            .expect("the object was checked above")
+            .is_some()
+        {
             return Ok(false);
         }
-        if self.is_module_namespace(object)? && matches!(key, PropertyName::String(_)) {
+        if self
+            .is_module_namespace(object)
+            .expect("the object was checked above")
+            && matches!(key, PropertyName::String(_))
+        {
             return Ok(true);
         }
-        let mapped_cell = self.arguments_parameter_cell(object, &key)?;
+        let mapped_cell = self
+            .arguments_parameter_cell(object, &key)
+            .expect("the object was checked above");
         let obj = self
             .objects
             .get_mut(&object)
-            .ok_or(HeapError::InvalidObject(object))?;
+            .expect("the object was checked above");
         if obj
             .attributes
             .get(&key)
@@ -661,7 +723,8 @@ impl Heap {
             self.structure_epoch += 1;
         }
         if mapped_cell.is_some() {
-            self.unmap_arguments_property(object, &key)?;
+            self.unmap_arguments_property(object, &key)
+                .expect("the object was checked above");
         }
         Ok(true)
     }
@@ -694,8 +757,13 @@ impl Heap {
             }
         }
         if let ObjectKind::TypedArray { buffer, .. } = &obj.kind {
-            if !self.buffer_is_detached(*buffer)? {
-                let (_, _, length, _) = self.typed_array_info(object)?;
+            if !self
+                .buffer_is_detached(*buffer)
+                .expect("a typed array's buffer is live")
+            {
+                let (_, _, length, _) = self
+                    .typed_array_info(object)
+                    .expect("a typed array's buffer is live");
                 for index in 0..length {
                     indices.push((index, index.to_string().into()));
                 }
@@ -772,7 +840,8 @@ impl Heap {
             ObjectKind::Array { .. } | ObjectKind::String(_)
         );
         Ok(self
-            .own_keys(object)?
+            .own_keys(object)
+            .expect("the object was checked above")
             .into_iter()
             .filter(|key| {
                 (!virtual_length || key != "length")
@@ -801,7 +870,7 @@ impl Heap {
             .get_mut(&object)
             .expect("validated array receiver");
         let ObjectKind::Array { length } = &mut obj.kind else {
-            unreachable!("length dispatch checks object kind")
+            return Err(HeapError::InvalidInternalSlot(object));
         };
         let old_length = *length;
         if new_length < old_length {
@@ -815,7 +884,10 @@ impl Heap {
             }
             indices.sort_unstable_by_key(|entry| std::cmp::Reverse(entry.0));
             for (index, key) in indices {
-                if !self.delete(object, &key)? {
+                if !self
+                    .delete(object, &key)
+                    .expect("the array was checked above")
+                {
                     if let ObjectKind::Array { length } =
                         &mut self.objects.get_mut(&object).unwrap().kind
                     {
@@ -829,5 +901,615 @@ impl Heap {
             *length = new_length;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod coverage_tests {
+    use super::*;
+
+    fn heap() -> Heap {
+        Heap::new(HeapConfig::default()).unwrap()
+    }
+
+    fn number(value: f64) -> Value {
+        Value::Number(value)
+    }
+
+    /// An id this heap once handed out and has since reclaimed.
+    fn stale(heap: &mut Heap) -> ObjectId {
+        let id = heap.alloc_object(None).unwrap();
+        heap.collect_major();
+        assert!(!heap.contains(id));
+        id
+    }
+
+    /// A rooted object holding `value` under `"value"`, like a binding cell.
+    fn cell(heap: &mut Heap, value: Option<Value>) -> ObjectId {
+        let cell = heap.alloc_object(None).unwrap();
+        heap.root(cell).unwrap();
+        if let Some(value) = value {
+            heap.set(cell, "value", value).unwrap();
+        }
+        cell
+    }
+
+    /// A rooted arguments object whose parameter `"0"` is mapped to a cell.
+    fn arguments_object(heap: &mut Heap) -> (ObjectId, ObjectId) {
+        let prototype = heap.alloc_object(None).unwrap();
+        heap.root(prototype).unwrap();
+        let cell = cell(heap, Some(number(1.0)));
+        let arguments = heap
+            .alloc_arguments(HashMap::from([("0".into(), cell)]), prototype)
+            .unwrap();
+        heap.root(arguments).unwrap();
+        heap.set(arguments, "0", number(1.0)).unwrap();
+        (arguments, cell)
+    }
+
+    /// A rooted Uint16 view of four elements over a rooted eight-byte buffer.
+    fn typed_array(heap: &mut Heap) -> (ObjectId, ObjectId) {
+        let buffer = heap.alloc_array_buffer(8, None).unwrap();
+        heap.root(buffer).unwrap();
+        let array = heap
+            .alloc_typed_array(buffer, 0, 4, false, TypedArrayKind::Uint16, None)
+            .unwrap();
+        heap.root(array).unwrap();
+        (array, buffer)
+    }
+
+    /// A rooted namespace exporting `a` (7) and `b` (an uninitialized binding).
+    fn namespace(heap: &mut Heap) -> ObjectId {
+        let ready = cell(heap, Some(number(7.0)));
+        let uninitialized = cell(heap, None);
+        let namespace = heap
+            .alloc_module_namespace(
+                vec![("b".into(), uninitialized), ("a".into(), ready)],
+                false,
+            )
+            .unwrap();
+        heap.root(namespace).unwrap();
+        namespace
+    }
+
+    #[test]
+    fn every_entry_point_rejects_a_reclaimed_object() {
+        let mut heap = heap();
+        let gone = stale(&mut heap);
+        let invalid = Some(HeapError::InvalidObject(gone));
+        let key = PropertyName::from("k");
+        assert_eq!(heap.is_array(gone).err(), invalid);
+        assert_eq!(heap.is_arguments(gone).err(), invalid);
+        assert_eq!(heap.is_module_namespace(gone).err(), invalid);
+        assert_eq!(heap.arguments_parameter_cell(gone, &key).err(), invalid);
+        assert_eq!(heap.module_namespace_export_cell(gone, &key).err(), invalid);
+        assert_eq!(heap.unmap_arguments_property(gone, &key).err(), invalid);
+        assert_eq!(heap.get_own_key(gone, key.clone()).err(), invalid);
+        assert_eq!(heap.get_key(gone, key.clone()).err(), invalid);
+        assert_eq!(heap.set_key(gone, key.clone(), number(1.0)).err(), invalid);
+        assert_eq!(heap.delete_key(gone, key.clone()).err(), invalid);
+        assert_eq!(heap.own_property_keys(gone).err(), invalid);
+        assert_eq!(heap.own_integer_keys(gone).err(), invalid);
+        assert_eq!(heap.own_keys(gone).err(), invalid);
+        assert_eq!(heap.enumerable_own_keys(gone).err(), invalid);
+        assert_eq!(heap.root(gone).err(), invalid);
+        assert_eq!(heap.alloc_object(Some(gone)).err(), invalid);
+    }
+
+    #[test]
+    fn the_kind_of_an_object_is_told_apart() {
+        let mut heap = heap();
+        let plain = heap.alloc_object(None).unwrap();
+        let array = heap.alloc_array(0, None).unwrap();
+        let (arguments, cell) = arguments_object(&mut heap);
+        let namespace = namespace(&mut heap);
+        let key = PropertyName::from("0");
+        assert_eq!(heap.is_array(array), Ok(true));
+        assert_eq!(heap.is_array(plain), Ok(false));
+        assert_eq!(heap.is_arguments(arguments), Ok(true));
+        assert_eq!(heap.is_arguments(plain), Ok(false));
+        assert_eq!(heap.is_module_namespace(namespace), Ok(true));
+        assert_eq!(heap.is_module_namespace(plain), Ok(false));
+        assert_eq!(
+            heap.arguments_parameter_cell(arguments, &key),
+            Ok(Some(cell))
+        );
+        assert_eq!(heap.arguments_parameter_cell(plain, &key), Ok(None));
+        assert_eq!(
+            heap.module_namespace_export_cell(namespace, &"zzz".into()),
+            Ok(None)
+        );
+        assert_eq!(
+            heap.module_namespace_export_cell(
+                namespace,
+                &JsSymbol::well_known("toStringTag").into()
+            ),
+            Ok(None)
+        );
+        assert_eq!(
+            heap.module_namespace_export_cell(plain, &"a".into()),
+            Ok(None)
+        );
+        assert!(heap
+            .module_namespace_export_cell(namespace, &"a".into())
+            .unwrap()
+            .is_some());
+        // Unmapping removes the parameter from the arguments object only.
+        assert_eq!(heap.unmap_arguments_property(plain, &key), Ok(()));
+        assert_eq!(heap.unmap_arguments_property(arguments, &key), Ok(()));
+        assert_eq!(heap.arguments_parameter_cell(arguments, &key), Ok(None));
+    }
+
+    #[test]
+    fn identifiers_run_out() {
+        let mut heap = heap();
+        heap.next_object = u64::MAX;
+        assert_eq!(heap.alloc_object(None), Err(HeapError::IdExhausted));
+        let mut heap = self::heap();
+        let object = heap.alloc_object(None).unwrap();
+        heap.next_root = u64::MAX;
+        assert_eq!(heap.root(object), Err(HeapError::IdExhausted));
+    }
+
+    #[test]
+    fn an_allocation_that_does_not_fit_reports_the_limit_without_collecting() {
+        let mut heap = Heap::new(HeapConfig {
+            nursery_capacity: 16,
+            major_threshold_bytes: 1024,
+            max_heap_bytes: 4096,
+        })
+        .unwrap();
+        heap.next_major_bytes = usize::MAX;
+        assert_eq!(
+            heap.alloc_string("x".repeat(8192).into(), None),
+            Err(HeapError::HeapLimitExceeded { limit: 4096 })
+        );
+    }
+
+    #[test]
+    fn a_namespace_reads_through_its_export_cells() {
+        let mut heap = heap();
+        let namespace = namespace(&mut heap);
+        let a = PropertyName::from("a");
+        let b = PropertyName::from("b");
+        let symbol = PropertyName::from(JsSymbol::well_known("toStringTag"));
+        assert_eq!(
+            heap.get_own_key(namespace, a.clone()),
+            Ok(Some(number(7.0)))
+        );
+        assert_eq!(
+            heap.get_own_key(namespace, b.clone()),
+            Err(HeapError::UninitializedModuleExport)
+        );
+        assert_eq!(heap.get_key(namespace, a.clone()), Ok(number(7.0)));
+        assert_eq!(
+            heap.get_key(namespace, b.clone()),
+            Err(HeapError::UninitializedModuleExport)
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                heap.get_own_property_descriptor_key(namespace, a.clone())
+            ),
+            format!(
+                "{:?}",
+                Ok::<_, HeapError>(Some(PropertyDescriptor::data(
+                    number(7.0),
+                    true,
+                    true,
+                    false
+                )))
+            )
+        );
+        assert_eq!(
+            heap.get_own_property_descriptor_key(namespace, b.clone())
+                .err(),
+            Some(HeapError::UninitializedModuleExport)
+        );
+        // Every write is refused, and only a compatible redefinition succeeds.
+        assert_eq!(
+            heap.set_key(namespace, a.clone(), number(1.0)),
+            Err(HeapError::ReadOnlyProperty)
+        );
+        assert_eq!(heap.delete_key(namespace, a.clone()), Ok(false));
+        assert_eq!(heap.delete_key(namespace, "zzz".into()), Ok(true));
+        assert_eq!(heap.delete_key(namespace, symbol.clone()), Ok(false));
+        let same = PropertyDescriptor::data(number(7.0), true, true, false);
+        assert_eq!(
+            heap.define_own_property_key(namespace, a.clone(), same),
+            Ok(true)
+        );
+        assert_eq!(
+            heap.define_own_property_key(
+                namespace,
+                a.clone(),
+                PropertyDescriptor::data(number(8.0), true, true, false)
+            ),
+            Ok(false)
+        );
+        assert_eq!(
+            heap.define_own_property_key(
+                namespace,
+                b,
+                PropertyDescriptor::data(number(8.0), true, true, false)
+            ),
+            Err(HeapError::UninitializedModuleExport)
+        );
+        assert_eq!(
+            heap.define_own_property_key(
+                namespace,
+                "zzz".into(),
+                PropertyDescriptor::data(number(8.0), true, true, true)
+            ),
+            Ok(false)
+        );
+        assert_eq!(
+            heap.own_property_keys(namespace),
+            Ok(vec!["a".into(), "b".into(), symbol])
+        );
+        assert_eq!(heap.own_integer_keys(namespace), Ok(None));
+    }
+
+    #[test]
+    fn a_typed_array_owns_only_canonical_numeric_keys() {
+        let mut heap = heap();
+        let (array, buffer) = typed_array(&mut heap);
+        let value = |key: &str| heap.get_own_key(array, key.into());
+        assert_eq!(value("1"), Ok(Some(number(0.0))));
+        assert_eq!(value("9"), Ok(None));
+        assert_eq!(value("-0"), Ok(None));
+        assert_eq!(value("name"), Ok(None));
+        assert_eq!(heap.get_key(array, "1".into()), Ok(number(0.0)));
+        assert_eq!(heap.get_key(array, "9".into()), Ok(Value::Undefined));
+        assert_eq!(heap.get_key(array, "-0".into()), Ok(Value::Undefined));
+        assert_eq!(
+            heap.set_key(array, "1".into(), number(3.0)),
+            Err(HeapError::ReadOnlyProperty)
+        );
+        assert_eq!(
+            heap.set_key(array, "-0".into(), number(3.0)),
+            Err(HeapError::ReadOnlyProperty)
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                heap.get_own_property_descriptor_key(array, "2".into())
+            ),
+            format!(
+                "{:?}",
+                Ok::<_, HeapError>(Some(PropertyDescriptor::data(
+                    number(0.0),
+                    true,
+                    true,
+                    true
+                )))
+            )
+        );
+        assert_eq!(
+            heap.get_own_property_descriptor_key(array, "9".into())
+                .map(|d| d.is_none()),
+            Ok(true)
+        );
+        assert_eq!(
+            heap.get_own_property_descriptor_key(array, "-0".into())
+                .map(|d| d.is_none()),
+            Ok(true)
+        );
+        assert_eq!(
+            heap.own_property_keys(array),
+            Ok(vec!["0".into(), "1".into(), "2".into(), "3".into()])
+        );
+        // Deleting an element that exists fails; anything else succeeds.
+        assert_eq!(heap.delete_key(array, "1".into()), Ok(false));
+        assert_eq!(heap.delete_key(array, "9".into()), Ok(true));
+        assert_eq!(heap.delete_key(array, "-0".into()), Ok(true));
+        assert_eq!(heap.delete_key(array, "name".into()), Ok(true));
+        heap.detach_array_buffer(buffer).unwrap();
+        assert_eq!(heap.delete_key(array, "1".into()), Ok(true));
+        assert_eq!(heap.own_property_keys(array), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn an_arguments_object_writes_through_to_its_parameter_cell() {
+        let mut heap = heap();
+        let (arguments, cell) = arguments_object(&mut heap);
+        let key = PropertyName::from("0");
+        let read = |heap: &Heap| heap.get_own_key(cell, "value".into()).unwrap();
+        heap.set_key(arguments, key.clone(), number(2.0)).unwrap();
+        assert_eq!(read(&heap), Some(number(2.0)));
+        // A cell write is seen through the arguments object.
+        heap.set(cell, "value", number(3.0)).unwrap();
+        assert_eq!(heap.get_key(arguments, key.clone()), Ok(number(3.0)));
+        assert_eq!(
+            heap.get_own_key(arguments, key.clone()),
+            Ok(Some(number(2.0)))
+        );
+        assert_eq!(
+            heap.get_own_property_descriptor_key(arguments, key.clone())
+                .unwrap()
+                .unwrap()
+                .value,
+            Some(number(3.0))
+        );
+        // A descriptor without a value keeps the mapping.
+        let enumerable = PropertyDescriptor {
+            value: None,
+            writable: None,
+            get: None,
+            set: None,
+            enumerable: Some(false),
+            configurable: None,
+        };
+        assert_eq!(
+            heap.define_own_property_key(arguments, key.clone(), enumerable),
+            Ok(true)
+        );
+        assert_eq!(
+            heap.arguments_parameter_cell(arguments, &key),
+            Ok(Some(cell))
+        );
+        assert_eq!(
+            heap.get_own_property_descriptor_key(arguments, key.clone())
+                .unwrap()
+                .unwrap()
+                .value,
+            Some(number(3.0))
+        );
+        assert_eq!(heap.get_key(arguments, key.clone()), Ok(number(3.0)));
+        // A value is written through, then a read-only descriptor unmaps.
+        assert_eq!(
+            heap.define_own_property_key(
+                arguments,
+                key.clone(),
+                PropertyDescriptor::data(number(4.0), true, false, true)
+            ),
+            Ok(true)
+        );
+        assert_eq!(read(&heap), Some(number(4.0)));
+        let read_only = PropertyDescriptor {
+            value: None,
+            writable: Some(false),
+            get: None,
+            set: None,
+            enumerable: None,
+            configurable: None,
+        };
+        assert_eq!(
+            heap.define_own_property_key(arguments, key.clone(), read_only),
+            Ok(true)
+        );
+        assert_eq!(heap.arguments_parameter_cell(arguments, &key), Ok(None));
+    }
+
+    #[test]
+    fn an_accessor_or_a_delete_unmaps_an_arguments_parameter() {
+        let mut heap = heap();
+        let getter = heap.alloc_object(None).unwrap();
+        heap.root(getter).unwrap();
+        let accessor = PropertyDescriptor {
+            value: None,
+            writable: None,
+            get: Some(Value::Object(getter)),
+            set: None,
+            enumerable: None,
+            configurable: None,
+        };
+        let (arguments, _) = arguments_object(&mut heap);
+        assert_eq!(
+            heap.define_own_property_key(arguments, "0".into(), accessor),
+            Ok(true)
+        );
+        assert_eq!(
+            heap.arguments_parameter_cell(arguments, &"0".into()),
+            Ok(None)
+        );
+        let (arguments, _) = arguments_object(&mut heap);
+        assert_eq!(heap.delete_key(arguments, "0".into()), Ok(true));
+        assert_eq!(
+            heap.arguments_parameter_cell(arguments, &"0".into()),
+            Ok(None)
+        );
+        assert_eq!(heap.get_own_key(arguments, "0".into()), Ok(None));
+    }
+
+    #[test]
+    fn a_parameter_cell_that_cannot_grow_reports_the_limit() {
+        let mut failures = 0;
+        for extra in 0..600 {
+            let mut heap = heap();
+            let (arguments, cell) = arguments_object(&mut heap);
+            let value = Value::String("x".repeat(200).into());
+            heap.config.max_heap_bytes = heap.managed_bytes + extra;
+            let write = heap.set_key(arguments, "0".into(), value.clone());
+            let define = heap.define_own_property_key(
+                arguments,
+                "0".into(),
+                PropertyDescriptor::data(value, true, true, true),
+            );
+            failures += usize::from(write.is_err()) + usize::from(define.is_err());
+            // A failed write never leaves the cell and the arguments disagreeing.
+            if write.is_err() {
+                assert_eq!(
+                    heap.get_own_key(cell, "value".into()),
+                    Ok(Some(number(1.0)))
+                );
+            }
+        }
+        assert!(failures > 100, "{failures}");
+    }
+
+    #[test]
+    fn a_stale_value_or_accessor_is_rejected_before_it_is_stored() {
+        let mut heap = heap();
+        let gone = stale(&mut heap);
+        let object = heap.alloc_object(None).unwrap();
+        assert_eq!(
+            heap.set_key(object, "k".into(), Value::Object(gone)),
+            Err(HeapError::InvalidObject(gone))
+        );
+        assert_eq!(
+            heap.define_own_property_key(
+                object,
+                "k".into(),
+                PropertyDescriptor::data(Value::Object(gone), true, true, true)
+            ),
+            Err(HeapError::InvalidObject(gone))
+        );
+        assert_eq!(heap.get_own_key(object, "k".into()), Ok(None));
+    }
+
+    #[test]
+    fn set_refuses_what_an_object_forbids() {
+        let mut heap = heap();
+        let readonly = PropertyDescriptor::data(number(1.0), false, true, false);
+        let object = heap.alloc_object(None).unwrap();
+        heap.define_own_property_key(object, "r".into(), readonly)
+            .unwrap();
+        assert_eq!(
+            heap.set_key(object, "r".into(), number(2.0)),
+            Err(HeapError::ReadOnlyProperty)
+        );
+        heap.set_key(object, "plain".into(), number(1.0)).unwrap();
+        heap.prevent_extensions(object).unwrap();
+        assert_eq!(
+            heap.set_key(object, "added".into(), number(1.0)),
+            Err(HeapError::ReadOnlyProperty)
+        );
+        heap.set_key(object, "plain".into(), number(2.0)).unwrap();
+        assert_eq!(heap.get_key(object, "plain".into()), Ok(number(2.0)));
+
+        // A frozen length keeps an array from growing by index.
+        let array = heap.alloc_array(1, None).unwrap();
+        let frozen_length = PropertyDescriptor {
+            value: None,
+            writable: Some(false),
+            get: None,
+            set: None,
+            enumerable: None,
+            configurable: None,
+        };
+        heap.define_own_property_key(array, "length".into(), frozen_length.clone())
+            .unwrap();
+        assert_eq!(
+            heap.set_key(array, "5".into(), number(1.0)),
+            Err(HeapError::ReadOnlyProperty)
+        );
+        assert_eq!(heap.set_key(array, "0".into(), number(1.0)), Ok(()));
+        assert_eq!(
+            heap.define_own_property_key(
+                array,
+                "5".into(),
+                PropertyDescriptor::data(number(1.0), true, true, true)
+            ),
+            Ok(false)
+        );
+
+        // A boxed string's own indices are read-only.
+        let string = heap.alloc_string("ab".into(), None).unwrap();
+        assert_eq!(
+            heap.set_key(string, "0".into(), number(1.0)),
+            Err(HeapError::ReadOnlyProperty)
+        );
+        assert_eq!(heap.delete_key(string, "0".into()), Ok(false));
+        assert_eq!(heap.delete_key(string, "length".into()), Ok(false));
+        assert_eq!(
+            heap.own_property_keys(string),
+            Ok(vec!["0".into(), "1".into(), "length".into()])
+        );
+    }
+
+    #[test]
+    fn array_lengths_are_validated_and_truncation_stops_at_a_fixed_element() {
+        let mut heap = heap();
+        let array = heap.alloc_array(0, None).unwrap();
+        heap.root(array).unwrap();
+        for index in 0..4 {
+            heap.set_key(array, index.to_string().into(), number(f64::from(index)))
+                .unwrap();
+        }
+        assert_eq!(
+            heap.set_key(array, "length".into(), Value::Null),
+            Err(HeapError::InvalidArrayLength)
+        );
+        for length in [-1.0, 1.5, 4294967296.0, f64::NAN] {
+            assert_eq!(
+                heap.set_key(array, "length".into(), number(length)),
+                Err(HeapError::InvalidArrayLength)
+            );
+        }
+        // Element 1 cannot be deleted, so truncation stops just above it.
+        heap.define_own_property_key(
+            array,
+            "1".into(),
+            PropertyDescriptor::data(number(1.0), true, true, false),
+        )
+        .unwrap();
+        assert_eq!(
+            heap.set_key(array, "length".into(), number(0.0)),
+            Err(HeapError::ReadOnlyProperty)
+        );
+        assert_eq!(heap.get_key(array, "length".into()), Ok(number(2.0)));
+        assert_eq!(heap.set_key(array, "length".into(), number(9.0)), Ok(()));
+        assert_eq!(heap.get_key(array, "length".into()), Ok(number(9.0)));
+        // Only arrays have a length to set.
+        let plain = heap.alloc_object(None).unwrap();
+        assert_eq!(
+            heap.set_array_length(plain, number(1.0)),
+            Err(HeapError::InvalidInternalSlot(plain))
+        );
+    }
+
+    #[test]
+    fn a_length_stored_on_an_ordinary_object_is_an_ordinary_property() {
+        let mut heap = heap();
+        let object = heap.alloc_object(None).unwrap();
+        heap.set(object, "length", number(3.0)).unwrap();
+        assert_eq!(
+            format!(
+                "{:?}",
+                heap.get_own_property_descriptor_key(object, "length".into())
+            ),
+            format!(
+                "{:?}",
+                Ok::<_, HeapError>(Some(PropertyDescriptor::data(
+                    number(3.0),
+                    true,
+                    true,
+                    true
+                )))
+            )
+        );
+        let array = heap.alloc_array(2, None).unwrap();
+        assert_eq!(
+            format!(
+                "{:?}",
+                heap.get_own_property_descriptor_key(array, "length".into())
+            ),
+            format!(
+                "{:?}",
+                Ok::<_, HeapError>(Some(PropertyDescriptor::data(
+                    number(2.0),
+                    true,
+                    false,
+                    false
+                )))
+            )
+        );
+        let string = heap.alloc_string("abc".into(), None).unwrap();
+        assert_eq!(
+            format!(
+                "{:?}",
+                heap.get_own_property_descriptor_key(string, "length".into())
+            ),
+            format!(
+                "{:?}",
+                Ok::<_, HeapError>(Some(PropertyDescriptor::data(
+                    number(3.0),
+                    false,
+                    false,
+                    false
+                )))
+            )
+        );
     }
 }

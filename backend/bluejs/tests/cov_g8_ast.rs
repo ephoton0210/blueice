@@ -9,8 +9,8 @@
 mod cov_g8_common;
 
 use blueice_bluejs::{
-    compile, compile_with_limit, Argument, AssignOp, CompileError, DeclKind, Expr, Function,
-    JsString, Pattern, Program, Stmt, VarDeclarator,
+    compile, compile_with_limit, Argument, AssignOp, CatchClause, CompileError, DeclKind, Expr,
+    Function, JsString, Pattern, Program, Stmt, VarDeclarator,
 };
 
 fn id(name: &str) -> Expr {
@@ -261,4 +261,34 @@ fn a_parenthesized_tail_call_compiles_under_every_bytecode_limit() {
         }
     }
     assert!(sized && full.bytes().len() > 5, "{limit}");
+}
+
+#[test]
+fn a_strict_catch_parameter_is_rejected_with_the_restricted_names() {
+    for name in ["eval", "arguments"] {
+        let program = strict(vec![Stmt::Try {
+            block: Vec::new(),
+            handler: Some(CatchClause {
+                param: Some(Pattern::Identifier(name.to_string())),
+                body: Vec::new(),
+            }),
+            finalizer: None,
+        }]);
+        assert_eq!(
+            error_of(&program),
+            invalid("strict code cannot assign to eval or arguments")
+        );
+    }
+}
+
+#[test]
+fn a_try_statement_with_neither_clause_compiles_to_its_block() {
+    let program = Program {
+        body: vec![Stmt::Try {
+            block: vec![var("a")],
+            handler: None,
+            finalizer: None,
+        }],
+    };
+    assert_eq!(error_of(&program), None);
 }

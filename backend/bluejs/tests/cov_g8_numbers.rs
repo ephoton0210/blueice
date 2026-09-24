@@ -91,6 +91,9 @@ fn number_formatting_runs_out_of_instructions_and_heap() {
 #[test]
 fn the_intl_namespace_is_built_from_an_almost_full_heap() {
     let stopped = heap_sweep("new Intl.NumberFormat('en')", 400_000, 16)
-        + heap_sweep("Intl.NumberFormat.call({}, 'en')", 400_000, 16);
+        + heap_sweep("Intl.NumberFormat.call({}, 'en')", 400_000, 16)
+        + heap_sweep("(1).toLocaleString('en')", 400_000, 16)
+        + heap_sweep("(1n).toLocaleString('en')", 400_000, 16)
+        + heap_sweep("[1, 2].toLocaleString('en')", 400_000, 16);
     assert!(stopped > 100, "{stopped}");
 }

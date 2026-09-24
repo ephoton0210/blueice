@@ -140,4 +140,9 @@ const TEMPORAL_CASES: &[(&str, &str)] = &[
     (r#"Temporal.PlainYearMonth.from('2020-03').toPlainDate({ day: 2 ** 40 })"#, r#"throws RangeError: invalid Temporal day"#),
     (r#"Temporal.PlainMonthDay.from('03-04').toPlainDate({ year: 2 ** 40 })"#, r#"throws RangeError: invalid Temporal year"#),
     (r#"Temporal.PlainYearMonth.from('2020-03').with({ year: 2 ** 40 })"#, r#"throws RangeError: invalid Temporal year"#),
+    (r#"Temporal.PlainMonthDay.from({ calendar: 'gregory', monthCode: 'M02', day: 40 }, { overflow: 'reject' }).toString()"#, r#"throws RangeError: invalid Temporal calendar month-day"#),
+    (r#"Temporal.PlainMonthDay.from({ calendar: 'gregory', era: 'ce', eraYear: 2020, month: 2, day: 40 }, { overflow: 'reject' }).toString()"#, r#"throws RangeError: invalid Temporal calendar month-day"#),
+    (r#"Temporal.PlainMonthDay.from({ calendar: 'hebrew', monthCode: 'M13', day: 40 }, { overflow: 'reject' }).toString()"#, r#"throws RangeError: invalid Temporal calendar month-day"#),
+    (r#"Temporal.Instant.from('2020-01-01T00:00:00Z').until('2020-01-01T01:00:00Z', { largestUnit: 'auto' }).toString()"#, r#"PT3600S"#),
+    (r#"Temporal.Instant.from('2020-01-01T01:00:00Z').since('2020-01-01T00:00:00Z', { largestUnit: 'auto' }).toString()"#, r#"PT3600S"#),
 ];
