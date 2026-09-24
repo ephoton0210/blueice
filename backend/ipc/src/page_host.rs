@@ -50,6 +50,9 @@
 //! core-proxied operation, not a general static-record read or source access.
 //! Version 16 adds one exact contract-ID display lookup; it remains an explicit
 //! core-proxied operation, not a general static-record read or source access.
+//! Version 21 adds an exact symbol-to-reifiable-contract verification under
+//! one private metadata attachment. It repeats only two caller-supplied
+//! opaque IDs and does not disclose the contract plan or static record.
 //! Version 20 adds an exact symbol-to-static-type verification under one
 //! private metadata attachment. It repeats only two caller-supplied opaque
 //! IDs and does not disclose type displays or static records. Version 19 adds
@@ -70,7 +73,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 20;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 21;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -244,6 +247,15 @@ pub struct PageHostDebuggerBlueTsMetadataSymbolLocation {
 pub struct PageHostDebuggerBlueTsMetadataSymbolType {
     pub symbol_id: u32,
     pub type_id: u32,
+}
+
+/// One exact child-verified relation between a compiler symbol and its
+/// reifiable contract. Both numeric IDs came from separate core-proxied
+/// inventories; this contains no contract plan, name, or static record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataSymbolContract {
+    pub symbol_id: u32,
+    pub contract_id: u32,
 }
 
 /// One child-local compiler-produced type display for an exact type ID under
@@ -601,6 +613,16 @@ pub enum PageHostRequest {
         symbol_id: u32,
         type_id: u32,
     },
+    /// Verifies exactly one symbol-to-contract pair under the same private
+    /// attachment. The reply does not return an unrequested contract ID.
+    DescribeDebuggerBlueTsMetadataSymbolContract {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+        contract_id: u32,
+    },
     /// Describes exactly one prior compiler-minted source ID. This private
     /// request returns module identity and a digest only, never source text.
     DescribeDebuggerBlueTsMetadataSource {
@@ -822,6 +844,14 @@ pub enum PageHostReply {
         metadata: PageHostDebuggerMetadataHandle,
         symbol_type: PageHostDebuggerBlueTsMetadataSymbolType,
     },
+    /// A verified relation that repeats only the two requested opaque IDs.
+    DebuggerBlueTsMetadataSymbolContract {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_contract: PageHostDebuggerBlueTsMetadataSymbolContract,
+    },
     DebuggerBlueTsMetadataSourceProvenance {
         tab_id: u64,
         document_generation: u64,
@@ -1000,6 +1030,42 @@ mod tests {
             symbol_type: PageHostDebuggerBlueTsMetadataSymbolType {
                 symbol_id: 1,
                 type_id: 2,
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+    }
+
+    #[test]
+    fn symbol_contract_relation_round_trips_on_private_socket() {
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let metadata = PageHostDebuggerMetadataHandle {
+            metadata_handle: 17,
+            metadata_generation: 19,
+        };
+        let request = PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            metadata,
+            symbol_id: 1,
+            contract_id: 2,
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_request(&mut writer, &request).unwrap();
+        assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+        let reply = PageHostReply::DebuggerBlueTsMetadataSymbolContract {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            metadata,
+            symbol_contract: PageHostDebuggerBlueTsMetadataSymbolContract {
+                symbol_id: 1,
+                contract_id: 2,
             },
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();

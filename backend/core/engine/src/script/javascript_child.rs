@@ -35,6 +35,8 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
+    JavaScriptPageDebuggerStaticMetadataSymbolContract,
+    JavaScriptPageDebuggerStaticMetadataSymbolContractTarget,
     JavaScriptPageDebuggerStaticMetadataSymbolDisplay,
     JavaScriptPageDebuggerStaticMetadataSymbolId,
     JavaScriptPageDebuggerStaticMetadataSymbolLocation,
@@ -61,7 +63,8 @@ use blueice_ipc::debugger::{
     DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
 use blueice_ipc::page_host::{
-    self, PageHostDebuggerBlueTsMetadataSymbolLocation, PageHostDebuggerBlueTsMetadataSymbolType,
+    self, PageHostDebuggerBlueTsMetadataSymbolContract,
+    PageHostDebuggerBlueTsMetadataSymbolLocation, PageHostDebuggerBlueTsMetadataSymbolType,
     PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
     PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
     PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
@@ -284,6 +287,11 @@ pub trait PageHostClient {
         false
     }
 
+    /// Whether this private peer can verify an exact symbol/contract pair.
+    fn debugger_bluets_metadata_symbol_contract_available(&self) -> bool {
+        false
+    }
+
     /// Lists newly child-minted opaque handles only for a live direct-BlueTS
     /// attachment associated with one exact private program. The result has
     /// no source/module/name/type/span/contract payload, and a transport
@@ -482,6 +490,21 @@ pub trait PageHostClient {
         ))
     }
 
+    fn debugger_bluets_metadata_symbol_contract(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _symbol_id: u32,
+        _contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger symbol contracts",
+        ))
+    }
+
     /// Lists private child safe points for one exact private program ID.
     fn debugger_safe_points(
         &mut self,
@@ -671,6 +694,10 @@ impl PageHostClient for PageHostConnection {
     }
 
     fn debugger_bluets_metadata_symbol_type_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_symbol_contract_available(&self) -> bool {
         true
     }
 
@@ -924,6 +951,27 @@ impl PageHostClient for PageHostConnection {
             symbol_id,
             type_id,
         })
+    }
+
+    fn debugger_bluets_metadata_symbol_contract(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+        contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                symbol_id,
+                contract_id,
+            },
+        )
     }
 
     fn debugger_safe_points(
@@ -1677,6 +1725,15 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             && self.child.debugger_bluets_metadata_symbols_available()
             && self.child.debugger_bluets_metadata_types_available()
             && self.child.debugger_bluets_metadata_symbol_type_available()
+    }
+
+    fn debugger_static_metadata_symbol_contract_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_symbols_available()
+            && self.child.debugger_bluets_metadata_contracts_available()
+            && self
+                .child
+                .debugger_bluets_metadata_symbol_contract_available()
     }
 
     fn debugger_static_metadata_contract_inventory_available(&self) -> bool {
@@ -2597,7 +2654,7 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             symbol_type,
         } = reply
         else {
-            return Err(child_debugger_reply_error(&reply));
+            return Err(child_static_metadata_relation_reply_error(&reply));
         };
         if reply_tab_id != tab_id.as_u64()
             || reply_generation != document_generation
@@ -2614,6 +2671,68 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         Ok(JavaScriptPageDebuggerStaticMetadataSymbolType {
             symbol_id: symbol_type.symbol_id,
             type_id: symbol_type.type_id,
+        })
+    }
+
+    fn debugger_static_metadata_symbol_contract(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSymbolContractTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolContract, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_symbol_contract_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_symbol_contract(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.symbol_id,
+                target.contract_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataSymbolContract {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            symbol_contract,
+        } = reply
+        else {
+            return Err(child_static_metadata_relation_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || !valid_child_static_metadata_symbol_contract(
+                symbol_contract,
+                target.symbol_id,
+                target.contract_id,
+            )
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataSymbolContract {
+            symbol_id: symbol_contract.symbol_id,
+            contract_id: symbol_contract.contract_id,
         })
     }
 
@@ -3159,6 +3278,14 @@ fn valid_child_static_metadata_symbol_type(
     symbol_type.symbol_id == symbol_id && symbol_type.type_id == type_id
 }
 
+fn valid_child_static_metadata_symbol_contract(
+    symbol_contract: PageHostDebuggerBlueTsMetadataSymbolContract,
+    symbol_id: u32,
+    contract_id: u32,
+) -> bool {
+    symbol_contract.symbol_id == symbol_id && symbol_contract.contract_id == contract_id
+}
+
 fn has_duplicate_child_static_metadata_contract_ids(
     contracts: &[blueice_ipc::page_host::PageHostDebuggerBlueTsMetadataContractId],
 ) -> bool {
@@ -3208,6 +3335,21 @@ fn child_debugger_reply_error(reply: &PageHostReply) -> JavaScriptPageDebuggerEr
         // realm. The public debugger must not infer a child registry state,
         // source identity, VM result, or a usable fallback target from it.
         _ => JavaScriptPageDebuggerError::NoLiveRealm,
+    }
+}
+
+/// An exact, already-receipted relation can be false without losing the live
+/// realm. The child intentionally uses a generic private InvalidRequest for
+/// either no relation or an unknown pair; expose only public InvalidTarget.
+fn child_static_metadata_relation_reply_error(
+    reply: &PageHostReply,
+) -> JavaScriptPageDebuggerError {
+    match reply {
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidRequest,
+            ..
+        } => JavaScriptPageDebuggerError::UnknownProgram,
+        _ => child_debugger_reply_error(reply),
     }
 }
 

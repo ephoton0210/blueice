@@ -861,6 +861,19 @@ or second module resolver to bypass them.
   No type display, symbol name, source identity, span, static record, runtime
   value, or general metadata read crosses this boundary. IPC, core-policy,
   private-child, and launcher-supervised regressions cover the relation.
+  Page-host v21/debugger v20 add the fourteenth independently default-denied
+  `OpaqueSymbolContract` capability and the owner-only
+  `--debugger-static-metadata-symbol-contract` flag. It requires parent,
+  symbol-ID, and contract-ID inventories plus exact same-stream receipts for
+  both IDs under one live opaque metadata handle. The public request supplies
+  only that pair; the child confirms that the retained BlueTS symbol has
+  precisely the requested reifiable contract and that its contract record
+  exists. Core checks the child's echoed pair before returning only those
+  IDs. A missing or mismatched relation is `InvalidTarget`, not a false lost-
+  realm report; guessed IDs, cross-parent pairs, and stale generations fail
+  closed. No contract name, plan, validation result, source/span, static
+  record, or runtime value crosses this operation. IPC, core-policy, private-
+  child, and launcher-supervised regressions cover the boundary.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

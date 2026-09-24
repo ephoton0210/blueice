@@ -47,14 +47,15 @@ use blueice_ipc::page_host::{
     PageHostDebuggerBlueTsMetadataContractValidation,
     PageHostDebuggerBlueTsMetadataLoweringSummary, PageHostDebuggerBlueTsMetadataSourceId,
     PageHostDebuggerBlueTsMetadataSourceProvenance, PageHostDebuggerBlueTsMetadataSummary,
-    PageHostDebuggerBlueTsMetadataSymbolDisplay, PageHostDebuggerBlueTsMetadataSymbolId,
-    PageHostDebuggerBlueTsMetadataSymbolLocation, PageHostDebuggerBlueTsMetadataSymbolType,
-    PageHostDebuggerBlueTsMetadataTypeDisplay, PageHostDebuggerBlueTsMetadataTypeId,
-    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
-    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
-    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
-    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
-    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    PageHostDebuggerBlueTsMetadataSymbolContract, PageHostDebuggerBlueTsMetadataSymbolDisplay,
+    PageHostDebuggerBlueTsMetadataSymbolId, PageHostDebuggerBlueTsMetadataSymbolLocation,
+    PageHostDebuggerBlueTsMetadataSymbolType, PageHostDebuggerBlueTsMetadataTypeDisplay,
+    PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerExecutionState,
+    PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
+    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
+    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
+    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
+    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -428,6 +429,21 @@ impl BlueJsChildHost {
                 metadata,
                 symbol_id,
                 type_id,
+            ),
+            PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                symbol_id,
+                contract_id,
+            } => self.debugger_bluets_metadata_symbol_contract(
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                symbol_id,
+                contract_id,
             ),
             PageHostRequest::DescribeDebuggerBlueTsMetadataSource {
                 tab_id,
@@ -1727,6 +1743,84 @@ impl BlueJsChildHost {
             program,
             metadata,
             symbol_type,
+        }
+    }
+
+    /// Verifies an exact compiler-recorded symbol/contract relation without
+    /// returning an unrequested ID, a contract plan, or a validation result.
+    /// Core has already required separate same-stream receipts for both IDs.
+    fn debugger_bluets_metadata_symbol_contract(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+        contract_id: u32,
+    ) -> PageHostReply {
+        if !program.is_well_formed() || !metadata.is_well_formed() {
+            return invalid_request();
+        }
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+        let symbol_contract = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let static_info = retained.static_info();
+                let Some(symbol) = static_info
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.id.0 == symbol_id)
+                else {
+                    return invalid_request();
+                };
+                if symbol
+                    .contract
+                    .is_none_or(|contract| contract.0 != contract_id)
+                    || !static_info
+                        .contracts
+                        .iter()
+                        .any(|contract| contract.id.0 == contract_id)
+                {
+                    return invalid_request();
+                }
+                PageHostDebuggerBlueTsMetadataSymbolContract {
+                    symbol_id,
+                    contract_id,
+                }
+            }
+            Err(_) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        PageHostReply::DebuggerBlueTsMetadataSymbolContract {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            symbol_contract,
         }
     }
 
@@ -4427,6 +4521,134 @@ mod tests {
             }),
             PageHostReply::Error {
                 code: PageHostErrorCode::UnknownRealm,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn child_bluets_symbol_contract_verifies_only_one_live_reifiable_pair() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(
+                    1,
+                    vec![blue_ts_classic(
+                        0,
+                        "interface PrivateContract { enabled: boolean; } const typedAnswer: number = 42;",
+                    )],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. }
+                if reports.iter().all(|report| report.outcome == PageHostScriptOutcome::Executed)
+        ));
+        let program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs[0],
+            reply => panic!("expected live child program, got {reply:?}"),
+        };
+        let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+            reply => panic!("expected live child metadata, got {reply:?}"),
+        };
+        let symbols =
+            match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataSymbols {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                metadata,
+            }) {
+                PageHostReply::DebuggerBlueTsMetadataSymbols { symbols, .. } => symbols,
+                reply => panic!("expected child symbol IDs, got {reply:?}"),
+            };
+        let contracts =
+            match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataContracts {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                metadata,
+            }) {
+                PageHostReply::DebuggerBlueTsMetadataContracts { contracts, .. } => contracts,
+                reply => panic!("expected child contract IDs, got {reply:?}"),
+            };
+        assert!(!symbols.is_empty() && !contracts.is_empty());
+        let mut verified = None;
+        for symbol in &symbols {
+            for contract in &contracts {
+                let reply = host.handle_request(
+                    PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
+                        tab_id: 7,
+                        document_generation: 1,
+                        program,
+                        metadata,
+                        symbol_id: symbol.symbol_id,
+                        contract_id: contract.contract_id,
+                    },
+                );
+                match reply {
+                    PageHostReply::DebuggerBlueTsMetadataSymbolContract {
+                        symbol_contract, ..
+                    } => {
+                        assert_eq!(symbol_contract.symbol_id, symbol.symbol_id);
+                        assert_eq!(symbol_contract.contract_id, contract.contract_id);
+                        verified = Some(symbol_contract);
+                        break;
+                    }
+                    PageHostReply::Error {
+                        code: PageHostErrorCode::InvalidRequest,
+                        ..
+                    } => {}
+                    reply => panic!("unexpected private relation reply: {reply:?}"),
+                }
+            }
+            if verified.is_some() {
+                break;
+            }
+        }
+        let verified = verified.expect("the interface has one reifiable contract relation");
+        assert!(!format!("{verified:?}").contains("PrivateContract"));
+        assert!(!format!("{verified:?}").contains("enabled"));
+        assert!(matches!(
+            host.handle_request(
+                PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                    metadata,
+                    symbol_id: verified.symbol_id,
+                    contract_id: u32::MAX,
+                }
+            ),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(2, vec![blue_ts_classic(0, "const successor: number = 1;")]),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(
+                PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                    metadata,
+                    symbol_id: verified.symbol_id,
+                    contract_id: verified.contract_id,
+                }
+            ),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
                 ..
             }
         ));

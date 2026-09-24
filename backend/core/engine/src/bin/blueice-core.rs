@@ -114,6 +114,9 @@ struct Args {
     /// Core-owner opt-in for one compiler-verified symbol/type relation under
     /// separately inventoried IDs. It exposes no display or static record.
     debugger_static_metadata_symbol_type: bool,
+    /// Core-owner opt-in for one compiler-verified symbol/contract relation
+    /// under separately inventoried IDs. It exposes no plan or static record.
+    debugger_static_metadata_symbol_contract: bool,
     /// Optional listener for queries over projects a trusted core owner
     /// registered during startup. Its protocol does not accept registration,
     /// source, path, resolver, compiler-option, build, or write requests.
@@ -174,6 +177,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_symbol_display = false;
     let mut debugger_static_metadata_symbol_location = false;
     let mut debugger_static_metadata_symbol_type = false;
+    let mut debugger_static_metadata_symbol_contract = false;
     let mut compiler_socket = None;
     let mut compiler_project_profile = None;
     let mut inline_bluets_profile = None;
@@ -237,6 +241,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 debugger_static_metadata_symbol_location = true
             }
             "--debugger-static-metadata-symbol-type" => debugger_static_metadata_symbol_type = true,
+            "--debugger-static-metadata-symbol-contract" => {
+                debugger_static_metadata_symbol_contract = true
+            }
             "--compiler-socket" => compiler_socket = Some(PathBuf::from(value()?)),
             "--compiler-project-profile" => compiler_project_profile = Some(value()?),
             "--inline-bluets-profile" => inline_bluets_profile = Some(value()?),
@@ -452,6 +459,20 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if debugger_static_metadata_symbol_type && !debugger_static_metadata_symbol_inventory {
         return Err("--debugger-static-metadata-symbol-type requires --debugger-static-metadata-symbol-inventory".to_string());
     }
+    if debugger_static_metadata_symbol_contract && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-symbol-contract requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_symbol_contract && !debugger_static_metadata_inventory {
+        return Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-inventory".to_string());
+    }
+    if debugger_static_metadata_symbol_contract && !debugger_static_metadata_symbol_inventory {
+        return Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-symbol-inventory".to_string());
+    }
+    if debugger_static_metadata_symbol_contract && !debugger_static_metadata_contract_inventory {
+        return Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-contract-inventory".to_string());
+    }
     if compiler_socket.is_some() != compiler_project_profile.is_some() {
         return Err(
             "--compiler-socket and --compiler-project-profile must be provided together"
@@ -480,6 +501,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_symbol_display,
         debugger_static_metadata_symbol_location,
         debugger_static_metadata_symbol_type,
+        debugger_static_metadata_symbol_contract,
         compiler_socket,
         compiler_project_profile,
         inline_bluets_profile,
@@ -798,6 +820,7 @@ fn main() -> ExitCode {
                 lowering_summary: args.debugger_static_metadata_lowering_summary,
                 symbol_location: args.debugger_static_metadata_symbol_location,
                 symbol_type: args.debugger_static_metadata_symbol_type,
+                symbol_contract: args.debugger_static_metadata_symbol_contract,
             },
         )
     } else {
@@ -1131,6 +1154,7 @@ mod tests {
         assert!(!parsed.debugger_static_metadata_symbol_display);
         assert!(!parsed.debugger_static_metadata_symbol_location);
         assert!(!parsed.debugger_static_metadata_symbol_type);
+        assert!(!parsed.debugger_static_metadata_symbol_contract);
         assert_eq!(parsed.compiler_socket, None);
         assert_eq!(parsed.compiler_project_profile, None);
         assert_eq!(parsed.inline_bluets_profile, None);
@@ -1189,6 +1213,7 @@ mod tests {
                 debugger_static_metadata_symbol_display: false,
                 debugger_static_metadata_symbol_location: false,
                 debugger_static_metadata_symbol_type: false,
+                debugger_static_metadata_symbol_contract: false,
                 compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
                 compiler_project_profile: Some("core-closed-fixture-v1".to_string()),
                 inline_bluets_profile: Some("core-script-document-text-v1".to_string()),
@@ -1453,6 +1478,51 @@ mod tests {
         ])
         .unwrap();
         assert!(symbol_type.debugger_static_metadata_symbol_type);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-symbol-contract",
+            ]),
+            Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-inventory".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                "--debugger-static-metadata-symbol-contract",
+            ]),
+            Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-symbol-inventory".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                "--debugger-static-metadata-symbol-inventory",
+                "--debugger-static-metadata-symbol-contract",
+            ]),
+            Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-contract-inventory".to_string())
+        );
+        let symbol_contract = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-symbol-inventory",
+            "--debugger-static-metadata-contract-inventory",
+            "--debugger-static-metadata-symbol-contract",
+        ])
+        .unwrap();
+        assert!(symbol_contract.debugger_static_metadata_symbol_contract);
     }
 
     #[test]

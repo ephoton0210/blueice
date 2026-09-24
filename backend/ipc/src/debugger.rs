@@ -9,7 +9,9 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version nineteen adds an
+//! and an opt-in root-code-unit pause/resume seam. Version twenty adds an
+//! independently default-denied symbol-to-contract relation that requires
+//! exact symbol and contract receipts on one debugger stream. Version nineteen adds an
 //! independently default-denied symbol-to-static-type relation that requires
 //! exact symbol and type receipts on one debugger stream. Version eighteen adds the
 //! independently default-deny symbol-location operation for prior opaque
@@ -35,7 +37,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 19;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 20;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -390,6 +392,24 @@ impl DebuggerStaticMetadataSymbolType {
     }
 }
 
+/// One compiler-verified relation between a symbol and its reifiable local
+/// contract. Both opaque IDs must have been returned by separate inventories
+/// on this stream. No contract plan, validation result, name, or static
+/// record is disclosed by this operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataSymbolContract {
+    pub symbol: DebuggerStaticMetadataSymbolId,
+    pub contract: DebuggerStaticMetadataContractId,
+}
+
+impl DebuggerStaticMetadataSymbolContract {
+    pub fn is_well_formed(self) -> bool {
+        self.symbol.is_well_formed()
+            && self.contract.is_well_formed()
+            && self.symbol.metadata == self.contract.metadata
+    }
+}
+
 impl DebuggerStaticMetadataSymbolId {
     pub fn is_well_formed(self) -> bool {
         self.metadata.is_well_formed()
@@ -539,6 +559,9 @@ pub enum DebuggerCapability {
     /// Verifies a symbol's compiler-minted static type using two separately
     /// receipted IDs. It contains no name, display, source, or record payload.
     StaticMetadataSymbolType,
+    /// Verifies a reifiable symbol's compiler-minted contract using two
+    /// separately receipted IDs. It contains no plan or validation result.
+    StaticMetadataSymbolContract,
     /// One bounded compiler-produced display for a contract ID previously
     /// returned by the exact stream's contract inventory. It does not expose a
     /// source span, plan, validation behavior, bytecode, or general
@@ -626,6 +649,9 @@ pub enum DebuggerMetadataCapability {
     /// Verifies a symbol-to-type relation only for IDs returned by separate
     /// same-stream inventories. This disclosure has its own owner grant.
     OpaqueSymbolType,
+    /// Verifies a symbol-to-contract relation only for IDs returned by
+    /// separate same-stream inventories. This disclosure has its own grant.
+    OpaqueSymbolContract,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -655,6 +681,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueLoweringSummary => Some(DebuggerCapability::StaticMetadataLoweringSummary),
             Self::OpaqueSymbolLocation => Some(DebuggerCapability::StaticMetadataSymbolLocation),
             Self::OpaqueSymbolType => Some(DebuggerCapability::StaticMetadataSymbolType),
+            Self::OpaqueSymbolContract => Some(DebuggerCapability::StaticMetadataSymbolContract),
             Self::Unknown => None,
         }
     }
@@ -675,6 +702,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueLoweringSummary => Some(11),
             Self::OpaqueSymbolLocation => Some(12),
             Self::OpaqueSymbolType => Some(13),
+            Self::OpaqueSymbolContract => Some(14),
             Self::Unknown => None,
         }
     }
@@ -719,6 +747,7 @@ pub struct DebuggerMetadataCapabilitySelection {
     pub lowering_summary: bool,
     pub symbol_location: bool,
     pub symbol_type: bool,
+    pub symbol_contract: bool,
 }
 
 impl DebuggerMetadataCapabilityManifest {
@@ -933,6 +962,20 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants one symbol-to-contract relation only with its parent, symbol,
+    /// and contract inventory prerequisites.
+    pub fn opaque_symbol_contract() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSymbolInventory,
+                DebuggerMetadataCapability::OpaqueContractInventory,
+                DebuggerMetadataCapability::OpaqueSymbolContract,
+            ],
+        }
+    }
+
     /// Builds the exact canonical manifest selected by a trusted owner after
     /// it independently validated each prerequisite flag. Keeping this
     /// operation here avoids a caller hand-assembling a reordered manifest.
@@ -951,6 +994,7 @@ impl DebuggerMetadataCapabilityManifest {
             lowering_summary,
             symbol_location,
             symbol_type,
+            symbol_contract,
         } = selection;
         let any = summary
             || source_inventory
@@ -964,7 +1008,8 @@ impl DebuggerMetadataCapabilityManifest {
             || contract_validation
             || lowering_summary
             || symbol_location
-            || symbol_type;
+            || symbol_type
+            || symbol_contract;
         let mut capabilities = Vec::new();
         if any {
             capabilities.push(DebuggerMetadataCapability::OpaqueInventory);
@@ -984,10 +1029,10 @@ impl DebuggerMetadataCapabilityManifest {
         if type_display {
             capabilities.push(DebuggerMetadataCapability::OpaqueTypeDisplay);
         }
-        if symbol_inventory || symbol_display || symbol_location || symbol_type {
+        if symbol_inventory || symbol_display || symbol_location || symbol_type || symbol_contract {
             capabilities.push(DebuggerMetadataCapability::OpaqueSymbolInventory);
         }
-        if contract_inventory || contract_display || contract_validation {
+        if contract_inventory || contract_display || contract_validation || symbol_contract {
             capabilities.push(DebuggerMetadataCapability::OpaqueContractInventory);
         }
         if symbol_display {
@@ -1007,6 +1052,9 @@ impl DebuggerMetadataCapabilityManifest {
         }
         if symbol_type {
             capabilities.push(DebuggerMetadataCapability::OpaqueSymbolType);
+        }
+        if symbol_contract {
+            capabilities.push(DebuggerMetadataCapability::OpaqueSymbolContract);
         }
         let manifest = Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
@@ -1151,6 +1199,18 @@ impl DebuggerMetadataCapabilityManifest {
                     && self
                         .capabilities
                         .contains(&DebuggerMetadataCapability::OpaqueSymbolInventory)))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueSymbolContract)
+                || (self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueSymbolInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueContractInventory)))
     }
 
     /// Whether this well-formed manifest contains one exact capability.
@@ -1797,6 +1857,11 @@ pub enum DebuggerRequest {
     DescribeStaticMetadataSymbolType {
         target: DebuggerStaticMetadataSymbolType,
     },
+    /// Verifies one reifiable symbol's compiler-produced contract relation.
+    /// Both IDs must have crossed this stream's separate opaque inventories.
+    DescribeStaticMetadataSymbolContract {
+        target: DebuggerStaticMetadataSymbolContract,
+    },
     /// Lists only compiler-minted contract identities for one exact metadata
     /// attachment. It is not a contract name/span/plan/validation read.
     ListStaticMetadataContracts {
@@ -1926,6 +1991,9 @@ pub enum DebuggerReply {
     /// Reply to [`DebuggerRequest::DescribeStaticMetadataSymbolType`]. It
     /// repeats only the two previously receipted opaque IDs.
     StaticMetadataSymbolType(DebuggerStaticMetadataSymbolType),
+    /// Reply to [`DebuggerRequest::DescribeStaticMetadataSymbolContract`].
+    /// It repeats only the two previously receipted opaque IDs.
+    StaticMetadataSymbolContract(DebuggerStaticMetadataSymbolContract),
     /// Reply to [`DebuggerRequest::ListStaticMetadataContracts`]. IDs remain
     /// parent-bound and contain no contract name, span, plan, or validation
     /// payload.
@@ -2035,6 +2103,7 @@ pub fn negotiate(
         | DebuggerRequest::DescribeStaticMetadataSymbol { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolLocation { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolType { .. }
+        | DebuggerRequest::DescribeStaticMetadataSymbolContract { .. }
         | DebuggerRequest::ListStaticMetadataContracts { .. }
         | DebuggerRequest::DescribeStaticMetadataContract { .. }
         | DebuggerRequest::ValidateStaticMetadataContract { .. }
@@ -3577,6 +3646,93 @@ mod tests {
         write_debugger_request(&mut sender, &request).unwrap();
         assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
         let reply = DebuggerReply::StaticMetadataSymbolType(relation);
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_reply(&mut sender, &reply).unwrap();
+        assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+    }
+
+    #[test]
+    fn symbol_contract_requires_two_receipted_ids_and_round_trips_on_a_socket() {
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm: realm(),
+                program_handle: 12,
+                program_generation: 5,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let relation = DebuggerStaticMetadataSymbolContract {
+            symbol: DebuggerStaticMetadataSymbolId {
+                metadata,
+                symbol_id: 1,
+            },
+            contract: DebuggerStaticMetadataContractId {
+                metadata,
+                contract_id: 2,
+            },
+        };
+        assert!(relation.is_well_formed());
+        assert!(!DebuggerStaticMetadataSymbolContract {
+            contract: DebuggerStaticMetadataContractId {
+                metadata: DebuggerStaticMetadataHandle {
+                    metadata_generation: 10,
+                    ..metadata
+                },
+                ..relation.contract
+            },
+            ..relation
+        }
+        .is_well_formed());
+        let manifest = DebuggerMetadataCapabilityManifest::opaque_symbol_contract();
+        assert!(manifest.is_well_formed());
+        let request = hello(manifest.clone());
+        let reply = negotiate(&request, &manifest);
+        let session = metadata_session_authorization(&request, &reply).unwrap();
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueSymbolContract));
+        assert!(!session.observed_symbol(relation.symbol));
+        assert!(!session.observed_contract(relation.contract));
+        assert!(session.observe_symbols(&[relation.symbol]));
+        assert!(session.observe_contracts(&[relation.contract]));
+        assert!(session.observed_symbol(relation.symbol));
+        assert!(session.observed_contract(relation.contract));
+        let separate_stream = metadata_session_authorization(&request, &reply).unwrap();
+        assert!(!separate_stream.observed_symbol(relation.symbol));
+        assert!(!separate_stream.observed_contract(relation.contract));
+        let inventory_only = DebuggerMetadataCapabilityManifest::opaque_selected(
+            DebuggerMetadataCapabilitySelection {
+                symbol_inventory: true,
+                contract_inventory: true,
+                ..DebuggerMetadataCapabilitySelection::default()
+            },
+        );
+        let denied_reply = negotiate(&request, &inventory_only);
+        let denied_session = metadata_session_authorization(&request, &denied_reply).unwrap();
+        assert!(!denied_session.permits(DebuggerMetadataCapability::OpaqueSymbolContract));
+        for missing in [
+            vec![DebuggerMetadataCapability::OpaqueSymbolContract],
+            vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSymbolInventory,
+                DebuggerMetadataCapability::OpaqueSymbolContract,
+            ],
+            vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueContractInventory,
+                DebuggerMetadataCapability::OpaqueSymbolContract,
+            ],
+        ] {
+            assert!(!DebuggerMetadataCapabilityManifest {
+                version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+                capabilities: missing,
+            }
+            .is_well_formed());
+        }
+        let request = DebuggerRequest::DescribeStaticMetadataSymbolContract { target: relation };
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_request(&mut sender, &request).unwrap();
+        assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
+        let reply = DebuggerReply::StaticMetadataSymbolContract(relation);
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);

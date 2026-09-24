@@ -15,6 +15,7 @@ use crate::{
         JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
         JavaScriptPageDebuggerStaticMetadataContractTarget,
         JavaScriptPageDebuggerStaticMetadataSourceTarget,
+        JavaScriptPageDebuggerStaticMetadataSymbolContractTarget,
         JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
         JavaScriptPageDebuggerStaticMetadataSymbolTarget,
         JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
@@ -32,10 +33,11 @@ use blueice_ipc::debugger::{
     DebuggerStaticMetadataContractId, DebuggerStaticMetadataContractValidation,
     DebuggerStaticMetadataHandle, DebuggerStaticMetadataLoweringSummary,
     DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSourceProvenance,
-    DebuggerStaticMetadataSummary, DebuggerStaticMetadataSymbolDisplay,
-    DebuggerStaticMetadataSymbolId, DebuggerStaticMetadataSymbolLocation,
-    DebuggerStaticMetadataSymbolLocationTarget, DebuggerStaticMetadataSymbolType,
-    DebuggerStaticMetadataTypeDisplay, DebuggerStaticMetadataTypeId, DEBUGGER_PROTOCOL_VERSION,
+    DebuggerStaticMetadataSummary, DebuggerStaticMetadataSymbolContract,
+    DebuggerStaticMetadataSymbolDisplay, DebuggerStaticMetadataSymbolId,
+    DebuggerStaticMetadataSymbolLocation, DebuggerStaticMetadataSymbolLocationTarget,
+    DebuggerStaticMetadataSymbolType, DebuggerStaticMetadataTypeDisplay,
+    DebuggerStaticMetadataTypeId, DEBUGGER_PROTOCOL_VERSION,
     DEBUGGER_STATIC_METADATA_MAX_CONTRACTS, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
     DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
 };
@@ -287,6 +289,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::DescribeStaticMetadataSymbolType { .. } => {
             unavailable_static_metadata_symbol_type()
         }
+        DebuggerRequest::DescribeStaticMetadataSymbolContract { .. } => {
+            unavailable_static_metadata_symbol_contract()
+        }
         DebuggerRequest::DescribeStaticMetadataSource { .. } => {
             unavailable_static_metadata_source_provenance()
         }
@@ -437,6 +442,14 @@ fn handle_debugger_request_with_child_locations(
         }
         DebuggerRequest::DescribeStaticMetadataSymbolType { target } => {
             describe_child_static_metadata_symbol_type(tabs, locations, metadata_session, target)
+        }
+        DebuggerRequest::DescribeStaticMetadataSymbolContract { target } => {
+            describe_child_static_metadata_symbol_contract(
+                tabs,
+                locations,
+                metadata_session,
+                target,
+            )
         }
         DebuggerRequest::DescribeStaticMetadataSource { source } => {
             describe_child_static_metadata_source_provenance(
@@ -599,6 +612,12 @@ fn describe_child_location_capabilities(
         && metadata_session
             .is_some_and(|session| session.permits(DebuggerMetadataCapability::OpaqueSymbolType))
         && locations.debugger_static_metadata_symbol_type_available();
+    let static_metadata_symbol_contract_available = static_metadata_contract_inventory_available
+        && static_metadata_symbol_inventory_available
+        && metadata_session.is_some_and(|session| {
+            session.permits(DebuggerMetadataCapability::OpaqueSymbolContract)
+        })
+        && locations.debugger_static_metadata_symbol_contract_available();
     let max_breakpoints_per_realm = if breakpoint_configuration_available {
         locations.max_debugger_breakpoints_per_realm()
     } else {
@@ -625,6 +644,7 @@ fn describe_child_location_capabilities(
             static_metadata_symbol_display_available,
             static_metadata_symbol_location_available,
             static_metadata_symbol_type_available,
+            static_metadata_symbol_contract_available,
         }),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -1823,6 +1843,83 @@ fn describe_child_static_metadata_symbol_type(
     }
 }
 
+/// Verifies one reifiable symbol/contract relation after both opaque IDs
+/// crossed this stream's separate inventories. The child may only confirm
+/// the exact requested pair; it cannot introduce a contract ID or plan.
+fn describe_child_static_metadata_symbol_contract(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    target: DebuggerStaticMetadataSymbolContract,
+) -> DebuggerReply {
+    if !target.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger static metadata symbol contract target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_symbol_contract();
+    };
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !metadata_session.permits(DebuggerMetadataCapability::OpaqueSymbolInventory)
+        || !metadata_session.permits(DebuggerMetadataCapability::OpaqueContractInventory)
+        || !metadata_session.observed_symbol(target.symbol)
+        || !metadata_session.observed_contract(target.contract)
+    {
+        return unavailable_static_metadata_symbol_contract();
+    }
+    let capabilities = describe_child_location_capabilities(
+        tabs,
+        locations,
+        Some(metadata_session),
+        target.symbol.metadata.program.realm,
+    );
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueSymbolContract,
+    ) else {
+        return unavailable_static_metadata_symbol_contract();
+    };
+    if !authorization.permits(
+        target.symbol.metadata.program.realm,
+        DebuggerMetadataCapability::OpaqueSymbolContract,
+    ) {
+        return unavailable_static_metadata_symbol_contract();
+    }
+    let tab_id = match resolve_live_realm(tabs, target.symbol.metadata.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    match locations.debugger_static_metadata_symbol_contract(
+        tab_id,
+        target.symbol.metadata.program.realm.realm_generation,
+        JavaScriptPageDebuggerStaticMetadataSymbolContractTarget {
+            program_handle: target.symbol.metadata.program.program_handle,
+            program_generation: target.symbol.metadata.program.program_generation,
+            metadata_handle: target.symbol.metadata.metadata_handle,
+            metadata_generation: target.symbol.metadata.metadata_generation,
+            symbol_id: target.symbol.symbol_id,
+            contract_id: target.contract.contract_id,
+        },
+    ) {
+        Ok(symbol_contract)
+            if symbol_contract.symbol_id == target.symbol.symbol_id
+                && symbol_contract.contract_id == target.contract.contract_id =>
+        {
+            DebuggerReply::StaticMetadataSymbolContract(target)
+        }
+        Ok(_) => DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "mismatched debugger static metadata symbol contract identity".to_string(),
+        },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
 fn describe_child_static_metadata_source_provenance(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,
@@ -2243,6 +2340,7 @@ fn describe_capabilities(
             static_metadata_symbol_display_available: false,
             static_metadata_symbol_location_available: false,
             static_metadata_symbol_type_available: false,
+            static_metadata_symbol_contract_available: false,
         }),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -2743,6 +2841,13 @@ fn unavailable_static_metadata_symbol_type() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_symbol_contract() -> DebuggerReply {
+    DebuggerReply::Unsupported {
+        operation: "describe static metadata symbol contract".to_string(),
+        reason: "static metadata symbol contracts require an explicitly negotiated owner grant, prior symbol/contract receipts, and a live BlueTS child program".to_string(),
+    }
+}
+
 fn unavailable_static_metadata_source_provenance() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
@@ -2846,6 +2951,7 @@ struct DebuggerCapabilityAvailability {
     static_metadata_symbol_display_available: bool,
     static_metadata_symbol_location_available: bool,
     static_metadata_symbol_type_available: bool,
+    static_metadata_symbol_contract_available: bool,
 }
 
 fn capability_reports(
@@ -2867,6 +2973,7 @@ fn capability_reports(
         static_metadata_symbol_display_available,
         static_metadata_symbol_location_available,
         static_metadata_symbol_type_available,
+        static_metadata_symbol_contract_available,
     }: DebuggerCapabilityAvailability,
 ) -> Vec<DebuggerCapabilityReport> {
     [
@@ -3129,6 +3236,19 @@ fn capability_reports(
                 "static metadata symbol types require explicit inventory, symbol-inventory, type-inventory, and symbol-type session grants plus a live BlueTS child program"
             },
         ),
+        (
+            DebuggerCapability::StaticMetadataSymbolContract,
+            if static_metadata_symbol_contract_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_metadata_symbol_contract_available {
+                "compiler-verified symbol-to-contract relations are installed for prior symbol and contract-ID receipts"
+            } else {
+                "static metadata symbol contracts require explicit inventory, symbol-inventory, contract-inventory, and symbol-contract session grants plus a live BlueTS child program"
+            },
+        ),
     ]
     .into_iter()
     .map(|(capability, state, detail)| DebuggerCapabilityReport {
@@ -3198,6 +3318,10 @@ mod tests {
         }
 
         fn debugger_static_metadata_symbol_type_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_symbol_contract_available(&self) -> bool {
             true
         }
 
@@ -3483,6 +3607,30 @@ mod tests {
                 crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSymbolType {
                     symbol_id: target.symbol_id,
                     type_id: target.type_id,
+                },
+            )
+        }
+
+        fn debugger_static_metadata_symbol_contract(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            target: crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSymbolContractTarget,
+        ) -> Result<
+            crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSymbolContract,
+            JavaScriptPageDebuggerError,
+        > {
+            if target.metadata_handle != 41
+                || target.metadata_generation != 9
+                || target.symbol_id != 0
+                || target.contract_id != 1
+            {
+                return Err(JavaScriptPageDebuggerError::UnknownProgram);
+            }
+            Ok(
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSymbolContract {
+                    symbol_id: target.symbol_id,
+                    contract_id: target.contract_id,
                 },
             )
         }
@@ -4622,6 +4770,172 @@ mod tests {
                         static_type: DebuggerStaticMetadataTypeId {
                             type_id: 0,
                             ..target.static_type
+                        },
+                        ..target
+                    },
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn static_metadata_symbol_contract_requires_both_exact_receipts() {
+        let (tabs, realm) = loaded_tabs();
+        let program = DebuggerProgram {
+            realm,
+            program_handle: 7,
+            program_generation: 3,
+        };
+        let metadata = DebuggerStaticMetadataHandle {
+            program,
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let target = DebuggerStaticMetadataSymbolContract {
+            symbol: DebuggerStaticMetadataSymbolId {
+                metadata,
+                symbol_id: 0,
+            },
+            contract: DebuggerStaticMetadataContractId {
+                metadata,
+                contract_id: 1,
+            },
+        };
+        let manifest =
+            blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_symbol_contract();
+        let hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities: manifest.clone(),
+        };
+        let hello_reply = blueice_ipc::debugger::negotiate(&hello, &manifest);
+        let session = blueice_ipc::debugger::metadata_session_authorization(&hello, &hello_reply)
+            .expect("the exact dependent symbol/contract grant creates a local session");
+        let mut locations = MetadataLocations {
+            malformed_summary: false,
+            malformed_provenance: false,
+            malformed_lowering_summary: false,
+            mismatched_symbol_display: false,
+            mismatched_contract_display: false,
+            mismatched_contract_validation: false,
+        };
+        let DebuggerReply::Capabilities(capabilities) =
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeCapabilities { realm },
+            )
+        else {
+            panic!("the live child must report its symbol/contract capability")
+        };
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataSymbolContract
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        let request = DebuggerRequest::DescribeStaticMetadataSymbolContract { target };
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                None,
+                request.clone(),
+            ),
+            unavailable_static_metadata_symbol_contract(),
+            "the public relation is default-denied without an owner/Hello session"
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone(),
+            ),
+            unavailable_static_metadata_symbol_contract(),
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadata { program },
+            ),
+            DebuggerReply::StaticMetadata(vec![metadata]),
+        );
+        assert!(matches!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadataSymbols { metadata },
+            ),
+            DebuggerReply::StaticMetadataSymbols(_)
+        ));
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone(),
+            ),
+            unavailable_static_metadata_symbol_contract(),
+            "symbol inventory cannot stand in for the separate contract receipt"
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadataContracts { metadata },
+            ),
+            DebuggerReply::StaticMetadataContracts(vec![
+                DebuggerStaticMetadataContractId {
+                    metadata,
+                    contract_id: 0
+                },
+                target.contract,
+            ]),
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request,
+            ),
+            DebuggerReply::StaticMetadataSymbolContract(target),
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeStaticMetadataSymbolContract {
+                    target: DebuggerStaticMetadataSymbolContract {
+                        contract: DebuggerStaticMetadataContractId {
+                            contract_id: 999,
+                            ..target.contract
+                        },
+                        ..target
+                    },
+                },
+            ),
+            unavailable_static_metadata_symbol_contract(),
+            "a guessed contract ID cannot reach the child"
+        );
+        assert!(matches!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeStaticMetadataSymbolContract {
+                    target: DebuggerStaticMetadataSymbolContract {
+                        contract: DebuggerStaticMetadataContractId {
+                            contract_id: 0,
+                            ..target.contract
                         },
                         ..target
                     },

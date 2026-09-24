@@ -153,6 +153,10 @@ mod unix {
         /// under two separately inventoried opaque IDs. Displays and static
         /// records remain independently denied.
         debugger_static_metadata_symbol_type: bool,
+        /// Owner-only policy for a compiler-verified symbol/contract relation
+        /// under two separately inventoried opaque IDs. Plans and validation
+        /// remain independently denied.
+        debugger_static_metadata_symbol_contract: bool,
     }
 
     impl CoreLaunchOptions {
@@ -372,6 +376,17 @@ mod unix {
             self.debugger_static_metadata_type_inventory = true;
             self.debugger_static_metadata_symbol_inventory = true;
             self.debugger_static_metadata_symbol_type = true;
+            self
+        }
+
+        /// Enables one verified symbol/contract relation and its parent,
+        /// symbol, and contract inventory policies. A debugger peer still
+        /// must negotiate each grant and obtain both exact ID receipts.
+        pub fn with_debugger_static_metadata_symbol_contract(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_symbol_inventory = true;
+            self.debugger_static_metadata_contract_inventory = true;
+            self.debugger_static_metadata_symbol_contract = true;
             self
         }
     }
@@ -1756,6 +1771,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_symbol_type {
                     command.arg("--debugger-static-metadata-symbol-type");
+                }
+                if options.debugger_static_metadata_symbol_contract {
+                    command.arg("--debugger-static-metadata-symbol-contract");
                 }
             }
             let mut child = command.spawn()?;

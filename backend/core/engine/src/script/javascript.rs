@@ -46,6 +46,8 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
+    JavaScriptPageDebuggerStaticMetadataSymbolContract,
+    JavaScriptPageDebuggerStaticMetadataSymbolContractTarget,
     JavaScriptPageDebuggerStaticMetadataSymbolDisplay,
     JavaScriptPageDebuggerStaticMetadataSymbolId,
     JavaScriptPageDebuggerStaticMetadataSymbolLocation,
@@ -155,6 +157,12 @@ pub trait PageJavaScriptDebuggerLocations {
     /// Whether this route can verify a relation between separately
     /// inventoried opaque symbol and type IDs under one static attachment.
     fn debugger_static_metadata_symbol_type_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can verify a relation between separately
+    /// inventoried opaque symbol and contract IDs under one attachment.
+    fn debugger_static_metadata_symbol_contract_available(&self) -> bool {
         false
     }
 
@@ -388,6 +396,18 @@ pub trait PageJavaScriptDebuggerLocations {
         _document_generation: u64,
         _target: JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
     ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolType, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Verifies one exact symbol/contract relation without returning an
+    /// unrequested ID, contract plan, or validation result.
+    fn debugger_static_metadata_symbol_contract(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSymbolContractTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolContract, JavaScriptPageDebuggerError>
+    {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }
 

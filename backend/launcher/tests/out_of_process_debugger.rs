@@ -81,6 +81,7 @@ struct StaticMetadataPolicy {
     symbol_display: bool,
     symbol_location: bool,
     symbol_type: bool,
+    symbol_contract: bool,
     contract_display: bool,
     contract_validation: bool,
     lowering_summary: bool,
@@ -162,6 +163,9 @@ impl LauncherProcess {
         }
         if policy.symbol_type {
             command.arg("--debugger-static-metadata-symbol-type");
+        }
+        if policy.symbol_contract {
+            command.arg("--debugger-static-metadata-symbol-contract");
         }
         if policy.contract_display {
             command.arg("--debugger-static-metadata-contract-display");
@@ -604,6 +608,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             symbol_display: true,
             symbol_location: true,
             symbol_type: true,
+            symbol_contract: true,
             contract_display: true,
             contract_validation: true,
             lowering_summary: true,
@@ -634,6 +639,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                             symbol_display: true,
                             symbol_location: true,
                             symbol_type: true,
+                            symbol_contract: true,
                             contract_display: true,
                             contract_validation: true,
                             lowering_summary: true,
@@ -655,6 +661,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                     symbol_display: true,
                     symbol_location: true,
                     symbol_type: true,
+                    symbol_contract: true,
                     contract_display: true,
                     contract_validation: true,
                     lowering_summary: true,
@@ -686,6 +693,10 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     }));
     assert!(capabilities.reports.iter().any(|report| {
         report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSymbolType
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSymbolContract
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
     }));
     assert!(capabilities.reports.iter().any(|report| {
@@ -903,11 +914,31 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             type_id: 0,
         },
     };
+    let unreceipted_contract_relation =
+        blueice_ipc::debugger::DebuggerStaticMetadataSymbolContract {
+            symbol: blueice_ipc::debugger::DebuggerStaticMetadataSymbolId {
+                metadata: typed_metadata,
+                symbol_id: 0,
+            },
+            contract: blueice_ipc::debugger::DebuggerStaticMetadataContractId {
+                metadata: typed_metadata,
+                contract_id: 0,
+            },
+        };
     assert!(matches!(
         debugger_request(
             &mut debugger,
             DebuggerRequest::DescribeStaticMetadataSymbolType {
                 target: unreceipted_relation,
+            },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbolContract {
+                target: unreceipted_contract_relation,
             },
         ),
         DebuggerReply::Unsupported { .. }
@@ -995,6 +1026,15 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             "symbol display may expose its authorized name, never declaration source, type, initializer, or module identity"
         );
     }
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbolContract {
+                target: unreceipted_contract_relation,
+            },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
     let contract_inventory_reply = debugger_request(
         &mut debugger,
         DebuggerRequest::ListStaticMetadataContracts {
@@ -1223,6 +1263,78 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             && !format!("{verified_relation:?}").contains("inline-0.ts"),
         "the relation must repeat only opaque IDs"
     );
+    let guessed_contract_relation = blueice_ipc::debugger::DebuggerStaticMetadataSymbolContract {
+        symbol: symbols[0],
+        contract: blueice_ipc::debugger::DebuggerStaticMetadataContractId {
+            contract_id: u32::MAX,
+            ..contracts[0]
+        },
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbolContract {
+                target: guessed_contract_relation,
+            },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
+    let mut verified_contract_relation = None;
+    for symbol in &symbols {
+        for contract in &contracts {
+            let target = blueice_ipc::debugger::DebuggerStaticMetadataSymbolContract {
+                symbol: *symbol,
+                contract: *contract,
+            };
+            match debugger_request(
+                &mut debugger,
+                DebuggerRequest::DescribeStaticMetadataSymbolContract { target },
+            ) {
+                DebuggerReply::StaticMetadataSymbolContract(relation) => {
+                    assert_eq!(relation, target);
+                    verified_contract_relation = Some(relation);
+                    break;
+                }
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    ..
+                } => {}
+                reply => panic!("unexpected symbol/contract relation reply: {reply:?}"),
+            }
+        }
+        if verified_contract_relation.is_some() {
+            break;
+        }
+    }
+    let verified_contract_relation = verified_contract_relation
+        .expect("the interface fixture has a reifiable symbol/contract relation");
+    assert!(verified_contract_relation.is_well_formed());
+    let unrelated_symbol = symbols
+        .iter()
+        .copied()
+        .find(|symbol| *symbol != verified_contract_relation.symbol)
+        .expect("the fixture also retains a non-contract value symbol");
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbolContract {
+                target: blueice_ipc::debugger::DebuggerStaticMetadataSymbolContract {
+                    symbol: unrelated_symbol,
+                    contract: verified_contract_relation.contract,
+                },
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            ..
+        }
+    ));
+    assert!(
+        !format!("{verified_contract_relation:?}").contains("PrivateContract")
+            && !format!("{verified_contract_relation:?}").contains("enabled")
+            && !format!("{verified_contract_relation:?}").contains("inline-0.ts"),
+        "the relation must repeat only opaque IDs, not a contract plan or name"
+    );
 
     navigate(&mut browser, &url);
     fixture
@@ -1292,6 +1404,18 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             &mut debugger,
             DebuggerRequest::DescribeStaticMetadataSymbolType {
                 target: verified_relation,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbolContract {
+                target: verified_contract_relation,
             },
         ),
         DebuggerReply::Error {
