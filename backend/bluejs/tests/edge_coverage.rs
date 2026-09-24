@@ -86,6 +86,21 @@ fn parser_scans_super_calls_inside_class_control_and_expression_containers() {
 }
 
 #[test]
+fn class_field_arguments_scan_checks_nested_class_keys_and_skips_static_blocks() {
+    let error = parse("class Outer { field = class Inner { [arguments]() {} }; }").unwrap_err();
+    assert!(error.known_syntax);
+    assert!(
+        error
+            .message
+            .starts_with("a class field initializer cannot contain a lexical arguments reference"),
+        "{}",
+        error.message
+    );
+
+    assert!(parse("class Outer { field = class Inner { static {} }; }").is_ok());
+}
+
+#[test]
 fn compiler_reports_public_ast_boundaries_without_panicking() {
     assert_eq!(
         CompileError::Unsupported("await").to_string(),
