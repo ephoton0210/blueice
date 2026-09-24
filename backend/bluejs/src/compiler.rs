@@ -149,8 +149,8 @@ fn compile_with_limit_and_mode(
             _ => None,
         })
         .collect();
-    let mut lexical = lexical_names(&program.body)?;
-    let mut vars = top_level_var_names(&program.body)?;
+    let mut lexical = lexical_names(&program.body);
+    let mut vars = top_level_var_names(&program.body);
     if module {
         for import in module_imports {
             if let Some(local_name) = &import.local_name {
@@ -175,17 +175,13 @@ fn compile_with_limit_and_mode(
         }));
     }
     if !compiler.bytecode.strict {
-        vars.extend(
-            annex_b_function_names(&program.body, &lexical)
-                .into_iter()
-                .filter(|name| !lexical.iter().any(|(lexical_name, _)| lexical_name == name)),
-        );
+        vars.extend(annex_b_function_names(&program.body, &lexical));
     }
     compiler.enter_scope(lexical, &vars, true)?;
     let mut root_statement_offsets = vec![None; program.body.len()];
     if module {
         compiler.top_level_function_declarations(&program.body, &mut root_statement_offsets)?;
-        compiler.bytecode.module_evaluate_entry = Some(compiler.offset()?);
+        compiler.bytecode.module_evaluate_entry = Some(compiler.offset());
         // Unlike a Script, a Module's top level *is* one of the
         // UsingDeclaration-permitted contexts: a `using`/`await using`
         // there disposes when the module's own evaluation completes.
@@ -469,14 +465,10 @@ pub(crate) fn compile_eval(
         compiler.bytecode.bindings.push(binding.clone());
         compiler.bytecode.captures.push(*caller_slot);
     }
-    let lexical = lexical_names(&program.body)?;
-    let mut vars = top_level_var_names(&program.body)?;
+    let lexical = lexical_names(&program.body);
+    let mut vars = top_level_var_names(&program.body);
     if !compiler.bytecode.strict {
-        vars.extend(
-            annex_b_function_names(&program.body, &lexical)
-                .into_iter()
-                .filter(|name| !lexical.iter().any(|(lexical_name, _)| lexical_name == name)),
-        );
+        vars.extend(annex_b_function_names(&program.body, &lexical));
     }
     // EvalDeclarationInstantiation walks from its fresh lexical environment
     // toward the caller's VariableEnvironment. A sloppy eval `var` cannot
@@ -618,23 +610,22 @@ impl FunctionCompileOptions {
 }
 
 impl Compiler {
-    fn offset(&self) -> Result<u32, CompileError> {
-        u32::try_from(self.bytecode.code.len()).map_err(|_| CompileError::ProgramTooLarge)
+    fn offset(&self) -> u32 {
+        // Only `emit` grows the code, and it checks the u32-sized byte limit
+        // before writing an instruction. Thus every stored offset fits u32.
+        self.bytecode.code.len() as u32
     }
 
     fn emit(&mut self, opcode: Opcode, operand: u32) -> Result<usize, CompileError> {
-        let offset = self.offset()? as usize;
-        if offset
-            .checked_add(opcode.width())
-            .is_none_or(|end| end > self.max_bytecode_bytes as usize)
-        {
+        let offset = self.offset();
+        if u64::from(offset) + opcode.width() as u64 > u64::from(self.max_bytecode_bytes) {
             return Err(CompileError::ProgramTooLarge);
         }
         self.bytecode.code.push(opcode as u8);
         if opcode.width() == 5 {
             self.bytecode.code.extend_from_slice(&operand.to_le_bytes());
         }
-        Ok(offset)
+        Ok(offset as usize)
     }
 
     fn patch(&mut self, jump: usize, target: u32) {
@@ -1377,19 +1368,18 @@ fn literal_property_key_name(key: &PropertyKey) -> Option<String> {
 
 /// Lowers one class field to `this[key] = initializer`, the shape
 /// `Compiler::class_field` turns into DefineField (or PrivateFieldAdd).
-/// `computed_binding` names the hidden binding that holds a computed key,
-/// which was converted once when the class was defined.
+/// For a computed key, `computed_binding` names its required hidden binding;
+/// the key was converted once when the class was defined.
 fn class_field_definition(
     key: &PropertyKey,
-    computed_binding: Option<&String>,
+    computed_binding: &str,
     initializer: Option<&Expr>,
 ) -> Stmt {
-    let (property, computed) = match (key, computed_binding) {
-        (PropertyKey::Identifier(name), _) => (Expr::Identifier(name.clone()), false),
-        (PropertyKey::String(name), _) => (Expr::String(name.clone()), true),
-        (PropertyKey::Number(number), _) => (Expr::Number(*number), true),
-        (PropertyKey::Computed(_), Some(binding)) => (Expr::Identifier(binding.clone()), true),
-        (PropertyKey::Computed(expression), None) => ((**expression).clone(), true),
+    let (property, computed) = match key {
+        PropertyKey::Identifier(name) => (Expr::Identifier(name.clone()), false),
+        PropertyKey::String(name) => (Expr::String(name.clone()), true),
+        PropertyKey::Number(number) => (Expr::Number(*number), true),
+        PropertyKey::Computed(_) => (Expr::Identifier(computed_binding.to_owned()), true),
     };
     Stmt::ClassField(Box::new(Stmt::Expr(Expr::Assign {
         op: AssignOp::Assign,
@@ -1449,10 +1439,7 @@ fn compound_assignment_opcode(op: AssignOp) -> Option<Opcode> {
 }
 
 fn is_logical_assignment(op: AssignOp) -> bool {
-    matches!(
-        op,
-        AssignOp::LogicalAndAssign | AssignOp::LogicalOrAssign | AssignOp::NullishAssign
-    )
+    op != AssignOp::Assign && compound_assignment_opcode(op).is_none()
 }
 
 fn pattern_names(pattern: &Pattern) -> Vec<String> {
@@ -1474,25 +1461,22 @@ fn pattern_names(pattern: &Pattern) -> Vec<String> {
     }
 }
 
-fn declarations_names(
-    kind: DeclKind,
-    declarations: &[VarDeclarator],
-) -> Result<Vec<(String, DeclKind)>, CompileError> {
+fn declarations_names(kind: DeclKind, declarations: &[VarDeclarator]) -> Vec<(String, DeclKind)> {
     let mut names = Vec::new();
     for declaration in declarations {
         for name in pattern_names(&declaration.pattern) {
             names.push((name, kind));
         }
     }
-    Ok(names)
+    names
 }
 
-fn lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, CompileError> {
+fn lexical_names(statements: &[Stmt]) -> Vec<(String, DeclKind)> {
     let mut names = Vec::new();
     for statement in statements {
         if let Stmt::VarDecl(kind, declarations) = statement {
             if *kind != DeclKind::Var {
-                names.extend(declarations_names(*kind, declarations)?);
+                names.extend(declarations_names(*kind, declarations));
             }
         }
         if let Stmt::ClassDecl(class) = statement {
@@ -1502,7 +1486,7 @@ fn lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, Compile
             ));
         }
     }
-    Ok(names)
+    names
 }
 
 /// Whether `statements` directly (not through a nested block/function)
@@ -1536,11 +1520,8 @@ pub(super) fn has_await_using_declaration(statements: &[Stmt]) -> bool {
 /// that only ordinary FunctionDeclarations bind (the later declaration
 /// supplies the value); every other repeat stays a duplicate for the caller's
 /// scope to reject.
-fn block_lexical_names(
-    statements: &[Stmt],
-    strict: bool,
-) -> Result<Vec<(String, DeclKind)>, CompileError> {
-    let mut names = lexical_names(statements)?;
+fn block_lexical_names(statements: &[Stmt], strict: bool) -> Vec<(String, DeclKind)> {
+    let mut names = lexical_names(statements);
     let mut repeatable = BTreeSet::new();
     for statement in statements {
         if let Stmt::FunctionDecl(function) = statement {
@@ -1554,34 +1535,29 @@ fn block_lexical_names(
             names.push((name, DeclKind::Let));
         }
     }
-    Ok(names)
+    names
 }
 
 /// The lexical names of a CaseBlock. `validate_switch_case_declarations` has
 /// already rejected every duplicate except Annex B.3.2.5's sloppy repeats of
 /// ordinary function declarations, which share one binding.
-fn switch_lexical_names(
-    cases: &[SwitchCase],
-    strict: bool,
-) -> Result<Vec<(String, DeclKind)>, CompileError> {
+fn switch_lexical_names(cases: &[SwitchCase], strict: bool) -> Vec<(String, DeclKind)> {
     let mut seen = BTreeSet::new();
-    Ok(switch_case_lexical_declarations(cases)?
+    switch_case_lexical_declarations(cases)
         .into_iter()
         .filter(|(name, _, _)| strict || seen.insert(name.clone()))
         .map(|(name, kind, _)| (name, kind))
-        .collect())
+        .collect()
 }
 
-fn switch_case_lexical_declarations(
-    cases: &[SwitchCase],
-) -> Result<Vec<(String, DeclKind, bool)>, CompileError> {
+fn switch_case_lexical_declarations(cases: &[SwitchCase]) -> Vec<(String, DeclKind, bool)> {
     let mut lexical = Vec::new();
     for case in cases {
         for statement in &case.consequent {
             match statement {
                 Stmt::VarDecl(kind, declarations) if *kind != DeclKind::Var => {
                     lexical.extend(
-                        declarations_names(*kind, declarations)?
+                        declarations_names(*kind, declarations)
                             .into_iter()
                             .map(|(name, kind)| (name, kind, false)),
                     );
@@ -1600,7 +1576,7 @@ fn switch_case_lexical_declarations(
             }
         }
     }
-    Ok(lexical)
+    lexical
 }
 
 /// CaseBlock has its own static declaration rules. Function declarations are
@@ -1610,7 +1586,7 @@ fn validate_switch_case_declarations(
     cases: &[SwitchCase],
     strict: bool,
 ) -> Result<(), CompileError> {
-    let lexical = switch_case_lexical_declarations(cases)?;
+    let lexical = switch_case_lexical_declarations(cases);
 
     for (index, (name, _, annex_b_function)) in lexical.iter().enumerate() {
         for (other, _, other_annex_b_function) in &lexical[..index] {
@@ -1622,7 +1598,7 @@ fn validate_switch_case_declarations(
         }
     }
 
-    let vars = switch_var_names(cases)?;
+    let vars = switch_var_names(cases);
     if lexical.iter().any(|(name, _, _)| vars.contains(name)) {
         return Err(CompileError::InvalidSyntax(
             "a switch lexical declaration conflicts with a var declaration",
@@ -1678,16 +1654,16 @@ fn catch_lexical_names(statements: &[Stmt]) -> Vec<String> {
     names
 }
 
-fn top_level_var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
-    let mut names = var_names(statements)?;
+fn top_level_var_names(statements: &[Stmt]) -> BTreeSet<String> {
+    let mut names = var_names(statements);
     names.extend(statements.iter().filter_map(|statement| match statement {
         Stmt::FunctionDecl(function) => function.name.clone(),
         _ => None,
     }));
-    Ok(names)
+    names
 }
 
-fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
+fn var_names(statements: &[Stmt]) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     let mut pending: Vec<_> = statements.iter().collect();
     while let Some(statement) = pending.pop() {
@@ -1747,10 +1723,10 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
             _ => {}
         }
     }
-    Ok(names)
+    names
 }
 
-fn switch_var_names(cases: &[SwitchCase]) -> Result<BTreeSet<String>, CompileError> {
+fn switch_var_names(cases: &[SwitchCase]) -> BTreeSet<String> {
     var_names(
         &cases
             .iter()
@@ -1801,14 +1777,7 @@ fn collect_annex_b_function_names(
     for statement in statements {
         match statement {
             Stmt::Block(body) => {
-                for statement in body {
-                    if let Stmt::FunctionDecl(function) = statement {
-                        insert_annex_b_function_name(function, blocked, names);
-                    }
-                }
-                let mut nested_blocked = blocked.clone();
-                extend_block_lexical_names(&mut nested_blocked, body);
-                collect_annex_b_function_names(body, &nested_blocked, names);
+                collect_annex_b_block_function_names(body, blocked, names);
             }
             Stmt::Switch { cases, .. } => {
                 for case in cases {
@@ -1893,7 +1862,7 @@ fn collect_annex_b_function_names(
                 handler,
                 finalizer,
             } => {
-                collect_annex_b_function_names(block, blocked, names);
+                collect_annex_b_block_function_names(block, blocked, names);
                 if let Some(handler) = handler {
                     let mut nested_blocked = blocked.clone();
                     // Annex B.3.5 makes a simple catch identifier a special
@@ -1904,15 +1873,30 @@ fn collect_annex_b_function_names(
                             nested_blocked.extend(pattern_names(parameter));
                         }
                     }
-                    collect_annex_b_function_names(&handler.body, &nested_blocked, names);
+                    collect_annex_b_block_function_names(&handler.body, &nested_blocked, names);
                 }
                 if let Some(finalizer) = finalizer {
-                    collect_annex_b_function_names(finalizer, blocked, names);
+                    collect_annex_b_block_function_names(finalizer, blocked, names);
                 }
             }
             _ => {}
         }
     }
+}
+
+fn collect_annex_b_block_function_names(
+    statements: &[Stmt],
+    blocked: &BTreeSet<String>,
+    names: &mut BTreeSet<String>,
+) {
+    for statement in statements {
+        if let Stmt::FunctionDecl(function) = statement {
+            insert_annex_b_function_name(function, blocked, names);
+        }
+    }
+    let mut nested_blocked = blocked.clone();
+    extend_block_lexical_names(&mut nested_blocked, statements);
+    collect_annex_b_function_names(statements, &nested_blocked, names);
 }
 
 /// An OptionalChain includes every unparenthesized member access and call
@@ -1963,5 +1947,24 @@ mod tests {
             )))),
             None
         );
+    }
+
+    #[test]
+    fn private_owner_binding_names_decode_both_kinds_and_reject_bad_input() {
+        assert_eq!(
+            private_owner_binding_name("\0bluejs_private_owner_12_static_name"),
+            Some((12, "name".to_owned()))
+        );
+        assert_eq!(
+            private_owner_binding_name("\0bluejs_private_owner_13_instance_name_with_underscores"),
+            Some((13, "name_with_underscores".to_owned()))
+        );
+        for name in [
+            "ordinary",
+            "\0bluejs_private_owner_12_other_name",
+            "\0bluejs_private_owner_invalid_static_name",
+        ] {
+            assert_eq!(private_owner_binding_name(name), None, "{name:?}");
+        }
     }
 }

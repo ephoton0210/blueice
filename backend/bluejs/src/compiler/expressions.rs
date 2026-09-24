@@ -9,7 +9,7 @@ impl Compiler {
         if optional_chain_root(expr) {
             let mut exits = Vec::new();
             self.optional_chain_expression(expr, &mut exits)?;
-            let end = self.offset()?;
+            let end = self.offset();
             for exit in exits {
                 self.patch(exit, end);
             }
@@ -216,13 +216,13 @@ impl Compiler {
                         self.optional_chain_member_reference(arg, &mut exits)?;
                         self.emit(opcode, 0)?;
                         let deleted = self.emit(Opcode::Jump, 0)?;
-                        let short_circuited = self.offset()?;
+                        let short_circuited = self.offset();
                         for exit in exits {
                             self.patch(exit, short_circuited);
                         }
                         self.emit(Opcode::Pop, 0)?;
                         self.constant(Value::Bool(true))?;
-                        self.patch(deleted, self.offset()?);
+                        self.patch(deleted, self.offset());
                     } else if matches!(&**arg, Expr::Member { .. }) {
                         if private_member_name(arg).is_some() {
                             return Err(CompileError::InvalidSyntax(
@@ -288,7 +288,7 @@ impl Compiler {
                             self.emit(Opcode::DeleteUnboundName, index)?;
                         }
                         if let Some(found) = with_end {
-                            self.patch(found, self.offset()?);
+                            self.patch(found, self.offset());
                         }
                     } else {
                         self.expression(arg)?;
@@ -368,7 +368,7 @@ impl Compiler {
                 )?;
                 self.emit(Opcode::Pop, 0)?;
                 self.expression(right)?;
-                self.patch(jump, self.offset()?);
+                self.patch(jump, self.offset());
             }
             Expr::Sequence(expressions) => {
                 for (index, expression) in expressions.iter().enumerate() {
@@ -387,9 +387,9 @@ impl Compiler {
                 let no = self.emit(Opcode::JumpIfFalse, 0)?;
                 self.expression(consequent)?;
                 let end = self.emit(Opcode::Jump, 0)?;
-                self.patch(no, self.offset()?);
+                self.patch(no, self.offset());
                 self.expression(alternate)?;
-                self.patch(end, self.offset()?);
+                self.patch(end, self.offset());
             }
             Expr::Array(elements) => {
                 if elements
@@ -818,13 +818,13 @@ impl Compiler {
                         // forwards to the delegate on the following turn.
                         self.emit(Opcode::GetIterator, 0)?;
                         self.constant(Value::Undefined)?;
-                        let next = self.offset()?;
+                        let next = self.offset();
                         self.emit(Opcode::IteratorNext, 1)?;
                         let done = self.emit(Opcode::IteratorStepValue, 0)?;
                         self.emit(Opcode::Yield, 0)?;
-                        let resume = self.offset()?;
+                        let resume = self.offset();
                         self.emit(Opcode::Jump, next)?;
-                        let exit = self.offset()?;
+                        let exit = self.offset();
                         self.patch(done, exit);
                         self.bytecode.yield_delegates.push((resume, exit));
                         return Ok(());
@@ -835,14 +835,14 @@ impl Compiler {
                     // the delegate on the following loop turn.
                     self.emit(Opcode::GetAsyncIterator, 0)?;
                     self.constant(Value::Undefined)?;
-                    let next = self.offset()?;
+                    let next = self.offset();
                     self.emit(Opcode::AsyncIteratorNext, 1)?;
                     self.emit(Opcode::Await, 0)?;
                     let done = self.emit(Opcode::AsyncIteratorStepValue, 0)?;
                     self.emit(Opcode::Yield, 0)?;
-                    let resume = self.offset()?;
+                    let resume = self.offset();
                     self.emit(Opcode::Jump, next)?;
-                    let exit = self.offset()?;
+                    let exit = self.offset();
                     self.patch(done, exit);
                     self.bytecode.async_yield_delegates.push((resume, exit));
                     return Ok(());
@@ -991,7 +991,7 @@ impl Compiler {
                     self.emit(Opcode::Pop, 0)?;
                     self.constant(Value::Undefined)?;
                     exits.push(self.emit(Opcode::Jump, 0)?);
-                    self.patch(non_nullish, self.offset()?);
+                    self.patch(non_nullish, self.offset());
                     self.emit(Opcode::Swap, 0)?;
                 }
                 if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
@@ -1062,7 +1062,7 @@ impl Compiler {
             self.emit(Opcode::Pop, 0)?;
             self.constant(Value::Undefined)?;
             exits.push(self.emit(Opcode::Jump, 0)?);
-            self.patch(non_nullish, self.offset()?);
+            self.patch(non_nullish, self.offset());
         }
         if computed {
             self.expression(property)?;
@@ -1154,7 +1154,7 @@ impl Compiler {
         self.constant(Value::Undefined)?;
         self.constant(Value::Undefined)?;
         let end = self.emit(Opcode::Jump, 0)?;
-        self.patch(non_nullish, self.offset()?);
+        self.patch(non_nullish, self.offset());
         if *computed {
             self.expression(property)?;
         } else if let Expr::Identifier(name) = property.as_ref() {
@@ -1162,7 +1162,7 @@ impl Compiler {
                 let owner = self.resolve_private_name(private)?;
                 self.constant(Value::String(private.into()))?;
                 self.emit(Opcode::PrivateGetMethod, owner)?;
-                self.patch(end, self.offset()?);
+                self.patch(end, self.offset());
                 return Ok(());
             }
             self.constant(Value::String(name.clone().into()))?;
@@ -1173,7 +1173,7 @@ impl Compiler {
         }
         self.emit(Opcode::PreparePropertyReference, 0)?;
         self.emit(Opcode::GetMethod, 0)?;
-        self.patch(end, self.offset()?);
+        self.patch(end, self.offset());
         Ok(())
     }
 
@@ -1232,7 +1232,7 @@ impl Compiler {
         }
         // A lexical head name may not also be a `var` declared in the body
         // (BoundNames of ForDeclaration vs. VarDeclaredNames of Statement).
-        self.enter_scope(declarations, &var_names(std::slice::from_ref(body))?, false)?;
+        self.enter_scope(declarations, &var_names(std::slice::from_ref(body)), false)?;
         let iterator = self.resolve("*iterator*").unwrap();
         if let Some(initializer) = annex_b_initializer {
             // `for (var x = init in ...)` names an anonymous function or class
@@ -1263,7 +1263,7 @@ impl Compiler {
             )?;
         }
         self.emit(Opcode::InitializeBinding, iterator)?;
-        let start = self.offset()?;
+        let start = self.offset();
         self.emit(Opcode::GetBinding, iterator)?;
         let exit = if is_await {
             self.emit(Opcode::AsyncIteratorNext, 0)?;
@@ -1333,7 +1333,7 @@ impl Compiler {
             self.leave_scope()?;
         }
         self.emit(Opcode::Jump, start)?;
-        let end = self.offset()?;
+        let end = self.offset();
         self.patch(exit, end);
         let context = self.loops.pop().unwrap();
         for (jump, control) in context.breaks {
@@ -1601,11 +1601,11 @@ impl Compiler {
         }
         self.emit(store, store_operand)?;
         let done = self.emit(Opcode::Jump, 0)?;
-        self.patch(bypass, self.offset()?);
+        self.patch(bypass, self.offset());
         if reference_values != 0 {
             self.emit(Opcode::DiscardReference, reference_values)?;
         }
-        self.patch(done, self.offset()?);
+        self.patch(done, self.offset());
         Ok(())
     }
 
@@ -1797,9 +1797,9 @@ impl Compiler {
     pub(super) fn array_pattern_reference_value(&mut self) -> Result<(), CompileError> {
         let exhausted = self.emit(Opcode::IteratorStepReference, 0)?;
         let joined = self.emit(Opcode::Jump, 0)?;
-        self.patch(exhausted, self.offset()?);
+        self.patch(exhausted, self.offset());
         self.constant(Value::Undefined)?;
-        self.patch(joined, self.offset()?);
+        self.patch(joined, self.offset());
         Ok(())
     }
 

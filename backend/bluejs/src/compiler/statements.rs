@@ -206,16 +206,16 @@ impl Compiler {
         // statement list's own, and disposal returns that completion
         // unchanged (`DisposeResources`). Clearing would turn `4; {using x =
         // null;}` into `undefined` instead of `4`.
-        self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
+        self.bytecode.handlers[handler_index as usize].try_start = self.offset();
         // Disposal runs after the block's return value is computed.
         self.tail_call_blockers += 1;
         let body = compile_body(self);
         self.tail_call_blockers -= 1;
         body?;
-        self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
+        self.bytecode.handlers[handler_index as usize].try_end = self.offset();
         self.emit(Opcode::EnterFinalizer, 0)?;
         let normal_exit = self.emit(Opcode::Jump, 0)?;
-        let finally_start = self.offset()?;
+        let finally_start = self.offset();
         self.bytecode.handlers[handler_index as usize].finally = Some(finally_start);
         if is_async {
             self.compile_async_dispose_finally(handler_index)?;
@@ -223,7 +223,7 @@ impl Compiler {
             self.emit(Opcode::DisposeResources, handler_index)?;
         }
         self.emit(Opcode::ResumeCompletion, handler_index)?;
-        self.bytecode.handlers[handler_index as usize].finally_end = Some(self.offset()?);
+        self.bytecode.handlers[handler_index as usize].finally_end = Some(self.offset());
         self.patch(normal_exit, finally_start);
         Ok(())
     }
@@ -478,7 +478,7 @@ impl Compiler {
             if !is_function_declaration(statement) {
                 continue;
             }
-            offsets[index] = Some(self.offset()?);
+            offsets[index] = Some(self.offset());
             self.function_declaration(statement)?;
         }
         Ok(())
@@ -566,9 +566,9 @@ impl Compiler {
             if is_function_declaration(statement) {
                 continue;
             }
-            let start = self.offset()?;
+            let start = self.offset();
             self.statement(statement, true)?;
-            if self.offset()? > start {
+            if self.offset() > start {
                 offsets[index] = Some(start);
             }
         }
@@ -712,8 +712,8 @@ impl Compiler {
             }
             Stmt::Block(body) => {
                 self.enter_scope(
-                    block_lexical_names(body, self.bytecode.strict)?,
-                    &var_names(body)?,
+                    block_lexical_names(body, self.bytecode.strict),
+                    &var_names(body),
                     false,
                 )?;
                 self.statements_with_disposal(body)?;
@@ -737,11 +737,11 @@ impl Compiler {
                 let no = self.emit(Opcode::JumpIfFalse, 0)?;
                 self.if_clause_statement(consequent)?;
                 let end = self.emit(Opcode::Jump, 0)?;
-                self.patch(no, self.offset()?);
+                self.patch(no, self.offset());
                 if let Some(alternate) = alternate {
                     self.if_clause_statement(alternate)?;
                 }
-                self.patch(end, self.offset()?);
+                self.patch(end, self.offset());
             }
             Stmt::While { test, body } => {
                 self.loop_statement(None, Some(test), None, body, false, Vec::new())?
@@ -830,7 +830,7 @@ impl Compiler {
                 self.expression(test)?;
                 let no = self.emit(Opcode::JumpIfFalse, 0)?;
                 self.tail_position_return_or_value(consequent)?;
-                self.patch(no, self.offset()?);
+                self.patch(no, self.offset());
                 self.tail_position_return_or_value(alternate)?;
             }
             Expr::Logical { op, left, right } => {
@@ -846,7 +846,7 @@ impl Compiler {
                 )?;
                 self.emit(Opcode::Pop, 0)?;
                 self.tail_position_return_or_value(right)?;
-                self.patch(short_circuit, self.offset()?);
+                self.patch(short_circuit, self.offset());
                 self.emit_return_epilogue()?;
             }
             Expr::Sequence(expressions) => {
@@ -967,7 +967,7 @@ impl Compiler {
                 if !function.generator && !function.is_async)
         {
             self.enter_scope(
-                block_lexical_names(std::slice::from_ref(statement), self.bytecode.strict)?,
+                block_lexical_names(std::slice::from_ref(statement), self.bytecode.strict),
                 &BTreeSet::new(),
                 false,
             )?;
@@ -1063,7 +1063,7 @@ impl Compiler {
                     iterator: None,
                 });
                 self.statement(item, false)?;
-                let end = self.offset()?;
+                let end = self.offset();
                 let context = self.loops.pop().expect("label control is active");
                 for (jump, control) in context.breaks {
                     self.patch(jump, end);
@@ -1122,7 +1122,7 @@ impl Compiler {
             target: 0,
         });
         self.emit(Opcode::AbruptJump, control_operand)?;
-        let cleanup = self.offset()?;
+        let cleanup = self.offset();
         self.bytecode.abrupt_jumps[control].cleanup = cleanup;
         for iterator in iterators {
             // A handler crossed on the way to this cleanup gateway closes
@@ -1151,8 +1151,8 @@ impl Compiler {
 
     pub(super) fn scoped_statements(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
         self.enter_scope(
-            block_lexical_names(statements, self.bytecode.strict)?,
-            &var_names(statements)?,
+            block_lexical_names(statements, self.bytecode.strict),
+            &var_names(statements),
             false,
         )?;
         self.statements_with_disposal(statements)?;
@@ -1167,8 +1167,8 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         validate_switch_case_declarations(cases, self.bytecode.strict)?;
         self.emit(Opcode::ClearCompletion, 0)?;
-        let lexical = switch_lexical_names(cases, self.bytecode.strict)?;
-        let vars = switch_var_names(cases)?;
+        let lexical = switch_lexical_names(cases, self.bytecode.strict);
+        let vars = switch_var_names(cases);
         // Switch evaluation creates its case-block lexical environment only
         // after evaluating the discriminant.  A closure created by the
         // discriminant must therefore capture the surrounding binding, while
@@ -1191,18 +1191,18 @@ impl Compiler {
                 self.emit(Opcode::StrictEqual, 0)?;
                 let no_match = self.emit(Opcode::JumpIfFalse, 0)?;
                 case_entries[index] = Some(self.emit(Opcode::Jump, 0)?);
-                self.patch(no_match, self.offset()?);
+                self.patch(no_match, self.offset());
             }
         }
         let no_match = self.emit(Opcode::Jump, 0)?;
-        let no_match_cleanup = self.offset()?;
+        let no_match_cleanup = self.offset();
         self.emit(Opcode::Pop, 0)?;
         let no_match_exit = self.emit(Opcode::Jump, 0)?;
 
         let mut case_stubs = Vec::with_capacity(cases.len());
         let mut body_jumps = Vec::with_capacity(cases.len());
         for _ in cases {
-            case_stubs.push(self.offset()?);
+            case_stubs.push(self.offset());
             self.emit(Opcode::Pop, 0)?;
             body_jumps.push(self.emit(Opcode::Jump, 0)?);
         }
@@ -1228,10 +1228,10 @@ impl Compiler {
             iterator: None,
         });
         for (case, jump) in cases.iter().zip(body_jumps) {
-            self.patch(jump, self.offset()?);
+            self.patch(jump, self.offset());
             self.statements_after_function_declarations(&case.consequent)?;
         }
-        let end = self.offset()?;
+        let end = self.offset();
         self.patch(no_match_exit, end);
         let context = self.loops.pop().expect("switch control is active");
         for (jump, control) in context.breaks {
@@ -1267,14 +1267,14 @@ impl Compiler {
         // the value of the preceding statement into TryStatement's
         // UpdateEmpty step.
         self.emit(Opcode::ClearCompletion, 0)?;
-        self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
+        self.bytecode.handlers[handler_index as usize].try_start = self.offset();
         // A call in the try block is not a tail call: the catch and finally
         // clauses have to observe how it ends.
         self.tail_call_blockers += 1;
         let try_block = self.scoped_statements(block);
         self.tail_call_blockers -= 1;
         try_block?;
-        self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
+        self.bytecode.handlers[handler_index as usize].try_end = self.offset();
         self.emit(
             if finalizer.is_some() {
                 Opcode::EnterFinalizer
@@ -1286,7 +1286,7 @@ impl Compiler {
         let normal_exit = self.emit(Opcode::Jump, 0)?;
 
         let catch_exit = if let Some(catch) = handler {
-            let start = self.offset()?;
+            let start = self.offset();
             self.bytecode.handlers[handler_index as usize].catch = Some(start);
             let parameter_bound_names = catch.param.as_ref().map(pattern_names).unwrap_or_default();
             if self.bytecode.strict
@@ -1329,8 +1329,8 @@ impl Compiler {
             // completion value.
             self.emit(Opcode::ClearCompletion, 0)?;
             self.enter_scope(
-                block_lexical_names(&catch.body, self.bytecode.strict)?,
-                &var_names(&catch.body)?,
+                block_lexical_names(&catch.body, self.bytecode.strict),
+                &var_names(&catch.body),
                 false,
             )?;
             // With a finally clause the catch block's call is not a tail
@@ -1345,7 +1345,7 @@ impl Compiler {
                 .pop()
                 .expect("catch var override is active");
             self.leave_scope()?;
-            self.bytecode.handlers[handler_index as usize].catch_end = Some(self.offset()?);
+            self.bytecode.handlers[handler_index as usize].catch_end = Some(self.offset());
             self.emit(
                 if finalizer.is_some() {
                     Opcode::EnterFinalizer
@@ -1360,7 +1360,7 @@ impl Compiler {
         };
 
         if let Some(finalizer) = finalizer {
-            let start = self.offset()?;
+            let start = self.offset();
             self.bytecode.handlers[handler_index as usize].finally = Some(start);
             // A normal finally restores its saved prior Completion only when
             // this block remains empty; a non-empty finalizer keeps its own.
@@ -1370,7 +1370,7 @@ impl Compiler {
             // restores the preceding non-empty completion. On an abrupt entry
             // it replays the pending completion after the finalizer finishes.
             self.emit(Opcode::ResumeCompletion, handler_index)?;
-            let end = self.offset()?;
+            let end = self.offset();
             self.bytecode.handlers[handler_index as usize].finally_end = Some(end);
             self.patch(normal_exit, start);
             if let Some(exit) = catch_exit {
@@ -1378,7 +1378,7 @@ impl Compiler {
             }
             debug_assert!(end as usize <= self.bytecode.code.len());
         } else {
-            let end = self.offset()?;
+            let end = self.offset();
             self.patch(normal_exit, end);
             if let Some(exit) = catch_exit {
                 self.patch(exit, end);
@@ -1622,9 +1622,9 @@ impl Compiler {
         self.emit(Opcode::Dup, 0)?;
         let exhausted = self.emit(Opcode::IteratorStep, 0)?;
         let joined = self.emit(Opcode::Jump, 0)?;
-        self.patch(exhausted, self.offset()?);
+        self.patch(exhausted, self.offset());
         self.constant(Value::Undefined)?;
-        self.patch(joined, self.offset()?);
+        self.patch(joined, self.offset());
         Ok(())
     }
 
@@ -1655,7 +1655,7 @@ impl Compiler {
                 _ => None,
             },
         )?;
-        self.patch(skip, self.offset()?);
+        self.patch(skip, self.offset());
         Ok(())
     }
 
@@ -1679,7 +1679,7 @@ impl Compiler {
                 _ => None,
             },
         )?;
-        self.patch(skip, self.offset()?);
+        self.patch(skip, self.offset());
         Ok(())
     }
 
@@ -1736,13 +1736,13 @@ impl Compiler {
         self.emit(Opcode::ClearCompletion, 0)?;
         let lexical = match init {
             Some(ForInit::VarDecl(kind, decls)) if *kind != DeclKind::Var => {
-                declarations_names(*kind, decls)?
+                declarations_names(*kind, decls)
             }
             _ => Vec::new(),
         };
         let own_scope = !lexical.is_empty();
         if own_scope {
-            self.enter_scope(lexical, &var_names(std::slice::from_ref(body))?, false)?;
+            self.enter_scope(lexical, &var_names(std::slice::from_ref(body)), false)?;
         }
         match init {
             Some(ForInit::VarDecl(kind, declarations)) => self.declarations(*kind, declarations)?,
@@ -1762,7 +1762,7 @@ impl Compiler {
                 .expect("lexical for scope remains active");
             self.emit(Opcode::CloneScope, scope)?;
         }
-        let start = self.offset()?;
+        let start = self.offset();
         let mut exit = None;
         if !do_first {
             if let Some(test) = test {
@@ -1779,7 +1779,7 @@ impl Compiler {
             iterator: None,
         });
         self.statement(body, false)?;
-        let continue_at = self.offset()?;
+        let continue_at = self.offset();
         // CreatePerIterationEnvironment happens after the body and before
         // the update expression.  That leaves closures made by this turn
         // attached to its old cells while the update writes into the next
@@ -1801,7 +1801,7 @@ impl Compiler {
         } else {
             self.emit(Opcode::Jump, start)?;
         }
-        let end = self.offset()?;
+        let end = self.offset();
         if let Some(exit) = exit {
             self.patch(exit, end);
         }
