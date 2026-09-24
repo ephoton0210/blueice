@@ -55,6 +55,15 @@ fn compilation_emits_a_stack_program_with_fixed_width_operands() {
 }
 
 #[test]
+fn public_opcode_decoder_rejects_unknown_bytes() {
+    assert_eq!(
+        Opcode::decode(Opcode::Constant as u8),
+        Some(Opcode::Constant)
+    );
+    assert_eq!(Opcode::decode(u8::MAX), None);
+}
+
+#[test]
 fn optional_chains_short_circuit_remaining_suffixes_and_preserve_method_receivers() {
     assert_eq!(
         evaluate(

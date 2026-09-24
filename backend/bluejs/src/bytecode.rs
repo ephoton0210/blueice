@@ -10,6 +10,10 @@
 
 use crate::{ModuleType, Value};
 
+#[cfg(test)]
+#[path = "../tests/support/bytecode_internal.rs"]
+mod tests;
+
 /// Reserved opcode metadata for later inline-cache tiers. No cache is
 /// allocated or consulted by the first interpreter.
 pub const MAY_USE_INLINE_CACHE: u8 = 1;
@@ -23,7 +27,8 @@ macro_rules! opcodes {
         impl Opcode {
             pub fn width(self) -> usize { match self { $(Self::$name => $width,)* } }
             pub fn flags(self) -> u8 { match self { $(Self::$name => $flags,)* } }
-            fn decode(byte: u8) -> Option<Self> {
+            /// Decode an opcode byte, rejecting values outside the opcode table.
+            pub fn decode(byte: u8) -> Option<Self> {
                 match byte { $(n if n == Self::$name as u8 => Some(Self::$name),)* _ => None }
             }
         }
@@ -703,9 +708,8 @@ impl Bytecode {
     pub(crate) fn instruction(&self, offset: usize) -> Option<Instruction> {
         let opcode = Opcode::decode(*self.code.get(offset)?)?;
         let operand = if opcode.width() == 5 {
-            Some(u32::from_le_bytes(
-                self.code.get(offset + 1..offset + 5)?.try_into().ok()?,
-            ))
+            let bytes = self.code.get(offset + 1..offset + 5)?;
+            Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
         } else {
             None
         };
