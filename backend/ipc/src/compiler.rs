@@ -10,8 +10,8 @@
 //! path, or write capability. Callers can therefore only act on opaque
 //! project and generation handles minted by that owner.
 //!
-//! Version ten adds a bounded, source-free inventory of startup-registered
-//! project IDs. A core listener grants subsequent project queries only after
+//! Version ten adds a bounded, source-free inventory of owner-exposed
+//! startup project IDs. A core listener grants subsequent project queries only after
 //! that exact accepted stream received the inventory; guessed IDs cannot
 //! reach the compiler cache. It adds no registration, source, or write path.
 //! Version nine adds optional original-source UTF-16 coordinates to the
@@ -52,7 +52,7 @@ use std::io::{self, Read, Write};
 /// not share the browser frontend protocol's lifecycle.
 pub const COMPILER_PROTOCOL_VERSION: u32 = 10;
 
-/// A sealed catalog contains at most this many project identities on one
+/// A sealed catalog can expose at most this many project identities on one
 /// compiler stream. Inventory is a single bounded source-free response.
 pub const COMPILER_MAX_PROJECT_INVENTORY: usize = 128;
 

@@ -142,8 +142,9 @@ impl std::error::Error for CompilerServiceIpcConfigurationError {}
 pub struct CompilerServiceIpcAdapter {
     service: RegisteredProjectCompilerService,
     limits: CompilerServiceIpcLimits,
-    /// Only owner-registered project IDs can enter a stream inventory. A
-    /// project number supplied by a peer is never registration authority.
+    /// Only owner-exposed project IDs can enter a stream inventory. A
+    /// private registration is never query authority, and a project number
+    /// supplied by a peer is never registration or visibility authority.
     registered_projects: BTreeSet<u64>,
     /// A successful inventory belongs to one accepted core-attested stream;
     /// another stream cannot substitute a known or guessed numeric ID.
@@ -252,13 +253,33 @@ impl CompilerServiceIpcAdapter {
         &mut self,
         registration: RegisteredProjectRegistration,
     ) -> Result<CompilerProject, CompilerServiceError> {
-        if self.registered_projects.len() >= COMPILER_MAX_PROJECT_INVENTORY {
+        self.register_core_project_with_visibility(registration, true)
+    }
+
+    /// Keeps a core-owned registration out of every public stream inventory.
+    /// The service still owns it for later privileged core-only work; no
+    /// compiler IPC or MCP request can promote its visibility after sealing.
+    fn register_core_project_private(
+        &mut self,
+        registration: RegisteredProjectRegistration,
+    ) -> Result<CompilerProject, CompilerServiceError> {
+        self.register_core_project_with_visibility(registration, false)
+    }
+
+    fn register_core_project_with_visibility(
+        &mut self,
+        registration: RegisteredProjectRegistration,
+        exposed: bool,
+    ) -> Result<CompilerProject, CompilerServiceError> {
+        if self.service.registered_project_ids().count() >= COMPILER_MAX_PROJECT_INVENTORY {
             return Err(CompilerServiceError::ProjectLimit {
                 limit: COMPILER_MAX_PROJECT_INVENTORY,
             });
         }
         let project = project_to_wire(self.service.register(registration)?);
-        self.registered_projects.insert(project.id);
+        if exposed {
+            self.registered_projects.insert(project.id);
+        }
         Ok(project)
     }
 
@@ -1297,6 +1318,19 @@ impl CoreCompilerProjectCatalog {
         Ok(project)
     }
 
+    /// Registers a core-owned project without granting any compiler stream a
+    /// project receipt. Even after `ListProjects`, a guessed private ID is
+    /// rejected before reaching the compiler cache. Visibility cannot be
+    /// changed after `seal` consumes this startup-only object.
+    pub fn register_startup_project_private(
+        &mut self,
+        registration: RegisteredProjectRegistration,
+    ) -> Result<CompilerProject, CompilerServiceError> {
+        let project = self.adapter.register_core_project_private(registration)?;
+        self.registered_projects.push(project);
+        Ok(project)
+    }
+
     /// Returns how many registrations the trusted startup owner admitted.
     /// It is intentionally a count, not a remote project enumeration API.
     pub fn registered_project_count(&self) -> usize {
@@ -1332,8 +1366,8 @@ impl CoreCompilerServiceSession {
     }
 
     /// A startup-only count useful for core lifecycle diagnostics and tests.
-    /// Project identities themselves remain available only through a caller's
-    /// pre-existing opaque handle and `DescribeProject` query.
+    /// Only explicitly exposed project identities can reach a public caller
+    /// through its inventoried opaque handle and `DescribeProject` query.
     pub fn registered_project_count(&self) -> usize {
         self.registered_project_count
     }
@@ -2935,6 +2969,43 @@ mod tests {
             CompilerReply::Project(CompilerProjectIdentity { project: returned, .. })
                 if returned == project
         ));
+    }
+
+    #[test]
+    fn private_startup_project_is_never_inventoried_or_queryable() {
+        let mut catalog = CoreCompilerProjectCatalog::default();
+        let visible = catalog
+            .register_startup_project(registration("export const shown: number = answer;"))
+            .unwrap();
+        let mut private_registration = registration("export const hidden: number = answer;");
+        private_registration.canonical_project_root = "project:///private".to_string();
+        private_registration.canonical_config_root = "project:///private/blue-ts.json".to_string();
+        private_registration.canonical_output_root = "project:///private-dist".to_string();
+        let private = catalog
+            .register_startup_project_private(private_registration)
+            .unwrap();
+        assert_eq!(catalog.registered_project_count(), 2);
+        let mut session = catalog.seal();
+        let stream = "c".repeat(CompilerSessionAttestation::ID_LENGTH);
+        let CompilerReply::Projects(inventory) = session
+            .adapter
+            .handle_session_request(&stream, CompilerRequest::ListProjects)
+        else {
+            panic!("accepted stream must receive a project inventory")
+        };
+        assert_eq!(inventory.projects, vec![visible]);
+        for request in [
+            CompilerRequest::DescribeProject { project: private },
+            CompilerRequest::Check { project: private },
+        ] {
+            assert!(matches!(
+                session.adapter.handle_session_request(&stream, request),
+                CompilerReply::Error {
+                    code: CompilerErrorCode::UnobservedProject,
+                    ..
+                }
+            ));
+        }
     }
 
     #[test]

@@ -15,7 +15,9 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::io::{self, Read, Write};
 
-pub const COMPILER_CATALOG_BOOTSTRAP_VERSION: u32 = 1;
+/// Version two adds explicit, default-denied per-project compiler visibility.
+/// Version one is rejected rather than silently changing its public inventory.
+pub const COMPILER_CATALOG_BOOTSTRAP_VERSION: u32 = 2;
 pub const MAX_COMPILER_CATALOG_FRAME_BYTES: usize = 16 * 1_024 * 1_024;
 pub const MAX_COMPILER_CATALOG_PROJECTS: usize = 128;
 pub const MAX_COMPILER_CATALOG_MODULES_PER_PROJECT: usize = 256;
@@ -51,6 +53,12 @@ pub struct CompilerCatalogProject {
     pub canonical_output_root: String,
     pub entry_module: String,
     pub modules: Vec<CompilerCatalogModule>,
+    /// Public compiler/MCP visibility is owner-selected and default-denied.
+    /// Registration and visibility are separate: an unexposed project still
+    /// belongs to the sealed core catalog, but no compiler stream can receive
+    /// its opaque ID or use a guessed ID to query it.
+    #[serde(default)]
+    pub expose_to_compiler_ipc: bool,
     #[serde(default)]
     pub resolutions: Vec<CompilerCatalogResolution>,
     #[serde(default)]
@@ -315,6 +323,7 @@ mod tests {
                     canonical_id: "project:///app/main.ts".to_string(),
                     text: "export const value: number = 42;".to_string(),
                 }],
+                expose_to_compiler_ipc: false,
                 resolutions: Vec::new(),
                 options: CompilerCatalogOptions::default(),
             }],
@@ -334,9 +343,24 @@ mod tests {
     }
 
     #[test]
+    fn omitted_project_exposure_defaults_to_deny() {
+        let mut value = serde_json::to_value(fixture_catalog()).unwrap();
+        value["projects"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("expose_to_compiler_ipc");
+        let decoded =
+            CompilerCatalogBootstrap::from_json_slice(&serde_json::to_vec(&value).unwrap())
+                .unwrap();
+        assert!(!decoded.projects[0].expose_to_compiler_ipc);
+    }
+
+    #[test]
     fn malformed_catalogs_fail_before_registration_or_allocation() {
         let mut catalog = fixture_catalog();
         catalog.version += 1;
+        assert!(catalog.validate().is_err());
+        catalog.version = 1;
         assert!(catalog.validate().is_err());
         catalog = fixture_catalog();
         catalog.projects[0].modules[0].text = "x".repeat(MAX_COMPILER_CATALOG_SOURCE_BYTES + 1);

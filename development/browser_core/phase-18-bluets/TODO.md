@@ -1224,7 +1224,7 @@ or second module resolver to bypass them.
   v2, so opaque cursors cannot cross catalog generations. Real launcher/core
   and paired MCP `tools/call` coverage verifies those lifetime rules as well
   as the fixed profile. Compiler IPC v10 now provides a source-free, capped
-  `ListProjects` response containing only the sealed catalog's sorted opaque
+  `ListProjects` response containing only the exposed catalog's sorted opaque
   IDs. Each accepted stream must receive this inventory before any project
   query; core records the exact IDs returned to that stream and revokes them
   on disconnect. A guessed ID or a receipt from another stream fails before
@@ -1340,7 +1340,7 @@ or second module resolver to bypass them.
   Owner-only multi-project startup distribution delivered: the trusted
   launcher may read one absolute, regular, non-symlink JSON catalog file via
   `--compiler-catalog-file` alongside `--compiler-mcp-socket`, or receive the
-  same typed catalog through its embedding API. The versioned private format
+  same typed catalog through its embedding API. The version-2 private format
   caps frame, project, module, import-edge, identity, ambient, and source
   sizes and rejects duplicate/missing graph records. The launcher sends it
   once through the new core generation's inherited stdin pipe, then closes
@@ -1348,9 +1348,15 @@ or second module resolver to bypass them.
   is bound and seals registration for that generation. The public compiler
   socket remains query-only and exposes only inventoried opaque IDs. Real
   launcher/core coverage checks two independently compilable projects and a
-  denied guessed third ID. This does not independently canonicalize or audit
-  owner-selected identities/sources, enable dynamic project updates, grant
-  compiler peers path/source access, or confer build/artifact-write authority.
+  denied private third ID. A catalog project's
+  `expose_to_compiler_ipc` flag is now explicitly default-denied: a trusted
+  owner must set it to true before that registration enters public inventory.
+  Version-1 manifests are rejected rather than silently reinterpreted.
+  A guessed private ID fails with `UnobservedProject` before it can reach the
+  compiler cache. The fixed compiled-in profile remains exposed for existing
+  integration clients. This grants no per-client authorization, independent
+  canonicalization or audit of owner-selected identities/sources, dynamic
+  project updates, peer path/source access, or build/artifact-write authority.
 
   Acceptance: `check` performs no writes; `build` keeps BlueTSC's atomic
   no-emit-on-error guarantee; responses are generation/fingerprint bound,

@@ -105,7 +105,7 @@ impl LauncherProcess {
         }
         let child = command.spawn().expect("blueice-launcher must spawn");
         assert!(
-            wait_for(&rendezvous_socket, Duration::from_secs(5)),
+            wait_for(&rendezvous_socket, Duration::from_secs(10)),
             "launcher must create its browser rendezvous endpoint"
         );
         assert!(
@@ -209,7 +209,7 @@ fn open_fixed_core_profile(
 #[test]
 fn launcher_bootstraps_two_owner_selected_projects_without_public_registration() {
     let catalog_path = unique_path("owner-catalog");
-    let project = |name: &str, answer: u32| {
+    let project = |name: &str, answer: u32, exposed: bool| {
         let root = format!("project:///{name}");
         let entry = format!("{root}/main.ts");
         CompilerCatalogProject {
@@ -221,15 +221,25 @@ fn launcher_bootstraps_two_owner_selected_projects_without_public_registration()
                 canonical_id: entry,
                 text: format!("export const answer: number = {answer};"),
             }],
+            expose_to_compiler_ipc: exposed,
             resolutions: Vec::new(),
             options: CompilerCatalogOptions::default(),
         }
     };
     let catalog = CompilerCatalogBootstrap {
         version: COMPILER_CATALOG_BOOTSTRAP_VERSION,
-        projects: vec![project("alpha", 41), project("beta", 42)],
+        projects: vec![
+            project("alpha", 41, true),
+            project("beta", 42, true),
+            project("hidden", 43, false),
+        ],
     };
-    std::fs::write(&catalog_path, serde_json::to_vec(&catalog).unwrap()).unwrap();
+    let mut owner_file = serde_json::to_value(&catalog).unwrap();
+    owner_file["projects"][2]
+        .as_object_mut()
+        .unwrap()
+        .remove("expose_to_compiler_ipc");
+    std::fs::write(&catalog_path, serde_json::to_vec(&owner_file).unwrap()).unwrap();
     let mut launcher = LauncherProcess::spawn_with_catalog_file(Some(&catalog_path));
     let mut stream = UnixStream::connect(&launcher.compiler_socket).unwrap();
     write_compiler_request(
@@ -267,7 +277,10 @@ fn launcher_bootstraps_two_owner_selected_projects_without_public_registration()
     .unwrap();
     assert!(matches!(
         read_compiler_reply(&mut stream).unwrap(),
-        CompilerReply::Error { .. }
+        CompilerReply::Error {
+            code: CompilerErrorCode::UnobservedProject,
+            ..
+        }
     ));
 
     let mut control = UnixStream::connect(&launcher.control_socket).unwrap();

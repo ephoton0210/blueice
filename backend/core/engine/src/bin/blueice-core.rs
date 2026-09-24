@@ -686,18 +686,20 @@ fn register_owner_compiler_catalog(
             require_declared_global_calls: project.options.require_declared_global_calls,
             ..CompilerOptions::default()
         };
-        catalog
-            .register_startup_project(
-                blueice_engine::compiler_service::RegisteredProjectRegistration {
-                    canonical_project_root: project.canonical_project_root,
-                    canonical_config_root: project.canonical_config_root,
-                    canonical_output_root: project.canonical_output_root,
-                    entry_module: project.entry_module,
-                    loader,
-                    compiler_options,
-                },
-            )
-            .map_err(|error| format!("failed to register owner compiler project: {error}"))?;
+        let registration = blueice_engine::compiler_service::RegisteredProjectRegistration {
+            canonical_project_root: project.canonical_project_root,
+            canonical_config_root: project.canonical_config_root,
+            canonical_output_root: project.canonical_output_root,
+            entry_module: project.entry_module,
+            loader,
+            compiler_options,
+        };
+        (if project.expose_to_compiler_ipc {
+            catalog.register_startup_project(registration)
+        } else {
+            catalog.register_startup_project_private(registration)
+        })
+        .map_err(|error| format!("failed to register owner compiler project: {error}"))?;
     }
     Ok(())
 }
