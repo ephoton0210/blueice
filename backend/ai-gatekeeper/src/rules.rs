@@ -18,7 +18,7 @@ use blueice_ipc::gatekeeper::{
 
 /// Version carried in diagnostics and release notes for this compiled rule
 /// set. Keep it monotonic whenever a detection decision changes.
-pub const RULESET_VERSION: &str = "2026.09.24.6";
+pub const RULESET_VERSION: &str = "2026.09.24.7";
 
 const KNOWN_MALICIOUS_HOSTS: &[&str] = &["malware.test", "phishing.test"];
 const BIDI_OVERRIDE_CODEPOINTS: &[&str] = &["U+202A–U+202E", "U+2066–U+2069"];
@@ -122,7 +122,7 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
                 signatures(ZERO_WIDTH_CODEPOINTS),
             ].concat(),
             match_logic: "Any obfuscating character in extension metadata rejects; a listed input_type on a form-input action also rejects.".to_string(),
-            workflow_steps: vec!["extension-before-side-effect".to_string(), "extension-popup-before-publish".to_string()],
+            workflow_steps: vec!["extension-before-side-effect".to_string(), "extension-popup-before-publish".to_string(), "extension-toolbar-before-publish".to_string()],
             mandatory: true,
         },
         GatekeeperRuleInfo {
@@ -641,6 +641,9 @@ mod tests {
         let hidden_rule = rules.iter().find(|rule| rule.id == "hidden-prompt-injection").unwrap();
         assert!(hidden_rule.match_logic.contains(" AND "));
         assert_eq!(hidden_rule.workflow_steps, ["content-before-parse"]);
+        let obfuscation_rule = rules.iter()
+            .find(|rule| rule.id == "sensitive-extension-action").unwrap();
+        assert!(obfuscation_rule.workflow_steps.contains(&"extension-toolbar-before-publish".to_string()));
     }
 
     #[test]
@@ -910,6 +913,14 @@ mod tests {
                 "unexpected verdict for {label:?}"
             );
         }
+        assert!(matches!(
+            review(&GatekeeperRequest::CheckExtensionAction {
+                extension_id: "notes-extension".to_string(),
+                capability: "ui:inject".to_string(),
+                detail: "action=set-native-toolbar-button; label=Safe\u{200b}ty".to_string(),
+            }),
+            GatekeeperReply::Rejected { category, .. } if category == "extension-action-obfuscation"
+        ));
     }
 
     #[test]

@@ -643,6 +643,15 @@ mod tests {
             assert!(live_html.contains(&escape_html(&step.description)));
             assert!(live_html.contains(&escape_html(&step.failure_behavior)));
         }
+        let toolbar_step = live_html
+            .split("data-gatekeeper-step=\"extension-toolbar-before-publish\"")
+            .nth(1)
+            .unwrap()
+            .split("</div>")
+            .next()
+            .unwrap();
+        assert!(toolbar_step.contains("<code>sensitive-extension-action</code>"));
+        assert!(toolbar_step.contains("<code>extension-toolbar-social-engineering</code>"));
         let updated = source
                 .update(GatekeeperSettingsChange::AddBlockedHost {
                     host: "tracker.example".to_string(),
