@@ -229,7 +229,8 @@ enum DeferredChildExecution {
         programs: BTreeMap<String, BlueJsProgramV1>,
     },
     BlueTsClassic {
-        script: Box<DirectScript>,
+        handle: BlueJsProgramHandle,
+        root_safe_point: Option<PageHostDebuggerSafePoint>,
     },
     BlueTsModule {
         graph: Box<DirectModuleGraph>,
@@ -919,33 +920,48 @@ impl BlueJsChildHost {
                     );
                 }
                 PreparedScript::BlueTsClassic { ordinal, script } => {
-                    if may_execute_bluets_immediately {
-                        reports.push(script_report(
-                            tab_id,
-                            document_generation,
-                            ordinal,
-                            PageHostScriptLanguage::BlueTs,
-                            PageHostScriptKind::Classic,
-                            execute_bluets_classic(
-                                &mut self.runtime,
-                                &mut self.debug_registry,
+                    let attachment = match script.attach_debug_in_page_realm(
+                        &mut self.runtime,
+                        tab_id,
+                        origin,
+                        &mut self.debug_registry,
+                    ) {
+                        Ok(attachment) => attachment,
+                        Err(error) => {
+                            reports.push(script_report(
                                 tab_id,
-                                origin,
-                                &script,
-                            ),
-                        ));
-                    } else {
-                        self.enqueue_debugger_execution(
-                            tab_id,
-                            PendingDebuggerExecution {
+                                document_generation,
                                 ordinal,
-                                language: PageHostScriptLanguage::BlueTs,
-                                kind: PageHostScriptKind::Classic,
-                                program: None,
-                                execution: DeferredChildExecution::BlueTsClassic { script },
+                                PageHostScriptLanguage::BlueTs,
+                                PageHostScriptKind::Classic,
+                                rejected(bluets_bridge_category(error)),
+                            ));
+                            continue;
+                        }
+                    };
+                    let program = match self.register_debugger_program(tab_id, attachment.handle) {
+                        Ok(program) => program,
+                        Err(()) => return self.fail_debugger_execution_document(tab_id),
+                    };
+                    may_execute_bluets_immediately = false;
+                    let Some(document) = self.documents.get_mut(&tab_id) else {
+                        return self.fail_debugger_execution_document(tab_id);
+                    };
+                    document
+                        .debugger_execution_states
+                        .insert(program, ChildDebuggerExecutionStatus::Pending);
+                    document
+                        .pending_debugger_executions
+                        .push_back(PendingDebuggerExecution {
+                            ordinal,
+                            language: PageHostScriptLanguage::BlueTs,
+                            kind: PageHostScriptKind::Classic,
+                            program: Some(program),
+                            execution: DeferredChildExecution::BlueTsClassic {
+                                handle: attachment.handle,
+                                root_safe_point: None,
                             },
-                        );
-                    }
+                        });
                 }
                 PreparedScript::BlueTsModule { ordinal, graph } => {
                     if may_execute_bluets_immediately {
@@ -2513,9 +2529,12 @@ impl BlueJsChildHost {
         else {
             return invalid_debugger_state();
         };
-        let DeferredChildExecution::JavaScriptClassic {
+        let (DeferredChildExecution::JavaScriptClassic {
             root_safe_point, ..
-        } = &mut pending.execution
+        }
+        | DeferredChildExecution::BlueTsClassic {
+            root_safe_point, ..
+        }) = &mut pending.execution
         else {
             return invalid_debugger_state();
         };
@@ -2613,6 +2632,10 @@ impl BlueJsChildHost {
                 DeferredChildExecution::JavaScriptClassic {
                     handle,
                     root_safe_point,
+                }
+                | DeferredChildExecution::BlueTsClassic {
+                    handle,
+                    root_safe_point,
                 } => {
                     let program = pending
                         .program
@@ -2706,13 +2729,6 @@ impl BlueJsChildHost {
                         programs.clone(),
                     )
                 }
-                DeferredChildExecution::BlueTsClassic { script } => execute_bluets_classic(
-                    &mut self.runtime,
-                    &mut self.debug_registry,
-                    tab_id,
-                    &origin,
-                    script,
-                ),
                 DeferredChildExecution::BlueTsModule { graph } => execute_bluets_module_graph(
                     &mut self.runtime,
                     &mut self.debug_registry,
@@ -5481,26 +5497,67 @@ mod tests {
     }
 
     #[test]
-    fn leading_bluets_attaches_static_metadata_without_an_unavailable_pause_surface() {
+    fn leading_bluets_classic_attaches_metadata_and_pauses_at_a_root_safe_point() {
         let mut host = BlueJsChildHost::default();
         assert!(matches!(
             host.handle_request(PageHostRequest::SynchronizeDocument {
                 document: debugger_document(
                     1,
-                    vec![blue_ts_classic(0, "const deferredAnswer: number = 42;")],
+                    vec![
+                        blue_ts_classic(
+                            0,
+                            "let first: number = 1; let deferredAnswer: number = first + 41;",
+                        ),
+                        classic(1, "globalThis.afterBlueTs = 2;"),
+                    ],
                 ),
             }),
-            PageHostReply::Synchronized { reports, .. }
-                if reports == vec![script_report(
-                    7,
-                    1,
-                    0,
-                    PageHostScriptLanguage::BlueTs,
-                    PageHostScriptKind::Classic,
-                    PageHostScriptOutcome::Executed,
-                )]
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
         ));
         assert_eq!(host.debug_registry.len(), 1);
+        let program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => {
+                assert_eq!(programs.len(), 2);
+                programs[0]
+            }
+            reply => panic!("expected attached BlueTS program, got {reply:?}"),
+        };
+        let target = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 0 && point.bytecode_offset != 0)
+                .expect("typed classic fixture needs a non-entry root safe point"),
+            reply => panic!("expected BlueTS root safe points, got {reply:?}"),
+        };
+        assert_eq!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                state: PageHostDebuggerExecutionState::Pending,
+            }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: target,
+            }),
+            PageHostReply::DebuggerRootSafePointBreakpointArmed { safe_point, .. }
+                if safe_point == target
+        ));
         assert!(matches!(
             host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
                 tab_id: 7,
@@ -5508,6 +5565,50 @@ mod tests {
             }),
             PageHostReply::DebuggerExecutionAdvanced { reports, .. }
                 if reports.is_empty()
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::Paused { safe_point },
+                ..
+            } if safe_point == target
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionResumed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+                if reports == vec![
+                    script_report(
+                        7,
+                        1,
+                        0,
+                        PageHostScriptLanguage::BlueTs,
+                        PageHostScriptKind::Classic,
+                        PageHostScriptOutcome::Executed,
+                    ),
+                    script_report(
+                        7,
+                        1,
+                        1,
+                        PageHostScriptLanguage::JavaScript,
+                        PageHostScriptKind::Classic,
+                        PageHostScriptOutcome::Executed,
+                    ),
+                ]
         ));
         assert!(matches!(
             host.handle_request(PageHostRequest::CloseRealm {

@@ -36,7 +36,7 @@ fn unique_path(label: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let suffix = COUNTER.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!(
-        "blueice-launcher-oop-debugger-{label}-{}-{suffix}.sock",
+        "bi-oopdbg-{label}-{}-{suffix}.sock",
         std::process::id()
     ))
 }
@@ -321,6 +321,25 @@ fn safe_points(reply: DebuggerReply, program: DebuggerProgram) -> Vec<DebuggerSa
     safe_points
 }
 
+fn await_completed_execution(debugger: &mut UnixStream, program: DebuggerProgram) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match debugger_request(debugger, DebuggerRequest::GetExecutionState { program }) {
+            DebuggerReply::ExecutionState {
+                program: reply_program,
+                state: blueice_ipc::debugger::DebuggerExecutionState::Completed,
+            } if reply_program == program => return,
+            DebuggerReply::ExecutionState {
+                program: reply_program,
+                state: blueice_ipc::debugger::DebuggerExecutionState::Resuming,
+            } if reply_program == program && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            other => panic!("expected bounded root-frame completion, got {other:?}"),
+        }
+    }
+}
+
 fn serve_two_classic_documents(listener: TcpListener) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         for _ in 0..2 {
@@ -507,18 +526,7 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
             state: blueice_ipc::debugger::DebuggerExecutionState::Resuming,
         }
     );
-    assert_eq!(
-        debugger_request(
-            &mut debugger,
-            DebuggerRequest::GetExecutionState {
-                program: first_program,
-            },
-        ),
-        DebuggerReply::ExecutionState {
-            program: first_program,
-            state: blueice_ipc::debugger::DebuggerExecutionState::Completed,
-        }
-    );
+    await_completed_execution(&mut debugger, first_program);
 
     // Reload through the same public browser connection. The fixture accepts
     // exactly two requests so this is a real HTTP replacement, not a direct
@@ -590,6 +598,145 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
         !launcher.frame_dir.exists(),
         "launcher shutdown must remove its generation frame state"
     );
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_exposes_bluets_metadata_while_its_root_frame_is_pending_and_paused() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = serve_two_bluets_documents(listener);
+    let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            inventory: true,
+            summary: true,
+            ..StaticMetadataPolicy::default()
+        },
+    );
+
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
+    navigate(&mut browser, &url);
+
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket)
+        .expect("launcher public debugger endpoint must accept a peer");
+    let metadata_capabilities =
+        DebuggerMetadataCapabilityManifest::opaque_selected(DebuggerMetadataCapabilitySelection {
+            summary: true,
+            ..DebuggerMetadataCapabilitySelection::default()
+        });
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: metadata_capabilities.clone(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: metadata_capabilities,
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let program = one_program(
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    let DebuggerReply::StaticMetadata(metadata) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadata { program },
+    ) else {
+        panic!("pending BlueTS program must expose an authorized opaque metadata handle")
+    };
+    assert_eq!(metadata.len(), 1);
+    let metadata = metadata[0];
+    let DebuggerReply::StaticMetadataSummary(summary) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeStaticMetadata { metadata },
+    ) else {
+        panic!("pending BlueTS program must expose an authorized bounded summary")
+    };
+    assert_eq!(summary.metadata, metadata);
+    assert!(summary.symbol_count > 0);
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program },
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+        }
+    );
+    let target = *safe_points(
+        debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+        program,
+    )
+    .iter()
+    .find(|point| point.code_unit_ordinal == 0 && point.bytecode_offset != 0)
+    .expect("typed classic program must have a non-entry root safe point");
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmRootSafePointBreakpoint { safe_point: target },
+        ),
+        DebuggerReply::RootSafePointBreakpointArmed { safe_point: target }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program },
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Paused { safe_point: target },
+        }
+    );
+    let paused_summary = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeStaticMetadata { metadata },
+    );
+    assert_eq!(
+        paused_summary,
+        DebuggerReply::StaticMetadataSummary(summary)
+    );
+    assert!(!format!("{paused_summary:?}").contains("PrivateContract"));
+    assert!(!format!("{paused_summary:?}").contains("privateBlueTsMetadata"));
+    assert_eq!(
+        debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
+        DebuggerReply::ExecutionResumed { program }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program },
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Resuming,
+        }
+    );
+    await_completed_execution(&mut debugger, program);
+
+    navigate(&mut browser, &url);
+    fixture.join().expect("fixture must serve both documents");
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadata { metadata },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    launcher.shutdown();
     let _ = std::fs::remove_file(gatekeeper_socket);
 }
 

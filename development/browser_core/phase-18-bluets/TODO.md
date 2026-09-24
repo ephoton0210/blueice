@@ -473,6 +473,18 @@ or second module resolver to bypass them.
   v1 fails closed when v1 ends rather than being retargeted to v2, while a new
   stream accepted after the committed cutover reaches v2. Realm, program, and
   safe-point handles therefore remain generation-bound.
+  The supervised child now also attaches a BlueTS classic declaration's
+  bounded static metadata before running its generated BlueJS program. Under
+  debugger control it enters the same document-order pending queue as a
+  JavaScript classic declaration, may pause at one exact non-entry root
+  safe point, and resumes that same retained BlueJS frame. Its authorized
+  opaque metadata handle and summary remain available while execution is
+  `Pending` or `Paused`; neither operation exposes source text or runtime
+  values. The child regression proves a following JavaScript declaration
+  cannot overtake the paused BlueTS declaration, and a real launcher/public
+  debugger regression proves metadata publication, pause/resume, and stale
+  handle rejection after HTTP reload. BlueTS modules, nested frames,
+  stepping, stack, scopes, and values remain outside this execution seam.
 
   Acceptance for the delivered seam: a classic JS page fixture pauses at a
   verified root-code-unit safe point and resumes its same frame; realm
