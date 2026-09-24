@@ -96,7 +96,9 @@ unchanged.
 ## Implementation and acceptance order
 
 1. Add authenticated, document-generation-bound script IPC and a bounded
-   session-owned child wait that can answer a DOM call during execution.
+   session-owned child wait that can answer a DOM call during execution. The
+   core dispatcher now rejects an old document generation on every existing
+   DOM operation; child authentication and the nested wait are still pending.
    Verify that an unauthenticated, stale, cross-tab or old-core request cannot
    mutate a page; prove a child can complete a synchronous lookup without a
    session deadlock.
