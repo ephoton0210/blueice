@@ -276,6 +276,16 @@ pub enum ExtensionRequest {
         node_id: u64,
         value: String,
     },
+    /// Version 9 of `dom:write`: replace the visible textContent of a
+    /// rendered heading, paragraph, or list item whose descendants contain
+    /// only ordinary inline formatting. Core rejects links, controls,
+    /// inline event-handler attributes, hidden targets, and built-in pages
+    /// before removing children.
+    SetVisibleTextContent {
+        tab_id: u64,
+        node_id: u64,
+        value: String,
+    },
     /// Version 5 of `dom:write`: selects one enabled native radio input.
     /// This is intentionally selection-only, never a generic `checked`
     /// setter: core identifies the radio's local group and clears its other
@@ -366,6 +376,8 @@ pub enum DomWriteTarget {
     /// One reviewed, visible semantic text leaf. The actual proposed text is
     /// carried only by the explicit v8 request, never by legacy DomWrite.
     VisibleTextLeaf,
+    /// A reviewed v9 textContent replacement of noninteractive inline markup.
+    VisibleTextContent,
     /// Causes a network-facing effect, such as submitting a form. The
     /// short action label is metadata for gatekeeper review.
     NetworkCausing { action: String },
@@ -375,13 +387,19 @@ impl DomWriteTarget {
     /// Whether this target is in Phase 9's resolved gatekeeper trigger
     /// list.
     pub const fn requires_gatekeeper_review(&self) -> bool {
-        matches!(self, Self::FormInput { .. } | Self::NetworkCausing { .. } | Self::VisibleTextLeaf)
+        matches!(
+            self,
+            Self::FormInput { .. }
+                | Self::NetworkCausing { .. }
+                | Self::VisibleTextLeaf
+                | Self::VisibleTextContent
+        )
     }
 
     /// A bounded, structured diagnostic for legacy `DomWrite` review. That
     /// generic request excludes its value. The explicit v8 visible-text
-    /// operation instead sends its bounded proposed text through a separate
-    /// fixed action label before any core mutation.
+    /// v8/v9 visible-text operations instead send their bounded proposed text
+    /// through separate fixed action labels before any core mutation.
     pub fn gatekeeper_detail(&self) -> Option<String> {
         match self {
             Self::Document => None,
@@ -390,6 +408,7 @@ impl DomWriteTarget {
                 safe_metadata_label(input_type)
             )),
             Self::VisibleTextLeaf => Some("target=visible-text-leaf".to_string()),
+            Self::VisibleTextContent => Some("target=visible-text-content".to_string()),
             Self::NetworkCausing { action } => Some(format!(
                 "target=network-causing; action={}",
                 safe_metadata_label(action)
@@ -630,6 +649,11 @@ mod tests {
                 node_id: 105,
                 value: "Updated heading".to_string(),
             },
+            ExtensionRequest::SetVisibleTextContent {
+                tab_id: 42,
+                node_id: 106,
+                value: "Updated formatted paragraph".to_string(),
+            },
             ExtensionRequest::SetRadioChecked {
                 tab_id: 42,
                 node_id: 102,
@@ -812,7 +836,7 @@ mod tests {
     }
 
     #[test]
-    fn form_network_and_visible_leaf_writes_require_a_gatekeeper_review() {
+    fn form_network_and_visible_text_writes_require_a_gatekeeper_review() {
         assert!(!DomWriteTarget::Document.requires_gatekeeper_review());
         assert!(DomWriteTarget::FormInput {
             input_type: "email".to_string()
@@ -823,6 +847,7 @@ mod tests {
         }
         .requires_gatekeeper_review());
         assert!(DomWriteTarget::VisibleTextLeaf.requires_gatekeeper_review());
+        assert!(DomWriteTarget::VisibleTextContent.requires_gatekeeper_review());
         assert_eq!(DomWriteTarget::Document.gatekeeper_detail(), None);
         assert_eq!(
             DomWriteTarget::FormInput {
@@ -839,6 +864,7 @@ mod tests {
             Some("target=network-causing; action=submitstealeverything".to_string())
         );
         assert_eq!(DomWriteTarget::VisibleTextLeaf.gatekeeper_detail(), Some("target=visible-text-leaf".to_string()));
+        assert_eq!(DomWriteTarget::VisibleTextContent.gatekeeper_detail(), Some("target=visible-text-content".to_string()));
     }
 
     #[test]

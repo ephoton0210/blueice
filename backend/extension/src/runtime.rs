@@ -319,6 +319,15 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
     linker
         .func_wrap(
             "blueice",
+            "set_visible_text_content",
+            |mut caller: Caller<'_, RuntimeState>, tab_id: i64, node_id: i64, value_ptr: i32, value_len: i32| {
+                set_visible_text_content(&mut caller, tab_id, node_id, value_ptr, value_len)
+            },
+        )
+        .map_err(|error| format!("could not define the set_visible_text_content ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
             "register_network_block_url",
             |mut caller: Caller<'_, RuntimeState>, url_ptr: i32, url_len: i32| {
                 register_network_block_url(&mut caller, url_ptr, url_len)
@@ -807,6 +816,27 @@ fn set_visible_leaf_text(
     value_ptr: i32,
     value_len: i32,
 ) -> i32 {
+    set_visible_text(caller, tab_id, node_id, value_ptr, value_len, false)
+}
+
+fn set_visible_text_content(
+    caller: &mut Caller<'_, RuntimeState>,
+    tab_id: i64,
+    node_id: i64,
+    value_ptr: i32,
+    value_len: i32,
+) -> i32 {
+    set_visible_text(caller, tab_id, node_id, value_ptr, value_len, true)
+}
+
+fn set_visible_text(
+    caller: &mut Caller<'_, RuntimeState>,
+    tab_id: i64,
+    node_id: i64,
+    value_ptr: i32,
+    value_len: i32,
+    replace_content: bool,
+) -> i32 {
     let (Ok(tab_id), Ok(node_id)) = (stable_id(tab_id), stable_id(node_id)) else {
         return RESULT_INVALID_ARGUMENT;
     };
@@ -822,7 +852,12 @@ fn set_visible_leaf_text(
     if value.trim().is_empty() || value.chars().any(|ch| ch.is_control() && ch != '\n' && ch != '\t') {
         return RESULT_INVALID_ARGUMENT;
     }
-    match request_core(caller, ExtensionRequest::SetVisibleLeafText { tab_id, node_id, value }) {
+    let request = if replace_content {
+        ExtensionRequest::SetVisibleTextContent { tab_id, node_id, value }
+    } else {
+        ExtensionRequest::SetVisibleLeafText { tab_id, node_id, value }
+    };
+    match request_core(caller, request) {
         Ok(ExtensionReply::DomWriteAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
@@ -1425,6 +1460,7 @@ mod tests {
                 (import "blueice" "set_textarea_value" (func $textarea (param i64 i64 i32 i32) (result i32)))
                 (import "blueice" "set_range_input_value" (func $range (param i64 i64 i64) (result i32)))
                 (import "blueice" "set_visible_leaf_text" (func $leaf (param i64 i64 i32 i32) (result i32)))
+                (import "blueice" "set_visible_text_content" (func $content (param i64 i64 i32 i32) (result i32)))
                 (memory (export "memory") 1)
                 (data (i32.const 0) "BlueIce")
                 (func (export "blueice_start")
@@ -1468,6 +1504,12 @@ mod tests {
                     i32.const 0
                     i32.const 7
                     call $leaf
+                    drop
+                    i64.const 7
+                    i64.const 19
+                    i32.const 0
+                    i32.const 7
+                    call $content
                     drop))"#,
         );
         let (guest, mut core) = UnixStream::pair().unwrap();
@@ -1546,6 +1588,16 @@ mod tests {
                 ExtensionRequest::SetVisibleLeafText {
                     tab_id: 7,
                     node_id: 18,
+                    value: "BlueIce".to_string(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::DomWriteAck)
+                .unwrap();
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::SetVisibleTextContent {
+                    tab_id: 7,
+                    node_id: 19,
                     value: "BlueIce".to_string(),
                 }
             );

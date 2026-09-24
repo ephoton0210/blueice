@@ -90,8 +90,8 @@ pub trait ReadTimeout {
 /// the render pipeline.
 ///
 /// DOM version 1 requests leave `tab_id` absent and therefore preserve the
-/// default-tab behavior. DOM versions 2 through 6 carry an explicit tab and a
-/// stable control node ID for their narrow write operations. The separately
+/// default-tab behavior. DOM versions 2 through 9 carry an explicit tab and a
+/// stable target node ID for their constrained write operations. The separately
 /// versioned network rule carries no page target. The session validates each
 /// operation against its live `TabManager`/`Page` state before changing it.
 pub enum ExtensionPageRequest {
@@ -144,6 +144,12 @@ pub enum ExtensionPageRequest {
         reply: mpsc::Sender<Result<(), String>>,
     },
     SetVisibleLeafText {
+        tab_id: u64,
+        node_id: u64,
+        value: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    SetVisibleTextContent {
         tab_id: u64,
         node_id: u64,
         value: String,
@@ -1405,6 +1411,26 @@ fn handle_extension_page_request<S: Write>(
                 Some(page) => page.set_visible_leaf_text(node_id, value),
                 None => Err(format!("unknown tab {}", tab_id.as_u64())),
             });
+            if result.is_ok() {
+                let page = tabs.get_mut(tab_id).expect("the extension target tab remains live");
+                send_frame(page, stream, frame_dir, generation, Some(tab_id.as_u64()), None)?;
+            }
+            let _ = reply.send(result);
+        }
+        ExtensionPageRequest::SetVisibleTextContent {
+            tab_id,
+            node_id,
+            value,
+            reply,
+        } => {
+            let tab_id = TabId::from_u64(tab_id);
+            let node_id = NodeId::from_u64(node_id);
+            let result = tabs
+                .check_extension_origin("dom:write", tab_id)
+                .and_then(|()| match tabs.get_mut(tab_id) {
+                    Some(page) => page.set_visible_text_content(node_id, value),
+                    None => Err(format!("unknown tab {}", tab_id.as_u64())),
+                });
             if result.is_ok() {
                 let page = tabs.get_mut(tab_id).expect("the extension target tab remains live");
                 send_frame(page, stream, frame_dir, generation, Some(tab_id.as_u64()), None)?;

@@ -389,6 +389,25 @@ fn request_visible_leaf_text(
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
 }
 
+fn request_visible_text_content(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    tab_id: u64,
+    node_id: u64,
+    value: String,
+) -> Result<(), String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::SetVisibleTextContent {
+        tab_id,
+        node_id,
+        value,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
 fn request_range_input_value(
     tx: &mpsc::Sender<ExtensionPageRequest>,
     tab_id: u64,
@@ -647,6 +666,9 @@ fn spawn_extension_listener(
                                     }
                                     blueice_ipc::extension::DomWriteTarget::VisibleTextLeaf => {
                                         request_visible_leaf_text(&write_tx, tab_id, node_id, value)
+                                    }
+                                    blueice_ipc::extension::DomWriteTarget::VisibleTextContent => {
+                                        request_visible_text_content(&write_tx, tab_id, node_id, value)
                                     }
                                     _ => request_text_input_value(&write_tx, tab_id, node_id, value),
                                 },

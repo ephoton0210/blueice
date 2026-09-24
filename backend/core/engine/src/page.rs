@@ -630,14 +630,76 @@ impl Page {
     /// semantic leaf. Keeping the existing text node avoids removing links,
     /// controls, event targets, or arbitrary subtrees through textContent.
     pub(crate) fn set_visible_leaf_text(&mut self, id: NodeId, value: String) -> Result<(), String> {
+        self.validate_visible_text_write(id, &value)?;
+        let children = self.doc.children(id).collect::<Vec<_>>();
+        let [text_id] = children.as_slice() else {
+            return Err("the target must have exactly one text child".to_string());
+        };
+        if !matches!(self.doc.data(*text_id), NodeData::Text { .. }) {
+            return Err("the target contains nested content".to_string());
+        }
+        if let NodeData::Text { data } = self.doc.data_mut(*text_id) {
+            *data = value;
+        }
+        self.restyle_and_relayout();
+        Ok(())
+    }
+
+    /// Version 9 deliberately expands textContent-style edits to ordinary
+    /// inline formatting inside a rendered heading, paragraph, or list item.
+    /// Validation finishes before any descendant is removed. A link, form
+    /// control, semantic child, element with an ID or inline event handler,
+    /// or hidden/interactive annotation cannot be deleted through this API.
+    pub(crate) fn set_visible_text_content(
+        &mut self,
+        id: NodeId,
+        value: String,
+    ) -> Result<(), String> {
+        self.validate_visible_text_write(id, &value)?;
+        let mut pending = self.doc.children(id).collect::<Vec<_>>();
+        let mut inspected = 0;
+        while let Some(node) = pending.pop() {
+            inspected += 1;
+            if inspected > 128 {
+                return Err("visible text content has too many descendants".to_string());
+            }
+            match self.doc.data(node) {
+                NodeData::Text { .. } => {}
+                NodeData::Element {
+                    tag_name,
+                    attributes,
+                } if matches!(
+                    tag_name.as_str(),
+                    "span" | "strong" | "em" | "b" | "i" | "small" | "code" | "mark" | "u" | "s" | "br"
+                ) && !attributes.iter().any(|(name, _)| {
+                    let name = name.to_ascii_lowercase();
+                    matches!(
+                        name.as_str(),
+                        "id" | "role" | "tabindex" | "contenteditable" | "hidden" | "aria-hidden"
+                    ) || name.starts_with("on")
+                }) && !self.styles.get(&node).is_some_and(|style| {
+                    style.display.eq_ignore_ascii_case("none") || style.opacity() <= 0.0
+                }) => pending.extend(self.doc.children(node)),
+                _ => {
+                    return Err(
+                        "visible text content may replace only ordinary inline formatting"
+                            .to_string(),
+                    )
+                }
+            }
+        }
+        self.script_set_text_content(id, value)
+    }
+
+    fn validate_visible_text_write(&self, id: NodeId, value: &str) -> Result<(), String> {
         if value.len() > blueice_ipc::extension::MAX_VISIBLE_LEAF_TEXT_BYTES {
-            return Err("visible leaf text exceeds the protocol limit".to_string());
+            return Err("visible text exceeds the protocol limit".to_string());
         }
         if value.trim().is_empty() {
-            return Err("visible leaf text cannot be empty".to_string());
+            return Err("visible text cannot be empty".to_string());
         }
         if value.chars().any(|ch| ch.is_control() && ch != '\n' && ch != '\t') {
-            return Err("visible leaf text contains a control character".to_string());
+            return Err("visible text contains a control character".to_string());
         }
         if !self
             .url
@@ -663,13 +725,6 @@ impl Page {
         {
             return Err("the target has a separate accessible name".to_string());
         }
-        let children = self.doc.children(id).collect::<Vec<_>>();
-        let [text_id] = children.as_slice() else {
-            return Err("the target must have exactly one text child".to_string());
-        };
-        if !matches!(self.doc.data(*text_id), NodeData::Text { .. }) {
-            return Err("the target contains nested content".to_string());
-        }
         let mut ancestor = Some(id);
         while let Some(node) = ancestor {
             if element_attribute(&self.doc, node, "hidden").is_some()
@@ -689,10 +744,6 @@ impl Page {
         {
             return Err("the target is not rendered".to_string());
         }
-        if let NodeData::Text { data } = self.doc.data_mut(*text_id) {
-            *data = value;
-        }
-        self.restyle_and_relayout();
         Ok(())
     }
 
@@ -2231,6 +2282,47 @@ mod tests {
         assert!(page.set_visible_leaf_text(title, "  \n  ".to_string()).is_err());
         page.navigate("about:credits").unwrap();
         assert!(page.set_visible_leaf_text(title, "changed".to_string()).is_err());
+    }
+
+    #[test]
+    fn extension_visible_text_content_replaces_only_noninteractive_inline_markup() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"<p id="formatted">Before <strong>bold <em>and italic</em></strong></p><p id="linked">Before <a href="/next">link</a></p><p id="event">Before <span onclick="go()">event</span></p><p id="named">Before <span id="target">named child</span></p><p id="hidden-child">Before <span style="display:none">secret</span></p><p id="hidden" hidden>Secret</p><input id="field" value="old">"#,
+            Some("https://example.test/page".to_string()),
+        );
+        let formatted = page.script_get_element_by_id("formatted").unwrap();
+        let old_child = page.doc.children(formatted).next().unwrap();
+        page.set_visible_text_content(formatted, "After".to_string())
+            .unwrap();
+        assert!(!page.doc.contains(old_child));
+        assert_eq!(page.doc.children(formatted).count(), 1);
+        assert_eq!(
+            page.snapshot(1, 1)
+                .nodes
+                .iter()
+                .find(|node| node.id == formatted.as_u64())
+                .and_then(|node| node.name.as_deref()),
+            Some("After")
+        );
+        for id in ["linked", "event", "named", "hidden-child", "hidden", "field"] {
+            let node = page.script_get_element_by_id(id).unwrap();
+            assert!(
+                page.set_visible_text_content(node, "must not change".to_string())
+                    .is_err(),
+                "{id} must not be writable"
+            );
+        }
+        assert!(page
+            .set_visible_text_content(
+                formatted,
+                "x".repeat(blueice_ipc::extension::MAX_VISIBLE_LEAF_TEXT_BYTES + 1)
+            )
+            .is_err());
+        page.navigate("about:blank").unwrap();
+        assert!(page
+            .set_visible_text_content(formatted, "must not change".to_string())
+            .is_err());
     }
 
     #[test]

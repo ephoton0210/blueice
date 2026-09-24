@@ -631,7 +631,7 @@ fn installed_extension_origin_scopes_follow_the_live_page_across_navigation() {
             extension_id,
             capability_versions: BTreeMap::from([
                 ("dom:read".to_string(), 2),
-                ("dom:write".to_string(), 8),
+                ("dom:write".to_string(), 9),
                 ("network:observe".to_string(), 2),
             ]),
         },
@@ -705,6 +705,14 @@ fn installed_extension_origin_scopes_follow_the_live_page_across_navigation() {
         (ExtensionRequest::ReadNetworkTrace { tab_id: 1 }, "network:observe"),
         (
             ExtensionRequest::SetVisibleLeafText {
+                tab_id: 1,
+                node_id: blocked_heading,
+                value: "Must not change".to_string(),
+            },
+            "dom:write",
+        ),
+        (
+            ExtensionRequest::SetVisibleTextContent {
                 tab_id: 1,
                 node_id: blocked_heading,
                 value: "Must not change".to_string(),
@@ -1857,7 +1865,7 @@ fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
 }
 
 #[test]
-fn installed_extension_v8_writes_form_controls_and_visible_leaf_after_gatekeeper_review() {
+fn installed_extension_v9_writes_controls_and_reviewed_visible_text_after_gatekeeper_review() {
     let _guard = core_process_test_guard();
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
@@ -1885,7 +1893,7 @@ fn installed_extension_v8_writes_form_controls_and_visible_leaf_after_gatekeeper
         let (mut stream, _) = listener.accept().unwrap();
         let mut buf = [0u8; 1024];
         let _ = stream.read(&mut buf);
-        let body = r#"<h1 id="headline">Before</h1><label for="shared">Shared value</label><input id="shared" type="text" value="before"><label for="agree">Agree</label><input id="agree" type="checkbox"><label for="notes">Notes</label><textarea id="notes">before</textarea><label for="volume">Volume</label><input id="volume" type="range" min="0" max="10" step="2" value="0"><label for="first-priority">First priority</label><input id="first-priority" type="radio" name="priority" checked><label for="second-priority">Second priority</label><input id="second-priority" type="radio" name="priority"><label for="urgency">Urgency</label><select id="urgency"><option id="first-option" selected>First option</option><option id="second-option">Second option</option></select>"#;
+        let body = r#"<h1 id="headline">Before</h1><p id="formatted">Before <strong>bold <em>and italic</em></strong></p><p id="linked">Before <a href="/next">link</a></p><label for="shared">Shared value</label><input id="shared" type="text" value="before"><label for="agree">Agree</label><input id="agree" type="checkbox"><label for="notes">Notes</label><textarea id="notes">before</textarea><label for="volume">Volume</label><input id="volume" type="range" min="0" max="10" step="2" value="0"><label for="first-priority">First priority</label><input id="first-priority" type="radio" name="priority" checked><label for="second-priority">Second priority</label><input id="second-priority" type="radio" name="priority"><label for="urgency">Urgency</label><select id="urgency"><option id="first-option" selected>First option</option><option id="second-option">Second option</option></select>"#;
         stream
             .write_all(
                 format!(
@@ -1947,6 +1955,8 @@ fn installed_extension_v8_writes_form_controls_and_visible_leaf_after_gatekeeper
         second_option_id,
         range_id,
         headline_id,
+        formatted_id,
+        linked_id,
     ) = match blueice_ipc::read_server_message(&mut frontend).unwrap() {
         blueice_ipc::ServerMessage::Representation(snapshot) => {
             let input_id = snapshot
@@ -2010,6 +2020,8 @@ fn installed_extension_v8_writes_form_controls_and_visible_leaf_after_gatekeeper
                 .expect("the navigated form must expose its integer range input")
                 .id;
             let headline_id = snapshot.nodes.iter().find(|node| matches!(node.role, blueice_ipc::Role::Heading { .. }) && node.name.as_deref() == Some("Before")).expect("the page must expose its heading").id;
+            let formatted_id = snapshot.nodes.iter().find(|node| matches!(node.role, blueice_ipc::Role::Paragraph) && node.name.as_deref().is_some_and(|name| name.starts_with("Before bold"))).expect("the page must expose its formatted paragraph").id;
+            let linked_id = snapshot.nodes.iter().filter(|node| matches!(node.role, blueice_ipc::Role::Paragraph)).last().expect("the page must expose its linked paragraph").id;
             (
                 input_id,
                 checkbox_id,
@@ -2020,6 +2032,8 @@ fn installed_extension_v8_writes_form_controls_and_visible_leaf_after_gatekeeper
                 second_option_id,
                 range_id,
                 headline_id,
+                formatted_id,
+                linked_id,
             )
         }
         other => panic!("expected the input representation, got {other:?}"),
@@ -2032,7 +2046,7 @@ fn installed_extension_v8_writes_form_controls_and_visible_leaf_after_gatekeeper
             extension_id,
             capability_versions: BTreeMap::from([
                 ("dom:read".to_string(), 2),
-                ("dom:write".to_string(), 8),
+                ("dom:write".to_string(), 9),
             ]),
         },
     )
@@ -2073,6 +2087,29 @@ fn installed_extension_v8_writes_form_controls_and_visible_leaf_after_gatekeeper
     assert_eq!(reply_tab, Some(1));
     assert_eq!(request_id, None);
     assert!(matches!(frame, blueice_ipc::ServerMessage::FrameReady { .. }));
+
+    write_extension_request(&mut extension, &ExtensionRequest::SetVisibleTextContent {
+        tab_id: 1, node_id: formatted_id, value: "After format".to_string(),
+    }).unwrap();
+    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::DomWriteAck);
+    let (reply_tab, request_id, frame) =
+        blueice_ipc::read_server_message_with_ids(&mut frontend).unwrap();
+    assert_eq!(reply_tab, Some(1));
+    assert_eq!(request_id, None);
+    assert!(matches!(frame, blueice_ipc::ServerMessage::FrameReady { .. }));
+
+    write_extension_request(&mut extension, &ExtensionRequest::SetVisibleTextContent {
+        tab_id: 1, node_id: linked_id, value: "Must not remove link".to_string(),
+    }).unwrap();
+    assert!(matches!(read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::OperationUnavailable { capability, reason }
+            if capability == "dom:write" && reason.contains("inline formatting")));
+    write_extension_request(&mut extension, &ExtensionRequest::SetVisibleTextContent {
+        tab_id: 1, node_id: formatted_id, value: "Enter your password".to_string(),
+    }).unwrap();
+    assert!(matches!(read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::GatekeeperBlocked { capability, category, .. }
+            if capability == "dom:write" && category == "extension-visible-text-social-engineering"));
 
     write_extension_request(
         &mut extension,
@@ -2239,6 +2276,8 @@ fn installed_extension_v8_writes_form_controls_and_visible_leaf_after_gatekeeper
         Some("6")
     );
     assert_eq!(snapshot.nodes.iter().find(|node| node.id == headline_id).and_then(|node| node.name.as_deref()), Some("After"));
+    assert_eq!(snapshot.nodes.iter().find(|node| node.id == formatted_id).and_then(|node| node.name.as_deref()), Some("After format"));
+    assert_eq!(snapshot.nodes.iter().find(|node| node.id == linked_id).and_then(|node| node.name.as_deref()), Some("Before"));
     assert_eq!(
         snapshot
             .nodes

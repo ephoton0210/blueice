@@ -18,7 +18,7 @@ use blueice_ipc::gatekeeper::{
 
 /// Version carried in diagnostics and release notes for this compiled rule
 /// set. Keep it monotonic whenever a detection decision changes.
-pub const RULESET_VERSION: &str = "2026.09.24.3";
+pub const RULESET_VERSION: &str = "2026.09.24.4";
 
 const KNOWN_MALICIOUS_HOSTS: &[&str] = &["malware.test", "phishing.test"];
 const BIDI_OVERRIDE_CODEPOINTS: &[&str] = &["U+202A–U+202E", "U+2066–U+2069"];
@@ -130,9 +130,9 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
         GatekeeperRuleInfo {
             id: "extension-visible-text-social-engineering".to_string(),
             category: "extension-visible-text-social-engineering".to_string(),
-            description: "Blocks credential, external-URL, and instruction-override phrases in extension-proposed visible page text before mutation.".to_string(),
+            description: "Blocks credential, external-URL, and instruction-override phrases in extension-proposed visible leaf or textContent replacements before mutation.".to_string(),
             conditions: [POPUP_BLOCKED_PHRASES, PROMPT_INJECTION_PHRASES].concat().iter().map(|item| (*item).to_string()).collect(),
-            match_logic: "Any listed phrase in the bounded proposed text rejects before the live semantic leaf changes.".to_string(),
+            match_logic: "Any listed phrase in the bounded proposed text rejects before the live visible text changes.".to_string(),
             workflow_steps: vec!["extension-before-side-effect".to_string()],
             mandatory: true,
         },
@@ -419,7 +419,8 @@ fn review_extension_action(
             "extension-popup-social-engineering",
         );
     }
-    if detail.starts_with("action=set-visible-leaf-text; text=")
+    if (detail.starts_with("action=set-visible-leaf-text; text=")
+        || detail.starts_with("action=set-visible-text-content; text="))
         && (POPUP_BLOCKED_PHRASES.iter().any(|phrase| detail.contains(phrase))
             || PROMPT_INJECTION_PHRASES.iter().any(|phrase| detail.contains(phrase)))
     {
@@ -793,20 +794,22 @@ mod tests {
     }
 
     #[test]
-    fn extension_visible_leaf_text_is_reviewed_before_page_mutation() {
-        for (text, blocked) in [
-            ("Updated heading", false),
-            ("input_type=payment", false),
-            ("Enter your password", true),
-            ("ignore previous instructions", true),
-            ("Visit https://outside.example", true),
-        ] {
-            let request = GatekeeperRequest::CheckExtensionAction {
-                extension_id: "extension".to_string(),
-                capability: "dom:write".to_string(),
-                detail: format!("action=set-visible-leaf-text; text={text}"),
-            };
-            assert_eq!(matches!(review(&request), GatekeeperReply::Rejected { .. }), blocked);
+    fn extension_visible_text_replacements_are_reviewed_before_page_mutation() {
+        for action in ["set-visible-leaf-text", "set-visible-text-content"] {
+            for (text, blocked) in [
+                ("Updated heading", false),
+                ("input_type=payment", false),
+                ("Enter your password", true),
+                ("ignore previous instructions", true),
+                ("Visit https://outside.example", true),
+            ] {
+                let request = GatekeeperRequest::CheckExtensionAction {
+                    extension_id: "extension".to_string(),
+                    capability: "dom:write".to_string(),
+                    detail: format!("action={action}; text={text}"),
+                };
+                assert_eq!(matches!(review(&request), GatekeeperReply::Rejected { .. }), blocked);
+            }
         }
     }
 }

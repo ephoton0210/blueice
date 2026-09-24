@@ -364,7 +364,7 @@ fn network_trace_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
     (root, manifest, extension_id)
 }
 
-fn range_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
+fn visible_text_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     let root = std::env::temp_dir().join(format!(
@@ -384,8 +384,10 @@ fn range_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
             r#"(module
                 (import "blueice" "set_range_input_value" (func $set (param i64 i64 i64) (result i32)))
                 (import "blueice" "set_visible_leaf_text" (func $leaf (param i64 i64 i32 i32) (result i32)))
+                (import "blueice" "set_visible_text_content" (func $content (param i64 i64 i32 i32) (result i32)))
                 (memory (export "memory") 1)
                 (data (i32.const 0) "Updated heading")
+                (data (i32.const 32) "Updated formatted text")
                 (func (export "blueice_start")
                     i64.const 7
                     i64.const 17
@@ -399,6 +401,14 @@ fn range_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
                     i32.const 0
                     i32.const 15
                     call $leaf
+                    i32.const 0
+                    i32.ne
+                    if unreachable end
+                    i64.const 7
+                    i64.const 21
+                    i32.const 32
+                    i32.const 22
+                    call $content
                     i32.const 0
                     i32.ne
                     if unreachable end))"#,
@@ -1036,8 +1046,8 @@ fn core_connection_mode_negotiates_storage_v3_and_keeps_v1_v2_imports_compatible
 }
 
 #[test]
-fn core_connection_mode_negotiates_dom_write_v8_and_runs_range_and_visible_leaf_writes() {
-    let (root, manifest, extension_id) = range_manifest_package("core-connect");
+fn core_connection_mode_negotiates_dom_write_v9_and_runs_visible_text_writes() {
+    let (root, manifest, extension_id) = visible_text_manifest_package("core-connect");
     let socket = unique_socket_path("core-range");
     let _ = std::fs::remove_file(&socket);
     let listener = UnixListener::bind(&socket).unwrap();
@@ -1058,7 +1068,7 @@ fn core_connection_mode_negotiates_dom_write_v8_and_runs_range_and_visible_leaf_
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::HelloAuthenticated {
             extension_id,
-            capability_versions: BTreeMap::from([("dom:write".to_string(), 8)]),
+            capability_versions: BTreeMap::from([("dom:write".to_string(), 9)]),
             authentication: authentication.to_string(),
         }
     );
@@ -1091,6 +1101,16 @@ fn core_connection_mode_negotiates_dom_write_v8_and_runs_range_and_visible_leaf_
             tab_id: 7,
             node_id: 19,
             value: "Updated heading".to_string(),
+        }
+    );
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::DomWriteAck)
+        .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::SetVisibleTextContent {
+            tab_id: 7,
+            node_id: 21,
+            value: "Updated formatted text".to_string(),
         }
     );
     blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::DomWriteAck)

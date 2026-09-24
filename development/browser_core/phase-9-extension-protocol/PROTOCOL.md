@@ -90,7 +90,7 @@ is separate from the independently negotiated **capability API versions**:
 | Capability | Supported versions | Core-spawned guest version | Implemented effects |
 | --- | --- | --- | --- |
 | `dom:read` | 1–2 | 2 | A live tab's AI-facing representation, addressed by explicit tab ID in v2. |
-| `dom:write` | 1–8 | 8 | Bounded native form-control and visible semantic text-leaf operations; legacy generic v1 mutation has no core effect. |
+| `dom:write` | 1–9 | 9 | Bounded native form-control, semantic text-leaf, and noninteractive inline textContent operations; legacy generic v1 mutation has no core effect. |
 | `network:observe` | 1–2 | 2 | Committed main-frame final response (v1) and initial request/redirect trace (v2). |
 | `network:intercept` | 1–5 | 5 | Exact navigation URL block (v2), clearing own rules (v3), ASCII host/subdomain block (v4), and literal host/path-prefix block (v5); legacy v1 registration has no core effect. |
 | `ui:inject` | 1–3 | 3 | Native toolbar button (v1), fixed-text native popup (v2), and one browser-owned popup action button (v3). |
@@ -145,6 +145,7 @@ effect in the guest.
 | `select_option(tab_id:i64, node_id:i64) -> i32` | `dom:write` v6 | Select one enabled option in an enabled native single-select; core clears its peers. |
 | `set_range_input_value(tab_id:i64, node_id:i64, value:i64) -> i32` | `dom:write` v7 | Integer range input only; core validates live `min`/`max`/`step`. |
 | `set_visible_leaf_text(tab_id:i64, node_id:i64, ptr:i32, len:i32) -> i32` | `dom:write` v8 | Nonempty, at most 1 KiB UTF-8 with no control characters except tab/newline. Replaces only the single existing text child of a rendered `h1`–`h6`, `p`, or `li` on an HTTP(S) page; nested content, hidden targets, separate accessible names, and built-in pages are rejected. The exact proposed text is gatekeeper-reviewed before core mutation. |
+| `set_visible_text_content(tab_id:i64, node_id:i64, ptr:i32, len:i32) -> i32` | `dom:write` v9 | Same bounded text and gatekeeper review as v8, but replaces up to 128 descendants containing only ordinary inline formatting (`span`, `strong`, `em`, `b`, `i`, `small`, `code`, `mark`, `u`, `s`, `br`) under a rendered `h1`–`h6`, `p`, or `li`. Links, controls, scripts, semantic children, element IDs, inline event-handler attributes, interactive annotations, hidden targets, and built-in pages are rejected before any child is removed. Existing descendant node IDs become stale after success. |
 | `network_response_utf8(tab_id:i64, dst:i32, cap:i32) -> i32` | `network:observe` v1 | Final committed GET response JSON, at most 4 KiB; `-4` for a non-HTTP page. |
 | `network_trace_utf8(tab_id:i64, dst:i32, cap:i32) -> i32` | `network:observe` v2 | Initial GET URL, redirect hops, and final response JSON, at most 32 KiB. |
 | `register_network_block_url(ptr:i32, len:i32) -> i32` | `network:intercept` v2 | At most 2 KiB absolute credential-free HTTP(S) URL; exact canonical navigation match. |
