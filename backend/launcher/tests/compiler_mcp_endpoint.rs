@@ -19,6 +19,9 @@ use blueice_ipc::compiler_catalog::{
     CompilerCatalogBootstrap, CompilerCatalogModule, CompilerCatalogOptions,
     CompilerCatalogProject, COMPILER_CATALOG_BOOTSTRAP_VERSION,
 };
+use blueice_ipc::owner_bootstrap::{
+    OwnerHttpOriginRule, OwnerHttpPolicyBootstrap, OwnerHttpResource,
+};
 use blueice_launcher::control::{
     read_control_reply, write_control_request, ControlReply, ControlRequest,
 };
@@ -76,6 +79,13 @@ impl LauncherProcess {
     }
 
     fn spawn_with_catalog_file(catalog_file: Option<&std::path::Path>) -> Self {
+        Self::spawn_with_owner_files(catalog_file, None)
+    }
+
+    fn spawn_with_owner_files(
+        catalog_file: Option<&std::path::Path>,
+        page_http_policy_file: Option<&std::path::Path>,
+    ) -> Self {
         let rendezvous_socket = unique_path("rendezvous");
         let control_socket = unique_path("control");
         let compiler_socket = unique_path("compiler");
@@ -102,6 +112,10 @@ impl LauncherProcess {
         ]);
         if let Some(path) = catalog_file {
             command.arg("--compiler-catalog-file").arg(path);
+        }
+        if let Some(path) = page_http_policy_file {
+            command.arg("--out-of-process-bluejs");
+            command.arg("--page-http-policy-file").arg(path);
         }
         let child = command.spawn().expect("blueice-launcher must spawn");
         assert!(
@@ -149,6 +163,83 @@ impl LauncherProcess {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+#[test]
+fn launcher_combines_owner_compiler_catalog_and_page_http_policy_in_one_private_bootstrap() {
+    let catalog_path = unique_path("combined-catalog").with_extension("json");
+    let policy_path = unique_path("combined-http-policy").with_extension("json");
+    let entry = "project:///combined/main.ts".to_string();
+    let catalog = CompilerCatalogBootstrap {
+        version: COMPILER_CATALOG_BOOTSTRAP_VERSION,
+        projects: vec![CompilerCatalogProject {
+            canonical_project_root: "project:///combined".into(),
+            canonical_config_root: "project:///combined/blue-ts.json".into(),
+            canonical_output_root: "project:///combined-dist".into(),
+            entry_module: entry.clone(),
+            modules: vec![CompilerCatalogModule {
+                canonical_id: entry,
+                text: "export const answer: number = 42;".into(),
+            }],
+            expose_to_compiler_ipc: true,
+            resolutions: Vec::new(),
+            options: CompilerCatalogOptions::default(),
+        }],
+    };
+    let policy = OwnerHttpPolicyBootstrap {
+        origin_rule: OwnerHttpOriginRule::SameDocumentOrigin,
+        resources: vec![OwnerHttpResource {
+            canonical_url: "http://127.0.0.1:30000/allowed.js".into(),
+            integrity: format!("sha256:{}", "0".repeat(64)),
+        }],
+    };
+    std::fs::write(&catalog_path, serde_json::to_vec(&catalog).unwrap()).unwrap();
+    std::fs::write(&policy_path, serde_json::to_vec(&policy).unwrap()).unwrap();
+    let mut launcher =
+        LauncherProcess::spawn_with_owner_files(Some(&catalog_path), Some(&policy_path));
+    let mut compiler = UnixStream::connect(&launcher.compiler_socket).unwrap();
+    write_compiler_request(
+        &mut compiler,
+        &CompilerRequest::Hello {
+            protocol_version: COMPILER_PROTOCOL_VERSION,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_compiler_reply(&mut compiler).unwrap(),
+        CompilerReply::HelloAck { .. }
+    ));
+    write_compiler_request(&mut compiler, &CompilerRequest::ListProjects).unwrap();
+    let CompilerReply::Projects(inventory) = read_compiler_reply(&mut compiler).unwrap() else {
+        panic!("combined private bootstrap must retain the sealed compiler catalog")
+    };
+    assert_eq!(inventory.projects, vec![CompilerProject { id: 1 }]);
+    launcher.shutdown();
+    drop(launcher);
+
+    // The same page policy must also coexist with the compiled-in compiler
+    // fixture when the owner does not supply a separate project catalog.
+    let mut launcher = LauncherProcess::spawn_with_owner_files(None, Some(&policy_path));
+    let mut compiler = UnixStream::connect(&launcher.compiler_socket).unwrap();
+    write_compiler_request(
+        &mut compiler,
+        &CompilerRequest::Hello {
+            protocol_version: COMPILER_PROTOCOL_VERSION,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_compiler_reply(&mut compiler).unwrap(),
+        CompilerReply::HelloAck { .. }
+    ));
+    write_compiler_request(&mut compiler, &CompilerRequest::ListProjects).unwrap();
+    let CompilerReply::Projects(inventory) = read_compiler_reply(&mut compiler).unwrap() else {
+        panic!("page policy must preserve the default sealed compiler fixture")
+    };
+    assert_eq!(inventory.projects, vec![CompilerProject { id: 1 }]);
+    launcher.shutdown();
+    let _ = std::fs::remove_file(catalog_path);
+    let _ = std::fs::remove_file(policy_path);
 }
 
 impl Drop for LauncherProcess {

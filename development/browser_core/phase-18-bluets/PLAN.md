@@ -2,6 +2,23 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+**Trusted owner HTTP page-resource policy update:** The public launcher now
+accepts `--page-http-policy-file <absolute-json-path>` only with
+`--out-of-process-bluejs`; an embedding owner can supply the same bounded typed
+policy. The file names canonical HTTP(S) URLs, SHA-256 expectations, and either
+the live document's origin or one exact canonical origin. Launcher sends the
+policy through a one-shot private, versioned core stdin bootstrap, optionally
+alongside the sealed compiler catalog. Core constructs its existing closed
+HTTP authorizer before binding any listener. The page, frontend, debugger,
+MCP, and supervised child cannot read or replace the manifest; the child gets
+only integrity-verified, source-closed JavaScript or BlueTS graphs. A real
+launcher/core/HTTP/child regression covers admitted classic JavaScript and a
+BlueTS static-import graph, unfetched unlisted URLs, and rejected bad hashes;
+another regression proves the policy coexists with both an owner compiler
+catalog and the default fixed compiler fixture. This does not add DOM/events,
+general fetch, dynamic imports, runtime source-level debugger stepping, or
+per-client resource authorization.
+
 **Default-deny compiler catalog visibility update:** A trusted startup owner
 can now register a project as private while preserving its closed graph in the
 core's sealed catalog. The owner bootstrap is now version 2, rejecting the
@@ -464,7 +481,7 @@ The initial implementation completes the work that has no BlueJS dependency befo
   Out-of-process discovery/configuration can consume at most 64 such deferred
   turns for a document, after which core advances it even if the peer keeps
   querying. DOM/event callbacks, URL or import-map resolution, broader
-  deployment HTTP policy, and page-selected compiler
+  per-client resource authorization, and page-selected compiler
   profiles remain open. The launcher owns an optional stable public debugger
   listener, but no debugger session or opaque handle survives a core cutover:
   each pre-cutover stream remains pinned to its old private core peer and

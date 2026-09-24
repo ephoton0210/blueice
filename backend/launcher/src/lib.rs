@@ -53,6 +53,10 @@ mod unix {
     pub use super::control::default_control_socket_path;
 
     use blueice_ipc::compiler_catalog::{write_compiler_catalog, CompilerCatalogBootstrap};
+    use blueice_ipc::owner_bootstrap::{
+        write_core_owner_bootstrap, CoreOwnerBootstrap, OwnerHttpPolicyBootstrap,
+        CORE_OWNER_BOOTSTRAP_VERSION,
+    };
     use blueice_ipc::{
         read_client_message_with_ids, read_server_message_with_id, read_server_message_with_ids,
         write_client_message_with_id, write_client_message_with_ids, write_server_message_with_ids,
@@ -99,6 +103,10 @@ mod unix {
         /// Owner-supplied, bounded, closed graph for one core generation.
         /// Source text goes only to the new core's inherited stdin pipe.
         compiler_catalog: Option<CompilerCatalogBootstrap>,
+        /// Owner-selected canonical URL/integrity policy for HTTP(S) page
+        /// scripts. It crosses only the one-shot core startup pipe; the page
+        /// and isolated child receive closed graphs, never this manifest.
+        page_http_policy: Option<OwnerHttpPolicyBootstrap>,
         /// A caller-selected Unix endpoint for the core's bounded debugger
         /// protocol.  The endpoint is only a transport location: debugger
         /// protocol versioning and every target-bound operation remain
@@ -251,6 +259,20 @@ mod unix {
             catalog.validate()?;
             self.compiler_mcp_socket = Some(path);
             self.compiler_catalog = Some(catalog);
+            Ok(self)
+        }
+
+        /// Installs a bounded owner-selected HTTP(S) resource policy for the
+        /// supervised page host. Core applies its existing canonical URL,
+        /// origin, integrity, MIME, graph, and fetch checks before the child
+        /// receives any source. The policy cannot be changed by page traffic.
+        pub fn supervise_out_of_process_bluejs_with_owner_http_policy(
+            mut self,
+            policy: OwnerHttpPolicyBootstrap,
+        ) -> io::Result<Self> {
+            policy.validate()?;
+            self.supervise_out_of_process_bluejs = true;
+            self.page_http_policy = Some(policy);
             Ok(self)
         }
 
@@ -1649,6 +1671,12 @@ mod unix {
             frame_dir: &Path,
             options: CoreLaunchOptions,
         ) -> io::Result<Self> {
+            if options.page_http_policy.is_some() && options.core_http_page_script_fixture {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "fixed and owner-selected HTTP page policies are mutually exclusive",
+                ));
+            }
             // Do this before creating either child. A malformed, partial, or
             // occupied caller-selected endpoint cannot briefly spawn a core
             // or page host that would then need cleanup.
@@ -1779,15 +1807,19 @@ mod unix {
             }
             if let Some(compiler_socket) = &compiler_private_socket_path {
                 command.arg("--compiler-socket").arg(compiler_socket);
-                if options.compiler_catalog.is_some() {
-                    command
-                        .arg("--compiler-catalog-stdin")
-                        .stdin(Stdio::piped());
-                } else {
+                if options.compiler_catalog.is_some() && options.page_http_policy.is_none() {
+                    command.arg("--compiler-catalog-stdin");
+                } else if options.compiler_catalog.is_none() {
                     command
                         .arg("--compiler-project-profile")
                         .arg(CORE_CLOSED_COMPILER_PROJECT_PROFILE);
                 }
+            }
+            if options.page_http_policy.is_some() {
+                command.arg("--owner-bootstrap-stdin");
+            }
+            if options.page_http_policy.is_some() || options.compiler_catalog.is_some() {
+                command.stdin(Stdio::piped());
             }
             if let Some(debugger_socket) = &debugger_private_socket_path {
                 command.arg("--debugger-socket").arg(debugger_socket);
@@ -1847,12 +1879,31 @@ mod unix {
                 }
             }
             let mut child = command.spawn()?;
-            if let Some(catalog) = options.compiler_catalog.as_ref() {
+            if options.page_http_policy.is_some() || options.compiler_catalog.is_some() {
                 let send_result = child
                     .stdin
                     .take()
                     .ok_or_else(|| io::Error::other("core catalog bootstrap pipe is missing"))
-                    .and_then(|mut pipe| write_compiler_catalog(&mut pipe, catalog));
+                    .and_then(|mut pipe| {
+                        if let Some(page_http_policy) = options.page_http_policy.as_ref() {
+                            write_core_owner_bootstrap(
+                                &mut pipe,
+                                &CoreOwnerBootstrap {
+                                    version: CORE_OWNER_BOOTSTRAP_VERSION,
+                                    compiler_catalog: options.compiler_catalog.clone(),
+                                    page_http_policy: Some(page_http_policy.clone()),
+                                },
+                            )
+                        } else {
+                            write_compiler_catalog(
+                                &mut pipe,
+                                options
+                                    .compiler_catalog
+                                    .as_ref()
+                                    .expect("compiler-only pipe requires a catalog"),
+                            )
+                        }
+                    });
                 if let Err(error) = send_result {
                     let _ = child.kill();
                     let _ = child.wait();

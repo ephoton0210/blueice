@@ -81,7 +81,16 @@ profile, and the private startup selector carries only its fixed name—not a
 URL, manifest, resolver, source, path, or fetch setting. A real core
 subprocess/HTTP/child-host regression proves that core builds the closed graph
 before its private handoff. This is an integration fixture, not general
-application-resource distribution. The remaining boundary has no general DOM
+application-resource distribution. The trusted launcher owner can now supply
+its own bounded canonical HTTP(S) URL/SHA-256 policy from an absolute JSON file
+or embedding API; it crosses only a one-shot core stdin bootstrap, optionally
+with the compiler catalog. Core validates it and constructs the existing
+closed-graph authorizer before binding listeners. A real launcher/core/HTTP/
+child test proves admitted external JavaScript and a BlueTS static-import graph,
+unfetched unlisted URLs, and rejected bad hashes. The policy also starts with
+both an owner compiler catalog and the default fixed compiler fixture. This
+closes the owner-distribution seam, not per-client resource authorization or
+a page-accessible network API. The remaining boundary has no general DOM
 or event surface
 beyond the copied strings, arbitrary debugger interruption/pause/runtime
 control, or MCP project-registration path.

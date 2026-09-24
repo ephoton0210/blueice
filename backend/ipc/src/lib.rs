@@ -35,6 +35,7 @@ pub mod compiler_catalog;
 pub mod debugger;
 pub mod extension;
 pub mod gatekeeper;
+pub mod owner_bootstrap;
 pub mod page_host;
 pub mod script;
 pub mod shm;

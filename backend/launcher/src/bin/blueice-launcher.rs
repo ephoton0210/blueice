@@ -16,6 +16,8 @@
 #[cfg(unix)]
 use blueice_ipc::compiler_catalog::{CompilerCatalogBootstrap, MAX_COMPILER_CATALOG_FRAME_BYTES};
 #[cfg(unix)]
+use blueice_ipc::owner_bootstrap::{OwnerHttpPolicyBootstrap, MAX_OWNER_HTTP_POLICY_BYTES};
+#[cfg(unix)]
 use blueice_launcher::memory_pressure::{self, SystemMemorySource};
 #[cfg(unix)]
 use blueice_launcher::supervisor::{ProcessPolicy, ProcessRegistry};
@@ -66,6 +68,9 @@ struct Args {
     /// Trusted owner configuration read once before spawning any children.
     /// This path is never sent to core or exposed through compiler IPC.
     compiler_catalog_file: Option<PathBuf>,
+    /// Trusted owner-selected HTTP(S) URL/integrity manifest. No page,
+    /// frontend, debugger, or MCP request can replace this startup file.
+    page_http_policy_file: Option<PathBuf>,
     /// Explicit opt-in stable debugger endpoint. The caller selects only its
     /// Unix socket path; the launcher owns the public owner-only listener and
     /// supplies each core generation a fresh private listener. Debugger
@@ -156,6 +161,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut out_of_process_bluejs = false;
     let mut compiler_mcp_socket = None;
     let mut compiler_catalog_file = None;
+    let mut page_http_policy_file = None;
     let mut debugger_socket = None;
     let mut debugger_static_metadata_inventory = false;
     let mut debugger_static_metadata_summary = false;
@@ -199,6 +205,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--out-of-process-bluejs" => out_of_process_bluejs = true,
             "--compiler-mcp-socket" => compiler_mcp_socket = Some(PathBuf::from(value()?)),
             "--compiler-catalog-file" => compiler_catalog_file = Some(PathBuf::from(value()?)),
+            "--page-http-policy-file" => page_http_policy_file = Some(PathBuf::from(value()?)),
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
             "--debugger-static-metadata-inventory" => debugger_static_metadata_inventory = true,
             "--debugger-static-metadata-summary" => debugger_static_metadata_summary = true,
@@ -476,6 +483,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if compiler_catalog_file.is_some() && compiler_mcp_socket.is_none() {
         return Err("--compiler-catalog-file requires --compiler-mcp-socket".to_string());
     }
+    if page_http_policy_file.is_some() && !out_of_process_bluejs {
+        return Err("--page-http-policy-file requires --out-of-process-bluejs".to_string());
+    }
     Ok(Args {
         rendezvous_socket,
         control_socket,
@@ -486,6 +496,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         out_of_process_bluejs,
         compiler_mcp_socket,
         compiler_catalog_file,
+        page_http_policy_file,
         debugger_socket,
         debugger_static_metadata_inventory,
         debugger_static_metadata_summary,
@@ -552,6 +563,23 @@ fn main() -> ExitCode {
         } else {
             core_options.with_core_closed_compiler_mcp_endpoint(compiler_mcp_socket)
         };
+    }
+    if let Some(path) = args.page_http_policy_file.as_deref() {
+        let policy = match read_owner_http_policy_file(path) {
+            Ok(policy) => policy,
+            Err(error) => {
+                eprintln!("blueice-launcher: invalid owner HTTP page policy: {error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        core_options =
+            match core_options.supervise_out_of_process_bluejs_with_owner_http_policy(policy) {
+                Ok(options) => options,
+                Err(error) => {
+                    eprintln!("blueice-launcher: invalid owner HTTP page policy: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
     }
     if let Some(debugger_socket) = args.debugger_socket.clone() {
         core_options = core_options.with_debugger_endpoint(debugger_socket);
@@ -745,6 +773,42 @@ fn read_owner_compiler_catalog_file(
     CompilerCatalogBootstrap::from_json_slice(&bytes)
 }
 
+#[cfg(unix)]
+fn read_owner_http_policy_file(
+    path: &std::path::Path,
+) -> std::io::Result<OwnerHttpPolicyBootstrap> {
+    use std::io::{self, ErrorKind};
+
+    if !path.is_absolute() {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "owner HTTP policy path must be absolute",
+        ));
+    }
+    let before = std::fs::symlink_metadata(path)?;
+    if !before.file_type().is_file()
+        || before.len() == 0
+        || before.len() > MAX_OWNER_HTTP_POLICY_BYTES as u64
+    {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "owner HTTP policy must be a bounded regular file, not a symlink",
+        ));
+    }
+    let file = std::fs::File::open(path)?;
+    let after = file.metadata()?;
+    if before.dev() != after.dev() || before.ino() != after.ino() || before.len() != after.len() {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "owner HTTP policy changed while opening",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(before.len() as usize);
+    file.take((MAX_OWNER_HTTP_POLICY_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    OwnerHttpPolicyBootstrap::from_json_slice(&bytes)
+}
+
 #[cfg(not(unix))]
 fn main() {
     eprintln!("blueice-launcher is currently supported only on Unix platforms");
@@ -774,6 +838,41 @@ mod tests {
             Some(PathBuf::from("/tmp/catalog.json"))
         );
         assert!(read_owner_compiler_catalog_file(std::path::Path::new("relative.json")).is_err());
+    }
+
+    #[test]
+    fn owner_http_policy_requires_the_supervised_page_host() {
+        assert!(args(&["--page-http-policy-file", "/tmp/http-policy.json"]).is_err());
+        let parsed = args(&[
+            "--out-of-process-bluejs",
+            "--page-http-policy-file",
+            "/tmp/http-policy.json",
+        ])
+        .unwrap();
+        assert_eq!(
+            parsed.page_http_policy_file,
+            Some(PathBuf::from("/tmp/http-policy.json"))
+        );
+        assert!(read_owner_http_policy_file(std::path::Path::new("relative.json")).is_err());
+    }
+
+    #[test]
+    fn owner_http_policy_file_rejects_symlink_and_malformed_content() {
+        use std::os::unix::fs::symlink;
+
+        let base = std::env::temp_dir().join(format!(
+            "blueice-owner-http-policy-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let file = base.with_extension("json");
+        let link = base.with_extension("link");
+        std::fs::write(&file, b"not JSON").unwrap();
+        symlink(&file, &link).unwrap();
+        assert!(read_owner_http_policy_file(&file).is_err());
+        assert!(read_owner_http_policy_file(&link).is_err());
+        let _ = std::fs::remove_file(&link);
+        let _ = std::fs::remove_file(&file);
     }
 
     #[test]
@@ -807,6 +906,7 @@ mod tests {
         assert!(!parsed.out_of_process_bluejs);
         assert_eq!(parsed.compiler_mcp_socket, None);
         assert_eq!(parsed.compiler_catalog_file, None);
+        assert_eq!(parsed.page_http_policy_file, None);
         assert_eq!(parsed.debugger_socket, None);
         assert!(!parsed.debugger_static_metadata_inventory);
         assert!(!parsed.debugger_static_metadata_summary);
@@ -885,6 +985,7 @@ mod tests {
                 out_of_process_bluejs: true,
                 compiler_mcp_socket: Some(PathBuf::from("/tmp/compiler-mcp.sock")),
                 compiler_catalog_file: None,
+                page_http_policy_file: None,
                 debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
                 debugger_static_metadata_inventory: true,
                 debugger_static_metadata_summary: true,

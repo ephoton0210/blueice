@@ -137,6 +137,9 @@ struct Args {
     /// One bounded, owner-only catalog is read from inherited stdin before
     /// listeners are created; no public request can supply another catalog.
     compiler_catalog_stdin: bool,
+    /// One combined owner bootstrap carries an optional compiler catalog and
+    /// HTTP page-resource manifest over inherited stdin before listeners.
+    owner_bootstrap_stdin: bool,
     /// An explicitly selected, core-owned host typing profile for executing
     /// discovered inline BlueTS page declarations. Omission preserves the
     /// default no-inline-execution process mode; page content cannot select a
@@ -196,6 +199,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut compiler_socket = None;
     let mut compiler_project_profile = None;
     let mut compiler_catalog_stdin = false;
+    let mut owner_bootstrap_stdin = false;
     let mut inline_bluets_profile = None;
     let mut inline_bluejs = false;
     let mut out_of_process_bluejs_socket = None;
@@ -272,6 +276,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--compiler-socket" => compiler_socket = Some(PathBuf::from(value()?)),
             "--compiler-project-profile" => compiler_project_profile = Some(value()?),
             "--compiler-catalog-stdin" => compiler_catalog_stdin = true,
+            "--owner-bootstrap-stdin" => owner_bootstrap_stdin = true,
             "--inline-bluets-profile" => inline_bluets_profile = Some(value()?),
             "--inline-bluejs" => inline_bluejs = true,
             "--out-of-process-bluejs-socket" => {
@@ -535,13 +540,22 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if debugger_static_metadata_symbol_contract && !debugger_static_metadata_contract_inventory {
         return Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-contract-inventory".to_string());
     }
-    if compiler_socket.is_some() != (compiler_project_profile.is_some() || compiler_catalog_stdin)
-        || (compiler_project_profile.is_some() && compiler_catalog_stdin)
+    if owner_bootstrap_stdin
+        && (compiler_catalog_stdin || out_of_process_bluejs_page_script_profile.is_some())
     {
         return Err(
-            "--compiler-socket requires exactly one of --compiler-project-profile or --compiler-catalog-stdin"
+            "--owner-bootstrap-stdin cannot be combined with other compiler/page startup selectors"
                 .to_string(),
         );
+    }
+    if (compiler_project_profile.is_some() || compiler_catalog_stdin) && compiler_socket.is_none()
+        || (compiler_project_profile.is_some() && compiler_catalog_stdin)
+        || (compiler_socket.is_some()
+            && !(compiler_project_profile.is_some()
+                || compiler_catalog_stdin
+                || owner_bootstrap_stdin))
+    {
+        return Err("--compiler-socket requires exactly one compiler startup selector".to_string());
     }
     Ok(Args {
         socket,
@@ -572,6 +586,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         compiler_socket,
         compiler_project_profile,
         compiler_catalog_stdin,
+        owner_bootstrap_stdin,
         inline_bluets_profile,
         inline_bluejs,
         out_of_process_bluejs_socket,
@@ -702,6 +717,40 @@ fn register_owner_compiler_catalog(
         .map_err(|error| format!("failed to register owner compiler project: {error}"))?;
     }
     Ok(())
+}
+
+/// Reuses the core's one HTTP(S) source-authorizer implementation. This is
+/// deliberately constructed before any listener: malformed canonical URLs,
+/// origin rules, integrity entries, or limits cannot create a partly live
+/// browser or compiler endpoint.
+#[cfg(unix)]
+fn construct_owner_http_page_policy(
+    bootstrap: blueice_ipc::owner_bootstrap::OwnerHttpPolicyBootstrap,
+) -> Result<script::http_resource_authorizer::HttpScriptResourcePolicy, String> {
+    use blueice_ipc::owner_bootstrap::OwnerHttpOriginRule;
+    use script::http_resource_authorizer::{
+        HttpScriptIntegrityManifest, HttpScriptResourceLimits, HttpScriptResourceOriginRule,
+        HttpScriptResourcePolicy,
+    };
+
+    bootstrap.validate().map_err(|error| error.to_string())?;
+    let origin_rule = match bootstrap.origin_rule {
+        OwnerHttpOriginRule::SameDocumentOrigin => {
+            HttpScriptResourceOriginRule::same_document_origin()
+        }
+        OwnerHttpOriginRule::ExactOrigin(origin) => {
+            HttpScriptResourceOriginRule::exact_origin(origin).map_err(|error| error.to_string())?
+        }
+    };
+    let manifest = HttpScriptIntegrityManifest::new(
+        bootstrap
+            .resources
+            .into_iter()
+            .map(|resource| (resource.canonical_url, resource.integrity)),
+    )
+    .map_err(|error| error.to_string())?;
+    HttpScriptResourcePolicy::new(origin_rule, manifest, HttpScriptResourceLimits::default())
+        .map_err(|error| error.to_string())
 }
 
 /// Serves one long-lived BlueJS script connection. Frame parsing lives at the
@@ -1013,6 +1062,44 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     }
+    let mut owner_page_http_policy = None;
+    if args.owner_bootstrap_stdin {
+        let bootstrap = match blueice_ipc::owner_bootstrap::read_core_owner_bootstrap(
+            &mut io::stdin().lock(),
+        ) {
+            Ok(bootstrap) => bootstrap,
+            Err(error) => {
+                eprintln!("blueice-core: invalid owner bootstrap: {error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        if compiler_socket.is_some()
+            != (bootstrap.compiler_catalog.is_some() || args.compiler_project_profile.is_some())
+            || (bootstrap.compiler_catalog.is_some() && args.compiler_project_profile.is_some())
+            || (bootstrap.page_http_policy.is_some() && out_of_process_bluejs_socket.is_none())
+        {
+            eprintln!("blueice-core: owner bootstrap does not match its private startup endpoints");
+            return ExitCode::FAILURE;
+        }
+        if let Some(page_policy) = bootstrap.page_http_policy {
+            owner_page_http_policy = match construct_owner_http_page_policy(page_policy) {
+                Ok(policy) => Some(policy),
+                Err(error) => {
+                    eprintln!("blueice-core: invalid owner HTTP page policy: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+        }
+        if let Some(projects) = bootstrap.compiler_catalog {
+            let catalog = compiler_catalog
+                .as_mut()
+                .expect("owner bootstrap compiler catalog requires a compiler socket");
+            if let Err(error) = register_owner_compiler_catalog(catalog, projects) {
+                eprintln!("blueice-core: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
     let mut compiler_service = compiler_catalog.map(CoreCompilerProjectCatalog::seal);
 
     let script_listener = match script_socket.as_ref() {
@@ -1156,8 +1243,14 @@ fn main() -> ExitCode {
             out_of_process_bluejs_socket.as_deref(),
             out_of_process_bluejs_token.as_deref(),
         ) {
-            let mut javascript_executor = match out_of_process_bluejs_page_script_profile.as_deref()
-            {
+            let mut javascript_executor = if let Some(policy) = owner_page_http_policy.take() {
+                script::javascript_child::OutOfProcessJavaScriptPageExecutor::connect_with_external_source_authorizer(
+                    socket,
+                    token,
+                    script::http_resource_authorizer::HttpOutOfProcessPageScriptSourceAuthorizer::new(policy),
+                )
+            } else {
+                match out_of_process_bluejs_page_script_profile.as_deref() {
                 None => script::javascript_child::OutOfProcessJavaScriptPageExecutor::connect(
                     socket, token,
                 ),
@@ -1170,6 +1263,7 @@ fn main() -> ExitCode {
                 }
                 // `parse_args` rejects every other value before this point.
                 Some(_) => unreachable!("page script profile was validated during argument parsing"),
+                }
             }
             .map_err(|error| {
                 io::Error::new(
@@ -1385,6 +1479,7 @@ mod tests {
                 compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
                 compiler_project_profile: Some("core-closed-fixture-v1".to_string()),
                 compiler_catalog_stdin: false,
+                owner_bootstrap_stdin: false,
                 inline_bluets_profile: Some("core-script-document-text-v1".to_string()),
                 inline_bluejs: false,
                 out_of_process_bluejs_socket: None,
@@ -1857,10 +1952,7 @@ mod tests {
                 "--compiler-project-profile",
                 "core-closed-fixture-v1",
             ]),
-            Err(
-                "--compiler-socket requires exactly one of --compiler-project-profile or --compiler-catalog-stdin"
-                    .to_string()
-            )
+            Err("--compiler-socket requires exactly one compiler startup selector".to_string())
         );
         assert_eq!(
             args(&[
@@ -1869,10 +1961,7 @@ mod tests {
                 "--compiler-socket",
                 "/tmp/compiler.sock",
             ]),
-            Err(
-                "--compiler-socket requires exactly one of --compiler-project-profile or --compiler-catalog-stdin"
-                    .to_string()
-            )
+            Err("--compiler-socket requires exactly one compiler startup selector".to_string())
         );
         let parsed = args(&[
             "--socket",
@@ -1896,6 +1985,30 @@ mod tests {
         ])
         .unwrap();
         assert!(parsed.compiler_catalog_stdin);
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--compiler-socket",
+            "/tmp/compiler.sock",
+            "--owner-bootstrap-stdin",
+        ])
+        .unwrap();
+        assert!(parsed.owner_bootstrap_stdin);
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--compiler-socket",
+            "/tmp/compiler.sock",
+            "--compiler-project-profile",
+            "core-closed-fixture-v1",
+            "--owner-bootstrap-stdin",
+        ])
+        .unwrap();
+        assert!(parsed.owner_bootstrap_stdin);
+        assert_eq!(
+            parsed.compiler_project_profile.as_deref(),
+            Some("core-closed-fixture-v1")
+        );
         assert!(args(&[
             "--socket",
             "/tmp/x.sock",
@@ -1919,6 +2032,27 @@ mod tests {
         assert_eq!(catalog.registered_project_count(), 0);
         register_compiler_startup_profile(&mut catalog, "core-closed-fixture-v1").unwrap();
         assert_eq!(catalog.registered_project_count(), 1);
+    }
+
+    #[test]
+    fn owner_http_policy_rejects_noncanonical_resource_and_origin_before_listener_setup() {
+        use blueice_ipc::owner_bootstrap::{
+            OwnerHttpOriginRule, OwnerHttpPolicyBootstrap, OwnerHttpResource,
+        };
+
+        let mut policy = OwnerHttpPolicyBootstrap {
+            origin_rule: OwnerHttpOriginRule::SameDocumentOrigin,
+            resources: vec![OwnerHttpResource {
+                canonical_url: "https://example.test/app.js".into(),
+                integrity: format!("sha256:{}", "0".repeat(64)),
+            }],
+        };
+        assert!(construct_owner_http_page_policy(policy.clone()).is_ok());
+        policy.resources[0].canonical_url = "https://example.test/app.js?query=1".into();
+        assert!(construct_owner_http_page_policy(policy.clone()).is_err());
+        policy.resources[0].canonical_url = "https://example.test/app.js".into();
+        policy.origin_rule = OwnerHttpOriginRule::ExactOrigin("https://example.test/path".into());
+        assert!(construct_owner_http_page_policy(policy).is_err());
     }
 
     #[test]
