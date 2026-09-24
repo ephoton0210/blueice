@@ -114,6 +114,8 @@ fn supervised_child_script_completes_a_synchronous_core_dom_lookup() {
         let body = concat!(
             "<div id='target'>live core node</div>",
             "<script>",
+            "if (typeof fetch !== 'undefined') throw 'child gained fetch';",
+            "if (typeof document !== 'undefined') throw 'child gained direct document';",
             "if (!blueiceTestHasElementById('target')) throw 'missing live node';",
             "if (blueiceTestHasElementById('absent')) throw 'invented node';",
             "globalThis.domLookupCompleted = true;",

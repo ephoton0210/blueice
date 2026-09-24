@@ -173,10 +173,33 @@ fn read_tab_dom(frontend: &mut UnixStream, tab_id: u64, request_id: u64) -> Stri
 
 fn script_exchange(
     script: &mut UnixStream,
+    next_call_id: &mut u64,
     request: blueice_ipc::script::ScriptRequest,
 ) -> blueice_ipc::script::ScriptReply {
-    blueice_ipc::script::write_script_request(script, &request).unwrap();
-    blueice_ipc::script::read_script_reply(script).unwrap()
+    use blueice_ipc::script::{ScriptReply, ScriptRequest};
+    let Some(target) = request.document_target() else {
+        assert!(matches!(request, ScriptRequest::Hello { .. }));
+        blueice_ipc::script::write_script_request(script, &request).unwrap();
+        return blueice_ipc::script::read_script_reply(script).unwrap();
+    };
+    let request_id = *next_call_id;
+    *next_call_id = next_call_id.checked_add(1).unwrap();
+    blueice_ipc::script::write_script_request(
+        script,
+        &ScriptRequest::Call {
+            request_id,
+            request: Box::new(request),
+        },
+    )
+    .unwrap();
+    match blueice_ipc::script::read_script_reply(script).unwrap() {
+        ScriptReply::CallResult {
+            request_id: actual_id,
+            target: actual_target,
+            reply,
+        } if actual_id == request_id && actual_target == target => *reply,
+        reply => panic!("script reply must echo call ID and document target: {reply:?}"),
+    }
 }
 
 fn navigate_default_tab(frontend: &mut UnixStream, url: String) {
@@ -391,44 +414,42 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
     );
     script.set_read_timeout(None).unwrap();
     drop(idle);
+    let mut script_call_id = 1;
     let target = blueice_ipc::script::ScriptDocumentTarget {
         tab_id: 1,
         document_generation: 0,
     };
-    blueice_ipc::script::write_script_request(
-        &mut script,
-        &blueice_ipc::script::ScriptRequest::CreateTextNode {
-            target: blueice_ipc::script::ScriptDocumentTarget {
-                document_generation: 1,
-                ..target
-            },
-            data: "wrong-generation".to_string(),
-        },
-    )
-    .unwrap();
     assert!(matches!(
-        blueice_ipc::script::read_script_reply(&mut script).unwrap(),
+        script_exchange(
+            &mut script,
+            &mut script_call_id,
+            blueice_ipc::script::ScriptRequest::CreateTextNode {
+                target: blueice_ipc::script::ScriptDocumentTarget {
+                    document_generation: 1,
+                    ..target
+                },
+                data: "wrong-generation".to_string(),
+            },
+        ),
         blueice_ipc::script::ScriptReply::Error { .. }
     ));
-    blueice_ipc::script::write_script_request(
+    let node = match script_exchange(
         &mut script,
-        &blueice_ipc::script::ScriptRequest::CreateTextNode {
+        &mut script_call_id,
+        blueice_ipc::script::ScriptRequest::CreateTextNode {
             target,
             data: "from script socket".to_string(),
         },
-    )
-    .unwrap();
-    let node = match blueice_ipc::script::read_script_reply(&mut script).unwrap() {
+    ) {
         blueice_ipc::script::ScriptReply::NodeCreated { node } => node,
         reply => panic!("expected a created script node, got {reply:?}"),
     };
-    blueice_ipc::script::write_script_request(
-        &mut script,
-        &blueice_ipc::script::ScriptRequest::GetTextContent { target, node },
-    )
-    .unwrap();
     assert_eq!(
-        blueice_ipc::script::read_script_reply(&mut script).unwrap(),
+        script_exchange(
+            &mut script,
+            &mut script_call_id,
+            blueice_ipc::script::ScriptRequest::GetTextContent { target, node },
+        ),
         blueice_ipc::script::ScriptReply::Text {
             value: "from script socket".to_string(),
         }
@@ -451,33 +472,75 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
         blueice_ipc::read_server_message(&mut frontend).unwrap(),
         blueice_ipc::ServerMessage::FrameReady { .. }
     ));
-    blueice_ipc::script::write_script_request(
-        &mut script,
-        &blueice_ipc::script::ScriptRequest::CreateTextNode {
-            target,
-            data: "stale socket must not mutate replacement".to_string(),
-        },
-    )
-    .unwrap();
     assert!(matches!(
-        blueice_ipc::script::read_script_reply(&mut script).unwrap(),
+        script_exchange(
+            &mut script,
+            &mut script_call_id,
+            blueice_ipc::script::ScriptRequest::CreateTextNode {
+                target,
+                data: "stale socket must not mutate replacement".to_string(),
+            },
+        ),
         blueice_ipc::script::ScriptReply::Error { .. }
     ));
-    blueice_ipc::script::write_script_request(
-        &mut script,
-        &blueice_ipc::script::ScriptRequest::CreateTextNode {
-            target: blueice_ipc::script::ScriptDocumentTarget {
-                document_generation: 1,
-                ..target
-            },
-            data: "new document".to_string(),
-        },
-    )
-    .unwrap();
     assert!(matches!(
-        blueice_ipc::script::read_script_reply(&mut script).unwrap(),
+        script_exchange(
+            &mut script,
+            &mut script_call_id,
+            blueice_ipc::script::ScriptRequest::CreateTextNode {
+                target: blueice_ipc::script::ScriptDocumentTarget {
+                    document_generation: 1,
+                    ..target
+                },
+                data: "new document".to_string(),
+            },
+        ),
         blueice_ipc::script::ScriptReply::NodeCreated { .. }
     ));
+    drop(script);
+    for invalid_call in [
+        blueice_ipc::script::ScriptRequest::Call {
+            request_id: 0,
+            request: Box::new(blueice_ipc::script::ScriptRequest::CreateTextNode {
+                target,
+                data: "bad call ID".to_string(),
+            }),
+        },
+        blueice_ipc::script::ScriptRequest::Call {
+            request_id: 1,
+            request: Box::new(blueice_ipc::script::ScriptRequest::Call {
+                request_id: 1,
+                request: Box::new(blueice_ipc::script::ScriptRequest::CreateTextNode {
+                    target,
+                    data: "nested call".to_string(),
+                }),
+            }),
+        },
+    ] {
+        let mut invalid = connect_with_retry(&script_socket_path, Duration::from_secs(5))
+            .expect("failed to connect a malformed script caller");
+        invalid
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        blueice_ipc::script::write_script_request(
+            &mut invalid,
+            &blueice_ipc::script::ScriptRequest::Hello {
+                protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION,
+                session_token: CURRENT_SCRIPT_CAPABILITY.to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            blueice_ipc::script::read_script_reply(&mut invalid).unwrap(),
+            blueice_ipc::script::ScriptReply::HelloAck { .. }
+        ));
+        blueice_ipc::script::write_script_request(&mut invalid, &invalid_call).unwrap();
+        assert!(matches!(
+            blueice_ipc::script::read_script_reply(&mut invalid).unwrap(),
+            blueice_ipc::script::ScriptReply::Error { .. }
+        ));
+        assert!(blueice_ipc::script::read_script_reply(&mut invalid).is_err());
+    }
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
         .unwrap();
@@ -613,9 +676,11 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     assert!(first_dom.contains("first"));
 
     let mut script = connect_with_retry(&script_path, Duration::from_secs(5)).unwrap();
+    let mut script_call_id = 1;
     assert_eq!(
         script_exchange(
             &mut script,
+            &mut script_call_id,
             ScriptRequest::Hello {
                 protocol_version: SCRIPT_PROTOCOL_VERSION,
                 session_token: FIRST_CAPABILITY.to_string(),
@@ -631,6 +696,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     };
     let first_node = match script_exchange(
         &mut script,
+        &mut script_call_id,
         ScriptRequest::GetElementById {
             target: first_target,
             id: "label".to_string(),
@@ -666,6 +732,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     assert!(matches!(
         script_exchange(
             &mut script,
+            &mut script_call_id,
             ScriptRequest::SetTextContent {
                 target: ScriptDocumentTarget {
                     tab_id: second_tab,
@@ -683,6 +750,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     assert!(matches!(
         script_exchange(
             &mut script,
+            &mut script_call_id,
             ScriptRequest::SetTextContent {
                 target: ScriptDocumentTarget {
                     tab_id: 1,
@@ -701,6 +769,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     assert!(matches!(
         script_exchange(
             &mut script,
+            &mut script_call_id,
             ScriptRequest::SetTextContent {
                 target: first_target,
                 node: first_node,
@@ -712,6 +781,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     assert!(matches!(
         script_exchange(
             &mut script,
+            &mut script_call_id,
             ScriptRequest::CreateTextNode {
                 target: first_target,
                 data: "OLD_CREATE_POISON".to_string(),
@@ -742,9 +812,11 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
         document_generation: 1,
     };
     let mut current = connect_with_retry(&script_path, Duration::from_secs(5)).unwrap();
+    let mut current_call_id = 1;
     assert_eq!(
         script_exchange(
             &mut current,
+            &mut current_call_id,
             ScriptRequest::Hello {
                 protocol_version: SCRIPT_PROTOCOL_VERSION,
                 session_token: SUCCESSOR_CAPABILITY.to_string(),
@@ -756,6 +828,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     );
     let successor_node = match script_exchange(
         &mut current,
+        &mut current_call_id,
         ScriptRequest::GetElementById {
             target: successor_target,
             id: "label".to_string(),
@@ -794,9 +867,11 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     assert_eq!(read_tab_dom(&mut successor_frontend, 1, 10), successor_dom);
 
     let mut current = connect_with_retry(&script_path, Duration::from_secs(5)).unwrap();
+    let mut current_call_id = 1;
     assert_eq!(
         script_exchange(
             &mut current,
+            &mut current_call_id,
             ScriptRequest::Hello {
                 protocol_version: SCRIPT_PROTOCOL_VERSION,
                 session_token: SUCCESSOR_CAPABILITY.to_string(),
@@ -809,6 +884,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     assert_eq!(
         script_exchange(
             &mut current,
+            &mut current_call_id,
             ScriptRequest::GetTextContent {
                 target: successor_target,
                 node: successor_node,
@@ -821,6 +897,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     assert_eq!(
         script_exchange(
             &mut current,
+            &mut current_call_id,
             ScriptRequest::SetTextContent {
                 target: successor_target,
                 node: successor_node,

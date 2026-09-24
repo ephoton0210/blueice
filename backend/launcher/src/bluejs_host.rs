@@ -283,6 +283,7 @@ struct ScriptDomCapability {
 struct ScriptDomClient {
     capability: ScriptDomCapability,
     stream: Option<UnixStream>,
+    next_call_id: u64,
 }
 
 impl ScriptDomClient {
@@ -290,6 +291,7 @@ impl ScriptDomClient {
         Self {
             capability,
             stream: None,
+            next_call_id: 1,
         }
     }
 
@@ -324,27 +326,54 @@ impl ScriptDomClient {
         }
         if self.stream.is_none() {
             self.stream = Some(self.connect()?);
+            self.next_call_id = 1;
         }
+        let request_id = self.next_call_id;
         let result = (|| {
             let stream = self
                 .stream
                 .as_mut()
                 .expect("script stream was just connected");
-            script::write_script_request(stream, &ScriptRequest::GetElementById { target, id })?;
+            script::write_script_request(
+                stream,
+                &ScriptRequest::Call {
+                    request_id,
+                    request: Box::new(ScriptRequest::GetElementById { target, id }),
+                },
+            )?;
             match script::read_script_reply(stream)? {
-                ScriptReply::Node { node } => Ok(node.is_some()),
-                ScriptReply::Error { .. } => Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "core denied child DOM lookup",
-                )),
+                ScriptReply::CallResult {
+                    request_id: reply_id,
+                    target: reply_target,
+                    reply,
+                } if reply_id == request_id && reply_target == target => match *reply {
+                    ScriptReply::Node { node } => Ok(node.is_some()),
+                    ScriptReply::Error { .. } => Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "core denied child DOM lookup",
+                    )),
+                    _ => Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "core returned an invalid child DOM lookup result",
+                    )),
+                },
                 _ => Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    "core returned an invalid child DOM lookup reply",
+                    "core returned a reply for a different script call or document",
                 )),
             }
         })();
         if result.is_err() {
             self.stream = None;
+        } else {
+            let Some(next_call_id) = self.next_call_id.checked_add(1) else {
+                self.stream = None;
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "script call ID space exhausted",
+                ));
+            };
+            self.next_call_id = next_call_id;
         }
         result
     }
@@ -4794,6 +4823,72 @@ fn wait_for_child_socket(child: &mut Child, path: &Path, timeout: Duration) -> i
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn child_rejects_unbound_or_mismatched_dom_replies_and_closes_the_stream() {
+        let target = ScriptDocumentTarget {
+            tab_id: 7,
+            document_generation: 9,
+        };
+        for reply in [
+            ScriptReply::CallResult {
+                request_id: 2,
+                target,
+                reply: Box::new(ScriptReply::Node { node: Some(11) }),
+            },
+            ScriptReply::CallResult {
+                request_id: 1,
+                target: ScriptDocumentTarget {
+                    document_generation: 10,
+                    ..target
+                },
+                reply: Box::new(ScriptReply::Node { node: Some(11) }),
+            },
+            ScriptReply::Node { node: Some(11) },
+            ScriptReply::CallResult {
+                request_id: 1,
+                target,
+                reply: Box::new(ScriptReply::CallResult {
+                    request_id: 1,
+                    target,
+                    reply: Box::new(ScriptReply::Node { node: Some(11) }),
+                }),
+            },
+        ] {
+            let (client_stream, mut fake_core) = UnixStream::pair().unwrap();
+            let mut client = ScriptDomClient {
+                capability: ScriptDomCapability {
+                    socket_path: PathBuf::new(),
+                    session_token: String::new(),
+                    enable_lookup_probe: true,
+                },
+                stream: Some(client_stream),
+                next_call_id: 1,
+            };
+            let fake = std::thread::spawn(move || {
+                assert_eq!(
+                    script::read_script_request(&mut fake_core).unwrap(),
+                    ScriptRequest::Call {
+                        request_id: 1,
+                        request: Box::new(ScriptRequest::GetElementById {
+                            target,
+                            id: "target".to_string(),
+                        }),
+                    }
+                );
+                script::write_script_reply(&mut fake_core, &reply).unwrap();
+            });
+            assert_eq!(
+                client
+                    .has_element_by_id(target, "target".to_string())
+                    .unwrap_err()
+                    .kind(),
+                io::ErrorKind::InvalidData
+            );
+            assert!(client.stream.is_none());
+            fake.join().unwrap();
+        }
+    }
 
     fn graph(entry: &str, modules: Vec<PageHostSource>) -> PageHostModuleGraph {
         PageHostModuleGraph {

@@ -14,10 +14,10 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: A3.1.** Bind every child DOM request and reply to the exact
-live tab/document, without child fetch, resolver, or direct core-DOM access.
-A2 now proves one synchronous child VM lookup through a real HTTP page under
-an explicit owner-only probe profile; general DOM wrappers remain open.
+**Current leaf: A3.2.** Revoke the child DOM route on reload, tab close, and
+core cutover; prove an old reply cannot attach to a successor. A3.1 now binds
+each call and reply to an exact ID and document, but lifecycle revocation and
+general DOM wrappers remain open.
 
 ## Current boundary
 
@@ -91,8 +91,14 @@ client registration, build output, or write authority.
 
 #### A3. Preserve the child-to-core realm boundary.
 
-- [ ] Bind each child request/reply to the exact live tab and document;
-  provide no child fetch, resolver, or direct core-DOM reference.
+- [x] Bind each child request/reply to the exact live tab and document;
+  provide no child fetch, resolver, or direct core-DOM reference. Script IPC
+  v4 requires a monotonic per-connection call ID and an exact tab/generation
+  target in every response; core rejects naked, nested, and out-of-order
+  calls, and the child rejects mismatched or unwrapped replies and closes the
+  stream. Real core-socket and supervised child HTTP tests exercise the
+  route; the child profile exposes only a boolean lookup, with no fetch,
+  resolver, direct document object, or raw node ID.
 - [ ] Revoke that route on reload, tab close, and core cutover; test that
   an old reply cannot attach to a successor.
 

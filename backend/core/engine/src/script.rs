@@ -119,7 +119,7 @@ impl ScriptRequestReceiver {
             let Ok(envelope) = self.0.try_recv() else {
                 break;
             };
-            if script_request_target(&envelope.request) == Some(target) {
+            if envelope.request.document_target() == Some(target) {
                 dispatch_script_request(tabs, envelope);
             } else {
                 let _ = envelope.reply.send(ScriptReply::Error {
@@ -146,18 +146,6 @@ impl ScriptRequestReceiver {
     }
 }
 
-fn script_request_target(request: &ScriptRequest) -> Option<ScriptDocumentTarget> {
-    match request {
-        ScriptRequest::Hello { .. } => None,
-        ScriptRequest::GetElementById { target, .. }
-        | ScriptRequest::CreateElement { target, .. }
-        | ScriptRequest::CreateTextNode { target, .. }
-        | ScriptRequest::AppendChild { target, .. }
-        | ScriptRequest::GetTextContent { target, .. }
-        | ScriptRequest::SetTextContent { target, .. } => Some(*target),
-    }
-}
-
 fn dispatch_script_request(tabs: &mut TabManager, envelope: ScriptRequestEnvelope) {
     let reply = handle_script_request(tabs, envelope.request);
     let _ = envelope.reply.send(reply);
@@ -171,7 +159,9 @@ fn dispatch_script_request(tabs: &mut TabManager, envelope: ScriptRequestEnvelop
 /// error reply before an operation can touch a successor document.
 pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> ScriptReply {
     match request {
-        ScriptRequest::Hello { .. } => script_error("script Hello is transport-only"),
+        ScriptRequest::Hello { .. } | ScriptRequest::Call { .. } => {
+            script_error("script transport envelope is not a DOM operation")
+        }
         ScriptRequest::GetElementById { target, id } => {
             if id.len() > SCRIPT_MAX_NAME_BYTES {
                 return script_error("script DOM name exceeds its fixed byte limit");

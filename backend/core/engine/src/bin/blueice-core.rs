@@ -832,23 +832,56 @@ fn serve_script_connection(
         },
     )?;
 
+    let mut next_call_id = 1u64;
     loop {
         let request = match blueice_ipc::script::read_script_request(&mut stream) {
             Ok(request) => request,
             Err(error) if matches!(error.kind(), io::ErrorKind::UnexpectedEof) => return Ok(()),
             Err(error) => return Err(error),
         };
-        if matches!(request, blueice_ipc::script::ScriptRequest::Hello { .. }) {
+        let blueice_ipc::script::ScriptRequest::Call {
+            request_id,
+            request,
+        } = request
+        else {
             blueice_ipc::script::write_script_reply(
                 &mut stream,
                 &blueice_ipc::script::ScriptReply::Error {
-                    message: "script Hello may only be sent once".to_string(),
+                    message: "script DOM calls require a post-handshake envelope".to_string(),
+                },
+            )?;
+            return Ok(());
+        };
+        let Some(target) = request.document_target() else {
+            blueice_ipc::script::write_script_reply(
+                &mut stream,
+                &blueice_ipc::script::ScriptReply::Error {
+                    message: "nested or target-free script call denied".to_string(),
+                },
+            )?;
+            return Ok(());
+        };
+        if request_id != next_call_id {
+            blueice_ipc::script::write_script_reply(
+                &mut stream,
+                &blueice_ipc::script::ScriptReply::Error {
+                    message: "script call ID is not the next connection ID".to_string(),
                 },
             )?;
             return Ok(());
         }
-        let reply = sender.request(request)?;
-        blueice_ipc::script::write_script_reply(&mut stream, &reply)?;
+        next_call_id = next_call_id.checked_add(1).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "script call ID space exhausted")
+        })?;
+        let reply = sender.request(*request)?;
+        blueice_ipc::script::write_script_reply(
+            &mut stream,
+            &blueice_ipc::script::ScriptReply::CallResult {
+                request_id,
+                target,
+                reply: Box::new(reply),
+            },
+        )?;
     }
 }
 

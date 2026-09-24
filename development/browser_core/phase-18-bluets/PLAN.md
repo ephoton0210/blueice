@@ -47,6 +47,18 @@ session deadlock. The ordinary child profile continues to have no live DOM
 binding. This proves the transport/scheduling mechanism, not the eventual
 `document` node-wrapper, mutation, or event API.
 
+**Bound script calls (A3.1):** Script IPC v4 wraps every post-handshake DOM
+operation in a monotonically numbered call. Core accepts exactly one envelope,
+routes only an inner operation with an explicit tab/document-generation target,
+and echoes both the call ID and target in its result. The child accepts only a
+matching result, drops the stream on malformed or mismatched replies, and
+returns only a boolean to the owner-selected JavaScript lookup probe. A real
+core socket rejects malformed envelopes; a socket-pair child test rejects
+wrong IDs, wrong documents, naked results, and nested results. The supervised
+HTTP fixture also asserts this realm has no `fetch` or direct `document`.
+There is no child resolver or direct core DOM reference; page source and graph
+selection remain with the parent. Lifecycle revocation is separate A3.2 work.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

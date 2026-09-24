@@ -116,9 +116,12 @@ unchanged.
    queued callbacks. Repeat the route with a supported direct BlueTS page
    using the same host profile, without a second DOM bridge.
 
-The script channel now has v3 negotiation, an exact tab/document-generation
-target on every DOM request, a launcher-owned per-core child capability,
-capped frames and name/text fields, and a bounded reentrant session wait.
+The script channel now has v4 negotiation, an exact tab/document-generation
+target on every DOM request and reply, a monotonic per-connection call ID, a
+launcher-owned per-core child capability, capped frames and name/text fields,
+and a bounded reentrant session wait. Core rejects unwrapped, nested, and
+out-of-order calls; the child drops a mismatched reply before page code can
+observe it.
 Step 1's transport/scheduling proof is complete. The remaining first-surface
 work is VM-owned wrappers, mutation methods, capability policy, and events.
 

@@ -55,9 +55,9 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
-/// The old tab-only DOM request shapes must not be decoded as current-page
-/// authority after a document replacement.
-pub const SCRIPT_PROTOCOL_VERSION: u32 = 3;
+/// Versions before v4 lack a call ID and document target on each reply, so a
+/// delayed response cannot be bound to its initiating child DOM operation.
+pub const SCRIPT_PROTOCOL_VERSION: u32 = 4;
 pub const SCRIPT_SESSION_TOKEN_HEX_BYTES: usize = 64;
 pub const SCRIPT_MAX_FRAME_BYTES: usize = 1_100_000;
 pub const SCRIPT_MAX_NAME_BYTES: usize = 4_096;
@@ -83,6 +83,14 @@ pub enum ScriptRequest {
         protocol_version: u32,
         /// Fresh launcher-issued, child-only capability for this core.
         session_token: String,
+    },
+    /// Post-handshake transport envelope. The child chooses a fresh,
+    /// monotonically increasing ID for every synchronous DOM call. Core
+    /// accepts exactly one layer and replies with the same ID and the inner
+    /// request's document target; nested envelopes are invalid.
+    Call {
+        request_id: u64,
+        request: Box<ScriptRequest>,
     },
     /// `document.getElementById(id)`, scoped to one tab.
     GetElementById {
@@ -124,11 +132,34 @@ pub enum ScriptRequest {
     },
 }
 
+impl ScriptRequest {
+    /// The exact document named by one DOM operation. Hello and transport
+    /// envelopes are never directly dispatched to core's DOM owner.
+    pub fn document_target(&self) -> Option<ScriptDocumentTarget> {
+        match self {
+            Self::Hello { .. } | Self::Call { .. } => None,
+            Self::GetElementById { target, .. }
+            | Self::CreateElement { target, .. }
+            | Self::CreateTextNode { target, .. }
+            | Self::AppendChild { target, .. }
+            | Self::GetTextContent { target, .. }
+            | Self::SetTextContent { target, .. } => Some(*target),
+        }
+    }
+}
+
 /// `core`'s reply to one [`ScriptRequest`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ScriptReply {
     /// Reply to [`ScriptRequest::Hello`].
     HelloAck { protocol_version: u32 },
+    /// Exact response to one post-handshake call. The child rejects an ID or
+    /// target mismatch before it can treat any inner result as page data.
+    CallResult {
+        request_id: u64,
+        target: ScriptDocumentTarget,
+        reply: Box<ScriptReply>,
+    },
     /// Reply to [`ScriptRequest::GetElementById`] -- `None` if no
     /// element with that ID exists in the addressed tab, matching
     /// `document.getElementById`'s own `null`-on-miss behavior rather
@@ -227,6 +258,13 @@ mod tests {
                 protocol_version: SCRIPT_PROTOCOL_VERSION,
                 session_token: "a".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES),
             },
+            ScriptRequest::Call {
+                request_id: 1,
+                request: Box::new(ScriptRequest::GetElementById {
+                    target,
+                    id: "widget".to_string(),
+                }),
+            },
             ScriptRequest::GetElementById {
                 target,
                 id: "widget".to_string(),
@@ -258,6 +296,35 @@ mod tests {
     }
 
     #[test]
+    fn only_dom_operations_have_a_direct_document_target() {
+        let target = ScriptDocumentTarget {
+            tab_id: 3,
+            document_generation: 4,
+        };
+        let request = ScriptRequest::GetElementById {
+            target,
+            id: "widget".to_string(),
+        };
+        assert_eq!(request.document_target(), Some(target));
+        assert_eq!(
+            ScriptRequest::Call {
+                request_id: 1,
+                request: Box::new(request),
+            }
+            .document_target(),
+            None
+        );
+        assert_eq!(
+            ScriptRequest::Hello {
+                protocol_version: SCRIPT_PROTOCOL_VERSION,
+                session_token: "a".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES),
+            }
+            .document_target(),
+            None
+        );
+    }
+
+    #[test]
     fn script_capability_has_one_fixed_lowercase_hex_shape() {
         assert!(valid_script_session_token(
             &"a".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES)
@@ -279,6 +346,14 @@ mod tests {
         for reply in [
             ScriptReply::HelloAck {
                 protocol_version: SCRIPT_PROTOCOL_VERSION,
+            },
+            ScriptReply::CallResult {
+                request_id: 1,
+                target: ScriptDocumentTarget {
+                    tab_id: 1,
+                    document_generation: 2,
+                },
+                reply: Box::new(ScriptReply::Node { node: Some(42) }),
             },
             ScriptReply::Node { node: Some(42) },
             ScriptReply::Node { node: None },
