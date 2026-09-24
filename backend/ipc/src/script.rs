@@ -26,6 +26,11 @@
 //! stateful, so it gets the same `Hello`-handshake-then-long-lived-
 //! connection shape.
 //!
+//! Each DOM request names the exact core-owned document generation as well as
+//! its tab. A request from a predecessor document fails before lookup or
+//! mutation, including operations that create new nodes and carry no old
+//! `NodeId`. The current socket's `Hello` is not yet child authentication.
+//!
 //! **Scope of this minimal slice.** [`ScriptRequest`] covers only
 //! enough DOM operations to prove the mechanism end to end and to
 //! satisfy `phase-2-mvp-scope/PLAN.md`'s interactive-JS acceptance bar
@@ -55,13 +60,25 @@ pub enum ScriptRequest {
     /// module's own docs above.
     Hello,
     /// `document.getElementById(id)`, scoped to one tab.
-    GetElementById { tab_id: u64, id: String },
+    GetElementById {
+        tab_id: u64,
+        document_generation: u64,
+        id: String,
+    },
     /// `document.createElement(tag_name)`, scoped to one tab. Creates
     /// the node but does not attach it anywhere -- a script must still
     /// place it with [`ScriptRequest::AppendChild`] or the like.
-    CreateElement { tab_id: u64, tag_name: String },
+    CreateElement {
+        tab_id: u64,
+        document_generation: u64,
+        tag_name: String,
+    },
     /// `document.createTextNode(data)`, scoped to one tab.
-    CreateTextNode { tab_id: u64, data: String },
+    CreateTextNode {
+        tab_id: u64,
+        document_generation: u64,
+        data: String,
+    },
     /// `parent.appendChild(child)`, scoped to one tab. Node identity
     /// (`parent`/`child`) is `blueice_dom::NodeId`'s raw value, the
     /// same convention [`crate::ai::AiNode::id`] already uses for the
@@ -69,14 +86,20 @@ pub enum ScriptRequest {
     /// plain numeric handle.
     AppendChild {
         tab_id: u64,
+        document_generation: u64,
         parent: u64,
         child: u64,
     },
     /// `node.textContent` getter, scoped to one tab.
-    GetTextContent { tab_id: u64, node: u64 },
+    GetTextContent {
+        tab_id: u64,
+        document_generation: u64,
+        node: u64,
+    },
     /// `node.textContent` setter, scoped to one tab.
     SetTextContent {
         tab_id: u64,
+        document_generation: u64,
         node: u64,
         value: String,
     },
@@ -174,27 +197,33 @@ mod tests {
             ScriptRequest::Hello,
             ScriptRequest::GetElementById {
                 tab_id: 1,
+                document_generation: 2,
                 id: "widget".to_string(),
             },
             ScriptRequest::CreateElement {
                 tab_id: 1,
+                document_generation: 2,
                 tag_name: "li".to_string(),
             },
             ScriptRequest::CreateTextNode {
                 tab_id: 1,
+                document_generation: 2,
                 data: "hello".to_string(),
             },
             ScriptRequest::AppendChild {
                 tab_id: 1,
+                document_generation: 2,
                 parent: 10,
                 child: 11,
             },
             ScriptRequest::GetTextContent {
                 tab_id: 1,
+                document_generation: 2,
                 node: 10,
             },
             ScriptRequest::SetTextContent {
                 tab_id: 1,
+                document_generation: 2,
                 node: 10,
                 value: "updated".to_string(),
             },
@@ -233,6 +262,7 @@ mod tests {
             &mut buf,
             &ScriptRequest::GetElementById {
                 tab_id: 1,
+                document_generation: 2,
                 id: "a".to_string(),
             },
         )
@@ -241,6 +271,7 @@ mod tests {
             &mut buf,
             &ScriptRequest::GetElementById {
                 tab_id: 1,
+                document_generation: 2,
                 id: "b".to_string(),
             },
         )
@@ -250,6 +281,7 @@ mod tests {
             read_script_request(&mut cursor).unwrap(),
             ScriptRequest::GetElementById {
                 tab_id: 1,
+                document_generation: 2,
                 id: "a".to_string()
             }
         );
@@ -257,6 +289,7 @@ mod tests {
             read_script_request(&mut cursor).unwrap(),
             ScriptRequest::GetElementById {
                 tab_id: 1,
+                document_generation: 2,
                 id: "b".to_string()
             }
         );
@@ -282,6 +315,19 @@ mod tests {
         buf.extend_from_slice(bad_payload);
         let mut cursor = std::io::Cursor::new(buf);
         assert!(read_script_request(&mut cursor).is_err());
+    }
+
+    #[test]
+    fn legacy_dom_request_without_document_generation_is_rejected() {
+        let mut frame = Vec::new();
+        crate::write_framed(
+            &mut frame,
+            &serde_json::json!({
+                "CreateTextNode": { "tab_id": 1, "data": "stale" }
+            }),
+        )
+        .unwrap();
+        assert!(read_script_request(&mut std::io::Cursor::new(frame)).is_err());
     }
 
     #[test]

@@ -238,6 +238,7 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
         &mut invalid,
         &blueice_ipc::script::ScriptRequest::CreateTextNode {
             tab_id: 1,
+            document_generation: 0,
             data: "must not run".to_string(),
         },
     )
@@ -263,6 +264,7 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
         &mut script,
         &blueice_ipc::script::ScriptRequest::CreateTextNode {
             tab_id: 1,
+            document_generation: 0,
             data: "from script socket".to_string(),
         },
     )
@@ -273,7 +275,11 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
     };
     blueice_ipc::script::write_script_request(
         &mut script,
-        &blueice_ipc::script::ScriptRequest::GetTextContent { tab_id: 1, node },
+        &blueice_ipc::script::ScriptRequest::GetTextContent {
+            tab_id: 1,
+            document_generation: 0,
+            node,
+        },
     )
     .unwrap();
     assert_eq!(

@@ -111,18 +111,26 @@ fn dispatch_script_request(tabs: &mut TabManager, envelope: ScriptRequestEnvelop
 /// Applies one decoded page-script request to the addressed live tab.
 ///
 /// The dispatcher never creates a tab, reads a URL, opens a file, grants a
-/// capability, or selects a default tab for a caller. An unknown tab or node
-/// produces the protocol's structured error reply, including after navigation
-/// replaced the old document and invalidated its node IDs.
+/// capability, or selects a default tab for a caller. An unknown tab, stale
+/// document generation, or invalid node produces the protocol's structured
+/// error reply before an operation can touch a successor document.
 pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> ScriptReply {
     match request {
         ScriptRequest::Hello => ScriptReply::HelloAck,
-        ScriptRequest::GetElementById { tab_id, id } => {
-            with_tab(tabs, tab_id, |page| ScriptReply::Node {
+        ScriptRequest::GetElementById {
+            tab_id,
+            document_generation,
+            id,
+        } => with_tab(tabs, tab_id, document_generation, |page| {
+            ScriptReply::Node {
                 node: page.script_get_element_by_id(&id).map(|node| node.as_u64()),
-            })
-        }
-        ScriptRequest::CreateElement { tab_id, tag_name } => with_tab(tabs, tab_id, |page| {
+            }
+        }),
+        ScriptRequest::CreateElement {
+            tab_id,
+            document_generation,
+            tag_name,
+        } => with_tab(tabs, tab_id, document_generation, |page| {
             page.script_create_element(tag_name).map_or_else(
                 |message| ScriptReply::Error { message },
                 |node| ScriptReply::NodeCreated {
@@ -130,22 +138,31 @@ pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> S
                 },
             )
         }),
-        ScriptRequest::CreateTextNode { tab_id, data } => {
-            with_tab(tabs, tab_id, |page| ScriptReply::NodeCreated {
+        ScriptRequest::CreateTextNode {
+            tab_id,
+            document_generation,
+            data,
+        } => with_tab(tabs, tab_id, document_generation, |page| {
+            ScriptReply::NodeCreated {
                 node: page.script_create_text_node(data).as_u64(),
-            })
-        }
+            }
+        }),
         ScriptRequest::AppendChild {
             tab_id,
+            document_generation,
             parent,
             child,
-        } => with_tab(tabs, tab_id, |page| {
+        } => with_tab(tabs, tab_id, document_generation, |page| {
             page.script_append_child(parent, child).map_or_else(
                 |message| ScriptReply::Error { message },
                 |_| ScriptReply::Ack,
             )
         }),
-        ScriptRequest::GetTextContent { tab_id, node } => with_tab(tabs, tab_id, |page| {
+        ScriptRequest::GetTextContent {
+            tab_id,
+            document_generation,
+            node,
+        } => with_tab(tabs, tab_id, document_generation, |page| {
             page.script_text_content(node).map_or_else(
                 |message| ScriptReply::Error { message },
                 |value| ScriptReply::Text { value },
@@ -153,9 +170,10 @@ pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> S
         }),
         ScriptRequest::SetTextContent {
             tab_id,
+            document_generation,
             node,
             value,
-        } => with_tab(tabs, tab_id, |page| {
+        } => with_tab(tabs, tab_id, document_generation, |page| {
             page.script_set_text_content(node, value).map_or_else(
                 |message| ScriptReply::Error { message },
                 |_| ScriptReply::Ack,
@@ -167,10 +185,19 @@ pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> S
 fn with_tab(
     tabs: &mut TabManager,
     raw_tab_id: u64,
+    document_generation: u64,
     operation: impl FnOnce(&mut crate::Page) -> ScriptReply,
 ) -> ScriptReply {
     tabs.get_mut(TabId::from_u64(raw_tab_id))
-        .map(operation)
+        .map(|page| {
+            if page.document_generation() == document_generation {
+                operation(page)
+            } else {
+                ScriptReply::Error {
+                    message: "stale script document generation".to_string(),
+                }
+            }
+        })
         .unwrap_or_else(|| ScriptReply::Error {
             message: format!("unknown tab {raw_tab_id}"),
         })
@@ -193,6 +220,7 @@ mod tests {
     #[test]
     fn hello_and_lookup_are_scoped_to_the_current_tab_document() {
         let (mut tabs, tab) = loaded_tabs();
+        let generation = tabs.get(tab).unwrap().document_generation();
         assert_eq!(
             handle_script_request(&mut tabs, ScriptRequest::Hello),
             ScriptReply::HelloAck
@@ -201,6 +229,7 @@ mod tests {
             &mut tabs,
             ScriptRequest::GetElementById {
                 tab_id: tab.as_u64(),
+                document_generation: generation,
                 id: "label".to_string(),
             },
         ) else {
@@ -211,6 +240,7 @@ mod tests {
                 &mut tabs,
                 ScriptRequest::GetTextContent {
                     tab_id: tab.as_u64(),
+                    document_generation: generation,
                     node: label,
                 },
             ),
@@ -223,10 +253,12 @@ mod tests {
     #[test]
     fn creation_append_and_text_replacement_mutate_only_the_addressed_tab() {
         let (mut tabs, tab) = loaded_tabs();
+        let generation = tabs.get(tab).unwrap().document_generation();
         let ScriptReply::Node { node: Some(app) } = handle_script_request(
             &mut tabs,
             ScriptRequest::GetElementById {
                 tab_id: tab.as_u64(),
+                document_generation: generation,
                 id: "app".to_string(),
             },
         ) else {
@@ -236,6 +268,7 @@ mod tests {
             &mut tabs,
             ScriptRequest::CreateElement {
                 tab_id: tab.as_u64(),
+                document_generation: generation,
                 tag_name: "p".to_string(),
             },
         ) else {
@@ -246,6 +279,7 @@ mod tests {
                 &mut tabs,
                 ScriptRequest::AppendChild {
                     tab_id: tab.as_u64(),
+                    document_generation: generation,
                     parent: app,
                     child,
                 },
@@ -257,6 +291,7 @@ mod tests {
                 &mut tabs,
                 ScriptRequest::SetTextContent {
                     tab_id: tab.as_u64(),
+                    document_generation: generation,
                     node: child,
                     value: "new".to_string(),
                 },
@@ -268,6 +303,7 @@ mod tests {
                 &mut tabs,
                 ScriptRequest::GetTextContent {
                     tab_id: tab.as_u64(),
+                    document_generation: generation,
                     node: app,
                 },
             ),
@@ -282,10 +318,13 @@ mod tests {
     fn stale_or_cross_tab_handles_fail_without_mutation() {
         let (mut tabs, first) = loaded_tabs();
         let second = tabs.open_tab();
+        let old_generation = tabs.get(first).unwrap().document_generation();
+        let second_generation = tabs.get(second).unwrap().document_generation();
         let ScriptReply::Node { node: Some(label) } = handle_script_request(
             &mut tabs,
             ScriptRequest::GetElementById {
                 tab_id: first.as_u64(),
+                document_generation: old_generation,
                 id: "label".to_string(),
             },
         ) else {
@@ -296,6 +335,7 @@ mod tests {
                 &mut tabs,
                 ScriptRequest::GetTextContent {
                     tab_id: second.as_u64(),
+                    document_generation: second_generation,
                     node: label,
                 },
             ),
@@ -310,6 +350,7 @@ mod tests {
                 &mut tabs,
                 ScriptRequest::GetTextContent {
                     tab_id: first.as_u64(),
+                    document_generation: old_generation,
                     node: label,
                 },
             ),
@@ -320,6 +361,7 @@ mod tests {
                 &mut tabs,
                 ScriptRequest::GetElementById {
                     tab_id: 99_999,
+                    document_generation: old_generation,
                     id: "app".to_string(),
                 },
             ),
@@ -328,15 +370,40 @@ mod tests {
     }
 
     #[test]
+    fn stale_document_generation_cannot_create_a_node_in_its_successor() {
+        let (mut tabs, tab) = loaded_tabs();
+        let old_generation = tabs.get(tab).unwrap().document_generation();
+        tabs.get_mut(tab).unwrap().load_html_str(
+            "<p>replacement</p>",
+            Some("https://example.test/new".to_string()),
+        );
+        let before = tabs.get(tab).unwrap().dom_dump();
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::CreateTextNode {
+                    tab_id: tab.as_u64(),
+                    document_generation: old_generation,
+                    data: "old document".to_string(),
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(tab).unwrap().dom_dump(), before);
+    }
+
+    #[test]
     fn request_worker_cannot_mutate_a_tab_until_the_session_dispatches_it() {
         use std::thread;
         use std::time::Duration;
 
         let (mut tabs, tab) = loaded_tabs();
+        let generation = tabs.get(tab).unwrap().document_generation();
         let (sender, receiver) = script_request_channel();
         let worker = thread::spawn(move || {
             sender.request(ScriptRequest::CreateTextNode {
                 tab_id: tab.as_u64(),
+                document_generation: generation,
                 data: "from-worker".to_string(),
             })
         });
