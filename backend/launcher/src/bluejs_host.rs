@@ -79,7 +79,10 @@ const MAX_SCRIPTS_PER_DOCUMENT: usize = 256;
 const MAX_MODULES_PER_GRAPH: usize = 8;
 const MAX_SOURCE_BYTES_PER_MODULE: usize = 1024 * 1024;
 const MAX_SOURCE_BYTES_PER_DOCUMENT: usize = 8 * 1024 * 1024;
-const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
+// A freshly rebuilt child may spend several seconds in macOS's first-launch
+// executable validation before it reaches its socket bind. Keep the deadline
+// finite, but do not misclassify that cold start as a dead child.
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Static metadata inventory IDs are private to the child but intentionally
 /// start in a separate range from child debugger-program IDs. The type-level
