@@ -851,8 +851,9 @@ fn draw_generation_badge(pixels: &mut [u32], width: u32, height: u32, tab_id: u6
     draw_text_line(pixels, width, height, rect.x + 6, rect.y + 5, &label, label.len(), 0x00FF_FFFF);
 }
 
-/// A browser-owned, non-interactive panel. Guest text can only fill bounded
-/// lines; it cannot supply HTML, links, controls, coordinates, or chrome colors.
+/// A browser-owned panel. Guest text can only fill bounded lines and one
+/// optional action label; it cannot supply HTML, links, arbitrary controls,
+/// coordinates, or chrome colors.
 fn draw_extension_popup(pixels: &mut [u32], width: u32, height: u32, popup: &ExtensionPopup) {
     if width < 120 || height < TAB_STRIP_HEIGHT + 100 {
         return;
@@ -864,7 +865,7 @@ fn draw_extension_popup(pixels: &mut [u32], width: u32, height: u32, popup: &Ext
         x: (width - panel_width) / 2,
         y: TAB_STRIP_HEIGHT + 8,
         width: panel_width,
-        height: 70 + line_count as u32 * 14,
+        height: 70 + line_count as u32 * 14 + if popup.action_label.is_some() { 30 } else { 0 },
     };
     draw_rect(pixels, width, height, panel, 0x0020_2228);
     let inner = Rect { x: panel.x + 2, y: panel.y + 2, width: panel.width - 4, height: panel.height - 4 };
@@ -877,6 +878,30 @@ fn draw_extension_popup(pixels: &mut [u32], width: u32, height: u32, popup: &Ext
         let text = std::str::from_utf8(chunk).unwrap_or_default();
         draw_text_line(pixels, width, height, inner.x + 8, inner.y + 51 + line as u32 * 14, text, chars_per_line, TEXT);
     }
+    if let (Some(label), Some(rect)) = (
+        popup.action_label.as_deref(),
+        extension_popup_action_rect(width, height, popup),
+    ) {
+        draw_rect(pixels, width, height, rect, 0x003A_526C);
+        draw_text_line(pixels, width, height, rect.x + 8, rect.y + 7, label, 20, 0x00FF_FFFF);
+    }
+}
+
+fn extension_popup_action_rect(width: u32, height: u32, popup: &ExtensionPopup) -> Option<Rect> {
+    let label = popup.action_label.as_deref()?;
+    if popup.id == 0 || width < 120 || height < TAB_STRIP_HEIGHT + 100 {
+        return None;
+    }
+    let panel_width = width.saturating_sub(16).min(360);
+    let chars_per_line = ((panel_width.saturating_sub(20)) / 6).min(50) as usize;
+    let line_count = popup.body.len().div_ceil(chars_per_line.max(1));
+    let button_width = (label.len() as u32 * 6 + 16).min(panel_width.saturating_sub(20));
+    Some(Rect {
+        x: (width - button_width) / 2,
+        y: TAB_STRIP_HEIGHT + 8 + 55 + line_count as u32 * 14,
+        width: button_width,
+        height: 22,
+    })
 }
 
 fn draw_rect(pixels: &mut [u32], width: u32, height: u32, rect: Rect, color: u32) {
@@ -1147,8 +1172,14 @@ impl ApplicationHandler<UserEvent> for App {
                         None => {}
                     }
                 } else {
-                    if self.extension_popup.as_ref().is_some_and(|popup| Some(popup.tab_id) == self.selected_tab) {
-                        self.send_selected(&ClientMessage::DismissExtensionPopup);
+                    if let Some(popup) = self.extension_popup.as_ref().filter(|popup| Some(popup.tab_id) == self.selected_tab) {
+                        if extension_popup_action_rect(self.window_size.0, self.window_size.1, popup)
+                            .is_some_and(|rect| rect.contains(x, y))
+                        {
+                            self.send_selected(&ClientMessage::ActivateExtensionPopupAction { popup_id: popup.id });
+                        } else {
+                            self.send_selected(&ClientMessage::DismissExtensionPopup);
+                        }
                     } else {
                         self.send_selected(&ClientMessage::Click {
                             x,
@@ -2074,15 +2105,35 @@ mod tests {
     fn extension_popup_is_a_browser_framed_overlay_not_page_html() {
         let strip = tab_strip(&[], &[], None, &HashMap::new(), 400, None);
         let popup = ExtensionPopup {
+            id: 1,
             tab_id: 7,
             title: "Notes".to_string(),
             body: "Saved locally".to_string(),
+            action_label: None,
         };
         let plain = compose_window(400, 260, None, &strip, None, None);
         let shown = compose_window(400, 260, None, &strip, Some(&popup), None);
         assert_eq!(plain[(TAB_STRIP_HEIGHT as usize + 8) * 400 + 20], 0x00FF_FFFF);
         assert_eq!(shown[(TAB_STRIP_HEIGHT as usize + 8) * 400 + 20], 0x0020_2228);
         assert_eq!(shown[(TAB_STRIP_HEIGHT as usize + 10) * 400 + 22], 0x003A_526C);
+        assert!(extension_popup_action_rect(400, 260, &popup).is_none());
+    }
+
+    #[test]
+    fn extension_popup_action_has_one_browser_owned_button_hit_target() {
+        let strip = tab_strip(&[], &[], None, &HashMap::new(), 400, None);
+        let popup = ExtensionPopup {
+            id: 9,
+            tab_id: 7,
+            title: "Notes".into(),
+            body: "Saved locally".into(),
+            action_label: Some("Open".into()),
+        };
+        let rect = extension_popup_action_rect(400, 260, &popup).unwrap();
+        let shown = compose_window(400, 260, None, &strip, Some(&popup), None);
+        assert_eq!(shown[rect.y as usize * 400 + rect.x as usize], 0x003A_526C);
+        assert!(rect.contains(f64::from(rect.x + 1), f64::from(rect.y + 1)));
+        assert!(!rect.contains(20.0, f64::from(TAB_STRIP_HEIGHT + 8)));
     }
 
     #[test]

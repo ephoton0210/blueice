@@ -192,7 +192,7 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
                 CAPABILITY_DOM_WRITE => 7,
                 CAPABILITY_NETWORK_INTERCEPT => 5,
                 CAPABILITY_NETWORK_OBSERVE => 2,
-                CAPABILITY_UI_INJECT => 2,
+                CAPABILITY_UI_INJECT => 3,
                 CAPABILITY_STORAGE => 2,
                 _ => 1,
             };
@@ -268,6 +268,9 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
                     }
                     ExtensionRuntimeEvent::ToolbarActivated { tab_id } => {
                         RuntimeInvocation::ToolbarActivated { tab_id }
+                    }
+                    ExtensionRuntimeEvent::PopupActionActivated { tab_id } => {
+                        RuntimeInvocation::PopupActionActivated { tab_id }
                     }
                 };
                 let event_stream = stream.try_clone().map_err(|error| {

@@ -100,6 +100,7 @@ const EXTENSION_CORE_REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 /// socket's short-lived declarative network rules to precisely that socket's
 /// cleanup path, independent of the package's public extension identity.
 static NEXT_EXTENSION_CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
+static NEXT_EXTENSION_POPUP_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Core gives each host child a fresh 256-bit credential. This binary is Unix
 /// only (it already uses Unix-domain sockets), so the kernel CSPRNG is the
@@ -494,11 +495,18 @@ fn request_show_popup(
     tab_id: u64,
     title: String,
     body: String,
+    action_label: Option<String>,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::ShowPopup {
         connection_id,
-        popup: blueice_ipc::ExtensionPopup { tab_id, title, body },
+        popup: blueice_ipc::ExtensionPopup {
+            id: NEXT_EXTENSION_POPUP_ID.fetch_add(1, Ordering::Relaxed),
+            tab_id,
+            title,
+            body,
+            action_label,
+        },
         reply: reply_tx,
     })
     .map_err(|_| "blueice-core session is no longer available".to_string())?;
@@ -569,6 +577,7 @@ fn spawn_extension_listener(
                 let toolbar_tx = request_tx.clone();
                 let toolbar_clear_tx = request_tx.clone();
                 let popup_tx = request_tx.clone();
+                let popup_action_tx = request_tx.clone();
                 let popup_clear_tx = request_tx.clone();
                 let _ =
                     handle_extension_connection_with_actions_and_authentication_and_network_rules(
@@ -657,10 +666,20 @@ fn spawn_extension_listener(
                         })
                         .with_popup(
                             move |tab_id, title, body| {
-                                request_show_popup(&popup_tx, connection_id, tab_id, title, body)
+                                request_show_popup(&popup_tx, connection_id, tab_id, title, body, None)
                             },
                             move || clear_popup(&popup_clear_tx, connection_id),
-                        ),
+                        )
+                        .with_popup_action(move |tab_id, title, body, action_label| {
+                            request_show_popup(
+                                &popup_action_tx,
+                                connection_id,
+                                tab_id,
+                                title,
+                                body,
+                                Some(action_label),
+                            )
+                        }),
                     );
                 let _ = clear_network_block_urls(&request_tx, connection_id);
                 let _ = clear_popup(&request_tx, connection_id);

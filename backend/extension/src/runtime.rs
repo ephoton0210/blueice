@@ -50,12 +50,14 @@ const RESULT_NOT_FOUND: i32 = -4;
 
 /// The core-defined context for one fresh `blueice_start` invocation. The
 /// integer values exposed through the ABI are stable: `0` is startup, `1`
-/// is a successfully committed navigation, and `2` is toolbar activation.
+/// is a successfully committed navigation, `2` is toolbar activation, and
+/// `3` is activation of a native popup's single action button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeInvocation {
     Startup,
     NavigationCommitted { tab_id: u64 },
     ToolbarActivated { tab_id: u64 },
+    PopupActionActivated { tab_id: u64 },
 }
 
 impl RuntimeInvocation {
@@ -64,6 +66,7 @@ impl RuntimeInvocation {
             Self::Startup => 0,
             Self::NavigationCommitted { .. } => 1,
             Self::ToolbarActivated { .. } => 2,
+            Self::PopupActionActivated { .. } => 3,
         }
     }
 
@@ -72,6 +75,7 @@ impl RuntimeInvocation {
             Self::Startup => -1,
             Self::NavigationCommitted { tab_id } => i64::try_from(tab_id).unwrap_or(-1),
             Self::ToolbarActivated { tab_id } => i64::try_from(tab_id).unwrap_or(-1),
+            Self::PopupActionActivated { tab_id } => i64::try_from(tab_id).unwrap_or(-1),
         }
     }
 }
@@ -218,6 +222,15 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
             },
         )
         .map_err(|error| format!("could not define the show_popup_utf8 ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
+            "show_popup_action_utf8",
+            |mut caller: Caller<'_, RuntimeState>, tab_id: i64, title_ptr: i32, title_len: i32, body_ptr: i32, body_len: i32, action_ptr: i32, action_len: i32| {
+                show_popup_action_utf8(&mut caller, tab_id, title_ptr, title_len, body_ptr, body_len, action_ptr, action_len)
+            },
+        )
+        .map_err(|error| format!("could not define the show_popup_action_utf8 ABI import: {error}"))?;
     linker
         .func_wrap(
             "blueice",
@@ -569,6 +582,51 @@ fn show_popup_utf8(
         return RESULT_INVALID_ARGUMENT;
     };
     match request_core(caller, ExtensionRequest::ShowPopup { tab_id, title, body }) {
+        Ok(ExtensionReply::UiInjectAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
+fn show_popup_action_utf8(
+    caller: &mut Caller<'_, RuntimeState>,
+    tab_id: i64,
+    title_ptr: i32,
+    title_len: i32,
+    body_ptr: i32,
+    body_len: i32,
+    action_ptr: i32,
+    action_len: i32,
+) -> i32 {
+    let Ok(tab_id) = stable_id(tab_id) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let (Ok((title_ptr, title_len)), Ok((body_ptr, body_len)), Ok((action_ptr, action_len))) = (
+        guest_range(title_ptr, title_len, MAX_EXTENSION_POPUP_TITLE_BYTES),
+        guest_range(body_ptr, body_len, MAX_EXTENSION_POPUP_BODY_BYTES),
+        guest_range(action_ptr, action_len, MAX_EXTENSION_TOOLBAR_LABEL_BYTES),
+    ) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let (Ok(title), Ok(body), Ok(action_label)) = (
+        read_guest_bytes(caller, title_ptr, title_len),
+        read_guest_bytes(caller, body_ptr, body_len),
+        read_guest_bytes(caller, action_ptr, action_len),
+    ) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let (Ok(title), Ok(body), Ok(action_label)) = (
+        String::from_utf8(title),
+        String::from_utf8(body),
+        String::from_utf8(action_label),
+    ) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    match request_core(caller, ExtensionRequest::ShowPopupAction {
+        tab_id,
+        title,
+        body,
+        action_label,
+    }) {
         Ok(ExtensionReply::UiInjectAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
@@ -1207,6 +1265,63 @@ mod tests {
             &extension,
             guest,
             RuntimeInvocation::ToolbarActivated { tab_id: 9 },
+        )
+        .unwrap();
+        core_thread.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn popup_action_import_forwards_label_and_receives_core_defined_activation() {
+        let (root, extension) = installed_extension(
+            "popup-action-activation",
+            r#"(module
+                (import "blueice" "runtime_event_kind" (func $kind (result i32)))
+                (import "blueice" "runtime_event_tab_id" (func $tab (result i64)))
+                (import "blueice" "show_popup_action_utf8" (func $show (param i64 i32 i32 i32 i32 i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (data (i32.const 0) "Notes")
+                (data (i32.const 16) "Saved locally")
+                (data (i32.const 48) "Open notes")
+                (func (export "blueice_start")
+                    call $kind
+                    i32.const 3
+                    i32.ne
+                    if unreachable end
+                    call $tab
+                    i64.const 9
+                    i64.ne
+                    if unreachable end
+                    i64.const 9
+                    i32.const 0
+                    i32.const 5
+                    i32.const 16
+                    i32.const 13
+                    i32.const 48
+                    i32.const 10
+                    call $show
+                    i32.const 0
+                    i32.ne
+                    if unreachable end))"#,
+        );
+        let (guest, mut core) = UnixStream::pair().unwrap();
+        let core_thread = thread::spawn(move || {
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::ShowPopupAction {
+                    tab_id: 9,
+                    title: "Notes".to_string(),
+                    body: "Saved locally".to_string(),
+                    action_label: "Open notes".to_string(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::UiInjectAck)
+                .unwrap();
+        });
+        execute_installed_extension_for_invocation(
+            &extension,
+            guest,
+            RuntimeInvocation::PopupActionActivated { tab_id: 9 },
         )
         .unwrap();
         core_thread.join().unwrap();

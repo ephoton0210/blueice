@@ -1009,6 +1009,42 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                             )?;
                         }
                     }
+                    ClientMessage::ActivateExtensionPopupAction { popup_id } => {
+                        let valid_popup = extension_popup.as_ref().is_some_and(|(_, popup)| {
+                            popup.id != 0
+                                && popup.id == popup_id
+                                && popup.tab_id == target.as_u64()
+                                && popup.action_label.is_some()
+                        });
+                        let result = if !valid_popup || tabs.get(target).is_none() {
+                            Err("no matching live extension popup action".to_string())
+                        } else if let Some(events) = extension_events {
+                            events
+                                .try_send(ExtensionRuntimeEvent::PopupActionActivated {
+                                    tab_id: target.as_u64(),
+                                })
+                                .map_err(|_| "extension event queue is unavailable".to_string())
+                        } else {
+                            Err("the extension runtime is unavailable".to_string())
+                        };
+                        match result {
+                            Ok(()) => {
+                                extension_popup = None;
+                                blueice_ipc::write_server_message_with_ids(
+                                    stream,
+                                    None,
+                                    None,
+                                    &ServerMessage::ExtensionPopup { popup: None },
+                                )?;
+                            }
+                            Err(message) => blueice_ipc::write_server_message_with_ids(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                &ServerMessage::Error { message },
+                            )?,
+                        }
+                    }
                     // Chrome commands (window show/hide) operate on
                     // `frontend`'s own window, not on anything `core`
                     // owns -- see module docs.
@@ -1193,6 +1229,13 @@ fn handle_extension_page_request<S: Write>(
             reply,
         } => {
             let result = blueice_extension_host::validate_popup_text(&popup.title, &popup.body)
+                .and_then(|()| match popup.action_label.as_deref() {
+                    Some(_) if popup.id == 0 => {
+                        Err("a popup action needs a core-assigned ID".to_string())
+                    }
+                    Some(label) => blueice_extension_host::validate_toolbar_label(label),
+                    None => Ok(()),
+                })
                 .and_then(|()| {
                     if !extension_toolbar
                         .as_ref()
@@ -2732,9 +2775,11 @@ mod tests {
         );
         reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
         let popup = ExtensionPopup {
+            id: 1,
             tab_id: 1,
             title: "Tasks".to_string(),
             body: "Saved locally".to_string(),
+            action_label: None,
         };
         let (reply_tx, reply_rx) = mpsc::channel();
         extension_tx
@@ -2771,6 +2816,42 @@ mod tests {
             blueice_ipc::read_server_message(&mut client).unwrap(),
             ServerMessage::ExtensionPopup { popup: Some(popup) }
         );
+        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
+        let action_popup = ExtensionPopup {
+            id: 2,
+            tab_id: 1,
+            title: "Tasks".to_string(),
+            body: "Ready to open".to_string(),
+            action_label: Some("Open tasks".to_string()),
+        };
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx.send(ExtensionPageRequest::ShowPopup {
+            connection_id: 5,
+            popup: action_popup.clone(),
+            reply: reply_tx,
+        }).unwrap();
+        assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionPopup { popup: Some(action_popup.clone()) });
+        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
+        blueice_ipc::write_client_message(&mut client,
+            &ClientMessage::ActivateExtensionPopupAction { popup_id: 1 }).unwrap();
+        assert!(matches!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Error { message } if message.contains("no matching live extension popup action")));
+        assert!(event_rx.try_recv().is_err());
+        blueice_ipc::write_client_message(&mut client,
+            &ClientMessage::ActivateExtensionPopupAction { popup_id: 2 }).unwrap();
+        assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionPopup { popup: None });
+        assert_eq!(event_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            ExtensionRuntimeEvent::PopupActionActivated { tab_id: 1 });
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx.send(ExtensionPageRequest::ShowPopup {
+            connection_id: 5,
+            popup: action_popup,
+            reply: reply_tx,
+        }).unwrap();
+        assert!(matches!(blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::ExtensionPopup { popup: Some(_) }));
         reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
         let (reply_tx, reply_rx) = mpsc::channel();
         extension_tx

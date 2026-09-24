@@ -374,13 +374,14 @@ impl ExtensionRegistry {
     pub fn with_supported_capabilities() -> Self {
         let mut registry = Self::new();
         let v1_to_v2 = CapabilityVersionWindow::new(1, 2).expect("literal version window is valid");
+        let v1_to_v3 = CapabilityVersionWindow::new(1, 3).expect("literal version window is valid");
         let v1_to_v5 = CapabilityVersionWindow::new(1, 5).expect("literal version window is valid");
         let v1_to_v7 = CapabilityVersionWindow::new(1, 7).expect("literal version window is valid");
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v7);
         registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v5);
         registry.register_capability_version_window(CAPABILITY_NETWORK_OBSERVE, v1_to_v2);
-        registry.register_capability_version_window(CAPABILITY_UI_INJECT, v1_to_v2);
+        registry.register_capability_version_window(CAPABILITY_UI_INJECT, v1_to_v3);
         registry.register_capability_version_window(CAPABILITY_STORAGE, v1_to_v2);
         registry
     }
@@ -680,6 +681,7 @@ pub struct ExtensionActionDelegates<R, W, N, B, C> {
     set_toolbar_button: Box<dyn FnMut(String) -> Result<(), String> + Send>,
     clear_toolbar_button: Box<dyn FnMut() -> Result<(), String> + Send>,
     show_popup: Box<dyn FnMut(u64, String, String) -> Result<(), String> + Send>,
+    show_popup_action: Box<dyn FnMut(u64, String, String, String) -> Result<(), String> + Send>,
     clear_popup: Box<dyn FnMut() -> Result<(), String> + Send>,
     storage: ExtensionStorage,
 }
@@ -721,6 +723,9 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
             }),
             show_popup: Box::new(|_, _, _| {
                 Err("ui:inject version 2 needs a core-backed native popup".to_string())
+            }),
+            show_popup_action: Box::new(|_, _, _, _| {
+                Err("ui:inject version 3 needs a core-backed popup action".to_string())
             }),
             clear_popup: Box::new(|| {
                 Err("ui:inject version 2 needs a core-backed native popup".to_string())
@@ -799,6 +804,14 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
     ) -> Self {
         self.show_popup = Box::new(show);
         self.clear_popup = Box::new(clear);
+        self
+    }
+
+    pub fn with_popup_action(
+        mut self,
+        show: impl FnMut(u64, String, String, String) -> Result<(), String> + Send + 'static,
+    ) -> Self {
+        self.show_popup_action = Box::new(show);
         self
     }
 }
@@ -981,6 +994,7 @@ where
         mut set_toolbar_button,
         mut clear_toolbar_button,
         mut show_popup,
+        mut show_popup_action,
         mut clear_popup,
         storage,
     } = delegates;
@@ -1339,6 +1353,61 @@ where
                             category,
                         }
                     }
+                    Err(reason) => ExtensionReply::GatekeeperBlocked {
+                        capability: CAPABILITY_UI_INJECT.to_string(),
+                        reason,
+                        category: "gatekeeper-unavailable".to_string(),
+                    },
+                };
+                write_extension_reply(stream, &reply)?;
+            }
+            ExtensionRequest::ShowPopupAction { tab_id, title, body, action_label } => {
+                if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_UI_INJECT, 3) {
+                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                    })?;
+                    continue;
+                }
+                if let Err(reason) = validate_popup_text(&title, &body)
+                    .and_then(|()| validate_toolbar_label(&action_label))
+                {
+                    write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+                        capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                    })?;
+                    continue;
+                }
+                if !toolbar_visible {
+                    write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+                        capability: CAPABILITY_UI_INJECT.to_string(),
+                        reason: "a native popup action requires this connection's toolbar button".to_string(),
+                    })?;
+                    continue;
+                }
+                // Every guest-visible word on the interactive surface reaches
+                // policy review before a button can appear in browser chrome.
+                let detail = format!(
+                    "action=show-native-popup; title={title:?}; body={body:?}; action_label={action_label:?}"
+                );
+                let reply = match check_extension_action(
+                    gatekeeper_socket,
+                    &identity.extension_id,
+                    CAPABILITY_UI_INJECT,
+                    detail,
+                ) {
+                    Ok(GatekeeperReply::Cleared) => {
+                        match show_popup_action(tab_id, title, body, action_label) {
+                            Ok(()) => {
+                                popup_visible = true;
+                                ExtensionReply::UiInjectAck
+                            }
+                            Err(reason) => ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                            },
+                        }
+                    }
+                    Ok(GatekeeperReply::Rejected { reason, category }) => ExtensionReply::GatekeeperBlocked {
+                        capability: CAPABILITY_UI_INJECT.to_string(), reason, category,
+                    },
                     Err(reason) => ExtensionReply::GatekeeperBlocked {
                         capability: CAPABILITY_UI_INJECT.to_string(),
                         reason,
@@ -2569,7 +2638,7 @@ mod tests {
         assert!(seen_rx.try_recv().is_err());
         write_extension_request(
             &mut client,
-            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 3)]),
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 4)]),
         )
         .unwrap();
         assert!(matches!(
@@ -2579,7 +2648,7 @@ mod tests {
                     unsupported_capabilities.get(CAPABILITY_UI_INJECT),
                     Some(UnsupportedCapabilityVersion::OutsideSupportedRange {
                         min_inclusive: 1,
-                        max_inclusive: 2,
+                        max_inclusive: 3,
                     })
                 )
         ));
@@ -2670,6 +2739,86 @@ mod tests {
         write_extension_request(&mut client, &ExtensionRequest::ClearPopup).unwrap();
         assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
         cleared_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        drop(client);
+        handle.join().unwrap().unwrap();
+        let _ = std::fs::remove_file(gatekeeper);
+    }
+
+    #[test]
+    fn popup_action_requires_v3_and_reviews_the_button_label_before_publication() {
+        let mut registry = ExtensionRegistry::minimal_slice();
+        registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
+        let (gatekeeper, reviewed) = start_gatekeeper("popup-action-clear", GatekeeperReply::Cleared);
+        let (shown_tx, shown_rx) = mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let gatekeeper_for_host = gatekeeper.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry,
+                &gatekeeper_for_host,
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    |_| Ok(String::new()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_| Ok(()),
+                    || Ok(()),
+                )
+                .with_toolbar_button(|_| Ok(()))
+                .with_toolbar_clearer(|| Ok(()))
+                .with_popup_action(move |tab_id, title, body, label| {
+                    shown_tx.send((tab_id, title, body, label)).unwrap();
+                    Ok(())
+                }),
+            )
+        });
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 2)]),
+        ).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::SetToolbarButton {
+            label: "Notes".to_string(),
+        }).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
+        let action = || ExtensionRequest::ShowPopupAction {
+            tab_id: 1,
+            title: "Notes".to_string(),
+            body: "Saved locally".to_string(),
+            action_label: "Open notes".to_string(),
+        };
+        write_extension_request(&mut client, &action()).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::CapabilityDenied { .. }));
+        assert!(shown_rx.try_recv().is_err());
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 3)]),
+        ).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &action()).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::OperationUnavailable { .. }));
+        write_extension_request(&mut client, &ExtensionRequest::SetToolbarButton {
+            label: "Notes".to_string(),
+        }).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
+        write_extension_request(&mut client, &ExtensionRequest::ShowPopupAction {
+            tab_id: 1,
+            title: "Notes".to_string(),
+            body: "Saved locally".to_string(),
+            action_label: "Bad\nLabel".to_string(),
+        }).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::OperationUnavailable { .. }));
+        assert!(shown_rx.try_recv().is_err());
+        write_extension_request(&mut client, &action()).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
+        assert_eq!(shown_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            (1, "Notes".to_string(), "Saved locally".to_string(), "Open notes".to_string()));
+        let request = reviewed.join().unwrap();
+        assert!(matches!(request, GatekeeperRequest::CheckExtensionAction { capability, detail, .. }
+            if capability == CAPABILITY_UI_INJECT && detail.contains("action=show-native-popup")
+                && detail.contains("body=\"Saved locally\"")
+                && detail.contains("action_label=\"Open notes\"")));
         drop(client);
         handle.join().unwrap().unwrap();
         let _ = std::fs::remove_file(gatekeeper);

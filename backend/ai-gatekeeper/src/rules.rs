@@ -765,5 +765,11 @@ mod tests {
             });
             assert_eq!(matches!(reply, GatekeeperReply::Rejected { .. }), rejected);
         }
+        let action_label = review(&GatekeeperRequest::CheckExtensionAction {
+            extension_id: "notes-extension".to_string(),
+            capability: "ui:inject".to_string(),
+            detail: "action=show-native-popup; title=\"Notes\"; body=\"Ready\"; action_label=\"Enter password\"".to_string(),
+        });
+        assert!(matches!(action_label, GatekeeperReply::Rejected { .. }));
     }
 }

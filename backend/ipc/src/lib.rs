@@ -235,6 +235,10 @@ pub enum ClientMessage {
     GetExtensionPopup,
     /// Dismiss a popup only when it belongs to the addressed live tab.
     DismissExtensionPopup,
+    /// Activate the current popup's one native action button. The core checks
+    /// the popup ID so a stale click cannot activate a newer popup. As with
+    /// toolbar activation, this wire message is not proof of a human gesture.
+    ActivateExtensionPopupAction { popup_id: u64 },
     Chrome(ChromeCommand),
     Shutdown,
     /// Catch-all for a variant this build doesn't recognize (e.g. sent
@@ -363,9 +367,15 @@ pub struct TabSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtensionPopup {
+    /// Core-assigned identity for rejecting stale activation messages.
+    #[serde(default)]
+    pub id: u64,
     pub tab_id: u64,
     pub title: String,
     pub body: String,
+    /// A single browser-rendered button; absent for the v2 text-only popup.
+    #[serde(default)]
+    pub action_label: Option<String>,
 }
 
 /// One tab group's observable state, as reported by
@@ -727,6 +737,7 @@ mod tests {
             ClientMessage::OpenTab { url: None },
             ClientMessage::CloseTab,
             ClientMessage::ListTabs,
+            ClientMessage::ActivateExtensionPopupAction { popup_id: 42 },
             ClientMessage::CreateTabGroup {
                 name: "Research".to_string(),
                 color: "#4f8cff".to_string(),
@@ -814,6 +825,15 @@ mod tests {
                 url: None,
             },
             ServerMessage::TabClosed { tab_id: 2 },
+            ServerMessage::ExtensionPopup {
+                popup: Some(ExtensionPopup {
+                    id: 42,
+                    tab_id: 2,
+                    title: "Notes".to_string(),
+                    body: "Ready".to_string(),
+                    action_label: Some("Open".to_string()),
+                }),
+            },
             ServerMessage::Tabs(vec![
                 TabSummary {
                     id: 1,

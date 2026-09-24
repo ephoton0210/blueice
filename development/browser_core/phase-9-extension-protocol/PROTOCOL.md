@@ -67,7 +67,7 @@ is separate from the independently negotiated **capability API versions**:
 | `dom:write` | 1–7 | 7 | Bounded native form-control operations; legacy generic v1 mutation has no core effect. |
 | `network:observe` | 1–2 | 2 | Committed main-frame final response (v1) and initial request/redirect trace (v2). |
 | `network:intercept` | 1–5 | 5 | Exact navigation URL block (v2), clearing own rules (v3), ASCII host/subdomain block (v4), and literal host/path-prefix block (v5); legacy v1 registration has no core effect. |
-| `ui:inject` | 1–2 | 2 | Native toolbar button (v1) and fixed-text native popup (v2). |
+| `ui:inject` | 1–3 | 3 | Native toolbar button (v1), fixed-text native popup (v2), and one browser-owned popup action button (v3). |
 | `storage` | 1–2 | 2 | Core-owned, process-lifetime v1 bucket and separate durable v2 bucket for the derived extension ID. |
 
 An unsupported capability version is reported for that capability without
@@ -88,11 +88,14 @@ fuel units. A trap or missing/unknown import fails that invocation; there is
 no ambient fallback.
 
 `runtime_event_kind() -> i32` returns `0` for startup, `1` for a committed
-navigation, or `2` for toolbar activation. `runtime_event_tab_id() -> i64`
+navigation, `2` for toolbar activation, or `3` for activation of a native
+popup's action button. `runtime_event_tab_id() -> i64`
 returns `-1` at startup and the event's opaque live tab ID otherwise. A
 navigation event is advisory: core keeps at most 16 queued events and may drop
-events if the extension cannot drain them. Neither event kind is proof of an
-authenticated human gesture. Re-read a live representation before acting on
+events if the extension cannot drain them. None of these events proves an
+authenticated human gesture: the launcher also accepts client messages from
+external AI/MCP clients. They cannot grant `optional` or `runtime_ephemeral`
+capabilities. Re-read a live representation before acting on
 a node ID.
 
 All pointers and lengths below are `i32` offsets/counts into exported guest
@@ -124,6 +127,7 @@ effect in the guest.
 | `set_toolbar_button_utf8(ptr:i32, len:i32) -> i32` | `ui:inject` v1 | One 1–20-byte label: ASCII letters/digits, spaces, `-`, `_`, no outer spaces. |
 | `clear_toolbar_button() -> i32` | `ui:inject` v1 | Removes only this connection's button and popup. |
 | `show_popup_utf8(tab_id:i64, title_ptr:i32, title_len:i32, body_ptr:i32, body_len:i32) -> i32` | `ui:inject` v2 | Requires own live toolbar; title uses label grammar, body is 1–120 printable ASCII bytes without outer spaces. |
+| `show_popup_action_utf8(tab_id:i64, title_ptr:i32, title_len:i32, body_ptr:i32, body_len:i32, action_ptr:i32, action_len:i32) -> i32` | `ui:inject` v3 | Same title/body bounds as v2; adds one action label using the toolbar-label grammar. The title, body, and label are gatekeeper-reviewed before native publication. |
 | `clear_popup() -> i32` | `ui:inject` v2 | Clears only this connection's native popup. |
 | `storage_get_utf8(key_ptr:i32, key_len:i32, dst:i32, cap:i32) -> i32` | `storage` v1 | Copies at most 16 KiB UTF-8, or `-4` for an absent key. |
 | `storage_set_utf8(key_ptr:i32, key_len:i32, value_ptr:i32, value_len:i32) -> i32` | `storage` v1 | Sets one bounded UTF-8 value. |
@@ -131,6 +135,15 @@ effect in the guest.
 | `durable_storage_get_utf8(key_ptr:i32, key_len:i32, dst:i32, cap:i32) -> i32` | `storage` v2 | Reads the separate durable bucket; at most 16 KiB UTF-8, or `-4` for an absent key. |
 | `durable_storage_set_utf8(key_ptr:i32, key_len:i32, value_ptr:i32, value_len:i32) -> i32` | `storage` v2 | Persists one bounded UTF-8 value in the separate durable bucket. |
 | `durable_storage_remove_utf8(key_ptr:i32, key_len:i32) -> i32` | `storage` v2 | Returns `1` removed / `0` absent in the durable bucket. |
+
+The v3 popup is still browser-owned chrome, not guest HTML. Core assigns a
+fresh popup ID; a frontend activation includes that ID and is rejected if the
+popup has been replaced, dismissed, or belongs to another tab. A successful
+activation closes the popup and queues event kind `3` for the extension's next
+fresh invocation. The event queue is bounded and an unavailable queue leaves
+the popup visible with a structured error. The action does not open a URL or
+grant a permission by itself. Client-originated activation is not trusted
+human consent, even when it came from the reference frontend.
 
 The storage key is 1–256 ASCII bytes from `[A-Za-z0-9._-]`. Each derived
 identity has at most 128 entries and 256 KiB total key/value bytes, including
@@ -145,7 +158,7 @@ package has a different derived identity and cannot read the old package's
 bucket without a future migration mechanism. No guest can supply a bucket ID or host
 path. All implemented `dom:write` effects and declarative rule registration receive
 mandatory, fail-closed gatekeeper review after ordinary capability checks;
-publishing popup text is also reviewed. A reviewer outage is **not** clearance.
+publishing popup text or its v3 action label is also reviewed. A reviewer outage is **not** clearance.
 
 `network_response_utf8` serializes
 `{"method":"GET","final_url":"…","status":200,"content_type":"text/html"}`
@@ -181,7 +194,7 @@ cargo test -p blueice-extension-host --test documented_example
 ```
 
 The sample is an ABI/conformance fixture, not a claim that optional grants,
-interactive popup controls, arbitrary DOM mutation, subresource interception,
+arbitrary interactive popup controls, arbitrary DOM mutation, subresource interception,
 or a general extension marketplace are already available. Those remain open
 in the [Phase 9 plan](PLAN.md).
 

@@ -189,7 +189,7 @@ fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
         &mut stream,
         &ExtensionRequest::HelloAuthenticated {
             extension_id: installed.extension_id().to_string(),
-            capability_versions: BTreeMap::from([("ui:inject".to_string(), 2)]),
+            capability_versions: BTreeMap::from([("ui:inject".to_string(), 3)]),
             authentication,
         },
     )
@@ -234,6 +234,25 @@ fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
     .unwrap();
     assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
     write_extension_request(&mut stream, &ExtensionRequest::ClearPopup).unwrap();
+    assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
+    write_extension_request(
+        &mut stream,
+        &ExtensionRequest::ShowPopupAction {
+            tab_id: 1,
+            title: "Notes".to_string(),
+            body: "Ready to open".to_string(),
+            action_label: "Open notes".to_string(),
+        },
+    ).unwrap();
+    assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
+    write_extension_request(&mut stream, &ExtensionRequest::NextRuntimeEvent).unwrap();
+    assert_eq!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::PopupActionActivated { tab_id: 1 })
+    );
+    write_extension_request(&mut stream, &ExtensionRequest::SetToolbarButton {
+        label: "Actioned".to_string(),
+    }).unwrap();
     assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
     write_extension_request(&mut stream, &ExtensionRequest::ClearToolbarButton).unwrap();
     assert_eq!(read_extension_reply(&mut stream).unwrap(), ExtensionReply::UiInjectAck);
@@ -1407,15 +1426,50 @@ fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
         blueice_ipc::read_server_message(&mut frontend).unwrap(),
         blueice_ipc::ServerMessage::ExtensionPopup {
             popup: Some(blueice_ipc::ExtensionPopup {
+                id: 1,
                 tab_id: 1,
                 title: "Notes".to_string(),
                 body: "Saved locally".to_string(),
+                action_label: None,
             }),
         }
     );
     assert_eq!(
         blueice_ipc::read_server_message(&mut frontend).unwrap(),
         blueice_ipc::ServerMessage::ExtensionPopup { popup: None }
+    );
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::ExtensionPopup {
+            popup: Some(blueice_ipc::ExtensionPopup {
+                id: 2,
+                tab_id: 1,
+                title: "Notes".to_string(),
+                body: "Ready to open".to_string(),
+                action_label: Some("Open notes".to_string()),
+            }),
+        }
+    );
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::ActivateExtensionPopupAction { popup_id: 1 },
+    ).unwrap();
+    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Error { message }
+            if message.contains("no matching live extension popup action")));
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::ActivateExtensionPopupAction { popup_id: 2 },
+    ).unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::ExtensionPopup { popup: None }
+    );
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::ExtensionToolbar {
+            label: Some("Actioned".to_string()),
+        }
     );
     assert_eq!(
         blueice_ipc::read_server_message(&mut frontend).unwrap(),

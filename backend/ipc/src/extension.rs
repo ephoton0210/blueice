@@ -195,6 +195,16 @@ pub enum ExtensionRequest {
         title: String,
         body: String,
     },
+    /// Version 3 of `ui:inject`: publish a native popup with one bounded
+    /// action button. The title, body, and label all receive gatekeeper
+    /// review before core exposes them. Activation conveys no human-gesture
+    /// authority and cannot grant an optional capability.
+    ShowPopupAction {
+        tab_id: u64,
+        title: String,
+        body: String,
+        action_label: String,
+    },
     /// Hide the caller connection's popup, if any.
     ClearPopup,
     /// Mutate something DOM-shaped -- requires the `dom:write`
@@ -468,6 +478,9 @@ pub enum ExtensionRuntimeEvent {
     /// tab. This is not an authenticated human gesture and grants no ambient
     /// or ephemeral authority by itself.
     ToolbarActivated { tab_id: u64 },
+    /// Core accepted the current popup's one action button for a live tab.
+    /// Like `ToolbarActivated`, this is not an authenticated human gesture.
+    PopupActionActivated { tab_id: u64 },
 }
 
 /// A capability declaration the host could not negotiate during an
@@ -551,6 +564,12 @@ mod tests {
             ExtensionRequest::DomReadTab { tab_id: 42 },
             ExtensionRequest::ReadNetworkResponse { tab_id: 42 },
             ExtensionRequest::ReadNetworkTrace { tab_id: 42 },
+            ExtensionRequest::ShowPopupAction {
+                tab_id: 42,
+                title: "Tasks".into(),
+                body: "Saved locally".into(),
+                action_label: "Open".into(),
+            },
             ExtensionRequest::DomWrite {
                 value: "new content".to_string(),
                 target: DomWriteTarget::Document,
