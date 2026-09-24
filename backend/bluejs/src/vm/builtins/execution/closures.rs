@@ -536,8 +536,10 @@ mod tests {
 
     #[test]
     fn an_async_function_fails_its_first_await_when_continuation_ids_run_out() {
-        let mut vm = Vm::default();
-        vm.next_async_continuation = u64::MAX;
+        let mut vm = Vm {
+            next_async_continuation: u64::MAX,
+            ..Vm::default()
+        };
         let code =
             crate::compile(&crate::parse("(async function () { await 1; })()").unwrap()).unwrap();
         assert_eq!(vm.execute(&code), Err(RuntimeError::InstructionLimit));

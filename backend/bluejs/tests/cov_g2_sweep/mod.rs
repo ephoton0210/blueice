@@ -116,7 +116,6 @@ fn low_heap_config(ceiling: usize) -> VmConfig {
             nursery_capacity: 1,
             major_threshold_bytes: ceiling,
             max_heap_bytes: ceiling,
-            ..HeapConfig::default()
         },
         ..VmConfig::default()
     }

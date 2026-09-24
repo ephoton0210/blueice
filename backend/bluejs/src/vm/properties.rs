@@ -927,8 +927,10 @@ mod tests {
 
     #[test]
     fn a_private_reference_needs_a_bound_owner_object() {
-        let mut vm = Vm::default();
-        vm.bindings = vec![None];
+        let mut vm = Vm {
+            bindings: vec![None],
+            ..Vm::default()
+        };
         vm.stack
             .extend([Value::Undefined, Value::String("#x".into())]);
         assert_eq!(

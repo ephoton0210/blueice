@@ -541,15 +541,29 @@ mod tests {
         // The bound `format` function always carries its branded NumberFormat,
         // so a foreign receiver can only come from a direct native call.
         let mut vm = Vm::default();
-        let format = vm
+        let pair = vm
             .execute(
-                &crate::compile(&crate::parse("new Intl.NumberFormat('en')").unwrap()).unwrap(),
+                &crate::compile(
+                    &crate::parse(
+                        "[new Intl.NumberFormat('en'), { valueOf() { throw 'value'; } }]",
+                    )
+                    .unwrap(),
+                )
+                .unwrap(),
             )
+            .unwrap()
+            .object_id()
             .unwrap();
-        vm.stack.push(format.clone());
+        vm.stack.push(Value::Object(pair));
+        let format = vm.heap().get(pair, "0").unwrap();
+        let throwing = vm.heap().get(pair, "1").unwrap();
         assert_eq!(
             vm.number_format_format(&format, &Value::Number(1234.5)),
             Ok(Value::String("1,234.5".into()))
+        );
+        assert_eq!(
+            vm.number_format_format(&format, &throwing),
+            Err(RuntimeError::Thrown(Value::String("value".into())))
         );
         assert_eq!(
             vm.number_format_format(&Value::Undefined, &Value::Number(1.0)),

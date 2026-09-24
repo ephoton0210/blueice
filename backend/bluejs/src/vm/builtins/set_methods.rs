@@ -396,11 +396,9 @@ mod tests {
         ] {
             assert!(vm.set_algebra_method(method, set, &other).is_ok());
             // A set-like operand that is not an object fails before any work.
-            assert_eq!(
-                vm.set_algebra_method(method, set, &Value::Undefined)
-                    .is_err(),
-                true
-            );
+            assert!(vm
+                .set_algebra_method(method, set, &Value::Undefined)
+                .is_err());
         }
     }
 }

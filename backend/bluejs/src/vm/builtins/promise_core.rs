@@ -942,6 +942,27 @@ mod tests {
     }
 
     #[test]
+    fn promise_then_reports_a_heap_that_has_no_room_for_the_derived_promise() {
+        let ceiling = 1 << 20;
+        let mut vm = Vm::new(crate::VmConfig {
+            heap: crate::HeapConfig {
+                major_threshold_bytes: ceiling,
+                max_heap_bytes: ceiling,
+                ..crate::HeapConfig::default()
+            },
+            ..crate::VmConfig::default()
+        })
+        .unwrap();
+        let promise = vm.new_promise().unwrap();
+        vm.stack.push(Value::Object(promise));
+        // Fill the heap with objects that stay reachable from the stack.
+        while let Ok(object) = vm.with_roots(|heap| heap.alloc_object(None)) {
+            vm.stack.push(Value::Object(object));
+        }
+        assert!(vm.promise_then(&Value::Object(promise), &[]).is_err());
+    }
+
+    #[test]
     fn settling_a_promise_queues_a_job_for_every_kind_of_reaction() {
         for status in [
             PromiseStatus::Fulfilled(Value::Number(1.0)),
