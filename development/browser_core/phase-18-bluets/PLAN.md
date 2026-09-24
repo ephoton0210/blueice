@@ -18,10 +18,20 @@ serves debugger-controlled resume; a transport-only reader handles the
 page-host socket and never owns `TabManager`. Wrong-target calls receive an
 error without mutation, and unrelated frontend, debugger, and compiler
 messages are not dispatched in the nested wait. Socket-pair, executor,
-debugger-resume, and dispatcher tests cover this scheduling boundary. Total
-call/wait limits, timeout/disconnect behavior, and the child VM's first live
-DOM binding remain the next acceptance steps; this is not yet an interactive
+debugger-resume, and dispatcher tests cover this scheduling boundary. The
+child VM's first live DOM binding remains open; this is not yet an interactive
 page-script claim.
+
+**Nested-wait limits (A2.2):** Every child document synchronization and
+debugger-controlled resume now shares one fixed 60-second deadline across
+the page-host request write and reply read, and can dispatch at most 1,024
+DOM requests in total (still at most 64 per polling turn). The first request
+beyond that allowance receives a structured error before mutation and aborts
+the wait. Timeout, disconnect, and abort poison only that child transport;
+core does not dispatch unrelated frontend, debugger, or compiler traffic in
+the nested wait. Socket-pair regressions cover a stalled peer, prompt
+disconnect, and post-timeout unusability; dispatcher regressions cover the
+total budget and unchanged DOM. A real child VM-to-core call is still A2.3.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

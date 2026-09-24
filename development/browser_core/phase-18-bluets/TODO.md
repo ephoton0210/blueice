@@ -14,10 +14,10 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: A2.2.** Bound the total nested-call budget and child wait,
-and prove timeout/disconnect behavior. A2.1 now keeps the core session thread
-available for exact-document DOM calls while it awaits child synchronization
-or debugger resume; the child still has no page-visible DOM call route.
+**Current leaf: A2.3.** Prove the first real child VM-to-core synchronous DOM
+lookup through a launcher/core/child HTTP fixture. The core now serves only
+the executing document during a bounded nested wait, but the child still has
+no page-visible DOM call route.
 
 ## Current boundary
 
@@ -67,8 +67,15 @@ client registration, build output, or write authority.
   synchronization or debugger resume; wrong-target calls fail without DOM
   mutation. Transport, executor, resume, and dispatcher regressions cover the
   wait boundary. The child VM does not yet issue these calls itself.
-- [ ] Cap calls and wait time; never process unrelated frontend/debugger
-  work in the nested wait. Test timeout and child disconnect.
+- [x] Cap calls and wait time; never process unrelated frontend/debugger
+  work in the nested wait. Each document synchronization or debugger resume
+  has a 1,024-request total allowance and a single 60-second deadline shared
+  by request write and child reply. The first excess request receives a
+  structured error and ends that execution wait; a stalled or disconnected
+  child poisons only its page-host connection. The nested callback routes
+  only exact-document script requests and never enters the ordinary frontend,
+  debugger, or compiler dispatch loop. Focused socket-pair tests cover prompt
+  timeout/disconnect, and budget tests show excess calls leave DOM unchanged.
 - [ ] Prove a child script completes one synchronous DOM lookup through a
   real launcher/core/child HTTP fixture without deadlock.
 

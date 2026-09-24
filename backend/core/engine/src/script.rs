@@ -130,6 +130,20 @@ impl ScriptRequestReceiver {
         }
         dispatched
     }
+
+    /// Once a nested child wait has consumed its total call allowance,
+    /// refuse the first additional request rather than leaving the child
+    /// blocked forever on a reply that the session will not dispatch.
+    #[cfg(unix)]
+    pub(crate) fn reject_one_pending_for_exhausted_wait(&self) -> bool {
+        let Ok(envelope) = self.0.try_recv() else {
+            return false;
+        };
+        let _ = envelope.reply.send(ScriptReply::Error {
+            message: "script DOM wait request budget exhausted".to_string(),
+        });
+        true
+    }
 }
 
 fn script_request_target(request: &ScriptRequest) -> Option<ScriptDocumentTarget> {
@@ -620,5 +634,52 @@ mod tests {
         assert_eq!(replies[2].recv().unwrap(), ScriptReply::Ack);
         assert!(tabs.get(first).unwrap().dom_dump().contains("allowed"));
         assert_eq!(tabs.get(second).unwrap().dom_dump(), second_before);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn exhausted_nested_wait_rejects_the_next_call_without_touching_the_dom() {
+        let (mut tabs, tab) = loaded_tabs();
+        let generation = tabs.get(tab).unwrap().document_generation();
+        let ScriptReply::Node { node: Some(label) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target: target(tab, generation),
+                id: "label".to_string(),
+            },
+        ) else {
+            panic!("the document must have a label");
+        };
+        let (sender, receiver) = script_request_channel();
+        let mut replies = Vec::new();
+        for value in ["allowed", "over budget"] {
+            let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+            sender
+                .0
+                .send(ScriptRequestEnvelope {
+                    request: ScriptRequest::SetTextContent {
+                        target: target(tab, generation),
+                        node: label,
+                        value: value.to_string(),
+                    },
+                    reply: reply_sender,
+                })
+                .unwrap();
+            replies.push(reply_receiver);
+        }
+        assert_eq!(
+            receiver.dispatch_pending_for_document(&mut tabs, target(tab, generation), 1),
+            1
+        );
+        let after_allowed = tabs.get(tab).unwrap().dom_dump();
+        assert_eq!(replies[0].recv().unwrap(), ScriptReply::Ack);
+        assert!(after_allowed.contains("allowed"));
+        assert!(receiver.reject_one_pending_for_exhausted_wait());
+        assert!(matches!(
+            replies[1].recv().unwrap(),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(tab).unwrap().dom_dump(), after_allowed);
+        assert!(!receiver.reject_one_pending_for_exhausted_wait());
     }
 }

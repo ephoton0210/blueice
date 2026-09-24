@@ -92,10 +92,31 @@ use std::time::{Duration, Instant};
 /// The maximum number of source-free child-host results retained by core for
 /// the existing tab-addressed control-plane drain.
 const MAX_EXECUTION_REPORTS: usize = 128;
-/// The nested page-host wait remains finite even if the child disappears
-/// without closing its socket. A2.2 will exercise the full timeout policy.
+/// One page-host execution receives a fixed total DOM-call allowance. The
+/// session still limits each polling turn independently in `script.rs`.
+const MAX_NESTED_SCRIPT_REQUESTS_PER_WAIT: usize = 1_024;
+/// The request write and reply read share this one deadline.
 const CHILD_DOCUMENT_REPLY_WAIT: Duration = Duration::from_secs(60);
 const CHILD_DOCUMENT_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+fn pump_script_requests_during_child_wait(
+    script_requests: &ScriptRequestReceiver,
+    tabs: &mut TabManager,
+    target: ScriptDocumentTarget,
+    remaining: &mut usize,
+) -> io::Result<()> {
+    if *remaining == 0 {
+        if script_requests.reject_one_pending_for_exhausted_wait() {
+            return Err(io::Error::other(
+                "page-host script DOM request budget exhausted",
+            ));
+        }
+        return Ok(());
+    }
+    let dispatched = script_requests.dispatch_pending_for_document(tabs, target, *remaining);
+    *remaining -= dispatched;
+    Ok(())
+}
 
 /// The fixed core-owned resolver identity for a one-source inline document
 /// graph. It is not a URL resolver and cannot be selected by page content.
@@ -167,27 +188,72 @@ impl PageHostConnection {
         request: PageHostRequest,
         pump: &mut dyn FnMut() -> io::Result<()>,
     ) -> io::Result<PageHostReply> {
-        self.stream
-            .set_write_timeout(Some(CHILD_DOCUMENT_REPLY_WAIT))
-            .map_err(|error| {
-                io::Error::new(error.kind(), format!("page-host write timeout: {error}"))
-            })?;
-        page_host::write_page_host_request(&mut self.stream, &request)?;
+        self.request_while_pumping_script_with_timeout(request, pump, CHILD_DOCUMENT_REPLY_WAIT)
+    }
 
-        let mut reader = self.stream.try_clone()?;
-        reader
-            .set_read_timeout(Some(CHILD_DOCUMENT_REPLY_WAIT))
-            .map_err(|error| {
-                io::Error::new(error.kind(), format!("page-host read timeout: {error}"))
-            })?;
+    fn request_while_pumping_script_with_timeout(
+        &mut self,
+        request: PageHostRequest,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+        wait: Duration,
+    ) -> io::Result<PageHostReply> {
+        if wait.is_zero() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "page-host wait must be nonzero",
+            ));
+        }
+        let deadline = Instant::now() + wait;
+        self.stream.set_write_timeout(Some(wait)).map_err(|error| {
+            io::Error::new(error.kind(), format!("page-host write timeout: {error}"))
+        })?;
+        if let Err(error) = page_host::write_page_host_request(&mut self.stream, &request) {
+            let _ = self.stream.shutdown(Shutdown::Both);
+            return Err(error);
+        }
+
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            let _ = self.stream.shutdown(Shutdown::Both);
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "page-host request write exceeded its fixed wait",
+            ));
+        }
+        let mut reader = match self.stream.try_clone() {
+            Ok(reader) => reader,
+            Err(error) => {
+                let _ = self.stream.shutdown(Shutdown::Both);
+                return Err(error);
+            }
+        };
+        if let Err(error) = reader.set_read_timeout(Some(remaining)) {
+            let _ = self.stream.shutdown(Shutdown::Both);
+            return Err(io::Error::new(
+                error.kind(),
+                format!("page-host read timeout: {error}"),
+            ));
+        }
         let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
         let reader_task = thread::spawn(move || {
             let _ = reply_sender.send(page_host::read_page_host_reply(&mut reader));
         });
-        let deadline = Instant::now() + CHILD_DOCUMENT_REPLY_WAIT;
         let result = loop {
-            match reply_receiver.recv_timeout(CHILD_DOCUMENT_POLL_INTERVAL) {
-                Ok(result) => break result,
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "page-host reply exceeded its fixed wait",
+                ));
+            }
+            match reply_receiver.recv_timeout(remaining.min(CHILD_DOCUMENT_POLL_INTERVAL)) {
+                Ok(result) if Instant::now() <= deadline => break result,
+                Ok(_) => {
+                    break Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "page-host reply exceeded its fixed wait",
+                    ));
+                }
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
                     break Err(io::Error::new(
                         io::ErrorKind::BrokenPipe,
@@ -196,22 +262,17 @@ impl PageHostConnection {
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
             }
-            if Instant::now() >= deadline {
-                break Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    "page-host document reply exceeded its fixed wait",
-                ));
-            }
             if let Err(error) = pump() {
                 break Err(error);
             }
         };
         if result.is_err() {
-            let _ = self.stream.shutdown(Shutdown::Read);
+            let _ = self.stream.shutdown(Shutdown::Both);
         }
-        reader_task
-            .join()
-            .map_err(|_| io::Error::other("page-host reply reader panicked"))?;
+        if reader_task.join().is_err() {
+            let _ = self.stream.shutdown(Shutdown::Both);
+            return Err(io::Error::other("page-host reply reader panicked"));
+        }
         // The socket retains fixed read/write bounds for subsequent control
         // operations. Some Unix platforms reject clearing SO_RCVTIMEO after
         // the peer has closed immediately following a valid reply.
@@ -1734,9 +1795,14 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                     tab_id: tab_id.as_u64(),
                     document_generation: generation,
                 };
+                let mut remaining = MAX_NESTED_SCRIPT_REQUESTS_PER_WAIT;
                 let mut pump = || {
-                    script_requests.dispatch_pending_for_document(tabs, target, 64);
-                    Ok(())
+                    pump_script_requests_during_child_wait(
+                        script_requests,
+                        tabs,
+                        target,
+                        &mut remaining,
+                    )
                 };
                 child.advance_debugger_execution_with_script_pump(
                     tab_id.as_u64(),
@@ -1764,9 +1830,14 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 tab_id: tab_id.as_u64(),
                 document_generation: identity.document_generation,
             };
+            let mut remaining = MAX_NESTED_SCRIPT_REQUESTS_PER_WAIT;
             let mut pump = || {
-                script_requests.dispatch_pending_for_document(tabs, target, 64);
-                Ok(())
+                pump_script_requests_during_child_wait(
+                    script_requests,
+                    tabs,
+                    target,
+                    &mut remaining,
+                )
             };
             let result = self
                 .child
@@ -4893,6 +4964,121 @@ mod tests {
         child_task.join().unwrap();
         assert_eq!(reply, PageHostReply::ShutdownAck);
         assert!(pump_calls > 0);
+    }
+
+    #[test]
+    fn page_host_transport_times_out_and_poison_closes_a_stalled_child() {
+        let (core, mut child) = UnixStream::pair().unwrap();
+        let (release_sender, release_receiver) = mpsc::sync_channel(1);
+        let child_task = thread::spawn(move || {
+            assert_eq!(
+                page_host::read_page_host_request(&mut child).unwrap(),
+                PageHostRequest::Shutdown
+            );
+            release_receiver
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+        });
+        let mut connection = PageHostConnection { stream: core };
+        let started = Instant::now();
+        let error = connection
+            .request_while_pumping_script_with_timeout(
+                PageHostRequest::Shutdown,
+                &mut || Ok(()),
+                Duration::from_millis(100),
+            )
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert!(connection.request(PageHostRequest::Shutdown).is_err());
+        release_sender.send(()).unwrap();
+        child_task.join().unwrap();
+    }
+
+    #[test]
+    fn page_host_transport_fails_promptly_when_the_child_disconnects() {
+        let (core, mut child) = UnixStream::pair().unwrap();
+        let child_task = thread::spawn(move || {
+            assert_eq!(
+                page_host::read_page_host_request(&mut child).unwrap(),
+                PageHostRequest::Shutdown
+            );
+        });
+        let started = Instant::now();
+        let error = PageHostConnection { stream: core }
+            .request_while_pumping_script_with_timeout(
+                PageHostRequest::Shutdown,
+                &mut || Ok(()),
+                Duration::from_secs(3),
+            )
+            .unwrap_err();
+        child_task.join().unwrap();
+        assert_ne!(error.kind(), io::ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn nested_child_wait_rejects_calls_after_its_total_budget() {
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<div id='target'>before</div>",
+            "https://example.test/nested-budget.html",
+        );
+        let target = ScriptDocumentTarget {
+            tab_id: tab_id.as_u64(),
+            document_generation: tabs.get(tab_id).unwrap().document_generation(),
+        };
+        let (sender, receiver) = crate::script::script_request_channel();
+        let first = thread::spawn({
+            let sender = sender.clone();
+            move || {
+                sender.request(blueice_ipc::script::ScriptRequest::GetElementById {
+                    target,
+                    id: "target".to_string(),
+                })
+            }
+        });
+        let mut remaining = 1;
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while remaining > 0 {
+            pump_script_requests_during_child_wait(&receiver, &mut tabs, target, &mut remaining)
+                .unwrap();
+            assert!(
+                Instant::now() < deadline,
+                "first nested request did not arrive"
+            );
+            thread::yield_now();
+        }
+        let ScriptReply::Node { node: Some(node) } = first.join().unwrap().unwrap() else {
+            panic!("the first request must resolve the target node");
+        };
+        pump_script_requests_during_child_wait(&receiver, &mut tabs, target, &mut remaining)
+            .unwrap();
+        let before = tabs.get(tab_id).unwrap().dom_dump();
+        let excess = thread::spawn(move || {
+            sender.request(blueice_ipc::script::ScriptRequest::SetTextContent {
+                target,
+                node,
+                value: "over budget".to_string(),
+            })
+        });
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            if pump_script_requests_during_child_wait(&receiver, &mut tabs, target, &mut remaining)
+                .is_err()
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "excess nested request did not arrive"
+            );
+            thread::yield_now();
+        }
+        assert!(matches!(
+            excess.join().unwrap().unwrap(),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(tab_id).unwrap().dom_dump(), before);
     }
 
     struct ReentrantScriptChild {
