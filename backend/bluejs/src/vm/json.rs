@@ -68,9 +68,16 @@ impl Vm {
         match result {
             Ok(value) => {
                 self.globals.insert("JSON".into(), id);
-                if let Some(&global) = self.globals.get("globalThis") {
-                    self.define_data(global, "JSON", Value::Object(id), true, false, true)?;
-                }
+                // Every source-level lookup creates the realm's global object
+                // before it reaches a namespace, so it is there to receive
+                // this one.
+                self.globals
+                    .get("globalThis")
+                    .copied()
+                    .map(|global| {
+                        self.define_data(global, "JSON", Value::Object(id), true, false, true)
+                    })
+                    .transpose()?;
                 Ok(value)
             }
             Err(error) => {
@@ -901,9 +908,7 @@ impl<'a> JsonSourceParser<'a> {
             match self.peek() {
                 Some(b'"') => {
                     self.index += 1;
-                    let decoded = serde_json::from_str::<String>(&self.input[start..self.index])
-                        .map_err(|_| ())?;
-                    return Ok(decoded.into());
+                    return Ok(decode_json_string(&self.input[start + 1..self.index - 1]));
                 }
                 Some(b'\\') => {
                     self.index += 1;
@@ -980,6 +985,42 @@ fn string_of(value: Value) -> Option<JsString> {
         Value::String(text) => Some(text),
         _ => None,
     }
+}
+
+/// Decodes the body of a JSON string literal that the scanner has already
+/// validated: every escape is `\"`, `\\`, `\/`, one of `\b \f \n \r \t`,
+/// or `\uXXXX`. A `\uXXXX` may be half of a surrogate pair or a lone
+/// surrogate, which a Rust `String` could not hold, so the result is built
+/// from UTF-16 code units.
+fn decode_json_string(body: &str) -> JsString {
+    let mut units: Vec<u16> = Vec::with_capacity(body.len());
+    let mut characters = body.chars();
+    while let Some(character) = characters.next() {
+        if character != '\\' {
+            units.extend_from_slice(character.encode_utf16(&mut [0; 2]));
+            continue;
+        }
+        units.push(
+            match characters
+                .next()
+                .expect("a validated escape names a character")
+            {
+                'b' => 0x08,
+                'f' => 0x0c,
+                'n' => 0x0a,
+                'r' => 0x0d,
+                't' => 0x09,
+                'u' => {
+                    let digits: String = characters.by_ref().take(4).collect();
+                    u16::from_str_radix(&digits, 16)
+                        .expect("a validated escape has four hex digits")
+                }
+                // `"`, `\` and `/` stand for themselves.
+                other => other as u16,
+            },
+        );
+    }
+    JsString::from_code_units(units)
 }
 
 fn json_quote(value: &JsString) -> String {

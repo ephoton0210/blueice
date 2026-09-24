@@ -7,8 +7,10 @@
 //! Proxies, boxed primitives and resource-exhaustion sweeps.
 
 mod cov_g7_common;
+use blueice_bluejs::{compile, parse, Value, Vm, VmConfig};
 use cov_g7_common::{
-    failures, sweep_fuel_each, sweep_heap_each, sweep_heap_runs, sweep_strings, with_setup,
+    failures, run_with, sweep_fuel_each, sweep_heap_bare, sweep_heap_each, sweep_heap_runs,
+    sweep_strings, with_setup,
 };
 
 const PRELUDE: &str = r#"
@@ -314,6 +316,52 @@ eq('skipped members keep separators', JSON.stringify({ a: undefined, b: 1, c: un
     );
 }
 
+#[test]
+fn string_escapes_decode_to_utf16_units_including_lone_surrogates() {
+    assert_eq!(
+        run(r#"
+eq('lone high surrogate', JSON.parse('"\\ud800"').charCodeAt(0), 0xd800);
+eq('lone low surrogate', JSON.parse('"a\\udc00b"').length, 3);
+eq('surrogate pair', JSON.parse('"\\ud83d\\ude00"'), '\u{1F600}');
+eq('every simple escape', JSON.parse('"\\"\\\\\\/\\b\\f\\n\\r\\t"'), '"\\/\b\f\n\r\t');
+eq('unicode escapes and raw text', JSON.parse('"\\u0041\\u00e9é\u{1F600}"'), 'Aéé\u{1F600}');
+"#),
+        ""
+    );
+}
+
+#[test]
+fn stringify_reports_a_revoked_proxy_returned_by_a_replacer() {
+    assert_eq!(
+        run(r#"
+var revoked = Proxy.revocable({}, {});
+revoked.revoke();
+th('replacer returns a revoked proxy', function () { JSON.stringify(1, function () { return revoked.proxy }) }, TypeError);
+"#),
+        ""
+    );
+}
+
+#[test]
+fn the_json_namespace_needs_a_definable_global() {
+    // Without the Test262 harness, which would already have created `JSON`.
+    let result = run_with(
+        r#"
+Object.defineProperty(globalThis, 'JSON', { value: 1, configurable: false });
+th('JSON cannot be installed over a locked global', function () { JSON }, TypeError);
+"#,
+        false,
+        &|_| {},
+    );
+    assert_eq!(result, Ok(Value::String("".into())));
+    // Run without a global object at all: the namespace is still created.
+    let mut vm = Vm::new(VmConfig::default()).unwrap();
+    let value = vm
+        .execute(&compile(&parse("JSON.stringify([1, 'a'])").unwrap()).unwrap())
+        .unwrap();
+    assert_eq!(value, Value::String("[1,\"a\"]".into()));
+}
+
 const SETUP: &str = "var text = '{\"a\":[1,2.5,\"s\",null,true,{\"b\":[]}],\"c\":{\"d\":\"x\\\\u0041\"}}'; var value = { a: [1, { b: 'x' }], c: null }; new Number(1); new String('a'); new Boolean(true);";
 
 const BODIES: &[&str] = &[
@@ -333,6 +381,8 @@ const BODIES: &[&str] = &[
 fn every_heap_allocation_failure_reports_the_heap_limit() {
     // The namespace's own creation, then each operation on a warm namespace.
     sweep_heap_runs("", "typeof JSON", 8000);
+    // The namespace as the very first thing a bare VM builds.
+    sweep_heap_bare("JSON.stringify([1])", 4000);
     sweep_heap_each(&with_setup(SETUP, BODIES));
 }
 

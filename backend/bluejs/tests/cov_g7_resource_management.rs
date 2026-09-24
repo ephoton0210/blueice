@@ -10,7 +10,8 @@
 mod cov_g7_common;
 use blueice_bluejs::RuntimeError;
 use cov_g7_common::{
-    failures, run_with, sweep_fuel_each, sweep_heap_each, sweep_heap_runs, with_setup,
+    failures, run_with, sweep_fuel_each, sweep_heap_bare, sweep_heap_each, sweep_heap_runs,
+    with_setup,
 };
 
 const PRELUDE: &str = r#"
@@ -284,6 +285,7 @@ const BODIES: &[&str] = &[
     "try { { using a = { [Symbol.dispose]() { null.x } }; using b = { [Symbol.dispose]() { null.y } }; } } catch (e) {}",
     "async function h() { try { await using a = { [Symbol.asyncDispose]() { null.x } }; null.z } catch (e) {} } h();",
     "var s = new DisposableStack(); s.defer(function () { null.x }); s.defer(function () { null.y }); try { s.dispose() } catch (e) {}",
+    "var s = new AsyncDisposableStack(); s.disposeAsync(); s.disposeAsync();",
 ];
 
 #[test]
@@ -294,7 +296,15 @@ fn every_heap_allocation_failure_reports_the_heap_limit() {
         "new DisposableStack(); new AsyncDisposableStack();",
         8000,
     );
+    // The prototypes as the very first thing a bare VM builds.
+    sweep_heap_bare("new DisposableStack()", 4000);
+    sweep_heap_bare("new AsyncDisposableStack()", 4000);
     sweep_heap_each(&with_setup(SETUP, BODIES));
+    // With every result kept alive, each allocation has its own failure window.
+    sweep_heap_each(&[(
+        "var keep = [];",
+        "var s = new AsyncDisposableStack(); keep.push(s.disposeAsync()); keep.push(s.disposeAsync());",
+    )]);
 }
 
 #[test]

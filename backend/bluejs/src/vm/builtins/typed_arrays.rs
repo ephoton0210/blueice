@@ -613,8 +613,9 @@ impl Vm {
             match self.test262_foreign_typed_array_info(constructed_id)? {
                 Some((_, target_kind)) => (true, target_kind),
                 None => {
-                    let (_, _, _, target_kind) =
-                        self.heap.typed_array_info(constructed_id).expect(LIVE);
+                    // A species constructor from another realm may build a
+                    // plain object that merely has a long enough `length`.
+                    let (_, _, _, target_kind) = self.heap.typed_array_info(constructed_id)?;
                     (false, target_kind)
                 }
             };
@@ -649,12 +650,21 @@ impl Vm {
                 let byte_length = copy_count * kind.byte_width();
                 let bytes = self
                     .heap
-                    .array_buffer_copy(source_buffer, byte_start, byte_length)?;
+                    .array_buffer_copy(source_buffer, byte_start, byte_length)
+                    // Nothing observable runs between the revalidation above
+                    // and this copy (the child realm cannot re-enter this one
+                    // from a `buffer` getter), so the source cannot shrink.
+                    .expect(LIVE);
                 self.with_roots(|heap| heap.array_buffer_write(target_buffer, 0, &bytes))?;
                 let (realm_id, _, _, _) = self
                     .test262_foreign_reference(constructed_id)
                     .expect("foreign TypedArray construction retains its realm");
-                self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+                // Every mirror's local buffer is rooted by the mirror itself
+                // and its foreign twin by the realm, and the copy above
+                // wrote exactly the target's byte length, so the sync can
+                // only fail for a handle no heap owns.
+                self.test262_sync_foreign_buffer_mirrors(realm_id)
+                    .expect(LIVE);
             } else {
                 let values = self
                     .typed_array_read_values(object, start, copy_count)
@@ -700,12 +710,18 @@ impl Vm {
                     .heap
                     .array_buffer_copy(source_buffer, byte_start, byte_length)
                     .expect(LIVE);
-                real_write_done = self.test262_reverse_write_into_real_construction_result(
-                    constructor_wrapper,
-                    constructed_id,
-                    0,
-                    &bytes,
-                )?;
+                // The parent realm is suspended in the call that reached this
+                // one, and `constructed_id` is a snapshot of a typed array it
+                // returned with at least `count` elements, so the write can
+                // only fail for a handle no heap owns.
+                real_write_done = self
+                    .test262_reverse_write_into_real_construction_result(
+                        constructor_wrapper,
+                        constructed_id,
+                        0,
+                        &bytes,
+                    )
+                    .expect(LIVE);
                 if real_write_done {
                     // The snapshot itself is still worth populating too --
                     // for a caller that observes `constructed` *before* it

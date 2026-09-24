@@ -476,17 +476,21 @@ fn nudge_position(
 ) -> Option<NudgePosition> {
     let sign = duration.sign();
     let origin_ns = epoch_nanoseconds(origin.date, origin.time);
-    let mut window = compute_nudge_window(origin, origin_ns, duration, increment, unit, false)?;
+    // The first window brackets the argument unless the duration's day
+    // remainder overshot it, in which case the next one out does.
     let mut shifted = false;
-    let (near, far) = if sign > 0 {
-        (window.start_ns, window.end_ns)
-    } else {
-        (window.end_ns, window.start_ns)
-    };
-    if !(near <= dest_epoch_ns && dest_epoch_ns <= far) {
-        window = compute_nudge_window(origin, origin_ns, duration, increment, unit, true)?;
+    let window = loop {
+        let window = compute_nudge_window(origin, origin_ns, duration, increment, unit, shifted)?;
+        let (near, far) = if sign > 0 {
+            (window.start_ns, window.end_ns)
+        } else {
+            (window.end_ns, window.start_ns)
+        };
+        if shifted || (near <= dest_epoch_ns && dest_epoch_ns <= far) {
+            break window;
+        }
         shifted = true;
-    }
+    };
     let mut numerator = dest_epoch_ns - window.start_ns;
     let mut denominator = window.end_ns - window.start_ns;
     if denominator < 0 {

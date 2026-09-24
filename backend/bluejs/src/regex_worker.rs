@@ -763,4 +763,58 @@ mod transport_failure_tests {
             assert!(serve_on(&mut framed.as_slice(), &mut Budget(ready)).is_err());
         }
     }
+
+    /// A worker whose only reply is the given frame.
+    fn worker_replying(reply: Vec<u8>) -> (Worker, Receiver<Vec<u8>>) {
+        let (sender, requests) = mpsc::channel();
+        let (replier, replies) = mpsc::channel();
+        replier.send(Ok(reply)).unwrap();
+        let worker = Worker {
+            child: exited_child(),
+            requests: Some(sender),
+            replies,
+            io_thread: None,
+            failed: true,
+            pattern: None,
+            input: None,
+        };
+        (worker, requests)
+    }
+
+    #[test]
+    fn a_reply_is_decoded_and_its_captures_checked_after_the_transaction() {
+        let ask = |reply: Vec<u8>, request: Request, input_length: Option<usize>| {
+            let (mut worker, _requests) = worker_replying(reply);
+            worker.request(request, Duration::from_millis(50), input_length)
+        };
+        let validate = || Request::Validate {
+            patterns: Vec::new(),
+        };
+        let found = |captures: Vec<Option<Range<usize>>>| {
+            encode_reply(&Reply::Found(Some(Match {
+                captures,
+                names: Vec::new(),
+            })))
+        };
+
+        // A reply that is not a reply.
+        let garbage = ask(b"not json".to_vec(), validate(), None).unwrap_err();
+        assert!(garbage.to_string().contains("expected"), "{garbage}");
+        // A capture range beyond the subject is refused, a valid one passed on.
+        assert_eq!(
+            ask(found(vec![Some(0..9)]), validate(), Some(3)).unwrap_err(),
+            worker_error("invalid regex capture range")
+        );
+        let valid = ask(found(vec![Some(0..2)]), validate(), Some(3)).unwrap();
+        assert_eq!(
+            format!("{valid:?}"),
+            format!("{:?}", Reply::Found(Some(Match::whole(0..2))))
+        );
+        // Without a subject length there is nothing to check a match against.
+        let unchecked = ask(found(vec![Some(0..9)]), validate(), None).unwrap();
+        assert_eq!(
+            format!("{unchecked:?}"),
+            format!("{:?}", Reply::Found(Some(Match::whole(0..9))))
+        );
+    }
 }

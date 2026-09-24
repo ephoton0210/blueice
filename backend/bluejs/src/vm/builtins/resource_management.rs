@@ -647,7 +647,11 @@ impl Vm {
         // names the intrinsic constructor directly, not `new.target` (there
         // is none -- `move` is an ordinary method call), so the plain
         // intrinsic prototype is used rather than `constructor_prototype`.
-        let prototype = self.disposable_stack_prototype(is_async)?;
+        // The receiver is an existing stack, so its prototype is already
+        // cached and looking it up cannot allocate.
+        let prototype = self
+            .disposable_stack_prototype(is_async)
+            .expect("an existing stack's prototype is cached");
         let new_id = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         let moved = if is_async {
             let mut state = self

@@ -6,8 +6,10 @@
 //! inputs and Temporal partial-date `dateStyle` formatting.
 
 mod cov_g7_common;
+use blueice_bluejs::{compile, parse, Value, Vm, VmConfig};
 use cov_g7_common::{
-    failures, sweep_fuel_after, sweep_fuel_each, sweep_heap_each, sweep_heap_runs, with_setup,
+    failures, sweep_fuel_after, sweep_fuel_each, sweep_heap_bare, sweep_heap_each, sweep_heap_runs,
+    with_setup,
 };
 
 #[test]
@@ -111,6 +113,25 @@ th('date with time style', function () { new Intl.DateTimeFormat('en', { timeSty
     );
 }
 
+#[test]
+fn the_intl_namespace_needs_a_definable_global() {
+    assert_eq!(
+        failures(
+            r#"
+Object.defineProperty(globalThis, 'Intl', { value: 1, configurable: false });
+th('Intl cannot be installed over a locked global', function () { Intl }, TypeError);
+"#
+        ),
+        ""
+    );
+    // Run without a global object at all: the namespace is still created.
+    let mut vm = Vm::new(VmConfig::default()).unwrap();
+    let value = vm
+        .execute(&compile(&parse("Intl.getCanonicalLocales('EN-us')[0]").unwrap()).unwrap())
+        .unwrap();
+    assert_eq!(value, Value::String("en-US".into()));
+}
+
 const SETUP: &str = "var ym = new Temporal.PlainYearMonth(2020, 3, 'gregory'); var md = new Temporal.PlainMonthDay(3, 15, 'gregory');";
 
 const BODIES: &[&str] = &[
@@ -125,6 +146,10 @@ const BODIES: &[&str] = &[
 fn every_heap_allocation_failure_reports_the_heap_limit() {
     // The namespace's own (large) creation, then services on a warm namespace.
     sweep_heap_runs("", "typeof Intl", 8000);
+    // The namespace as the very first thing a bare VM builds, reached both by
+    // name and through a locale-sensitive method that never names it.
+    sweep_heap_bare("Intl.getCanonicalLocales('en')", 4000);
+    sweep_heap_bare("(1234.5).toLocaleString('en')", 4000);
     sweep_heap_each(&with_setup(SETUP, BODIES));
 }
 

@@ -441,6 +441,35 @@ th('toLocaleString object', function () { TA.toLocaleString.call({}) }, TypeErro
     );
 }
 
+#[test]
+fn foreign_species_results_that_detach_or_swap_their_buffer_are_reported() {
+    assert_eq!(
+        run(r#"
+var realm = $262.createRealm();
+var t = new Uint8Array([1, 2, 3, 4]);
+var Detaching = realm.evalScript('(class C extends Uint8Array { constructor(n) { super(n); $262.detachArrayBuffer(this.buffer) } })');
+t.constructor = { [Symbol.species]: Detaching };
+th('foreign species result detached', function () { t.slice(1, 1) }, TypeError);
+var Small = realm.evalScript('(class C extends Uint8Array { get buffer() { return new ArrayBuffer(1) } })');
+t.constructor = { [Symbol.species]: Small };
+th('foreign species buffer too small', function () { t.slice(0, 2) }, RangeError);
+var detached = new realm.global.Uint8Array(2);
+realm.global.$262.detachArrayBuffer(detached.buffer);
+th('foreign detached toLocaleString', function () { TA.toLocaleString.call(detached) }, TypeError);
+var Plain = realm.evalScript('(function (n) { return { length: 100 } })');
+t.constructor = { [Symbol.species]: Plain };
+th('foreign species result is not a typed array', function () { t.slice(1) }, TypeError);
+var real = new Uint8Array(2);
+realm.global.real = real;
+t.constructor = { [Symbol.species]: realm.evalScript('(function (n) { return real })') };
+eq('foreign species hands back a typed array of this realm', t.slice(2) === real && real.join(), '3,4');
+realm.global.parentInt16 = Int16Array;
+eq('reverse content mismatch', realm.evalScript('var t = new BigInt64Array([1n, 2n]); t.constructor = { [Symbol.species]: parentInt16 }; var r; try { t.slice(1); r = "no throw" } catch (e) { r = e instanceof TypeError ? "TypeError" : String(e) } r'), 'TypeError');
+"#),
+        ""
+    );
+}
+
 const SETUP: &str =
     "var t = new Int16Array([5, 1, 4, 2, 3]); new Float64Array(1); new BigInt64Array(1);";
 const FOREIGN_SETUP: &str = "var t = new Uint8Array([5, 1, 4]); var other = $262.createRealm().global; new other.Uint8Array(1); new other.Int16Array(1);";
@@ -470,6 +499,16 @@ const FOREIGN_BODIES: &[&str] = &[
 fn every_heap_allocation_failure_reports_the_heap_limit() {
     sweep_heap_each(&with_setup(SETUP, BODIES));
     sweep_heap_each(&with_setup(FOREIGN_SETUP, FOREIGN_BODIES));
+}
+
+#[test]
+fn every_allocation_of_a_kept_copy_can_fail() {
+    // An ArrayBuffer is charged only its byte length, so the copies are made
+    // large enough, and kept, for each allocation to have its own window.
+    sweep_heap_each(&[(
+        "var keep = []; var t = new Uint8Array(512);",
+        "keep.push(t.toSorted()); keep.push(t.toReversed()); keep.push(t.with(1, 9));",
+    )]);
 }
 
 #[test]

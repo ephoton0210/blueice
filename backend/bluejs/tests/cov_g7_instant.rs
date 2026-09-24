@@ -354,7 +354,35 @@ eq('year-month inside the range', PYM.from('+275760-08').until('+275759-03', exp
     );
 }
 
-const SETUP: &str = "var i = Temporal.Instant.fromEpochNanoseconds(1000000000123456789n); var a = Temporal.Instant.from('2020-01-01T00:00:00Z'); var z = Temporal.ZonedDateTime.from('2020-03-08T01:30:00-05:00[America/New_York]');";
+#[test]
+fn rounding_ties_and_bubbling_windows_near_the_range_limits() {
+    assert_eq!(
+        run(r#"
+var PD = Temporal.PlainDate, PDT = Temporal.PlainDateTime, D = Temporal.Duration;
+var halfEven = { smallestUnit: 'month', roundingMode: 'halfEven' };
+eq('tie rounds an odd month count up', PD.from('2020-03-01').until('2020-04-16', halfEven).toString(), 'P2M');
+eq('tie keeps an even month count', PD.from('2020-04-01').until('2020-04-16', halfEven).toString(), 'PT0S');
+var weekCeil = { largestUnit: 'week', smallestUnit: 'hour', roundingMode: 'ceil' };
+eq('hours bubble into a week', PDT.from('2020-01-01T00:00').until('2020-01-07T23:30', weekCeil).toString(), 'P1W');
+var yearCeil = { largestUnit: 'year', smallestUnit: 'month', roundingMode: 'ceil' };
+th('plain date window leaves the range', function () { PD.from('+275759-10-01').until('+275760-09-13', yearCeil) }, RangeError);
+th('plain date-time window leaves the range', function () { PDT.from('+275759-10-01T00:00').until('+275760-09-13T00:00', yearCeil) }, RangeError);
+var relative = { smallestUnit: 'month', largestUnit: 'year', roundingMode: 'ceil', relativeTo: '+275759-10-01T00:00:00' };
+th('duration window leaves the range', function () { D.from({ months: 11, days: 12 }).round(relative) }, RangeError);
+th('relativeTo with a malformed offset', function () { D.from({ days: 1 }).total({ unit: 'day', relativeTo: '2020-01-01T10:00+1' }) }, RangeError);
+var YM = Temporal.PlainYearMonth;
+var halfEvenSix = { smallestUnit: 'month', roundingIncrement: 6, roundingMode: 'halfEven' };
+eq('year-month tie rounds an odd multiple up', YM.from('2020-01').until('2020-10', halfEvenSix).toString(), 'P1Y');
+eq('year-month tie keeps an even multiple', YM.from('2020-01').until('2020-04', halfEvenSix).toString(), 'PT0S');
+th('day rounding bubbles past the range', function () { PDT.from('+275759-10-01T00:00').until('+275760-09-12T23:00', { largestUnit: 'year', smallestUnit: 'day', roundingMode: 'ceil' }) }, RangeError);
+var lastNs = new Temporal.ZonedDateTime(8640000000000000000000n, '+01:00');
+th('rounding a zoned date-time past the range', function () { lastNs.round({ smallestUnit: 'day', roundingMode: 'ceil' }) }, RangeError);
+"#),
+        ""
+    );
+}
+
+const SETUP: &str = "var keep = []; var i = Temporal.Instant.fromEpochNanoseconds(1000000000123456789n); var a = Temporal.Instant.from('2020-01-01T00:00:00Z'); var z = Temporal.ZonedDateTime.from('2020-03-08T01:30:00-05:00[America/New_York]');";
 
 const BODIES: &[&str] = &[
     "i.add({ hours: 1 }); i.subtract('PT1S');",
@@ -367,6 +395,7 @@ const BODIES: &[&str] = &[
     "i.toLocaleString('en-US', { timeZone: 'UTC' });",
     "z.round('hour').add({ hours: 1 });",
     "z.round('day');",
+    "keep.push(z.round('hour')); keep.push(z.round('minute'));",
     "try { Temporal.Instant.from('nope') } catch (e) {}",
 ];
 

@@ -6,7 +6,7 @@
 //! decorator, template and arrow-function productions. Every error is a
 //! specified SyntaxError (`known_syntax`).
 
-use blueice_bluejs::{parse, parse_module};
+use blueice_bluejs::{compile, parse, parse_module, Vm, VmConfig};
 
 fn assert_script_errors(cases: &[(&str, &str)]) {
     for (source, message) in cases {
@@ -143,6 +143,34 @@ fn escaped_async_and_annex_b_for_heads_and_private_names_are_classified() {
     // sloppy code.
     for source in ["for (f() in {}) ;", "for (f() of []) ;"] {
         assert!(parse(source).is_ok(), "{source}");
+    }
+}
+
+#[test]
+fn for_in_and_for_of_heads_must_be_assignment_targets() {
+    assert_script_errors(&[
+        ("for (1 in {}) ;", "invalid for-in/for-of assignment target"),
+        (
+            "for (a + b of []) ;",
+            "invalid for-in/for-of assignment target",
+        ),
+    ]);
+}
+
+#[test]
+fn shadow_realm_source_rejects_super_outside_a_class() {
+    let mut vm = Vm::new(VmConfig::default()).unwrap();
+    for source in ["super.x", "super()"] {
+        let program = format!("new ShadowRealm().evaluate('{source}')");
+        let error = vm
+            .execute(&compile(&parse(&program).unwrap()).unwrap())
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("super is not valid in script code"),
+            "{source}: {error}"
+        );
     }
 }
 

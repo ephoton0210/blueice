@@ -617,7 +617,8 @@ impl Vm {
                         )?;
                         self.globals
                             .insert("%Intl.RelativeTimeFormat%".into(), constructor);
-                    } else if service == native::IntlService::Segmenter {
+                    } else {
+                        // The last of the services listed above: Segmenter.
                         self.define_data(
                             prototype,
                             JsSymbol::well_known("toStringTag"),

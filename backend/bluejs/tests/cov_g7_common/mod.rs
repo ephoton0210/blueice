@@ -108,14 +108,78 @@ pub fn sweep_heap_runs(setup: &str, body: &str, max_runs: u64) {
     };
     let needed = smallest(1 << 18, 1 << 28, &|limit| limited(&script, limit));
     let floor = smallest(1 << 18, 1 << 28, &|limit| limited(setup, limit));
-    // Every allocation is charged at least a few tens of bytes, so a step of
-    // eight cannot skip past one allocation's whole failure window.
-    let step = ((needed - floor) / max_runs).max(8);
+    // An allocation's failure window is as wide as the bytes it is charged
+    // (an ArrayBuffer's are just its length), so unless the range is too wide
+    // to try every limit, try every limit.
+    let step = ((needed - floor) / max_runs).max(1);
     let mut limit = floor;
     while limit <= needed {
         let result = limited(&script, limit);
         assert!(
             passes(&result) || matches!(&result, Err(RuntimeError::Heap(_))),
+            "limit {limit}: {result:?}"
+        );
+        limit += step;
+    }
+}
+
+/// Fails the heap allocations of `script` run on a bare VM -- nothing, not
+/// even the assertion prelude, has run first -- so the lazy creation of every
+/// intrinsic the script is the first to touch is swept as well. Every limit
+/// from the smallest VM up to the smallest that lets the script finish is
+/// tried (at most `max_runs` of them, evenly spread); each run must end
+/// normally or in a heap error.
+pub fn sweep_heap_bare(script: &str, max_runs: u64) {
+    let run = |limit: u64| -> Result<Value, RuntimeError> {
+        let mut config = VmConfig::default();
+        config.heap.max_heap_bytes = limit as usize;
+        config.heap.major_threshold_bytes = config.heap.major_threshold_bytes.min(limit as usize);
+        let mut vm = Vm::new(config).map_err(RuntimeError::Heap)?;
+        vm.execute(&compile(&parse(script).unwrap()).unwrap())
+    };
+    let created = |limit: u64| {
+        let mut config = VmConfig::default();
+        config.heap.max_heap_bytes = limit as usize;
+        config.heap.major_threshold_bytes = config.heap.major_threshold_bytes.min(limit as usize);
+        Vm::new(config).is_ok()
+    };
+    let mut high = 1 << 16;
+    while !run(high).is_ok() {
+        high *= 2;
+        assert!(
+            high <= 1 << 28,
+            "the script never finishes: {:?}",
+            run(high)
+        );
+    }
+    let (mut low, mut floor) = (0, high);
+    while !created(floor) {
+        floor *= 2;
+    }
+    let mut needed = high;
+    while needed - low > 1 {
+        let middle = (low + needed) / 2;
+        if run(middle).is_ok() {
+            needed = middle;
+        } else {
+            low = middle;
+        }
+    }
+    low = 0;
+    while floor - low > 1 {
+        let middle = (low + floor) / 2;
+        if created(middle) {
+            floor = middle;
+        } else {
+            low = middle;
+        }
+    }
+    let step = ((needed - floor) / max_runs).max(1);
+    let mut limit = floor;
+    while limit <= needed {
+        let result = run(limit);
+        assert!(
+            result.is_ok() || matches!(&result, Err(RuntimeError::Heap(_))),
             "limit {limit}: {result:?}"
         );
         limit += step;

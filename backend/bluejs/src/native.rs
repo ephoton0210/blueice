@@ -1624,7 +1624,7 @@ pub(crate) fn string_method(
         }
         Concat => {
             for arg in args {
-                append(&mut string, &primitive::string(arg)?, limit)?;
+                append(&mut string, &primitive::string(arg).expect(COERCED), limit)?;
             }
             Value::String(string)
         }
@@ -1856,6 +1856,34 @@ mod tests {
         assert_eq!(integer(&Value::Number(-2.7)), Ok(-2.0));
         assert_eq!(uint32(&Value::Number(4294967297.0)), Ok(1));
         assert_eq!(length(&Value::Number(-5.0)), Ok(0.0));
+    }
+
+    #[test]
+    fn from_codes_builds_units_and_points_and_rejects_invalid_points() {
+        let numbers = |values: &[f64]| values.iter().map(|v| Value::Number(*v)).collect::<Vec<_>>();
+        assert_eq!(
+            from_codes(
+                &numbers(&[65.0, 66.0, 65601.5, f64::NAN, f64::INFINITY]),
+                false,
+                ROOMY
+            ),
+            Ok(Value::String(units(&[65, 66, 65, 0, 0])))
+        );
+        assert_eq!(
+            from_codes(&numbers(&[65.0, 128512.0]), true, ROOMY),
+            Ok(Value::String(units(&[65, 0xd83d, 0xde00])))
+        );
+        for invalid in [-1.0, 1114112.0, 1.5, f64::NAN] {
+            assert_eq!(
+                from_codes(&numbers(&[invalid]), true, ROOMY),
+                Err(RuntimeError::RangeError("invalid String code point".into())),
+                "{invalid}"
+            );
+        }
+        assert_eq!(
+            from_codes(&numbers(&[65.0, 66.0]), false, 2),
+            Err(RuntimeError::StringLimit { limit: 2 })
+        );
     }
 
     #[test]
