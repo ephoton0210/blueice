@@ -4,8 +4,9 @@
 
 **Status**: In progress — the first-party, loopback-only scenario, shared
 human/agent observer path, and local Ollama/Hugging Face TGI Chat/MCP
-live-model drivers are implemented and tested; an actual configured LLM run and
-its human-observer evidence remain.
+live-model drivers are implemented and tested through a compiled-stack
+scripted-provider check; an actual configured LLM run and its human-observer
+evidence remain.
 
 ## Objective
 
@@ -103,6 +104,18 @@ generation as the second MCP PNG entry and highlight snapshot. This closes an
 evidence gap but does not substitute for the outstanding actual model/human
 run.
 
+**Compiled-stack orchestration check (2026-09-24).**
+`backend/mcp-server/tests/phase6_agent_binary.rs` starts a real supervised
+gatekeeper, launcher broker, core, loopback demo site, compiled Phase 6 agent,
+and stdio MCP server. A second, independent launcher client receives the same
+highlighted `FrameReady` tab/generation recorded by the agent's snapshot and
+second retained PNG. Scripted loopback Chat Completions peers exercise both
+Ollama-style tool-call arrays and Hugging Face/TGI-style single-object tool
+calls through the complete browser path, including tool-result correlation,
+the PNG image message, and final `tool_choice: none`. This verifies process
+orchestration and shared-frame wiring, **not** model reasoning or a visible
+human window; the live-model/human evidence item below stays open.
+
 Run prerequisites are deliberately explicit: an operator must either install
 and run a loopback Ollama server with a local vision-and-tool-capable lightweight
 model, or operate a loopback Hugging Face TGI server with a model configured by
@@ -125,6 +138,7 @@ claimed yet.
 - [x] Pick and scope a concrete demo task — see `SCENARIO.md`: inspect/describe the visible MVP elements, set and confirm the labelled text-box value, highlight it, and follow the local confirmation link
 - [x] Wire an LLM-driven agent to the Phase 5 API (no CDP/Puppeteer path) — `blueice-phase6-agent` confines a loopback Ollama or Hugging Face TGI Chat Completions function-calling loop to scenario-specific operations that each invoke the standard MCP adapter; targeted tests and MCP/core integration tests pass
 - [x] Instrument common-frame evidence — MCP screenshots identify the exact tab/generation behind each PNG; the agent transcript pairs that identity with its saved file; the human frontend can display the same core frame identity using `--show-generation`
+- [x] Verify compiled local-provider orchestration against a real shared core — deterministic loopback Chat Completions peers drive both supported response shapes, while an independent launcher client receives the exact highlighted frame retained by MCP; this is not the real-model/human proof
 - [ ] Demonstrate human + agent observing the same page/state simultaneously
 - [ ] Record results (what worked, what broke, what surprised)
 - [ ] Feed findings back into earlier phases' plans as needed
