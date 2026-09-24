@@ -875,9 +875,8 @@ impl Compiler {
                     .self_tail_call_args(call)
                     .expect("contains_tail_call found a self tail call");
                 for argument in args {
-                    let Argument::Normal(value) = argument else {
-                        unreachable!("self tail calls exclude spread arguments")
-                    };
+                    // Self tail calls exclude spread arguments.
+                    let (Argument::Normal(value) | Argument::Spread(value)) = argument;
                     self.expression(value)?;
                 }
                 let iterators: Vec<_> = self

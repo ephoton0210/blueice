@@ -85,8 +85,8 @@ impl Vm {
             None | Some("decimal") => Ok(blueice_ecma402::NumberFormatStyle::Decimal),
             Some("percent") => Ok(blueice_ecma402::NumberFormatStyle::Percent),
             Some("currency") => Ok(blueice_ecma402::NumberFormatStyle::Currency),
-            Some("unit") => Ok(blueice_ecma402::NumberFormatStyle::Unit),
-            Some(_) => unreachable!("string_option validates NumberFormat style"),
+            // `string_option` validated the name, so this is the last one.
+            Some(_) => Ok(blueice_ecma402::NumberFormatStyle::Unit),
         }
     }
 
@@ -134,16 +134,16 @@ impl Vm {
             None | Some("symbol") => blueice_ecma402::NumberCurrencyDisplay::Symbol,
             Some("code") => blueice_ecma402::NumberCurrencyDisplay::Code,
             Some("narrowSymbol") => blueice_ecma402::NumberCurrencyDisplay::NarrowSymbol,
-            Some("name") => blueice_ecma402::NumberCurrencyDisplay::Name,
-            Some(_) => unreachable!("string_option validates NumberFormat currencyDisplay"),
+            // `string_option` validated the name, so this is the last one.
+            Some(_) => blueice_ecma402::NumberCurrencyDisplay::Name,
         };
         let sign = match self
             .string_option(options, "currencySign", &["standard", "accounting"])?
             .as_deref()
         {
             None | Some("standard") => blueice_ecma402::NumberCurrencySign::Standard,
-            Some("accounting") => blueice_ecma402::NumberCurrencySign::Accounting,
-            Some(_) => unreachable!("string_option validates NumberFormat currencySign"),
+            // `string_option` validated the name, so this is the last one.
+            Some(_) => blueice_ecma402::NumberCurrencySign::Accounting,
         };
         let code = code
             .map(|code| {
@@ -177,8 +177,8 @@ impl Vm {
         {
             None | Some("short") => Ok(blueice_ecma402::NumberUnitDisplay::Short),
             Some("narrow") => Ok(blueice_ecma402::NumberUnitDisplay::Narrow),
-            Some("long") => Ok(blueice_ecma402::NumberUnitDisplay::Long),
-            Some(_) => unreachable!("string_option validates NumberFormat unitDisplay"),
+            // `string_option` validated the name, so this is the last one.
+            Some(_) => Ok(blueice_ecma402::NumberUnitDisplay::Long),
         }
     }
 
@@ -212,8 +212,8 @@ impl Vm {
             Some("halfCeil") => Ok(blueice_ecma402::NumberRoundingMode::HalfCeil),
             Some("halfFloor") => Ok(blueice_ecma402::NumberRoundingMode::HalfFloor),
             Some("halfTrunc") => Ok(blueice_ecma402::NumberRoundingMode::HalfTrunc),
-            Some("halfEven") => Ok(blueice_ecma402::NumberRoundingMode::HalfEven),
-            Some(_) => unreachable!("string_option validates NumberFormat roundingMode"),
+            // `string_option` validated the name, so this is the last one.
+            Some(_) => Ok(blueice_ecma402::NumberRoundingMode::HalfEven),
         }
     }
 
@@ -235,8 +235,8 @@ impl Vm {
             None | Some("standard") => Ok(blueice_ecma402::NumberNotation::Standard),
             Some("scientific") => Ok(blueice_ecma402::NumberNotation::Scientific),
             Some("engineering") => Ok(blueice_ecma402::NumberNotation::Engineering),
-            Some("compact") => Ok(blueice_ecma402::NumberNotation::Compact),
-            Some(_) => unreachable!("string_option validates NumberFormat notation"),
+            // `string_option` validated the name, so this is the last one.
+            Some(_) => Ok(blueice_ecma402::NumberNotation::Compact),
         }
     }
 
@@ -271,8 +271,8 @@ impl Vm {
             .as_deref()
         {
             None | Some("short") => Ok(blueice_ecma402::NumberCompactDisplay::Short),
-            Some("long") => Ok(blueice_ecma402::NumberCompactDisplay::Long),
-            Some(_) => unreachable!("string_option validates NumberFormat compactDisplay"),
+            // `string_option` validated the name, so this is the last one.
+            Some(_) => Ok(blueice_ecma402::NumberCompactDisplay::Long),
         }
     }
 
@@ -311,10 +311,8 @@ impl Vm {
             .as_deref()
         {
             None | Some("auto") => Ok(blueice_ecma402::NumberTrailingZeroDisplay::Auto),
-            Some("stripIfInteger") => {
-                Ok(blueice_ecma402::NumberTrailingZeroDisplay::StripIfInteger)
-            }
-            Some(_) => unreachable!("string_option validates NumberFormat trailingZeroDisplay"),
+            // `string_option` validated the name, so this is the last one.
+            Some(_) => Ok(blueice_ecma402::NumberTrailingZeroDisplay::StripIfInteger),
         }
     }
 
@@ -348,8 +346,8 @@ impl Vm {
         {
             None | Some("auto") => Ok(blueice_ecma402::NumberRoundingPriority::Auto),
             Some("morePrecision") => Ok(blueice_ecma402::NumberRoundingPriority::MorePrecision),
-            Some("lessPrecision") => Ok(blueice_ecma402::NumberRoundingPriority::LessPrecision),
-            Some(_) => unreachable!("string_option validates NumberFormat roundingPriority"),
+            // `string_option` validated the name, so this is the last one.
+            Some(_) => Ok(blueice_ecma402::NumberRoundingPriority::LessPrecision),
         }
     }
 
@@ -387,8 +385,8 @@ impl Vm {
             Some("never") => Ok(blueice_ecma402::NumberSignDisplay::Never),
             Some("always") => Ok(blueice_ecma402::NumberSignDisplay::Always),
             Some("exceptZero") => Ok(blueice_ecma402::NumberSignDisplay::ExceptZero),
-            Some("negative") => Ok(blueice_ecma402::NumberSignDisplay::Negative),
-            Some(_) => unreachable!("string_option validates NumberFormat signDisplay"),
+            // `string_option` validated the name, so this is the last one.
+            Some(_) => Ok(blueice_ecma402::NumberSignDisplay::Negative),
         }
     }
 

@@ -171,8 +171,8 @@ impl LegacyStatics {
                         .map_or_else(JsString::default, |range| slice(input, range))
                 };
                 Some(match which {
-                    Input => unreachable!("handled above"),
-                    LastMatch => slice(input, *start..*end),
+                    // `Input` was answered before the match state was looked at.
+                    LastMatch | Input => slice(input, *start..*end),
                     LastParen => group(groups.last()),
                     LeftContext => slice(input, 0..*start),
                     RightContext => slice(input, *end..input.len()),

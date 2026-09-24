@@ -23,12 +23,18 @@ impl Vm {
     /// The heap budget must accommodate both prototype records.
     pub fn new(config: VmConfig) -> Result<Self, HeapError> {
         let mut heap = Heap::new(config.heap)?;
-        let object_prototype = heap.alloc_object(None)?;
+        // A heap holds at least one object, so the first allocation cannot be
+        // refused, and rooting an object that was just allocated cannot fail.
+        let object_prototype = heap
+            .alloc_object(None)
+            .expect("the heap budget holds an object");
         // Permanent root, released with the heap. Builtin properties and
         // callable methods are installed lazily by string_intrinsics.
-        heap.root(object_prototype)?;
+        heap.root(object_prototype)
+            .expect("the prototype was just allocated");
         let array_prototype = heap.alloc_array(0, Some(object_prototype))?;
-        heap.root(array_prototype)?;
+        heap.root(array_prototype)
+            .expect("the prototype was just allocated");
         Ok(Self {
             config,
             heap,

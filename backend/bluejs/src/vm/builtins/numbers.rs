@@ -4,12 +4,8 @@
 
 use super::*;
 
-fn normalized_exponential(number: f64, fraction_digits: Option<usize>) -> String {
-    let rendered = if let Some(fraction_digits) = fraction_digits {
-        format!("{number:.fraction_digits$e}")
-    } else {
-        format!("{number:e}")
-    };
+fn normalized_exponential(number: f64) -> String {
+    let rendered = format!("{number:e}");
     let (mantissa, exponent) = rendered
         .split_once('e')
         .expect("Rust lower-exponential formatting includes an exponent");
@@ -201,7 +197,8 @@ impl Vm {
     ) -> Result<f64, RuntimeError> {
         let value = if let Value::Object(object) = receiver {
             self.heap
-                .boxed_primitive(*object)?
+                .boxed_primitive(*object)
+                .expect("a receiver object is live")
                 .unwrap_or(Value::Undefined)
         } else {
             receiver.clone()
@@ -241,51 +238,46 @@ impl Vm {
         method: NumberMethod,
     ) -> Result<Value, RuntimeError> {
         let number = self.number_receiver(receiver)?;
-        if method == NumberMethod::LocaleString {
-            let formatter =
-                self.resolve_number_format(native::argument(args, 0), native::argument(args, 1))?;
-            return formatter
-                .format_f64(number)
-                .map(|formatted| Value::String(formatted.into()))
-                .map_err(|error| RuntimeError::RangeError(error.to_string()));
-        }
-        if method == NumberMethod::ToString {
-            let radix = native::argument(args, 0);
-            if radix == &Value::Undefined {
-                return primitive::string(&Value::Number(number)).map(Value::String);
-            }
-            let radix = self.coerce_number(radix)?;
-            let radix = if radix.is_nan() { 0.0 } else { radix.trunc() };
-            if !radix.is_finite() || !(2.0..=36.0).contains(&radix) {
-                return Err(RuntimeError::RangeError(
-                    "Number.prototype.toString radix must be between 2 and 36".into(),
-                ));
-            }
-            if !number.is_finite() || number == 0.0 {
-                return primitive::string(&Value::Number(number)).map(Value::String);
-            }
-            return Ok(Value::String(
-                number_radix_string(number, radix as u32).into(),
-            ));
-        }
         // Number formatting canonicalizes -0 before producing a string.
-        let mut number = number;
-        if number == 0.0 {
-            number = 0.0;
-        }
-        let source_string = || primitive::string(&Value::Number(number));
+        let canonical = number + 0.0;
+        let source_string = || primitive::string(&Value::Number(canonical));
         match method {
-            NumberMethod::ToString => unreachable!("handled before numeric string methods"),
-            NumberMethod::LocaleString => unreachable!("handled before numeric string methods"),
+            NumberMethod::LocaleString => {
+                let formatter = self
+                    .resolve_number_format(native::argument(args, 0), native::argument(args, 1))?;
+                formatter
+                    .format_f64(number)
+                    .map(|formatted| Value::String(formatted.into()))
+                    .map_err(|error| RuntimeError::RangeError(error.to_string()))
+            }
+            NumberMethod::ToString => {
+                let radix = native::argument(args, 0);
+                if radix == &Value::Undefined {
+                    return primitive::string(&Value::Number(number)).map(Value::String);
+                }
+                let radix = self.coerce_number(radix)?;
+                let radix = if radix.is_nan() { 0.0 } else { radix.trunc() };
+                if !radix.is_finite() || !(2.0..=36.0).contains(&radix) {
+                    return Err(RuntimeError::RangeError(
+                        "Number.prototype.toString radix must be between 2 and 36".into(),
+                    ));
+                }
+                if !number.is_finite() || number == 0.0 {
+                    return primitive::string(&Value::Number(number)).map(Value::String);
+                }
+                Ok(Value::String(
+                    number_radix_string(number, radix as u32).into(),
+                ))
+            }
             NumberMethod::Fixed => {
                 // toFixed range-checks the digits before it looks at the
                 // receiver (unlike toExponential and toPrecision).
                 let digits = self.number_digits_argument(native::argument(args, 0))?;
                 let digits = Self::number_digits_in_range(digits, 0.0, "toFixed")?;
-                if !number.is_finite() || number.abs() >= 1e21 {
+                if !canonical.is_finite() || canonical.abs() >= 1e21 {
                     return Ok(Value::String(source_string()?));
                 }
-                Ok(Value::String(fixed_string(number, digits).into()))
+                Ok(Value::String(fixed_string(canonical, digits).into()))
             }
             NumberMethod::Exponential => {
                 let requested = native::argument(args, 0);
@@ -294,14 +286,14 @@ impl Vm {
                 } else {
                     Some(self.number_digits_argument(requested)?)
                 };
-                if !number.is_finite() {
+                if !canonical.is_finite() {
                     return Ok(Value::String(source_string()?));
                 }
                 match digits {
-                    None => Ok(Value::String(normalized_exponential(number, None).into())),
+                    None => Ok(Value::String(normalized_exponential(canonical).into())),
                     Some(digits) => {
                         let digits = Self::number_digits_in_range(digits, 0.0, "toExponential")?;
-                        Ok(Value::String(exponential_string(number, digits).into()))
+                        Ok(Value::String(exponential_string(canonical, digits).into()))
                     }
                 }
             }
@@ -310,11 +302,11 @@ impl Vm {
                     return Ok(Value::String(source_string()?));
                 }
                 let precision = self.number_digits_argument(native::argument(args, 0))?;
-                if !number.is_finite() {
+                if !canonical.is_finite() {
                     return Ok(Value::String(source_string()?));
                 }
                 let precision = Self::number_digits_in_range(precision, 1.0, "toPrecision")?;
-                Ok(Value::String(precision_string(number, precision).into()))
+                Ok(Value::String(precision_string(canonical, precision).into()))
             }
         }
     }
