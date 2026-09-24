@@ -370,7 +370,7 @@ fn serve_two_bluets_documents(listener: TcpListener) -> thread::JoinHandle<()> {
         for (ordinal, source) in [
             (
                 "first",
-                "interface PrivateContract { enabled: boolean; } const privateBlueTsMetadata: number = 42;",
+                "export interface PrivateContract { enabled: boolean; } const privateBlueTsMetadata: number = 42;",
             ),
             (
                 "second",
@@ -1186,6 +1186,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                     symbol_display.kind,
                     DebuggerStaticMetadataSymbolKind::Interface
                 );
+                assert!(symbol_display.exported);
                 saw_interface = true;
             }
             "privateBlueTsMetadata" => {
@@ -1193,6 +1194,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                     symbol_display.kind,
                     DebuggerStaticMetadataSymbolKind::Variable
                 );
+                assert!(!symbol_display.exported);
                 saw_variable = true;
             }
             _ => {}

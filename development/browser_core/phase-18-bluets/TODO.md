@@ -917,6 +917,13 @@ or second module resolver to bypass them.
   grant contract display independently; the child returns no plan edges,
   field names, definitions, validation result, source text, or runtime value.
   A cyclic or unresolved reference is reported only as `Reference`.
+  Page-host v25/debugger v24 now extend the same independently default-denied,
+  receipt-bound `OpaqueSymbolDisplay` with the checker's exact exported/not-
+  exported classification. It shares the existing owner grant and live child
+  symbol target, and adds no new handle, source read, or symbol-inventory
+  payload. The compiler and real launcher-supervised regressions distinguish
+  an exported interface from a local variable without revealing either
+  declaration's source text or runtime value.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

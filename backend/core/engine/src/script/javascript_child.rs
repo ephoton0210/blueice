@@ -2601,6 +2601,7 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             symbol_id: symbol.symbol_id,
             display: symbol.display,
             kind: symbol.kind,
+            exported: symbol.exported,
         })
     }
 

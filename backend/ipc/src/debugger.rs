@@ -9,8 +9,10 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version twenty-three adds a
-//! fixed root-shape classification to the already default-denied, receipt-
+//! and an opt-in root-code-unit pause/resume seam. Version twenty-four adds
+//! the compiler's export classification to the existing opt-in, receipt-bound
+//! symbol display without adding a target or a new disclosure grant. Version
+//! twenty-three adds a fixed root-shape classification to the already default-denied, receipt-
 //! bound contract display; it exposes no contract-plan edge or field name.
 //! Version twenty-two adds a
 //! separately default-denied contract declaration range under exact
@@ -46,7 +48,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 23;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 24;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -344,7 +346,8 @@ impl DebuggerStaticMetadataLoweringSummary {
 
 /// One owner-authorized display for a compiler-minted symbol ID previously
 /// returned by the exact stream's symbol inventory. A display can contain a
-/// project-authored identifier and compiler declaration kind, so it is
+/// project-authored identifier, compiler declaration kind, and export status,
+/// so it is
 /// independently default-denied and carries no source span, type, contract,
 /// bytecode, or static record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -352,6 +355,7 @@ pub struct DebuggerStaticMetadataSymbolDisplay {
     pub symbol: DebuggerStaticMetadataSymbolId,
     pub display: String,
     pub kind: DebuggerStaticMetadataSymbolKind,
+    pub exported: bool,
 }
 
 /// The bounded compiler classification of a source-level declaration. It
@@ -2685,6 +2689,7 @@ mod tests {
                 },
                 display: "ProjectControlledName".to_string(),
                 kind: DebuggerStaticMetadataSymbolKind::Variable,
+                exported: true,
             }),
             DebuggerReply::StaticMetadataSymbolLocation(DebuggerStaticMetadataSymbolLocation {
                 symbol: DebuggerStaticMetadataSymbolId {
@@ -3529,6 +3534,7 @@ mod tests {
             symbol,
             display: "ProjectControlledName".to_string(),
             kind: DebuggerStaticMetadataSymbolKind::Interface,
+            exported: true,
         };
         assert!(display.is_well_formed());
         for kind in [

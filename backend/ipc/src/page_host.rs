@@ -12,8 +12,10 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
-//! Version 24 adds a fixed root-shape classification to the existing
-//! contract-display reply for an exact child-private metadata attachment.
+//! Version 25 adds the compiler's export classification to the existing
+//! child-private symbol display. Version 24 adds a fixed root-shape
+//! classification to the existing contract-display reply for an exact
+//! child-private metadata attachment.
 //!
 //! Version 11 retains the two fixed, core-derived document snapshots consumed
 //! by the child-owned JavaScript bindings, the location-only debugger
@@ -80,7 +82,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 24;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 25;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -237,6 +239,7 @@ pub struct PageHostDebuggerBlueTsMetadataSymbolDisplay {
     pub symbol_id: u32,
     pub display: String,
     pub kind: DebuggerStaticMetadataSymbolKind,
+    pub exported: bool,
 }
 
 /// One child-local source-text-free declaration range for an exact symbol.
@@ -1562,6 +1565,7 @@ mod tests {
                 symbol_id: 0,
                 display: "ProjectControlledName".to_string(),
                 kind: DebuggerStaticMetadataSymbolKind::Interface,
+                exported: true,
             },
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();

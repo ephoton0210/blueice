@@ -1658,6 +1658,7 @@ impl BlueJsChildHost {
                 PageHostDebuggerBlueTsMetadataSymbolDisplay {
                     symbol_id,
                     display: symbol.name.clone(),
+                    exported: symbol.exported,
                     kind: match symbol.kind {
                         blueice_bluets::SymbolKind::Import => {
                             DebuggerStaticMetadataSymbolKind::Import

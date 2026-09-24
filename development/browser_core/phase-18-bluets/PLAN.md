@@ -2,6 +2,14 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+**Symbol export update:** Page-host v25 and debugger v24 carry the BlueTS
+checker's exact `exported` boolean in the existing bounded symbol-display
+reply. This remains under the independently default-denied
+`OpaqueSymbolDisplay` owner grant, canonical peer negotiation, live attachment,
+and same-stream parent/symbol-ID receipt. It adds neither a new target nor a
+symbol-inventory disclosure; source text, spans, types, contracts, bytecode,
+VM objects, and values remain unavailable through this operation.
+
 **Compiler work-set pagination update:** Compiler IPC v6 and its v3 fixed
 query-only manifest add `ListWorkSet` as the tenth read-only operation.
 `bluetsc_list_work_set` exposes bounded pages of the four incremental check

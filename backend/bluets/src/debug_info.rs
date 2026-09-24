@@ -55,6 +55,8 @@ pub struct DebugSymbol {
     pub id: SymbolId,
     pub name: String,
     pub kind: SymbolKind,
+    /// The checker's exact module-export classification for this declaration.
+    pub exported: bool,
     pub span: SourceSpan,
     pub static_type: Option<TypeId>,
     /// The source record that owns this source span. It is a source-free
@@ -131,6 +133,7 @@ pub(crate) fn build(checked: &CheckedProject, options: &CompilerOptions) -> Blue
                 id,
                 name: symbol.name.clone(),
                 kind: symbol.kind,
+                exported: symbol.exported,
                 span: symbol.span.clone(),
                 static_type,
                 source,
@@ -296,11 +299,27 @@ mod tests {
     fn retains_static_type_and_source_hash_without_retaining_source_text() {
         let loader = MapLoader::from([ModuleSource::new(
             "memory:///app.ts",
-            "export const count: number = 1;",
+            "export const count: number = 1; const local: number = 2;",
         )]);
         let compilation = compile("memory:///app.ts", &loader, CompilerOptions::default());
         let debug = compilation.debug_info.unwrap();
-        assert_eq!(debug.symbols.len(), 1);
+        assert_eq!(debug.symbols.len(), 2);
+        assert!(
+            debug
+                .symbols
+                .iter()
+                .find(|symbol| symbol.name == "count")
+                .unwrap()
+                .exported
+        );
+        assert!(
+            !debug
+                .symbols
+                .iter()
+                .find(|symbol| symbol.name == "local")
+                .unwrap()
+                .exported
+        );
         assert_eq!(debug.types[0].display, "number");
         assert_ne!(
             debug.sources[0].content_hash,

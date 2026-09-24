@@ -127,6 +127,7 @@ pub struct JavaScriptPageDebuggerStaticMetadataSymbolDisplay {
     pub symbol_id: u32,
     pub display: String,
     pub kind: blueice_ipc::debugger::DebuggerStaticMetadataSymbolKind,
+    pub exported: bool,
 }
 
 /// One child-validated source-text-free half-open declaration range for an

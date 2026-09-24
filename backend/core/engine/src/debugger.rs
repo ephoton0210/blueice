@@ -1684,6 +1684,7 @@ fn describe_child_static_metadata_symbol(
                 symbol,
                 display: symbol_display.display,
                 kind: symbol_display.kind,
+                exported: symbol_display.exported,
             };
             if !symbol_display.is_well_formed() {
                 return DebuggerReply::Error {
@@ -3699,6 +3700,7 @@ mod tests {
                     },
                     display: "ProjectControlledName".to_string(),
                     kind: blueice_ipc::debugger::DebuggerStaticMetadataSymbolKind::Interface,
+                    exported: true,
                 },
             )
         }
@@ -4307,6 +4309,7 @@ mod tests {
                 symbol: displayed_symbol,
                 display: "ProjectControlledName".to_string(),
                 kind: blueice_ipc::debugger::DebuggerStaticMetadataSymbolKind::Interface,
+                exported: true,
             })
         );
 
