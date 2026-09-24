@@ -30,9 +30,10 @@ use blueice_ipc::compiler::{
     CompilerContractValue, CompilerDiagnostic, CompilerDiagnosticCursor, CompilerDiagnosticPage,
     CompilerDiagnosticSeverity, CompilerDiagnostics, CompilerErrorCode, CompilerGeneration,
     CompilerModuleList, CompilerProject, CompilerProjectIdentity, CompilerReply, CompilerRequest,
-    CompilerSessionAttestation, CompilerStaticContract, CompilerStaticMetadataCursor,
-    CompilerStaticMetadataKind, CompilerStaticMetadataPage, CompilerStaticMetadataSummary,
-    CompilerStaticProvenance, CompilerStaticSymbol, CompilerStaticType, CompilerSymbolKind,
+    CompilerSessionAttestation, CompilerSourceCoordinates, CompilerStaticContract,
+    CompilerStaticContractLocation, CompilerStaticMetadataCursor, CompilerStaticMetadataKind,
+    CompilerStaticMetadataPage, CompilerStaticMetadataSummary, CompilerStaticProvenance,
+    CompilerStaticSymbol, CompilerStaticSymbolLocation, CompilerStaticType, CompilerSymbolKind,
     CompilerWorkSetCursor, CompilerWorkSetKind, CompilerWorkSetPage,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -257,6 +258,11 @@ impl CompilerServiceIpcAdapter {
                 generation,
                 symbol_id,
             } => self.static_symbol(generation, symbol_id),
+            CompilerRequest::GetStaticSymbolLocation {
+                generation,
+                symbol_id,
+                source_id,
+            } => self.static_symbol_location(generation, symbol_id, source_id),
             CompilerRequest::ListStaticMetadata {
                 generation,
                 kind,
@@ -271,6 +277,11 @@ impl CompilerServiceIpcAdapter {
                 generation,
                 contract_id,
             } => self.static_contract(generation, contract_id),
+            CompilerRequest::GetStaticContractLocation {
+                generation,
+                contract_id,
+                source_id,
+            } => self.static_contract_location(generation, contract_id, source_id),
             CompilerRequest::ValidateStaticContract {
                 generation,
                 contract_id,
@@ -780,6 +791,47 @@ impl CompilerServiceIpcAdapter {
         })
     }
 
+    fn static_symbol_location(
+        &self,
+        generation: CompilerGeneration,
+        symbol_id: u32,
+        source_id: u32,
+    ) -> CompilerReply {
+        let generation = match generation_from_wire(generation) {
+            Ok(generation) => generation,
+            Err(error) => return handle_error_reply(error),
+        };
+        let symbol = match self
+            .service
+            .static_symbol(generation, blueice_bluets::SymbolId(symbol_id))
+        {
+            Ok(symbol) => symbol,
+            Err(error) => return service_error_reply(&error),
+        };
+        if symbol.source.0 != source_id {
+            return invalid_location_target_reply();
+        }
+        let Some((start_byte, end_byte, coordinates)) =
+            compiler_declaration_location(&symbol.span, symbol.location)
+        else {
+            return response_limit_reply();
+        };
+        let reply = CompilerStaticSymbolLocation {
+            generation: generation_to_wire(generation),
+            symbol_id,
+            source_id,
+            start_byte,
+            end_byte,
+            coordinates,
+        };
+        if !reply.is_well_formed()
+            || !ResponseBudget::new(self.limits.max_response_bytes).reserve_fixed(256)
+        {
+            return response_limit_reply();
+        }
+        CompilerReply::StaticSymbolLocation(reply)
+    }
+
     /// Returns one source-free page of opaque static IDs. The cursor is
     /// validated by both this adapter and the core service, which binds it to
     /// the exact retained generation and consumes it after one use. The page
@@ -925,6 +977,47 @@ impl CompilerServiceIpcAdapter {
             definitions,
             definition_count,
         })
+    }
+
+    fn static_contract_location(
+        &self,
+        generation: CompilerGeneration,
+        contract_id: u32,
+        source_id: u32,
+    ) -> CompilerReply {
+        let generation = match generation_from_wire(generation) {
+            Ok(generation) => generation,
+            Err(error) => return handle_error_reply(error),
+        };
+        let contract = match self
+            .service
+            .static_contract(generation, ContractId(contract_id))
+        {
+            Ok(contract) => contract,
+            Err(error) => return service_error_reply(&error),
+        };
+        if contract.source.0 != source_id {
+            return invalid_location_target_reply();
+        }
+        let Some((start_byte, end_byte, coordinates)) =
+            compiler_declaration_location(&contract.span, contract.location)
+        else {
+            return response_limit_reply();
+        };
+        let reply = CompilerStaticContractLocation {
+            generation: generation_to_wire(generation),
+            contract_id,
+            source_id,
+            start_byte,
+            end_byte,
+            coordinates,
+        };
+        if !reply.is_well_formed()
+            || !ResponseBudget::new(self.limits.max_response_bytes).reserve_fixed(256)
+        {
+            return response_limit_reply();
+        }
+        CompilerReply::StaticContractLocation(reply)
     }
 
     fn validate_static_contract(
@@ -1167,6 +1260,30 @@ fn generation_to_wire(generation: RegisteredProjectGeneration) -> CompilerGenera
     CompilerGeneration {
         project: project_to_wire(generation.project_id()),
         sequence: generation.sequence(),
+    }
+}
+
+fn compiler_declaration_location(
+    span: &blueice_bluets::SourceSpan,
+    location: blueice_bluets::DebugSourceLocation,
+) -> Option<(u64, u64, CompilerSourceCoordinates)> {
+    let start_byte = u64::try_from(span.start).ok()?;
+    let end_byte = u64::try_from(span.end).ok()?;
+    let coordinates = CompilerSourceCoordinates {
+        start_line: u32::try_from(location.start.line).ok()?,
+        start_column_utf16: u32::try_from(location.start.column_utf16).ok()?,
+        end_line: u32::try_from(location.end.line).ok()?,
+        end_column_utf16: u32::try_from(location.end.column_utf16).ok()?,
+    };
+    coordinates
+        .is_well_formed_for_range(start_byte, end_byte)
+        .then_some((start_byte, end_byte, coordinates))
+}
+
+fn invalid_location_target_reply() -> CompilerReply {
+    CompilerReply::Error {
+        code: CompilerErrorCode::InvalidLocationTarget,
+        message: "static declaration does not belong to the requested source ID".to_string(),
     }
 }
 
@@ -1808,6 +1925,103 @@ mod tests {
         };
         assert_eq!(exported.name, "value");
         assert!(exported.exported);
+    }
+
+    #[test]
+    fn declaration_locations_require_exact_generation_and_source_ownership() {
+        let mut adapter = CompilerServiceIpcAdapter::default();
+        let project = adapter
+            .register_core_project(registration(
+                "export interface Shape { value: number; }\r\n/* 🚀 */ const value: number = answer;",
+            ))
+            .unwrap();
+        let CompilerReply::Check(check) = adapter.handle(CompilerRequest::Check { project }) else {
+            panic!("registered project must check")
+        };
+        assert!(!check.has_errors, "{check:#?}");
+        let symbol_count = check.static_metadata.as_ref().unwrap().symbol_count;
+        let symbols: Vec<_> = (0..symbol_count)
+            .filter_map(|symbol_id| {
+                match adapter.handle(CompilerRequest::GetStaticSymbol {
+                    generation: check.generation,
+                    symbol_id,
+                }) {
+                    CompilerReply::StaticSymbol(symbol) => Some(symbol),
+                    _ => None,
+                }
+            })
+            .collect();
+        let variable = symbols
+            .iter()
+            .find(|symbol| symbol.name == "value")
+            .unwrap();
+        let interface = symbols
+            .iter()
+            .find(|symbol| symbol.name == "Shape")
+            .unwrap();
+        let contract_id = interface.contract_id.expect("interface is reifiable");
+        let CompilerReply::StaticSymbolLocation(location) =
+            adapter.handle(CompilerRequest::GetStaticSymbolLocation {
+                generation: check.generation,
+                symbol_id: variable.id,
+                source_id: variable.source_id,
+            })
+        else {
+            panic!("symbol location must be available")
+        };
+        assert!(location.is_well_formed());
+        assert_eq!(location.coordinates.start_line, 1);
+        assert_eq!(location.coordinates.start_column_utf16, 9);
+        assert!(!format!("{location:?}").contains("value"));
+        let CompilerReply::StaticContractLocation(contract_location) =
+            adapter.handle(CompilerRequest::GetStaticContractLocation {
+                generation: check.generation,
+                contract_id,
+                source_id: interface.source_id,
+            })
+        else {
+            panic!("contract location must be available")
+        };
+        assert!(contract_location.is_well_formed());
+        assert_eq!(contract_location.coordinates.start_line, 0);
+        assert!(!format!("{contract_location:?}").contains("Shape"));
+        assert!(matches!(
+            adapter.handle(CompilerRequest::GetStaticSymbolLocation {
+                generation: check.generation,
+                symbol_id: variable.id,
+                source_id: variable.source_id.wrapping_add(1),
+            }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::InvalidLocationTarget,
+                ..
+            }
+        ));
+        assert!(matches!(
+            adapter.handle(CompilerRequest::GetStaticContractLocation {
+                generation: check.generation,
+                contract_id,
+                source_id: interface.source_id.wrapping_add(1),
+            }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::InvalidLocationTarget,
+                ..
+            }
+        ));
+        let CompilerReply::Check(next) = adapter.handle(CompilerRequest::Check { project }) else {
+            panic!("second check must succeed")
+        };
+        assert_ne!(next.generation, check.generation);
+        assert!(matches!(
+            adapter.handle(CompilerRequest::GetStaticSymbolLocation {
+                generation: check.generation,
+                symbol_id: variable.id,
+                source_id: variable.source_id,
+            }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::StaleGeneration,
+                ..
+            }
+        ));
     }
 
     #[test]

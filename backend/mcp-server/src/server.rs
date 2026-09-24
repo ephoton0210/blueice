@@ -646,6 +646,51 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
+        description = "Read only the bounded original-source UTF-16 start/end coordinates and UTF-8 byte range of one static BlueTS symbol. The exact project generation must have been checked in this MCP session, and both the symbol ID and its owning source ID must have appeared in matching debug_list_static_metadata pages on this same session. A guessed, wrong-category, mismatched-source, or stale handle fails closed. This cannot map arbitrary offsets, read source, inspect runtime values, or write output."
+    )]
+    async fn debug_get_symbol_location(
+        &self,
+        Parameters(CompilerStaticLocationParams {
+            session_id,
+            project_id,
+            generation,
+            id,
+            source_id,
+        }): Parameters<CompilerStaticLocationParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let Some(compiler) = self.compiler_conn() else {
+            return Ok(compiler_unavailable_result());
+        };
+        if !compiler.accepts_session(session_id.as_deref()) {
+            return Ok(compiler_session_mismatch_result());
+        }
+        let reply =
+            blocking_compiler_session(compiler.clone(), move |connection, session_state| {
+                if let Some(reply) = compiler_static_metadata_id_is_observed(
+                    session_state,
+                    project_id,
+                    generation,
+                    ObservedCompilerStaticMetadataKind::Symbols,
+                    id,
+                ) {
+                    return Ok(reply);
+                }
+                if let Some(reply) = compiler_static_metadata_id_is_observed(
+                    session_state,
+                    project_id,
+                    generation,
+                    ObservedCompilerStaticMetadataKind::Sources,
+                    source_id,
+                ) {
+                    return Ok(reply);
+                }
+                connection.static_symbol_location(project_id, generation, id, source_id)
+            })
+            .await?;
+        Ok(compiler_reply_to_result(&compiler.receipt, reply))
+    }
+
+    #[tool(
         description = "Read one source-text-free BlueTS provenance record whose source_id was previously returned by debug_list_static_metadata with kind sources, from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id and generation come from bluetsc_check under that receipt. Guessed, wrong-category, stale, or unknown IDs fail before dereference. The result contains only a static module identity and labeled SHA-256 content digest, never source text, a filesystem path, a resolver, or a source-read capability."
     )]
     async fn debug_get_provenance(
@@ -710,6 +755,51 @@ impl BlueIceMcpServer {
                     return Ok(reply);
                 }
                 connection.static_contract(project_id, generation, id)
+            })
+            .await?;
+        Ok(compiler_reply_to_result(&compiler.receipt, reply))
+    }
+
+    #[tool(
+        description = "Read only the bounded original-source UTF-16 start/end coordinates and UTF-8 byte range of one reifiable BlueTS contract declaration. The exact project generation must have been checked in this MCP session, and both the contract ID and its owning source ID must have appeared in matching debug_list_static_metadata pages on this same session. A guessed, wrong-category, mismatched-source, or stale handle fails closed. This cannot map arbitrary offsets, read source, inspect runtime values, or write output."
+    )]
+    async fn debug_get_contract_location(
+        &self,
+        Parameters(CompilerStaticLocationParams {
+            session_id,
+            project_id,
+            generation,
+            id,
+            source_id,
+        }): Parameters<CompilerStaticLocationParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let Some(compiler) = self.compiler_conn() else {
+            return Ok(compiler_unavailable_result());
+        };
+        if !compiler.accepts_session(session_id.as_deref()) {
+            return Ok(compiler_session_mismatch_result());
+        }
+        let reply =
+            blocking_compiler_session(compiler.clone(), move |connection, session_state| {
+                if let Some(reply) = compiler_static_metadata_id_is_observed(
+                    session_state,
+                    project_id,
+                    generation,
+                    ObservedCompilerStaticMetadataKind::Contracts,
+                    id,
+                ) {
+                    return Ok(reply);
+                }
+                if let Some(reply) = compiler_static_metadata_id_is_observed(
+                    session_state,
+                    project_id,
+                    generation,
+                    ObservedCompilerStaticMetadataKind::Sources,
+                    source_id,
+                ) {
+                    return Ok(reply);
+                }
+                connection.static_contract_location(project_id, generation, id, source_id)
             })
             .await?;
         Ok(compiler_reply_to_result(&compiler.receipt, reply))
@@ -856,8 +946,8 @@ impl ServerHandler for BlueIceMcpServer {
                  locale data. All are read-only and never execute JavaScript or access page state. \
                  Use bluetsc_session_capabilities first to learn whether this server was explicitly connected to a \
                  core-owned registered-project compiler endpoint. When available, repeat its opaque session receipt on \
-                 bluetsc_describe_project, bluetsc_check, bluetsc_list_diagnostics, bluetsc_list_work_set, debug_list_static_metadata, debug_get_type, debug_get_symbol, debug_get_provenance, \
-                 debug_get_contract and debug_validate_contract. A successful check records an exact generation for that \
+                 bluetsc_describe_project, bluetsc_check, bluetsc_list_diagnostics, bluetsc_list_work_set, debug_list_static_metadata, debug_get_type, debug_get_symbol, debug_get_symbol_location, debug_get_provenance, \
+                 debug_get_contract, debug_get_contract_location and debug_validate_contract. A successful check records an exact generation for that \
                  one accepted compiler stream. Its receipt includes the complete core-authored capability manifest; MCP \
                  neither derives nor narrows that vocabulary. Static queries reject a different receipt, a generation not observed by \
                  that session, or an ID not returned by a matching inventory page under that receipt. The tools expose only opaque-handle, source-text-free check/static metadata. Inventory \

@@ -10,8 +10,12 @@
 //! path, or write capability. Callers can therefore only act on opaque
 //! project and generation handles minted by that owner.
 //!
-//! Version seven adds the checker's export classification to the existing
-//! generation-bound static-symbol query reply. It adds no operation or
+//! Version eight adds exact-generation, receipt-bound symbol and contract
+//! declaration locations. The bounded replies contain only compiler-minted
+//! IDs, UTF-8 byte ranges, and original-source UTF-16 coordinates; they do
+//! not offer arbitrary offset mapping or source reads. Version seven adds the
+//! checker's export classification to the existing generation-bound
+//! static-symbol query reply. It adds no operation or
 //! authority, so the fixed query-only capability manifest remains v3.
 //! Version six adds source-free, one-shot pages of incremental compiler
 //! work-set module identities for an exact checked generation. Version five
@@ -38,7 +42,7 @@ use std::io::{self, Read, Write};
 
 /// Independent protocol version for registered-project compiler IPC. It does
 /// not share the browser frontend protocol's lifecycle.
-pub const COMPILER_PROTOCOL_VERSION: u32 = 7;
+pub const COMPILER_PROTOCOL_VERSION: u32 = 8;
 
 /// The maximum encoded request or reply accepted by this protocol. The engine
 /// adapter applies a smaller response budget before a reply reaches this
@@ -76,7 +80,7 @@ impl CompilerSessionAttestation {
 /// expose. Its version is independent of the transport version so a client
 /// can validate the fixed query-only operation set explicitly rather than
 /// inferring authority from a protocol number.
-pub const COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION: u32 = 3;
+pub const COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION: u32 = 4;
 
 /// Stable, source-free identifiers for the exact read-only compiler queries
 /// available over this transport. The protocol deliberately has no variants
@@ -91,9 +95,11 @@ pub enum CompilerQueryOperationId {
     ListWorkSet,
     GetStaticType,
     GetStaticSymbol,
+    GetStaticSymbolLocation,
     ListStaticMetadata,
     GetStaticProvenance,
     GetStaticContract,
+    GetStaticContractLocation,
     ValidateStaticContract,
 }
 
@@ -134,9 +140,11 @@ impl CompilerSessionCapabilityManifest {
             CompilerQueryOperationId::ListWorkSet,
             CompilerQueryOperationId::GetStaticType,
             CompilerQueryOperationId::GetStaticSymbol,
+            CompilerQueryOperationId::GetStaticSymbolLocation,
             CompilerQueryOperationId::ListStaticMetadata,
             CompilerQueryOperationId::GetStaticProvenance,
             CompilerQueryOperationId::GetStaticContract,
+            CompilerQueryOperationId::GetStaticContractLocation,
             CompilerQueryOperationId::ValidateStaticContract,
         ];
         OPERATIONS
@@ -408,6 +416,71 @@ pub struct CompilerStaticSymbol {
     pub contract_id: Option<u32>,
 }
 
+/// Zero-based original-source declaration coordinates. Columns count UTF-16
+/// code units, while the paired range uses UTF-8 byte offsets. The fixed
+/// 1 MiB range cap matches the BlueTS parser's per-source limit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerSourceCoordinates {
+    pub start_line: u32,
+    pub start_column_utf16: u32,
+    pub end_line: u32,
+    pub end_column_utf16: u32,
+}
+
+pub const COMPILER_STATIC_LOCATION_MAX_SOURCE_BYTES: u64 = 1_048_576;
+
+impl CompilerSourceCoordinates {
+    pub fn is_well_formed_for_range(self, start_byte: u64, end_byte: u64) -> bool {
+        start_byte < end_byte
+            && end_byte <= COMPILER_STATIC_LOCATION_MAX_SOURCE_BYTES
+            && (self.start_line, self.start_column_utf16) < (self.end_line, self.end_column_utf16)
+            && u64::from(self.start_line) + u64::from(self.start_column_utf16) <= start_byte
+            && u64::from(self.end_line) + u64::from(self.end_column_utf16) <= end_byte
+    }
+}
+
+/// One exact-generation declaration location. Both IDs are compiler-minted;
+/// the core checks that the requested source owns this exact symbol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerStaticSymbolLocation {
+    pub generation: CompilerGeneration,
+    pub symbol_id: u32,
+    pub source_id: u32,
+    pub start_byte: u64,
+    pub end_byte: u64,
+    pub coordinates: CompilerSourceCoordinates,
+}
+
+impl CompilerStaticSymbolLocation {
+    pub fn is_well_formed(self) -> bool {
+        self.generation.is_well_formed()
+            && self
+                .coordinates
+                .is_well_formed_for_range(self.start_byte, self.end_byte)
+    }
+}
+
+/// One exact-generation reifiable-contract declaration location. It is not
+/// a runtime value, source read, or general source-map lookup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerStaticContractLocation {
+    pub generation: CompilerGeneration,
+    pub contract_id: u32,
+    pub source_id: u32,
+    pub start_byte: u64,
+    pub end_byte: u64,
+    pub coordinates: CompilerSourceCoordinates,
+}
+
+impl CompilerStaticContractLocation {
+    pub fn is_well_formed(self) -> bool {
+        self.generation.is_well_formed()
+            && self
+                .coordinates
+                .is_well_formed_for_range(self.start_byte, self.end_byte)
+    }
+}
+
 /// One source-text-free provenance record from an exact compilation. The
 /// module identity and labeled SHA-256 digest are static metadata, not a
 /// source-read endpoint.
@@ -509,6 +582,14 @@ pub enum CompilerRequest {
         generation: CompilerGeneration,
         symbol_id: u32,
     },
+    /// Resolves only a compiler-minted declaration boundary, never a caller-
+    /// selected byte offset. MCP requires both IDs to have been inventoried
+    /// on its current session before forwarding this request.
+    GetStaticSymbolLocation {
+        generation: CompilerGeneration,
+        symbol_id: u32,
+        source_id: u32,
+    },
     /// Lists one capped page of opaque static IDs from exactly one successful
     /// generation. The optional cursor is core-minted and one-shot; `None`
     /// begins a new inventory. The core clamps a positive request limit to a
@@ -530,6 +611,11 @@ pub enum CompilerRequest {
     GetStaticContract {
         generation: CompilerGeneration,
         contract_id: u32,
+    },
+    GetStaticContractLocation {
+        generation: CompilerGeneration,
+        contract_id: u32,
+        source_id: u32,
     },
     /// Validates a caller-provided data-only snapshot against one exact static
     /// contract. Core-selected limits apply and the snapshot is never echoed.
@@ -556,6 +642,7 @@ pub enum CompilerErrorCode {
     UnknownType,
     UnknownSymbol,
     UnknownSource,
+    InvalidLocationTarget,
     UnknownContract,
     InvalidContractValue,
     InvalidDiagnosticCursor,
@@ -587,9 +674,11 @@ pub enum CompilerReply {
     WorkSetPage(CompilerWorkSetPage),
     StaticType(CompilerStaticType),
     StaticSymbol(CompilerStaticSymbol),
+    StaticSymbolLocation(CompilerStaticSymbolLocation),
     StaticMetadataPage(CompilerStaticMetadataPage),
     StaticProvenance(CompilerStaticProvenance),
     StaticContract(CompilerStaticContract),
+    StaticContractLocation(CompilerStaticContractLocation),
     ContractValidation(CompilerContractValidation),
     Unsupported {
         operation: String,
@@ -637,9 +726,11 @@ pub fn negotiate(
             | CompilerRequest::ListWorkSet { .. }
             | CompilerRequest::GetStaticType { .. }
             | CompilerRequest::GetStaticSymbol { .. }
+            | CompilerRequest::GetStaticSymbolLocation { .. }
             | CompilerRequest::ListStaticMetadata { .. }
             | CompilerRequest::GetStaticProvenance { .. }
             | CompilerRequest::GetStaticContract { .. }
+            | CompilerRequest::GetStaticContractLocation { .. }
             | CompilerRequest::ValidateStaticContract { .. }
             | CompilerRequest::Unknown,
             _,
@@ -741,6 +832,11 @@ mod tests {
                 generation: generation(),
                 symbol_id: 5,
             },
+            CompilerRequest::GetStaticSymbolLocation {
+                generation: generation(),
+                symbol_id: 5,
+                source_id: 7,
+            },
             CompilerRequest::ListStaticMetadata {
                 generation: generation(),
                 kind: CompilerStaticMetadataKind::Symbols,
@@ -754,6 +850,11 @@ mod tests {
             CompilerRequest::GetStaticContract {
                 generation: generation(),
                 contract_id: 8,
+            },
+            CompilerRequest::GetStaticContractLocation {
+                generation: generation(),
+                contract_id: 8,
+                source_id: 7,
             },
             CompilerRequest::ValidateStaticContract {
                 generation: generation(),
@@ -825,6 +926,35 @@ mod tests {
             let (mut sender, mut receiver) = UnixStream::pair().unwrap();
             write_compiler_reply(&mut sender, &symbol).unwrap();
             assert_eq!(read_compiler_reply(&mut receiver).unwrap(), symbol);
+        }
+
+        let coordinates = CompilerSourceCoordinates {
+            start_line: 1,
+            start_column_utf16: 9,
+            end_line: 1,
+            end_column_utf16: 31,
+        };
+        for reply in [
+            CompilerReply::StaticSymbolLocation(CompilerStaticSymbolLocation {
+                generation: generation(),
+                symbol_id: 5,
+                source_id: 7,
+                start_byte: 40,
+                end_byte: 62,
+                coordinates,
+            }),
+            CompilerReply::StaticContractLocation(CompilerStaticContractLocation {
+                generation: generation(),
+                contract_id: 8,
+                source_id: 7,
+                start_byte: 40,
+                end_byte: 62,
+                coordinates,
+            }),
+        ] {
+            let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+            write_compiler_reply(&mut sender, &reply).unwrap();
+            assert_eq!(read_compiler_reply(&mut receiver).unwrap(), reply);
         }
 
         let diagnostic_page = CompilerReply::DiagnosticPage(CompilerDiagnosticPage {
@@ -972,9 +1102,11 @@ mod tests {
                 CompilerQueryOperationId::ListWorkSet,
                 CompilerQueryOperationId::GetStaticType,
                 CompilerQueryOperationId::GetStaticSymbol,
+                CompilerQueryOperationId::GetStaticSymbolLocation,
                 CompilerQueryOperationId::ListStaticMetadata,
                 CompilerQueryOperationId::GetStaticProvenance,
                 CompilerQueryOperationId::GetStaticContract,
+                CompilerQueryOperationId::GetStaticContractLocation,
                 CompilerQueryOperationId::ValidateStaticContract,
             ]
         );
@@ -1029,5 +1161,28 @@ mod tests {
         assert!(!CompilerDiagnosticCursor { id: 0 }.is_well_formed());
         assert!(CompilerDiagnosticCursor { id: 1 }.is_well_formed());
         assert!(generation().is_well_formed());
+    }
+
+    #[test]
+    fn declaration_coordinates_reject_empty_reversed_and_over_limit_ranges() {
+        let coordinates = CompilerSourceCoordinates {
+            start_line: 1,
+            start_column_utf16: 9,
+            end_line: 1,
+            end_column_utf16: 20,
+        };
+        assert!(coordinates.is_well_formed_for_range(30, 41));
+        assert!(!coordinates.is_well_formed_for_range(30, 30));
+        assert!(!coordinates.is_well_formed_for_range(30, 1_048_577));
+        assert!(!CompilerSourceCoordinates {
+            end_line: 0,
+            ..coordinates
+        }
+        .is_well_formed_for_range(30, 41));
+        assert!(!CompilerSourceCoordinates {
+            start_line: 32,
+            ..coordinates
+        }
+        .is_well_formed_for_range(30, 41));
     }
 }

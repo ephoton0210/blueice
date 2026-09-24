@@ -44,6 +44,22 @@ pub(super) struct CompilerStaticQueryParams {
     pub(super) id: u32,
 }
 
+/// Exact compiler-minted declaration and owning source pair. Both IDs must
+/// first be received in the matching inventory categories on this session.
+#[derive(Deserialize, schemars::JsonSchema)]
+pub(super) struct CompilerStaticLocationParams {
+    /// Opaque receipt from this adapter's `bluetsc_session_capabilities`.
+    pub(super) session_id: Option<String>,
+    /// Core-owner-minted project identifier.
+    pub(super) project_id: u64,
+    /// Exact generation from this session's successful `bluetsc_check`.
+    pub(super) generation: u64,
+    /// Symbol or contract ID from the matching inventory page.
+    pub(super) id: u32,
+    /// Source ID from a sources inventory page in the same generation.
+    pub(super) source_id: u32,
+}
+
 /// A one-shot opaque cursor returned by `debug_list_static_metadata`. The
 /// number has no offset semantics and is accepted only for the exact
 /// generation and category that minted it.

@@ -102,7 +102,7 @@ fn compiler_session_id(result: &rmcp::model::CallToolResult) -> String {
         .get("operation_ids")
         .and_then(serde_json::Value::as_array)
         .expect("capability manifest must expose its complete query vocabulary");
-    assert_eq!(operation_ids.len(), 10);
+    assert_eq!(operation_ids.len(), 12);
     assert_eq!(
         operation_ids.first(),
         Some(&serde_json::json!("describe-project"))
@@ -113,6 +113,8 @@ fn compiler_session_id(result: &rmcp::model::CallToolResult) -> String {
     );
     assert!(operation_ids.contains(&serde_json::json!("list-diagnostics")));
     assert!(operation_ids.contains(&serde_json::json!("list-work-set")));
+    assert!(operation_ids.contains(&serde_json::json!("get-static-symbol-location")));
+    assert!(operation_ids.contains(&serde_json::json!("get-static-contract-location")));
     assert!(
         !text.contains("coreRegisteredAnswer") && !text.contains("core-fixture-dist"),
         "capability result must remain source/output-free: {text}"
@@ -674,11 +676,29 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
             }),
         ),
         (
+            "debug_get_symbol_location",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": 0,
+                "source_id": 0,
+            }),
+        ),
+        (
             "debug_get_contract",
             serde_json::json!({
                 "project_id": 1,
                 "generation": check.generation.sequence,
                 "id": 0,
+            }),
+        ),
+        (
+            "debug_get_contract_location",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": 0,
+                "source_id": 0,
             }),
         ),
         (
@@ -876,6 +896,44 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         "symbol contract references must come from the exact inventory"
     );
 
+    let symbol_location_result = compiler_tool!(
+        "debug_get_symbol_location",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "id": symbol_ids[0],
+            "source_id": symbol_source_ids[0],
+        })
+    );
+    assert_eq!(symbol_location_result.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&symbol_location_result);
+    let blueice_ipc::compiler::CompilerReply::StaticSymbolLocation(symbol_location) =
+        compiler_tool_reply(&symbol_location_result)
+    else {
+        panic!("inventoried symbol/source pair must resolve to a location")
+    };
+    assert!(symbol_location.is_well_formed());
+    assert_eq!(symbol_location.symbol_id, symbol_ids[0]);
+    assert_eq!(symbol_location.source_id, symbol_source_ids[0]);
+    let unobserved_source_result = compiler_tool!(
+        "debug_get_symbol_location",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "id": symbol_ids[0],
+            "source_id": u32::MAX,
+        })
+    );
+    assert_eq!(unobserved_source_result.is_error, Some(true));
+    assert!(matches!(
+        compiler_tool_reply(&unobserved_source_result),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::UnobservedMetadata,
+            ..
+        }
+    ));
+
+    let mut contract_source_ids = Vec::new();
     for contract_id in &contract_ids {
         let result = compiler_tool!(
             "debug_get_contract",
@@ -887,11 +945,32 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         );
         assert_eq!(result.is_error, Some(false));
         assert_source_free_compiler_tool_result(&result);
-        assert!(matches!(
-            compiler_tool_reply(&result),
-            blueice_ipc::compiler::CompilerReply::StaticContract(_)
-        ));
+        let blueice_ipc::compiler::CompilerReply::StaticContract(contract) =
+            compiler_tool_reply(&result)
+        else {
+            panic!("inventoried contract ID must resolve")
+        };
+        contract_source_ids.push(contract.source_id);
     }
+    let contract_location_result = compiler_tool!(
+        "debug_get_contract_location",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "id": contract_ids[0],
+            "source_id": contract_source_ids[0],
+        })
+    );
+    assert_eq!(contract_location_result.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&contract_location_result);
+    let blueice_ipc::compiler::CompilerReply::StaticContractLocation(contract_location) =
+        compiler_tool_reply(&contract_location_result)
+    else {
+        panic!("inventoried contract/source pair must resolve to a location")
+    };
+    assert!(contract_location.is_well_formed());
+    assert_eq!(contract_location.contract_id, contract_ids[0]);
+    assert_eq!(contract_location.source_id, contract_source_ids[0]);
     let validation_result = compiler_tool!(
         "debug_validate_contract",
         serde_json::json!({
@@ -1004,6 +1083,37 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         panic!("later core check must produce a new generation")
     };
     assert_ne!(later_check.generation, check.generation);
+    for (tool, id, source_id) in [
+        (
+            "debug_get_symbol_location",
+            symbol_ids[0],
+            symbol_source_ids[0],
+        ),
+        (
+            "debug_get_contract_location",
+            contract_ids[0],
+            contract_source_ids[0],
+        ),
+    ] {
+        let stale_location = compiler_tool!(
+            tool,
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": id,
+                "source_id": source_id,
+            })
+        );
+        assert_eq!(stale_location.is_error, Some(true));
+        assert_source_free_compiler_tool_result(&stale_location);
+        assert!(matches!(
+            compiler_tool_reply(&stale_location),
+            blueice_ipc::compiler::CompilerReply::Error {
+                code: blueice_ipc::compiler::CompilerErrorCode::StaleGeneration,
+                ..
+            }
+        ));
+    }
     let stale_work_set = compiler_tool!(
         "bluetsc_list_work_set",
         serde_json::json!({

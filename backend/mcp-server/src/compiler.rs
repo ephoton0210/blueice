@@ -178,6 +178,25 @@ impl<S: Read + Write> CompilerConnection<S> {
         })
     }
 
+    /// Resolves one compiler-retained symbol declaration location only for
+    /// an exact checked generation and source owner. No arbitrary offset or
+    /// source text can be requested.
+    pub fn static_symbol_location(
+        &mut self,
+        project_id: u64,
+        generation: u64,
+        symbol_id: u32,
+        source_id: u32,
+    ) -> io::Result<blueice_ipc::compiler::CompilerReply> {
+        self.request(
+            blueice_ipc::compiler::CompilerRequest::GetStaticSymbolLocation {
+                generation: compiler_generation(project_id, generation),
+                symbol_id,
+                source_id,
+            },
+        )
+    }
+
     /// Lists one capped, source-free page of compiler-minted metadata IDs for
     /// an exact retained generation. A continuation cursor is opaque,
     /// generation-bound, and one-shot; this client forwards it verbatim and
@@ -228,6 +247,24 @@ impl<S: Read + Write> CompilerConnection<S> {
             generation: compiler_generation(project_id, generation),
             contract_id,
         })
+    }
+
+    /// Resolves the original declaration boundary of one exact retained
+    /// contract, without reading source or inspecting a runtime value.
+    pub fn static_contract_location(
+        &mut self,
+        project_id: u64,
+        generation: u64,
+        contract_id: u32,
+        source_id: u32,
+    ) -> io::Result<blueice_ipc::compiler::CompilerReply> {
+        self.request(
+            blueice_ipc::compiler::CompilerRequest::GetStaticContractLocation {
+                generation: compiler_generation(project_id, generation),
+                contract_id,
+                source_id,
+            },
+        )
     }
 
     /// Validates one data-only snapshot against a compiler-retained exact
@@ -411,7 +448,7 @@ mod tests {
                 &blueice_ipc::compiler::negotiate(&hello, Some(evidence)),
             )
             .unwrap();
-            for _ in 0..6 {
+            for _ in 0..8 {
                 let request = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
                 let reply = bound.request(request).unwrap();
                 blueice_ipc::compiler::write_compiler_reply(&mut server, &reply).unwrap();
@@ -462,8 +499,24 @@ mod tests {
             let provenance = connection
                 .static_provenance(project.id, check.generation.sequence, symbol.source_id)
                 .unwrap();
+            let symbol_location = connection
+                .static_symbol_location(
+                    project.id,
+                    check.generation.sequence,
+                    symbol.id,
+                    symbol.source_id,
+                )
+                .unwrap();
             let contract = connection
                 .static_contract(project.id, check.generation.sequence, contract_id)
+                .unwrap();
+            let contract_location = connection
+                .static_contract_location(
+                    project.id,
+                    check.generation.sequence,
+                    contract_id,
+                    symbol.source_id,
+                )
                 .unwrap();
             let validation = connection
                 .validate_static_contract(
@@ -478,22 +531,39 @@ mod tests {
                     ),
                 )
                 .unwrap();
-            (provenance, contract, validation)
+            (
+                provenance,
+                symbol_location,
+                contract,
+                contract_location,
+                validation,
+            )
         });
         while !mcp_client.is_finished() {
             if core_session.dispatch_pending(&request_receiver) == 0 {
                 thread::yield_now();
             }
         }
-        let (provenance, contract, validation) = mcp_client.join().unwrap();
+        let (provenance, symbol_location, contract, contract_location, validation) =
+            mcp_client.join().unwrap();
         let blueice_ipc::compiler::CompilerReply::StaticProvenance(provenance) = provenance else {
             panic!("static provenance must remain a distinct compiler reply")
         };
         assert!(provenance.content_hash.starts_with("bts-sha256:"));
         assert_eq!(provenance.content_hash.len(), "bts-sha256:".len() + 64);
         assert!(matches!(
+            symbol_location,
+            blueice_ipc::compiler::CompilerReply::StaticSymbolLocation(location)
+                if location.is_well_formed()
+        ));
+        assert!(matches!(
             contract,
             blueice_ipc::compiler::CompilerReply::StaticContract(_)
+        ));
+        assert!(matches!(
+            contract_location,
+            blueice_ipc::compiler::CompilerReply::StaticContractLocation(location)
+                if location.is_well_formed()
         ));
         assert!(matches!(
             validation,

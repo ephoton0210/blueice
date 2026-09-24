@@ -2,6 +2,17 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+**Compiler/MCP original-location update:** Compiler IPC v8 and its fixed
+query-only manifest v4 add separate symbol- and contract-location operations.
+The MCP tools require the same opaque session receipt, an observed exact
+check generation, and both declaration and source IDs from matching inventory
+pages before forwarding. Core checks that the retained source owns the exact
+declaration and returns only the two IDs, bounded half-open UTF-8 byte range,
+and original zero-based UTF-16 coordinates. It offers no arbitrary offset
+mapping, source text, source-map read, runtime value, project mutation, build,
+or output authority. Wrong source, guessed ID, and stale generation fail
+closed; compiler IPC and real MCP/core regressions cover the boundary.
+
 **Debugger original-location update:** Page-host v26 and debugger v25 extend
 only the already default-denied, same-stream-receipted symbol- and
 contract-location replies with zero-based UTF-16 start/end coordinates from
@@ -18,8 +29,8 @@ reifiable contract's existing half-open UTF-8 byte span. A one-pass temporary
 position index derives coordinates from only the compiler's original source;
 the retained record still contains no source text or general line-map query.
 CRLF and supplementary-plane Unicode are covered. A Unicode block-comment
-fixture also fixed a lexer byte-scan panic. Compiler/MCP location replies do
-not carry these coordinates yet.
+fixture also fixed a lexer byte-scan panic. The separate debugger and
+compiler/MCP location replies now carry these retained coordinates.
 
 **Symbol export update:** Page-host v25 and debugger v24 carry the BlueTS
 checker's exact `exported` boolean in the existing bounded symbol-display

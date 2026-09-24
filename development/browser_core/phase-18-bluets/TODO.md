@@ -705,9 +705,9 @@ or second module resolver to bypass them.
   span. It computes only declaration boundaries in one temporary linear
   source scan; the retained metadata has no source text or general line-map
   oracle. CRLF, supplementary-plane Unicode, and Unicode block comments have
-  regressions. The independently authorized debugger location replies now
-  carry these positions; generation-bound compiler/MCP location queries do
-  not yet.
+  regressions. The independently authorized debugger location replies and
+  separately receipted, generation-bound compiler/MCP location queries now
+  carry these positions.
   `DirectModuleGraph::attach_debug_in_page_realm` now derives a module-local
   static subset (one source, that module's symbols, and their referenced type
   IDs) for every graph generation and rolls back all retained records/programs
@@ -1155,7 +1155,8 @@ or second module resolver to bypass them.
   the separate compiler `Hello` negotiation,
   `bluetsc_describe_project`, `bluetsc_check`,
   `bluetsc_list_diagnostics`, `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
-  `debug_get_provenance`, `debug_get_contract`, and
+  `debug_get_symbol_location`, `debug_get_provenance`, `debug_get_contract`,
+  `debug_get_contract_location`, and
   `debug_validate_contract` forward only opaque project/generation/metadata
   handles to the core service. `bluetsc_describe_project` accepts only a
   previously known opaque project handle and returns that handle plus its
@@ -1176,7 +1177,8 @@ or second module resolver to bypass them.
   `bluetsc_session_capabilities` truthfully reports whether the compiler
   adapter is attached and, when it is, returns the exact opaque receipt minted
   by the core listener for that accepted relay stream together with the complete
-  core-authored v3 manifest of ten read-only operations. MCP accepts neither
+  core-authored fixed query-only manifest (v4 now contains twelve operations).
+  MCP accepts neither
   a missing, malformed, subset, reordered, nor locally derived manifest. Every
   compiler tool echoes and requires that receipt;
   static queries additionally require the exact generation first observed by
@@ -1208,6 +1210,16 @@ or second module resolver to bypass them.
   cursor, and clamped limit, and rejects a mismatched core page. No source
   text, registration, resolver, option, build, artifact, or output-write
   authority crosses this operation.
+  Compiler IPC v8 adds separate `GetStaticSymbolLocation` and
+  `GetStaticContractLocation` requests under fixed manifest v4. The matching
+  MCP tools require both the declaration ID and its source ID to have been
+  observed in their own inventory categories on this exact compiler stream
+  and checked generation. Core verifies source ownership and a bounded
+  compiler-retained half-open UTF-8 range with original zero-based UTF-16
+  start/end coordinates before returning only IDs and positions. Wrong-source,
+  guessed-ID, stale-generation, and malformed-location cases fail closed;
+  there is no arbitrary offset query, source read, source-map read, runtime
+  inspection, project mutation, build, or output write.
   There is still
   no general launcher-owned catalog distribution or authorization beyond the
   one fixed closed profile, no remote registration/update/source/filesystem/
