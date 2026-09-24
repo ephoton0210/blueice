@@ -732,6 +732,7 @@ fn main() -> ExitCode {
     // derive its registry identity before core publishes either socket. When
     // `--extension-host` is supplied, the listener additionally requires the
     // freshly generated credential from exactly that core-spawned child.
+    let mut extension_capability_origins = Default::default();
     let (extension_service, extension_runtime_start, extension_runtime_events) = match (
         args.extension_socket.as_ref(),
         args.extension_manifest.as_deref(),
@@ -747,6 +748,7 @@ fn main() -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             };
+            extension_capability_origins = installed.manifest().capability_origins().clone();
             if let Some(parent) = socket.parent() {
                 if let Err(error) = blueice_ipc::local_socket::ensure_private_socket_dir(parent) {
                     eprintln!(
@@ -951,6 +953,7 @@ fn main() -> ExitCode {
         };
         let mut tabs =
             TabManager::new_with_history_snapshot_mode(args.width, args.height, history_mode);
+        tabs.set_extension_capability_origins(extension_capability_origins);
         tabs.set_downloads_source(Arc::new(match downloads_socket {
             Some(socket) => DownloadsSource::at(socket),
             None => DownloadsSource::new(),

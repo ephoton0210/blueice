@@ -1147,29 +1147,33 @@ fn handle_extension_page_request<S: Write>(
             let tab_id = tab_id
                 .map(TabId::from_u64)
                 .unwrap_or_else(|| tabs.default_tab());
-            let result = tabs
-                .get(tab_id)
-                .ok_or_else(|| format!("unknown tab {}", tab_id.as_u64()))
-                .and_then(|page| {
-                    serde_json::to_string(&page.snapshot(page.frame_generation(), tab_id.as_u64()))
-                        .map_err(|error| {
-                            format!("could not serialize the core representation: {error}")
-                        })
+            let result = tabs.check_extension_origin("dom:read", tab_id).and_then(|()| {
+                let page = tabs.get(tab_id).expect("the checked tab remains live");
+                serde_json::to_string(&page.snapshot(page.frame_generation(), tab_id.as_u64()))
+                    .map_err(|error| {
+                        format!("could not serialize the core representation: {error}")
+                    })
                 });
             let _ = reply.send(result);
         }
         ExtensionPageRequest::ReadNetworkResponse { tab_id, reply } => {
-            let result = tabs
-                .get(TabId::from_u64(tab_id))
-                .ok_or_else(|| format!("unknown tab {tab_id}"))
-                .map(|page| page.network_response().cloned());
+            let tab_id = TabId::from_u64(tab_id);
+            let result = tabs.check_extension_origin("network:observe", tab_id).map(|()| {
+                tabs.get(tab_id)
+                    .expect("the checked tab remains live")
+                    .network_response()
+                    .cloned()
+            });
             let _ = reply.send(result);
         }
         ExtensionPageRequest::ReadNetworkTrace { tab_id, reply } => {
-            let result = tabs
-                .get(TabId::from_u64(tab_id))
-                .ok_or_else(|| format!("unknown tab {tab_id}"))
-                .map(|page| page.network_trace().cloned());
+            let tab_id = TabId::from_u64(tab_id);
+            let result = tabs.check_extension_origin("network:observe", tab_id).map(|()| {
+                tabs.get(tab_id)
+                    .expect("the checked tab remains live")
+                    .network_trace()
+                    .cloned()
+            });
             let _ = reply.send(result);
         }
         ExtensionPageRequest::SetToolbarButton {
@@ -1295,10 +1299,10 @@ fn handle_extension_page_request<S: Write>(
                     blueice_ipc::extension::MAX_TEXT_WRITE_BYTES
                 ))
             } else {
-                match tabs.get_mut(tab_id) {
+                tabs.check_extension_origin("dom:write", tab_id).and_then(|()| match tabs.get_mut(tab_id) {
                     Some(page) => page.set_text_input_value(node_id, value),
                     None => Err(format!("unknown tab {}", tab_id.as_u64())),
-                }
+                })
             };
             if result.is_ok() {
                 // Mirror first-party SetValue: script listeners observe the
@@ -1327,10 +1331,10 @@ fn handle_extension_page_request<S: Write>(
         } => {
             let tab_id = TabId::from_u64(tab_id);
             let node_id = NodeId::from_u64(node_id);
-            let result = match tabs.get_mut(tab_id) {
+            let result = tabs.check_extension_origin("dom:write", tab_id).and_then(|()| match tabs.get_mut(tab_id) {
                 Some(page) => page.set_checkbox_checked(node_id, checked),
                 None => Err(format!("unknown tab {}", tab_id.as_u64())),
-            };
+            });
             if result.is_ok() {
                 // Match the text-input extension operation: page event
                 // handlers see core's new state before the shared frame is
@@ -1365,10 +1369,10 @@ fn handle_extension_page_request<S: Write>(
                     blueice_ipc::extension::MAX_TEXT_WRITE_BYTES
                 ))
             } else {
-                match tabs.get_mut(tab_id) {
+                tabs.check_extension_origin("dom:write", tab_id).and_then(|()| match tabs.get_mut(tab_id) {
                     Some(page) => page.set_textarea_value(node_id, value),
                     None => Err(format!("unknown tab {}", tab_id.as_u64())),
-                }
+                })
             };
             if result.is_ok() {
                 // Match the other constrained form writes: event handlers
@@ -1397,10 +1401,10 @@ fn handle_extension_page_request<S: Write>(
         } => {
             let tab_id = TabId::from_u64(tab_id);
             let node_id = NodeId::from_u64(node_id);
-            let result = match tabs.get_mut(tab_id) {
+            let result = tabs.check_extension_origin("dom:write", tab_id).and_then(|()| match tabs.get_mut(tab_id) {
                 Some(page) => page.set_visible_leaf_text(node_id, value),
                 None => Err(format!("unknown tab {}", tab_id.as_u64())),
-            };
+            });
             if result.is_ok() {
                 let page = tabs.get_mut(tab_id).expect("the extension target tab remains live");
                 send_frame(page, stream, frame_dir, generation, Some(tab_id.as_u64()), None)?;
@@ -1415,10 +1419,10 @@ fn handle_extension_page_request<S: Write>(
         } => {
             let tab_id = TabId::from_u64(tab_id);
             let node_id = NodeId::from_u64(node_id);
-            let result = match tabs.get_mut(tab_id) {
+            let result = tabs.check_extension_origin("dom:write", tab_id).and_then(|()| match tabs.get_mut(tab_id) {
                 Some(page) => page.set_range_input_value(node_id, value),
                 None => Err(format!("unknown tab {}", tab_id.as_u64())),
-            };
+            });
             if result.is_ok() {
                 // A range is one constrained form control, so listeners see
                 // its committed core state before the shared observer frame.
@@ -1445,10 +1449,10 @@ fn handle_extension_page_request<S: Write>(
         } => {
             let tab_id = TabId::from_u64(tab_id);
             let node_id = NodeId::from_u64(node_id);
-            let result = match tabs.get_mut(tab_id) {
+            let result = tabs.check_extension_origin("dom:write", tab_id).and_then(|()| match tabs.get_mut(tab_id) {
                 Some(page) => page.set_radio_checked(node_id),
                 None => Err(format!("unknown tab {}", tab_id.as_u64())),
-            };
+            });
             if result.is_ok() {
                 // A selected radio can clear other controls in its core-owned
                 // group, so publish one post-mutation input/change pair and a
@@ -1476,10 +1480,10 @@ fn handle_extension_page_request<S: Write>(
         } => {
             let tab_id = TabId::from_u64(tab_id);
             let node_id = NodeId::from_u64(node_id);
-            let result = match tabs.get_mut(tab_id) {
+            let result = tabs.check_extension_origin("dom:write", tab_id).and_then(|()| match tabs.get_mut(tab_id) {
                 Some(page) => page.select_option(node_id),
                 None => Err(format!("unknown tab {}", tab_id.as_u64())),
-            };
+            });
             if result.is_ok() {
                 // A single-select transition can clear another option, so
                 // dispatch one input/change pair and publish one post-update
@@ -3512,6 +3516,62 @@ mod tests {
         extension_tx.send(ExtensionPageRequest::ReadRepresentation { tab_id: Some(tab_id.as_u64()), reply: read_tx }).unwrap();
         let snapshot: blueice_ipc::AiSnapshot = serde_json::from_str(&read_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap()).unwrap();
         assert_eq!(snapshot.nodes.iter().find(|node| node.id == node_id.as_u64()).and_then(|node| node.name.as_deref()), Some("After"));
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        handle.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(cleanup_dir);
+    }
+
+    #[test]
+    fn extension_origin_scopes_are_checked_against_each_live_tab_before_reads_or_writes() {
+        use std::collections::{BTreeMap, BTreeSet};
+        let (mut client, mut server) = client_pair();
+        let (extension_tx, extension_rx) = mpsc::channel();
+        let dir = temp_frame_dir("extension-origin-scopes");
+        let cleanup_dir = dir.clone();
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let allowed_tab = tabs.default_tab();
+        let blocked_tab = tabs.open_tab();
+        tabs.get_mut(allowed_tab).unwrap().load_html_str(
+            "<h1 id=\"title\">Allowed</h1>", Some("https://allowed.test/page".to_string()),
+        );
+        tabs.get_mut(blocked_tab).unwrap().load_html_str(
+            "<h1 id=\"title\">Blocked</h1>", Some("https://blocked.test/page".to_string()),
+        );
+        let allowed_node = tabs.get(allowed_tab).unwrap().script_get_element_by_id("title").unwrap();
+        let blocked_node = tabs.get(blocked_tab).unwrap().script_get_element_by_id("title").unwrap();
+        tabs.set_extension_capability_origins(BTreeMap::from([
+            ("dom:read".to_string(), BTreeSet::from(["https://allowed.test".to_string()])),
+            ("dom:write".to_string(), BTreeSet::from(["https://allowed.test".to_string()])),
+            ("network:observe".to_string(), BTreeSet::from(["https://allowed.test".to_string()])),
+        ]));
+        let gatekeeper = PathBuf::from("/not-used-after-host-review");
+        let handle = thread::spawn(move || {
+            let mut generation = 0;
+            run_session_with_extension_requests(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper, &extension_rx)
+        });
+        blueice_ipc::client_handshake(&mut client).unwrap();
+        for (tab_id, permitted) in [(blocked_tab, false), (allowed_tab, true)] {
+            let (reply_tx, reply_rx) = mpsc::channel();
+            extension_tx.send(ExtensionPageRequest::ReadRepresentation { tab_id: Some(tab_id.as_u64()), reply: reply_tx }).unwrap();
+            assert_eq!(reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().is_ok(), permitted);
+            let (reply_tx, reply_rx) = mpsc::channel();
+            extension_tx.send(ExtensionPageRequest::ReadNetworkResponse { tab_id: tab_id.as_u64(), reply: reply_tx }).unwrap();
+            assert_eq!(reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().is_ok(), permitted);
+        }
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx.send(ExtensionPageRequest::SetVisibleLeafText {
+            tab_id: blocked_tab.as_u64(), node_id: blocked_node.as_u64(), value: "must not change".to_string(), reply: reply_tx,
+        }).unwrap();
+        assert!(reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap_err().contains("not granted"));
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx.send(ExtensionPageRequest::SetVisibleLeafText {
+            tab_id: allowed_tab.as_u64(), node_id: allowed_node.as_u64(), value: "Updated".to_string(), reply: reply_tx,
+        }).unwrap();
+        reply_rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
+        let (frame_tab, _, frame) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        assert_eq!(frame_tab, Some(allowed_tab.as_u64()), "a rejected write must not publish a frame");
+        assert!(matches!(frame, ServerMessage::FrameReady { .. }));
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         handle.join().unwrap().unwrap();
         let _ = std::fs::remove_dir_all(cleanup_dir);

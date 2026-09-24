@@ -19,7 +19,7 @@
 use crate::downloads_page::DownloadsSource;
 use crate::gatekeeper_settings_page::GatekeeperSettingsSource;
 use crate::Page;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 use url::Url;
 
@@ -229,6 +229,10 @@ pub struct TabManager {
     /// Canonical HTTP(S) URL and ASCII host rules, keyed by an opaque
     /// core-allocated connection ID. Rules disappear on disconnect.
     extension_navigation_block_rules: HashMap<u64, HashSet<ExtensionNavigationBlockRule>>,
+    /// Install-time exact-origin restrictions for page-facing extension
+    /// capabilities. The session checks these against the live tab at the
+    /// same point it performs each read or write, avoiding a URL-check race.
+    extension_capability_origins: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl TabManager {
@@ -276,6 +280,34 @@ impl TabManager {
             gatekeeper_settings: None,
             history_snapshot_mode,
             extension_navigation_block_rules: HashMap::new(),
+            extension_capability_origins: BTreeMap::new(),
+        }
+    }
+
+    pub fn set_extension_capability_origins(&mut self, scopes: BTreeMap<String, BTreeSet<String>>) {
+        self.extension_capability_origins = scopes;
+    }
+
+    pub(crate) fn check_extension_origin(
+        &self,
+        capability: &str,
+        tab_id: TabId,
+    ) -> Result<(), String> {
+        let page = self
+            .get(tab_id)
+            .ok_or_else(|| format!("unknown tab {}", tab_id.as_u64()))?;
+        let Some(allowed) = self.extension_capability_origins.get(capability) else {
+            return Ok(());
+        };
+        let origin = page
+            .url()
+            .and_then(|url| Url::parse(url).ok())
+            .filter(|url| matches!(url.scheme(), "http" | "https"))
+            .map(|url| url.origin().ascii_serialization());
+        if origin.as_ref().is_some_and(|origin| allowed.contains(origin)) {
+            Ok(())
+        } else {
+            Err(format!("{capability} is not granted for this tab's origin"))
         }
     }
 
@@ -876,6 +908,28 @@ mod tests {
         let tabs = TabManager::new(320.0, 200.0);
         assert_eq!(tabs.ids().collect::<Vec<_>>(), vec![tabs.default_tab()]);
         assert!(tabs.get(tabs.default_tab()).is_some());
+    }
+
+    #[test]
+    fn extension_origin_scopes_follow_the_live_tab_url_and_default_to_legacy_global_grants() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab = tabs.default_tab();
+        assert!(tabs.check_extension_origin("dom:read", tab).is_ok());
+        tabs.set_extension_capability_origins(BTreeMap::from([
+            ("dom:read".to_string(), BTreeSet::from(["https://example.test".to_string()])),
+            ("dom:write".to_string(), BTreeSet::from(["http://127.0.0.1:4312".to_string()])),
+        ]));
+        assert!(tabs.check_extension_origin("dom:read", tab).is_err());
+        tabs.get_mut(tab).unwrap().load_html_str("<p>one</p>", Some("https://example.test/path?query=1".to_string()));
+        assert!(tabs.check_extension_origin("dom:read", tab).is_ok());
+        assert!(tabs.check_extension_origin("dom:write", tab).is_err());
+        assert!(tabs.check_extension_origin("network:observe", tab).is_ok());
+        tabs.get_mut(tab).unwrap().load_html_str("<p>two</p>", Some("http://127.0.0.1:4312/page".to_string()));
+        assert!(tabs.check_extension_origin("dom:read", tab).is_err());
+        assert!(tabs.check_extension_origin("dom:write", tab).is_ok());
+        tabs.get_mut(tab).unwrap().navigate("about:blank").unwrap();
+        assert!(tabs.check_extension_origin("dom:write", tab).is_err());
+        assert!(tabs.check_extension_origin("dom:write", TabId::from_u64(999)).is_err());
     }
 
     #[test]
