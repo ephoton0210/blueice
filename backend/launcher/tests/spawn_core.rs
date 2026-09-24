@@ -192,7 +192,7 @@ fn supervised_child_script_completes_a_synchronous_core_dom_lookup() {
 }
 
 #[test]
-fn supervised_child_dom_text_profile_renders_live_text_and_denies_untyped_bluets() {
+fn supervised_child_dom_text_profile_executes_checked_bluets_and_renders_live_text() {
     let gatekeeper_path = std::env::temp_dir().join(format!(
         "bi-dom-text-gatekeeper-{}.sock",
         std::process::id()
@@ -230,12 +230,16 @@ fn supervised_child_dom_text_profile_renders_live_text_and_denies_untyped_bluets
             "globalThis.domTextScriptCompleted = true;",
             "</script>",
             "<script type='application/x-blueice-typescript'>",
-            "document.getElementById('target');",
+            "const typedNode = document.getElementById('target')!;",
+            "typedNode.textContent = typedNode.textContent + ' / BlueTS';",
+            "</script>",
+            "<script type='application/x-blueice-typescript'>",
+            "document.getElementById(42);",
             "</script>",
             "<script>",
             "if (!globalThis.domTextScriptCompleted) throw 'order';",
             "const finalNode = document.getElementById('target');",
-            "if (finalNode === null || finalNode.textContent !== 'from JavaScript') throw 'order';",
+            "if (finalNode === null || finalNode.textContent !== 'from JavaScript / BlueTS') throw 'order';",
             "finalNode.textContent = 'rendered text';",
             "</script>"
         );
@@ -310,11 +314,19 @@ fn supervised_child_dom_text_profile_renders_live_text_and_denies_untyped_bluets
     else {
         panic!("expected BlueTS page script reports");
     };
-    assert_eq!(typed_reports.len(), 1);
+    assert_eq!(typed_reports.len(), 2);
     assert!(
         matches!(
             typed_reports[0].outcome,
-            blueice_ipc::BlueTsScriptExecutionOutcome::Rejected { .. }
+            blueice_ipc::BlueTsScriptExecutionOutcome::Executed
+        ),
+        "{typed_reports:?}"
+    );
+    assert!(
+        matches!(
+            &typed_reports[1].outcome,
+            blueice_ipc::BlueTsScriptExecutionOutcome::Rejected { category }
+                if category == "BlueTS compilation rejected the page script"
         ),
         "{typed_reports:?}"
     );

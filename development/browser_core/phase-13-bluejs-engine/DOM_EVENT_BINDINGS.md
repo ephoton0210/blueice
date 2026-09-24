@@ -7,18 +7,17 @@ This is the design decision for the first page-visible slice of the broader
 It does not claim that the listed bindings have been implemented. The existing
 `blueice_ipc::script` requests and core dispatcher prove DOM operations against
 live tabs. Ordinary BlueJS page hosts still install only copied document text
-and origin functions. Separate owner-only JavaScript proof profiles now cover
-opaque lookup and the first `document.getElementById`/`textContent` read-write
-route. The live-text proof rejects BlueTS scripts until an exact method type
-can be compiled; the listed general typed DOM and event acceptance gates
+and origin functions. Separate owner-only profiles cover opaque lookup and
+the first typed `document.getElementById`/`textContent` read-write route.
+The listed general DOM and event acceptance gates
 remain open in Phases 13 and 18.
 
 ## First exposed surface
 
 Publish the following as a general supported page profile only when its
 runtime installer and generated `lib.blueice.d.ts` artifact name the same
-bindings. Owner-only JavaScript proofs can establish a runtime seam first,
-but must not advertise an unsupported BlueTS surface.
+bindings. The live-text slice now has an exact BlueTS artifact; creation and
+event members must not be advertised prematurely.
 The empty profile and the existing copied-snapshot profiles retain their
 current meaning. No page can select or extend its own profile.
 
@@ -55,11 +54,11 @@ The script socket accepts a matching per-core child capability before any DOM
 dispatch, and each DOM request is bound to the exact live document generation.
 The launcher configures the private listener with its fresh supervised-child
 secret; a predecessor capability is denied even when a successor reuses the
-same path. Only owner-selected proof profiles install boolean/opaque lookup
-or the JavaScript-only live-text callbacks; connection authorization alone
-does not install the listed general typed bindings. The live-text proof
-rejects BlueTS declarations before compilation instead of silently typing
-them against the fixed snapshot profile. An arbitrary process that can reach a
+same path. Only owner-selected profiles install boolean/opaque lookup or the
+typed live-text callbacks; connection authorization alone does not install
+the listed general bindings. The live-text profile admits BlueTS only against
+its exact generated method/accessor artifact, while ordinary snapshot
+profiles reject undeclared `document` calls. An arbitrary process that can reach a
 socket or guess a tab/node number must not gain DOM authority. Public frontend,
 debugger and MCP requests cannot invoke this private operation set.
 
@@ -67,8 +66,8 @@ The VM's `HostValue` callback ABI continues to accept primitives only. Its
 separate host-object factory turns child-private keys into stable,
 collector-rooted JS wrappers without sending JS object IDs through callbacks;
 the first family is capped at 4,096 wrappers per realm. Receiver-checked
-factory methods and native accessors now support the JavaScript-only text
-proof, and core rejects stale nodes on every operation. Listener rooting and
+factory methods and native accessors now support the typed text slice, and
+core rejects stale nodes on every operation. Listener rooting and
 the general capability-aware typed installer remain open. Do not put a Rust
 reference to `Page` in the child. Generated host typings may advertise a
 member only once that exact runtime installer and its capability policy exist.

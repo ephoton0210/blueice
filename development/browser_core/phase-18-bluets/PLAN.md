@@ -104,22 +104,24 @@ or VM family. VM, core dispatcher, isolated-child socket, and real HTTP
 regressions cover these seams. Ordinary pages remain snapshot-only; actual
 `document` and `textContent` methods are B2.
 
-**Live text proof (B2.1 in progress):** A separate trusted launcher option
-selects a JavaScript-only child profile. It installs a realm-owned `document`
+**Live text route (B2.1 delivered):** A separate trusted launcher option
+selects a bounded typed child profile. It installs a realm-owned `document`
 object whose receiver-checked `getElementById` returns the same VM-rooted
 opaque wrappers, plus a native `textContent` getter/setter on the private node
 prototype. Each read/write crosses the authenticated, call-ID-bound script
 socket with the exact tab/document generation; core checks node existence and
 relayouts after writes. A real HTTP launcher/core/child page proves two
-document-order JavaScript writes, the final rendered DOM text, and rejection
-of a wrapper whose subtree was removed by replacement. The profile grants no
+document-order JavaScript and BlueTS writes, the final rendered DOM text, and
+rejection of a wrapper whose subtree was removed by replacement. The profile grants no
 `createElement`, fetch, raw node ID, socket, or resolver to page code.
-Ordinary realms retain copied snapshots. The existing BlueTS ambient profile
-cannot express an interface method signature or safely type member calls;
-BlueTS declarations are therefore rejected before compilation in this
-JavaScript-only proof profile. B2.1 remains open until the exact typed DOM
-profile and a typed real-page mutation are implemented; B2.2/B3 and the
-general capability/typing publication remain separate later work.
+Ordinary realms retain copied snapshots. BlueTS now parses bounded interface
+method signatures and checks direct member calls and text assignments; the
+direct bridge erases postfix non-null assertions without a JavaScript-text
+round trip. Core and child derive an exact owner-selected declaration,
+manifest, and runtime inventory from the same schema. A real HTTP page proves
+the typed getter/setter path, an invalid call fails before execution, and the
+ordinary snapshot profile still rejects `document` calls. B2.2/B3 and the
+broader DOM/event typing publication remain separate later work.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

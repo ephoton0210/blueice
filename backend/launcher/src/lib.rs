@@ -244,9 +244,9 @@ mod unix {
             self
         }
 
-        /// Selects the JavaScript-only live-DOM text proof profile for this
-        /// supervised child. BlueTS remains denied until its exact method
-        /// typings and capability manifest are implemented.
+        /// Selects the bounded live-DOM text profile for this supervised
+        /// child. Its exact BlueTS method/accessor typings and runtime
+        /// inventory are owner-selected; pages cannot opt in themselves.
         pub fn supervise_out_of_process_bluejs_with_dom_text_fixture(mut self) -> Self {
             self.supervise_out_of_process_bluejs = true;
             self.core_dom_text_fixture = true;

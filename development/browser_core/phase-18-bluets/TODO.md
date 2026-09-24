@@ -14,19 +14,17 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: B2.1.** Implement live element lookup and `textContent`
-get/set through the authenticated route, with a rendered real-page mutation.
-An owner-selected JavaScript-only proof now exercises these operations; a
-supported typed DOM profile is still open. BlueTS is explicitly denied in
-that proof profile rather than compiled against the old snapshot declarations.
+**Current leaf: B2.2.** Implement `createElement`, `createTextNode`, and
+`appendChild` through the authenticated route, then render the new subtree
+and reject a cross-document child in a real page.
 
 ## Current boundary
 
 The supervised child runs authorized JavaScript and supported BlueTS classic
 and module graphs. Ordinary pages expose copied document text and origin,
-with no general live DOM or event API. Separate owner-only HTTP proof profiles
-expose boolean/opaque lookup probes or JavaScript-only live `document` text
-operations; neither is the supported typed DOM profile. Classic-root
+with no general live DOM or event API. Separate owner-only HTTP profiles
+expose boolean/opaque lookup probes or the exact typed `document` lookup and
+`textContent` slice; neither grants creation or events. Classic-root
 pause/resume and bounded BlueTS source-span stepping work; nested/module
 debugging, stack, scope, and values do not. The
 compiler/MCP route supports sealed projects and read-only queries, with no
@@ -88,8 +86,8 @@ client registration, build output, or write authority.
   `GetElementById` with its executing tab/generation, and returns only a
   boolean to JavaScript, never a raw node ID. A real HTTP page tests both a
   present and absent ID in document order through launcher/core/child;
-  ordinary child realms do not install the probe. The general `document`
-  wrapper and typed DOM profile remain B1/B2 work.
+  ordinary child realms do not install the probe. This A2 boolean probe is
+  separate from the later B1 opaque wrappers and B2.1 typed text profile.
 
 #### A3. Preserve the child-to-core realm boundary.
 
@@ -142,16 +140,16 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
 
 #### B2. Read and change live DOM text.
 
-- [ ] Implement document.getElementById and node.textContent get/set
-  through A; a real page must render the changed text. Partial: a trusted
-  launcher option installs a JavaScript-only `document` object with exact
-  receiver-checked lookup and VM-rooted node wrappers. Its inherited
-  `textContent` accessor makes generation-bound core get/set calls; a real
-  HTTP page proves document-order writes, rendered text, and removed-wrapper
-  rejection. Ordinary realms remain snapshot-only and the proof profile
-  rejects BlueTS scripts. Finish the exact compiler-supported method types,
-  capability manifest/profile admission, and a typed real-page test before
-  checking this leaf.
+- [x] Implement document.getElementById and node.textContent get/set
+  through A; a real page must render the changed text. The owner-selected
+  profile installs receiver-checked `document` lookup and opaque VM-rooted
+  node wrappers. Its `textContent` accessor makes generation-bound core
+  get/set calls. BlueTS now parses and checks the exact interface method,
+  direct member call, inferred non-null result, and text assignment against
+  the shared generated profile/inventory; ordinary realms keep only copied
+  snapshots. A real HTTP page executes checked BlueTS getter/setter work in
+  document order, renders the changed text, rejects an invalid typed call,
+  and rejects a removed wrapper.
 - [ ] Implement createElement, createTextNode, and appendChild; a real
   page must render the new subtree and reject a cross-document child.
 

@@ -12,7 +12,9 @@
 //! globals by themselves.
 
 use blueice_bluets::ModuleSource;
-use blueice_bluets_bluejs::page_host_typings::page_host_document_context_bindings_v1;
+use blueice_bluets_bluejs::page_host_typings::{
+    page_host_document_context_bindings_v1, page_host_dom_text_bindings_v1, PageHostBindingRoleV1,
+};
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -34,6 +36,7 @@ pub const CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1: &str = "core-script-document-tex
 /// The profile identity and binding schema are shared with the isolated child
 /// so BlueTS cannot be typed against a different callback inventory there.
 pub use blueice_bluets_bluejs::page_host_typings::PAGE_HOST_DOCUMENT_CONTEXT_PROFILE_V1 as CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1;
+pub use blueice_bluets_bluejs::page_host_typings::PAGE_HOST_DOM_TEXT_PROFILE_V1 as CORE_SCRIPT_DOM_TEXT_PROFILE_V1;
 
 /// Core host API version associated with [`CORE_SCRIPT_EMPTY_PROFILE_V1`].
 pub const CORE_SCRIPT_HOST_API_VERSION_V1: &str = "blueice-core-script-v1";
@@ -265,9 +268,9 @@ impl HostTypeSurfaceCatalogV1 {
     }
 }
 
-/// Core's currently truthful host type catalog. The dispatcher accepts IPC
-/// operations, but no BlueJS object exposes them yet, so emitting an empty
-/// declaration root prevents TypeScript from claiming an unavailable DOM API.
+/// Core's host type catalog. The empty and copied-snapshot profiles retain
+/// their narrow meaning; only the owner-selected DOM text profile lists the
+/// live object/method/accessor bindings installed by the isolated child.
 pub fn core_script_host_type_catalog() -> HostTypeSurfaceCatalogV1 {
     HostTypeSurfaceCatalogV1::new([
         HostTypeSurfaceV1::new(
@@ -300,7 +303,32 @@ pub fn core_script_host_type_catalog() -> HostTypeSurfaceCatalogV1 {
                     HostTypeBindingV1::new(
                         binding.stable_id,
                         binding.declaration,
-                        HostBindingRoleV1::Value,
+                        match binding.role {
+                            PageHostBindingRoleV1::Value => HostBindingRoleV1::Value,
+                            PageHostBindingRoleV1::Type => HostBindingRoleV1::Type,
+                        },
+                        binding.runtime_binding_id,
+                        binding.capability,
+                        binding.feature_flag,
+                        binding.first_host_api_version,
+                    )
+                })
+                .collect(),
+        ),
+        HostTypeSurfaceV1::new(
+            BLUEICE_HOST_TYPINGS_LANGUAGE_VERSION_V1,
+            blueice_bluets_bluejs::page_host_typings::PAGE_HOST_DOM_TEXT_HOST_API_VERSION_V1,
+            CORE_SCRIPT_DOM_TEXT_PROFILE_V1,
+            page_host_dom_text_bindings_v1()
+                .iter()
+                .map(|binding| {
+                    HostTypeBindingV1::new(
+                        binding.stable_id,
+                        binding.declaration,
+                        match binding.role {
+                            PageHostBindingRoleV1::Value => HostBindingRoleV1::Value,
+                            PageHostBindingRoleV1::Type => HostBindingRoleV1::Type,
+                        },
                         binding.runtime_binding_id,
                         binding.capability,
                         binding.feature_flag,
@@ -782,6 +810,39 @@ mod tests {
                 .map(|binding| binding.runtime_binding_id)
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn live_dom_text_manifest_matches_the_child_selected_artifact() {
+        let artifact = core_script_host_type_catalog()
+            .generate(CORE_SCRIPT_DOM_TEXT_PROFILE_V1)
+            .unwrap();
+        let child =
+            blueice_bluets_bluejs::page_host_typings::PageHostDocumentTypingsV1::generate_dom_text(
+            );
+        assert_eq!(artifact.declaration_source, child.declaration_source);
+        assert_eq!(artifact.manifest.binding_ids.len(), 5);
+        assert_eq!(
+            artifact.runtime_bindings.len(),
+            child.runtime_bindings.len()
+        );
+        assert_eq!(
+            artifact
+                .runtime_bindings
+                .iter()
+                .map(|binding| binding.runtime_binding_id.as_str())
+                .collect::<Vec<_>>(),
+            child
+                .runtime_bindings
+                .iter()
+                .map(|binding| binding.runtime_binding_id)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(artifact.runtime_bindings[3].role, HostBindingRoleV1::Type);
+        assert_eq!(artifact.runtime_bindings[4].role, HostBindingRoleV1::Type);
+        artifact
+            .validate_runtime_bindings(&artifact.runtime_bindings)
+            .unwrap();
     }
 
     #[test]

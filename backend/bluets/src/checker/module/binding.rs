@@ -602,6 +602,10 @@ impl<'a> ModuleChecker<'a> {
     pub(super) fn check_variable(&mut self, variable: &crate::parser::VariableDeclaration) {
         let scope = self.values.clone();
         self.check_variable_in_scope(variable, &scope);
+        if variable.annotation.is_none() && !variable.initializer.is_empty() && !variable.declared {
+            let inferred = self.infer_expression(&variable.initializer, &scope);
+            self.values.insert(variable.name.clone(), inferred);
+        }
     }
 
     pub(super) fn check_variable_in_scope(
@@ -609,6 +613,9 @@ impl<'a> ModuleChecker<'a> {
         variable: &crate::parser::VariableDeclaration,
         scope: &BTreeMap<String, Type>,
     ) {
+        if !variable.initializer.is_empty() && !variable.declared {
+            self.check_direct_runtime_expression(&variable.initializer, scope, &variable.span);
+        }
         let Some(annotation) = &variable.annotation else {
             return;
         };
@@ -616,9 +623,6 @@ impl<'a> ModuleChecker<'a> {
         if variable.initializer.is_empty() || variable.declared {
             return;
         }
-        self.check_function_call(&variable.initializer, scope, &variable.span);
-        self.check_direct_property_access(&variable.initializer, scope, &variable.span);
-        self.check_arithmetic_operators(&variable.initializer, scope, &variable.span);
         let inferred = if matches!(annotation, Type::Tuple(_)) {
             infer_contextual_tuple_literal(&variable.initializer, scope)
                 .unwrap_or_else(|| self.infer_expression(&variable.initializer, scope))
@@ -670,9 +674,7 @@ impl<'a> ModuleChecker<'a> {
                 );
             }
             if let Some(default) = &parameter.default {
-                self.check_function_call(default, &scope, &parameter.span);
-                self.check_direct_property_access(default, &scope, &parameter.span);
-                self.check_arithmetic_operators(default, &scope, &parameter.span);
+                self.check_direct_runtime_expression(default, &scope, &parameter.span);
                 let actual = self.infer_expression(default, &scope);
                 let expected = parameter
                     .annotation
@@ -706,10 +708,11 @@ impl<'a> ModuleChecker<'a> {
         }
         for local in &function.locals {
             self.check_variable_in_scope(local, &scope);
-            scope.insert(
-                local.name.clone(),
-                local.annotation.clone().unwrap_or(Type::Unknown),
-            );
+            let inferred = local
+                .annotation
+                .clone()
+                .unwrap_or_else(|| self.infer_expression(&local.initializer, &scope));
+            scope.insert(local.name.clone(), inferred);
         }
         self.check_function_body_expressions(&function.body, &scope);
         if let Some(return_type) = &function.return_type {
@@ -730,9 +733,7 @@ impl<'a> ModuleChecker<'a> {
                     }
                     continue;
                 }
-                self.check_function_call(returned, &scope, &function.span);
-                self.check_direct_property_access(returned, &scope, &function.span);
-                self.check_arithmetic_operators(returned, &scope, &function.span);
+                self.check_direct_runtime_expression(returned, &scope, &function.span);
                 let actual = self.infer_expression(returned, &scope);
                 let return_is_assignable = (matches!(actual, Type::Undefined)
                     && allows_implicit_undefined)
@@ -878,7 +879,9 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         self.check_function_call(tokens, scope, span);
+        self.check_member_calls_in_expression(tokens, scope, span);
         self.check_direct_property_access(tokens, scope, span);
+        self.check_member_assignment(tokens, scope, span);
         self.check_arithmetic_operators(tokens, scope, span);
     }
 
@@ -905,6 +908,14 @@ impl<'a> ModuleChecker<'a> {
                 for field in fields {
                     self.check_type(&field.value, &field.span);
                 }
+            }
+            Type::Function { parameters, result } => {
+                for parameter in parameters {
+                    if let Some(annotation) = &parameter.annotation {
+                        self.check_type(annotation, &parameter.span);
+                    }
+                }
+                self.check_type(result, span);
             }
             _ => {}
         }

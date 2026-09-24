@@ -7,6 +7,36 @@
 use super::*;
 
 #[test]
+fn parses_interface_method_signatures_as_static_function_members() {
+    let module = parse_module(
+        "memory:///lib.blueice.d.ts",
+        "interface Document { getElementById(id: string): Element | null; }",
+    )
+    .unwrap();
+    let Declaration::Interface(document) = &module.declarations[0] else {
+        panic!("expected an interface");
+    };
+    assert_eq!(document.fields.len(), 1);
+    assert_eq!(document.fields[0].name, "getElementById");
+    let Type::Function { parameters, result } = &document.fields[0].value else {
+        panic!("expected a function-valued interface member");
+    };
+    assert_eq!(parameters.len(), 1);
+    assert_eq!(parameters[0].name, "id");
+    assert_eq!(parameters[0].annotation, Some(Type::String));
+    assert_eq!(
+        **result,
+        Type::Union(vec![
+            Type::Named {
+                name: "Element".into(),
+                arguments: vec![],
+            },
+            Type::Null,
+        ])
+    );
+}
+
+#[test]
 fn parses_typed_exports_and_marks_only_type_syntax_for_erasure() {
     let module = parse_module(
             "memory:///app.ts",

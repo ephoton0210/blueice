@@ -8,6 +8,42 @@ use super::runtime_syntax::*;
 use super::*;
 
 impl Parser {
+    pub(super) fn parse_method_signature(&mut self, result_stop: &[&str]) -> Type {
+        self.expect("(");
+        let mut parameters = Vec::new();
+        while !self.at_eof() && !self.consume(")") {
+            let start = self.current().start;
+            if self.consume("...") {
+                self.unsupported(
+                    self.previous().span(&self.id),
+                    "rest parameters in method signatures are not supported",
+                );
+            }
+            let name = self.require_identifier("expected a method parameter name");
+            let optional = self.consume("?");
+            self.expect(":");
+            let annotation = self.parse_type_until(&[",", ")"]);
+            let end = self.previous().end;
+            parameters.push(Parameter {
+                name,
+                rest: false,
+                optional,
+                annotation: Some(annotation),
+                default: None,
+                span: SourceSpan::new(&self.id, start, end),
+            });
+            if !self.consume(",") {
+                self.expect(")");
+                break;
+            }
+        }
+        self.expect(":");
+        Type::Function {
+            parameters,
+            result: Box::new(self.parse_type_until(result_stop)),
+        }
+    }
+
     pub(super) fn parse_type_parameters(&mut self) -> Vec<TypeParameter> {
         if !self.consume("<") {
             return Vec::new();
@@ -117,8 +153,12 @@ impl Parser {
                 self.consume("readonly");
                 let name = self.require_identifier("expected a record field name");
                 let optional = self.consume("?");
-                self.expect(":");
-                let value = self.parse_type_until(&[";", ",", "}"]);
+                let value = if self.peek("(") {
+                    self.parse_method_signature(&[";", ",", "}"])
+                } else {
+                    self.expect(":");
+                    self.parse_type_until(&[";", ",", "}"])
+                };
                 let end = self.previous().end;
                 fields.push(TypeField {
                     name,

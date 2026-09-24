@@ -271,8 +271,12 @@ fn emit_declaration(module: &Module) -> String {
                     if field.optional {
                         output.push('?');
                     }
-                    output.push_str(": ");
-                    output.push_str(&type_to_ts(&field.value));
+                    if let Type::Function { parameters, result } = &field.value {
+                        output.push_str(&method_signature_to_ts(parameters, result));
+                    } else {
+                        output.push_str(": ");
+                        output.push_str(&type_to_ts(&field.value));
+                    }
                     output.push_str(";\n");
                 }
                 output.push_str("}\n");
@@ -454,15 +458,24 @@ fn type_to_ts(value: &Type) -> String {
             "{{ {} }}",
             fields
                 .iter()
-                .map(|field| format!(
-                    "{}{}: {}",
-                    field.name,
-                    if field.optional { "?" } else { "" },
-                    type_to_ts(&field.value)
-                ))
+                .map(|field| {
+                    let name = format!("{}{}", field.name, if field.optional { "?" } else { "" });
+                    if let Type::Function { parameters, result } = &field.value {
+                        format!("{name}{}", method_signature_to_ts(parameters, result))
+                    } else {
+                        format!("{name}: {}", type_to_ts(&field.value))
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join("; ")
         ),
+        Type::Function { parameters, result } => {
+            format!(
+                "{} => {}",
+                method_parameters_to_ts(parameters),
+                type_to_ts(result)
+            )
+        }
         Type::Union(values) => values
             .iter()
             .map(type_to_ts)
@@ -474,6 +487,34 @@ fn type_to_ts(value: &Type) -> String {
             .collect::<Vec<_>>()
             .join(" & "),
     }
+}
+
+fn method_parameters_to_ts(parameters: &[crate::parser::Parameter]) -> String {
+    let members = parameters
+        .iter()
+        .map(|parameter| {
+            format!(
+                "{}{}: {}",
+                parameter.name,
+                if parameter.optional { "?" } else { "" },
+                parameter
+                    .annotation
+                    .as_ref()
+                    .map(type_to_ts)
+                    .unwrap_or_else(|| "unknown".to_string())
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("({members})")
+}
+
+fn method_signature_to_ts(parameters: &[crate::parser::Parameter], result: &Type) -> String {
+    format!(
+        "{}: {}",
+        method_parameters_to_ts(parameters),
+        type_to_ts(result)
+    )
 }
 
 struct ProvenanceEmitter<'a> {
@@ -894,6 +935,34 @@ mod tests {
                 "export interface Envelope<T> {\n  payload: T;\n}\n\
                  export interface Tagged {\n  tag: string;\n}\n\
                  export interface Labeled<T extends string = string> extends Envelope<T>, Tagged {\n  label: T;\n}\n"
+            )
+        );
+    }
+
+    #[test]
+    fn erases_interface_methods_but_retains_their_exact_public_signature() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///document.ts",
+            "export interface Document { getElementById(id: string): Element | null; }\n\
+             export interface Element { textContent: string; }",
+        )]);
+        let output = compile(
+            "memory:///document.ts",
+            &loader,
+            CompilerOptions {
+                declaration: true,
+                ..CompilerOptions::default()
+            },
+        )
+        .output
+        .unwrap();
+        let artifact = &output.artifacts["memory:///document.ts"];
+        assert!(!artifact.javascript.contains("getElementById"));
+        assert_eq!(
+            artifact.declaration.as_deref(),
+            Some(
+                "export interface Document {\n  getElementById(id: string): Element | null;\n}\n\
+                 export interface Element {\n  textContent: string;\n}\n"
             )
         );
     }

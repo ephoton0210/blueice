@@ -301,10 +301,20 @@ pub enum Type {
     Number,
     String,
     Literal(String),
-    Named { name: String, arguments: Vec<Type> },
+    Named {
+        name: String,
+        arguments: Vec<Type>,
+    },
     Array(Box<Type>),
     Tuple(Vec<Type>),
     Record(Vec<TypeField>),
+    /// A bounded, non-generic method signature in an interface or record.
+    /// It is erased from runtime code but retains exact parameter and result
+    /// types for member-call checking and declaration emission.
+    Function {
+        parameters: Vec<Parameter>,
+        result: Box<Type>,
+    },
     Union(Vec<Type>),
     Intersection(Vec<Type>),
 }

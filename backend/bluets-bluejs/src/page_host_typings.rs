@@ -6,10 +6,9 @@
 //!
 //! This belongs at the BlueTS-to-BlueJS boundary rather than in either the
 //! core or launcher crate: both need the same generated declaration bytes and
-//! runtime inventory, while neither may depend on the other.  It is a single
-//! non-selectable profile.  It intentionally describes only the two copied
-//! document snapshots installed by the child; it is not a `lib.dom.d.ts`
-//! substitute and grants no DOM, fetch, URL, resolver, or object capability.
+//! runtime inventory, while neither may depend on the other. The default
+//! profile contains only copied snapshots; a distinct owner-selected profile
+//! can describe the bounded live DOM text route. Neither is `lib.dom.d.ts`.
 
 use blueice_bluets::ModuleSource;
 use std::fmt;
@@ -27,6 +26,12 @@ pub const PAGE_HOST_DOCUMENT_CONTEXT_DECLARATION_MODULE_ID_V1: &str =
 /// The host API revision in which the two copied snapshot callbacks appeared.
 pub const PAGE_HOST_DOCUMENT_CONTEXT_HOST_API_VERSION_V1: &str = "blueice-core-script-v1";
 
+/// The separate owner-selected profile for a live DOM text route.
+pub const PAGE_HOST_DOM_TEXT_PROFILE_V1: &str = "core-script-dom-text-v1";
+pub const PAGE_HOST_DOM_TEXT_DECLARATION_MODULE_ID_V1: &str =
+    "blueice:///profiles/core-script-dom-text-v1/lib.blueice.d.ts";
+pub const PAGE_HOST_DOM_TEXT_HOST_API_VERSION_V1: &str = "blueice-core-script-v2";
+
 const DECLARATION_HEADER: &str = "// Generated from the BlueIce host type surface. Do not edit.\n";
 
 /// One runtime global represented by the fixed page-host profile.
@@ -36,9 +41,16 @@ const DECLARATION_HEADER: &str = "// Generated from the BlueIce host type surfac
 /// to install callbacks.  The fields are all fixed constants, never request
 /// data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PageHostBindingRoleV1 {
+    Value,
+    Type,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PageHostDocumentBindingV1 {
     pub stable_id: &'static str,
     pub declaration: &'static str,
+    pub role: PageHostBindingRoleV1,
     pub runtime_binding_id: &'static str,
     pub capability: &'static str,
     pub feature_flag: &'static str,
@@ -49,6 +61,7 @@ const PAGE_HOST_DOCUMENT_CONTEXT_BINDINGS_V1: [PageHostDocumentBindingV1; 2] = [
     PageHostDocumentBindingV1 {
         stable_id: "dom.document-origin",
         declaration: "declare function blueiceDocumentOrigin(): string;",
+        role: PageHostBindingRoleV1::Value,
         runtime_binding_id: "global.blueiceDocumentOrigin",
         capability: "dom-read",
         feature_flag: "document-origin",
@@ -57,6 +70,7 @@ const PAGE_HOST_DOCUMENT_CONTEXT_BINDINGS_V1: [PageHostDocumentBindingV1; 2] = [
     PageHostDocumentBindingV1 {
         stable_id: "dom.document-text",
         declaration: "declare function blueiceDocumentText(): string;",
+        role: PageHostBindingRoleV1::Value,
         runtime_binding_id: "global.blueiceDocumentText",
         capability: "dom-read",
         feature_flag: "document-text",
@@ -64,10 +78,54 @@ const PAGE_HOST_DOCUMENT_CONTEXT_BINDINGS_V1: [PageHostDocumentBindingV1; 2] = [
     },
 ];
 
+const PAGE_HOST_DOM_TEXT_BINDINGS_V1: [PageHostDocumentBindingV1; 5] = [
+    PAGE_HOST_DOCUMENT_CONTEXT_BINDINGS_V1[0],
+    PAGE_HOST_DOCUMENT_CONTEXT_BINDINGS_V1[1],
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-document",
+        declaration: "declare const document: BlueIceDocument;",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.document",
+        capability: "dom-read",
+        feature_flag: "live-dom-text",
+        first_host_api_version: PAGE_HOST_DOM_TEXT_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-document-method",
+        declaration:
+            "interface BlueIceDocument { getElementById(id: string): BlueIceNode | null; }",
+        role: PageHostBindingRoleV1::Type,
+        runtime_binding_id: "document.getElementById",
+        capability: "dom-read",
+        feature_flag: "live-dom-text",
+        first_host_api_version: PAGE_HOST_DOM_TEXT_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-node-text",
+        declaration: "interface BlueIceNode { textContent: string; }",
+        role: PageHostBindingRoleV1::Type,
+        runtime_binding_id: "node.textContent",
+        capability: "dom-write",
+        feature_flag: "live-dom-text",
+        first_host_api_version: PAGE_HOST_DOM_TEXT_HOST_API_VERSION_V1,
+    },
+];
+
 /// Returns the complete fixed binding inventory in deterministic stable-ID
 /// order.  There is no API to add, remove, or select records for one page.
 pub fn page_host_document_context_bindings_v1() -> &'static [PageHostDocumentBindingV1] {
     &PAGE_HOST_DOCUMENT_CONTEXT_BINDINGS_V1
+}
+
+pub fn page_host_dom_text_bindings_v1() -> &'static [PageHostDocumentBindingV1] {
+    &PAGE_HOST_DOM_TEXT_BINDINGS_V1
+}
+
+pub fn page_host_dom_text_runtime_bindings_v1() -> [PageHostRuntimeBindingV1; 5] {
+    PAGE_HOST_DOM_TEXT_BINDINGS_V1.map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
 }
 
 /// A runtime callback identity supplied by a host that wants to compile
@@ -104,9 +162,23 @@ impl PageHostDocumentTypingsV1 {
     /// matches the core host-typing catalog so the two consumers cannot drift
     /// in declaration bytes or binding order.
     pub fn generate() -> Self {
+        Self::generate_from(
+            PAGE_HOST_DOCUMENT_CONTEXT_PROFILE_V1,
+            page_host_document_context_bindings_v1(),
+        )
+    }
+
+    pub fn generate_dom_text() -> Self {
+        Self::generate_from(
+            PAGE_HOST_DOM_TEXT_PROFILE_V1,
+            page_host_dom_text_bindings_v1(),
+        )
+    }
+
+    fn generate_from(profile: &'static str, bindings: &[PageHostDocumentBindingV1]) -> Self {
         let mut declaration_source = DECLARATION_HEADER.to_string();
-        let mut runtime_bindings = Vec::with_capacity(PAGE_HOST_DOCUMENT_CONTEXT_BINDINGS_V1.len());
-        for binding in PAGE_HOST_DOCUMENT_CONTEXT_BINDINGS_V1 {
+        let mut runtime_bindings = Vec::with_capacity(bindings.len());
+        for binding in bindings {
             declaration_source.push('\n');
             declaration_source.push_str(binding.declaration);
             declaration_source.push('\n');
@@ -117,7 +189,7 @@ impl PageHostDocumentTypingsV1 {
         }
         let declaration_hash = stable_hash("blueice-page-host-declaration", &declaration_source);
         Self {
-            profile: PAGE_HOST_DOCUMENT_CONTEXT_PROFILE_V1,
+            profile,
             declaration_source,
             declaration_hash,
             runtime_bindings,
@@ -153,7 +225,30 @@ impl PageHostDocumentTypingsV1 {
         &self,
         installed_bindings: &[PageHostRuntimeBindingV1],
     ) -> Result<ModuleSource, PageHostTypingsError> {
-        let generated = Self::generate();
+        self.verified_module_for(
+            Self::generate(),
+            PAGE_HOST_DOCUMENT_CONTEXT_DECLARATION_MODULE_ID_V1,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_text_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_text(),
+            PAGE_HOST_DOM_TEXT_DECLARATION_MODULE_ID_V1,
+            installed_bindings,
+        )
+    }
+
+    fn verified_module_for(
+        &self,
+        generated: Self,
+        module_id: &'static str,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
         if self.profile != generated.profile
             || self.declaration_hash != generated.declaration_hash
             || self.declaration_source != generated.declaration_source
@@ -163,7 +258,7 @@ impl PageHostDocumentTypingsV1 {
         }
         self.verify_runtime_bindings(installed_bindings)?;
         Ok(ModuleSource::new(
-            PAGE_HOST_DOCUMENT_CONTEXT_DECLARATION_MODULE_ID_V1,
+            module_id,
             self.declaration_source.clone(),
         ))
     }
@@ -272,6 +367,31 @@ mod tests {
             .push_str("declare const fetch: unknown;\n");
         assert_eq!(
             modified.verified_ambient_module(&page_host_document_runtime_bindings_v1()),
+            Err(PageHostTypingsError::ArtifactMismatch)
+        );
+    }
+
+    #[test]
+    fn live_dom_text_profile_has_an_exact_separate_runtime_inventory() {
+        let artifact = PageHostDocumentTypingsV1::generate_dom_text();
+        assert_eq!(artifact.profile, PAGE_HOST_DOM_TEXT_PROFILE_V1);
+        assert!(artifact
+            .declaration_source
+            .contains("getElementById(id: string): BlueIceNode | null"));
+        assert!(artifact.declaration_source.contains("textContent: string"));
+        assert!(!artifact.declaration_source.contains("fetch"));
+        let bindings = page_host_dom_text_runtime_bindings_v1();
+        let declaration = artifact
+            .verified_dom_text_ambient_module(&bindings)
+            .unwrap();
+        assert_eq!(declaration.id, PAGE_HOST_DOM_TEXT_DECLARATION_MODULE_ID_V1);
+        assert_eq!(declaration.text, artifact.declaration_source);
+        assert_eq!(
+            artifact.verify_runtime_bindings(&bindings[..4]),
+            Err(PageHostTypingsError::RuntimeBindingInventoryMismatch)
+        );
+        assert_eq!(
+            artifact.verified_ambient_module(&bindings),
             Err(PageHostTypingsError::ArtifactMismatch)
         );
     }

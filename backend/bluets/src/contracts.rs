@@ -273,6 +273,9 @@ fn lower(
         Type::Any | Type::Unknown | Type::Never => Err(ContractError {
             message: "any, unknown, and never are not automatic runtime contracts".to_string(),
         }),
+        Type::Function { .. } => Err(ContractError {
+            message: "function members are not data-boundary runtime contracts".to_string(),
+        }),
         Type::Void => Err(ContractError {
             message: "void is not a data-boundary runtime contract".to_string(),
         }),

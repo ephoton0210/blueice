@@ -554,6 +554,28 @@ struct DirectCall<'a> {
     generic: bool,
 }
 
+struct MemberCall<'a> {
+    base: &'a Token,
+    member: &'a Token,
+    arguments: &'a [Token],
+}
+
+fn member_call_parts(tokens: &[Token]) -> Option<MemberCall<'_>> {
+    let [base, dot, member, open, rest @ ..] = tokens else {
+        return None;
+    };
+    (base.kind == TokenKind::Identifier
+        && dot.is(".")
+        && member.kind == TokenKind::Identifier
+        && open.is("(")
+        && split_call_arguments(rest).is_some())
+    .then_some(MemberCall {
+        base,
+        member,
+        arguments: rest,
+    })
+}
+
 fn direct_call_parts(tokens: &[Token]) -> Option<DirectCall<'_>> {
     let callee = tokens.first()?;
     if callee.kind != TokenKind::Identifier {
@@ -598,8 +620,21 @@ fn matching_call_angle_bracket(tokens: &[Token], start: usize) -> Option<usize> 
 }
 
 fn split_call_arguments(tokens: &[Token]) -> Option<Vec<&[Token]>> {
-    let close = tokens.iter().position(|token| token.is(")"))?;
-    if close + 1 != tokens.len() {
+    let mut depth = 0usize;
+    let mut close = None;
+    for (index, token) in tokens.iter().enumerate() {
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" if depth == 0 => {
+                close = Some(index);
+                break;
+            }
+            ")" | "]" | "}" => depth = depth.checked_sub(1)?,
+            _ => {}
+        }
+    }
+    let close = close?;
+    if close + 1 != tokens.len() || depth != 0 {
         return None;
     }
     if close == 0 {
@@ -1382,6 +1417,19 @@ fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type
                 })
                 .collect(),
         ),
+        Type::Function { parameters, result } => Type::Function {
+            parameters: parameters
+                .iter()
+                .map(|parameter| Parameter {
+                    annotation: parameter
+                        .annotation
+                        .as_ref()
+                        .map(|value| substitute_type(value, substitutions)),
+                    ..parameter.clone()
+                })
+                .collect(),
+            result: Box::new(substitute_type(result, substitutions)),
+        },
         Type::Union(values) => Type::Union(
             values
                 .iter()
@@ -1418,6 +1466,7 @@ fn type_identity(value: &Type) -> String {
                 .join(",")
         ),
         Type::Record(_) => "record".to_string(),
+        Type::Function { .. } => "function".to_string(),
         Type::Union(values) => values
             .iter()
             .map(type_identity)
@@ -1451,6 +1500,7 @@ pub(crate) fn type_label(value: &Type) -> String {
             values.iter().map(type_label).collect::<Vec<_>>().join(", ")
         ),
         Type::Record(_) => "record".to_string(),
+        Type::Function { .. } => "function".to_string(),
         Type::Union(values) => values
             .iter()
             .map(type_label)

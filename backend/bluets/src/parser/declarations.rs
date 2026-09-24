@@ -504,8 +504,12 @@ impl Parser {
             let field_start = self.current().start;
             let name = self.require_identifier("expected an interface field name");
             let optional = self.consume("?");
-            self.expect(":");
-            let value = self.parse_type_until(&[";", ",", "}"]);
+            let value = if self.peek("(") {
+                self.parse_method_signature(&[";", ",", "}"])
+            } else {
+                self.expect(":");
+                self.parse_type_until(&[";", ",", "}"])
+            };
             let end = self.previous().end;
             fields.push(TypeField {
                 name,

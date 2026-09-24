@@ -13,6 +13,38 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
     ) -> Type {
         let tokens = strip_outer_parentheses(tokens);
+        if tokens.len() > 1 && tokens.last().is_some_and(|token| token.is("!")) {
+            let inferred = self.infer_expression(&tokens[..tokens.len() - 1], scope);
+            return match inferred {
+                Type::Union(options) => {
+                    let mut retained = options
+                        .into_iter()
+                        .filter(|option| !matches!(option, Type::Null | Type::Undefined))
+                        .collect::<Vec<_>>();
+                    match retained.len() {
+                        0 => Type::Never,
+                        1 => retained.pop().expect("one retained non-null type"),
+                        _ => Type::Union(retained),
+                    }
+                }
+                Type::Null | Type::Undefined => Type::Never,
+                value => value,
+            };
+        }
+        if let Some(call) = member_call_parts(tokens) {
+            let base = scope.get(&call.base.text).cloned().unwrap_or(Type::Unknown);
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            if let PropertyType::Found(Type::Function { result, .. }) = property_type(
+                &base,
+                &call.member.text,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            ) {
+                return *result;
+            }
+            return Type::Unknown;
+        }
         if let Some(call) =
             direct_call_parts(tokens).filter(|call| split_call_arguments(call.arguments).is_some())
         {
@@ -346,6 +378,173 @@ impl<'a> ModuleChecker<'a> {
         }
     }
 
+    pub(super) fn check_member_calls_in_expression(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let mut open = Vec::new();
+        let mut closes = vec![None; tokens.len()];
+        for (index, token) in tokens.iter().enumerate() {
+            if token.is("(") {
+                open.push(index);
+            } else if token.is(")") {
+                if let Some(start) = open.pop() {
+                    closes[start] = Some(index);
+                }
+            }
+        }
+        for start in 0..tokens.len().saturating_sub(3) {
+            if tokens[start].kind != TokenKind::Identifier
+                || !tokens[start + 1].is(".")
+                || tokens[start + 2].kind != TokenKind::Identifier
+                || !tokens[start + 3].is("(")
+            {
+                continue;
+            }
+            if let Some(end) = closes[start + 3] {
+                self.check_member_call(&tokens[start..=end], scope, span);
+            }
+        }
+    }
+
+    fn check_member_call(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let tokens = strip_outer_parentheses(tokens);
+        let tokens = if tokens.len() > 1 && tokens.last().is_some_and(|token| token.is("!")) {
+            &tokens[..tokens.len() - 1]
+        } else {
+            tokens
+        };
+        let Some(call) = member_call_parts(tokens) else {
+            return;
+        };
+        if self.require_declared_global_calls && !scope.contains_key(&call.base.text) {
+            self.type_error(
+                span,
+                format!(
+                    "object {} is not declared by this page profile",
+                    call.base.text
+                ),
+                DiagnosticCode::UnknownName,
+            );
+            return;
+        }
+        let base = scope.get(&call.base.text).cloned().unwrap_or(Type::Unknown);
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let member_type = property_type(
+            &base,
+            &call.member.text,
+            &self.types,
+            &mut HashSet::new(),
+            &mut budget,
+        );
+        let (parameters, _) = match member_type {
+            PropertyType::Found(Type::Function { parameters, result }) => (parameters, result),
+            PropertyType::Found(_) => {
+                self.type_error(
+                    span,
+                    format!("property `{}` is not callable", call.member.text),
+                    DiagnosticCode::TypeMismatch,
+                );
+                return;
+            }
+            PropertyType::Missing
+                if matches!(
+                    base,
+                    Type::String | Type::Number | Type::Boolean | Type::Array(_) | Type::Tuple(_)
+                ) =>
+            {
+                // BlueTS does not yet model the JavaScript built-in method
+                // catalogs. Preserve their runtime semantics while still
+                // rejecting missing members on declared host interfaces.
+                return;
+            }
+            PropertyType::Missing => {
+                self.type_error(
+                    span,
+                    format!(
+                        "property `{}` does not exist on type `{}`",
+                        call.member.text,
+                        type_label(&base)
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+                return;
+            }
+            PropertyType::Exhausted => {
+                self.type_error(
+                    span,
+                    format!(
+                        "property lookup exceeds the {} generic-expansion limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                );
+                return;
+            }
+            PropertyType::Indeterminate => return,
+        };
+        let Some(arguments) = split_call_arguments(call.arguments) else {
+            return;
+        };
+        for argument in &arguments {
+            self.check_function_call(argument, scope, span);
+        }
+        let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
+            self.type_error(
+                span,
+                format!(
+                    "a spread argument for method {} must have a fixed-length tuple type",
+                    call.member.text
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+            return;
+        };
+        let required = parameters
+            .iter()
+            .filter(|parameter| !parameter.optional)
+            .count();
+        if actuals.len() < required || actuals.len() > parameters.len() {
+            self.type_error(
+                span,
+                format!(
+                    "method {} expects {required} to {} argument(s), got {}",
+                    call.member.text,
+                    parameters.len(),
+                    actuals.len()
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+            return;
+        }
+        for (index, actual) in actuals.iter().enumerate() {
+            let expected = parameters[index]
+                .annotation
+                .as_ref()
+                .expect("method signature parameters have annotations");
+            if !self.is_assignable_bounded(actual, expected, span) {
+                self.type_error(
+                    span,
+                    format!(
+                        "argument {} has type `{}`, which is not assignable to method parameter `{}` of type `{}`",
+                        index + 1,
+                        type_label(actual),
+                        parameters[index].name,
+                        type_label(expected)
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+        }
+    }
+
     pub(super) fn expanded_call_argument_types(
         &self,
         arguments: &[&[Token]],
@@ -523,6 +722,68 @@ impl<'a> ModuleChecker<'a> {
                 ),
                 DiagnosticCode::ResourceLimit,
             ),
+        }
+    }
+
+    pub(super) fn check_member_assignment(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let [base, dot, property, assign, value @ ..] = strip_outer_parentheses(tokens) else {
+            return;
+        };
+        if base.kind != TokenKind::Identifier
+            || !dot.is(".")
+            || property.kind != TokenKind::Identifier
+            || !assign.is("=")
+            || value.is_empty()
+        {
+            return;
+        }
+        let owner = scope.get(&base.text).cloned().unwrap_or(Type::Unknown);
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        match property_type(
+            &owner,
+            &property.text,
+            &self.types,
+            &mut HashSet::new(),
+            &mut budget,
+        ) {
+            PropertyType::Found(expected) => {
+                let actual = self.infer_expression(value, scope);
+                if !self.is_assignable_bounded(&actual, &expected, span) {
+                    self.type_error(
+                        span,
+                        format!(
+                            "assignment has type `{}`, which is not assignable to property `{}` of type `{}`",
+                            type_label(&actual),
+                            property.text,
+                            type_label(&expected)
+                        ),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                }
+            }
+            PropertyType::Missing => self.type_error(
+                span,
+                format!(
+                    "property `{}` does not exist on type `{}`",
+                    property.text,
+                    type_label(&owner)
+                ),
+                DiagnosticCode::TypeMismatch,
+            ),
+            PropertyType::Exhausted => self.type_error(
+                span,
+                format!(
+                    "property lookup exceeds the {} generic-expansion limit",
+                    self.max_type_expansions
+                ),
+                DiagnosticCode::ResourceLimit,
+            ),
+            PropertyType::Indeterminate => {}
         }
     }
 

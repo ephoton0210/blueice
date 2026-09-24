@@ -810,6 +810,13 @@ impl<'a> ExpressionLowerer<'a> {
             let Some(token) = self.tokens.get(self.index) else {
                 return Ok(expression);
             };
+            if token.text == "!" {
+                // TypeScript's postfix non-null assertion is erased. The
+                // checker narrows the static result; runtime null access
+                // still fails normally in BlueJS.
+                self.index += 1;
+                continue;
+            }
             if token.text == "." {
                 let dot_span = self.token_span(token);
                 self.index += 1;

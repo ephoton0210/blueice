@@ -111,6 +111,37 @@ fn direct_script_keeps_ambient_host_typings_static_without_making_them_a_program
 }
 
 #[test]
+fn direct_script_lowers_checked_dom_method_lookup_and_text_assignment() {
+    let ambient = ModuleSource::new(
+        "blueice:///profiles/test-dom/lib.blueice.d.ts",
+        "interface Element { textContent: string; }\n\
+         interface Document { getElementById(id: string): Element | null; }\n\
+         declare const document: Document;",
+    );
+    let compile = |source| {
+        compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions {
+                runtime_policy: blueice_bluets::RuntimePolicy::Checked,
+                require_declared_global_calls: true,
+                ambient_declaration_modules: vec![ambient.clone()],
+                ..CompilerOptions::default()
+            },
+        )
+    };
+    compile(
+        "const node = document.getElementById('target')!;\n\
+         node.textContent = 'rendered';",
+    )
+    .unwrap();
+    assert!(compile("document.getElementById(42);").is_err());
+    assert!(
+        compile("const node = document.getElementById('target')!; node.textContent = 42;").is_err()
+    );
+}
+
+#[test]
 fn realm_owner_prunes_classic_script_metadata_as_part_of_navigation() {
     let artifact = artifact();
     let mut owner = DirectPageRealmOwner::default();
