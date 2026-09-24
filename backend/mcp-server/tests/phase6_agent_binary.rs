@@ -293,11 +293,13 @@ fn run_scripted_provider(provider: &'static str) {
         .arg("1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if provider == "huggingface" {
-        command.arg("--huggingface-base").arg(model_base);
-    } else {
-        command.arg("--ollama-base").arg(model_base);
-    }
+    let base_flag = match provider {
+        "ollama" => "--ollama-base",
+        "huggingface" => "--huggingface-base",
+        "llamacpp" => "--llamacpp-base",
+        _ => panic!("unknown scripted provider: {provider}"),
+    };
+    command.arg(base_flag).arg(model_base);
     let mut child = command.spawn().unwrap();
     let deadline = Instant::now() + Duration::from_secs(45);
     while child.try_wait().unwrap().is_none() && Instant::now() < deadline {
@@ -323,6 +325,14 @@ fn run_scripted_provider(provider: &'static str) {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
+    let expected_provider = match provider {
+        "ollama" => "ollama",
+        "huggingface" => "huggingface-local",
+        "llamacpp" => "llamacpp-local",
+        _ => unreachable!(),
+    };
+    assert_eq!(events[0]["kind"], "run_start");
+    assert_eq!(events[0]["data"]["provider"], expected_provider);
     let highlight = events
         .iter()
         .find(|event| event["kind"] == "highlight_frame")
@@ -347,8 +357,8 @@ fn run_scripted_provider(provider: &'static str) {
 }
 
 #[test]
-fn scripted_ollama_and_huggingface_peers_drive_real_mcp_and_one_shared_core_each() {
-    for provider in ["ollama", "huggingface"] {
+fn scripted_local_providers_drive_real_mcp_and_one_shared_core_each() {
+    for provider in ["ollama", "huggingface", "llamacpp"] {
         run_scripted_provider(provider);
     }
 }

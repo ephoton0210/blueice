@@ -95,6 +95,30 @@ target/debug/blueice-phase6-agent \
   --evidence-dir "$RUN_DIR/evidence"
 ```
 
+A locally operated [llama.cpp server](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
+is a third supported choice, useful for a GGUF vision-and-tool-capable model.
+Supply the matching multimodal projector for screenshot input and bind only to
+loopback; `--model` must match the server's `--alias`. Start the server and
+agent commands below in separate terminals:
+
+```sh
+llama-server --host 127.0.0.1 --port 8080 --no-webui \
+  --model "<local-model.gguf>" --mmproj "<matching-mmproj.gguf>" \
+  --alias "<local-model-name>" --ctx-size 16384 --parallel 1
+target/debug/blueice-phase6-agent \
+  --provider llamacpp \
+  --llamacpp-base http://127.0.0.1:8080/v1/ \
+  --model "<local-model-name>" \
+  --demo-url http://127.0.0.1:4312/index.html \
+  --launcher-socket "$SOCKET" \
+  --transcript "$RUN_DIR/agent.jsonl" \
+  --evidence-dir "$RUN_DIR/evidence"
+```
+
+This is a separate provider label in the transcript, not a claim that a
+llama.cpp run also exercised Ollama or Hugging Face TGI. All three client
+choices retain the same credential-free loopback and first-party URL bounds.
+
 The runner refuses a non-loopback start URL, a missing launcher, model-supplied
 function arguments, a missing highlight-time screenshot, an incomplete
 scenario, or a missing final report. It holds the shared highlight for ten

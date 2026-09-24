@@ -3,10 +3,10 @@
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
 **Status**: In progress — the first-party, loopback-only scenario, shared
-human/agent observer path, and local Ollama/Hugging Face TGI Chat/MCP
-live-model drivers are implemented and tested through a compiled-stack
-scripted-provider check; an actual configured LLM run and its human-observer
-evidence remain.
+human/agent observer path, and local Ollama/Hugging Face TGI/llama.cpp Chat/MCP
+live-model drivers are implemented. A real Qwen3.5-4B GGUF vision/tool run
+through a local llama.cpp server completed the task on 2026-09-24; independent
+human-window screenshot evidence remains outstanding. See [RESULTS.md](RESULTS.md).
 
 ## Objective
 
@@ -28,9 +28,8 @@ launcher-owned core rather than starting a private core. In that mode closing
 the human window does not terminate the shared core. The existing MCP server
 already prefers the same default launcher socket, so the later LLM driver and
 human observer can consume frames from one render pass. A model/provider
-configuration is still required before an actual LLM-driven run can be made;
-the scenario intentionally does not pretend a deterministic test client is an
-LLM.
+configuration is required to reproduce the LLM-driven run; the scenario does
+not pretend a deterministic test client is an LLM.
 
 ### Live-model driver (2026-09-23)
 
@@ -40,7 +39,7 @@ described tool definitions, execute every returned call locally, return its
 output with the matching `tool_call_id`, and continue until the model provides
 a final report.
 
-**Local-model update (2026-09-23).** The driver supports two self-operated
+**Local-model update (2026-09-24).** The driver supports three self-operated
 local backends:
 
 - `--provider ollama` (the default) uses Ollama's credential-free loopback
@@ -52,8 +51,12 @@ local backends:
   accelerator allocation when they start their local server. TGI's Messages API
   and function calling are OpenAI Chat Completions-compatible (TGI 1.4.3 or
   newer for tool support): <https://huggingface.co/docs/text-generation-inference/guidance>.
+- `--provider llamacpp --llamacpp-base <http://127.0.0.1:port/v1/>` targets a
+  self-operated llama.cpp server with a GGUF model and matching vision
+  projector. It has its own provider label in the transcript; a llama.cpp run
+  is not presented as a Hugging Face TGI run.
 
-Both selections send the same bounded function definitions and write tool
+All three selections send the same bounded function definitions and write tool
 results back as chat tool messages. The runner accepts only credential-free
 loopback `http(s)://.../v1/` bases, has no API-key flag, and never falls back to
 a cloud endpoint. It records the provider and local base in the transcript, but
@@ -101,30 +104,32 @@ The reference human frontend's opt-in
 window chrome, without changing the core page frame or MCP PNG. During a live
 run, a human screenshot of the highlighted page must show the same tab and
 generation as the second MCP PNG entry and highlight snapshot. This closes an
-evidence gap but does not substitute for the outstanding actual model/human
-run.
+evidence gap but does not substitute for the outstanding human-window
+screenshot.
 
 **Compiled-stack orchestration check (2026-09-24).**
 `backend/mcp-server/tests/phase6_agent_binary.rs` starts a real supervised
 gatekeeper, launcher broker, core, loopback demo site, compiled Phase 6 agent,
 and stdio MCP server. A second, independent launcher client receives the same
 highlighted `FrameReady` tab/generation recorded by the agent's snapshot and
-second retained PNG. Scripted loopback Chat Completions peers exercise both
-Ollama-style tool-call arrays and Hugging Face/TGI-style single-object tool
+second retained PNG. Scripted loopback Chat Completions peers exercise
+Ollama/llama.cpp-style tool-call arrays and Hugging Face/TGI-style single-object tool
 calls through the complete browser path, including tool-result correlation,
 the PNG image message, and final `tool_choice: none`. This verifies process
 orchestration and shared-frame wiring, **not** model reasoning or a visible
-human window; the live-model/human evidence item below stays open.
+human window; the separate real-model result below does not close the latter.
 
-Run prerequisites are deliberately explicit: an operator must either install
-and run a loopback Ollama server with a local vision-and-tool-capable lightweight
-model, or operate a loopback Hugging Face TGI server with a model configured by
-the operator. In both cases the model name passed through `--model` must match
-the local server's configuration. No API key is accepted, needed, or recorded.
-No local model/human observer was configured in this development environment on
-2026-09-23; checks on 2026-09-24 still found no Ollama service at `11434` or
-TGI service at `8080`, so no live model transcript or human screenshot is
-claimed yet.
+Run prerequisites are deliberately explicit: an operator must run a loopback
+Ollama, Hugging Face TGI, or llama.cpp server with a local vision-and-tool-capable
+model (and a matching vision projector for the llama.cpp GGUF path). In every
+case the model name passed through `--model` must match the local server's
+configuration. No API key is accepted, needed, or recorded. On 2026-09-24 a
+temporary llama.cpp server ran a cached Qwen3.5-4B Q4_K_M GGUF plus its
+matching projector. Two real-model runs completed the six actions and retained
+same-frame MCP PNGs. The second run launched the reference frontend and held
+the highlighted frame for 90 seconds, but macOS denied a window-only capture,
+and no human screenshot has yet been supplied. Neither run proves a genuine
+Ollama or TGI server, nor the still-open human-observer evidence requirement.
 
 - Pick a small, concrete demo task and site/page scope, within what the Phase 2 MVP scope can actually render.
 - Wire an LLM-driven agent to consume the Phase 5 API as its only channel for perceiving and acting on the page (no fallback to CDP/Puppeteer, since that would undermine what's being demonstrated).
@@ -136,9 +141,10 @@ claimed yet.
 
 - [x] Confirm the demo's target site(s)/page(s) are in-scope for the Phase 2 MVP and cleared under the Phase 5/plan §5 access policy — first-party `demo-site/`, loopback only
 - [x] Pick and scope a concrete demo task — see `SCENARIO.md`: inspect/describe the visible MVP elements, set and confirm the labelled text-box value, highlight it, and follow the local confirmation link
-- [x] Wire an LLM-driven agent to the Phase 5 API (no CDP/Puppeteer path) — `blueice-phase6-agent` confines a loopback Ollama or Hugging Face TGI Chat Completions function-calling loop to scenario-specific operations that each invoke the standard MCP adapter; targeted tests and MCP/core integration tests pass
+- [x] Wire an LLM-driven agent to the Phase 5 API (no CDP/Puppeteer path) — `blueice-phase6-agent` confines a loopback Ollama, Hugging Face TGI, or llama.cpp Chat Completions function-calling loop to scenario-specific operations that each invoke the standard MCP adapter; targeted tests and MCP/core integration tests pass
 - [x] Instrument common-frame evidence — MCP screenshots identify the exact tab/generation behind each PNG; the agent transcript pairs that identity with its saved file; the human frontend can display the same core frame identity using `--show-generation`
 - [x] Verify compiled local-provider orchestration against a real shared core — deterministic loopback Chat Completions peers drive both supported response shapes, while an independent launcher client receives the exact highlighted frame retained by MCP; this is not the real-model/human proof
+- [x] Run a real local vision/tool model through the shared core — Qwen3.5-4B GGUF via llama.cpp completed the first-party scenario, with a matched highlighted MCP PNG and transcript; see [RESULTS.md](RESULTS.md)
 - [ ] Demonstrate human + agent observing the same page/state simultaneously
-- [ ] Record results (what worked, what broke, what surprised)
+- [x] Record results (what worked, what broke, what surprised) — [RESULTS.md](RESULTS.md) records the real-model task, evidence identities/hashes, provider-label correction, viewport change, and missing human-window capture
 - [ ] Feed findings back into earlier phases' plans as needed

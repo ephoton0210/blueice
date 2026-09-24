@@ -54,19 +54,22 @@ struct Args {
 fn usage() -> &'static str {
     r#"usage: blueice-phase6-agent --model <model> --demo-url <http://127.0.0.1:port/index.html>
   --launcher-socket <rendezvous.sock> --transcript <run.jsonl> --evidence-dir <dir>
-  [--mcp-server <blueice-mcp-server>] [--provider <ollama|huggingface>]
+  [--mcp-server <blueice-mcp-server>] [--provider <ollama|huggingface|llamacpp>]
   [--ollama-base <http://127.0.0.1:11434/v1/>]
   [--huggingface-base <http://127.0.0.1:8080/v1/>]
+  [--llamacpp-base <http://127.0.0.1:8080/v1/>]
   [--max-turns <n>] [--highlight-hold-seconds <n>]"#
 }
 
 /// The model backend is deliberately a local server implementation, rather
-/// than a cloud account. Hugging Face means a self-operated, local TGI (or
-/// compatible) server; it is not Hugging Face Inference Endpoints.
+/// than a cloud account. Hugging Face means a self-operated local TGI server,
+/// not Hugging Face Inference Endpoints. llama.cpp is a separate compatible
+/// local server, so a real run never needs to be mislabeled as a TGI run.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum LocalModelProvider {
     Ollama,
     HuggingFace,
+    LlamaCpp,
 }
 
 impl LocalModelProvider {
@@ -74,7 +77,8 @@ impl LocalModelProvider {
         match raw {
             "ollama" => Ok(Self::Ollama),
             "huggingface" | "hf" => Ok(Self::HuggingFace),
-            _ => Err("--provider must be either ollama or huggingface".to_string()),
+            "llamacpp" => Ok(Self::LlamaCpp),
+            _ => Err("--provider must be ollama, huggingface, or llamacpp".to_string()),
         }
     }
 
@@ -82,6 +86,7 @@ impl LocalModelProvider {
         match self {
             Self::Ollama => "ollama",
             Self::HuggingFace => "huggingface-local",
+            Self::LlamaCpp => "llamacpp-local",
         }
     }
 }
@@ -165,6 +170,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut provider = None;
     let mut ollama_base = None;
     let mut huggingface_base = None;
+    let mut llamacpp_base = None;
     let mut max_turns = None;
     let mut highlight_hold_secs = None;
     let mut args = args;
@@ -189,6 +195,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--huggingface-base" => {
                 huggingface_base = Some(next_value(&mut args, "--huggingface-base")?)
             }
+            "--llamacpp-base" => llamacpp_base = Some(next_value(&mut args, "--llamacpp-base")?),
             "--max-turns" => {
                 let raw = next_value(&mut args, "--max-turns")?;
                 let parsed = raw
@@ -213,8 +220,11 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let provider = LocalModelProvider::parse(provider.as_deref().unwrap_or("ollama"))?;
     let provider_base = match provider {
         LocalModelProvider::Ollama => {
-            if huggingface_base.is_some() {
-                return Err("--huggingface-base requires --provider huggingface".to_string());
+            if huggingface_base.is_some() || llamacpp_base.is_some() {
+                return Err(
+                    "--huggingface-base and --llamacpp-base require their matching provider"
+                        .to_string(),
+                );
             }
             parse_loopback_chat_base(
                 ollama_base.as_deref().unwrap_or(DEFAULT_OLLAMA_BASE),
@@ -223,13 +233,27 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             )?
         }
         LocalModelProvider::HuggingFace => {
-            if ollama_base.is_some() {
-                return Err("--ollama-base requires --provider ollama".to_string());
+            if ollama_base.is_some() || llamacpp_base.is_some() {
+                return Err(
+                    "--ollama-base and --llamacpp-base require their matching provider".to_string(),
+                );
             }
             let base = huggingface_base.ok_or_else(|| {
                 "--huggingface-base is required when --provider huggingface is selected".to_string()
             })?;
             parse_loopback_chat_base(&base, "--huggingface-base", provider)?
+        }
+        LocalModelProvider::LlamaCpp => {
+            if ollama_base.is_some() || huggingface_base.is_some() {
+                return Err(
+                    "--ollama-base and --huggingface-base require their matching provider"
+                        .to_string(),
+                );
+            }
+            let base = llamacpp_base.ok_or_else(|| {
+                "--llamacpp-base is required when --provider llamacpp is selected".to_string()
+            })?;
+            parse_loopback_chat_base(&base, "--llamacpp-base", provider)?
         }
     };
     let model = model.ok_or_else(|| format!("--model is required\n{}", usage()))?;
@@ -458,7 +482,7 @@ struct McpToolResult {
     image: Option<Vec<u8>>,
 }
 
-/// A deliberately small common transport for the two supported local
+/// A deliberately small common transport for the supported local
 /// OpenAI-compatible Chat Completions servers. Keeping this transport generic
 /// does not widen browser authority: every tool action remains bounded below.
 struct LocalChat {
@@ -1186,11 +1210,44 @@ mod tests {
             .chain(["--provider", "huggingface"])
             .map(str::to_string);
         assert!(parse_args(missing_huggingface_base).is_err());
+
+        let llamacpp = common
+            .into_iter()
+            .chain([
+                "--provider",
+                "llamacpp",
+                "--llamacpp-base",
+                "http://127.0.0.1:18080/v1/",
+            ])
+            .map(str::to_string);
+        let parsed = parse_args(llamacpp).unwrap();
+        assert_eq!(parsed.provider, LocalModelProvider::LlamaCpp);
+        assert_eq!(parsed.provider.name(), "llamacpp-local");
+        assert_eq!(parsed.provider_base.as_str(), "http://127.0.0.1:18080/v1/");
+
+        for extra in [
+            &["--provider", "llamacpp"][..],
+            &["--provider", "llamacpp", "--llamacpp-base", "https://remote.example/v1/"],
+            &[
+                "--provider", "llamacpp", "--llamacpp-base", "http://127.0.0.1:18080/v1/",
+                "--ollama-base", "http://127.0.0.1:11434/v1/",
+            ],
+            &[
+                "--provider", "huggingface", "--huggingface-base", "http://127.0.0.1:8080/v1/",
+                "--llamacpp-base", "http://127.0.0.1:18080/v1/",
+            ],
+        ] {
+            assert!(parse_args(common.into_iter().chain(extra.iter().copied()).map(str::to_string)).is_err());
+        }
     }
 
     #[test]
     fn local_chat_providers_use_the_compatible_endpoint_without_credentials() {
-        for provider in [LocalModelProvider::Ollama, LocalModelProvider::HuggingFace] {
+        for provider in [
+            LocalModelProvider::Ollama,
+            LocalModelProvider::HuggingFace,
+            LocalModelProvider::LlamaCpp,
+        ] {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             let address = listener.local_addr().unwrap();
             let server = thread::spawn(move || {
