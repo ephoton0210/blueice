@@ -1949,6 +1949,31 @@ fn private_parent_pipe_grants_and_revokes_optional_capability_in_a_real_core() {
     assert_eq!(optional[0].capability, "storage");
     assert!(!optional[0].granted);
 
+    let inspect_document = |input: &mut std::process::ChildStdin, output: &mut std::process::ChildStdout| {
+        write_permission_control_request(input, &PermissionControlRequest::InspectDocument { tab_id: 1 }).unwrap();
+        read_permission_control_reply(output).unwrap()
+    };
+    assert_eq!(inspect_document(&mut control_in, &mut control_out), PermissionControlReply::Document {
+        tab_id: 1, document_epoch: 0, url: None,
+    });
+    for epoch in 1..=2 {
+        blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
+            url: "about:credits".into(),
+        }).unwrap();
+        assert_eq!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+            blueice_ipc::ServerMessage::Navigated { url: "about:credits".into() });
+        assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+            blueice_ipc::ServerMessage::FrameReady { .. }));
+        assert_eq!(inspect_document(&mut control_in, &mut control_out), PermissionControlReply::Document {
+            tab_id: 1, document_epoch: epoch, url: Some("about:credits".into()),
+        }, "same-URL document replacement must invalidate the previous identity");
+    }
+    write_permission_control_request(&mut control_in, &PermissionControlRequest::InspectDocument {
+        tab_id: u64::MAX,
+    }).unwrap();
+    assert!(matches!(read_permission_control_reply(&mut control_out).unwrap(),
+        PermissionControlReply::Rejected { .. }));
+
     write_permission_control_request(&mut control_in, &PermissionControlRequest::Grant { capability: "dom:read".into() }).unwrap();
     assert!(matches!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Rejected { .. }));
     assert_eq!(probe_get(&mut probe), b'D');

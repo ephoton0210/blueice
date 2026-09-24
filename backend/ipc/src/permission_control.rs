@@ -17,6 +17,9 @@ const MAX_PERMISSION_FRAME_BYTES: usize = 64 * 1024;
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum PermissionControlRequest {
     Inspect,
+    /// Read-only live tab identity for binding a future one-shot gesture.
+    /// This does not grant any capability and is unavailable on public IPC.
+    InspectDocument { tab_id: u64 },
     Grant { capability: String },
     Revoke { capability: String },
 }
@@ -38,6 +41,11 @@ pub enum PermissionControlReply {
         name: String,
         version: String,
         optional: Vec<OptionalCapabilityInfo>,
+    },
+    Document {
+        tab_id: u64,
+        document_epoch: u64,
+        url: Option<String>,
     },
     Updated {
         capability: String,
@@ -125,6 +133,7 @@ mod tests {
     fn private_permission_messages_round_trip_with_bounded_frames() {
         for request in [
             PermissionControlRequest::Inspect,
+            PermissionControlRequest::InspectDocument { tab_id: 7 },
             PermissionControlRequest::Grant {
                 capability: "dom:read".into(),
             },
@@ -157,6 +166,14 @@ mod tests {
             read_permission_control_reply(&mut wire.as_slice()).unwrap(),
             reply
         );
+        let document = PermissionControlReply::Document {
+            tab_id: 7,
+            document_epoch: 12,
+            url: Some("https://example.test/page".into()),
+        };
+        let mut wire = Vec::new();
+        write_permission_control_reply(&mut wire, &document).unwrap();
+        assert_eq!(read_permission_control_reply(&mut wire.as_slice()).unwrap(), document);
     }
 
     #[test]

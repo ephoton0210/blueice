@@ -228,6 +228,9 @@ struct Tab {
     /// URL records by default; a full `Page` is retained only under the
     /// explicit [`HistorySnapshotMode::Snapshot`] policy.
     page: Page,
+    /// Changes on every committed document replacement, never on repaint.
+    /// A gesture-bound lease can capture it to reject navigation/reload.
+    document_epoch: u64,
     back: Vec<HistoryEntry>,
     forward: Vec<HistoryEntry>,
     group_id: Option<GroupId>,
@@ -306,6 +309,7 @@ impl TabManager {
             default_tab,
             Tab {
                 page: Page::new(viewport_width, viewport_height),
+                document_epoch: 0,
                 back: Vec::new(),
                 forward: Vec::new(),
                 group_id: None,
@@ -562,6 +566,7 @@ impl TabManager {
             id,
             Tab {
                 page,
+                document_epoch: 0,
                 back: Vec::new(),
                 forward: Vec::new(),
                 group_id: None,
@@ -627,6 +632,14 @@ impl TabManager {
         self.tabs.get(&id).map(|tab| &tab.page)
     }
 
+    /// Monotonic live-document identity within this tab and core generation.
+    /// Reloading the same URL and restoring a saved history snapshot advance
+    /// it; closing the tab makes it unavailable. Unlike frame generation,
+    /// hover, resize, and other repaints do not change this identity.
+    pub fn document_epoch(&self, id: TabId) -> Option<u64> {
+        self.tabs.get(&id).map(|tab| tab.document_epoch)
+    }
+
     pub fn get_mut(&mut self, id: TabId) -> Option<&mut Page> {
         self.tabs.get_mut(&id).map(|tab| &mut tab.page)
     }
@@ -689,6 +702,8 @@ impl TabManager {
             unreachable!("the checked history entry is a snapshot");
         };
         let current = std::mem::replace(&mut tab.page, *next);
+        tab.document_epoch = tab.document_epoch.checked_add(1)
+            .expect("document identity exhausted; core must fail closed");
         let departure = HistoryEntry::from_page(current, mode);
         match direction {
             HistoryDirection::Back => tab.forward.push(departure),
@@ -807,6 +822,8 @@ impl TabManager {
             .get_mut(&id)
             .expect("callers validate a tab before committing navigation");
         let previous = std::mem::replace(&mut tab.page, next);
+        tab.document_epoch = tab.document_epoch.checked_add(1)
+            .expect("document identity exhausted; core must fail closed");
         tab.back.push(HistoryEntry::from_page(previous, mode));
         tab.forward.clear();
     }
@@ -832,6 +849,8 @@ impl TabManager {
             return false;
         }
         let current = std::mem::replace(&mut tab.page, next);
+        tab.document_epoch = tab.document_epoch.checked_add(1)
+            .expect("document identity exhausted; core must fail closed");
         let departure = HistoryEntry::from_page(current, mode);
         match direction {
             HistoryDirection::Back => tab.forward.push(departure),
@@ -1538,6 +1557,50 @@ mod tests {
             }
             None => panic!("expected a history entry"),
         }
+    }
+
+    #[test]
+    fn document_epoch_tracks_replacement_not_repaint_and_never_reuses_a_closed_tab() {
+        let mut tabs = TabManager::new_with_history_snapshot_mode(
+            300.0, 200.0, HistorySnapshotMode::Snapshot,
+        );
+        let first = tabs.default_tab();
+        let second = tabs.open_tab();
+        assert_eq!(tabs.document_epoch(first), Some(0));
+        assert_eq!(tabs.document_epoch(second), Some(0));
+        tabs.resize_all(640.0, 480.0);
+        assert_eq!(tabs.document_epoch(first), Some(0));
+        assert!(!tabs.navigate_to_built_in(first, "about:not-a-page"));
+        assert_eq!(tabs.document_epoch(first), Some(0));
+
+        assert!(tabs.navigate_to_built_in(first, "about:credits"));
+        assert_eq!(tabs.document_epoch(first), Some(1));
+        assert!(tabs.navigate_to_built_in(first, "about:credits"));
+        assert_eq!(tabs.document_epoch(first), Some(2),
+            "even the same URL commits a different document");
+        assert!(tabs.restore_history_snapshot(first, HistoryDirection::Back));
+        assert_eq!(tabs.document_epoch(first), Some(3),
+            "restoring a saved page must not restore its former gesture identity");
+        assert_eq!(tabs.document_epoch(second), Some(0));
+
+        assert!(tabs.close_tab(first));
+        assert_eq!(tabs.document_epoch(first), None);
+        let third = tabs.open_tab();
+        assert_ne!(first, third);
+        assert_eq!(tabs.document_epoch(third), Some(0));
+    }
+
+    #[test]
+    fn url_only_history_reload_advances_document_epoch() {
+        let mut tabs = TabManager::new(300.0, 200.0);
+        let tab = tabs.default_tab();
+        assert!(tabs.navigate_to_built_in(tab, "about:credits"));
+        assert!(tabs.navigate_to_built_in(tab, "about:credits"));
+        assert_eq!(tabs.document_epoch(tab), Some(2));
+        assert!(tabs.navigate_history_to_built_in(tab, HistoryDirection::Back, "about:credits"));
+        assert_eq!(tabs.document_epoch(tab), Some(3));
+        assert!(!tabs.navigate_history_to_built_in(tab, HistoryDirection::Back, "about:not-a-page"));
+        assert_eq!(tabs.document_epoch(tab), Some(3));
     }
 
     #[test]

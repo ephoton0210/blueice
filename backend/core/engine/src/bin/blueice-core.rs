@@ -198,6 +198,23 @@ fn permission_control_reply(
                 origins: entry.origins.clone(),
             }).collect(),
         },
+        PermissionControlRequest::InspectDocument { tab_id } => {
+            let (reply, result) = mpsc::channel();
+            if session_requests.send(ExtensionPageRequest::InspectDocument { tab_id, reply }).is_err() {
+                return PermissionControlReply::Rejected {
+                    reason: "the core session is unavailable for document inspection".into(),
+                };
+            }
+            match result.recv_timeout(Duration::from_secs(2)) {
+                Ok(Ok((document_epoch, url))) => PermissionControlReply::Document {
+                    tab_id, document_epoch, url,
+                },
+                Ok(Err(reason)) => PermissionControlReply::Rejected { reason },
+                Err(_) => PermissionControlReply::Rejected {
+                    reason: "the core session did not answer document inspection".into(),
+                },
+            }
+        }
         PermissionControlRequest::Grant { capability } => {
             if !metadata.optional.iter().any(|entry| entry.capability == capability) {
                 return PermissionControlReply::Rejected {

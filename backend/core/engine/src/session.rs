@@ -103,6 +103,13 @@ pub enum ExtensionPageRequest {
     SynchronizeRevokedEffects {
         reply: mpsc::Sender<()>,
     },
+    /// Private parent-pipe read of the current document identity. A later
+    /// native gesture must bind to this exact tab and epoch; public clients
+    /// and extension guests cannot issue this internal request.
+    InspectDocument {
+        tab_id: u64,
+        reply: mpsc::Sender<Result<(u64, Option<String>), String>>,
+    },
     ReadRepresentation {
         tab_id: Option<u64>,
         reply: mpsc::Sender<Result<String, String>>,
@@ -1251,6 +1258,13 @@ fn handle_extension_page_request<S: Write>(
                 tabs, stream, extension_toolbar, extension_popup,
             )?;
             let _ = reply.send(());
+        }
+        ExtensionPageRequest::InspectDocument { tab_id, reply } => {
+            let id = TabId::from_u64(tab_id);
+            let result = tabs.document_epoch(id)
+                .map(|epoch| (epoch, tabs.get(id).and_then(|page| page.url()).map(str::to_string)))
+                .ok_or_else(|| "the requested tab is not live".to_string());
+            let _ = reply.send(result);
         }
         ExtensionPageRequest::ReadRepresentation { tab_id, reply } => {
             let tab_id = tab_id

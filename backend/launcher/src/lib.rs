@@ -1640,6 +1640,7 @@ mod tests {
         let core = thread::spawn(move || {
             for expected in [
                 PermissionControlRequest::Inspect,
+                PermissionControlRequest::InspectDocument { tab_id: 7 },
                 PermissionControlRequest::Grant { capability: "storage".into() },
                 PermissionControlRequest::Revoke { capability: "storage".into() },
             ] {
@@ -1650,6 +1651,9 @@ mod tests {
                         name: "Notes".into(),
                         version: "1".into(),
                         optional: vec![],
+                    },
+                    PermissionControlRequest::InspectDocument { tab_id } => PermissionControlReply::Document {
+                        tab_id, document_epoch: 3, url: Some("https://example.test/".into()),
                     },
                     PermissionControlRequest::Grant { capability } => PermissionControlReply::Updated {
                         capability, granted: true, changed: true,
@@ -1664,6 +1668,10 @@ mod tests {
         });
         let channel = PermissionControlChannel { requests };
         assert!(matches!(channel.inspect().unwrap(), PermissionControlReply::State { .. }));
+        assert!(matches!(
+            channel.exchange(PermissionControlRequest::InspectDocument { tab_id: 7 }, PERMISSION_INSPECT_TIMEOUT).unwrap(),
+            PermissionControlReply::Document { tab_id: 7, document_epoch: 3, .. }
+        ));
         assert!(matches!(
             channel.exchange(PermissionControlRequest::Grant { capability: "storage".into() }, PERMISSION_CHANGE_TIMEOUT).unwrap(),
             PermissionControlReply::Updated { granted: true, .. }
@@ -1708,6 +1716,9 @@ mod tests {
                                 granted: granted.load(Ordering::SeqCst),
                                 origins: vec!["https://example.test".into()],
                             }],
+                        },
+                        PermissionControlRequest::InspectDocument { tab_id } => PermissionControlReply::Document {
+                            tab_id, document_epoch: 0, url: None,
                         },
                         PermissionControlRequest::Grant { capability } => {
                             grant_count.fetch_add(1, Ordering::SeqCst);
