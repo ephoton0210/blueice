@@ -14,10 +14,10 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: A2.1.** Let the core session thread serve bounded child DOM
-calls while it waits for that child's script result. A1 now rejects foreign,
-cross-tab, stale-document, and predecessor-core requests before mutation; the
-child still has no reentrant DOM call route.
+**Current leaf: A2.2.** Bound the total nested-call budget and child wait,
+and prove timeout/disconnect behavior. A2.1 now keeps the core session thread
+available for exact-document DOM calls while it awaits child synchronization
+or debugger resume; the child still has no page-visible DOM call route.
 
 ## Current boundary
 
@@ -60,8 +60,13 @@ client registration, build output, or write authority.
 
 #### A2. Serve DOM calls during script execution.
 
-- [ ] Let the session thread answer bounded calls from the executing child
+- [x] Let the session thread answer bounded calls from the executing child
   while it waits for that child's result; keep TabManager on that thread.
+  The page-host reply reader owns only a cloned socket. The session thread
+  pumps at most 64 exact-tab/generation calls per poll during document
+  synchronization or debugger resume; wrong-target calls fail without DOM
+  mutation. Transport, executor, resume, and dispatcher regressions cover the
+  wait boundary. The child VM does not yet issue these calls itself.
 - [ ] Cap calls and wait time; never process unrelated frontend/debugger
   work in the nested wait. Test timeout and child disconnect.
 - [ ] Prove a child script completes one synchronous DOM lookup through a

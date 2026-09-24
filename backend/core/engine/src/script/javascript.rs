@@ -15,7 +15,7 @@
 use super::{
     contracts::{core_script_binding_contract, CoreScriptBindingContractLimits},
     direct_page::DirectPageScriptKind,
-    BlueJsPageScriptDeclaration, BlueJsPageScriptKind,
+    BlueJsPageScriptDeclaration, BlueJsPageScriptKind, ScriptRequestReceiver,
 };
 use crate::{Page, TabId, TabManager};
 use blueice_bluejs::{
@@ -697,6 +697,17 @@ pub trait PageJavaScriptExecutor {
     /// Synchronizes current tab/document state and records bounded source-free
     /// execution results.
     fn synchronize_and_execute(&mut self, tabs: &TabManager) -> io::Result<()>;
+
+    /// Session-thread-only variant used when an isolated child may issue
+    /// synchronous DOM calls while core awaits its document result. Other
+    /// executors keep the existing immutable synchronization path.
+    fn synchronize_and_execute_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        _script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<()> {
+        self.synchronize_and_execute(tabs)
+    }
 
     /// Drains one tab's reports without exposing or consuming another tab's
     /// records.

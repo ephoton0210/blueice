@@ -58,6 +58,7 @@ pub use crate::script::page_source_authorizer::{
     AuthorizedOutOfProcessPageScriptGraph, OutOfProcessPageScriptSourceAuthorizationError,
     OutOfProcessPageScriptSourceAuthorizer, OutOfProcessPageScriptSourceRequest,
 };
+use crate::script::ScriptRequestReceiver;
 use crate::{Page, TabId, TabManager};
 use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
@@ -77,15 +78,24 @@ use blueice_ipc::page_host::{
     PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
 };
+use blueice_ipc::script::ScriptDocumentTarget;
 use blueice_net::canonical_http_origin;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::io;
+use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 /// The maximum number of source-free child-host results retained by core for
 /// the existing tab-addressed control-plane drain.
 const MAX_EXECUTION_REPORTS: usize = 128;
+/// The nested page-host wait remains finite even if the child disappears
+/// without closing its socket. A2.2 will exercise the full timeout policy.
+const CHILD_DOCUMENT_REPLY_WAIT: Duration = Duration::from_secs(60);
+const CHILD_DOCUMENT_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 /// The fixed core-owned resolver identity for a one-source inline document
 /// graph. It is not a URL resolver and cannot be selected by page content.
@@ -148,6 +158,65 @@ impl PageHostConnection {
         page_host::write_page_host_request(&mut self.stream, &request)?;
         page_host::read_page_host_reply(&mut self.stream)
     }
+
+    /// Reads the child result on a transport-only worker while the calling
+    /// core session thread remains free to serve this document's DOM calls.
+    /// No page, VM, or `TabManager` reference crosses to the reader worker.
+    fn request_while_pumping_script(
+        &mut self,
+        request: PageHostRequest,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.stream
+            .set_write_timeout(Some(CHILD_DOCUMENT_REPLY_WAIT))
+            .map_err(|error| {
+                io::Error::new(error.kind(), format!("page-host write timeout: {error}"))
+            })?;
+        page_host::write_page_host_request(&mut self.stream, &request)?;
+
+        let mut reader = self.stream.try_clone()?;
+        reader
+            .set_read_timeout(Some(CHILD_DOCUMENT_REPLY_WAIT))
+            .map_err(|error| {
+                io::Error::new(error.kind(), format!("page-host read timeout: {error}"))
+            })?;
+        let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+        let reader_task = thread::spawn(move || {
+            let _ = reply_sender.send(page_host::read_page_host_reply(&mut reader));
+        });
+        let deadline = Instant::now() + CHILD_DOCUMENT_REPLY_WAIT;
+        let result = loop {
+            match reply_receiver.recv_timeout(CHILD_DOCUMENT_POLL_INTERVAL) {
+                Ok(result) => break result,
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    break Err(io::Error::new(
+                        io::ErrorKind::BrokenPipe,
+                        "page-host reply reader disconnected",
+                    ));
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+            }
+            if Instant::now() >= deadline {
+                break Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "page-host document reply exceeded its fixed wait",
+                ));
+            }
+            if let Err(error) = pump() {
+                break Err(error);
+            }
+        };
+        if result.is_err() {
+            let _ = self.stream.shutdown(Shutdown::Read);
+        }
+        reader_task
+            .join()
+            .map_err(|_| io::Error::other("page-host reply reader panicked"))?;
+        // The socket retains fixed read/write bounds for subsequent control
+        // operations. Some Unix platforms reject clearing SO_RCVTIMEO after
+        // the peer has closed immediately following a valid reply.
+        result
+    }
 }
 
 /// The small transport surface the lifecycle adapter needs. Keeping this
@@ -155,6 +224,15 @@ impl PageHostConnection {
 /// process boundary and lets focused tests use a recording child peer.
 pub trait PageHostClient {
     fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply>;
+    /// Test transports can keep a simple request/reply path. The real socket
+    /// transport overrides this to release the session thread for DOM calls.
+    fn synchronize_document_with_script_pump(
+        &mut self,
+        document: PageHostDocument,
+        _pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.synchronize_document(document)
+    }
     fn close_realm(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply>;
 
     /// Whether this transport peer implements the v5 exact breakpoint
@@ -728,11 +806,28 @@ pub trait PageHostClient {
             "page-host child does not implement debugger execution control",
         ))
     }
+
+    fn advance_debugger_execution_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        _pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.advance_debugger_execution(tab_id, document_generation)
+    }
 }
 
 impl PageHostClient for PageHostConnection {
     fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply> {
         self.request(PageHostRequest::SynchronizeDocument { document })
+    }
+
+    fn synchronize_document_with_script_pump(
+        &mut self,
+        document: PageHostDocument,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script(PageHostRequest::SynchronizeDocument { document }, pump)
     }
 
     fn close_realm(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply> {
@@ -1302,12 +1397,42 @@ impl PageHostClient for PageHostConnection {
             document_generation,
         })
     }
+
+    fn advance_debugger_execution_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script(
+            PageHostRequest::AdvanceDebuggerExecution {
+                tab_id,
+                document_generation,
+            },
+            pump,
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LiveDocument {
     document_generation: u64,
     origin: String,
+}
+
+/// Everything derived from a borrowed `Page` before the core enters the
+/// reentrant child wait. Keeping this owned makes it possible to release the
+/// immutable page borrow while the session thread mutates that same document
+/// in response to an authenticated child DOM call.
+struct PreparedDocumentSync {
+    document: PageHostDocument,
+    outcome: PendingDocumentOutcome,
+}
+
+struct PendingDocumentOutcome {
+    local_reports: Vec<JavaScriptPageExecutionReport>,
+    local_blue_ts_reports: Vec<BlueTsPageExecutionReport>,
+    inline_scripts: Vec<(u32, PageHostScriptLanguage, PageHostScriptKind)>,
 }
 
 /// Explicit core-owned lifecycle owner for one authenticated child host.
@@ -1571,7 +1696,9 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         if self.native_debugger_execution_control
             && !std::mem::take(&mut self.hold_pending_debugger_execution_once)
         {
-            self.advance_debugger_executions();
+            self.advance_debugger_executions(|child, tab_id, generation| {
+                child.advance_debugger_execution(tab_id.as_u64(), generation)
+            });
         }
         for tab_id in tabs.ids() {
             let Some(page) = tabs.get(tab_id) else {
@@ -1585,6 +1712,66 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 continue;
             }
             self.synchronize_document(tab_id, page, identity);
+        }
+        Ok(())
+    }
+
+    /// Core-session variant for the supervised child. Prepare each immutable
+    /// source graph while borrowing the page, release that borrow, then keep
+    /// the same session thread available for exact-document DOM requests
+    /// until the child returns its page-host acknowledgement.
+    pub fn synchronize_and_execute_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        script_requests: &ScriptRequestReceiver,
+    ) -> io::Result<()> {
+        self.close_removed_tabs(tabs);
+        if self.native_debugger_execution_control
+            && !std::mem::take(&mut self.hold_pending_debugger_execution_once)
+        {
+            self.advance_debugger_executions(|child, tab_id, generation| {
+                let target = ScriptDocumentTarget {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: generation,
+                };
+                let mut pump = || {
+                    script_requests.dispatch_pending_for_document(tabs, target, 64);
+                    Ok(())
+                };
+                child.advance_debugger_execution_with_script_pump(
+                    tab_id.as_u64(),
+                    generation,
+                    &mut pump,
+                )
+            });
+        }
+        let tab_ids: Vec<_> = tabs.ids().collect();
+        for tab_id in tab_ids {
+            let Some(page) = tabs.get(tab_id) else {
+                continue;
+            };
+            let Some(identity) = live_page_identity(page) else {
+                self.close_page(tab_id);
+                continue;
+            };
+            if self.live_documents.get(&tab_id) == Some(&identity) {
+                continue;
+            }
+            let Some(prepared) = self.prepare_document(tab_id, page, &identity) else {
+                continue;
+            };
+            let target = ScriptDocumentTarget {
+                tab_id: tab_id.as_u64(),
+                document_generation: identity.document_generation,
+            };
+            let mut pump = || {
+                script_requests.dispatch_pending_for_document(tabs, target, 64);
+                Ok(())
+            };
+            let result = self
+                .child
+                .synchronize_document_with_script_pump(prepared.document, &mut pump);
+            self.finish_document(tab_id, identity, prepared.outcome, result);
         }
         Ok(())
     }
@@ -1632,12 +1819,25 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
     }
 
     fn synchronize_document(&mut self, tab_id: TabId, page: &Page, identity: LiveDocument) {
+        let Some(prepared) = self.prepare_document(tab_id, page, &identity) else {
+            return;
+        };
+        let result = self.child.synchronize_document(prepared.document);
+        self.finish_document(tab_id, identity, prepared.outcome, result);
+    }
+
+    fn prepare_document(
+        &mut self,
+        tab_id: TabId,
+        page: &Page,
+        identity: &LiveDocument,
+    ) -> Option<PreparedDocumentSync> {
         // A successor can never inherit accounting from its predecessor while
         // its child acknowledgement is still in flight.
         self.realm_stats.remove(&tab_id);
         self.debugger_static_metadata.remove(&tab_id);
         let declarations = page.combined_page_script_declarations();
-        let snapshot = match core_document_snapshot(page, &identity) {
+        let snapshot = match core_document_snapshot(page, identity) {
             Ok(snapshot) => snapshot,
             Err(()) => {
                 // Do not leave the prior generation runnable after the core
@@ -1655,16 +1855,16 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 }
                 self.debugger_programs.remove(&tab_id);
                 self.debugger_static_metadata.remove(&tab_id);
-                self.live_documents.insert(tab_id, identity);
-                return;
+                self.live_documents.insert(tab_id, identity.clone());
+                return None;
             }
         };
         let document_url = page
             .url()
             .expect("a page with a live child identity always has a URL");
-        let (document, mut local_reports, mut local_blue_ts_reports) = authorized_document(
+        let (document, local_reports, local_blue_ts_reports) = authorized_document(
             tab_id,
-            &identity,
+            identity,
             snapshot,
             document_url,
             declarations,
@@ -1676,7 +1876,28 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             .iter()
             .map(|script| (script.ordinal, script.language, script.kind))
             .collect();
-        let result = self.child.synchronize_document(document);
+        Some(PreparedDocumentSync {
+            document,
+            outcome: PendingDocumentOutcome {
+                local_reports,
+                local_blue_ts_reports,
+                inline_scripts,
+            },
+        })
+    }
+
+    fn finish_document(
+        &mut self,
+        tab_id: TabId,
+        identity: LiveDocument,
+        outcome: PendingDocumentOutcome,
+        result: io::Result<PageHostReply>,
+    ) {
+        let PendingDocumentOutcome {
+            mut local_reports,
+            mut local_blue_ts_reports,
+            inline_scripts,
+        } = outcome;
         let mut child_synchronized = false;
         match result {
             Ok(PageHostReply::Synchronized {
@@ -1806,16 +2027,17 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         self.blue_ts_reports.push_back(report);
     }
 
-    fn advance_debugger_executions(&mut self) {
+    fn advance_debugger_executions(
+        &mut self,
+        mut advance: impl FnMut(&mut C, TabId, u64) -> io::Result<PageHostReply>,
+    ) {
         let documents: Vec<_> = self
             .live_documents
             .iter()
             .map(|(&tab_id, document)| (tab_id, document.document_generation))
             .collect();
         for (tab_id, document_generation) in documents {
-            let reply = self
-                .child
-                .advance_debugger_execution(tab_id.as_u64(), document_generation);
+            let reply = advance(&mut self.child, tab_id, document_generation);
             let Ok(PageHostReply::DebuggerExecutionAdvanced {
                 tab_id: reply_tab_id,
                 document_generation: reply_generation,
@@ -1845,6 +2067,19 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
 impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExecutor<C> {
     fn synchronize_and_execute(&mut self, tabs: &TabManager) -> io::Result<()> {
         Self::synchronize_and_execute(self, tabs)
+    }
+
+    fn synchronize_and_execute_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<()> {
+        match script_requests {
+            Some(script_requests) => {
+                Self::synchronize_and_execute_serving_script(self, tabs, script_requests)
+            }
+            None => Self::synchronize_and_execute(self, tabs),
+        }
     }
 
     fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport> {
@@ -4547,6 +4782,7 @@ mod tests {
     };
     use crate::script::javascript::{AuthorizedJavaScriptModule, AuthorizedJavaScriptResolution};
     use blueice_bluets::{AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution};
+    use blueice_ipc::script::ScriptReply;
     use blueice_launcher::bluejs_host::{
         bind_bluejs_host_socket, serve_bluejs_host_listener, BlueJsChildHost,
     };
@@ -4626,6 +4862,197 @@ mod tests {
             .unwrap()
             .load_html_str(html, Some(url.to_string()));
         (tabs, tab_id)
+    }
+
+    #[test]
+    fn page_host_transport_pumps_before_the_child_replies() {
+        let (core, mut child) = UnixStream::pair().unwrap();
+        let (resume_sender, resume_receiver) = mpsc::sync_channel(1);
+        let child_task = thread::spawn(move || {
+            assert_eq!(
+                page_host::read_page_host_request(&mut child).unwrap(),
+                PageHostRequest::Shutdown
+            );
+            resume_receiver
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap();
+            page_host::write_page_host_reply(&mut child, &PageHostReply::ShutdownAck).unwrap();
+        });
+        let session_thread = thread::current().id();
+        let mut pump_calls = 0;
+        let reply = PageHostConnection { stream: core }
+            .request_while_pumping_script(PageHostRequest::Shutdown, &mut || {
+                assert_eq!(thread::current().id(), session_thread);
+                pump_calls += 1;
+                if pump_calls == 1 {
+                    resume_sender.send(()).unwrap();
+                }
+                Ok(())
+            })
+            .unwrap();
+        child_task.join().unwrap();
+        assert_eq!(reply, PageHostReply::ShutdownAck);
+        assert!(pump_calls > 0);
+    }
+
+    struct ReentrantScriptChild {
+        script_sender: crate::script::ScriptRequestSender,
+    }
+
+    fn nested_dom_write(
+        sender: crate::script::ScriptRequestSender,
+        target: ScriptDocumentTarget,
+        value: &'static str,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<()> {
+        let (done_sender, done_receiver) = mpsc::sync_channel(1);
+        let worker = thread::spawn(move || {
+            let result = (|| {
+                let ScriptReply::Node { node: Some(node) } =
+                    sender.request(blueice_ipc::script::ScriptRequest::GetElementById {
+                        target,
+                        id: "target".to_string(),
+                    })?
+                else {
+                    return Err(io::Error::other("target was not found"));
+                };
+                sender.request(blueice_ipc::script::ScriptRequest::SetTextContent {
+                    target,
+                    node,
+                    value: value.to_string(),
+                })
+            })();
+            done_sender.send(result).unwrap();
+        });
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let script_reply = loop {
+            pump()?;
+            match done_receiver.recv_timeout(Duration::from_millis(10)) {
+                Ok(result) => break result?,
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(io::Error::other("script worker disconnected"));
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) if Instant::now() < deadline => {}
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "nested DOM call stalled",
+                    ));
+                }
+            }
+        };
+        worker.join().unwrap();
+        assert_eq!(script_reply, ScriptReply::Ack);
+        Ok(())
+    }
+
+    impl PageHostClient for ReentrantScriptChild {
+        fn synchronize_document(
+            &mut self,
+            _document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            panic!("a session-owned child sync must use the nested script pump");
+        }
+
+        fn synchronize_document_with_script_pump(
+            &mut self,
+            document: PageHostDocument,
+            pump: &mut dyn FnMut() -> io::Result<()>,
+        ) -> io::Result<PageHostReply> {
+            let target = ScriptDocumentTarget {
+                tab_id: document.tab_id,
+                document_generation: document.document_generation,
+            };
+            nested_dom_write(
+                self.script_sender.clone(),
+                target,
+                "from nested script",
+                pump,
+            )?;
+            Ok(PageHostReply::Synchronized {
+                tab_id: document.tab_id,
+                document_generation: document.document_generation,
+                already_current: false,
+                reports: Vec::new(),
+            })
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::RealmClosed {
+                tab_id,
+                document_generation,
+            })
+        }
+
+        fn advance_debugger_execution_with_script_pump(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+            pump: &mut dyn FnMut() -> io::Result<()>,
+        ) -> io::Result<PageHostReply> {
+            nested_dom_write(
+                self.script_sender.clone(),
+                ScriptDocumentTarget {
+                    tab_id,
+                    document_generation,
+                },
+                "from resumed script",
+                pump,
+            )?;
+            Ok(PageHostReply::DebuggerExecutionAdvanced {
+                tab_id,
+                document_generation,
+                reports: Vec::new(),
+            })
+        }
+    }
+
+    #[test]
+    fn child_document_sync_serves_dom_calls_on_the_owning_session_thread() {
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<div id='target'>before</div><script>let page = 1;</script>",
+            "https://example.test/nested-dom.html",
+        );
+        let (script_sender, script_receiver) = crate::script::script_request_channel();
+        let mut executor =
+            OutOfProcessJavaScriptPageExecutor::new(ReentrantScriptChild { script_sender });
+        executor
+            .synchronize_and_execute_serving_script(&mut tabs, &script_receiver)
+            .unwrap();
+        assert!(tabs
+            .get(tab_id)
+            .unwrap()
+            .dom_dump()
+            .contains("from nested script"));
+        assert_eq!(executor.live_documents.len(), 1);
+    }
+
+    #[test]
+    fn debugger_resume_serves_dom_calls_on_the_owning_session_thread() {
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<div id='target'>before</div><script>let page = 1;</script>",
+            "https://example.test/nested-debugger-dom.html",
+        );
+        let (script_sender, script_receiver) = crate::script::script_request_channel();
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new_with_debugger_execution_control(
+            ReentrantScriptChild { script_sender },
+        );
+        executor
+            .synchronize_and_execute_serving_script(&mut tabs, &script_receiver)
+            .unwrap();
+        executor
+            .synchronize_and_execute_serving_script(&mut tabs, &script_receiver)
+            .unwrap();
+        assert!(tabs
+            .get(tab_id)
+            .unwrap()
+            .dom_dump()
+            .contains("from resumed script"));
+        assert_eq!(executor.live_documents.len(), 1);
     }
 
     fn shutdown_child(path: &Path, token: &str) {

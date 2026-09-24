@@ -10,6 +10,19 @@ policy, and real-page acceptance order. The design checklist is complete;
 runtime binding, event delivery, and Phase 18's P0 host-binding acceptance
 remain open.
 
+**Reentrant page-host wait (A2.1):** Core now prepares each authorized child
+document from an immutable page borrow, releases that borrow, and waits for
+the child reply while its owning session thread dispatches bounded DOM calls
+for only the executing tab and document generation. The same nested route
+serves debugger-controlled resume; a transport-only reader handles the
+page-host socket and never owns `TabManager`. Wrong-target calls receive an
+error without mutation, and unrelated frontend, debugger, and compiler
+messages are not dispatched in the nested wait. Socket-pair, executor,
+debugger-resume, and dispatcher tests cover this scheduling boundary. Total
+call/wait limits, timeout/disconnect behavior, and the child VM's first live
+DOM binding remain the next acceptance steps; this is not yet an interactive
+page-script claim.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

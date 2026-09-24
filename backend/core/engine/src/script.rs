@@ -103,6 +103,45 @@ impl ScriptRequestReceiver {
         }
         dispatched
     }
+
+    /// During a synchronous child page-host wait, serve only this execution's
+    /// exact document. Other live tabs and successor generations are not
+    /// eligible for nested dispatch, even from the authenticated child.
+    /// The caller remains the session thread and chooses the per-poll budget.
+    pub fn dispatch_pending_for_document(
+        &self,
+        tabs: &mut TabManager,
+        target: ScriptDocumentTarget,
+        budget: usize,
+    ) -> usize {
+        let mut dispatched = 0;
+        while dispatched < budget.min(MAX_SCRIPT_REQUESTS_PER_SESSION_TICK) {
+            let Ok(envelope) = self.0.try_recv() else {
+                break;
+            };
+            if script_request_target(&envelope.request) == Some(target) {
+                dispatch_script_request(tabs, envelope);
+            } else {
+                let _ = envelope.reply.send(ScriptReply::Error {
+                    message: "script DOM request is outside the executing document".to_string(),
+                });
+            }
+            dispatched += 1;
+        }
+        dispatched
+    }
+}
+
+fn script_request_target(request: &ScriptRequest) -> Option<ScriptDocumentTarget> {
+    match request {
+        ScriptRequest::Hello { .. } => None,
+        ScriptRequest::GetElementById { target, .. }
+        | ScriptRequest::CreateElement { target, .. }
+        | ScriptRequest::CreateTextNode { target, .. }
+        | ScriptRequest::AppendChild { target, .. }
+        | ScriptRequest::GetTextContent { target, .. }
+        | ScriptRequest::SetTextContent { target, .. } => Some(*target),
+    }
 }
 
 fn dispatch_script_request(tabs: &mut TabManager, envelope: ScriptRequestEnvelope) {
@@ -521,5 +560,65 @@ mod tests {
             worker.join().unwrap(),
             Ok(ScriptReply::NodeCreated { .. })
         ));
+    }
+
+    #[test]
+    fn nested_dispatch_serves_only_the_exact_executing_document_with_a_batch_bound() {
+        let (mut tabs, first) = loaded_tabs();
+        let second = tabs.open_tab();
+        let generation = tabs.get(first).unwrap().document_generation();
+        let ScriptReply::Node { node: Some(label) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target: target(first, generation),
+                id: "label".to_string(),
+            },
+        ) else {
+            panic!("the first document must have a label");
+        };
+        let first_before = tabs.get(first).unwrap().dom_dump();
+        let second_before = tabs.get(second).unwrap().dom_dump();
+        let (sender, receiver) = script_request_channel();
+        let mut replies = Vec::new();
+        for (request_target, value) in [
+            (target(second, 0), "cross-tab"),
+            (target(first, generation - 1), "stale"),
+            (target(first, generation), "allowed"),
+        ] {
+            let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+            sender
+                .0
+                .send(ScriptRequestEnvelope {
+                    request: ScriptRequest::SetTextContent {
+                        target: request_target,
+                        node: label,
+                        value: value.to_string(),
+                    },
+                    reply: reply_sender,
+                })
+                .unwrap();
+            replies.push(reply_receiver);
+        }
+        assert_eq!(
+            receiver.dispatch_pending_for_document(&mut tabs, target(first, generation), 2),
+            2
+        );
+        assert!(matches!(
+            replies[0].recv().unwrap(),
+            ScriptReply::Error { .. }
+        ));
+        assert!(matches!(
+            replies[1].recv().unwrap(),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(first).unwrap().dom_dump(), first_before);
+        assert_eq!(tabs.get(second).unwrap().dom_dump(), second_before);
+        assert_eq!(
+            receiver.dispatch_pending_for_document(&mut tabs, target(first, generation), 2),
+            1
+        );
+        assert_eq!(replies[2].recv().unwrap(), ScriptReply::Ack);
+        assert!(tabs.get(first).unwrap().dom_dump().contains("allowed"));
+        assert_eq!(tabs.get(second).unwrap().dom_dump(), second_before);
     }
 }

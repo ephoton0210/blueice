@@ -483,7 +483,7 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
     if !perform_handshake(stream)? {
         return Ok(());
     }
-    synchronize_page_script_runtime(&mut page_script_runtime, tabs)?;
+    synchronize_page_script_runtime(&mut page_script_runtime, tabs, requests.script)?;
 
     let (completion_tx, completion_rx) = mpsc::channel::<Completion>();
     let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
@@ -761,6 +761,7 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                 &pending_nav_seq,
                 completion,
                 &mut page_script_runtime,
+                requests.script,
             )?;
         }
         if let Some(script_requests) = requests.script {
@@ -781,7 +782,7 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
         // root-entry debugger program execute before its peer can even ask
         // for the opaque location needed to arm it.
         if !synchronized_after_completion {
-            synchronize_page_script_runtime(&mut page_script_runtime, tabs)?;
+            synchronize_page_script_runtime(&mut page_script_runtime, tabs, requests.script)?;
         }
     }
 }
@@ -928,7 +929,8 @@ fn child_blue_ts_kind(kind: crate::script::direct_page::DirectPageScriptKind) ->
 
 fn synchronize_page_script_runtime(
     page_script_runtime: &mut PageScriptRuntime<'_>,
-    tabs: &TabManager,
+    tabs: &mut TabManager,
+    script_requests: Option<&ScriptRequestReceiver>,
 ) -> io::Result<()> {
     if let Some(direct_page_host) = page_script_runtime.direct_page_host.as_deref_mut() {
         direct_page_host.synchronize_tabs(tabs).map_err(|error| {
@@ -938,16 +940,21 @@ fn synchronize_page_script_runtime(
         })?;
     }
     synchronize_inline_page_executor(&mut page_script_runtime.inline_page_executor, tabs)?;
-    synchronize_javascript_executor(&mut page_script_runtime.javascript_executor, tabs)?;
+    synchronize_javascript_executor(
+        &mut page_script_runtime.javascript_executor,
+        tabs,
+        script_requests,
+    )?;
     Ok(())
 }
 
 fn synchronize_javascript_executor(
     javascript_executor: &mut Option<&mut dyn PageJavaScriptExecutor>,
-    tabs: &TabManager,
+    tabs: &mut TabManager,
+    script_requests: Option<&ScriptRequestReceiver>,
 ) -> io::Result<()> {
     if let Some(javascript_executor) = javascript_executor.as_deref_mut() {
-        javascript_executor.synchronize_and_execute(tabs)?;
+        javascript_executor.synchronize_and_execute_serving_script(tabs, script_requests)?;
     }
     Ok(())
 }
@@ -1102,6 +1109,7 @@ fn reply_success<S: Write>(
 /// `completion` never touched `Page`/`TabManager` state itself; this
 /// (called only from the main loop) is the one place a gated
 /// navigation's result actually lands.
+#[allow(clippy::too_many_arguments)] // Navigation reply state and script dispatch stay on this session thread.
 fn apply_completion<S: Write>(
     tabs: &mut TabManager,
     stream: &mut S,
@@ -1110,6 +1118,7 @@ fn apply_completion<S: Write>(
     pending_nav_seq: &HashMap<TabId, u64>,
     completion: Completion,
     page_script_runtime: &mut PageScriptRuntime<'_>,
+    script_requests: Option<&ScriptRequestReceiver>,
 ) -> io::Result<bool> {
     let Completion {
         tab_id,
@@ -1137,7 +1146,7 @@ fn apply_completion<S: Write>(
             // A configured runner observes the loaded document before its
             // first success reply/frame. This preserves future DOM script
             // semantics while the default session has no runner at all.
-            synchronize_page_script_runtime(page_script_runtime, tabs)?;
+            synchronize_page_script_runtime(page_script_runtime, tabs, script_requests)?;
             let page = tabs
                 .get(tab_id)
                 .expect("the session thread exclusively owns the checked tab");
