@@ -100,6 +100,25 @@ fn iterator_helpers_run_out_of_instructions_and_heap() {
     }
 }
 
+#[test]
+fn the_iterator_prototypes_are_built_from_an_almost_full_heap() {
+    let mut stopped = 0;
+    for source in [
+        "[].values().map(x => x)",
+        "Iterator.from({ next() { return { done: true }; } })",
+        "[].values().flatMap(x => [x]).toArray()",
+        "Iterator.zip([[1].values()], { mode: 'longest', padding: [0] }).toArray()",
+        "AsyncIteratorPrototype[Symbol.asyncDispose].call({})",
+        "Iterator.prototype[Symbol.dispose].call({})",
+    ] {
+        let source = format!(
+            "var AsyncIteratorPrototype = Object.getPrototypeOf(Object.getPrototypeOf((async function* () {{ }}).prototype)); {source}"
+        );
+        stopped += heap_sweep(&source, 350_000, 16);
+    }
+    assert!(stopped > 1000, "{stopped}");
+}
+
 /// Every function of `Iterator`, `%Iterator.prototype%` and the async iterator
 /// prototype called with receivers and arguments of the wrong kinds either
 /// reports a TypeError or RangeError or returns; none may misbehave.

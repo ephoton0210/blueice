@@ -656,7 +656,6 @@ impl Compiler {
                 self.emit(Opcode::LeaveWith, 0)?;
             }
             Stmt::FunctionDecl(function) => self.annex_b_outer_var_assignment(function)?,
-            Stmt::ModuleDefaultFunction { .. } => {}
             Stmt::ClassDecl(class) => {
                 // The declaration's own binding is initialized once the whole
                 // class has been evaluated; the class body sees the separate
@@ -724,15 +723,18 @@ impl Compiler {
                 // handler is left.
                 self.emit(Opcode::Return, 0)?;
             }
-            Stmt::Empty => {}
+            // A default-exported function was instantiated with the other
+            // function declarations.
+            Stmt::Empty | Stmt::ModuleDefaultFunction { .. } => {}
             Stmt::Expr(expr) => {
                 self.expression(expr)?;
                 self.emit(Opcode::SetCompletion, 0)?;
             }
             Stmt::Block(body) => {
                 self.enter_scope(
-                    block_lexical_names(body, self.bytecode.strict)?,
-                    &var_names(body)?,
+                    block_lexical_names(body, self.bytecode.strict)
+                        .expect("collecting the declared names cannot fail"),
+                    &var_names(body).expect("collecting the declared names cannot fail"),
                     false,
                 )?;
                 self.statements_with_disposal(body)?;
@@ -982,7 +984,8 @@ impl Compiler {
                 if !function.generator && !function.is_async)
         {
             self.enter_scope(
-                block_lexical_names(std::slice::from_ref(statement), self.bytecode.strict)?,
+                block_lexical_names(std::slice::from_ref(statement), self.bytecode.strict)
+                    .expect("collecting the declared names cannot fail"),
                 &BTreeSet::new(),
                 false,
             )?;
@@ -1166,8 +1169,9 @@ impl Compiler {
 
     pub(super) fn scoped_statements(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
         self.enter_scope(
-            block_lexical_names(statements, self.bytecode.strict)?,
-            &var_names(statements)?,
+            block_lexical_names(statements, self.bytecode.strict)
+                .expect("collecting the declared names cannot fail"),
+            &var_names(statements).expect("collecting the declared names cannot fail"),
             false,
         )?;
         self.statements_with_disposal(statements)?;
@@ -1182,8 +1186,9 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         validate_switch_case_declarations(cases, self.bytecode.strict)?;
         self.emit(Opcode::ClearCompletion, 0)?;
-        let lexical = switch_lexical_names(cases, self.bytecode.strict)?;
-        let vars = switch_var_names(cases)?;
+        let lexical = switch_lexical_names(cases, self.bytecode.strict)
+            .expect("collecting the declared names cannot fail");
+        let vars = switch_var_names(cases).expect("collecting the declared names cannot fail");
         // Switch evaluation creates its case-block lexical environment only
         // after evaluating the discriminant.  A closure created by the
         // discriminant must therefore capture the surrounding binding, while
@@ -1343,8 +1348,9 @@ impl Compiler {
             // completion value.
             self.emit(Opcode::ClearCompletion, 0)?;
             self.enter_scope(
-                block_lexical_names(&catch.body, self.bytecode.strict)?,
-                &var_names(&catch.body)?,
+                block_lexical_names(&catch.body, self.bytecode.strict)
+                    .expect("collecting the declared names cannot fail"),
+                &var_names(&catch.body).expect("collecting the declared names cannot fail"),
                 false,
             )?;
             // With a finally clause the catch block's call is not a tail
@@ -1750,13 +1756,18 @@ impl Compiler {
         self.emit(Opcode::ClearCompletion, 0)?;
         let lexical = match init {
             Some(ForInit::VarDecl(kind, decls)) if *kind != DeclKind::Var => {
-                declarations_names(*kind, decls)?
+                declarations_names(*kind, decls).expect("collecting the declared names cannot fail")
             }
             _ => Vec::new(),
         };
         let own_scope = !lexical.is_empty();
         if own_scope {
-            self.enter_scope(lexical, &var_names(std::slice::from_ref(body))?, false)?;
+            self.enter_scope(
+                lexical,
+                &var_names(std::slice::from_ref(body))
+                    .expect("collecting the declared names cannot fail"),
+                false,
+            )?;
         }
         match init {
             Some(ForInit::VarDecl(kind, declarations)) => self.declarations(*kind, declarations)?,

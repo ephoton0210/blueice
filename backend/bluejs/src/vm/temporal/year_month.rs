@@ -365,9 +365,13 @@ impl Vm {
                 "Temporal.PlainYearMonth-like value must be an object or a string".into(),
             ));
         }
-        let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
-            RuntimeError::RangeError("invalid Temporal.PlainYearMonth string".into())
-        })?;
+        let source = self
+            .coerce_string(value)
+            .expect("a String coerces to itself")
+            .to_utf8()
+            .map_err(|_| {
+                RuntimeError::RangeError("invalid Temporal.PlainYearMonth string".into())
+            })?;
         // The string is parsed strictly *before* `options` is touched, as
         // `temporal_to_plain_month_day` below already does: an invalid string
         // reports its `RangeError` with `options` unread, even when `options`
@@ -379,7 +383,9 @@ impl Vm {
         if parsed.calendar == "iso8601" {
             return Ok(parsed);
         }
-        let fields = self.temporal_calendar_fields(&parsed)?;
+        let fields = self
+            .temporal_calendar_fields(&parsed)
+            .expect("converting a Temporal value to its own calendar cannot fail");
         let calendar_kind = calendar::calendar_kind(&parsed.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let ym_fields = plain_year_month::YearMonthFields {
@@ -390,7 +396,7 @@ impl Vm {
             ordinal_month: None,
         };
         let date = plain_year_month::year_month_from_fields(calendar_kind, &ym_fields, false)
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
+            .expect("the calendar fields of a parsed year-month resolve to it");
         Ok(Self::temporal_date_value(
             TemporalKind::PlainYearMonth,
             parsed.calendar,
@@ -424,9 +430,13 @@ impl Vm {
                 "Temporal.PlainMonthDay-like value must be an object or a string".into(),
             ));
         }
-        let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
-            RuntimeError::RangeError("invalid Temporal.PlainMonthDay string".into())
-        })?;
+        let source = self
+            .coerce_string(value)
+            .expect("a String coerces to itself")
+            .to_utf8()
+            .map_err(|_| {
+                RuntimeError::RangeError("invalid Temporal.PlainMonthDay string".into())
+            })?;
         // `ToTemporalMonthDay`'s real algorithm parses the string (throwing
         // `RangeError` for a malformed one) strictly before it ever reads
         // the `overflow` option -- pinned by `from/options-wrong-type.js`'s
@@ -440,7 +450,9 @@ impl Vm {
         if parsed.calendar == "iso8601" {
             return Ok(parsed);
         }
-        let fields = self.temporal_calendar_fields(&parsed)?;
+        let fields = self
+            .temporal_calendar_fields(&parsed)
+            .expect("converting a Temporal value to its own calendar cannot fail");
         let calendar_kind = calendar::calendar_kind(&parsed.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let md_fields = plain_month_day::MonthDayFields {
@@ -451,7 +463,7 @@ impl Vm {
             ..Default::default()
         };
         let date = plain_month_day::month_day_from_fields(calendar_kind, &md_fields, false)
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar month-day".into()))?;
+            .expect("the calendar fields of a parsed month-day resolve to it");
         Ok(Self::temporal_date_value(
             TemporalKind::PlainMonthDay,
             parsed.calendar,
@@ -492,7 +504,9 @@ impl Vm {
                 )));
             }
         }
-        let base = self.temporal_calendar_fields(&existing)?;
+        let base = self
+            .temporal_calendar_fields(&existing)
+            .expect("converting a Temporal value to its own calendar cannot fail");
 
         // `PreparePartialCalendarFields` reads and immediately coerces
         // every recognized property in strict alphabetical order -- `era`,
@@ -632,7 +646,9 @@ impl Vm {
                 )));
             }
         }
-        let base = self.temporal_calendar_fields(&existing)?;
+        let base = self
+            .temporal_calendar_fields(&existing)
+            .expect("converting a Temporal value to its own calendar cannot fail");
         // `PreparePartialCalendarFields` reads and converts one field at a
         // time in alphabetical order (`day`, `month`, `monthCode`, `year`),
         // each conversion right after its own `Get` (`with/
@@ -753,7 +769,7 @@ impl Vm {
                         .as_deref()
                         .and_then(|code| code[1..].parse().ok())
                 })
-                .expect("the base fields carry a month code");
+                .ok_or_else(|| RuntimeError::RangeError("invalid Temporal month code".into()))?;
             plain_month_day::iso_month_day_from_fields(
                 month,
                 day_for_fields,
@@ -822,7 +838,9 @@ impl Vm {
         }
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
-        let fields = self.temporal_calendar_fields(&existing)?;
+        let fields = self
+            .temporal_calendar_fields(&existing)
+            .expect("converting a Temporal value to its own calendar cannot fail");
         let anchor_fields = plain_year_month::YearMonthFields {
             era: None,
             era_year: None,
@@ -950,8 +968,12 @@ impl Vm {
         // leap-months-{chinese,dangi,hebrew}.js`, whose "M04L-M04 is 1y not
         // 1y 1mo" case this swap computed as `1y 1mo` instead of `1y`.
         let (from, to) = (&existing, &other);
-        let from_fields = self.temporal_calendar_fields(from)?;
-        let to_fields = self.temporal_calendar_fields(to)?;
+        let from_fields = self
+            .temporal_calendar_fields(from)
+            .expect("converting a Temporal value to its own calendar cannot fail");
+        let to_fields = self
+            .temporal_calendar_fields(to)
+            .expect("converting a Temporal value to its own calendar cannot fail");
         let resolve = |fields: &TemporalCalendarFields| {
             plain_year_month::year_month_from_fields(
                 calendar_kind,
@@ -1253,7 +1275,9 @@ impl Vm {
             ));
         }
         let day = self.temporal_integer(&day_v, 1, 31, "day")?;
-        let base = self.temporal_calendar_fields(&existing)?;
+        let base = self
+            .temporal_calendar_fields(&existing)
+            .expect("converting a Temporal value to its own calendar cannot fail");
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let mut fields = DateFields::default();
@@ -1263,7 +1287,7 @@ impl Vm {
         let mut icu_options = icu_calendar::options::DateFromFieldsOptions::default();
         icu_options.overflow = Some(icu_calendar::options::Overflow::Constrain);
         let date = Date::try_from_fields(fields, icu_options, AnyCalendar::new(calendar_kind))
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar date".into()))?;
+            .expect("a day constrained into an existing month is a date");
         let value = Self::temporal_value_from_calendar_date(
             TemporalKind::PlainDate,
             existing.calendar,
@@ -1324,7 +1348,9 @@ impl Vm {
                 self.temporal_integer(&year_v, i32::MIN, i32::MAX, "year")
             })
             .transpose()?;
-        let base = self.temporal_calendar_fields(&existing)?;
+        let base = self
+            .temporal_calendar_fields(&existing)
+            .expect("converting a Temporal value to its own calendar cannot fail");
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let supports_era = calendar::calendar_supports_era(&existing.calendar);
