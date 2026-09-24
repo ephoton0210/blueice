@@ -9,7 +9,10 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version twenty-five adds
+//! and an opt-in root-code-unit pause/resume seam. Version twenty-six adds a
+//! source-free, exact-program single-root-instruction step request and its
+//! observable one-turn `Stepping` state for the installed in-process route;
+//! it does not imply nested-frame or out-of-process stepping. Version twenty-five adds
 //! bounded original-source UTF-16 coordinates to the existing separately
 //! authorized symbol/contract location replies, with no arbitrary offset
 //! query. Version twenty-four adds
@@ -51,7 +54,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 25;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 26;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -1924,11 +1927,12 @@ impl DebuggerCapabilities {
 pub enum DebuggerExecutionState {
     Pending,
     Paused { safe_point: DebuggerSafePoint },
+    Stepping,
     Resuming,
     Completed,
 }
 
-/// Core's requests to the out-of-process BlueJS debugger host.
+/// Versioned requests for the core debugger route and the isolated BlueJS host.
 ///
 /// Command families are deliberately added only with real native behavior.
 /// The first non-discovery family resolves opaque programs and exact
@@ -2093,14 +2097,20 @@ pub enum DebuggerRequest {
     ClearBreakpoint {
         safe_point: DebuggerSafePoint,
     },
-    /// Reads source-free pending/paused/resuming/completed state for one
-    /// exact program generation in the opt-in entry-pause scheduler.
+    /// Reads the source-free pending/paused/stepping/resuming/completed state
+    /// for one exact program generation in the opt-in debugger scheduler.
     GetExecutionState {
         program: DebuggerProgram,
     },
-    /// Allows a currently entry-paused program to enter the ordinary BlueJS
-    /// VM. It cannot resume a non-paused program or inject a value/exception.
+    /// Resumes a currently paused classic program on its retained BlueJS
+    /// continuation. It cannot resume a non-paused program or inject a value.
     ResumeExecution {
+        program: DebuggerProgram,
+    },
+    /// Schedules one root-code-unit instruction from an exactly paused
+    /// classic program. The eventual state is another verified root safe
+    /// point or completion; no stack, operand, source, or value is returned.
+    StepRootInstruction {
         program: DebuggerProgram,
     },
     /// Catch-all for a newer request variant. Like the frontend protocol, a
@@ -2202,6 +2212,9 @@ pub enum DebuggerReply {
     ExecutionResumed {
         program: DebuggerProgram,
     },
+    ExecutionStepRequested {
+        program: DebuggerProgram,
+    },
     Unsupported {
         operation: String,
         reason: String,
@@ -2287,6 +2300,7 @@ pub fn negotiate(
         | DebuggerRequest::ClearBreakpoint { .. }
         | DebuggerRequest::GetExecutionState { .. }
         | DebuggerRequest::ResumeExecution { .. }
+        | DebuggerRequest::StepRootInstruction { .. }
         | DebuggerRequest::Unknown => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
             message: "debugger protocol requires Hello as its first request".to_string(),
@@ -2601,6 +2615,13 @@ mod tests {
                     program_generation: 5,
                 },
             },
+            DebuggerRequest::StepRootInstruction {
+                program: DebuggerProgram {
+                    realm: realm(),
+                    program_handle: 12,
+                    program_generation: 5,
+                },
+            },
             DebuggerRequest::Unknown,
         ] {
             let (mut sender, mut receiver) = UnixStream::pair().unwrap();
@@ -2797,6 +2818,11 @@ mod tests {
                 state: DebuggerExecutionState::Paused { safe_point },
             },
             DebuggerReply::ExecutionResumed { program },
+            DebuggerReply::ExecutionStepRequested { program },
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::Stepping,
+            },
         ] {
             let (mut sender, mut receiver) = UnixStream::pair().unwrap();
             write_debugger_reply(&mut sender, &reply).unwrap();

@@ -484,7 +484,8 @@ or second module resolver to bypass them.
   cannot overtake the paused BlueTS declaration, and a real launcher/public
   debugger regression proves metadata publication, pause/resume, and stale
   handle rejection after HTTP reload. BlueTS modules, nested frames,
-  stepping, stack, scopes, and values remain outside this execution seam.
+  isolated-child stepping, stack, scopes, and values remain outside this
+  execution seam.
 
   BlueJS VM and `BlueJsPageRuntime` now have the next stepping foundation:
   one paused classic-root continuation can execute exactly one root
@@ -493,8 +494,15 @@ or second module resolver to bypass them.
   terminal instructions complete without fabricating a pause, and a later
   ordinary resume still finishes that frame. Cross-tab and replaced-realm
   attempts fail. Nested calls run as one root instruction, with no stack,
-  operands, source, or completion value disclosed. This internal seam is not
-  yet routed through debugger/page-host IPC or advertised as `Stepping`.
+  operands, source, or completion value disclosed. Debugger v26 now routes
+  that seam through the direct in-process page executor: a paused classic
+  program can request one root instruction using its exact opaque program
+  handle, observe a one-turn `Stepping` state, and then see the real successor
+  safe point or `Completed`. Entry-only pauses first create a real VM
+  continuation; duplicate requests and stale handles fail before execution.
+  The direct route advertises `Stepping` as available, but the isolated child
+  still reports it as planned and explicitly rejects step requests. No
+  nested-frame, module, source-level, stack, scope, or value step is exposed.
 
   Acceptance for the delivered seam: a classic JS page fixture pauses at a
   verified root-code-unit safe point and resumes its same frame; realm

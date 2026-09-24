@@ -298,6 +298,7 @@ pub enum JavaScriptPageDebuggerExecutionState {
         code_unit_ordinal: u32,
         bytecode_offset: u32,
     },
+    Stepping,
     Resuming,
     Completed,
 }
@@ -350,13 +351,13 @@ pub(super) struct DebuggerProgramKey {
 }
 
 /// Session-thread-only execution state. A pending state becomes paused at an
-/// armed root-code-unit boundary. `ResumeRequested` is transient: the same
-/// session tick either resumes the retained BlueJS frame or invokes ordinary
-/// execution for the legacy entry boundary.
+/// armed root-code-unit boundary. `ResumeRequested` and `StepRequested` are
+/// transient owner-session states; the scheduler alone may advance the VM.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DebuggerExecutionStatus {
     Pending,
     Paused(DebuggerBreakpointRecord),
+    StepRequested,
     ResumeRequested,
     Completed,
 }
@@ -377,6 +378,9 @@ pub(super) struct PendingDebuggerExecution {
     /// scheduler gets its next turn. Ordinary breakpoint configuration and
     /// the v4 root-entry compatibility arm do not set this flag.
     root_safe_point_armed: bool,
+    /// Entry compatibility pauses before VM setup. A first root step creates
+    /// the real entry continuation; non-entry arms already own one.
+    root_continuation_started: bool,
     document_generation: u64,
     ordinal: u32,
     kind: BlueJsPageScriptKind,
@@ -753,6 +757,55 @@ impl JavaScriptPageExecutor {
         Ok(())
     }
 
+    /// Schedules exactly one root instruction for the paused classic at the
+    /// head of this tab's document-order queue. An entry-only pause gets a
+    /// real VM continuation on the following scheduler turn; module roots,
+    /// stale programs, and any non-paused state fail before VM execution.
+    pub fn step_debugger_root_instruction(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_execution_control_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        self.debugger_program_record(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let program = DebuggerProgramKey {
+            program_handle,
+            program_generation,
+        };
+        let pending = self
+            .pending_debugger_executions
+            .get(&tab_id)
+            .and_then(|queue| queue.front())
+            .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
+        if pending.program != program
+            || !matches!(
+                &pending.execution,
+                DeferredJavaScriptExecution::Classic { .. }
+            )
+        {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let status = self
+            .debugger_execution_states
+            .get_mut(&tab_id)
+            .and_then(|states| states.get_mut(&program))
+            .ok_or(JavaScriptPageDebuggerError::NotExecutableEntry)?;
+        if !matches!(status, DebuggerExecutionStatus::Paused(_)) {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        *status = DebuggerExecutionStatus::StepRequested;
+        Ok(())
+    }
+
     /// Returns the exact, source-free breakpoint configuration retained for a
     /// current realm. The records are sorted by opaque identity and compiler
     /// boundary, never by source text or a VM address.
@@ -851,6 +904,7 @@ impl JavaScriptPageExecutor {
                 program,
                 entry_breakpoint,
                 root_safe_point_armed: false,
+                root_continuation_started: false,
                 document_generation,
                 ordinal,
                 kind,
@@ -931,6 +985,11 @@ impl JavaScriptPageExecutor {
                         };
                         match result {
                             Ok(BlueJsPageDebuggerExecutionState::Paused { .. }) => {
+                                self.pending_debugger_executions
+                                    .get_mut(&tab_id)
+                                    .and_then(VecDeque::front_mut)
+                                    .expect("a queued debugger execution remains at the head")
+                                    .root_continuation_started = true;
                                 self.debugger_execution_states
                                     .get_mut(&tab_id)
                                     .expect("a queued debugger execution has state")
@@ -976,6 +1035,81 @@ impl JavaScriptPageExecutor {
                                     .expect("a queued debugger execution has state")
                                     .insert(pending.program, DebuggerExecutionStatus::Completed);
                                 self.push_deferred_rejection(tab_id, &pending, category);
+                            }
+                        }
+                    }
+                    DebuggerExecutionStatus::StepRequested => {
+                        let result = match &next.execution {
+                            DeferredJavaScriptExecution::Classic { handle } => {
+                                let prepared = if next.root_continuation_started {
+                                    Ok(())
+                                } else {
+                                    match self.runtime.execute_program_until_debugger_pause_at_root_offset(
+                                        tab_id.as_u64(),
+                                        *handle,
+                                        0,
+                                    ) {
+                                        Ok(BlueJsPageDebuggerExecutionState::Paused {
+                                            bytecode_offset: 0,
+                                        }) => {
+                                            self.pending_debugger_executions
+                                                .get_mut(&tab_id)
+                                                .and_then(VecDeque::front_mut)
+                                                .expect("entry-pause work remains queued")
+                                                .root_continuation_started = true;
+                                            Ok(())
+                                        }
+                                        Ok(_) => Err("native debugger entry step did not create an entry continuation"),
+                                        Err(error) => Err(page_runtime_category(error)),
+                                    }
+                                };
+                                prepared.and_then(|()| {
+                                    self.runtime
+                                        .step_debugger_root_instruction(tab_id.as_u64())
+                                        .map_err(page_runtime_category)
+                                })
+                            }
+                            DeferredJavaScriptExecution::ModuleGraph { .. } => {
+                                Err("native debugger root stepping supports classic scripts only")
+                            }
+                        };
+                        match result {
+                            Ok(BlueJsPageDebuggerExecutionState::Paused { bytecode_offset }) => {
+                                self.debugger_execution_states
+                                    .get_mut(&tab_id)
+                                    .expect("a queued debugger execution has state")
+                                    .insert(
+                                        next.program,
+                                        DebuggerExecutionStatus::Paused(DebuggerBreakpointRecord {
+                                            bytecode_offset,
+                                            ..next.entry_breakpoint
+                                        }),
+                                    );
+                                break;
+                            }
+                            Ok(BlueJsPageDebuggerExecutionState::Completed) | Err(_) => {
+                                let pending = self
+                                    .pending_debugger_executions
+                                    .get_mut(&tab_id)
+                                    .and_then(VecDeque::pop_front)
+                                    .expect("the inspected debugger execution remains queued");
+                                self.debugger_execution_states
+                                    .get_mut(&tab_id)
+                                    .expect("a queued debugger execution has state")
+                                    .insert(pending.program, DebuggerExecutionStatus::Completed);
+                                match result {
+                                    Ok(_) => {
+                                        self.push_report(JavaScriptPageExecutionReport::Executed {
+                                            tab_id: tab_id.as_u64(),
+                                            document_generation: pending.document_generation,
+                                            ordinal: pending.ordinal,
+                                            kind: pending.kind,
+                                        })
+                                    }
+                                    Err(category) => {
+                                        self.push_deferred_rejection(tab_id, &pending, category)
+                                    }
+                                }
                             }
                         }
                     }
@@ -1219,6 +1353,7 @@ fn public_execution_state(status: DebuggerExecutionStatus) -> JavaScriptPageDebu
                 bytecode_offset: breakpoint.bytecode_offset,
             }
         }
+        DebuggerExecutionStatus::StepRequested => JavaScriptPageDebuggerExecutionState::Stepping,
         DebuggerExecutionStatus::ResumeRequested => JavaScriptPageDebuggerExecutionState::Resuming,
         DebuggerExecutionStatus::Completed => JavaScriptPageDebuggerExecutionState::Completed,
     }
@@ -1606,6 +1741,121 @@ mod tests {
                 ordinal: 0,
                 kind: BlueJsPageScriptKind::Classic,
                 category: "BlueJS page execution failed",
+            }]
+        );
+    }
+
+    #[test]
+    fn entry_paused_classic_steps_one_root_instruction_per_owner_turn() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script>let index = 0; while (index < 2) { index++; } globalThis.done = index;</script>",
+            "https://example.test/debugger-step.html",
+        );
+        let mut executor = JavaScriptPageExecutor::with_config(JavaScriptPageExecutorConfig {
+            native_debugger_execution_control: true,
+            ..JavaScriptPageExecutorConfig::default()
+        })
+        .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let program = executor.debugger_programs(tab_id, 1).unwrap()[0];
+        let safe_points = executor
+            .debugger_safe_points(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+            )
+            .unwrap();
+        let entry = safe_points
+            .iter()
+            .find(|point| point.code_unit_ordinal == 0 && point.bytecode_offset == 0)
+            .copied()
+            .unwrap();
+        executor
+            .arm_debugger_entry_breakpoint(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                entry.code_unit_ordinal,
+                entry.bytecode_offset,
+            )
+            .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let mut seen_offsets = Vec::new();
+        let mut completed = false;
+        for _ in 0..256 {
+            executor
+                .step_debugger_root_instruction(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap();
+            assert_eq!(
+                executor
+                    .debugger_execution_state(
+                        tab_id,
+                        1,
+                        program.program_handle,
+                        program.program_generation,
+                    )
+                    .unwrap(),
+                JavaScriptPageDebuggerExecutionState::Stepping
+            );
+            assert_eq!(
+                executor.step_debugger_root_instruction(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                ),
+                Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+            );
+            executor.synchronize_and_execute(&tabs).unwrap();
+            match executor
+                .debugger_execution_state(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap()
+            {
+                JavaScriptPageDebuggerExecutionState::Paused {
+                    code_unit_ordinal: 0,
+                    bytecode_offset,
+                } => {
+                    assert!(safe_points.iter().any(|point| {
+                        point.code_unit_ordinal == 0 && point.bytecode_offset == bytecode_offset
+                    }));
+                    seen_offsets.push(bytecode_offset);
+                    assert!(executor.drain_reports_for_tab(tab_id).is_empty());
+                }
+                JavaScriptPageDebuggerExecutionState::Completed => {
+                    completed = true;
+                    break;
+                }
+                state => panic!("unexpected step state: {state:?}"),
+            }
+        }
+        assert!(completed);
+        assert!(
+            seen_offsets
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                < seen_offsets.len(),
+            "loop stepping must revisit a real root boundary"
+        );
+        assert_eq!(
+            executor.drain_reports_for_tab(tab_id),
+            vec![JavaScriptPageExecutionReport::Executed {
+                tab_id: tab_id.as_u64(),
+                document_generation: 1,
+                ordinal: 0,
+                kind: BlueJsPageScriptKind::Classic,
             }]
         );
     }

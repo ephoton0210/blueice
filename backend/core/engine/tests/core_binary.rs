@@ -622,10 +622,9 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
 fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session() {
     // The debugger protocol must remain separate from both frontend and DOM
     // script IPC, but it still has to validate a target against the session's
-    // actual document lifecycle. The narrow program-location and exact
-    // breakpoint-configuration operations are installed only for the explicit
-    // in-process JavaScript host; breakpoint interruption and every
-    // VM-inspection operation remain deliberately planned.
+    // actual document lifecycle. Exact locations, root interruption, and
+    // classic-root stepping are installed only for the explicit in-process
+    // JavaScript host; nested frames and VM inspection remain planned.
     let socket_path = unique_socket_path("debugger-core");
     let debugger_socket_path = unique_socket_path("debugger-host");
     let frame_dir = std::env::temp_dir().join(format!(
@@ -796,6 +795,7 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
     for capability in [
         blueice_ipc::debugger::DebuggerCapability::Breakpoints,
         blueice_ipc::debugger::DebuggerCapability::PauseResume,
+        blueice_ipc::debugger::DebuggerCapability::Stepping,
     ] {
         assert!(first_capabilities.reports.iter().any(|report| {
             report.capability == capability
@@ -812,6 +812,7 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
                     | blueice_ipc::debugger::DebuggerCapability::BreakpointConfiguration
                     | blueice_ipc::debugger::DebuggerCapability::Breakpoints
                     | blueice_ipc::debugger::DebuggerCapability::PauseResume
+                    | blueice_ipc::debugger::DebuggerCapability::Stepping
             )
         })
         .all(|report| { report.state == blueice_ipc::debugger::DebuggerCapabilityState::Planned }));
@@ -890,6 +891,51 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
             },
         }
     );
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::StepRootInstruction {
+            program: first_program,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::ExecutionStepRequested {
+            program: first_program,
+        }
+    );
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::GetExecutionState {
+            program: first_program,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program: first_program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Stepping,
+        }
+    );
+    thread::sleep(Duration::from_millis(100));
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::GetExecutionState {
+            program: first_program,
+        },
+    )
+    .unwrap();
+    let stepped_safe_point =
+        match blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap() {
+            blueice_ipc::debugger::DebuggerReply::ExecutionState {
+                program,
+                state: blueice_ipc::debugger::DebuggerExecutionState::Paused { safe_point },
+            } if program == first_program => safe_point,
+            other => panic!("expected paused successor after one root step, got {other:?}"),
+        };
+    assert_ne!(stepped_safe_point, first_safe_point);
+    assert_eq!(stepped_safe_point.program, first_program);
     blueice_ipc::debugger::write_debugger_request(
         &mut debugger,
         &blueice_ipc::debugger::DebuggerRequest::ResumeExecution {
@@ -2377,19 +2423,39 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
             safe_point: root_safe_point,
         }
     );
-    assert_eq!(
-        debugger_request(
+    // The supervised child may need another owner turn after the arm reply.
+    let expected_pause = blueice_ipc::debugger::DebuggerReply::ExecutionState {
+        program,
+        state: blueice_ipc::debugger::DebuggerExecutionState::Paused {
+            safe_point: root_safe_point,
+        },
+    };
+    let mut observed = None;
+    for _ in 0..20 {
+        let reply = debugger_request(
             &mut debugger,
             &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
             PAGE_SECRET,
-        ),
-        blueice_ipc::debugger::DebuggerReply::ExecutionState {
-            program,
-            state: blueice_ipc::debugger::DebuggerExecutionState::Paused {
-                safe_point: root_safe_point,
-            },
+        );
+        if reply == expected_pause {
+            observed = Some(reply);
+            break;
         }
-    );
+        observed = Some(reply);
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(observed, Some(expected_pause));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::StepRootInstruction { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::Error {
+            code: blueice_ipc::debugger::DebuggerErrorCode::CapabilityUnavailable,
+            ..
+        }
+    ));
     assert_eq!(
         debugger_request(
             &mut debugger,

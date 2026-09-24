@@ -158,7 +158,7 @@ impl DebuggerRequestReceiver {
         let mut dispatched = 0;
         let mut preserve_pending_entry = false;
         let mut advance_pending_entry = false;
-        let mut preserve_resuming_state = false;
+        let mut preserve_execution_transition = false;
         while dispatched < MAX_DEBUGGER_REQUESTS_PER_SESSION_TICK {
             let Ok(envelope) = self.0.try_recv() else {
                 break;
@@ -168,6 +168,7 @@ impl DebuggerRequestReceiver {
                 DebuggerRequest::ArmEntryBreakpoint { .. }
                     | DebuggerRequest::ArmRootSafePointBreakpoint { .. }
                     | DebuggerRequest::ResumeExecution { .. }
+                    | DebuggerRequest::StepRootInstruction { .. }
             );
             let reply = handle_debugger_request_with_page_javascript_executor_and_metadata_session(
                 tabs,
@@ -185,6 +186,7 @@ impl DebuggerRequestReceiver {
                     DebuggerReply::BreakpointArmed { .. }
                         | DebuggerReply::RootSafePointBreakpointArmed { .. }
                         | DebuggerReply::ExecutionResumed { .. }
+                        | DebuggerReply::ExecutionStepRequested { .. }
                 );
             // A state observation after the bounded lifecycle has already
             // left `Pending` must not renew the scheduler hold. In particular
@@ -196,6 +198,7 @@ impl DebuggerRequestReceiver {
                 &reply,
                 DebuggerReply::ExecutionState {
                     state: DebuggerExecutionState::Paused { .. }
+                        | DebuggerExecutionState::Stepping
                         | DebuggerExecutionState::Resuming
                         | DebuggerExecutionState::Completed,
                     ..
@@ -207,7 +210,11 @@ impl DebuggerRequestReceiver {
             // transition before the scheduler resumes the retained frame.
             // An idle turn still completes it normally, so this never turns
             // the debugger connection into an execution lease.
-            preserve_resuming_state |= matches!(&reply, DebuggerReply::ExecutionResumed { .. });
+            preserve_execution_transition |= matches!(
+                &reply,
+                DebuggerReply::ExecutionResumed { .. }
+                    | DebuggerReply::ExecutionStepRequested { .. }
+            );
             let _ = envelope.reply.send(reply);
             if executes_or_releases_entry {
                 advance_pending_entry = true;
@@ -221,9 +228,9 @@ impl DebuggerRequestReceiver {
         // more session boundary to send the next bounded request; otherwise a
         // normal idle synchronization begins it. Successful arms consume that
         // boundary so their requested state transition happens. A successful
-        // resume instead preserves its public `Resuming` state for one turn;
-        // a following idle turn resumes the same private VM frame.
-        if (preserve_pending_entry && !advance_pending_entry) || preserve_resuming_state {
+        // resume or step preserves its public transition state for one turn;
+        // a following idle turn advances the same private VM frame.
+        if (preserve_pending_entry && !advance_pending_entry) || preserve_execution_transition {
             if let Some(executor) = javascript_executor {
                 executor.hold_pending_debugger_execution_once();
             }
@@ -326,6 +333,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         }
         DebuggerRequest::ResumeExecution { program } => {
             resume_execution(tabs, javascript_executor, program)
+        }
+        DebuggerRequest::StepRootInstruction { program } => {
+            step_root_instruction(tabs, javascript_executor, program)
         }
         DebuggerRequest::Hello { .. } => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
@@ -496,6 +506,7 @@ fn handle_debugger_request_with_child_locations(
         DebuggerRequest::ResumeExecution { program } => {
             resume_child_execution(tabs, locations, program)
         }
+        DebuggerRequest::StepRootInstruction { .. } => unavailable_stepping(),
         // `ArmEntryBreakpoint` remains an in-process compatibility operation.
         // The isolated route deliberately exposes only its separately named
         // root-classic continuation seam, never generic interruption,
@@ -649,6 +660,7 @@ fn describe_child_location_capabilities(
             program_locations_available: locations_available,
             breakpoint_configuration_available,
             entry_execution_control_available: execution_control_available,
+            stepping_available: false,
             static_metadata_inventory_available,
             static_metadata_summary_available,
             static_metadata_lowering_summary_available,
@@ -2443,6 +2455,7 @@ fn describe_capabilities(
             program_locations_available,
             breakpoint_configuration_available: program_locations_available,
             entry_execution_control_available,
+            stepping_available: entry_execution_control_available,
             static_metadata_inventory_available: false,
             static_metadata_summary_available: false,
             static_metadata_lowering_summary_available: false,
@@ -2834,6 +2847,40 @@ fn resume_execution(
     }
 }
 
+fn step_root_instruction(
+    tabs: &TabManager,
+    javascript_executor: Option<&mut JavaScriptPageExecutor>,
+    program: DebuggerProgram,
+) -> DebuggerReply {
+    if !program.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger program target".to_string(),
+        };
+    }
+    let tab_id = match resolve_live_realm(tabs, program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    let Some(executor) = javascript_executor else {
+        return unavailable_stepping();
+    };
+    if !executor.debugger_has_live_realm(tab_id, program.realm.realm_generation)
+        || !executor.debugger_execution_control_available()
+    {
+        return unavailable_stepping();
+    }
+    match executor.step_debugger_root_instruction(
+        tab_id,
+        program.realm.realm_generation,
+        program.program_handle,
+        program.program_generation,
+    ) {
+        Ok(()) => DebuggerReply::ExecutionStepRequested { program },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
 fn invalid_safe_point_target() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::InvalidTarget,
@@ -2989,6 +3036,14 @@ fn unavailable_execution_control() -> DebuggerReply {
     }
 }
 
+fn unavailable_stepping() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "native debugger root stepping is not installed for this page-host route"
+            .to_string(),
+    }
+}
+
 fn debugger_program_error(error: JavaScriptPageDebuggerError) -> DebuggerReply {
     let (code, message) = match error {
         JavaScriptPageDebuggerError::NoLiveRealm => (
@@ -3053,6 +3108,7 @@ fn debugger_execution_state(
                 bytecode_offset,
             },
         },
+        JavaScriptPageDebuggerExecutionState::Stepping => DebuggerExecutionState::Stepping,
         JavaScriptPageDebuggerExecutionState::Resuming => DebuggerExecutionState::Resuming,
         JavaScriptPageDebuggerExecutionState::Completed => DebuggerExecutionState::Completed,
     }
@@ -3062,6 +3118,7 @@ struct DebuggerCapabilityAvailability {
     program_locations_available: bool,
     breakpoint_configuration_available: bool,
     entry_execution_control_available: bool,
+    stepping_available: bool,
     static_metadata_inventory_available: bool,
     static_metadata_summary_available: bool,
     static_metadata_lowering_summary_available: bool,
@@ -3085,6 +3142,7 @@ fn capability_reports(
         program_locations_available,
         breakpoint_configuration_available,
         entry_execution_control_available,
+        stepping_available,
         static_metadata_inventory_available,
         static_metadata_summary_available,
         static_metadata_lowering_summary_available,
@@ -3158,8 +3216,16 @@ fn capability_reports(
         ),
         (
             DebuggerCapability::Stepping,
-            DebuggerCapabilityState::Planned,
-            "native stepping is not installed",
+            if stepping_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if stepping_available {
+                "one classic-root instruction step retains the same BlueJS continuation; nested frames and modules remain unavailable"
+            } else {
+                "native stepping is not installed for this page-host route"
+            },
         ),
         (
             DebuggerCapability::Stack,
@@ -6226,6 +6292,165 @@ mod tests {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn native_debugger_steps_an_exact_classic_program_through_the_public_route() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script>let value = 1; globalThis.answer = value + 2;</script>",
+            Some("https://example.test/native-step.html".to_string()),
+        );
+        let realm = DebuggerPageRealm {
+            browser_context_id: DEFAULT_BROWSER_CONTEXT_ID,
+            tab_id: tab_id.as_u64(),
+            realm_generation: 1,
+        };
+        let mut executor = JavaScriptPageExecutor::with_config(
+            crate::script::javascript::JavaScriptPageExecutorConfig {
+                native_debugger_execution_control: true,
+                ..crate::script::javascript::JavaScriptPageExecutorConfig::default()
+            },
+        )
+        .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        let DebuggerReply::Capabilities(capabilities) =
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::DescribeCapabilities { realm },
+            )
+        else {
+            panic!("the live realm must describe debugger capabilities")
+        };
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::Stepping
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        let DebuggerReply::Programs(programs) = handle_debugger_request_with_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::ListPrograms { realm },
+        ) else {
+            panic!("the admitted declaration must have an opaque program")
+        };
+        let program = programs[0];
+        let DebuggerReply::SafePoints(safe_points) =
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ListSafePoints { program },
+            )
+        else {
+            panic!("the admitted declaration must have safe points")
+        };
+        let entry = *safe_points
+            .iter()
+            .find(|point| point.code_unit_ordinal == 0 && point.bytecode_offset == 0)
+            .unwrap();
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ArmEntryBreakpoint { safe_point: entry },
+            ),
+            DebuggerReply::BreakpointArmed { safe_point: entry }
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let step = DebuggerRequest::StepRootInstruction { program };
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                step.clone(),
+            ),
+            DebuggerReply::ExecutionStepRequested { program }
+        );
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetExecutionState { program },
+            ),
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::Stepping,
+            }
+        );
+        assert!(matches!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                step.clone(),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                ..
+            }
+        ));
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let DebuggerReply::ExecutionState {
+            state:
+                DebuggerExecutionState::Paused {
+                    safe_point: advanced,
+                },
+            ..
+        } = handle_debugger_request_with_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::GetExecutionState { program },
+        )
+        else {
+            panic!("one root instruction must return to an exact paused boundary")
+        };
+        assert_ne!(advanced, entry);
+        assert!(safe_points.contains(&advanced));
+        assert!(executor.drain_reports_for_tab(tab_id).is_empty());
+        assert!(matches!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::StepRootInstruction {
+                    program: DebuggerProgram {
+                        program_generation: program.program_generation + 1,
+                        ..program
+                    },
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::StaleProgram,
+                ..
+            }
+        ));
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ResumeExecution { program },
+            ),
+            DebuggerReply::ExecutionResumed { program }
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetExecutionState { program },
+            ),
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::Completed,
+            }
+        );
+        assert!(matches!(
+            handle_debugger_request_with_javascript_executor(&tabs, Some(&mut executor), step),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                ..
+            }
+        ));
     }
 
     #[test]
