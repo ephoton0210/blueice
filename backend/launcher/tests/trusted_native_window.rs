@@ -14,16 +14,59 @@
 use blueice_launcher::control::{
     read_control_reply, write_control_request, ControlReply, ControlRequest,
 };
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-struct TestLauncher(Child);
+const MANUAL_UI_WAT: &str = r#"(module
+    (import "blueice" "runtime_event_kind" (func $kind (result i32)))
+    (import "blueice" "set_toolbar_button_utf8" (func $toolbar (param i32 i32) (result i32)))
+    (memory (export "memory") 1)
+    (data (i32.const 0) "Consent Probe")
+    (func (export "blueice_start")
+        call $kind
+        i32.const 1
+        i32.eq
+        if
+            i32.const 0
+            i32.const 13
+            call $toolbar
+            drop
+        end))"#;
+
+#[test]
+fn manual_consent_fixture_compiles_to_a_real_wasm_module() {
+    let bytes = wat::parse_str(MANUAL_UI_WAT).unwrap();
+    assert_eq!(&bytes[..4], b"\0asm");
+}
+
+struct TestLauncher(Child, PathBuf);
 
 impl Drop for TestLauncher {
     fn drop(&mut self) {
+        // A manual timeout must not leave the trusted window or a granted
+        // core orphaned. Lose the exact child authority first so the broker
+        // follows its normal fail-closed teardown path.
+        let mut processes = sysinfo::System::new_all();
+        processes.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+        if let Some(frontend) = processes.processes().values().find(|process| {
+            process.parent() == Some(sysinfo::Pid::from_u32(self.0.id()))
+                && process.exe() == Some(self.1.as_path())
+        }) {
+            let _ = frontend.kill_with(sysinfo::Signal::Kill);
+        }
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            if self.0.try_wait().ok().flatten().is_some() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
         let _ = self.0.kill();
         let _ = self.0.wait();
     }
@@ -42,12 +85,24 @@ impl Drop for TestRoot {
 fn launcher_owned_native_window_inspects_and_its_loss_stops_the_broker() {
     let launcher_bin = PathBuf::from(env!("CARGO_BIN_EXE_blueice-launcher"));
     let frontend_bin = launcher_bin.with_file_name("blueice-frontend");
-    assert!(frontend_bin.exists(), "build blueice-frontend beside the launcher first");
-    assert!(launcher_bin.with_file_name("blueice-extension-host").exists(),
-        "build blueice-extension-host beside the launcher first");
+    assert!(
+        frontend_bin.exists(),
+        "build blueice-frontend beside the launcher first"
+    );
+    assert!(
+        launcher_bin
+            .with_file_name("blueice-extension-host")
+            .exists(),
+        "build blueice-extension-host beside the launcher first"
+    );
     let root = std::env::temp_dir().join(format!(
-        "btw-{}-{}", std::process::id(),
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() % 10_000
+        "btw-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+            % 10_000
     ));
     std::fs::create_dir(&root).unwrap();
     let root = TestRoot(root);
@@ -58,20 +113,26 @@ fn launcher_owned_native_window_inspects_and_its_loss_stops_the_broker() {
     std::fs::write(&manifest,
         r#"{"name":"Native inspection proof","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read"],"optional":["storage"]}}"#,
     ).unwrap();
-    std::fs::write(root.0.join("extension.wasm"),
+    std::fs::write(
+        root.0.join("extension.wasm"),
         wat::parse_str(r#"(module (func (export "blueice_start")))"#).unwrap(),
-    ).unwrap();
+    )
+    .unwrap();
     let launcher = Command::new(launcher_bin)
         .args([
-            "--socket", rendezvous.to_str().unwrap(),
-            "--control-socket", control.to_str().unwrap(),
-            "--frame-dir", frames.to_str().unwrap(),
-            "--extension-manifest", manifest.to_str().unwrap(),
+            "--socket",
+            rendezvous.to_str().unwrap(),
+            "--control-socket",
+            control.to_str().unwrap(),
+            "--frame-dir",
+            frames.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
             "--trusted-frontend",
         ])
         .spawn()
         .expect("failed to spawn the graphical trusted-window launcher");
-    let mut launcher = TestLauncher(launcher);
+    let mut launcher = TestLauncher(launcher, frontend_bin.clone());
     let deadline = Instant::now() + Duration::from_secs(15);
     while Instant::now() < deadline {
         if let Some(status) = launcher.0.try_wait().unwrap() {
@@ -82,13 +143,18 @@ fn launcher_owned_native_window_inspects_and_its_loss_stops_the_broker() {
         }
         thread::sleep(Duration::from_millis(20));
     }
-    assert!(rendezvous.exists(), "launcher never bound its shared core socket");
+    assert!(
+        rendezvous.exists(),
+        "launcher never bound its shared core socket"
+    );
     // Allow the broker's ten-second child-inspection deadline to expire.
     // Remaining alive afterward proves the private Inspect exchange
     // finished after window creation; a mere socket bind does not.
     thread::sleep(Duration::from_secs(11));
-    assert!(launcher.0.try_wait().unwrap().is_none(),
-        "launcher did not survive the trusted child-inspection deadline");
+    assert!(
+        launcher.0.try_wait().unwrap().is_none(),
+        "launcher did not survive the trusted child-inspection deadline"
+    );
     let mut inspector = UnixStream::connect(&control).unwrap();
     write_control_request(&mut inspector, &ControlRequest::InspectExtensionPermissions).unwrap();
     assert!(matches!(read_control_reply(&mut inspector).unwrap(),
@@ -103,7 +169,9 @@ fn launcher_owned_native_window_inspects_and_its_loss_stops_the_broker() {
     blueice_ipc::client_handshake(&mut client).unwrap();
     let mut processes = sysinfo::System::new_all();
     processes.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-    let frontend = processes.processes().values()
+    let frontend = processes
+        .processes()
+        .values()
         .find(|process| {
             process.parent() == Some(sysinfo::Pid::from_u32(launcher.0.id()))
                 && process.exe() == Some(frontend_bin.as_path())
@@ -117,6 +185,215 @@ fn launcher_owned_native_window_inspects_and_its_loss_stops_the_broker() {
     if launcher.0.try_wait().unwrap().is_none() {
         panic!("launcher did not fail closed after its trusted native window died");
     }
+    assert!(!rendezvous.exists());
+    assert!(!control.exists());
+    assert!(!frames.exists());
+}
+
+fn inspected_ui_grant(control: &PathBuf) -> bool {
+    let mut inspector = UnixStream::connect(control).unwrap();
+    inspector
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    write_control_request(&mut inspector, &ControlRequest::InspectExtensionPermissions).unwrap();
+    let ControlReply::ExtensionPermissions {
+        installed: Some(package),
+        ..
+    } = read_control_reply(&mut inspector).unwrap()
+    else {
+        panic!("the native permission proof lost its installed package");
+    };
+    assert_eq!(package.name, "Manual consent proof");
+    assert_eq!(package.optional.len(), 1);
+    assert_eq!(package.optional[0].capability, "ui:inject");
+    package.optional[0].granted
+}
+
+fn await_ui_grant(control: &PathBuf, expected: bool, deadline: Instant) {
+    while Instant::now() < deadline {
+        if inspected_ui_grant(control) == expected {
+            return;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    panic!(
+        "timed out waiting for the human to {} ui:inject in the native F8 panel",
+        if expected { "grant" } else { "revoke" }
+    );
+}
+
+fn await_toolbar(
+    messages: &mpsc::Receiver<blueice_ipc::ServerMessage>,
+    expected: Option<&str>,
+    deadline: Instant,
+) {
+    while Instant::now() < deadline {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let message = messages
+            .recv_timeout(remaining)
+            .expect("the shared core did not publish the expected native toolbar state");
+        if let blueice_ipc::ServerMessage::ExtensionToolbar { label } = message {
+            if label.as_deref() == expected {
+                return;
+            }
+        }
+    }
+    panic!("timed out waiting for the native toolbar state {expected:?}");
+}
+
+/// Run ONLY with a person at the graphical desktop:
+///
+/// cargo test -p blueice-launcher --test trusted_native_window \
+///   manual_native_grant_and_revoke_retire_published_toolbar -- --ignored --nocapture
+///
+/// This test never sends Grant/Revoke itself. The only authority is the
+/// launcher-owned F8 panel operated by the person; this process uses the
+/// operator socket solely for read-only inspection and an ordinary frontend
+/// connection solely to trigger a navigation and observe publication.
+#[test]
+#[ignore = "requires a person to use the native F8 permission panel"]
+fn manual_native_grant_and_revoke_retire_published_toolbar() {
+    let launcher_bin = PathBuf::from(env!("CARGO_BIN_EXE_blueice-launcher"));
+    for sibling in [
+        "blueice-frontend",
+        "blueice-extension-host",
+        "blueice-core",
+        "blueice-ai-gatekeeper",
+        "bluejs",
+    ] {
+        assert!(
+            launcher_bin.with_file_name(sibling).exists(),
+            "build {sibling} beside the launcher first"
+        );
+    }
+    let root = std::env::temp_dir().join(format!(
+        "btw-manual-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&root).unwrap();
+    let root = TestRoot(root);
+    let rendezvous = root.0.join("core.sock");
+    let control = root.0.join("control.sock");
+    let frames = root.0.join("frames");
+    let manifest = root.0.join("extension.json");
+    std::fs::write(&manifest,
+        r#"{"name":"Manual consent proof","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["ui:inject"]}}"#,
+    ).unwrap();
+    std::fs::write(
+        root.0.join("extension.wasm"),
+        wat::parse_str(MANUAL_UI_WAT).unwrap(),
+    )
+    .unwrap();
+    let launcher = Command::new(&launcher_bin)
+        .args([
+            "--socket",
+            rendezvous.to_str().unwrap(),
+            "--control-socket",
+            control.to_str().unwrap(),
+            "--frame-dir",
+            frames.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--trusted-frontend",
+        ])
+        .spawn()
+        .expect("failed to spawn the graphical trusted-window launcher");
+    let mut launcher = TestLauncher(launcher, launcher_bin.with_file_name("blueice-frontend"));
+    let ready_deadline = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < ready_deadline {
+        assert!(
+            launcher.0.try_wait().unwrap().is_none(),
+            "launcher exited before its trusted window was ready"
+        );
+        if rendezvous.exists() && control.exists() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert!(rendezvous.exists() && control.exists());
+    thread::sleep(Duration::from_secs(11));
+    assert!(
+        launcher.0.try_wait().unwrap().is_none(),
+        "native child did not pass the private Inspect deadline"
+    );
+    assert!(
+        !inspected_ui_grant(&control),
+        "optional UI must start denied"
+    );
+
+    let mut client = UnixStream::connect(&rendezvous).unwrap();
+    blueice_ipc::client_handshake(&mut client).unwrap();
+    let mut reader = client.try_clone().unwrap();
+    let (message_tx, message_rx) = mpsc::channel();
+    thread::spawn(move || {
+        while let Ok(message) = blueice_ipc::read_server_message(&mut reader) {
+            if message_tx.send(message).is_err() {
+                break;
+            }
+        }
+    });
+
+    eprintln!("In the launcher-owned window: press F8, select ui:inject, Review, then Confirm GRANT (60 seconds).");
+    await_ui_grant(&control, true, Instant::now() + Duration::from_secs(60));
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}/manual-consent", listener.local_addr().unwrap());
+    let server = thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::WouldBlock
+                        && Instant::now() < deadline =>
+                {
+                    thread::sleep(Duration::from_millis(20));
+                }
+                Err(error) => panic!("consent proof did not fetch its local fixture: {error}"),
+            }
+        };
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 15\r\nConnection: close\r\n\r\n<p>Consent</p>\n").unwrap();
+    });
+    blueice_ipc::write_client_message(&mut client, &blueice_ipc::ClientMessage::Navigate { url })
+        .unwrap();
+    await_toolbar(
+        &message_rx,
+        Some("Consent Probe"),
+        Instant::now() + Duration::from_secs(15),
+    );
+    server.join().unwrap();
+
+    eprintln!("The toolbar is published. In the same native window: press F8, Review, then Confirm REVOKE (60 seconds).");
+    await_ui_grant(&control, false, Instant::now() + Duration::from_secs(60));
+    await_toolbar(&message_rx, None, Instant::now() + Duration::from_secs(5));
+
+    let frontend_bin = launcher_bin.with_file_name("blueice-frontend");
+    let mut processes = sysinfo::System::new_all();
+    processes.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    let frontend = processes
+        .processes()
+        .values()
+        .find(|process| {
+            process.parent() == Some(sysinfo::Pid::from_u32(launcher.0.id()))
+                && process.exe() == Some(frontend_bin.as_path())
+        })
+        .expect("the live launcher must own the exact sibling frontend child");
+    assert_eq!(frontend.kill_with(sysinfo::Signal::Kill), Some(true));
+    let exit_deadline = Instant::now() + Duration::from_secs(5);
+    while launcher.0.try_wait().unwrap().is_none() && Instant::now() < exit_deadline {
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        launcher.0.try_wait().unwrap().is_some(),
+        "the broker must stop when its native authority is lost"
+    );
     assert!(!rendezvous.exists());
     assert!(!control.exists());
     assert!(!frames.exists());
