@@ -123,7 +123,7 @@ fn runtime_with_vm(vm: &Vm, error: RuntimeError) -> Value {
     runtime(error)
 }
 
-fn apply_gc_stress_overrides(config: &mut VmConfig, var: impl Fn(&str) -> Option<String>) {
+fn apply_gc_stress_overrides(config: &mut VmConfig, var: &dyn Fn(&str) -> Option<String>) {
     if let Some(capacity) =
         var("BLUEJS_TEST262_NURSERY_CAPACITY").and_then(|value| value.parse().ok())
     {
@@ -297,7 +297,7 @@ fn evaluate(request: Request) -> Value {
     // GC stress mode: a tiny nursery makes nearly every allocation a collection
     // point, so a native function that leaves an object unrooted across a
     // later allocation fails deterministically instead of by timing luck.
-    apply_gc_stress_overrides(&mut config, |name| std::env::var(name).ok());
+    apply_gc_stress_overrides(&mut config, &|name| std::env::var(name).ok());
     if let Some(limit) = request.heap_limit {
         config.heap.max_heap_bytes = limit;
         config.heap.major_threshold_bytes = config.heap.major_threshold_bytes.min(limit);
@@ -397,7 +397,7 @@ fn evaluate(request: Request) -> Value {
     }
 }
 
-fn serve(input: impl BufRead, mut output: impl Write) -> io::Result<()> {
+fn serve(input: &mut dyn BufRead, output: &mut dyn Write) -> io::Result<()> {
     writeln!(output, "{{\"ready\":1}}")?;
     output.flush()?;
     for line in input.lines() {
@@ -412,7 +412,7 @@ fn serve(input: impl BufRead, mut output: impl Write) -> io::Result<()> {
 }
 
 fn main() -> io::Result<()> {
-    serve(io::stdin().lock(), io::stdout().lock())
+    serve(&mut io::stdin().lock(), &mut io::stdout().lock())
 }
 
 #[cfg(test)]
@@ -753,20 +753,22 @@ mod tests {
             ("BLUEJS_TEST262_NURSERY_CAPACITY", "4096"),
             ("BLUEJS_TEST262_MAJOR_THRESHOLD", "8192"),
         ];
-        apply_gc_stress_overrides(&mut config, |name| {
-            let (_, value) = overrides.iter().find(|(key, _)| *key == name)?;
-            Some(value.to_string())
+        apply_gc_stress_overrides(&mut config, &|name| {
+            overrides
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value.to_string())
         });
         assert_eq!(config.heap.nursery_capacity, 4096);
         assert_eq!(config.heap.major_threshold_bytes, 8192);
         let before = VmConfig::default();
         let mut unchanged = VmConfig::default();
-        apply_gc_stress_overrides(&mut unchanged, |_| Some("not a number".into()));
+        apply_gc_stress_overrides(&mut unchanged, &|_| Some("not a number".into()));
         assert_eq!(
             unchanged.heap.nursery_capacity,
             before.heap.nursery_capacity
         );
-        apply_gc_stress_overrides(&mut unchanged, |_| None);
+        apply_gc_stress_overrides(&mut unchanged, &|_| None);
         assert_eq!(
             unchanged.heap.major_threshold_bytes,
             before.heap.major_threshold_bytes
@@ -846,11 +848,68 @@ mod tests {
         assert_eq!(kind(&reply), "RangeError", "{reply}");
     }
 
+    /// A writer that accepts `bytes` bytes and `flushes` flushes, then fails.
+    struct FailingWriter {
+        bytes: usize,
+        flushes: usize,
+    }
+
+    impl Write for FailingWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if buf.len() > self.bytes {
+                return Err(io::Error::other("write refused"));
+            }
+            self.bytes -= buf.len();
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            if self.flushes == 0 {
+                return Err(io::Error::other("flush refused"));
+            }
+            self.flushes -= 1;
+            Ok(())
+        }
+    }
+
+    struct FailingReader;
+
+    impl io::Read for FailingReader {
+        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+            Err(io::Error::other("read refused"))
+        }
+    }
+
+    #[test]
+    fn serve_stops_at_the_first_transport_failure() {
+        const READY: usize = "{\"ready\":1}\n".len();
+        let request = "{\"source\":\"1\",\"mode\":\"sloppy\"}\n";
+        let run = |bytes, flushes| {
+            serve(
+                &mut request.as_bytes(),
+                &mut FailingWriter { bytes, flushes },
+            )
+            .map_err(|e| e.to_string())
+        };
+        // Each step of the exchange, in order, is the one that fails.
+        assert_eq!(run(0, 9), Err("write refused".into()), "ready write");
+        assert_eq!(run(READY, 0), Err("flush refused".into()), "ready flush");
+        assert_eq!(run(READY, 1), Err("write refused".into()), "reply write");
+        assert_eq!(
+            run(usize::MAX, 1),
+            Err("flush refused".into()),
+            "reply flush"
+        );
+        assert_eq!(run(usize::MAX, 2), Ok(()));
+        let unreadable = serve(&mut io::BufReader::new(FailingReader), &mut Vec::new());
+        assert_eq!(unreadable.unwrap_err().to_string(), "read refused");
+    }
+
     #[test]
     fn serve_announces_readiness_then_answers_one_reply_per_line() {
         let input = "{\"source\":\"1\",\"mode\":\"sloppy\"}\nnot json\n";
         let mut output = Vec::new();
-        serve(input.as_bytes(), &mut output).unwrap();
+        serve(&mut input.as_bytes(), &mut output).unwrap();
         let lines: Vec<Value> = String::from_utf8(output)
             .unwrap()
             .lines()

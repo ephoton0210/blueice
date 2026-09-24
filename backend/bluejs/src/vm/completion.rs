@@ -175,78 +175,106 @@ pub(super) fn call_stack_exhausted(remaining_stack: Option<usize>, call_depth: u
 mod tests {
     use super::*;
 
+    /// A comparable rendering of a completion, so a test can assert exactly
+    /// which variant (and payload) came back.
+    fn describe(completion: &Completion) -> String {
+        match completion {
+            Completion::Throw(error) => format!("throw {error:?}"),
+            Completion::Return(value) => format!("return {value:?}"),
+            Completion::TailRecur(values) => format!("tail-recur {values:?}"),
+            Completion::TailCall(values) => format!("tail-call {values:?}"),
+            Completion::Yield(value) => format!("yield {value:?}"),
+            Completion::Jump { cleanup, target } => format!("jump {cleanup} {target}"),
+            Completion::Resume(pc) => format!("resume {pc}"),
+            Completion::Halt(value) => format!("halt {value:?}"),
+        }
+    }
+
     /// Every catchable completion survives being parked in a suspended
     /// generator and taken back out unchanged.
     #[test]
     fn catchable_completions_round_trip_through_a_suspended_generator() {
         let round_trip = |completion: Completion| {
-            Completion::from_generator_pending(completion.into_generator_pending().ok().unwrap())
+            let pending = completion.clone().into_generator_pending().ok().unwrap();
+            let restored = Completion::from_generator_pending(pending);
+            assert_eq!(describe(&restored), describe(&completion));
+            describe(&restored)
         };
-        let throw = |error| Completion::Throw(error);
+        let throw = Completion::Throw;
 
-        assert!(matches!(
+        assert_eq!(
             round_trip(throw(RuntimeError::Thrown(Value::Number(1.0)))),
-            Completion::Throw(RuntimeError::Thrown(Value::Number(n))) if n == 1.0
-        ));
-        assert!(matches!(
+            "throw Thrown(Number(1.0))"
+        );
+        assert_eq!(
             round_trip(throw(RuntimeError::ReferenceError("r".into()))),
-            Completion::Throw(RuntimeError::ReferenceError(message)) if message == "r"
-        ));
-        assert!(matches!(
+            "throw ReferenceError(\"r\")"
+        );
+        assert_eq!(
             round_trip(throw(RuntimeError::TypeError("t".into()))),
-            Completion::Throw(RuntimeError::TypeError(message)) if message == "t"
-        ));
-        assert!(matches!(
+            "throw TypeError(\"t\")"
+        );
+        assert_eq!(
             round_trip(throw(RuntimeError::RangeError("g".into()))),
-            Completion::Throw(RuntimeError::RangeError(message)) if message == "g"
-        ));
-        assert!(matches!(
+            "throw RangeError(\"g\")"
+        );
+        assert_eq!(
             round_trip(throw(RuntimeError::SyntaxError("s".into()))),
-            Completion::Throw(RuntimeError::SyntaxError(message)) if message == "s"
-        ));
-        assert!(matches!(
+            "throw SyntaxError(\"s\")"
+        );
+        assert_eq!(
             round_trip(throw(RuntimeError::Test262("x".into()))),
-            Completion::Throw(RuntimeError::Test262(message)) if message == "x"
-        ));
-        assert!(matches!(
+            "throw Test262(\"x\")"
+        );
+        assert_eq!(
             round_trip(Completion::Return(Value::Number(2.0))),
-            Completion::Return(Value::Number(n)) if n == 2.0
-        ));
-        assert!(matches!(
+            "return Number(2.0)"
+        );
+        assert_eq!(
             round_trip(Completion::TailRecur(vec![Value::Number(3.0)])),
-            Completion::TailRecur(values) if matches!(values[..], [Value::Number(n)] if n == 3.0)
-        ));
-        assert!(matches!(
+            "tail-recur [Number(3.0)]"
+        );
+        assert_eq!(
             round_trip(Completion::Jump {
                 cleanup: 4,
                 target: 5
             }),
-            Completion::Jump {
-                cleanup: 4,
-                target: 5
-            }
-        ));
+            "jump 4 5"
+        );
     }
 
     /// A host abort is not catchable, so it comes back as the error itself;
     /// completions internal to the interpreter cannot be suspended at all.
     #[test]
     fn host_aborts_and_internal_completions_refuse_to_suspend() {
-        assert!(matches!(
-            Completion::Throw(RuntimeError::InstructionLimit).into_generator_pending(),
-            Err(RuntimeError::InstructionLimit)
-        ));
+        let refused = |completion: Completion| completion.into_generator_pending().err();
+        assert_eq!(
+            refused(Completion::Throw(RuntimeError::InstructionLimit)),
+            Some(RuntimeError::InstructionLimit)
+        );
         let internal = [
             Completion::TailCall(vec![Value::Undefined]),
             Completion::Yield(Value::Undefined),
             Completion::Resume(0),
             Completion::Halt(Value::Undefined),
         ];
+        let described: Vec<String> = internal.iter().map(describe).collect();
+        assert_eq!(
+            described,
+            [
+                "tail-call [Undefined]",
+                "yield Undefined",
+                "resume 0",
+                "halt Undefined"
+            ]
+        );
         for completion in internal {
-            assert!(matches!(
-                completion.into_generator_pending(),
-                Err(RuntimeError::Unsupported(_))
-            ));
+            assert_eq!(
+                refused(completion),
+                Some(RuntimeError::Unsupported(
+                    "cannot suspend a generator with an internal completion"
+                ))
+            );
         }
     }
 
