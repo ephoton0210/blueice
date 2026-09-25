@@ -313,6 +313,83 @@ pub struct JavaScriptPageDebuggerSafePoint {
     pub bytecode_offset: u32,
 }
 
+/// Core-facing identity for one actually paused nested invocation. The child
+/// program handle is remapped to the enclosing core program identity before
+/// this leaves the out-of-process executor; no runtime handle is included.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerFrame {
+    pub tab_id: TabId,
+    pub document_generation: u64,
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub code_unit_ordinal: u32,
+    /// Binds the public handle to this core instance across replacement.
+    pub core_instance: [u8; 16],
+    /// Process-unique core handle; the child invocation serial stays inside
+    /// the out-of-process executor's exact active-frame association.
+    pub frame_handle: u64,
+}
+
+/// Source-free lexical slot copied from an active paused interpreter scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerScopeEntry {
+    pub slot_ordinal: u32,
+    pub scope_depth: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStackFrame {
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+    pub scope_entries: Vec<JavaScriptPageDebuggerScopeEntry>,
+    pub scope_truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStackSnapshot {
+    pub frames: Vec<JavaScriptPageDebuggerStackFrame>,
+    pub stack_truncated: bool,
+}
+
+/// Exact core-owned selection of one active binding in a paused stack. This
+/// carries no child program, frame, or heap-object handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerValueTarget {
+    pub program: JavaScriptPageDebuggerProgram,
+    pub frame: Option<JavaScriptPageDebuggerFrame>,
+    pub frame_index: u32,
+    pub safe_point: JavaScriptPageDebuggerSafePoint,
+    pub scope_entry: JavaScriptPageDebuggerScopeEntry,
+}
+
+/// A complete bounded value copied out of a paused VM, with no reusable
+/// object identity. UTF-16 units and IEEE-754 bits remain lossless.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JavaScriptPageDebuggerValuePreview {
+    Undefined,
+    Null,
+    Bool(bool),
+    NumberBits(u64),
+    BigIntBytes(Vec<u8>),
+    StringUnits(Vec<u16>),
+    Array(Vec<Option<Self>>),
+    Record(Vec<(Vec<u16>, Self)>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JavaScriptPageDebuggerNestedExecutionState {
+    Paused {
+        frame: JavaScriptPageDebuggerFrame,
+        bytecode_offset: u32,
+    },
+    Stepping {
+        frame: JavaScriptPageDebuggerFrame,
+    },
+    Resuming {
+        frame: JavaScriptPageDebuggerFrame,
+    },
+}
+
 /// One source-free, exact breakpoint record retained for a live program. A
 /// configured record does not imply that the synchronous page runtime has
 /// paused or can resume at this location.
@@ -326,8 +403,8 @@ pub struct JavaScriptPageDebuggerBreakpoint {
 
 /// Source-free execution state for the opt-in native debugger root-frame
 /// continuation seam. `Paused` can name a non-entry root instruction, but
-/// this intentionally does not imply arbitrary interpreter continuation,
-/// stack inspection, nested-function pause, or stepping support.
+/// this alone does not imply stack inspection, nested-function pause, or
+/// stepping support; each has a separately gated route.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JavaScriptPageDebuggerExecutionState {
     Pending,

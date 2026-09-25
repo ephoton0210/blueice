@@ -15,26 +15,38 @@
 
 use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
-    read_debugger_reply, write_debugger_request, DebuggerErrorCode,
-    DebuggerMetadataCapabilityManifest, DebuggerMetadataCapabilitySelection, DebuggerPageRealm,
-    DebuggerProgram, DebuggerReply, DebuggerRequest, DebuggerSafePoint,
+    read_debugger_reply, write_debugger_request, DebuggerCapability, DebuggerCapabilityState,
+    DebuggerErrorCode, DebuggerExecutionState, DebuggerMetadataCapabilityManifest,
+    DebuggerMetadataCapabilitySelection, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
+    DebuggerRequest, DebuggerSafePoint, DebuggerStackCoordinatesTarget,
+    DebuggerStaticMetadataSafePointSpanTarget, DebuggerStaticMetadataSourceId,
     DebuggerStaticMetadataSymbolKind, DEBUGGER_PROTOCOL_VERSION,
 };
 use blueice_ipc::{read_server_message, write_client_message, ClientMessage, ServerMessage};
+use blueice_launcher::control::{
+    read_control_reply, write_control_request, ControlReply, ControlRequest,
+};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+/// Each test owns a full launcher/core/child tree. Running several at once
+/// can exhaust the debugger's intentionally short pending-admission window.
+static LAUNCHER_DEBUGGER_TEST_LOCK: Mutex<()> = Mutex::new(());
 const FIRST_BLUETS_SOURCE: &str = "export interface PrivateContract { enabled: boolean; }\r\n/* 🚀 */ const privateBlueTsMetadata: number = 42;";
 const SOURCE_STEP_BLUETS_SOURCE: &str =
     "const first: number = 1; const second: number = first + 1; const third: number = second + 1;";
 const MODULE_BLUETS_SOURCE: &str = "/* 🚀 */\r\nexport const moduleAnswer: number = 42;";
+const MODULE_STEP_BLUETS_SOURCE: &str =
+    "let first: number = 1; let second: number = first + 1; export const answer: number = second + 1;";
+const STACK_COORDINATE_BLUETS_SOURCE: &str = "/* 🚀 */ function inner(a: number): number { let value: number = a + 1; return value; } globalThis.answer = inner(3);";
 
 fn unique_path(label: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -97,6 +109,7 @@ struct StaticMetadataPolicy {
 }
 
 struct LauncherProcess {
+    _test_guard: MutexGuard<'static, ()>,
     child: Child,
     rendezvous_socket: PathBuf,
     control_socket: PathBuf,
@@ -113,6 +126,9 @@ impl LauncherProcess {
         gatekeeper_socket: &Path,
         policy: StaticMetadataPolicy,
     ) -> Self {
+        let test_guard = LAUNCHER_DEBUGGER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let rendezvous_socket = unique_path("rendezvous");
         let control_socket = unique_path("control");
         let debugger_socket = unique_path("debugger");
@@ -199,6 +215,7 @@ impl LauncherProcess {
         }
         let child = command.spawn().expect("blueice-launcher must spawn");
         let mut process = Self {
+            _test_guard: test_guard,
             child,
             rendezvous_socket,
             control_socket,
@@ -380,6 +397,79 @@ fn await_paused_execution(
             other => panic!("expected bounded root-frame pause, got {other:?}"),
         }
     }
+}
+
+fn await_step_paused_execution(
+    debugger: &mut UnixStream,
+    program: DebuggerProgram,
+    previous: DebuggerSafePoint,
+) -> DebuggerSafePoint {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match debugger_request(debugger, DebuggerRequest::GetExecutionState { program }) {
+            DebuggerReply::ExecutionState {
+                program: reply_program,
+                state: blueice_ipc::debugger::DebuggerExecutionState::Paused { safe_point },
+            } if reply_program == program && safe_point != previous => return safe_point,
+            DebuggerReply::ExecutionState {
+                program: reply_program,
+                state: blueice_ipc::debugger::DebuggerExecutionState::Stepping,
+            } if reply_program == program && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            other => panic!("expected bounded debugger step pause, got {other:?}"),
+        }
+    }
+}
+
+fn await_nested_paused_execution(
+    debugger: &mut UnixStream,
+    program: DebuggerProgram,
+) -> (blueice_ipc::debugger::DebuggerFrame, DebuggerSafePoint) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match debugger_request(debugger, DebuggerRequest::GetExecutionState { program }) {
+            DebuggerReply::ExecutionState {
+                program: reply_program,
+                state: DebuggerExecutionState::NestedPaused { frame, safe_point },
+            } if reply_program == program => return (frame, safe_point),
+            DebuggerReply::ExecutionState {
+                program: reply_program,
+                state:
+                    DebuggerExecutionState::Pending | DebuggerExecutionState::NestedStepping { .. },
+            } if reply_program == program && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            other => panic!("expected bounded nested-frame pause, got {other:?}"),
+        }
+    }
+}
+
+fn arm_first_nested_frame(
+    debugger: &mut UnixStream,
+    realm: DebuggerPageRealm,
+) -> (DebuggerProgram, blueice_ipc::debugger::DebuggerFrame) {
+    let program = one_program(
+        debugger_request(debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    let target = safe_points(
+        debugger_request(debugger, DebuggerRequest::ListSafePoints { program }),
+        program,
+    )
+    .into_iter()
+    .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+    .expect("direct BlueTS child has its first verified instruction");
+    assert_eq!(
+        debugger_request(
+            debugger,
+            DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point: target },
+        ),
+        DebuggerReply::NestedSafePointBreakpointArmed { safe_point: target }
+    );
+    let (frame, paused) = await_nested_paused_execution(debugger, program);
+    assert_eq!(paused, target);
+    (program, frame)
 }
 
 fn serve_two_classic_documents(listener: TcpListener) -> thread::JoinHandle<()> {
@@ -659,6 +749,1162 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
         !launcher.frame_dir.exists(),
         "launcher shutdown must remove its generation frame state"
     );
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn public_socket_steps_and_resumes_one_real_bluets_nested_frame() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let source = "function inner(a: number, b: number): number { let first: number = a; let second: number = b; return first + second; } globalThis.answer = inner(2, 2) + 1;";
+        let body = format!(
+            "<main>nested-bluets</main><script type=\"application/x-blueice-typescript\">{source}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+    let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    navigate(&mut browser, &url);
+
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let DebuggerReply::Capabilities(capabilities) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeCapabilities { realm },
+    ) else {
+        panic!("expected public debugger capabilities");
+    };
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == DebuggerCapability::NestedFrames
+            && report.state == DebuggerCapabilityState::Available
+    }));
+    for capability in [DebuggerCapability::Stack, DebuggerCapability::Scopes] {
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == capability && report.state == DebuggerCapabilityState::Available
+        }));
+    }
+    let program = one_program(
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    let target = safe_points(
+        debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+        program,
+    )
+    .into_iter()
+    .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+    .expect("BlueTS inner function must have its first safe point");
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point: target },
+        ),
+        DebuggerReply::NestedSafePointBreakpointArmed { safe_point: target }
+    );
+    let (frame, first) = await_nested_paused_execution(&mut debugger, program);
+    assert_eq!(first, target);
+    assert!(frame.matches_safe_point(first));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::StepRootInstruction { program }
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::StepNestedInstruction { frame },
+        ),
+        DebuggerReply::NestedStepRequested { frame }
+    );
+    let (successor_frame, successor) = await_nested_paused_execution(&mut debugger, program);
+    assert_eq!(successor_frame, frame);
+    assert_ne!(successor, first);
+    assert_eq!(successor.code_unit_ordinal, first.code_unit_ordinal);
+
+    let mut active_stack = None;
+    for _ in 0..64 {
+        let DebuggerReply::Stack(stack) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStack {
+                program,
+                frame: Some(frame),
+                max_frames: 2,
+            },
+        ) else {
+            panic!("the paused BlueTS child must expose a bounded stack");
+        };
+        assert_eq!(stack.program, program);
+        assert_eq!(stack.frame, Some(frame));
+        assert_eq!(stack.safe_points.len(), 2);
+        assert_eq!(stack.safe_points[0].code_unit_ordinal, 1);
+        assert_eq!(stack.safe_points[1].code_unit_ordinal, 0);
+        assert!(!stack.stack_truncated);
+        let DebuggerReply::Scopes(scopes) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetScopes {
+                program,
+                frame: Some(frame),
+                frame_index: 0,
+                expected_safe_point: stack.safe_points[0],
+                max_scope_entries: 256,
+            },
+        ) else {
+            panic!("the exact paused BlueTS child must expose active lexical slots");
+        };
+        assert_eq!(scopes.safe_point, stack.safe_points[0]);
+        assert!(!scopes.scope_truncated);
+        if scopes.entries.len() >= 2 {
+            active_stack = Some(stack);
+            break;
+        }
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::StepNestedInstruction { frame },
+            ),
+            DebuggerReply::NestedStepRequested { frame }
+        );
+        let (same_frame, _) = await_nested_paused_execution(&mut debugger, program);
+        assert_eq!(same_frame, frame);
+    }
+    let stack = active_stack.expect("BlueTS child must enter a scope with two slots");
+    let DebuggerReply::Stack(limited_stack) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetStack {
+            program,
+            frame: Some(frame),
+            max_frames: 1,
+        },
+    ) else {
+        panic!("the smaller stack budget must return an explicit truncation");
+    };
+    assert_eq!(limited_stack.safe_points, vec![stack.safe_points[0]]);
+    assert!(limited_stack.stack_truncated);
+    let DebuggerReply::Scopes(limited_scopes) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetScopes {
+            program,
+            frame: Some(frame),
+            frame_index: 0,
+            expected_safe_point: stack.safe_points[0],
+            max_scope_entries: 1,
+        },
+    ) else {
+        panic!("the smaller scope budget must return an explicit truncation");
+    };
+    assert_eq!(limited_scopes.entries.len(), 1);
+    assert!(limited_scopes.scope_truncated);
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetScopes {
+                program,
+                frame: Some(frame),
+                frame_index: 0,
+                expected_safe_point: DebuggerSafePoint {
+                    bytecode_offset: stack.safe_points[0].bytecode_offset + 1,
+                    ..stack.safe_points[0]
+                },
+                max_scope_entries: 1,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
+    for max_frames in [0, 65] {
+        assert!(matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetStack {
+                    program,
+                    frame: Some(frame),
+                    max_frames,
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::ResourceLimit,
+                ..
+            }
+        ));
+    }
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetScopes {
+                program,
+                frame: Some(frame),
+                frame_index: 0,
+                expected_safe_point: stack.safe_points[0],
+                max_scope_entries: 257,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::ResourceLimit,
+            ..
+        }
+    ));
+    let DebuggerReply::Scopes(parent_scopes) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetScopes {
+            program,
+            frame: Some(frame),
+            frame_index: 1,
+            expected_safe_point: stack.safe_points[1],
+            max_scope_entries: 256,
+        },
+    ) else {
+        panic!("the waiting root must remain the exact second stack frame");
+    };
+    assert_eq!(parent_scopes.frame_index, 1);
+    assert_eq!(parent_scopes.safe_point, stack.safe_points[1]);
+
+    assert!(matches!(
+        debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
+    let mut wrong_frame = frame;
+    wrong_frame.frame_handle += 1;
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStack {
+                program,
+                frame: Some(wrong_frame),
+                max_frames: 2,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResumeNestedExecution { frame: wrong_frame },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResumeNestedExecution { frame },
+        ),
+        DebuggerReply::NestedResumeRequested { frame }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program },
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: DebuggerExecutionState::NestedResuming { frame },
+        }
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program },
+        ) {
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::Paused { safe_point },
+                ..
+            } => {
+                assert_eq!(safe_point.code_unit_ordinal, 0);
+                break;
+            }
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::NestedResuming { frame: same },
+                ..
+            } if same == frame && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            reply => panic!("nested resume must rejoin its root: {reply:?}"),
+        }
+    }
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResumeNestedExecution { frame }
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
+    let DebuggerReply::Stack(root_stack) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetStack {
+            program,
+            frame: None,
+            max_frames: 2,
+        },
+    ) else {
+        panic!("the waiting root must be inspectable after its child returns");
+    };
+    assert_eq!(root_stack.safe_points.len(), 1);
+    assert_eq!(root_stack.safe_points[0].code_unit_ordinal, 0);
+    assert!(!root_stack.stack_truncated);
+    assert_eq!(
+        debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
+        DebuggerReply::ExecutionResumed { program }
+    );
+    await_completed_execution(&mut debugger, program);
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStack {
+                program,
+                frame: None,
+                max_frames: 2,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
+    write_client_message(&mut browser, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    assert!(matches!(
+        read_server_message(&mut browser).unwrap(),
+        ServerMessage::BlueTsScriptReports(reports)
+            if reports.len() == 1
+                && reports[0].kind == blueice_ipc::BlueTsScriptKind::Classic
+                && reports[0].outcome == blueice_ipc::BlueTsScriptExecutionOutcome::Executed
+    ));
+
+    fixture.join().unwrap();
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn public_socket_rejects_cross_tab_nested_frames_with_two_live_bluets_pages() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let source = "function inner(): number { return 4; } globalThis.answer = inner() + 1;";
+            let body = format!(
+                "<main>two-nested-tabs</main><script type=\"application/x-blueice-typescript\">{source}</script>"
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
+    });
+    let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            },
+        ),
+        DebuggerReply::HelloAck { .. }
+    ));
+    navigate(&mut browser, &url);
+    let first_realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let (first_program, first_frame) = arm_first_nested_frame(&mut debugger, first_realm);
+
+    write_client_message(
+        &mut browser,
+        &ClientMessage::OpenTab {
+            url: Some(url.clone()),
+        },
+    )
+    .unwrap();
+    let second_tab = match read_server_message(&mut browser).unwrap() {
+        ServerMessage::TabOpened {
+            tab_id,
+            url: Some(opened_url),
+        } => {
+            assert_eq!(opened_url, url);
+            tab_id
+        }
+        reply => panic!("expected second live BlueTS tab: {reply:?}"),
+    };
+    assert!(matches!(
+        read_server_message(&mut browser).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
+    let second_realm = match debugger_request(&mut debugger, DebuggerRequest::ListPageRealms) {
+        DebuggerReply::PageRealms(realms) => {
+            assert_eq!(realms.len(), 2);
+            realms
+                .into_iter()
+                .find(|realm| realm.tab_id == second_tab)
+                .unwrap()
+        }
+        reply => panic!("expected two live debugger realms: {reply:?}"),
+    };
+    assert_ne!(second_realm.tab_id, first_realm.tab_id);
+    let (second_program, second_frame) = arm_first_nested_frame(&mut debugger, second_realm);
+    assert_ne!(first_frame, second_frame);
+
+    for (frame, target_program) in [(first_frame, second_program), (second_frame, first_program)] {
+        let wrong_tab = blueice_ipc::debugger::DebuggerFrame {
+            program: target_program,
+            ..frame
+        };
+        for request in [
+            DebuggerRequest::StepNestedInstruction { frame: wrong_tab },
+            DebuggerRequest::ResumeNestedExecution { frame: wrong_tab },
+        ] {
+            assert!(matches!(
+                debugger_request(&mut debugger, request),
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidExecutionState,
+                    ..
+                }
+            ));
+        }
+    }
+    for (program, frame) in [(first_program, first_frame), (second_program, second_frame)] {
+        assert!(matches!(
+            debugger_request(&mut debugger, DebuggerRequest::GetExecutionState { program }),
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::NestedPaused { frame: same, .. },
+                ..
+            } if same == frame
+        ));
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::ResumeNestedExecution { frame },
+            ),
+            DebuggerReply::NestedResumeRequested { frame }
+        );
+    }
+
+    fixture.join().unwrap();
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn public_socket_rejects_predecessor_frame_after_supervised_child_cutover() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        for _ in 0..4 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let source = "function inner(): number { return 4; } globalThis.answer = inner() + 1;";
+            let body = format!(
+                "<main>cutover-nested-frame</main><script type=\"application/x-blueice-typescript\">{source}</script>"
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
+    });
+    let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    navigate(&mut browser, &url);
+    navigate(&mut browser, &url);
+    let mut predecessor_debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert!(matches!(
+        debugger_request(
+            &mut predecessor_debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            },
+        ),
+        DebuggerReply::HelloAck { .. }
+    ));
+    let predecessor_realm = one_realm(debugger_request(
+        &mut predecessor_debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let (predecessor_program, predecessor_frame) =
+        arm_first_nested_frame(&mut predecessor_debugger, predecessor_realm);
+
+    let mut control = UnixStream::connect(&launcher.control_socket).unwrap();
+    write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
+    assert_eq!(
+        read_control_reply(&mut control).unwrap(),
+        ControlReply::CutoverDone { tabs_migrated: 1 }
+    );
+    drop(predecessor_debugger);
+    let mut successor_browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut successor_browser).unwrap();
+    navigate(&mut successor_browser, &url);
+    let mut successor_debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert!(matches!(
+        debugger_request(
+            &mut successor_debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            },
+        ),
+        DebuggerReply::HelloAck { .. }
+    ));
+    let successor_realm = one_realm(debugger_request(
+        &mut successor_debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let (successor_program, successor_frame) =
+        arm_first_nested_frame(&mut successor_debugger, successor_realm);
+    assert_eq!(successor_realm, predecessor_realm);
+    assert_eq!(successor_program, predecessor_program);
+    assert_eq!(successor_frame.frame_handle, predecessor_frame.frame_handle);
+    assert_ne!(
+        successor_frame.core_instance,
+        predecessor_frame.core_instance
+    );
+    for request in [
+        DebuggerRequest::StepNestedInstruction {
+            frame: predecessor_frame,
+        },
+        DebuggerRequest::ResumeNestedExecution {
+            frame: predecessor_frame,
+        },
+        DebuggerRequest::GetStack {
+            program: predecessor_program,
+            frame: Some(predecessor_frame),
+            max_frames: 2,
+        },
+        DebuggerRequest::GetScopes {
+            program: predecessor_program,
+            frame: Some(predecessor_frame),
+            frame_index: 0,
+            expected_safe_point: DebuggerSafePoint {
+                program: predecessor_program,
+                code_unit_ordinal: 1,
+                bytecode_offset: 0,
+            },
+            max_scope_entries: 1,
+        },
+    ] {
+        assert!(matches!(
+            debugger_request(&mut successor_debugger, request),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                ..
+            }
+        ));
+    }
+    assert!(matches!(
+        debugger_request(
+            &mut successor_debugger,
+            DebuggerRequest::GetExecutionState {
+                program: successor_program,
+            },
+        ),
+        DebuggerReply::ExecutionState {
+            state: DebuggerExecutionState::NestedPaused { frame: same, .. },
+            ..
+        } if same == successor_frame
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut successor_debugger,
+            DebuggerRequest::ResumeNestedExecution {
+                frame: successor_frame,
+            },
+        ),
+        DebuggerReply::NestedResumeRequested {
+            frame: successor_frame,
+        }
+    );
+
+    fixture.join().unwrap();
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn public_socket_keeps_unsupported_deeper_bluets_call_shape_unavailable() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let source = "function inner(): number { return 4; } function outer(): number { return inner(); } outer();";
+        let body = format!(
+            "<main>unsupported-nested-bluets</main><script type=\"application/x-blueice-typescript\">{source}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+    let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    navigate(&mut browser, &url);
+
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            },
+        ),
+        DebuggerReply::HelloAck { .. }
+    ));
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let program = one_program(
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    let target = safe_points(
+        debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+        program,
+    )
+    .into_iter()
+    .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+    .expect("nested BlueTS function has an exact static point");
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point: target },
+        ),
+        DebuggerReply::NestedSafePointBreakpointArmed { safe_point: target }
+    );
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program },
+        ) {
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::Completed,
+                ..
+            } => break,
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::Pending,
+                ..
+            } if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            reply => panic!("unsupported deeper call must not expose a frame: {reply:?}"),
+        }
+    }
+    write_client_message(&mut browser, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    assert!(matches!(
+        read_server_message(&mut browser).unwrap(),
+        ServerMessage::BlueTsScriptReports(reports)
+            if reports.len() == 1
+                && reports[0].kind == blueice_ipc::BlueTsScriptKind::Classic
+                && matches!(reports[0].outcome, blueice_ipc::BlueTsScriptExecutionOutcome::Rejected { .. })
+    ));
+
+    fixture.join().unwrap();
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_inventories_a_pending_bluets_module_before_execution() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("fixture must receive navigation");
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let body = format!(
+            "<main>pending-module</main><script type=\"application/x-blueice-typescript-module\">{MODULE_BLUETS_SOURCE}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .expect("fixture must reply with a module document");
+    });
+    let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
+    navigate(&mut browser, &url);
+
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let program = one_program(
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program }
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+        }
+    );
+    let points = safe_points(
+        debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+        program,
+    );
+    assert!(points.iter().any(|point| point.code_unit_ordinal == 0));
+
+    blueice_ipc::write_client_message(&mut browser, &blueice_ipc::ClientMessage::GetDom).unwrap();
+    assert!(matches!(
+        read_server_message(&mut browser).unwrap(),
+        ServerMessage::Dom(_)
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program }
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Completed,
+        }
+    );
+
+    fixture.join().unwrap();
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_pauses_and_resumes_a_real_bluets_module_entry() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("fixture must receive navigation");
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let body = format!(
+            "<main>module-entry-debugger</main><script type=\"application/x-blueice-typescript-module\">{MODULE_BLUETS_SOURCE}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .expect("fixture must reply with the module document");
+    });
+    let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
+    navigate(&mut browser, &url);
+
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let DebuggerReply::Programs(programs) =
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm })
+    else {
+        panic!("expected the module and following classic programs");
+    };
+    if programs.len() != 1 {
+        write_client_message(&mut browser, &ClientMessage::GetBlueTsScriptReports).unwrap();
+        let bluets = read_server_message(&mut browser).unwrap();
+        write_client_message(&mut browser, &ClientMessage::GetBlueJsScriptReports).unwrap();
+        let bluejs = read_server_message(&mut browser).unwrap();
+        panic!("expected one module program, got {programs:?}; {bluets:?}; {bluejs:?}");
+    }
+    let program = programs[0];
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program }
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+        }
+    );
+    let points = safe_points(
+        debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+        program,
+    );
+    let mut armed = None;
+    for point in points
+        .into_iter()
+        .filter(|point| point.code_unit_ordinal == 0)
+    {
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmRootSafePointBreakpoint { safe_point: point },
+        ) {
+            DebuggerReply::RootSafePointBreakpointArmed { safe_point } => {
+                armed = Some(safe_point);
+                break;
+            }
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidSafePoint | DebuggerErrorCode::InvalidExecutionState,
+                ..
+            } => {}
+            reply => panic!("unexpected module arm reply: {reply:?}"),
+        }
+    }
+    let target = armed.expect("the first entry evaluate-body root point must arm");
+    await_paused_execution(&mut debugger, program, target);
+    assert_eq!(
+        debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
+        DebuggerReply::ExecutionResumed { program }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program }
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Resuming,
+        }
+    );
+    await_completed_execution(&mut debugger, program);
+    write_client_message(&mut browser, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    assert!(matches!(
+        read_server_message(&mut browser).unwrap(),
+        ServerMessage::BlueTsScriptReports(reports)
+            if reports.len() == 1
+                && reports[0].kind == blueice_ipc::BlueTsScriptKind::Module
+                && reports[0].outcome == blueice_ipc::BlueTsScriptExecutionOutcome::Executed
+    ));
+    write_client_message(&mut browser, &ClientMessage::GetDom).unwrap();
+    assert!(matches!(
+        read_server_message(&mut browser).unwrap(),
+        ServerMessage::Dom(dom) if format!("{dom:?}").contains("module-entry-debugger")
+    ));
+
+    fixture.join().unwrap();
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_steps_a_real_bluets_module_then_rejects_stale_generation() {
+    use blueice_ipc::debugger::DebuggerStaticMetadataSafePointSpanTarget;
+
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().expect("fixture must receive navigation");
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let body = format!(
+                "<main>module-step-debugger</main><script type=\"application/x-blueice-typescript-module\">{MODULE_STEP_BLUETS_SOURCE}</script>"
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .expect("fixture must reply with the module document");
+        }
+    });
+    let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            inventory: true,
+            source_inventory: true,
+            safe_point_span: true,
+            source_span_step: true,
+            ..StaticMetadataPolicy::default()
+        },
+    );
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
+    navigate(&mut browser, &url);
+
+    let manifest = DebuggerMetadataCapabilityManifest::opaque_source_span_step();
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: manifest.clone(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: manifest,
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let program = one_program(
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    let DebuggerReply::StaticMetadata(metadata) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadata { program },
+    ) else {
+        panic!("the BlueTS module needs one opaque metadata attachment");
+    };
+    let metadata = metadata[0];
+    let DebuggerReply::StaticMetadataSources(sources) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataSources { metadata },
+    ) else {
+        panic!("the same debugger stream must receive source IDs");
+    };
+    let points = safe_points(
+        debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+        program,
+    );
+    let mut armed = None;
+    for point in points
+        .iter()
+        .copied()
+        .filter(|point| point.code_unit_ordinal == 0)
+    {
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmRootSafePointBreakpoint { safe_point: point },
+        ) {
+            DebuggerReply::RootSafePointBreakpointArmed { safe_point } => {
+                armed = Some(safe_point);
+                break;
+            }
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidSafePoint | DebuggerErrorCode::InvalidExecutionState,
+                ..
+            } => {}
+            reply => panic!("unexpected module arm reply: {reply:?}"),
+        }
+    }
+    let target = armed.expect("the module entry evaluate-body point must arm");
+    await_paused_execution(&mut debugger, program, target);
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::StepRootInstruction { program }
+        ),
+        DebuggerReply::ExecutionStepRequested { program }
+    );
+    let mut current = await_step_paused_execution(&mut debugger, program, target);
+    assert!(points.contains(&current));
+    let bound_span = |debugger: &mut UnixStream, point: DebuggerSafePoint| {
+        sources.iter().find_map(|source| {
+            let target = DebuggerStaticMetadataSafePointSpanTarget {
+                safe_point: point,
+                source: *source,
+            };
+            match debugger_request(
+                debugger,
+                DebuggerRequest::DescribeStaticMetadataSafePointSpan { target },
+            ) {
+                DebuggerReply::StaticMetadataSafePointSpan(span) => Some((target, span)),
+                _ => None,
+            }
+        })
+    };
+    let mut origin = None;
+    for _ in 0..128 {
+        if let Some(span) = bound_span(&mut debugger, current) {
+            origin = Some(span);
+            break;
+        }
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::StepRootInstruction { program }
+            ),
+            DebuggerReply::ExecutionStepRequested { program }
+        );
+        current = await_step_paused_execution(&mut debugger, program, current);
+        assert!(points.contains(&current));
+    }
+    let (source_target, original_span) =
+        origin.expect("module instruction step must reach a bound span");
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::StepStaticMetadataSourceSpan {
+                target: source_target,
+            },
+        ),
+        DebuggerReply::ExecutionSourceSpanStepRequested {
+            safe_point: current,
+        }
+    );
+    let successor = await_step_paused_execution(&mut debugger, program, current);
+    assert!(points.contains(&successor));
+    let (_, successor_span) = bound_span(&mut debugger, successor)
+        .expect("source step stops at another bound module span");
+    assert_ne!(
+        (original_span.start_byte, original_span.end_byte),
+        (successor_span.start_byte, successor_span.end_byte)
+    );
+    assert_eq!(
+        debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
+        DebuggerReply::ExecutionResumed { program }
+    );
+    await_completed_execution(&mut debugger, program);
+    write_client_message(&mut browser, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    assert!(matches!(
+        read_server_message(&mut browser).unwrap(),
+        ServerMessage::BlueTsScriptReports(reports)
+            if reports.len() == 1
+                && reports[0].kind == blueice_ipc::BlueTsScriptKind::Module
+                && reports[0].outcome == blueice_ipc::BlueTsScriptExecutionOutcome::Executed
+    ));
+
+    navigate(&mut browser, &url);
+    fixture.join().unwrap();
+    for request in [
+        DebuggerRequest::ArmRootSafePointBreakpoint { safe_point: target },
+        DebuggerRequest::StepRootInstruction { program },
+        DebuggerRequest::StepStaticMetadataSourceSpan {
+            target: source_target,
+        },
+    ] {
+        assert!(matches!(
+            debugger_request(&mut debugger, request),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::StaleRealm,
+                ..
+            }
+        ));
+    }
+    let successor_realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    assert_eq!(successor_realm.tab_id, realm.tab_id);
+    assert_ne!(successor_realm.realm_generation, realm.realm_generation);
+    let _ = one_program(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListPrograms {
+                realm: successor_realm,
+            },
+        ),
+        successor_realm,
+    );
+    launcher.shutdown();
     let _ = std::fs::remove_file(gatekeeper_socket);
 }
 
@@ -2123,6 +3369,420 @@ fn launcher_exposes_exact_bluets_safe_point_spans_only_after_same_stream_source_
         DebuggerReply::Unsupported { .. }
     ));
     drop(separate);
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_batches_exact_classic_and_module_stack_coordinates_only_with_receipts() {
+    for (mime, slug) in [
+        ("application/x-blueice-typescript", "classic"),
+        ("application/x-blueice-typescript-module", "module"),
+    ] {
+        let gatekeeper_socket = clearing_gatekeeper();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let fixture = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let body = format!(
+                "<main>{slug}-stack-coordinates</main><script type=\"{mime}\">{STACK_COORDINATE_BLUETS_SOURCE}</script>"
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        });
+        let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+            &gatekeeper_socket,
+            StaticMetadataPolicy {
+                inventory: true,
+                source_inventory: true,
+                safe_point_span: true,
+                ..StaticMetadataPolicy::default()
+            },
+        );
+        let mut browser = launcher.connect_browser();
+        blueice_ipc::client_handshake(&mut browser).unwrap();
+        navigate(&mut browser, &url);
+        fixture.join().unwrap();
+
+        let manifest = DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
+        let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::Hello {
+                    protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    requested_metadata_capabilities: manifest.clone(),
+                },
+            ),
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_metadata_capabilities: manifest.clone(),
+            }
+        );
+        let realm = one_realm(debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListPageRealms,
+        ));
+        let program = one_program(
+            debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+            realm,
+        );
+        let child_entry = safe_points(
+            debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+            program,
+        )
+        .into_iter()
+        .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+        .expect("the direct BlueTS function has an entry safe point");
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::ArmNestedSafePointBreakpoint {
+                    safe_point: child_entry,
+                },
+            ),
+            DebuggerReply::NestedSafePointBreakpointArmed {
+                safe_point: child_entry,
+            }
+        );
+        let (frame, paused) = await_nested_paused_execution(&mut debugger, program);
+        assert_eq!(paused, child_entry);
+        let DebuggerReply::Stack(stack) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStack {
+                program,
+                frame: Some(frame),
+                max_frames: 2,
+            },
+        ) else {
+            panic!("{slug} child must expose its caller and callee");
+        };
+        assert_eq!(stack.safe_points.len(), 2);
+        assert_eq!(stack.safe_points[0], child_entry);
+        assert_eq!(stack.safe_points[1].code_unit_ordinal, 0);
+        assert!(!stack.stack_truncated);
+        let DebuggerReply::StaticMetadata(metadata) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadata { program },
+        ) else {
+            panic!("{slug} BlueTS program must have metadata");
+        };
+        let metadata = metadata[0];
+        let guessed = DebuggerStackCoordinatesTarget {
+            expected_stack: stack.clone(),
+            sources: vec![
+                DebuggerStaticMetadataSourceId {
+                    metadata,
+                    source_id: 0,
+                };
+                2
+            ],
+        };
+        assert!(matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetStackCoordinates { target: guessed },
+            ),
+            DebuggerReply::Unsupported { .. }
+        ));
+        let DebuggerReply::StaticMetadataSources(sources) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadataSources { metadata },
+        ) else {
+            panic!("{slug} source IDs must be inventoried on this stream");
+        };
+        let page_source = sources
+            .iter()
+            .copied()
+            .find(|source| {
+                stack.safe_points.iter().all(|safe_point| {
+                    matches!(
+                        debugger_request(
+                            &mut debugger,
+                            DebuggerRequest::DescribeStaticMetadataSafePointSpan {
+                                target: DebuggerStaticMetadataSafePointSpanTarget {
+                                    safe_point: *safe_point,
+                                    source: *source,
+                                },
+                            },
+                        ),
+                        DebuggerReply::StaticMetadataSafePointSpan(_)
+                    )
+                })
+            })
+            .expect("both frames must map to one receipted BlueTS source");
+        let target = DebuggerStackCoordinatesTarget {
+            expected_stack: stack.clone(),
+            sources: vec![page_source; 2],
+        };
+        let request = DebuggerRequest::GetStackCoordinates {
+            target: target.clone(),
+        };
+        let DebuggerReply::StackCoordinates(coordinates) =
+            debugger_request(&mut debugger, request.clone())
+        else {
+            panic!("{slug} exact paused stack must have original coordinates");
+        };
+        assert_eq!(coordinates.stack, stack);
+        assert!(coordinates.is_well_formed());
+        let source = STACK_COORDINATE_BLUETS_SOURCE;
+        let expected_ranges = [
+            (
+                source.find("function inner").unwrap(),
+                source.find("} globalThis").unwrap() + 1,
+            ),
+            (source.find("globalThis.answer").unwrap(), source.len()),
+        ];
+        for (span, (start, end)) in coordinates.spans.iter().zip(expected_ranges) {
+            assert_eq!(
+                (span.start_byte as usize, span.end_byte as usize),
+                (start, end)
+            );
+            assert_eq!(span.source, page_source);
+            assert_eq!(span.coordinates.start_line, 0);
+            assert_eq!(
+                span.coordinates.start_column_utf16,
+                source[..start].encode_utf16().count() as u32
+            );
+            assert_eq!(
+                span.coordinates.end_column_utf16,
+                source[..end].encode_utf16().count() as u32
+            );
+        }
+        assert!(!format!("{coordinates:?}").contains("function inner"));
+        let mut unreceipted = target.clone();
+        unreceipted.sources[1].source_id =
+            sources.iter().map(|source| source.source_id).max().unwrap() + 1;
+        assert!(matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetStackCoordinates {
+                    target: unreceipted
+                },
+            ),
+            DebuggerReply::Unsupported { .. }
+        ));
+        if let Some(wrong) = sources
+            .iter()
+            .copied()
+            .find(|source| *source != page_source)
+        {
+            let mut wrong_source = target.clone();
+            wrong_source.sources[1] = wrong;
+            assert!(!matches!(
+                debugger_request(
+                    &mut debugger,
+                    DebuggerRequest::GetStackCoordinates {
+                        target: wrong_source
+                    },
+                ),
+                DebuggerReply::StackCoordinates(_)
+            ));
+        }
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::StepNestedInstruction { frame },
+            ),
+            DebuggerReply::NestedStepRequested { frame }
+        );
+        let (same_frame, moved) = await_nested_paused_execution(&mut debugger, program);
+        assert_eq!(same_frame, frame);
+        assert_ne!(moved, child_entry);
+        assert!(matches!(
+            debugger_request(&mut debugger, request.clone()),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                ..
+            }
+        ));
+        drop(debugger);
+        let mut separate = UnixStream::connect(&launcher.debugger_socket).unwrap();
+        assert!(matches!(
+            debugger_request(
+                &mut separate,
+                DebuggerRequest::Hello {
+                    protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    requested_metadata_capabilities: manifest,
+                },
+            ),
+            DebuggerReply::HelloAck { .. }
+        ));
+        assert!(matches!(
+            debugger_request(&mut separate, request),
+            DebuggerReply::Unsupported { .. }
+        ));
+        drop(separate);
+        launcher.shutdown();
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+}
+
+#[test]
+fn launcher_rejects_a_real_paused_unbound_bluets_stack_without_partial_coordinates() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let source = "const answer: number = 42; globalThis.answer = answer;";
+        let body = format!(
+            "<main>unbound-stack-coordinates</main><script type=\"application/x-blueice-typescript\">{source}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+    let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            inventory: true,
+            source_inventory: true,
+            safe_point_span: true,
+            ..StaticMetadataPolicy::default()
+        },
+    );
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    navigate(&mut browser, &url);
+    fixture.join().unwrap();
+    let manifest = DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: manifest.clone(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: manifest,
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let program = one_program(
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    let points = safe_points(
+        debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+        program,
+    );
+    let halt = points
+        .iter()
+        .copied()
+        .filter(|point| point.code_unit_ordinal == 0)
+        .max_by_key(|point| point.bytecode_offset)
+        .expect("the classic root must end in an unowned Halt instruction");
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmRootSafePointBreakpoint { safe_point: halt },
+        ),
+        DebuggerReply::RootSafePointBreakpointArmed { safe_point: halt }
+    );
+    await_paused_execution(&mut debugger, program, halt);
+    let DebuggerReply::Stack(stack) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetStack {
+            program,
+            frame: None,
+            max_frames: 1,
+        },
+    ) else {
+        panic!("the root must really pause at the unbound instruction");
+    };
+    assert_eq!(stack.safe_points, vec![halt]);
+    let DebuggerReply::StaticMetadata(metadata) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadata { program },
+    ) else {
+        panic!("the BlueTS program must retain metadata");
+    };
+    let metadata = metadata[0];
+    let DebuggerReply::StaticMetadataSources(sources) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataSources { metadata },
+    ) else {
+        panic!("the same stream must inventory source IDs");
+    };
+    let page_source = points
+        .iter()
+        .copied()
+        .filter(|point| point.code_unit_ordinal == 0 && *point != halt)
+        .find_map(|bound_root| {
+            sources.iter().copied().find(|source| {
+                matches!(
+                    debugger_request(
+                        &mut debugger,
+                        DebuggerRequest::DescribeStaticMetadataSafePointSpan {
+                            target: DebuggerStaticMetadataSafePointSpanTarget {
+                                safe_point: bound_root,
+                                source: *source,
+                            },
+                        },
+                    ),
+                    DebuggerReply::StaticMetadataSafePointSpan(_)
+                )
+            })
+        })
+        .expect("an earlier root statement must identify the correct receipted source");
+    let unbound_span_reply = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeStaticMetadataSafePointSpan {
+            target: DebuggerStaticMetadataSafePointSpanTarget {
+                safe_point: halt,
+                source: page_source,
+            },
+        },
+    );
+    assert!(
+        matches!(
+            unbound_span_reply,
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ),
+        "unexpected unbound span reply: {unbound_span_reply:?}"
+    );
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStackCoordinates {
+                target: DebuggerStackCoordinatesTarget {
+                    expected_stack: stack,
+                    sources: vec![page_source],
+                },
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            ..
+        }
+    ));
     launcher.shutdown();
     let _ = std::fs::remove_file(gatekeeper_socket);
 }

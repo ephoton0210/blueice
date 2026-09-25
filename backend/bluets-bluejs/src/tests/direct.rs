@@ -90,10 +90,22 @@ fn installs_direct_bytecode_with_its_checked_canonical_source_identity() {
         attachment.safe_point_map.format,
         BLUEJS_SAFE_POINT_MAP_ABI_V1
     );
-    assert_eq!(
-        attachment.safe_point_map.entries.len(),
-        attachment.provenance.len()
-    );
+    assert!(attachment.safe_point_map.entries.len() >= attachment.provenance.len());
+    for provenance in &attachment.provenance {
+        if let DirectSafePointBinding::Bound(safe_point) = provenance.safe_point {
+            let entry = attachment
+                .safe_point_map
+                .source_span_for_safe_point(
+                    safe_point.code_unit.ordinal(),
+                    safe_point.bytecode_offset,
+                )
+                .expect("every bound top-level statement retains its source span");
+            assert_eq!(
+                (entry.start_byte, entry.end_byte),
+                (provenance.source.start, provenance.source.end)
+            );
+        }
+    }
     attachment
         .safe_point_map
         .validate_against(&registry, handle)
@@ -191,6 +203,63 @@ fn safe_point_map_retains_original_utf16_coordinates_without_source_text() {
     assert!(malformed
         .validate_against(&registry, attachment.handle)
         .is_err());
+}
+
+#[test]
+fn classic_and_module_maps_own_root_call_and_child_entry_without_mapping_halt() {
+    let source = "/* 🚀 */ function inner(a: number): number { return a + 1; } inner(3);";
+    let function_start = source.find("function inner").unwrap();
+    let function_end = source.find("} inner").unwrap() + 1;
+    let call_start = source.find("inner(3)").unwrap();
+    for module in [false, true] {
+        let mut registry = bluejs::BlueJsProgramRegistry::default();
+        let loader = MapLoader::from([ModuleSource::new(ENTRY, source)]);
+        let attachment = if module {
+            compile_direct_module(ENTRY, &loader, CompilerOptions::default())
+                .unwrap()
+                .attach_in(&mut registry)
+                .unwrap()
+        } else {
+            compile_direct_script(ENTRY, &loader, CompilerOptions::default())
+                .unwrap()
+                .attach_in(&mut registry)
+                .unwrap()
+        };
+        let installed = registry.get(attachment.handle).unwrap();
+        let root = installed.code_units()[0].id();
+        let call = installed
+            .bytecode()
+            .instructions()
+            .find(|instruction| instruction.opcode == bluejs::Opcode::Call)
+            .expect("the source call must emit a root Call instruction");
+        let root_span = attachment
+            .safe_point_map
+            .source_span_for_safe_point(root.ordinal(), call.offset as u32)
+            .unwrap();
+        assert_eq!(
+            (root_span.start_byte, root_span.end_byte),
+            (call_start, source.len())
+        );
+        let child = &installed.code_units()[1];
+        let child_span = attachment
+            .safe_point_map
+            .source_span_for_safe_point(child.id().ordinal(), child.instruction_offsets()[0])
+            .unwrap();
+        assert_eq!(
+            (child_span.start_byte, child_span.end_byte),
+            (function_start, function_end)
+        );
+        assert_eq!(child_span.location.start.column_utf16, 9);
+        let halt = installed
+            .bytecode()
+            .instructions()
+            .find(|instruction| instruction.opcode == bluejs::Opcode::Halt)
+            .unwrap();
+        assert!(attachment
+            .safe_point_map
+            .source_span_for_safe_point(root.ordinal(), halt.offset as u32)
+            .is_none());
+    }
 }
 
 #[test]

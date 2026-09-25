@@ -36,9 +36,11 @@ use debugger_support::{
 };
 pub use debugger_support::{
     JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
-    JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerProgram,
-    JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerStaticMetadata,
-    JavaScriptPageDebuggerStaticMetadataContractDisplay,
+    JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
+    JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
+    JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerScopeEntry,
+    JavaScriptPageDebuggerStackFrame, JavaScriptPageDebuggerStackSnapshot,
+    JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataContractDisplay,
     JavaScriptPageDebuggerStaticMetadataContractId,
     JavaScriptPageDebuggerStaticMetadataContractLocation,
     JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
@@ -61,7 +63,8 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataSymbolType,
     JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
     JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
-    JavaScriptPageDebuggerStaticMetadataTypeTarget,
+    JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageDebuggerValuePreview,
+    JavaScriptPageDebuggerValueTarget,
 };
 
 /// Source-free debugger location operations owned by an explicitly selected
@@ -73,7 +76,8 @@ pub use debugger_support::{
 /// configuration table in addition to location discovery. The table neither
 /// pauses nor executes its VM unless an explicitly selected child execution
 /// controller implements the separate root-classic methods below. Nested
-/// stepping, stacks, scopes, source, bytecode, and runtime values remain excluded.
+/// stepping and bounded stack/scope snapshots require separate exact-target
+/// methods and capability gates; source, bytecode, and values remain excluded.
 pub trait PageJavaScriptDebuggerLocations {
     /// Whether this owner currently has the exact live tab/document realm.
     fn debugger_has_live_realm(&mut self, tab_id: TabId, document_generation: u64) -> bool;
@@ -532,6 +536,86 @@ pub trait PageJavaScriptDebuggerLocations {
     /// execution-control lifecycle installed. This is distinct from ordinary
     /// breakpoint configuration and is false by default.
     fn debugger_execution_control_available(&self) -> bool {
+        false
+    }
+
+    /// Nested-frame control is a distinct default-deny capability. It never
+    /// follows automatically from root execution control or safe-point lists.
+    fn debugger_nested_frames_available(&self) -> bool {
+        false
+    }
+
+    fn arm_debugger_nested_safe_point_breakpoint(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _code_unit_ordinal: u32,
+        _bytecode_offset: u32,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// `None` means this live program is not currently in a nested frame;
+    /// ordinary root/pending/completed state remains separately queryable.
+    fn debugger_nested_execution_state(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+    ) -> Result<Option<JavaScriptPageDebuggerNestedExecutionState>, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    fn step_debugger_nested_instruction(
+        &mut self,
+        _frame: JavaScriptPageDebuggerFrame,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    fn resume_debugger_nested_execution(
+        &mut self,
+        _frame: JavaScriptPageDebuggerFrame,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Private core-facing bounded inspection. Public stack and scope reads
+    /// still require their own separately advertised capability gates.
+    fn debugger_stack_snapshot(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program: JavaScriptPageDebuggerProgram,
+        _frame: Option<JavaScriptPageDebuggerFrame>,
+        _max_frames: u32,
+        _max_scope_entries: u32,
+    ) -> Result<JavaScriptPageDebuggerStackSnapshot, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Private core-facing exact active-slot read. A public owner receipt and
+    /// grant are separate work; this method advertises no public capability.
+    fn debugger_value_snapshot(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerValueTarget,
+    ) -> Result<JavaScriptPageDebuggerValuePreview, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Stack locations and active lexical scopes are separately granted on
+    /// the owner-selected debugger route; neither follows from stepping.
+    fn debugger_stack_available(&self) -> bool {
+        false
+    }
+
+    fn debugger_scopes_available(&self) -> bool {
         false
     }
 

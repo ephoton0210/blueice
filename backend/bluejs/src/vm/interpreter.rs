@@ -1522,16 +1522,34 @@ impl Vm {
                         {
                             self.direct_eval(native::argument(&args, 0))?
                         } else {
-                            self.call_native(
+                            let direct_debugger_call = if instruction.opcode == Opcode::Call
+                                && self.debugger_nested_pause_request.is_some()
+                            {
+                                match callee.object_id() {
+                                    Some(id) => self.heap.closure(id)?.is_some(),
+                                    None => false,
+                                }
+                            } else {
+                                false
+                            };
+                            let previous = std::mem::replace(
+                                &mut self.debugger_nested_direct_call,
+                                direct_debugger_call,
+                            );
+                            let result = self.call_native(
                                 callee,
                                 receiver,
                                 args,
                                 instruction.opcode == Opcode::Construct,
-                            )?
+                            );
+                            self.debugger_nested_direct_call = previous;
+                            result?
                         };
                         self.check_string(&result)?;
-                        self.stack.truncate(base);
-                        self.stack.push(result);
+                        if self.debugger_nested_continuation.is_none() {
+                            self.stack.truncate(base);
+                            self.stack.push(result);
+                        }
                     }
                     Opcode::DiscardReference => {
                         let value = self.pop();
@@ -1707,6 +1725,17 @@ impl Vm {
                 Err(error) if error.is_catchable() => Some(Completion::Throw(error)),
                 Err(error) => return Err(error),
             };
+            if self.debugger_nested_continuation.is_some() {
+                debug_assert_eq!(instruction.opcode, Opcode::Call);
+                for handler in &mut handlers {
+                    handler.stack_depth -= handler_stack_base;
+                }
+                return Ok(InterpreterExit::Suspend {
+                    pc: instruction.offset,
+                    iterators: std::mem::take(iterators),
+                    handlers: std::mem::take(&mut handlers),
+                });
+            }
             if let Some(promise) = suspended_await.take() {
                 for handler in &mut handlers {
                     handler.stack_depth -= handler_stack_base;

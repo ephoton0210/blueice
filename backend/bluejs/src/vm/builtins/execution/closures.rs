@@ -65,6 +65,22 @@ impl Vm {
             home,
             with_objects: closure_with_objects,
         } = call;
+        let nested_debugger_target = self.debugger_nested_pause_request.filter(|request| {
+            code.debugger_program_generation == Some(request.program_generation)
+                && code.debugger_code_unit_ordinal == Some(request.code_unit_ordinal)
+        });
+        if nested_debugger_target.is_some()
+            && (self.call_depth != 1
+                || !self.debugger_nested_direct_call
+                || construct
+                || code.async_function
+                || code.generator
+                || code.class_constructor)
+        {
+            return Err(RuntimeError::Unsupported(
+                "nested debugger pause requires a direct synchronous closure call",
+            ));
+        }
         if code.class_constructor && !construct {
             // §10.2.1.1's class-constructor rejection is created in the
             // function's Realm. Materialize it before a Test262 membrane can
@@ -316,6 +332,68 @@ impl Vm {
                     Err(error)
                 }
             }
+        } else if let Some(target) = nested_debugger_target {
+            let frame_serial = self.next_debugger_frame_serial;
+            let next_frame_serial =
+                frame_serial
+                    .checked_add(1)
+                    .ok_or(RuntimeError::Unsupported(
+                        "nested debugger frame serial exhausted",
+                    ))?;
+            let pending_base = self.pending_completions.len();
+            let save_base = self.completion_saves.len();
+            let mut iterators = Vec::new();
+            let result = match self.interpret(
+                &code,
+                &mut iterators,
+                0,
+                None,
+                Some(InterpreterSuspensionPoint::Offset(target.bytecode_offset)),
+                None,
+            ) {
+                Ok(InterpreterExit::Suspend {
+                    pc,
+                    iterators,
+                    handlers,
+                }) => {
+                    let stack = self.stack.split_off(frame_base);
+                    let mut execution = self.suspend_module_execution();
+                    let parent_stack = std::mem::replace(&mut execution.stack, stack);
+                    self.next_debugger_frame_serial = next_frame_serial;
+                    self.debugger_nested_continuation = Some(NestedDebuggerContinuation {
+                        frame_serial,
+                        code_unit_ordinal: target.code_unit_ordinal,
+                        code: code.as_ref().clone(),
+                        pc,
+                        execution,
+                        iterators,
+                        handlers,
+                    });
+                    suspended_parent_stack = Some(parent_stack);
+                    Ok(Value::Undefined)
+                }
+                Ok(InterpreterExit::Return(value)) => Ok(value),
+                Ok(InterpreterExit::Yield { .. } | InterpreterExit::Await { .. }) => Err(
+                    RuntimeError::Unsupported("nested debugger target cannot yield or await"),
+                ),
+                Err(error) => Err(error),
+            };
+            if result.is_err() {
+                let base = self.stack.len();
+                if let Err(RuntimeError::Thrown(value)) = &result {
+                    self.stack.push(value.clone());
+                }
+                self.stack.extend(iterators.iter().cloned());
+                for record in iterators.into_iter().rev() {
+                    let _ = self.iterator_close(&record);
+                }
+                self.stack.truncate(base);
+            }
+            if suspended_parent_stack.is_none() {
+                self.pending_completions.truncate(pending_base);
+                self.completion_saves.truncate(save_base);
+            }
+            result
         } else {
             self.run(&code)
         };

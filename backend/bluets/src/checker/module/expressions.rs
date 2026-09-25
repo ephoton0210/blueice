@@ -6,243 +6,13 @@
 
 use super::*;
 
-impl<'a> ModuleChecker<'a> {
-    pub(super) fn infer_expression(
-        &self,
-        tokens: &[Token],
-        scope: &BTreeMap<String, Type>,
-    ) -> Type {
-        // Each chained member call recursively infers its receiver. Keep
-        // that recursion under the compiler's existing expansion envelope.
-        if tokens.iter().filter(|token| token.is(".")).count() > self.max_type_expansions {
-            return Type::Unknown;
-        }
-        let tokens = strip_outer_parentheses(tokens);
-        if tokens.len() > 1 && tokens.last().is_some_and(|token| token.is("!")) {
-            let inferred = self.infer_expression(&tokens[..tokens.len() - 1], scope);
-            return match inferred {
-                Type::Union(options) => {
-                    let mut retained = options
-                        .into_iter()
-                        .filter(|option| !matches!(option, Type::Null | Type::Undefined))
-                        .collect::<Vec<_>>();
-                    match retained.len() {
-                        0 => Type::Never,
-                        1 => retained.pop().expect("one retained non-null type"),
-                        _ => Type::Union(retained),
-                    }
-                }
-                Type::Null | Type::Undefined => Type::Never,
-                value => value,
-            };
-        }
-        if tokens
-            .first()
-            .is_some_and(|token| token.is("++") || token.is("--"))
-            || tokens
-                .last()
-                .is_some_and(|token| token.is("++") || token.is("--"))
-        {
-            return Type::Number;
-        }
-        if let Some(call) = member_call_parts(tokens) {
-            let base = self.infer_expression(call.receiver, scope);
-            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-            if let PropertyType::Found {
-                value: Type::Function { result, .. },
-                ..
-            } = property_type(
-                &base,
-                &call.member.text,
-                &self.types,
-                &mut HashSet::new(),
-                &mut budget,
-            ) {
-                return *result;
-            }
-            return Type::Unknown;
-        }
-        if let Some(call) =
-            direct_call_parts(tokens).filter(|call| split_call_arguments(call.arguments).is_some())
-        {
-            if let Some(signatures) = self.functions.get(&call.callee.text) {
-                let explicit = call.generic.then(|| {
-                    self.module
-                        .generic_call_type_arguments
-                        .get(&call.callee.start)
-                        .expect("parsed generic call has recorded type arguments")
-                        .as_slice()
-                });
-                return self.infer_function_call(signatures, call.arguments, scope, explicit);
-            }
-            return scope
-                .get(&call.callee.text)
-                .cloned()
-                .unwrap_or(Type::Unknown);
-        }
-        if let Some((_, consequent, alternate)) = conditional_expression_parts(tokens) {
-            return merge_conditional_branch_types(
-                self.infer_expression(consequent, scope),
-                self.infer_expression(alternate, scope),
-            );
-        }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["??"], |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_nullish_coalescing_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["||"], |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_boolean_logical_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["&&"], |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_boolean_logical_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        for operators in [&["|"][..], &["^"][..], &["&"][..]] {
-            if let Some((left, _, right)) = top_level_binary_parts(tokens, operators, |start| {
-                self.module.generic_call_type_arguments.contains_key(&start)
-            }) {
-                return infer_numeric_binary_expression(
-                    self.infer_expression(left, scope),
-                    self.infer_expression(right, scope),
-                );
-            }
-        }
-        if top_level_binary_parts(
-            tokens,
-            &[
-                "===",
-                "!==",
-                "==",
-                "!=",
-                "<",
-                ">",
-                "<=",
-                ">=",
-                "in",
-                "instanceof",
-            ],
-            |start| self.module.generic_call_type_arguments.contains_key(&start),
-        )
-        .is_some()
-        {
-            return Type::Boolean;
-        }
-        if let Some((left, _, right)) = top_level_shift_parts(tokens, |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_numeric_binary_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        if let Some((left, operator, right)) =
-            top_level_binary_parts(tokens, &["+", "-"], |start| {
-                self.module.generic_call_type_arguments.contains_key(&start)
-            })
-        {
-            return infer_additive_expression(
-                operator,
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["*", "/", "%"], |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_numeric_binary_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["**"], |start| {
-            self.module.generic_call_type_arguments.contains_key(&start)
-        }) {
-            return infer_numeric_binary_expression(
-                self.infer_expression(left, scope),
-                self.infer_expression(right, scope),
-            );
-        }
-        let Some(first) = tokens.first() else {
-            return Type::Undefined;
-        };
-        if first.is("typeof") {
-            return Type::String;
-        }
-        if first.is("void") {
-            return Type::Undefined;
-        }
-        if matches!(first.text.as_str(), "!") {
-            return Type::Boolean;
-        }
-        if matches!(first.text.as_str(), "+" | "-" | "~") {
-            return Type::Number;
-        }
-        if first.kind == TokenKind::String || first.kind == TokenKind::Template {
-            return Type::String;
-        }
-        if first.kind == TokenKind::Number {
-            return Type::Number;
-        }
-        if let Some((receiver, property)) = member_access_target(tokens) {
-            if tokens.iter().filter(|token| token.is("[")).count() > self.max_type_expansions {
-                return Type::Unknown;
-            }
-            let Some(property) = property else {
-                return Type::Unknown;
-            };
-            let owner = self.infer_expression(receiver, scope);
-            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-            return match property_type(
-                &owner,
-                property,
-                &self.types,
-                &mut HashSet::new(),
-                &mut budget,
-            ) {
-                PropertyType::Found { value, .. } => value,
-                PropertyType::Missing | PropertyType::Indeterminate | PropertyType::Exhausted => {
-                    Type::Unknown
-                }
-            };
-        }
-        match first.text.as_str() {
-            "true" | "false" => Type::Boolean,
-            "null" => Type::Null,
-            "undefined" => Type::Undefined,
-            "[" => infer_array(tokens, scope),
-            "{" => infer_record(tokens, scope),
-            _ if first.kind == TokenKind::Identifier => {
-                if tokens.len() == 1 {
-                    if let Some(signature) =
-                        self.functions.get(&first.text).and_then(|set| set.first())
-                    {
-                        if signature.type_parameters.is_empty() {
-                            return Type::Function {
-                                parameters: signature.parameters.clone(),
-                                result: Box::new(signature.return_type.clone()),
-                            };
-                        }
-                    }
-                }
-                scope.get(&first.text).cloned().unwrap_or(Type::Unknown)
-            }
-            _ => Type::Unknown,
-        }
-    }
+mod indexing;
+mod inference;
+mod readonly;
 
+use indexing::{canonical_index_key, indexed_value_type};
+
+impl<'a> ModuleChecker<'a> {
     pub(super) fn infer_function_call(
         &self,
         signatures: &[FunctionSignature],
@@ -791,6 +561,11 @@ impl<'a> ModuleChecker<'a> {
             return;
         };
         let owner = self.infer_expression(mutation.receiver, scope);
+        if self.reject_computed_readonly_mutation(mutation.receiver, mutation.property, scope, span)
+            || self.reject_opaque_readonly_receiver(mutation.receiver, scope, span)
+        {
+            return;
+        }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         let Some(property) = mutation.property else {
             match contains_readonly_member(&owner, &self.types, &mut HashSet::new(), &mut budget) {
@@ -921,50 +696,67 @@ impl<'a> ModuleChecker<'a> {
                 let Some((receiver, property)) = member_access_target(target) else {
                     continue;
                 };
+                if self.reject_opaque_readonly_receiver(receiver, scope, span) {
+                    return;
+                }
                 let owner = self.infer_expression(receiver, scope);
-                let readonly = if let Some(property) = property {
-                    match property_type(
-                        &owner,
-                        property,
-                        &self.types,
-                        &mut HashSet::new(),
-                        &mut budget,
-                    ) {
-                        PropertyType::Found { readonly, .. } => readonly,
-                        PropertyType::Exhausted => {
-                            self.type_error(
-                                span,
-                                format!(
-                                    "property lookup exceeds the {} generic-expansion limit",
-                                    self.max_type_expansions
-                                ),
-                                DiagnosticCode::ResourceLimit,
-                            );
-                            return;
-                        }
-                        PropertyType::Missing | PropertyType::Indeterminate => false,
-                    }
-                } else {
-                    match contains_readonly_member(
-                        &owner,
-                        &self.types,
-                        &mut HashSet::new(),
-                        &mut budget,
-                    ) {
-                        Ok(readonly) => readonly,
-                        Err(()) => {
-                            self.type_error(
-                                span,
-                                format!(
-                                    "property lookup exceeds the {} generic-expansion limit",
-                                    self.max_type_expansions
-                                ),
-                                DiagnosticCode::ResourceLimit,
-                            );
-                            return;
-                        }
+                let possible_readonly = match self
+                    .possible_readonly_computed_receiver(receiver, property, scope)
+                {
+                    Ok(readonly) => readonly,
+                    Err(()) => {
+                        self.type_error(
+                            span,
+                            "computed readonly receiver exceeds its type-expansion limit".into(),
+                            DiagnosticCode::ResourceLimit,
+                        );
+                        return;
                     }
                 };
+                let readonly = possible_readonly
+                    || if let Some(property) = property {
+                        match property_type(
+                            &owner,
+                            property,
+                            &self.types,
+                            &mut HashSet::new(),
+                            &mut budget,
+                        ) {
+                            PropertyType::Found { readonly, .. } => readonly,
+                            PropertyType::Exhausted => {
+                                self.type_error(
+                                    span,
+                                    format!(
+                                        "property lookup exceeds the {} generic-expansion limit",
+                                        self.max_type_expansions
+                                    ),
+                                    DiagnosticCode::ResourceLimit,
+                                );
+                                return;
+                            }
+                            PropertyType::Missing | PropertyType::Indeterminate => false,
+                        }
+                    } else {
+                        match contains_readonly_member(
+                            &owner,
+                            &self.types,
+                            &mut HashSet::new(),
+                            &mut budget,
+                        ) {
+                            Ok(readonly) => readonly,
+                            Err(()) => {
+                                self.type_error(
+                                    span,
+                                    format!(
+                                        "property lookup exceeds the {} generic-expansion limit",
+                                        self.max_type_expansions
+                                    ),
+                                    DiagnosticCode::ResourceLimit,
+                                );
+                                return;
+                            }
+                        }
+                    };
                 if readonly {
                     let mutation_span = SourceSpan::new(
                         &span.module,
@@ -1193,6 +985,27 @@ const MEMBER_ASSIGNMENT_OPERATORS: &[&str] = &[
     "=", "+=", "-=", "*=", "/=", "%=", "**=", "<<=", ">>=", ">>>=", "&=", "|=", "^=", "&&=", "||=",
     "??=",
 ];
+
+fn erased_assertion_operand(tokens: &[Token]) -> Option<&[Token]> {
+    let mut depth = 0usize;
+    let mut assertion = None;
+    for (index, token) in tokens.iter().enumerate() {
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" if depth > 0 => depth -= 1,
+            "as" | "satisfies"
+                if depth == 0
+                    && index > 0
+                    && index + 1 < tokens.len()
+                    && !tokens[index - 1].is(".") =>
+            {
+                assertion = Some(index);
+            }
+            _ => {}
+        }
+    }
+    assertion.map(|index| &tokens[..index])
+}
 
 /// Exposes only the final member in an expression. A computed key is known
 /// only when its string spelling needs no JavaScript escape decoding; all

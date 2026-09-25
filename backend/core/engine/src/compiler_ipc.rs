@@ -216,17 +216,15 @@ impl CompilerServiceIpcAdapter {
         limits: CompilerServiceIpcLimits,
     ) -> Result<Self, CompilerServiceIpcConfigurationError> {
         validate_limits(limits)?;
-        let registered_projects = service
-            .registered_project_ids()
-            .map(RegisteredProjectId::as_u64)
-            .collect::<BTreeSet<_>>();
-        if registered_projects.len() > COMPILER_MAX_PROJECT_INVENTORY {
+        if service.registered_project_ids().count() > COMPILER_MAX_PROJECT_INVENTORY {
             return Err(CompilerServiceIpcConfigurationError::TooManyRegisteredProjects);
         }
         Ok(Self {
             service,
             limits,
-            registered_projects,
+            // A pre-populated service is not evidence that its projects were
+            // selected for public compiler IPC. Exposure is explicit only.
+            registered_projects: BTreeSet::new(),
             project_inventory_streams: BTreeMap::new(),
             session_cursors: BTreeMap::new(),
         })
@@ -287,6 +285,22 @@ impl CompilerServiceIpcAdapter {
     /// `Hello`. A transport owner is responsible for first-message handling;
     /// an in-band `Hello` is rejected rather than renegotiating state.
     pub fn handle(&mut self, request: CompilerRequest) -> CompilerReply {
+        if let Some(project_id) = compiler_request_project_id(&request) {
+            // Direct core-side callers must not bypass owner visibility. Keep
+            // malformed and unknown handle categories unchanged by denying
+            // only identities the underlying service actually owns.
+            if !self.registered_projects.contains(&project_id)
+                && self
+                    .service
+                    .registered_project_ids()
+                    .any(|project| project.as_u64() == project_id)
+            {
+                return CompilerReply::Error {
+                    code: CompilerErrorCode::UnobservedProject,
+                    message: "compiler project was not exposed by the core owner".to_string(),
+                };
+            }
+        }
         match request {
             CompilerRequest::ListProjects => self.project_inventory(),
             CompilerRequest::DescribeProject { project } => self.describe_project(project),
@@ -1293,16 +1307,21 @@ impl Default for CoreCompilerProjectCatalog {
 }
 
 impl CoreCompilerProjectCatalog {
-    /// Creates an empty catalog while the trusted core startup owner still
-    /// chooses its fixed project inputs. This API is never called by a wire
-    /// request or an MCP tool.
+    /// Creates a catalog while the trusted core startup owner still chooses
+    /// its fixed project inputs. Any projects already in the supplied service
+    /// are counted but remain private by default. This API is never called by
+    /// a wire request or an MCP tool.
     pub fn new(
         service: RegisteredProjectCompilerService,
         limits: CompilerServiceIpcLimits,
     ) -> Result<Self, CompilerServiceIpcConfigurationError> {
+        let registered_projects = service
+            .registered_project_ids()
+            .map(project_to_wire)
+            .collect();
         Ok(Self {
             adapter: CompilerServiceIpcAdapter::new(service, limits)?,
-            registered_projects: Vec::new(),
+            registered_projects,
         })
     }
 
@@ -3006,6 +3025,87 @@ mod tests {
                 }
             ));
         }
+    }
+
+    #[test]
+    fn pre_registered_service_projects_remain_private_until_explicitly_exposed() {
+        let mut service = RegisteredProjectCompilerService::default();
+        let private = project_to_wire(
+            service
+                .register(registration("export const hidden: number = answer;"))
+                .unwrap(),
+        );
+        let mut adapter =
+            CompilerServiceIpcAdapter::new(service, CompilerServiceIpcLimits::default()).unwrap();
+        let stream = "d".repeat(CompilerSessionAttestation::ID_LENGTH);
+        for reply in [
+            adapter.handle(CompilerRequest::ListProjects),
+            adapter.handle_session_request(&stream, CompilerRequest::ListProjects),
+        ] {
+            let CompilerReply::Projects(inventory) = reply else {
+                panic!("a private-only service must return an empty inventory")
+            };
+            assert!(inventory.projects.is_empty());
+        }
+        for request in [
+            CompilerRequest::DescribeProject { project: private },
+            CompilerRequest::Check { project: private },
+        ] {
+            assert!(matches!(
+                adapter.handle(request.clone()),
+                CompilerReply::Error {
+                    code: CompilerErrorCode::UnobservedProject,
+                    ..
+                }
+            ));
+            assert!(matches!(
+                adapter.handle_session_request(&stream, request),
+                CompilerReply::Error {
+                    code: CompilerErrorCode::UnobservedProject,
+                    ..
+                }
+            ));
+        }
+
+        let mut exposed_registration = registration("export const shown: number = answer;");
+        exposed_registration.canonical_project_root = "project:///shown".to_string();
+        exposed_registration.canonical_config_root = "project:///shown/blue-ts.json".to_string();
+        exposed_registration.canonical_output_root = "project:///shown-dist".to_string();
+        let exposed = adapter.register_core_project(exposed_registration).unwrap();
+        let CompilerReply::Projects(inventory) =
+            adapter.handle_session_request(&stream, CompilerRequest::ListProjects)
+        else {
+            panic!("accepted stream must receive an inventory")
+        };
+        assert_eq!(inventory.projects, vec![exposed]);
+        assert!(matches!(
+            adapter.handle_session_request(&stream, CompilerRequest::Check { project: private }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::UnobservedProject,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn pre_registered_catalog_projects_are_counted_but_never_exposed() {
+        let mut service = RegisteredProjectCompilerService::default();
+        service
+            .register(registration("export const hidden: number = answer;"))
+            .unwrap();
+        let catalog =
+            CoreCompilerProjectCatalog::new(service, CompilerServiceIpcLimits::default()).unwrap();
+        assert_eq!(catalog.registered_project_count(), 1);
+        let mut session = catalog.seal();
+        assert_eq!(session.registered_project_count(), 1);
+        let stream = "e".repeat(CompilerSessionAttestation::ID_LENGTH);
+        let CompilerReply::Projects(inventory) = session
+            .adapter
+            .handle_session_request(&stream, CompilerRequest::ListProjects)
+        else {
+            panic!("private-only catalog must still return a valid inventory")
+        };
+        assert!(inventory.projects.is_empty());
     }
 
     #[test]

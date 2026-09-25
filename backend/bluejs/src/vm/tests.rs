@@ -587,6 +587,60 @@ fn host_click_listeners_are_vm_rooted_and_prevent_default_only_during_dispatch()
 }
 
 #[test]
+fn host_click_listener_exceptions_preserve_cancellation_and_later_listeners() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findNode", 0, family, |_args: &[HostValue]| {
+        Ok(Some(HostObjectKey::new(7, 3, 42)))
+    })
+    .unwrap();
+    vm.install_host_click_event_methods(family).unwrap();
+    let source = "globalThis.order = ''; var node = findNode(); \
+                  node.addEventListener('click', function(event) { \
+                    order += 'a'; event.preventDefault(); \
+                    Promise.resolve().then(function() { order += 'c'; }); \
+                    throw 'listener failure'; \
+                  }); \
+                  node.addEventListener('click', function() { order += 'b'; });";
+    vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap())
+        .unwrap();
+
+    assert!(vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    let read_order = crate::compile(&crate::parse("order;").unwrap()).unwrap();
+    assert_eq!(
+        vm.execute_script(&read_order).unwrap(),
+        Value::String("ab".into())
+    );
+    vm.run_promise_jobs_bounded(8).unwrap();
+    assert_eq!(
+        vm.execute_script(&read_order).unwrap(),
+        Value::String("abc".into())
+    );
+}
+
+#[test]
+fn host_click_microtask_checkpoint_has_a_fixed_job_limit() {
+    let mut vm = Vm::default();
+    vm.execute_script(
+        &crate::compile(
+            &crate::parse("globalThis.jobs = 0; Promise.resolve().then(function() { jobs++; }).then(function() { jobs++; });").unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        vm.run_promise_jobs_bounded(1),
+        Err(RuntimeError::InstructionLimit)
+    ));
+    let read_jobs = crate::compile(&crate::parse("jobs;").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&read_jobs).unwrap(), Value::Number(1.0));
+    vm.run_promise_jobs_bounded(8).unwrap();
+    assert_eq!(vm.execute_script(&read_jobs).unwrap(), Value::Number(2.0));
+}
+
+#[test]
 fn host_click_listener_removal_and_receiver_checks_are_exact() {
     let mut vm = Vm::default();
     let family = vm.create_host_object_family().unwrap();

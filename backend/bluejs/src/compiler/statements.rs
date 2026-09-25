@@ -472,14 +472,27 @@ impl Compiler {
         &mut self,
         statements: &[Stmt],
         offsets: &mut [Option<u32>],
+        ranges: &mut [Option<(u32, u32)>],
+        child_indices: &mut [Option<u32>],
     ) -> Result<(), CompileError> {
         debug_assert_eq!(statements.len(), offsets.len());
+        debug_assert_eq!(statements.len(), ranges.len());
+        debug_assert_eq!(statements.len(), child_indices.len());
         for (index, statement) in statements.iter().enumerate() {
             if !is_function_declaration(statement) {
                 continue;
             }
-            offsets[index] = Some(self.offset());
+            let start = self.offset();
+            let child_index = self.bytecode.functions.len();
             self.function_declaration(statement)?;
+            if self.offset() > start {
+                offsets[index] = Some(start);
+                ranges[index] = Some((start, self.offset()));
+            }
+            if self.bytecode.functions.len() == child_index + 1 {
+                child_indices[index] =
+                    Some(u32::try_from(child_index).map_err(|_| CompileError::ProgramTooLarge)?);
+            }
         }
         Ok(())
     }
@@ -560,8 +573,10 @@ impl Compiler {
         &mut self,
         statements: &[Stmt],
         offsets: &mut [Option<u32>],
+        ranges: &mut [Option<(u32, u32)>],
     ) -> Result<(), CompileError> {
         debug_assert_eq!(statements.len(), offsets.len());
+        debug_assert_eq!(statements.len(), ranges.len());
         for (index, statement) in statements.iter().enumerate() {
             if is_function_declaration(statement) {
                 continue;
@@ -570,6 +585,7 @@ impl Compiler {
             self.statement(statement, true)?;
             if self.offset() > start {
                 offsets[index] = Some(start);
+                ranges[index] = Some((start, self.offset()));
             }
         }
         Ok(())

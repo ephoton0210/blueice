@@ -193,12 +193,13 @@ pub struct BlueTsSafePointMapV1 {
     pub compiler_options_fingerprint: String,
     /// Deterministic fingerprint of the canonical source identities.
     pub source_set_hash: String,
-    /// Sorted, unique bound entries. Unbound spans remain in attachment
-    /// provenance instead of acquiring a guessed instruction location.
+    /// Sorted, unique bound instructions owned by compiler-recorded root
+    /// statement ranges or their direct child functions. Unbound spans remain
+    /// in attachment provenance instead of acquiring guessed locations.
     pub entries: Vec<BlueTsSafePointEntryV1>,
 }
 
-/// One bound top-level TypeScript lowering span.
+/// One compiler-owned instruction mapped to its original TypeScript span.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlueTsSafePointEntryV1 {
     /// BlueJS code unit that owns the instruction.
@@ -807,6 +808,7 @@ fn attach_existing_direct_program(
         compiler_options_fingerprint,
         sources,
         &attached_provenance,
+        compiled,
     )?;
     Ok(DirectProgramAttachment {
         handle,
@@ -819,6 +821,8 @@ fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> b
     expected.bytes() == actual.bytes()
         && expected.constants() == actual.constants()
         && expected.root_statement_offsets() == actual.root_statement_offsets()
+        && expected.root_statement_ranges() == actual.root_statement_ranges()
+        && expected.root_function_child_indices() == actual.root_function_child_indices()
         && expected
             .child_code_units()
             .zip(actual.child_code_units())
@@ -827,19 +831,21 @@ fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> b
 }
 
 impl BlueTsSafePointMapV1 {
-    /// Resolves only an exact compiler-bound BlueJS instruction to its
-    /// original BlueTS byte span. An instruction with no direct lowering
-    /// record stays unbound; no nearest-statement or generated-source guess
-    /// is made. Callers must first validate the map against its live program.
+    /// Resolves only an instruction inside a compiler-recorded owning root
+    /// statement or direct child function to its original BlueTS byte span.
+    /// Other instructions stay unbound; no nearest-statement or generated-
+    /// source guess is made. Callers must validate the live program first.
     pub fn source_span_for_safe_point(
         &self,
         code_unit_ordinal: u32,
         bytecode_offset: u32,
     ) -> Option<&BlueTsSafePointEntryV1> {
-        self.entries.iter().find(|entry| {
-            entry.code_unit.ordinal() == code_unit_ordinal
-                && entry.bytecode_offset == bytecode_offset
-        })
+        self.entries
+            .binary_search_by_key(&(code_unit_ordinal, bytecode_offset), |entry| {
+                (entry.code_unit.ordinal(), entry.bytecode_offset)
+            })
+            .ok()
+            .map(|index| &self.entries[index])
     }
 
     /// Finds the nearest bound entry at or after one TypeScript UTF-8 byte
@@ -908,22 +914,84 @@ fn build_safe_point_map(
     compiler_options_fingerprint: &str,
     sources: &[BridgeSource],
     provenance: &[AttachedLoweringProvenance],
+    compiled: &bluejs::BlueJsCompiledProgram,
 ) -> Result<BlueTsSafePointMapV1, BridgeError> {
-    let mut entries = provenance
+    let bytecode = compiled.bytecode();
+    let ranges = bytecode.root_statement_ranges();
+    let child_indices = bytecode.root_function_child_indices();
+    if ranges.len() != provenance.len() || child_indices.len() != provenance.len() {
+        return Err(BridgeError::ProvenanceAttachment(
+            "root statement ownership does not match direct lowering spans".to_string(),
+        ));
+    }
+    let code_units = compiled.code_units();
+    let root = code_units.first().ok_or_else(|| {
+        BridgeError::ProvenanceAttachment("the installed program has no root code unit".to_string())
+    })?;
+    let children = bytecode.child_code_units().collect::<Vec<_>>();
+    if children
         .iter()
-        .filter_map(|provenance| match provenance.safe_point {
-            DirectSafePointBinding::Bound(safe_point) => Some(BlueTsSafePointEntryV1 {
-                code_unit: safe_point.code_unit,
-                bytecode_offset: safe_point.bytecode_offset,
-                source: provenance.source.module.clone(),
-                start_byte: provenance.source.start,
-                end_byte: provenance.source.end,
-                location: provenance.location,
-                provenance_kind: provenance.kind,
-            }),
-            DirectSafePointBinding::Unbound => None,
-        })
-        .collect::<Vec<_>>();
+        .any(|child| child.child_code_units().next().is_some())
+        || code_units.len() != children.len() + 1
+    {
+        return Err(BridgeError::ProvenanceAttachment(
+            "direct lowering produced an unsupported nested closure shape".to_string(),
+        ));
+    }
+    let mut entries = Vec::new();
+    for ((provenance, range), child_index) in provenance.iter().zip(ranges).zip(child_indices) {
+        match (provenance.safe_point, range) {
+            (DirectSafePointBinding::Bound(safe_point), Some((start, end)))
+                if safe_point.code_unit == root.id()
+                    && safe_point.bytecode_offset == *start
+                    && start < end => {}
+            (DirectSafePointBinding::Unbound, None) if child_index.is_none() => continue,
+            _ => {
+                return Err(BridgeError::ProvenanceAttachment(
+                    "compiler statement range disagrees with its bound safe point".to_string(),
+                ));
+            }
+        }
+        let entry_at = |code_unit, bytecode_offset| BlueTsSafePointEntryV1 {
+            code_unit,
+            bytecode_offset,
+            source: provenance.source.module.clone(),
+            start_byte: provenance.source.start,
+            end_byte: provenance.source.end,
+            location: provenance.location,
+            provenance_kind: provenance.kind,
+        };
+        let (start, end) = range.expect("bound statement has a range");
+        entries.extend(
+            root.instruction_offsets()
+                .iter()
+                .copied()
+                .filter(|offset| *offset >= start && *offset < end)
+                .map(|offset| entry_at(root.id(), offset)),
+        );
+        if let Some(child_index) = child_index {
+            let child_ordinal = usize::try_from(*child_index)
+                .ok()
+                .and_then(|index| index.checked_add(1))
+                .ok_or_else(|| {
+                    BridgeError::ProvenanceAttachment(
+                        "function child index exceeds the host address space".to_string(),
+                    )
+                })?;
+            let child = code_units.get(child_ordinal).ok_or_else(|| {
+                BridgeError::ProvenanceAttachment(
+                    "function declaration has no installed child code unit".to_string(),
+                )
+            })?;
+            entries.extend(
+                child
+                    .instruction_offsets()
+                    .iter()
+                    .copied()
+                    .map(|offset| entry_at(child.id(), offset)),
+            );
+        }
+    }
     entries.sort_by(safe_point_entry_order);
     if !safe_point_entries_are_strictly_valid(&entries) {
         return Err(BridgeError::ProvenanceAttachment(

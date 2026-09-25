@@ -237,6 +237,7 @@ dependencies = [
  "blueice-paint",
  "blueice-raster",
  "blueice-testing",
+ "getrandom 0.3.4",
  "serde_json",
  "ureq",
 ]

@@ -28,12 +28,12 @@
 //! capability before forwarding any DOM request to the session. A distinct
 //! owner-only test profile now proves a child VM can complete a synchronous
 //! lookup through the bounded reentrant session route; the raw protocol and
-//! numeric node IDs are still never exposed to page JavaScript.
+//! child-private node handles are still never exposed to page JavaScript.
 //!
 //! Each DOM request names the exact core-owned document generation as well as
 //! its tab. A request from a predecessor document fails before lookup or
 //! mutation, including operations that create new nodes and carry no old
-//! `NodeId`. The `Hello` capability authenticates the connection, not an
+//! node handle. The `Hello` capability authenticates the connection, not an
 //! individual document; each DOM call still requires its exact live target.
 //!
 //! **Scope of this minimal slice.** [`ScriptRequest`] covers only
@@ -55,10 +55,10 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
-/// V5 adds core-owned node-liveness validation for opaque child wrappers.
-/// Older versions cannot safely establish that a cached wrapper survived a
-/// subtree removal before invoking an operation on it.
-pub const SCRIPT_PROTOCOL_VERSION: u32 = 5;
+/// V6 makes child-private node handles distinct from core DOM NodeIds and
+/// unique across documents. Older peers could confuse equal raw NodeIds in
+/// different tabs even when their document targets were authenticated.
+pub const SCRIPT_PROTOCOL_VERSION: u32 = 6;
 pub const SCRIPT_SESSION_TOKEN_HEX_BYTES: usize = 64;
 pub const SCRIPT_MAX_FRAME_BYTES: usize = 1_100_000;
 pub const SCRIPT_MAX_NAME_BYTES: usize = 4_096;
@@ -117,11 +117,9 @@ pub enum ScriptRequest {
         target: ScriptDocumentTarget,
         data: String,
     },
-    /// `parent.appendChild(child)`, scoped to one tab. Node identity
-    /// (`parent`/`child`) is `blueice_dom::NodeId`'s raw value, the
-    /// same convention [`crate::ai::AiNode::id`] already uses for the
-    /// same reason: this crate doesn't depend on `blueice-dom` for a
-    /// plain numeric handle.
+    /// `parent.appendChild(child)`, scoped to one tab. Both operands are
+    /// child-private handles minted for the exact document, never raw
+    /// `blueice_dom::NodeId` values or identities from another tab.
     AppendChild {
         target: ScriptDocumentTarget,
         parent: u64,
@@ -176,7 +174,7 @@ pub enum ScriptReply {
     Node { node: Option<u64> },
     /// Reply to [`ScriptRequest::CreateElement`]/
     /// [`ScriptRequest::CreateTextNode`] -- creation is infallible
-    /// given a valid tab, so this carries the new node's ID directly
+    /// given a valid tab, so this carries its child-private handle directly
     /// rather than an `Option`.
     NodeCreated { node: u64 },
     /// Reply to [`ScriptRequest::ValidateNode`],

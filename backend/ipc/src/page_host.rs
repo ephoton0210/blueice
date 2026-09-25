@@ -12,6 +12,15 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
+//! Version 38 adds an exact paused-slot, bounded plain-data value preview.
+//! It is child-private and does not itself grant a public debugger client
+//! value access. Version 37 adds a bounded source-free stack/scope snapshot from an exact
+//! paused root or nested frame. It remains private and does not enable a
+//! public debugger capability. Version 36 adds exact active nested-frame resume without reusing root
+//! resume or single-instruction stepping. Version 35 adds nested-frame arm, state, and single-instruction
+//! step controls for the private core/child route. The frame identity binds
+//! tab, document, program, code unit, and invocation; it grants no source or
+//! value inspection and is distinct from a static safe-point location.
 //! Version 31 adds an authenticated, source-free child-wide actual-usage
 //! snapshot for all live realms. It is private to the core/child connection,
 //! separate from the launcher's conservative reservations and from public
@@ -105,10 +114,20 @@ use crate::debugger::{
     DebuggerStaticMetadataSymbolKind,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 33;
+/// V34 carries a document-bound script handle, not a raw core NodeId, in
+/// `DispatchClick` so its target matches child-owned listener identities.
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 38;
+
+pub const PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
+pub const PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
+pub const PAGE_HOST_DEBUGGER_MAX_VALUE_DEPTH: u32 = 4;
+pub const PAGE_HOST_DEBUGGER_MAX_VALUE_CONTAINER_LENGTH: usize = 32;
+pub const PAGE_HOST_DEBUGGER_MAX_VALUE_NODES: usize = 256;
+pub const PAGE_HOST_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES: usize = 4_096;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -353,6 +372,201 @@ pub struct PageHostDebuggerSafePoint {
     pub bytecode_offset: u32,
 }
 
+/// One actually paused child invocation, not a configured code-unit point.
+/// These numbers are an exact-match identity, not a secret or a VM address.
+/// A child issues the tuple only after the page runtime retains the frame;
+/// a successor document or another invocation cannot inherit it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PageHostDebuggerFrame {
+    pub tab_id: u64,
+    pub document_generation: u64,
+    pub program: PageHostDebuggerProgram,
+    pub code_unit_ordinal: u32,
+    pub invocation_serial: u64,
+}
+
+impl PageHostDebuggerFrame {
+    /// Rejects absent identity components and root code units. Callers must
+    /// additionally compare the whole tuple with the current paused frame.
+    pub fn is_well_formed(self) -> bool {
+        self.tab_id != 0
+            && self.document_generation != 0
+            && self.program.is_well_formed()
+            && self.code_unit_ordinal != 0
+            && self.invocation_serial != 0
+    }
+
+    pub fn matches_safe_point(self, safe_point: PageHostDebuggerSafePoint) -> bool {
+        self.is_well_formed()
+            && self.program == safe_point.program
+            && self.code_unit_ordinal == safe_point.code_unit_ordinal
+    }
+}
+
+/// Source-free binding-slot inventory copied from an actually active scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerScopeEntry {
+    pub slot_ordinal: u32,
+    pub scope_depth: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerStackFrame {
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+    pub scope_entries: Vec<PageHostDebuggerScopeEntry>,
+    pub scope_truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerStackSnapshot {
+    pub frames: Vec<PageHostDebuggerStackFrame>,
+    pub stack_truncated: bool,
+}
+
+/// One exact active slot in a retained debugger continuation. Core and child
+/// must revalidate the entire target against the live paused stack; these
+/// fields are identities, not authority tokens or heap-object handles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerValueTarget {
+    pub tab_id: u64,
+    pub document_generation: u64,
+    pub program: PageHostDebuggerProgram,
+    pub frame: Option<PageHostDebuggerFrame>,
+    /// Zero selects the child when `frame` is present; one selects its root.
+    pub frame_index: u32,
+    pub safe_point: PageHostDebuggerSafePoint,
+    pub scope_entry: PageHostDebuggerScopeEntry,
+}
+
+impl PageHostDebuggerValueTarget {
+    pub fn is_well_formed(self) -> bool {
+        self.tab_id != 0
+            && self.document_generation != 0
+            && self.program.is_well_formed()
+            && self.safe_point.program == self.program
+            && match self.frame {
+                None => self.frame_index == 0 && self.safe_point.code_unit_ordinal == 0,
+                Some(frame) => {
+                    frame.is_well_formed()
+                        && frame.tab_id == self.tab_id
+                        && frame.document_generation == self.document_generation
+                        && frame.program == self.program
+                        && match self.frame_index {
+                            0 => self.safe_point.code_unit_ordinal == frame.code_unit_ordinal,
+                            1 => self.safe_point.code_unit_ordinal == 0,
+                            _ => false,
+                        }
+                }
+            }
+    }
+}
+
+/// Lossless, handle-free payload copied from stored own data in a paused VM.
+/// String and record keys are UTF-16 code units, including lone surrogates;
+/// number bits preserve non-finite values and negative zero. Array `None` is
+/// a hole, distinct from an explicit `Undefined` element.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PageHostDebuggerValuePreview {
+    Undefined,
+    Null,
+    Bool(bool),
+    NumberBits(u64),
+    BigIntBytes(Vec<u8>),
+    StringUnits(Vec<u16>),
+    Array(Vec<Option<Self>>),
+    Record(Vec<(Vec<u16>, Self)>),
+}
+
+impl PageHostDebuggerValuePreview {
+    /// Checks the whole tree iteratively before any core remint or public
+    /// reply. No partial/truncated preview is a valid result.
+    pub fn is_well_formed(&self) -> bool {
+        let mut pending = vec![(self, 0)];
+        let mut nodes = 0usize;
+        let mut payload_bytes = 0usize;
+        while let Some((value, depth)) = pending.pop() {
+            if depth > PAGE_HOST_DEBUGGER_MAX_VALUE_DEPTH {
+                return false;
+            }
+            nodes += 1;
+            if nodes > PAGE_HOST_DEBUGGER_MAX_VALUE_NODES {
+                return false;
+            }
+            let bytes = match value {
+                Self::Undefined | Self::Null | Self::Bool(_) | Self::NumberBits(_) => 0,
+                Self::BigIntBytes(bytes) => bytes.len(),
+                Self::StringUnits(units) => match units.len().checked_mul(2) {
+                    Some(bytes) => bytes,
+                    None => return false,
+                },
+                Self::Array(elements) => {
+                    if elements.len() > PAGE_HOST_DEBUGGER_MAX_VALUE_CONTAINER_LENGTH {
+                        return false;
+                    }
+                    for element in elements {
+                        if let Some(value) = element {
+                            pending.push((value, depth + 1));
+                        } else {
+                            if depth + 1 > PAGE_HOST_DEBUGGER_MAX_VALUE_DEPTH {
+                                return false;
+                            }
+                            nodes += 1;
+                            if nodes > PAGE_HOST_DEBUGGER_MAX_VALUE_NODES {
+                                return false;
+                            }
+                        }
+                    }
+                    0
+                }
+                Self::Record(entries) => {
+                    if entries.len() > PAGE_HOST_DEBUGGER_MAX_VALUE_CONTAINER_LENGTH {
+                        return false;
+                    }
+                    let mut keys = HashSet::new();
+                    for (key, value) in entries {
+                        if !keys.insert(key.as_slice()) {
+                            return false;
+                        }
+                        let Some(key_bytes) = key.len().checked_mul(2) else {
+                            return false;
+                        };
+                        let Some(total) = payload_bytes.checked_add(key_bytes) else {
+                            return false;
+                        };
+                        payload_bytes = total;
+                        if payload_bytes > PAGE_HOST_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES {
+                            return false;
+                        }
+                        pending.push((value, depth + 1));
+                    }
+                    0
+                }
+            };
+            let Some(total) = payload_bytes.checked_add(bytes) else {
+                return false;
+            };
+            payload_bytes = total;
+            if payload_bytes > PAGE_HOST_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerValueSnapshot {
+    pub target: PageHostDebuggerValueTarget,
+    pub preview: PageHostDebuggerValuePreview,
+}
+
+impl PageHostDebuggerValueSnapshot {
+    pub fn is_well_formed(&self) -> bool {
+        self.target.is_well_formed() && self.preview.is_well_formed()
+    }
+}
+
 /// Source-free lifecycle state for the one-shot root-classic continuation
 /// seam. A `Paused` location is always an exact child-validated root safe
 /// point; no frame, scope, runtime value, source, or bytecode is serialized.
@@ -362,7 +576,17 @@ pub enum PageHostDebuggerExecutionState {
     Paused {
         safe_point: PageHostDebuggerSafePoint,
     },
+    NestedPaused {
+        frame: PageHostDebuggerFrame,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     Stepping,
+    NestedStepping {
+        frame: PageHostDebuggerFrame,
+    },
+    NestedResuming {
+        frame: PageHostDebuggerFrame,
+    },
     /// The source-span step reached its fixed root-instruction budget before
     /// another bound span. The continuation remains paused at this exact
     /// verified root boundary and may be resumed or instruction-stepped.
@@ -576,7 +800,9 @@ pub enum PageHostRequest {
     /// idempotent and never re-runs page code.
     SynchronizeDocument { document: PageHostDocument },
     /// Delivers one core-hit-tested node to the exact live child document.
-    /// The child returns only whether a listener canceled default navigation.
+    /// `node_id` is the child-private script handle for that hit, not its raw
+    /// core DOM NodeId. The child returns only whether a listener canceled
+    /// default navigation.
     DispatchClick {
         tab_id: u64,
         document_generation: u64,
@@ -816,6 +1042,13 @@ pub enum PageHostRequest {
         document_generation: u64,
         safe_point: PageHostDebuggerSafePoint,
     },
+    /// Arms a verified child-code-unit target on one still-pending classic
+    /// or BlueTS entry-module declaration. It does not itself mint a frame.
+    ArmDebuggerNestedSafePointBreakpoint {
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     /// Reads only source-free lifecycle state for one exact child-private
     /// program generation in the opt-in root-classic continuation seam.
     GetDebuggerExecutionState {
@@ -837,6 +1070,25 @@ pub enum PageHostRequest {
         document_generation: u64,
         program: PageHostDebuggerProgram,
     },
+    /// Steps only the exact currently paused nested invocation on a later
+    /// child advance turn; a static safe point is never sufficient.
+    StepDebuggerNestedInstruction { frame: PageHostDebuggerFrame },
+    /// Resumes only the exact retained nested invocation on a later child
+    /// advance turn; the waiting root remains separately paused on return.
+    ResumeDebuggerNestedExecution { frame: PageHostDebuggerFrame },
+    /// Inspects only the exact paused root (`None`) or the currently active
+    /// nested invocation (`Some`). Zero or over-cap limits are invalid.
+    GetDebuggerStackSnapshot {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        frame: Option<PageHostDebuggerFrame>,
+        max_frames: u32,
+        max_scope_entries: u32,
+    },
+    /// Copies only one exact active lexical slot in a paused BlueTS frame.
+    /// This private route does not accept an object handle or run JavaScript.
+    GetDebuggerValueSnapshot { target: PageHostDebuggerValueTarget },
     /// Requires an exact paused BlueTS classic safe point, live metadata,
     /// and its compiler-minted source ID. The child derives the current span
     /// from its retained map; no source text or caller-selected stop span is
@@ -1084,6 +1336,11 @@ pub enum PageHostReply {
         document_generation: u64,
         safe_point: PageHostDebuggerSafePoint,
     },
+    DebuggerNestedSafePointBreakpointArmed {
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     DebuggerExecutionState {
         tab_id: u64,
         document_generation: u64,
@@ -1100,6 +1357,20 @@ pub enum PageHostReply {
         document_generation: u64,
         program: PageHostDebuggerProgram,
     },
+    DebuggerNestedStepRequested {
+        frame: PageHostDebuggerFrame,
+    },
+    DebuggerNestedResumeRequested {
+        frame: PageHostDebuggerFrame,
+    },
+    DebuggerStackSnapshot {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        frame: Option<PageHostDebuggerFrame>,
+        snapshot: PageHostDebuggerStackSnapshot,
+    },
+    DebuggerValueSnapshot(Box<PageHostDebuggerValueSnapshot>),
     DebuggerBlueTsSourceStepRequested {
         tab_id: u64,
         document_generation: u64,
@@ -1205,6 +1476,330 @@ pub fn source_hash(source: &str) -> String {
 mod tests {
     use super::*;
     use std::os::unix::net::UnixStream;
+
+    #[test]
+    fn private_value_target_requires_exact_root_or_nested_frame_shape() {
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let frame = PageHostDebuggerFrame {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            code_unit_ordinal: 1,
+            invocation_serial: 19,
+        };
+        let mut target = PageHostDebuggerValueTarget {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            frame: None,
+            frame_index: 0,
+            safe_point: PageHostDebuggerSafePoint {
+                program,
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            },
+            scope_entry: PageHostDebuggerScopeEntry {
+                slot_ordinal: 2,
+                scope_depth: 0,
+            },
+        };
+        assert!(target.is_well_formed());
+        let snapshot = PageHostDebuggerValueSnapshot {
+            target,
+            preview: PageHostDebuggerValuePreview::Undefined,
+        };
+        assert!(snapshot.is_well_formed());
+        assert_eq!(
+            serde_json::from_slice::<PageHostDebuggerValueSnapshot>(
+                &serde_json::to_vec(&snapshot).unwrap()
+            )
+            .unwrap(),
+            snapshot
+        );
+        target.frame_index = 1;
+        assert!(!target.is_well_formed());
+        target.frame_index = 0;
+        target.frame = Some(frame);
+        assert!(!target.is_well_formed());
+        target.safe_point.code_unit_ordinal = 1;
+        assert!(target.is_well_formed());
+        target.frame_index = 1;
+        assert!(!target.is_well_formed());
+        target.safe_point.code_unit_ordinal = 0;
+        assert!(target.is_well_formed());
+        target.document_generation += 1;
+        assert!(!target.is_well_formed());
+        target.document_generation -= 1;
+        target.safe_point.program.program_generation += 1;
+        assert!(!target.is_well_formed());
+        target.safe_point.program.program_generation -= 1;
+        target.frame_index = 2;
+        assert!(!target.is_well_formed());
+        assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 38);
+    }
+
+    #[test]
+    fn private_value_preview_validates_lossless_bounded_trees() {
+        let preview = PageHostDebuggerValuePreview::Record(vec![(
+            vec![0xd800],
+            PageHostDebuggerValuePreview::Array(vec![
+                Some(PageHostDebuggerValuePreview::NumberBits(
+                    (-0.0_f64).to_bits(),
+                )),
+                None,
+                Some(PageHostDebuggerValuePreview::StringUnits(vec![0xdc00])),
+            ]),
+        )]);
+        assert!(preview.is_well_formed());
+        assert_eq!(
+            serde_json::from_slice::<PageHostDebuggerValuePreview>(
+                &serde_json::to_vec(&preview).unwrap()
+            )
+            .unwrap(),
+            preview
+        );
+        let mut too_deep = PageHostDebuggerValuePreview::Null;
+        for _ in 0..5 {
+            too_deep = PageHostDebuggerValuePreview::Array(vec![Some(too_deep)]);
+        }
+        assert!(!too_deep.is_well_formed());
+        assert!(!PageHostDebuggerValuePreview::Array(vec![None; 33]).is_well_formed());
+        assert!(!PageHostDebuggerValuePreview::Array(vec![
+            Some(
+                PageHostDebuggerValuePreview::Array(vec![None; 32])
+            );
+            9
+        ])
+        .is_well_formed());
+        assert!(!PageHostDebuggerValuePreview::BigIntBytes(vec![0; 4_097]).is_well_formed());
+        assert!(PageHostDebuggerValuePreview::StringUnits(vec![0; 2_048]).is_well_formed());
+        assert!(!PageHostDebuggerValuePreview::Record(vec![
+            (
+                vec![b'a' as u16],
+                PageHostDebuggerValuePreview::StringUnits(vec![0; 1_024])
+            ),
+            (
+                vec![b'b' as u16],
+                PageHostDebuggerValuePreview::StringUnits(vec![0; 1_024])
+            ),
+        ])
+        .is_well_formed());
+        assert!(!PageHostDebuggerValuePreview::Record(vec![(
+            vec![b'x' as u16; 2_049],
+            PageHostDebuggerValuePreview::Null,
+        )])
+        .is_well_formed());
+        assert!(!PageHostDebuggerValuePreview::Record(vec![
+            (vec![b'a' as u16], PageHostDebuggerValuePreview::Null),
+            (vec![b'a' as u16], PageHostDebuggerValuePreview::Bool(true)),
+        ])
+        .is_well_formed());
+    }
+
+    #[test]
+    fn active_frame_wire_identity_is_exact_source_free_and_nonzero() {
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let frame = PageHostDebuggerFrame {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            code_unit_ordinal: 1,
+            invocation_serial: 19,
+        };
+        let point = PageHostDebuggerSafePoint {
+            program,
+            code_unit_ordinal: 1,
+            bytecode_offset: 4,
+        };
+        assert!(frame.is_well_formed());
+        assert!(frame.matches_safe_point(point));
+        let wire = serde_json::to_vec(&frame).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<PageHostDebuggerFrame>(&wire).unwrap(),
+            frame
+        );
+        assert!(!String::from_utf8(wire).unwrap().contains("source"));
+
+        for invalid in [
+            PageHostDebuggerFrame { tab_id: 0, ..frame },
+            PageHostDebuggerFrame {
+                document_generation: 0,
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                program: PageHostDebuggerProgram {
+                    program_generation: 0,
+                    ..program
+                },
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                code_unit_ordinal: 0,
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                invocation_serial: 0,
+                ..frame
+            },
+        ] {
+            assert!(!invalid.is_well_formed());
+            assert!(!invalid.matches_safe_point(point));
+        }
+        assert!(!frame.matches_safe_point(PageHostDebuggerSafePoint {
+            code_unit_ordinal: 2,
+            ..point
+        }));
+        assert!(!frame.matches_safe_point(PageHostDebuggerSafePoint {
+            program: PageHostDebuggerProgram {
+                program_handle: 12,
+                ..program
+            },
+            ..point
+        }));
+        for different in [
+            PageHostDebuggerFrame { tab_id: 8, ..frame },
+            PageHostDebuggerFrame {
+                document_generation: 4,
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                program: PageHostDebuggerProgram {
+                    program_generation: 14,
+                    ..program
+                },
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                code_unit_ordinal: 2,
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                invocation_serial: 20,
+                ..frame
+            },
+        ] {
+            assert!(different.is_well_formed());
+            assert_ne!(different, frame);
+        }
+    }
+
+    #[test]
+    fn nested_frame_commands_and_states_round_trip_on_private_wire() {
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let safe_point = PageHostDebuggerSafePoint {
+            program,
+            code_unit_ordinal: 1,
+            bytecode_offset: 4,
+        };
+        let frame = PageHostDebuggerFrame {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            code_unit_ordinal: 1,
+            invocation_serial: 19,
+        };
+        let value_target = PageHostDebuggerValueTarget {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            frame: Some(frame),
+            frame_index: 0,
+            safe_point,
+            scope_entry: PageHostDebuggerScopeEntry {
+                slot_ordinal: 2,
+                scope_depth: 0,
+            },
+        };
+        for request in [
+            PageHostRequest::ArmDebuggerNestedSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 3,
+                safe_point,
+            },
+            PageHostRequest::StepDebuggerNestedInstruction { frame },
+            PageHostRequest::ResumeDebuggerNestedExecution { frame },
+            PageHostRequest::GetDebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                frame: Some(frame),
+                max_frames: 1,
+                max_scope_entries: 2,
+            },
+            PageHostRequest::GetDebuggerValueSnapshot {
+                target: value_target,
+            },
+        ] {
+            let (mut writer, mut reader) = UnixStream::pair().unwrap();
+            write_page_host_request(&mut writer, &request).unwrap();
+            assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+        }
+        for reply in [
+            PageHostReply::DebuggerNestedSafePointBreakpointArmed {
+                tab_id: 7,
+                document_generation: 3,
+                safe_point,
+            },
+            PageHostReply::DebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                state: PageHostDebuggerExecutionState::NestedPaused { frame, safe_point },
+            },
+            PageHostReply::DebuggerNestedStepRequested { frame },
+            PageHostReply::DebuggerNestedResumeRequested { frame },
+            PageHostReply::DebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                frame: Some(frame),
+                snapshot: PageHostDebuggerStackSnapshot {
+                    frames: vec![PageHostDebuggerStackFrame {
+                        code_unit_ordinal: 1,
+                        bytecode_offset: 4,
+                        scope_entries: vec![PageHostDebuggerScopeEntry {
+                            slot_ordinal: 2,
+                            scope_depth: 0,
+                        }],
+                        scope_truncated: true,
+                    }],
+                    stack_truncated: true,
+                },
+            },
+            PageHostReply::DebuggerValueSnapshot(Box::new(PageHostDebuggerValueSnapshot {
+                target: value_target,
+                preview: PageHostDebuggerValuePreview::Array(vec![
+                    Some(PageHostDebuggerValuePreview::NumberBits(7.0_f64.to_bits())),
+                    None,
+                ]),
+            })),
+            PageHostReply::DebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                state: PageHostDebuggerExecutionState::NestedStepping { frame },
+            },
+            PageHostReply::DebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                state: PageHostDebuggerExecutionState::NestedResuming { frame },
+            },
+        ] {
+            let (mut writer, mut reader) = UnixStream::pair().unwrap();
+            write_page_host_reply(&mut writer, &reply).unwrap();
+            assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+        }
+    }
 
     #[test]
     fn symbol_type_relation_round_trips_on_private_socket() {

@@ -9,7 +9,17 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version thirty adds an
+//! and an opt-in root-code-unit pause/resume seam. Version thirty-five adds
+//! separately gated bounded stack-location and active-scope snapshots for an
+//! exact paused target, without values or BlueTS source coordinates. Version thirty-four binds
+//! each active frame handle to its core instance across supervised cutover.
+//! Version thirty-three adds
+//! an exact active-frame resume command and distinct resuming state. Version
+//! thirty-two adds a
+//! separately gated, core-reminted active nested-frame identity and exact
+//! nested arm/state/step commands. Its frame handle
+//! is not the child invocation serial, a static code-unit point, or a value.
+//! Version thirty adds an
 //! independently authorized BlueTS source-span step for one exact paused
 //! root safe point, with a distinct bounded-limit stop reason. Version twenty-nine adds
 //! an atomic source-position arm request: one session turn must first pass
@@ -70,7 +80,10 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 31;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 36;
+
+pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
+pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -705,6 +718,148 @@ impl DebuggerSafePoint {
     }
 }
 
+/// A core-reminted identity for one actually paused nested invocation.
+/// Its handle is opaque and process-unique while this core lives; a static
+/// safe point may name the same code unit but can never stand in for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DebuggerFrame {
+    pub program: DebuggerProgram,
+    pub code_unit_ordinal: u32,
+    /// A core-instance identity: PID plus 96 random bits. It prevents a
+    /// successor core's fresh handle counter from aliasing its predecessor.
+    pub core_instance: [u8; 16],
+    pub frame_handle: u64,
+}
+
+impl DebuggerFrame {
+    pub fn is_well_formed(self) -> bool {
+        self.program.is_well_formed()
+            && self.code_unit_ordinal != 0
+            && self.core_instance != [0; 16]
+            && self.frame_handle != 0
+    }
+
+    pub fn matches_safe_point(self, safe_point: DebuggerSafePoint) -> bool {
+        self.is_well_formed()
+            && self.program == safe_point.program
+            && self.code_unit_ordinal == safe_point.code_unit_ordinal
+    }
+}
+
+/// Source-free ordered locations of only the actually paused continuation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStackSnapshot {
+    pub program: DebuggerProgram,
+    pub frame: Option<DebuggerFrame>,
+    pub safe_points: Vec<DebuggerSafePoint>,
+    pub stack_truncated: bool,
+}
+
+impl DebuggerStackSnapshot {
+    /// Checks only the bounded, internally consistent shape. The core must
+    /// separately re-read the live continuation before trusting a snapshot.
+    pub fn is_well_formed(&self) -> bool {
+        if !self.program.is_well_formed()
+            || self.safe_points.is_empty()
+            || self.safe_points.len() > DEBUGGER_MAX_STACK_FRAMES as usize
+            || !self
+                .safe_points
+                .iter()
+                .all(|point| point.is_well_formed() && point.program == self.program)
+        {
+            return false;
+        }
+        match self.frame {
+            Some(frame) => {
+                frame.program == self.program
+                    && frame.matches_safe_point(self.safe_points[0])
+                    && (self.stack_truncated
+                        || self
+                            .safe_points
+                            .last()
+                            .is_some_and(|point| point.code_unit_ordinal == 0))
+            }
+            None => {
+                self.safe_points.len() == 1
+                    && self.safe_points[0].code_unit_ordinal == 0
+                    && !self.stack_truncated
+            }
+        }
+    }
+}
+
+/// One previously returned, bounded Stack snapshot plus a separately
+/// inventoried BlueTS source ID for each frame in exact top-first order.
+/// This value alone grants no source access; the core must verify every
+/// receipt and compare the whole snapshot with the live paused stack.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStackCoordinatesTarget {
+    pub expected_stack: DebuggerStackSnapshot,
+    pub sources: Vec<DebuggerStaticMetadataSourceId>,
+}
+
+impl DebuggerStackCoordinatesTarget {
+    pub fn is_well_formed(&self) -> bool {
+        self.expected_stack.is_well_formed()
+            && self.sources.len() == self.expected_stack.safe_points.len()
+            && self.sources.first().is_some_and(|first| {
+                first.is_well_formed()
+                    && first.metadata.program == self.expected_stack.program
+                    && self
+                        .sources
+                        .iter()
+                        .all(|source| source.is_well_formed() && source.metadata == first.metadata)
+            })
+    }
+}
+
+/// A complete original BlueTS coordinate result for that exact stack.
+/// Each entry repeats its ordered safe point and receipted source ID so a
+/// partial, reordered, or cross-metadata response is malformed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStackCoordinates {
+    pub stack: DebuggerStackSnapshot,
+    pub spans: Vec<DebuggerStaticMetadataSafePointSpan>,
+}
+
+impl DebuggerStackCoordinates {
+    pub fn is_well_formed(&self) -> bool {
+        self.stack.is_well_formed()
+            && self.spans.len() == self.stack.safe_points.len()
+            && self.spans.first().is_some_and(|first| {
+                first.is_well_formed()
+                    && first.source.metadata.program == self.stack.program
+                    && self
+                        .spans
+                        .iter()
+                        .zip(&self.stack.safe_points)
+                        .all(|(span, point)| {
+                            span.is_well_formed()
+                                && span.safe_point == *point
+                                && span.source.metadata == first.source.metadata
+                        })
+            })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerScopeEntry {
+    pub slot_ordinal: u32,
+    pub scope_depth: u32,
+}
+
+/// One currently active frame's bounded lexical-slot inventory. It is not a
+/// value lookup, binding name inventory, or source-position disclosure.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerScopeSnapshot {
+    pub program: DebuggerProgram,
+    pub frame: Option<DebuggerFrame>,
+    pub frame_index: u32,
+    pub safe_point: DebuggerSafePoint,
+    pub entries: Vec<DebuggerScopeEntry>,
+    pub scope_truncated: bool,
+}
+
 /// Native debugger features that a host may explicitly advertise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -722,6 +877,9 @@ pub enum DebuggerCapability {
     Breakpoints,
     PauseResume,
     Stepping,
+    /// Exact pause and single-instruction step for one live synchronous
+    /// nested invocation. Root-frame controls do not imply this capability.
+    NestedFrames,
     Stack,
     Scopes,
     ExceptionPolicy,
@@ -2148,12 +2306,22 @@ pub enum DebuggerExecutionState {
     Paused {
         safe_point: DebuggerSafePoint,
     },
+    NestedPaused {
+        frame: DebuggerFrame,
+        safe_point: DebuggerSafePoint,
+    },
     /// A source-span step stopped at its fixed instruction budget; the
     /// continuation remains paused at this verified root safe point.
     SourceStepLimitReached {
         safe_point: DebuggerSafePoint,
     },
     Stepping,
+    NestedStepping {
+        frame: DebuggerFrame,
+    },
+    NestedResuming {
+        frame: DebuggerFrame,
+    },
     Resuming,
     Completed,
 }
@@ -2334,6 +2502,12 @@ pub enum DebuggerRequest {
     ArmRootSafePointBreakpoint {
         safe_point: DebuggerSafePoint,
     },
+    /// Arms one exact child-code-unit safe point on a still-pending classic
+    /// or BlueTS entry module. The eventual pause mints an active frame;
+    /// this static target alone never authorizes an instruction step.
+    ArmNestedSafePointBreakpoint {
+        safe_point: DebuggerSafePoint,
+    },
     /// Lists only exact breakpoint records currently retained by one live
     /// realm. The records carry no source, bytecode, VM object, or value.
     ListBreakpoints {
@@ -2359,6 +2533,36 @@ pub enum DebuggerRequest {
     /// point or completion; no stack, operand, source, or value is returned.
     StepRootInstruction {
         program: DebuggerProgram,
+    },
+    /// Steps only the exact core-reminted, still-active nested invocation.
+    StepNestedInstruction {
+        frame: DebuggerFrame,
+    },
+    /// Runs only this exact paused nested invocation to its return. The
+    /// original root remains paused, with its own separate resume command.
+    ResumeNestedExecution {
+        frame: DebuggerFrame,
+    },
+    /// Reads only paused frame locations. Scopes require their own gate.
+    GetStack {
+        program: DebuggerProgram,
+        frame: Option<DebuggerFrame>,
+        max_frames: u32,
+    },
+    /// Resolves original BlueTS coordinates for an exact previously returned
+    /// Stack snapshot. Requires same-stream metadata/source receipts and the
+    /// independent safe-point-span grant for every frame.
+    GetStackCoordinates {
+        target: DebuggerStackCoordinatesTarget,
+    },
+    /// Reads one frame's active lexical slots only when its exact currently
+    /// paused safe point still equals the caller's expected location.
+    GetScopes {
+        program: DebuggerProgram,
+        frame: Option<DebuggerFrame>,
+        frame_index: u32,
+        expected_safe_point: DebuggerSafePoint,
+        max_scope_entries: u32,
     },
     /// Steps from one exact paused BlueTS root safe point to the next distinct
     /// compiler-bound source span, completion, or a bounded-limit stop.
@@ -2461,6 +2665,9 @@ pub enum DebuggerReply {
     RootSafePointBreakpointArmed {
         safe_point: DebuggerSafePoint,
     },
+    NestedSafePointBreakpointArmed {
+        safe_point: DebuggerSafePoint,
+    },
     Breakpoints(Vec<DebuggerSafePoint>),
     BreakpointCleared {
         safe_point: DebuggerSafePoint,
@@ -2476,6 +2683,15 @@ pub enum DebuggerReply {
     ExecutionStepRequested {
         program: DebuggerProgram,
     },
+    NestedStepRequested {
+        frame: DebuggerFrame,
+    },
+    NestedResumeRequested {
+        frame: DebuggerFrame,
+    },
+    Stack(DebuggerStackSnapshot),
+    StackCoordinates(DebuggerStackCoordinates),
+    Scopes(DebuggerScopeSnapshot),
     ExecutionSourceSpanStepRequested {
         safe_point: DebuggerSafePoint,
     },
@@ -2563,11 +2779,17 @@ pub fn negotiate(
         | DebuggerRequest::SetBreakpoint { .. }
         | DebuggerRequest::ArmEntryBreakpoint { .. }
         | DebuggerRequest::ArmRootSafePointBreakpoint { .. }
+        | DebuggerRequest::ArmNestedSafePointBreakpoint { .. }
         | DebuggerRequest::ListBreakpoints { .. }
         | DebuggerRequest::ClearBreakpoint { .. }
         | DebuggerRequest::GetExecutionState { .. }
         | DebuggerRequest::ResumeExecution { .. }
         | DebuggerRequest::StepRootInstruction { .. }
+        | DebuggerRequest::StepNestedInstruction { .. }
+        | DebuggerRequest::ResumeNestedExecution { .. }
+        | DebuggerRequest::GetStack { .. }
+        | DebuggerRequest::GetStackCoordinates { .. }
+        | DebuggerRequest::GetScopes { .. }
         | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
         | DebuggerRequest::Unknown => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
@@ -2608,6 +2830,260 @@ mod tests {
             tab_id: 7,
             realm_generation: 3,
         }
+    }
+
+    #[test]
+    fn nested_frame_identity_commands_and_states_round_trip_source_free() {
+        let program = DebuggerProgram {
+            realm: realm(),
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let safe_point = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 1,
+            bytecode_offset: 4,
+        };
+        let frame = DebuggerFrame {
+            program,
+            code_unit_ordinal: 1,
+            core_instance: [7; 16],
+            frame_handle: 19,
+        };
+        assert!(frame.matches_safe_point(safe_point));
+        assert!(!DebuggerFrame {
+            frame_handle: 0,
+            ..frame
+        }
+        .is_well_formed());
+        assert!(!DebuggerFrame {
+            core_instance: [0; 16],
+            ..frame
+        }
+        .is_well_formed());
+        assert!(!frame.matches_safe_point(DebuggerSafePoint {
+            code_unit_ordinal: 2,
+            ..safe_point
+        }));
+        for request in [
+            DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point },
+            DebuggerRequest::StepNestedInstruction { frame },
+            DebuggerRequest::ResumeNestedExecution { frame },
+            DebuggerRequest::GetStack {
+                program,
+                frame: Some(frame),
+                max_frames: 1,
+            },
+            DebuggerRequest::GetScopes {
+                program,
+                frame: Some(frame),
+                frame_index: 0,
+                expected_safe_point: safe_point,
+                max_scope_entries: 1,
+            },
+        ] {
+            let (mut writer, mut reader) = UnixStream::pair().unwrap();
+            write_debugger_request(&mut writer, &request).unwrap();
+            assert_eq!(read_debugger_request(&mut reader).unwrap(), request);
+        }
+        for reply in [
+            DebuggerReply::NestedSafePointBreakpointArmed { safe_point },
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::NestedPaused { frame, safe_point },
+            },
+            DebuggerReply::NestedStepRequested { frame },
+            DebuggerReply::NestedResumeRequested { frame },
+            DebuggerReply::Stack(DebuggerStackSnapshot {
+                program,
+                frame: Some(frame),
+                safe_points: vec![safe_point],
+                stack_truncated: true,
+            }),
+            DebuggerReply::Scopes(DebuggerScopeSnapshot {
+                program,
+                frame: Some(frame),
+                frame_index: 0,
+                safe_point,
+                entries: vec![DebuggerScopeEntry {
+                    slot_ordinal: 2,
+                    scope_depth: 0,
+                }],
+                scope_truncated: true,
+            }),
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::NestedStepping { frame },
+            },
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::NestedResuming { frame },
+            },
+        ] {
+            let bytes = serde_json::to_vec(&reply).unwrap();
+            let json = String::from_utf8(bytes).unwrap();
+            assert!(!json.contains("invocation_serial"));
+            assert!(!json.contains("source_text"));
+            let (mut writer, mut reader) = UnixStream::pair().unwrap();
+            write_debugger_reply(&mut writer, &reply).unwrap();
+            assert_eq!(read_debugger_reply(&mut reader).unwrap(), reply);
+        }
+    }
+
+    #[test]
+    fn stack_coordinate_values_require_one_exact_stack_and_one_metadata_parent() {
+        let program = DebuggerProgram {
+            realm: realm(),
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let child = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 1,
+            bytecode_offset: 0,
+        };
+        let root = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 41,
+        };
+        let frame = DebuggerFrame {
+            program,
+            code_unit_ordinal: 1,
+            core_instance: [7; 16],
+            frame_handle: 19,
+        };
+        let stack = DebuggerStackSnapshot {
+            program,
+            frame: Some(frame),
+            safe_points: vec![child, root],
+            stack_truncated: false,
+        };
+        let metadata = DebuggerStaticMetadataHandle {
+            program,
+            metadata_handle: 23,
+            metadata_generation: 29,
+        };
+        let first_source = DebuggerStaticMetadataSourceId {
+            metadata,
+            source_id: 0,
+        };
+        let second_source = DebuggerStaticMetadataSourceId {
+            metadata,
+            source_id: 1,
+        };
+        let target = DebuggerStackCoordinatesTarget {
+            expected_stack: stack.clone(),
+            sources: vec![first_source, second_source],
+        };
+        assert!(target.is_well_formed());
+        assert_eq!(
+            serde_json::from_slice::<DebuggerStackCoordinatesTarget>(
+                &serde_json::to_vec(&target).unwrap()
+            )
+            .unwrap(),
+            target
+        );
+
+        let mut malformed = target.clone();
+        malformed.sources.pop();
+        assert!(!malformed.is_well_formed());
+        malformed = target.clone();
+        malformed.sources[1].metadata.metadata_generation += 1;
+        assert!(!malformed.is_well_formed());
+        malformed = target.clone();
+        malformed.expected_stack.frame = None;
+        assert!(!malformed.is_well_formed());
+        malformed = target.clone();
+        malformed.expected_stack.safe_points[1]
+            .program
+            .program_generation += 1;
+        assert!(!malformed.is_well_formed());
+        malformed = target.clone();
+        malformed.expected_stack.safe_points = vec![child; DEBUGGER_MAX_STACK_FRAMES as usize + 1];
+        malformed.sources = vec![first_source; malformed.expected_stack.safe_points.len()];
+        assert!(!malformed.is_well_formed());
+
+        let span = |safe_point, source, start_byte, end_byte| DebuggerStaticMetadataSafePointSpan {
+            safe_point,
+            source,
+            start_byte,
+            end_byte,
+            coordinates: DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: start_byte,
+                end_line: 0,
+                end_column_utf16: end_byte,
+            },
+        };
+        let coordinates = DebuggerStackCoordinates {
+            stack,
+            spans: vec![
+                span(child, first_source, 8, 40),
+                span(root, second_source, 42, 60),
+            ],
+        };
+        assert!(coordinates.is_well_formed());
+        assert_eq!(
+            serde_json::from_slice::<DebuggerStackCoordinates>(
+                &serde_json::to_vec(&coordinates).unwrap()
+            )
+            .unwrap(),
+            coordinates
+        );
+        let request = DebuggerRequest::GetStackCoordinates {
+            target: target.clone(),
+        };
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_request(&mut sender, &request).unwrap();
+        assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
+        let reply = DebuggerReply::StackCoordinates(coordinates.clone());
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_reply(&mut sender, &reply).unwrap();
+        assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+        let mut malformed_reply = coordinates.clone();
+        malformed_reply.spans.swap(0, 1);
+        assert!(!malformed_reply.is_well_formed());
+        malformed_reply = coordinates.clone();
+        malformed_reply.spans[1].source.metadata.metadata_handle += 1;
+        assert!(!malformed_reply.is_well_formed());
+        malformed_reply = coordinates.clone();
+        malformed_reply.spans.pop();
+        assert!(!malformed_reply.is_well_formed());
+
+        let root_only = DebuggerStackSnapshot {
+            program,
+            frame: None,
+            safe_points: vec![root],
+            stack_truncated: false,
+        };
+        assert!(root_only.is_well_formed());
+        assert!(!DebuggerStackSnapshot {
+            safe_points: vec![child],
+            ..root_only.clone()
+        }
+        .is_well_formed());
+        assert!(!DebuggerStackSnapshot {
+            stack_truncated: true,
+            ..root_only
+        }
+        .is_well_formed());
+        assert!(!DebuggerStackSnapshot {
+            safe_points: vec![],
+            ..coordinates.stack.clone()
+        }
+        .is_well_formed());
+        assert!(!DebuggerStackSnapshot {
+            safe_points: vec![child],
+            ..coordinates.stack.clone()
+        }
+        .is_well_formed());
+        assert!(DebuggerStackSnapshot {
+            safe_points: vec![child],
+            stack_truncated: true,
+            ..coordinates.stack
+        }
+        .is_well_formed());
     }
 
     fn capabilities(reports: Vec<DebuggerCapabilityReport>) -> DebuggerCapabilities {

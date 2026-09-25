@@ -123,7 +123,7 @@ the typed getter/setter path, an invalid call fails before execution, and the
 ordinary snapshot profile still rejects `document` calls. B2.2/B3 and the
 broader DOM/event typing publication remain separate later work.
 
-**DOM creation and append (B2.2 in progress):** BlueJS's private two-wrapper
+**DOM creation and append (B2.2 complete):** BlueJS's private two-wrapper
 method resolves an exact receiver and exact child in one realm-local family,
 then returns the original child object only after its host callback succeeds.
 The launcher-selected `core-script-dom-mutation-v1` profile now binds
@@ -136,26 +136,41 @@ HTTP launcher/core/child page executes JavaScript and checked BlueTS mutation,
 rejects a forged child and an invalid direct BlueTS append call, confirms the
 live subtree, and compares its RGBA frame against the same empty page to prove
 visible rasterization. VM regressions reject foreign-family and same-family
-foreign-generation wrappers. The real-page cross-document child case remains
-open because ordinary realms cannot transfer wrappers. BlueTS now recursively
-infers chained call-result receivers and validates their method arguments;
-the real-page rejected script exercises this path before execution.
+foreign-generation wrappers. Script IPC v6 also replaces raw per-document
+NodeIds with core-minted process-unique child handles that resolve only in the
+original document; the handle map is discarded on navigation. Two real HTTP
+pages in one core prove that equal internal node counters cannot cause a
+foreign detached child to attach in the other tab. The authenticated script
+route rejects the append, both live DOMs remain unchanged, and the local
+detached child remains valid. Ordinary page realms cannot transfer wrappers
+between their separate VMs, so the socket test exercises the lower boundary
+where such a foreign handle could otherwise alias. Page-host v34 converts a
+core hit-tested NodeId into the same document-bound handle before click
+dispatch, preserving exact listener identity; a real JavaScript/BlueTS click
+regression covers that handoff. BlueTS recursively infers
+chained call-result receivers and validates their method arguments; the
+real-page rejected script exercises this path before execution.
 
-**Click delivery and event profile (B3 partially complete):** The BlueJS
+**Click delivery and event profile (B3 complete for event-v1):** The BlueJS
 host-object family roots, deduplicates, caps, and removes exact-wrapper
 `click` callbacks without passing a function or callback handle through
 primitive host callbacks or IPC. The launcher now selects a separate event-v1
 profile, installs its exact 10-binding inventory, and keeps the node family
 with the exact child document. Page-host v33 accepts only a core-hit-tested
-node and returns a cancellation bit after the synchronous child dispatch.
-Core serves same-document DOM calls during that wait and applies link
-navigation only when `preventDefault()` did not run. A real process test
+node and returns a cancellation bit after a generation-bound, one-slot child
+task dispatch. The child runs at most 256 Promise jobs in the click's
+microtask checkpoint before replying; ordinary listener exceptions do not
+lose an earlier `preventDefault()` or skip later listeners. Resource failures
+fail closed. Core serves same-document DOM calls during that wait and applies
+link navigation only when `preventDefault()` did not run. A real process test
 exercises coordinate Click and ActOn with JavaScript and BlueTS listeners,
-visible DOM mutation, and canceled navigation. Child tests prove removed and
-old-document callbacks do not run. The BlueTS checker now parses bounded
-callback function types and distinguishes string literals for exact `click`
-typing; the older mutation-v1 artifact remains unchanged. The Phase 13
-task-queue and microtask-checkpoint semantics remain an explicit B3 gap.
+microtask DOM mutation before the default action, and canceled navigation.
+Child tests prove removed and old-document callbacks do not run, queued
+old-generation tasks are discarded, and the queue limit is enforced. The
+BlueTS checker parses bounded callback function types and distinguishes
+string literals for exact `click` typing; the older mutation-v1 artifact
+remains unchanged. This is a synchronous first-event task boundary, not a
+general-purpose browser event loop.
 
 **Event `readonly` static enforcement (B4 partial):** BlueTS now retains
 `readonly` on interface and record members through generic substitution and
@@ -191,6 +206,931 @@ checks writable-property value types; the scan adds readonly protection for
 nested forms. Tests also keep a method named `delete` from being mistaken for
 the delete operator. Dynamic receiver chains and opaque/unmodeled expression
 forms still prevent claiming full B4 qualifier enforcement.
+
+**Computed receiver element typing (B4 partial):** The checker now carries a
+typed array element through a dynamic bracket receiver before testing a later
+readonly event field, including arrays reached through a type alias and
+mutations nested inside calls. Uniform tuple and record fields use the same
+conservative inference; canonical numeric literal keys select the exact
+element of a heterogeneous tuple, and a mutable field remains writable. The
+verified event-v1 direct bridge rejects array-indexed writes to `type` and
+`currentTarget` as BlueTS diagnostics before BlueJS execution. At this slice,
+heterogeneous dynamic containers and opaque expressions still needed a sound
+fail-closed policy before B4's qualifier leaf could be marked complete.
+
+**Heterogeneous computed readonly receivers (B4 partial):** A separate
+readonly-only candidate walk now expands typed heterogeneous records, tuples,
+array unions, named aliases, and subsequent member chains under a fixed
+type-expansion budget. It rejects a mutation when any reachable branch has a
+readonly event property, including a mutation nested inside a call, while a
+mutable-only branch remains writable. Exhaustion emits a resource diagnostic
+instead of treating the receiver as safely writable. The event-v1 direct
+bridge proves a heterogeneous indexed event write fails during BlueTS checking.
+This walk does not change ordinary expression inference or resolve opaque and
+unmodeled receiver forms; B4.2 remains open.
+
+**Readonly through inferred aliases (B4 partial):** A heterogeneous computed
+index now infers a conservative union instead of discarding its possible
+value types when stored in an unannotated local. Bounded union property lookup
+requires each concrete branch to own the property and merges its readonly
+qualifier, so `const selected = slots[key]; selected.type = ...` is rejected
+even when one branch declares a mutable `type`; common mutable fields remain
+writable. The verified event-v1 direct bridge checks the same alias boundary.
+Property lookup and index inference now live in separate MPL-licensed modules,
+keeping both `checker.rs` and `expressions.rs` under 1500 lines. Opaque or
+unmodeled expression shapes remain outside this proof, so B4.2 stays open.
+
+**Readonly through literal-held values (B4 partial):** Array and record
+literal inference now uses the supported full member/call expression for each
+value rather than its first identifier. A depth-aware record value scanner
+retains nested objects and calls with comma-separated arguments. This keeps an
+Event's readonly `type` when it passes through `[holder.event][0]`,
+`{ picked: holder.event }`, a nested record, or a typed call result; the
+verified event-v1 bridge rejects the array and record cases before runtime.
+The new recursive inference stops at 128 bracket/record containers and emits
+a resource diagnostic on excess input. Opaque expression forms remain open.
+
+**Readonly through erased assertions (B4 partial):** The checker now infers
+the operand of a supported `as` or `satisfies` expression before it reaches
+the generic identifier fallback. Because both forms erase from the emitted
+JavaScript, neither can turn a known event receiver into a mutable one for
+readonly checking, even when `as` names a writable-looking record type.
+Regression tests cover direct, alias, array, and record paths plus a mutable
+control; the verified event-v1 bridge rejects an asserted event alias before
+runtime. The checker tests were split into readonly and member-call modules
+to keep the parent test file below 1500 lines. This is a qualifier-preservation
+rule, not a claim of complete assertion compatibility or coverage of opaque
+expression forms.
+
+**Readonly through sequence results (B4 partial):** The supported JavaScript
+sequence expression now infers its rightmost operand, matching the value the
+VM actually produces. A preceding mutable receiver can no longer disguise a
+later readonly event through `(holder, source.event)`, whether the result is
+written directly, held in a local or array, or follows a call with its own
+comma-separated arguments. A reversed sequence ending in a mutable receiver
+remains writable. The verified event-v1 bridge rejects the readonly alias
+before execution. Other unmodeled expression shapes remain open.
+
+**Readonly through simple assignment results (B4 partial):** A supported
+simple `=` expression now infers the right-hand value that the VM returns,
+not the type of a mutable object appearing at the start of its left-hand
+target. This retains an event's readonly `type` through direct, local,
+record, array, and chained assignment results. A genuinely mutable
+right-hand result remains writable. The verified event-v1 bridge rejects an
+assignment-result alias before runtime. Compound and logical assignments,
+and other unmodeled expression shapes, remain outside this proof.
+
+**Readonly through logical assignment results (B4 partial):** `&&=` and
+`||=` now conservatively merge the known type before the write with the
+right-hand value, while `??=` uses the existing nullish-exclusion merge.
+When either reachable result is a readonly event, a later `type` write is
+rejected; a purely mutable result stays writable. The verified event-v1
+bridge rejects a logical-assignment alias before runtime. Assignment-result
+inference has a fixed 128-logical-operator resource boundary with a diagnostic
+on the first excess operator; existing simple-assignment scan limits remain
+unchanged. The expression inference method moved to its own
+MPL-licensed module, leaving the parent expression checker below 1500 lines.
+Arithmetic/bitwise compound results and opaque expression forms remain open.
+
+**Readonly through logical expression results (B4 partial):** Non-boolean
+`&&` and `||` now conservatively merge their known operand types instead
+of erasing both to `unknown`; the existing two-boolean result stays boolean.
+This carries an event's readonly qualifier through aliases and direct
+receivers when either reachable result is that event, while mutable-only
+results remain writable. The verified event-v1 bridge rejects an `||` alias
+before runtime. General `&&`, `||`, and `??` inference has its own fixed
+128-operator resource boundary, separate from logical-assignment accounting.
+Unknown operands and other opaque expression forms still require a sound
+qualifier policy, so B4.2 remains open.
+
+**Readonly through tuple spread results (B4 partial):** Inferred array
+literals now resolve spread elements through the indexed-value logic used
+for computed receivers, with the existing named-type expansion budget. A
+tuple spread, including one named by a type alias, retains every possible
+element type instead of becoming
+`unknown`; a following indexed alias or direct receiver therefore cannot
+discard a reachable event's readonly fields. Mutable-only tuple spreads stay
+writable. This ordinary array inference merges tuple element possibilities
+rather than preserving their exact positions. The verified event-v1 bridge
+rejects the readonly alias before runtime. The array inference implementation
+moved into a small MPL-licensed module, leaving the checker below 1500 lines.
+Other opaque result forms and unknown spread sources remain open.
+
+**Readonly through record spread results (B4 partial):** Inferred record
+literals now parse a complete spread source expression and expand known
+interface/type aliases to their record fields. A copied holder therefore
+retains the readonly event type in nested field values, including when the
+spread comes from a member expression, typed call, or nested literal. Object
+spread makes the new outer properties writable, and later explicit fields
+override spread fields; neither operation erases a nested event's readonly
+qualifier. The verified event-v1 bridge rejects a copied holder's event
+write before runtime. Record-result inference moved to its own MPL-licensed
+module, leaving the parent checker below 1500 lines. Opaque or non-record
+spread sources still need a conservative qualifier policy, so B4.2 remains
+open.
+
+**Readonly through union record spreads (B4 partial):** A record spread from
+a known union of record/interface branches now joins each shared field's
+possible value types and marks a field optional when some branches omit it.
+A later write through the copied event therefore sees any reachable readonly
+event branch. An optional later spread cannot erase a previously present
+readonly event; a definite explicit field or required spread still overrides
+it. Mutable-only union spreads remain writable. The verified event-v1 bridge
+rejects a readonly union-spread alias before runtime. Exhausting the
+type-expansion budget emits a resource diagnostic rather than allowing an
+`unknown` alias to pass.
+
+**Fail-closed opaque record spreads (B4 partial):** In checked mode, a spread
+source that cannot be proven to have a supported record shape now reports a
+type diagnostic, including `any`, `unknown`, and non-record union branches.
+This deliberately narrows dynamic object spread in the checked subset;
+transpile-only mode remains unchanged. The verified event-v1 bridge rejects
+an opaque holder spread before runtime. Other opaque expression forms still
+use the general fail-closed receiver policy below, so B4.2 remains open.
+
+**Opaque readonly receiver policy (B4.2.1–B4.2.2):** A write through an
+unmodeled receiver (`Unknown`) fails in checked mode when a readonly-bearing
+binding is in scope. The scan is bounded by type-expansion fuel and reports a
+resource diagnostic on exhaustion. A declared `any` receiver remains an
+explicit escape, and an opaque receiver in a scope without readonly-bearing
+bindings remains allowed. Through the verified event-v1 public bridge, a
+registered click callback writing `pick(event).type = 'click'` receives a
+BlueTS diagnostic before an executable script is produced. This is a
+conservative scope-level policy, not proof that every unmodeled receiver
+actually aliases the event; the remaining limits are recorded below.
+
+**B4.2.3 finite acceptance and limitations:** The delivered readonly guarantee
+covers the expression forms listed in TODO.md B4.2, plus the bounded
+fail-closed rule for an unmodeled (`Unknown`) write receiver. It is not a
+claim of general TypeScript expression or data-flow support:
+
+- Arithmetic and bitwise compound *targets* receive the readonly mutation
+  check, but their result types are not part of the precise assignment-result
+  inference implemented for `=` and `&&=`/`||=`/`??=`. Do not count an alias
+  of such a result as a proven readonly-object carrier. An unmodeled result
+  used as a write receiver is subject to the fail-closed rule.
+- Destructuring bindings are not in the supported declaration model: variable
+  names and function parameters require identifiers, not binding patterns.
+  No destructured alias is in the delivered qualifier-preservation list.
+- Nested closure capture has no separate lexical-capture/alias analysis.
+  The verified event-v1 case is a named click callback with a typed event
+  parameter; it does not establish readonly flow through an inner closure.
+  Arrow expressions are outside the current direct BlueTS-to-BlueJS bridge.
+
+The event object's runtime properties remain non-writable and
+non-configurable. A new expression or binding form needs a concrete page
+fixture, checker and direct-bridge evidence, and a public event-v1 regression
+before it joins the accepted list; otherwise the bridge must fail closed.
+
+**One real event-v1 BlueTS page (B4.3.1):** The supervised
+launcher/core/child HTTP test in `backend/launcher/tests/spawn_core.rs` now
+loads a single checked BlueTS click-handler script under the owner-selected
+event-v1 profile. Its execution report confirms compilation and execution;
+the callback uses `getElementById`, writes `textContent`, creates an element
+and a text node, and appends both through the live DOM route. A core `GetDom`
+reply after the click contains both the updated status and the created text
+node. This proves the supported path through the real child; unsupported
+member rejection is tracked separately in B4.3.2–B4.3.4.
+
+**Named unsupported-member diagnostics (B4.3.2):** The verified event-v1
+direct-script bridge rejects `event.stopPropagation()` inside a registered
+typed click callback and `document.querySelector(...)` at the page root.
+Both return BlueTS diagnostics that name the missing member. The generated
+profile has no declaration for either operation.
+
+**Catchable unsupported-member runtime calls (B4.3.3):** A real
+launcher/core/child event-v1 page executes checked BlueTS functions whose
+parameters are explicitly `any`. JavaScript passes the live `document` and
+the core-delivered click event into those functions. Calls to the uninstalled
+`querySelector` and `stopPropagation` members each throw a page-catchable
+`TypeError`; the page writes status text after both catches, and the click
+completes without navigation. The verified direct bridge also compiles both
+`any`-parameter functions, proving this route reaches runtime.
+
+**Paired static/runtime rejection (B4.3.4):** The same real-process test now
+checks the named BlueTS diagnostics for both members against the verified
+event-v1 declaration before starting the page. It compiles the exact
+explicit-`any` source used by that page, with the same member-name constants,
+then verifies both runtime catches and subsequent live DOM writes. This pins
+the checker and child behavior together for the two unsupported operations.
+
+**Module-root debugger decision (C1.1.1.1):** The first module pause targets
+the entry program of an owner-authorized, checked ESM graph, at its first
+compiler-verified root instruction in the evaluate body (at or after
+`module_evaluate_entry`). Module declaration instantiation and eager dependency
+evaluation may run before this boundary; the reported pause must precede the
+entry body's target instruction. The graph is attached before the first
+debugger advance, so its entry and dependency program generations and BlueTS
+metadata can be inventoried without executing page code. The pending entry
+uses the same exact tab, document generation, program, and safe-point identity
+checks as classic execution; unrelated module programs cannot arm its root
+pause. At the pause, BlueJS retains the linked graph, module cells, roots,
+active module identity, execution context, operand/handler/iterator stacks,
+and instruction budget as one realm-owned continuation. A resume finishes that
+continuation before the child reports the module script completed. Reload,
+close, or core cutover discards the entire continuation and rejects its old
+tuple. The public state sequence is `Pending` → `Paused` → `Resuming` →
+`Completed`; none of these replies exposes source text or VM values. An
+asynchronous module suspension or a resource failure must produce a bounded
+rejection, never a fabricated completion or a detached continuation. This
+first entry-root control does not claim nested-frame or dependency-frame
+stepping; those require their own exact frame identity in C1.2.
+
+**Pending module inventory (C1.1.1.2):** Under debugger execution control,
+the child attaches a checked BlueTS ESM graph and retains each program's
+metadata during document synchronization. It registers the entry as a
+`Pending` debugger execution and queues the already attached graph in document
+order; advancing executes that exact attachment once and marks the entry
+`Completed`. An isolated child subprocess test inventories both programs and
+their metadata in a two-module graph before advance, then observes one
+successful report and completion. A launcher/core/child HTTP test observes the
+same pending entry and its verified safe points through the public debugger
+socket before a later browser request advances it. This step does not yet
+suspend the entry module; C1.1.1.3 adds the VM continuation.
+
+**Exact module entry point (C1.1.1.3.1):** `BlueJsPageRuntime` now selects
+the lowest compiler-verified root instruction at or after the retained
+module's `module_evaluate_entry`, after checking the exact live tab/program
+generation and module root shape. The selector refuses a classic handle and
+an invalidated predecessor; its native regression compares the result to the
+compiled entry offset and safe-point inventory. It is a location check only:
+the module continuation and retained graph are C1.1.1.3.2.
+
+**Retained module-root continuation (C1.1.1.3.2):** The native VM debugger
+now accepts only the first instruction in the entry module's evaluate body.
+Static graph linking and eager dependencies run before that boundary. At the
+entry suspension, the VM moves the complete module execution context,
+iterators, handler stack, code and program counter into a GC-visible
+continuation; the linked records and their roots stay with the realm. Resume
+restores that exact frame, completes the existing entry record, and creates
+its namespace without re-linking or re-evaluating dependencies. A native
+two-module regression inspects the paused entry/dependency state, forces a
+major collection, resumes, and checks both side-effect counters remain one
+even after querying the same graph again. Error and asynchronous cleanup
+remain the explicit C1.1.1.3.3 gate; child/core routing remains C1.1.1.4.
+
+**Module-root terminal and async cleanup (C1.1.1.3.3):** A paused entry rejects
+other script, module-graph and Promise-job execution on the same VM. Resume
+records a catchable throw on the existing linked module, keeps its object
+reachable across the next graph query, and releases the debugger continuation.
+When the entry awaits, its frame transfers to the normal module-await job
+machinery; queued jobs settle its completion or rejection before debugger
+resume returns. An async dependency is advanced only until the entry reaches
+its requested first instruction, leaving all later jobs untouched during the
+pause. Native regressions cover these terminal, fulfilled-await, rejected-
+await and async-dependency cases. Child/core routing and page-visible state
+transitions remain C1.1.1.4.
+
+**Module route checkpoints (C1.1.1.4):** Keep the generation-bound BlueJS
+page-runtime pause/resume API (C1.1.1.4.1), child document-order state machine
+(C1.1.1.4.2), and real launcher/core/child BlueTS ESM acceptance
+(C1.1.1.4.3) independently reviewable. No protocol widening is needed: the
+existing opaque program, safe-point and execution-state requests carry the
+entry identity through core to the child.
+
+**Generation-bound page-runtime module pause (C1.1.1.4.1):** The host-neutral
+BlueJS page runtime now accepts the same already-admitted module handles as
+ordinary graph evaluation, plus the exact current entry program's first
+evaluate-body safe point. It validates realm ownership, root location and
+unique canonical module IDs before reserving the graph identities and entering
+the VM. A separate resume operation advances only the retained module frame.
+A page-runtime regression rejects a cross-tab handle and a different root
+instruction, verifies a paused graph excludes concurrent execution, checks
+resume does not replay its entry, and rejects the old handle after navigation.
+
+**Child module execution control (C1.1.1.4.2):** The deferred BlueTS graph now
+stores one optional exact entry-root arm. The child accepts only the pending
+entry program's first evaluate-body safe point, leaves the declaration at the
+queue head while paused, and dispatches resume to the page-runtime module
+continuation. Repeated scheduler advances cannot execute a paused body; module
+instruction/source-span step remains unavailable. A child test rejects another
+entry instruction and the dependency program, observes `Paused` and
+`Resuming` before `Completed`, and rejects the old document tuple after reload.
+
+**Real module debugger route (C1.1.1.4.3):** A local-HTTP BlueTS ESM page now
+crosses the launcher, core and isolated child while a public debugger client
+with no metadata grants inventories its pending entry and compiler-verified
+root points. The client arms the first accepted evaluate-body point, observes
+`Pending` → `Paused` → `Resuming` → `Completed`, then reads the module's
+successful source-free execution report and loaded DOM through the separate
+public browser connection. The native and page-runtime tests separately pin
+single evaluation and retained-frame behavior; this process test proves the
+opaque protocol and scheduler route without exposing source or VM values.
+
+**Module root-step checkpoints (C1.1.2):** Reuse the existing exact root
+instruction-step and bounded BlueTS source-span-step contracts without
+claiming nested or dependency frames. First retain and step one module-root
+instruction in BlueJS (C1.1.2.1), then route its verified successor through
+the page runtime and child queue (C1.1.2.2), apply the existing metadata-bound
+source-span limit there (C1.1.2.3), and close with a public real-process test
+of both modes (C1.1.2.4).
+
+**Native module-root instruction step (C1.1.2.1):** The retained entry frame
+accepts the interpreter's existing after-one-root-instruction suspension.
+Each nonterminal step returns the actual verified successor PC and moves the
+same module execution context back into its GC-visible continuation without
+relinking the graph. A native loop regression observes backward successor
+hits, terminal completion, the final page-global result, and no remaining
+continuation after completion. Nested and dependency frames are still not
+separately addressable.
+
+**Page and child module instruction step (C1.1.2.2):** The page runtime maps
+the VM's one-instruction module result to the existing source-free state. The
+child accepts a step only for the armed, paused BlueTS entry at the queue head,
+rebinds its returned PC to that same opaque program, validates the resulting
+safe point against the exact live compiler inventory, and then reports the
+successor. Another module in the graph cannot step; a repeated scheduler
+advance while paused cannot execute another instruction. Page-runtime and
+child tests cover these identity and terminal boundaries without widening the
+debugger protocol or claiming nested/dependency frames.
+
+**Bounded module BlueTS source step (C1.1.2.3):** The child now accepts a
+source-span step for its exact paused BlueTS entry program as well as for a
+classic root. The same metadata/source-ID receipt check and 256-root-
+instruction budget apply before any step. The shared advancement path selects
+the module VM step when appropriate, validates every successor against the
+live program, and stops at a distinct bound span, terminal completion, or the
+existing explicit limit state. A child regression rejects a wrong source ID,
+reaches the next module statement's span, and resumes the retained graph; the
+classic limit regression still exercises the common bounded path.
+
+**Real-process module root steps (C1.1.2.4):** An admitted three-statement
+BlueTS ESM page is paused at its evaluate-body root point over the public
+debugger socket. The client requests a root-instruction step and validates its
+actual successor against the live safe-point inventory, then uses its
+metadata/source receipts to request a bounded source-span step. The latter
+pauses at a different bound source span; resume completes the same module and
+the public browser connection reports successful module execution. The full
+out-of-process debugger suite passes with this test.
+
+**Stale module control (C1.1.3):** A real HTTP reload replaces that module's
+realm after completion. On the original debugger stream, a root-breakpoint
+arm, root-instruction step, and metadata-receipted source-span step using the
+old module handles each fail with `StaleRealm`. The new page is still
+discoverable under a different realm generation; no old request is retargeted
+to its program.
+
+**First nested-frame debugger boundary (C1.2.1.1):** Existing compiler-safe
+points already name non-root code units, but that static tuple is not an active
+frame: recursive or repeated calls can execute the same code unit at the same
+offset. The current BlueJS interpreter nests ordinary calls on the Rust stack,
+and its debugger continuation stores only the root frame. Therefore neither
+`StepRootInstruction` nor a non-root `DebuggerSafePoint` may be reused as a
+nested-frame step target. The first increment supports one ordinary,
+synchronous interpreted closure called directly from a paused or executing
+classic/entry-module root. It pauses before an exact verified instruction in
+that closure, then steps within that same invocation. It does not claim
+generator, async, constructor, tail-call replacement, direct-eval, native or
+proxy-mediated calls, reentrant host callbacks, or deeper interpreted frames;
+an armed request encountering one of these paths must fail with an explicit
+unsupported outcome before executing the target, never silently skip the
+requested pause or return a fabricated root successor.
+
+On activation, BlueJS must match the closure's compiled code unit to the
+selected program generation and mint a nonzero, per-realm invocation serial.
+The child/public handle binds that serial to the exact tab, document realm,
+program handle/generation, and code-unit ordinal. It is issued only for an
+actually paused frame, not inferred from a static breakpoint. A frame step
+requires this whole live tuple, and a returned frame or replaced realm revokes
+it; even another invocation of the same code unit cannot inherit it. The
+public replies disclose only the frame handle, verified safe point, and
+source-free state, not operands, bindings, closure objects, or source text.
+
+The VM continuation must own both the child frame and its suspended call-site
+parent. Preserve each frame's operand, handler, iterator and execution-context
+state, the unconsumed call inputs and pending completion, plus the module graph
+when applicable. Every retained object edge must remain visible to the VM GC;
+normal execution entry points cannot run concurrently. One nested step
+executes exactly one child instruction and reports its real next instruction
+boundary, including a backward branch; a terminal child result is integrated
+once into the saved parent call site, never dispatched a second time.
+Exception unwinding and unsupported call forms must leave no detached frame.
+The protocol/page-host version changes only when the new active-frame type
+and commands are wired end-to-end, with a separate capability that remains
+unavailable on hosts lacking the continuation. C1.2.2 adds one-shot resume of
+that same active frame; C1.2.3 proves returned-frame, cross-tab and predecessor-
+child rejection.
+
+**Private route checkpoint (C1.2.1.3.2):** Page-host v35 carries a separate
+source-free frame tuple and nested arm/state/step commands from the core proxy
+to the isolated child. The child issues it only after an actual paused
+invocation and compares the whole live tab/document/program/code-unit/serial
+tuple before scheduling a step. Core maps the child program identity to its
+own program identity and validates each reply. Root-only execution state and
+controls do not alias the active child; no public debugger frame or nested
+capability is advertised until C1.2.1.3.3.
+
+**Core frame reminting (C1.2.1.3.3.1):** The core proxy retains the exact
+child-private serial only in its live per-tab association and issues a
+process-unique nonzero frame handle after a verified child pause. Repeated
+observations of that invocation keep the same handle. Child return, realm
+replacement/close, and predecessor executor loss revoke it; even a replacement
+child that starts its program counters at the same numbers receives a different
+public-facing frame handle.
+
+**Public active-frame route (C1.2.1.3.3.2):** Public debugger v32 now has a
+distinct `DebuggerFrame`, `NestedFrames` capability, and nested arm, state, and
+single-instruction step messages. The public frame handle is core-reminted and
+never carries the private child invocation serial. The core checks the exact
+live realm, program and static safe point before arming, and maps nested state
+only from a verified real child frame. A nested step must present that exact
+active handle; root controls cannot stand in for it. Hosts without the child
+continuation keep the nested capability unavailable. The real core/child route
+regression proves the public command semantics.
+
+**Public BlueTS nested acceptance (C1.2.1.4):** A launcher-supervised BlueTS
+classic page now proves the public debugger socket advertises nested-frame
+control, arms an inner-function instruction, reports the real paused child,
+and advances exactly one instruction to a distinct safe point under the same
+core-owned frame handle. Root stepping is refused while the child is active;
+the returned frame handle is refused after the child rejoins its original
+caller and the page completes. A separate real BlueTS page arms an unsupported
+deeper call and observes a rejected script rather than a fabricated pause.
+This closes nested pause/step; same-frame resume remains C1.2.2.
+
+**Native same-frame resume (C1.2.2.1):** The VM can now continue only the
+retained nested invocation identified by its serial without an instruction
+suspension. It rejoins the original classic or module root at the saved `Call`
+successor, leaving that root paused for its own resume. The page runtime checks
+the whole live tab/program/code-unit/serial identity before entering the VM
+and revokes it on child return. Classic effects occur once, a linked module
+dependency and entry complete once, and wrong or returned identities are
+refused. No child or public resume command is exposed by this checkpoint.
+
+**Private same-frame resume (C1.2.2.2):** Page-host v36 carries a separate
+frame-bound resume request, acknowledgement, and `NestedResuming` state. The
+child accepts it only for its exact paused tab/document/program/code-unit/
+invocation tuple; the next owner advance runs that retained child to return
+and parks the original root at its verified successor. The core translates
+only its live reminted frame handle to the child-private tuple, preserves the
+requested state distinctly from one-instruction stepping, and revokes the
+association when the child returns. Classic and linked-module scheduler tests
+and a real BlueTS child/core socket regression cover the route. Public socket
+authorization and its own protocol version remain for C1.2.2.3.
+
+**Public same-frame resume (C1.2.2.3):** Public debugger v33 adds a distinct
+`ResumeNestedExecution` command, `NestedResumeRequested` acknowledgement, and
+`NestedResuming` state under the existing nested-frame capability. Core
+accepts only a well-formed, live, core-reminted frame handle for the exact
+realm/program, then asks the private child to finish that invocation. It does
+not alias the root resume or one-instruction step controls. A real
+launcher-supervised BlueTS page steps once, resumes the same child frame,
+observes the separate requested state, returns to the original root, and
+finishes after root resume. Wrong and returned frame handles are rejected.
+
+**Cross-tab active-frame denial (C1.2.3.1):** A real Launcher public debugger
+session now pauses the same BlueTS child shape in two live tabs. Substituting
+either tab's program identity around the other's frame handle fails for both
+step and resume, while both genuine handles remain usable. A matching static
+code-unit ordinal therefore cannot cross the tab/realm ownership boundary.
+
+**Predecessor-child denial across cutover (C1.2.3.2):** A real Launcher cutover
+test reproduces the dangerous case: two core/child generations replay the same
+BlueTS page to the same tab, document generation, and program numbers, and
+their first local frame counters both mint `1`. Before hardening, the old
+public frame was numerically identical to the successor's. Public debugger
+v34 now pairs the monotonic handle with a core-instance identity: the 32-bit
+process ID guarantees distinction while predecessor and successor overlap
+during cutover, and 96 OS-random bits protect against later PID reuse. Core
+fails closed if entropy is unavailable. The core proxy compares the whole
+frame tuple, including instance identity, before sending anything to the
+child; the child invocation serial remains private. The real socket test now
+rejects both old step and resume without disturbing the successor's own
+paused invocation.
+
+**First bounded stack/scope contract (C2.1.1.1):** The first inspection is a
+snapshot only of an actually paused root or the one directly nested child and
+its waiting root. Frames are ordered current child first, then its parent;
+there is no synthetic deeper frame. A frame carries its verified code-unit
+ordinal and instruction offset. Scope entries name only active lexical
+binding-slot ordinals and their innermost-first scope depth. They carry no
+identifier text, binding value, heap/object handle, static type, or source
+position. The VM reads its retained interpreter state only; it never invokes
+JavaScript or a getter to create an inspection reply. Callers request positive
+frame and per-frame entry limits no greater than the fixed advertised caps
+(64 frames and 256 entries); the producer stops at those limits and reports
+`stack_truncated` and each frame's `scope_truncated` explicitly, including
+when a smaller caller limit cuts off data. A stale, stepping, resuming, or
+completed target cannot reuse an old snapshot. Child/core/public transport
+stays unavailable until the whole exact-identity route is installed; C2.1.2
+adds original BlueTS coordinates rather than implying them here.
+
+**Native snapshot seam (C2.1.1.2):** BlueJS now copies only its parked classic
+or module root continuation, or the exact live nested child followed by that
+waiting root. Its source-free result records installed program generation,
+code-unit ordinal, verified bytecode offset, and active lexical binding-slot
+ordinal with innermost-first scope depth. A caller chooses positive limits up
+to 64 frames and 256 entries per frame; overflow is reported independently
+for the stack and each frame. The page runtime checks the tab, installed
+program generation, and exact nested frame before returning the snapshot.
+Inactive lexical blocks are excluded; repeated capture neither advances
+bytecode nor invokes a getter. Native classic/module and page-runtime tests
+cover these conditions. No child IPC or public debugger capability is added
+at this seam; that remains C2.1.1.3–C2.1.1.4.
+
+**Private child snapshot seam (C2.1.1.3.1):** Page-host protocol v37 defines
+an exact document/program and optional active-frame snapshot request, with
+caller-selected positive limits no larger than 64 frames and 256 entries per
+frame. Its reply contains only verified code-unit/bytecode locations, active
+lexical slot ordinals and depths, and independent truncation flags. The child
+admits the request only for the queue-head continuation already paused under
+that exact document and installed program; nested requests must match the
+entire currently active invocation, and root requests cannot inspect behind
+an active child. Stepping, resuming, stale, wrong-program, and over-budget
+states fail closed. The v37 private wire and child scheduler are tested; the
+core-facing proxy and public capability remain disabled pending the next
+leaves.
+
+**Core proxy snapshot seam (C2.1.1.3.2):** The core executor exposes only a
+private, default-denied method returning its own source-free snapshot types.
+Before asking the child, it verifies the core-owned live document/program and
+either the still-paused root or the exact core-minted nested frame mapped to
+the child invocation. Afterward it checks the full private reply echo, expected
+root/child-first shape and top bytecode offset, frame and per-frame entry
+budgets, explicit truncation, monotonic active-scope depth, and each exact
+child safe point. The core never passes private program/frame IDs to its
+caller. Tests include a real child, malformed shapes, and a transport double
+that forges the reply tab, document, program, or frame. No public debugger
+request or capability exists yet.
+
+**Private-route acceptance (C2.1.1.3.3):** A live BlueTS classic page, with
+the real child host behind its private socket, pauses in a nested function
+after two lexical slots become active. A two-frame/full-scope read returns the
+child then waiting root without truncation; a one-frame/one-entry read sets
+both truncation flags. Repeated reads leave the same paused continuation
+intact. Zero or oversized budgets, a wrong core frame handle, another program
+generation, and the prior document after navigation all fail closed. A
+Launcher-supervised real-process debugger socket still advertises Stack and
+Scopes only as Planned while nested control remains Available. The public
+protocol is intentionally unchanged until C2.1.1.4.
+The complete 14-case Launcher debugger suite remains timing-sensitive around
+its pre-existing short pending-admission window: two runs each passed 13/14
+with a different pending-state assertion failing; both affected cases passed
+when rerun alone. The focused new public-capability case and all 288 engine
+library tests pass.
+
+**Public stack/scope contract (C2.1.1.4.1):** The owner-only, opt-in debugger
+socket will expose two independent operations and capability reports. `Stack`
+reads the exact currently paused root program or an exact core-minted nested
+frame, with a caller-chosen positive frame limit up to 64. It returns only
+ordered code-unit ordinals and verified bytecode offsets plus
+`stack_truncated`; no lexical entries are included. `Scopes` names the same
+paused target, a zero-based frame index in that live stack, and the exact
+expected safe point of that frame. It requests a positive per-frame entry
+limit up to 256 and returns only active lexical slot ordinals/depths plus
+`scope_truncated`. The exact expected safe point makes a scope query fail if
+the frame is now at a different instruction; it is a location check, not a
+step-epoch token. Neither operation treats a
+configured breakpoint or static code unit as a paused frame. Both operations
+check the core-owned realm/program generation and, for nested targets, the
+whole core-instance-bound frame identity before using the private snapshot.
+The two capability states are independent and default-denied on ordinary or
+unsupported executor routes; source-free inspection needs no static-metadata
+receipt, source permission, or value/object authority. The existing
+owner-selected debugger socket is the access boundary, not a page/front-end
+API. A socket connection cannot promote itself by merely requesting metadata
+capabilities. The public wire and protocol version stay unchanged in this
+design leaf; bump them together only after both operations and their real
+BlueTS socket regressions are complete. Original BlueTS coordinates remain
+C2.1.2, and value inspection remains C2.2.
+
+**Public bounded stack/scope route (C2.1.1.4.2):** Debugger protocol v35
+adds independent `GetStack`/`Stack` and `GetScopes`/`Scopes` messages. The
+owner-selected route advertises Stack and Scopes separately only when the
+live core executor can inspect an actual paused continuation; ordinary and
+unsupported routes remain Planned and reject both requests. A stack reply
+contains the exact current child-first/root-only safe points and explicit
+stack truncation, but no lexical entries. A scope request selects one current
+frame by index and expected safe point, and its reply contains only active
+opaque binding-slot ordinals/depths with explicit scope truncation. Core
+checks the live realm/program, complete core-instance-bound nested handle,
+positive 64/256 budgets, selected frame and expected safe point before
+returning either result. A real Launcher/core/host BlueTS debugger socket
+regression proves both truncation flags, invalid-budget and moved-frame
+denial, root inspection after child return, and completion denial. A real
+supervised-core cutover regression rejects predecessor Stack and Scopes
+requests even when tab/program/frame numbers collide. No source text, runtime
+value, original BlueTS coordinate, or metadata authority is granted by v35.
+
+**Original BlueTS stack-coordinate contract (C2.1.2.1):** Keep v35's base
+`Stack` reply source-free. A separate owner-only debugger operation will take
+an exact paused program/nested-frame target, the ordered safe points returned
+by a prior bounded stack read, and one caller-supplied source ID per frame.
+The server re-reads the current stack, requires the entire ordered safe-point
+list to match, and accepts only positive counts within the fixed 64-frame
+budget. All source IDs must belong to the same live BlueTS metadata
+attachment for that program, must have been inventoried on this same debugger
+stream, and must pass the independently granted `OpaqueSafePointSpan`
+capability. Each result is the existing exact half-open original UTF-8 byte
+range with UTF-16 coordinates, attached to its frame and receipted source ID;
+the stack truncation flag is echoed. The operation has no authority to read
+source text, choose a nearest position, infer a module path, or inspect
+values. An unbound frame or wrong source receipt rejects the entire request
+without partial coordinates or a fallback. This is a batched use of the
+existing exact-span grant, not a new ambient coordinate permission. The
+public wire remains v35 in this design leaf; an implementation and real
+nested/module socket tests must be complete before its next version bump.
+
+**Retained nested/module source-map coverage (C2.1.2.2):** The v1 direct map
+previously bound only the first instruction of each top-level AST statement.
+At a real nested pause, the child entry and the suspended root `Call` were
+both unbound even though both belong to checked BlueTS lowering spans. BlueJS
+now records each root statement's exact emitted half-open instruction range
+and the direct child closure index created by a root function declaration.
+The bridge verifies those records against the installed program and attributes
+only instruction boundaries inside an owning range or that declaration's
+direct child code unit. Root `Halt` and other unowned instructions stay
+unbound. A child frame's v1 span is the original whole function declaration;
+the suspended root frame's span is its original top-level expression statement.
+The map preserves the compiler's original byte/UTF-16 locations, including
+non-BMP prefixes, and never infers a nearest statement from an offset. Both
+classic and module frames passed the exact private child/core span route.
+
+**Batched stack-coordinate values (C2.1.2.3.1):** The pending public request
+uses the complete prior `Stack` snapshot as its expected state, including
+program, exact optional nested frame, ordered safe points, and truncation
+flag. A parallel source-ID vector has exactly one entry per frame, all under
+one live metadata parent for that program. The result repeats the same stack
+and ordered exact safe-point/source span pairs. Value-shape validation requires
+one to 64 frames, a root-only stack without a nested handle or a matching
+nested top frame, well-formed original coordinates, and equal vector lengths.
+These types do not themselves grant source access or establish a live pause;
+the future dispatcher must verify same-stream receipts, authorization, and
+the entire current stack before making any child span queries. No request or
+reply variant exists yet, and public debugger v35 is unchanged.
+
+**Public stack-coordinate batch route (C2.1.2.3.2):** Debugger protocol v36
+adds `GetStackCoordinates`/`StackCoordinates` only after the complete core
+route is installed. It is not part of the source-free base `GetStack` reply.
+The handler requires the existing explicit `OpaqueInventory`,
+`OpaqueSourceInventory`, and `OpaqueSafePointSpan` grants and same-stream
+metadata/source receipts for every ordered frame. It reuses the exact Stack
+target checks, reads the currently paused bounded stack, and compares the
+entire expected program/frame/safe-point/truncation snapshot before asking
+the private child for any original span. Each child response must match its
+requested source and be well formed; one failure returns only an error, never
+a partial vector. A moved stack returns an execution-state error before a
+span query. IPC round-trip and core dispatch tests cover the v36 contract,
+missing/cross-stream receipts, guessed IDs, moved frames, and an unbound
+later frame. Launcher-supervised socket acceptance remains C2.1.2.3.3.
+
+**Real v36 stack-coordinate acceptance (C2.1.2.3.3):** A Launcher-supervised
+core and BlueJS child return exact original BlueTS byte/UTF-16 spans for
+both child and suspended root frames in classic and module scripts. The same
+socket tests prove that source IDs guessed before inventory, unknown IDs,
+wrong but receipted sources, a moved nested safe point, and a replayed
+predecessor-stream receipt never produce a coordinate batch. A classic root
+also pauses at its compiler-verified terminal `Halt` instruction, which has
+no direct lowering span: the single-span and batched routes both reject it
+without a partial result. The child already returned a generic private
+`InvalidRequest` for this unbound case; core now classifies it as public
+`InvalidTarget`, using the existing fail-closed static-target mapping rather
+than incorrectly reporting a lost realm. Base `Stack` remains source-free.
+The 16-case Launcher debugger suite passed 15 cases in one serial run; its
+pre-existing short pending-admission-window test for an unsupported deeper
+call shape returned `InvalidExecutionState` while arming, then passed when
+rerun alone. Both new coordinate tests passed in the serial run and alone.
+
+**Bounded paused-slot value contract (C2.2.1.1):** Value inspection is a
+separate owner/client `BoundedValues` grant, not implied by Stack, Scopes, or
+static metadata. Its only selector is a slot actually returned by `Scopes` on
+the same debugger stream, together with the exact program, optional
+core-instance-bound nested frame, frame index, safe point, slot ordinal, and
+scope depth. Core records a bounded receipt for returned entries and rechecks
+the live paused frame and active entry before asking the child. A guessed
+ordinal, stale/moved frame, replaced realm, or non-BlueTS attachment cannot
+dereference a value. There is no arbitrary object ID or expression evaluation
+input; a copied preview contains no reusable heap handle. A root slot is read
+from its retained classic or module execution, while a nested slot is read
+from its own retained invocation, including cell-backed captured bindings.
+An uninitialized binding is an explicit refusal, never `undefined`.
+
+The immutable preview is a tagged tree: `undefined`, `null`, boolean, exact
+IEEE-754 number bits (so negative zero and non-finite values survive), signed
+BigInt bytes, lossless UTF-16 code units (including lone surrogates), dense or
+sparse array elements with explicit holes, and ordered string-keyed record
+entries. Keys use the same lossless UTF-16 representation. Traversal reads
+only own stored data descriptors of VM-owned ordinary objects (null or this
+realm's intrinsic Object prototype) and arrays (this realm's intrinsic Array
+prototype); it never walks prototypes, calls JavaScript, invokes getters,
+runs proxy traps, or stringifies values. Accessors, symbols and symbol keys,
+functions, exotic/host objects, private-field instances, custom prototypes,
+cross-heap objects, and cycles refuse the *whole* preview, rather than
+returning a partial or misleading representation. Arrays may have holes but
+not extra named/symbol properties. Ordinary records use own property order.
+
+Hard caps are depth 4 (the selected value is depth 0), 32 elements/entries
+per container, 256 total tree nodes including holes, and 4,096 aggregate
+payload bytes across all UTF-16 strings/keys and signed BigInt bytes. Lengths
+and container shape are checked before cloning/enumeration; over-budget
+results refuse atomically, with no truncation that might look complete.
+These are output-payload limits, not claims about JSON framing overhead.
+Previewing is a read of the paused heap only: no allocation in that heap, no
+execution step, and no source-text or static-type disclosure. A runtime string
+is still a runtime value even if its contents happen to resemble source text;
+the debugger provides no source-text lookup through this operation. C2.2.1.2
+and C2.2.1.3 build the native snapshot, C2.2.1.4 transports it privately,
+and C2.2.1.5 introduces the public wire and owner receipt gate. Explicit
+typed refusals for forged handles, source requests, and cross-realm attempts
+remain C2.2.2; this design leaf does not change the v36 protocol.
+
+**Native paused primitive preview (C2.2.1.2):** BlueJS now re-reads its exact
+paused root or nested stack, verifies the caller's code unit, instruction,
+frame index and active slot/depth, then copies only an initialized primitive
+from that frame's binding or VM-owned capture cell. Classic root, retained
+module root, and direct nested invocation are distinct sources; the public
+page-host and debugger protocols are unchanged. Number bits preserve `-0` and
+`NaN`, BigInt uses bounded signed bytes, and strings preserve ill-formed UTF-16.
+Objects and symbols refuse for now. Native regressions cover all primitive
+tags, a root after resume, wrong frame/slot/offset/serial, oversize string and
+BigInt, a retained module binding, and a child-local binding after it becomes
+cell-backed by a closure capture. The three focused preview tests, BlueJS
+Clippy with warnings denied, formatting, and 529 of 530 BlueJS lib tests pass;
+the remaining pre-existing native-stack host-query test fails under this
+environment's 1 MiB reported thread stack (measured about 2 MiB).
+
+**Native plain-data preview (C2.2.1.3):** The paused binding preview now asks
+the current VM heap to copy a bounded tagged tree. Only ordinary objects with
+null or this realm's Object prototype and actual arrays with this realm's
+Array prototype qualify. The heap examines its own stored descriptors and
+keys, never a JavaScript `Get`, prototype lookup, accessor, or Proxy trap.
+Records retain ordinary own-key order and lossless string keys; arrays retain
+explicit holes distinct from `undefined`. A cycle or any unsupported nested
+value rejects the entire result. Custom prototypes, private-field instances,
+host/exotic objects, symbol keys and values, accessors, extra array props,
+and cross-heap IDs cannot become plain-data previews. The native walk enforces
+depth 4, 32 entries per container, 256 nodes including holes, and 4,096
+aggregate UTF-16/string-key/BigInt payload bytes before returning a tree.
+Native regressions verify sparse arrays, nested records, getter and Proxy
+side-effect absence, cyclic and non-plain shapes, and depth/length/node/byte
+excess. All 532 BlueJS library tests other than the already known native-stack
+environment case pass; all-target BlueJS Clippy and formatting pass. There is
+still no private or public value transport.
+
+**Private value types before transport (C2.2.1.4.1):** The page-host IPC now
+defines an exact tab/document/program/frame/safe-point/active-slot target and
+a lossless, handle-free preview tree, but adds no request or reply variant and
+keeps private protocol v37. The target validator accepts only root index zero
+without a child frame, or a matching live child index zero/root index one
+shape. The preview validator checks depth 4, 32 entries per container, 256
+nodes including holes, 4,096 aggregate UTF-16 key/string and BigInt bytes,
+and duplicate record keys iteratively before core remints a reply. Number
+bits, BigInt bytes, UTF-16 strings, sparse array holes, and record keys round
+trip without lossy JSON number/string conversion. Malformed target/tree tests,
+all 103 IPC library tests with local Unix-socket access, and IPC Clippy pass.
+
+**Private v38 paused-value route (C2.2.1.4.2):** The page runtime now admits
+only an owned exact program and retained root or nested invocation before the
+VM validates the selected active slot. The supervised child adds
+`GetDebuggerValueSnapshot`/`DebuggerValueSnapshot` in private page-host v38,
+requires the queue-head BlueTS program, live direct-debug attachment and
+paused execution state, and echoes the whole exact target with a bounded
+lossless tree. There is no object handle, source lookup or JavaScript call.
+The child validates the reminted preview again before replying; the snapshot
+is boxed in the Rust reply enum so its payload does not enlarge unrelated
+error variants or change their wire representation. Page-runtime owner/stale
+tests, private IPC socket round-trip, and child classic root, nested and
+module-root tests pass. IPC 103/103, BlueJS 533/533 excluding the known
+native-stack environment case, and workspace Clippy pass. Launcher full lib
+passes 102/105: two old source-breakpoint/source-step expectations and one
+private-socket missing-path case also fail when run individually; all five
+focused BlueTS child tests pass. Core proxy and public value grants are not
+yet installed.
+
+**Core-reminted private paused values (C2.2.1.4.3):** The out-of-process
+executor now has a separate private value-read method. It first re-reads the
+exact paused stack at the full scope-entry budget and requires the selected
+frame, safe point, and active lexical slot to match. A nested core-instance
+frame is mapped only through its current child invocation association; a root
+read requires the root-only pause. The child must echo the entire private
+tab/document/program/frame/safe-point/slot tuple and a complete preview that
+passes the IPC depth, container, node, payload-byte, and duplicate-key checks.
+Only then does core remint the tree into a core-owned type with no child ID or
+reusable object handle. Mismatched and over-budget child replies fail closed.
+Launcher-supervised classic and module child processes prove nested binding,
+caller-root binding, and resumed root-only reads, plus forged frame/offset
+and successor-document denial. The real route leaves public BoundedValues
+Planned and debugger v36 unchanged; the owner receipt/public request is
+C2.2.1.5. The 292 engine library tests and workspace Clippy pass.
+
+**Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
+pre-order code-unit ordinal into installed bytecode and each closure descendant
+before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
+runtime-code match even when two functions have identical instructions; the
+registry generation is stamped alongside the ordinal and still belongs to the
+page program, not to the ordinal alone.
+Then capture a direct synchronous caller and child at the selected inner
+instruction without passing a pause marker through JavaScript exception
+handling (C1.2.1.2.2). Step only that retained invocation and rejoin its
+classic caller once at terminal completion (C1.2.1.2.3), then repeat the
+continuation transfer for an entry-module root whose linked graph is retained
+separately (C1.2.1.2.4). Each checkpoint needs a native regression before the
+public transport gains this control.
+
+**Installed code-unit identity (C1.2.1.2.1):** The debugger registry now
+assigns each root and closure bytecode its ordinal in the same traversal that
+builds the immutable safe-point inventory. Bare compiler output has no such
+tag; both structured-program and precompiled BlueTS installations receive it.
+Equal bytecode bodies retain distinct ordinals, deeper closure descendants
+keep pre-order identity, and cloning preserves the tag. The ordinal does not
+identify an invocation by itself. The registry tests,
+BlueJS Clippy, and 507 non-environmental library tests pass.
+
+**Native nested-frame capture (C1.2.1.2.2):** The first native seam accepts a
+verified non-root instruction in an installed classic program and runs its
+root until a direct synchronous `Call` enters the matching program generation
+and code unit. Before that child instruction, the VM moves the child operand,
+binding, handler, iterator and execution-context state into a GC-visible
+continuation, then suspends the caller before consuming its call inputs. A
+fresh nonzero serial names this invocation; ordinary VM entry points cannot
+run while it is retained. Deeper interpreted calls and constructor entry fail
+explicitly before the target body executes. An older closure with the same
+ordinal but a different program generation runs normally and cannot trigger
+the new program's pause. Native regressions inspect the preserved call site,
+pre-instruction effects, child object roots, unsupported paths, and generation
+aliasing. Stepping/rejoin and the public route remain C1.2.1.2.3/C1.2.1.3.
+
+**Native nested-frame step and classic rejoin (C1.2.1.2.3):** A step accepts
+only the active invocation serial, temporarily roots the waiting classic
+caller's complete execution while restoring the child, then suspends again
+after one actual child instruction. A branch reports its real backward PC.
+When the child returns, its result replaces the waiting `Call` inputs exactly
+once and the root remains paused at the following verified instruction; an
+ordinary root resume finishes without replay. A child throw takes the saved
+caller's catch/finally path, while an uncatchable error cleans both frames.
+Target code containing direct eval or a tail call is refused before execution.
+A one-object nursery regression also retains a caller-only operand through
+child allocations and collection. This path currently owns a classic root;
+the entry-module graph has a different root continuation and remains the
+explicit C1.2.1.2.4 checkpoint. No public frame control is advertised yet.
+
+**Entry-module nested checkpoints (C1.2.1.2.4):** The module evaluator already
+stores a suspended entry root together with its linked graph when its
+interpreter returns `Suspend`. First reuse the exact installed-program
+generation and code-unit target to let a direct synchronous child produce
+that suspension, retaining dependency effects and the graph (C1.2.1.2.4.1).
+Then adapt the child step/rejoin to mutate the saved module-root `Call` frame,
+not the ordinary classic root fields, and resume the same graph once
+(C1.2.1.2.4.2). Finally route a child throw through the module caller's
+handlers and the module evaluator's record/async cleanup, including graph
+invalidation on failure (C1.2.1.2.4.3). These are native boundaries; no
+public frame identity is minted until C1.2.1.3.
+
+**Entry-module child pause (C1.2.1.2.4.1):** The native module graph entry now
+accepts the same exact installed-program generation and non-root code-unit
+instruction as the classic seam. It runs the authorized graph until the entry
+calls that child, then the existing module evaluator stores its suspended root
+and linked graph while the child context remains in the nested continuation.
+A two-module regression verifies the dependency's effect ran once, the child
+body has not run, the entry `Call` and graph remain retained, and an unrelated
+execution entry cannot overtake the pause. Module-child stepping and module
+record cleanup remain the next two checkpoints.
+
+**Entry-module child step and rejoin (C1.2.1.2.4.2):** The same serial-bound
+child step now recognizes a saved module-root caller. Each successor preserves
+the child and linked graph; terminal return replaces the saved module-root
+`Call` inputs, advances its real PC, and carries forward the spent instruction
+budget before the existing module resume completes the graph. A two-module
+regression verifies compiler instruction boundaries and exactly one
+dependency/entry effect. An unhandled child throw takes a conservative error
+path: both debugger frames are released, the linked entry record is marked
+failed and no ordinary execution entry remains blocked. Catch/finally and
+asynchronous graph behavior are still C1.2.1.2.4.3.
+
+**Module nested cleanup checkpoints (C1.2.1.2.4.3):** On a catchable child
+throw, temporarily restore the retained module-root execution and linked
+records, run its existing completion resolver with the saved handler/iterator
+stacks, and re-park a catch/finally successor rather than treating every
+throw as an unhandled module failure (C1.2.1.2.4.3.1). Then test an async
+dependency and entry await against the same pause/step/rejoin path
+(C1.2.1.2.4.3.2). Finally force the shared instruction budget to fail during
+a nested step and verify the graph has no falsely completed entry or detached
+frame while later execution still works (C1.2.1.2.4.3.3).
+
+**Module nested catch/finally rejoin (C1.2.1.2.4.3.1):** A catchable child
+throw restores the retained entry execution and parks the linked records as
+active module evaluation while BlueJS's ordinary completion resolver examines
+the saved handler and iterator stacks. A real catch/finally successor is
+saved back into the same module continuation; an unhandled throw instead
+flows to the explicit graph-error cleanup. A native module regression checks
+the original thrown value reaches `catch`, `finally` executes once, and the
+entry completes with no error. The unhandled-throw regression still passes.
+
+**Async graph across a nested pause (C1.2.1.2.4.3.2):** A tagged entry graph
+with a top-level-await dependency reaches the requested child pause only after
+the dependency Promise job settles. Stepping returns to the retained entry
+root, whose own later top-level await then finishes through the existing
+module-await continuation. A native regression verifies the dependency,
+entry, child and post-await effects each run once, both linked records are
+evaluated, and the module-continuation and Promise-job queues are empty.
+
+**Nested module resource failure (C1.2.1.2.4.3.3):** A native entry module
+pauses before an inner infinite loop and repeatedly steps under a fixed
+256-instruction budget. Once BlueJS returns `InstructionLimit`, the child and
+module-root debugger continuations and the transient caller state are gone;
+the linked entry is neither evaluated nor suspended, and an unrelated later
+script can execute. This is an explicit failed graph, never a fabricated
+`Completed` state or an endlessly retained frame.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
@@ -441,6 +1381,20 @@ A trusted launcher embedding may now fix a per-realm BlueJS envelope before each
 Compiler IPC v5 supersedes the legacy v3/v4 wording below. A successful exact-version `Hello` now carries both the per-stream opaque attestation and a separately versioned, core-authored fixed query-only manifest containing the complete canonical nine-operation vocabulary. `ListDiagnostics` exposes only pages of diagnostics retained for an exact check generation, each with a fixed-bounded, one-shot cursor; no cursor has offset, source, path, or metadata-ID semantics. MCP validates both values exactly and copies the manifest unchanged into its session receipt; a missing, reordered, subset, duplicate, unknown-version, or locally derived manifest never creates an MCP compiler session. The manifest grants no source, path, resolver, option, registration, update, build, artifact, or output-write authority.
 
 Standalone `bluetsc build` now rejects `strict-runtime` before compilation or output staging because this branch has not yet emitted or imported the versioned runtime boundary helper that would make that policy executable. This prevents an artifact or manifest from naming strict runtime enforcement that it cannot provide; `check` remains a static operation, while direct-page contracts remain core-owned. Emitting the helper and proving equivalent direct-page/ESM malformed-boundary rejection remain open work.
+
+**Owner-exposed compiler project inventory (F1 second condition complete):**
+The current sealed catalog distinguishes registration from public compiler
+visibility. Wrapping a pre-populated core compiler service now leaves every
+existing project private by default while still counting it in the sealed
+catalog; only an explicit owner-exposed adapter registration enters any
+compiler stream inventory. Both direct adapter requests and accepted-stream
+requests reject a private project ID before reaching the compiler cache.
+Accepted streams additionally require their own prior inventory receipt. A
+real launcher/core/MCP regression connects two independent MCP clients to one
+owner catalog, proves each receives a distinct session receipt and only the
+public project ID, rejects the private project ID, and still checks the public
+project. This does not add per-client project subsets, project registration,
+build/output authority, or filesystem-root canonicalization.
 
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 

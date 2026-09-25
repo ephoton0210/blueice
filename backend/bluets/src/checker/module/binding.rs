@@ -38,6 +38,7 @@ impl<'a> ModuleChecker<'a> {
             function_implementations: BTreeSet::new(),
             type_parameters: BTreeSet::new(),
             max_type_expansions,
+            record_spread_inference_failure: Cell::new(None),
         }
     }
 
@@ -520,6 +521,22 @@ impl<'a> ModuleChecker<'a> {
                 }
             }
         }
+        if let Some((start, end, failure)) = self.record_spread_inference_failure.take() {
+            let (message, code) = match failure {
+                RecordSpreadFailure::ResourceLimit => (
+                    format!(
+                        "record spread exceeds the {}-type-expansion inference limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                ),
+                RecordSpreadFailure::UnprovenSource => (
+                    "record spread source must have a provable record type".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                ),
+            };
+            self.type_error(&SourceSpan::new(&self.module.id, start, end), message, code);
+        }
     }
 
     pub(super) fn check_type_with_parameters(
@@ -879,6 +896,51 @@ impl<'a> ModuleChecker<'a> {
         span: &SourceSpan,
     ) {
         if tokens.is_empty() {
+            return;
+        }
+        if tokens
+            .iter()
+            .filter(|token| token.is("[") || token.is("{"))
+            .count()
+            > MAX_LITERAL_INFERENCE_CONTAINERS
+        {
+            self.type_error(
+                span,
+                format!(
+                    "expression exceeds its {MAX_LITERAL_INFERENCE_CONTAINERS}-container inference limit"
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
+            return;
+        }
+        if tokens
+            .iter()
+            .filter(|token| INFERRED_LOGICAL_ASSIGNMENT_OPERATORS.contains(&token.text.as_str()))
+            .count()
+            > MAX_LOGICAL_ASSIGNMENT_INFERENCE_OPERATORS
+        {
+            self.type_error(
+                span,
+                format!(
+                    "expression exceeds its {MAX_LOGICAL_ASSIGNMENT_INFERENCE_OPERATORS}-logical assignment inference limit"
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
+            return;
+        }
+        if tokens
+            .iter()
+            .filter(|token| INFERRED_LOGICAL_EXPRESSION_OPERATORS.contains(&token.text.as_str()))
+            .count()
+            > MAX_LOGICAL_EXPRESSION_INFERENCE_OPERATORS
+        {
+            self.type_error(
+                span,
+                format!(
+                    "expression exceeds its {MAX_LOGICAL_EXPRESSION_INFERENCE_OPERATORS}-logical expression inference limit"
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
             return;
         }
         if tokens.iter().filter(|token| token.is(".")).count() > self.max_type_expansions {

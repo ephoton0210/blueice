@@ -637,6 +637,7 @@ mod tests {
             )
         };
         compile("function onClick(event: BlueIceClickEvent): void { event.preventDefault(); } document.getElementById('link')!.addEventListener('click', onClick);").unwrap();
+        compile("function tryQuery(value: any): void { value.querySelector('#link'); } function tryStop(value: any): void { value.stopPropagation(); }").unwrap();
         assert!(
             compile("document.getElementById('link')!.addEventListener('change', () => {});")
                 .is_err()
@@ -646,6 +647,26 @@ mod tests {
                 .is_err()
         );
         assert!(compile("document.getElementById('link')!.dispatchEvent('click');").is_err());
+        for (source, member) in [
+            (
+                "function onClick(event: BlueIceClickEvent): void { event.stopPropagation(); } document.getElementById('link')!.addEventListener('click', onClick);",
+                "stopPropagation",
+            ),
+            ("document.querySelector('#link');", "querySelector"),
+        ] {
+            let error = compile(source)
+                .err()
+                .expect("an uninstalled event-v1 member must fail checking");
+            let crate::BridgeError::BlueTs(diagnostics) = error else {
+                panic!("{source}: expected BlueTS diagnostics, got {error:?}");
+            };
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.message.contains(member)),
+                "{source}: {diagnostics:#?}"
+            );
+        }
         for source in [
             "function onClick(event: BlueIceClickEvent): void { event.type = 'click'; }",
             "function onClick(event: BlueIceClickEvent): void { event.target = event.target; }",
@@ -656,6 +677,22 @@ mod tests {
             "function getClick(event: BlueIceClickEvent): BlueIceClickEvent { return event; } function onClick(event: BlueIceClickEvent): void { getClick(event).target = event.target; }",
             "function onClick(event: BlueIceClickEvent): void { let other = ''; other = event.type = 'click'; }",
             "function onClick(event: BlueIceClickEvent): void { let changed = event.type++ + 1; }",
+            "function write(events: BlueIceClickEvent[], index: number): void { events[index].type = 'click'; }",
+            "function write(events: BlueIceClickEvent[]): void { events['0'].type = 'click'; }",
+            "function write(events: BlueIceClickEvent[], index: number): void { events[index].currentTarget = events[index].target; }",
+            "function consume(value: string): void {} function write(events: BlueIceClickEvent[], index: number): void { consume(events[index].type = 'click'); }",
+            "interface Slots { event: BlueIceClickEvent; other: number; } function write(slots: Slots, key: string): void { slots[key].type = 'click'; }",
+            "interface Other { type: 'click'; } interface Slots { event: BlueIceClickEvent; other: Other; } function write(slots: Slots, key: string): void { const selected = slots[key]; selected.type = 'click'; }",
+            "interface Holder { event: BlueIceClickEvent; type: string; } function write(holder: Holder): void { const selected = [holder.event][0]; selected.type = 'click'; }",
+            "interface Holder { event: BlueIceClickEvent; type: string; } function write(holder: Holder): void { const selected = { picked: holder.event }; selected.picked.type = 'click'; }",
+            "interface Holder { event: BlueIceClickEvent; type: string; } function write(holder: Holder): void { const selected = holder.event as BlueIceClickEvent; selected.type = 'click'; }",
+            "interface MutableEvent { type: string; } interface Holder { event: MutableEvent; } interface Source { event: BlueIceClickEvent; } function write(holder: Holder, source: Source): void { const selected = (holder, source.event); selected.type = 'click'; }",
+            "interface MutableEvent { type: string; } interface Holder { slot: BlueIceClickEvent; event: MutableEvent; } interface Source { event: BlueIceClickEvent; } function write(holder: Holder, source: Source): void { const selected = (holder.slot = source.event); selected.type = 'click'; }",
+            "interface MutableEvent { type: string; } interface Holder { slot: MutableEvent; } interface Source { event: BlueIceClickEvent; } function write(holder: Holder, source: Source): void { const selected = (holder.slot ||= source.event); selected.type = 'click'; }",
+            "interface MutableEvent { type: string; } interface Holder { event: BlueIceClickEvent; mutable: MutableEvent; } function write(holder: Holder): void { const selected = holder.mutable || holder.event; selected.type = 'click'; }",
+            "interface MutableEvent { type: string; } type EventPair = [BlueIceClickEvent, MutableEvent]; function write(pair: EventPair): void { const selected = [...pair][0]; selected.type = 'click'; }",
+            "interface Holder { event: BlueIceClickEvent; } function write(holder: Holder): void { const copied = { ...holder }; copied.event.type = 'click'; }",
+            "interface MutableEvent { type: string; } type Holder = { event: BlueIceClickEvent } | { event: MutableEvent }; function write(holder: Holder): void { const copied = { ...holder }; copied.event.type = 'click'; }",
         ] {
             let error = compile(source).err().expect("readonly write must fail");
             let crate::BridgeError::BlueTs(diagnostics) = error else {
@@ -668,5 +705,32 @@ mod tests {
                 "{source}: {diagnostics:#?}"
             );
         }
+        let opaque = "interface Holder { event: BlueIceClickEvent; } function erase(value: Holder): any { return value; } function write(holder: Holder): void { const copied = { ...erase(holder) }; copied.event.type = 'click'; }";
+        let error = compile(opaque)
+            .err()
+            .expect("opaque record spread must fail before runtime");
+        let crate::BridgeError::BlueTs(diagnostics) = error else {
+            panic!("expected BlueTS diagnostics, got {error:?}");
+        };
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("record spread source")),
+            "{diagnostics:#?}"
+        );
+
+        let opaque_receiver = "declare function pick(value: unknown): unknown; function onClick(event: BlueIceClickEvent): void { pick(event).type = 'click'; } document.getElementById('link')!.addEventListener('click', onClick);";
+        let error = compile(opaque_receiver)
+            .err()
+            .expect("opaque click-event receiver must fail before runtime");
+        let crate::BridgeError::BlueTs(diagnostics) = error else {
+            panic!("expected BlueTS diagnostics, got {error:?}");
+        };
+        assert!(
+            diagnostics.iter().any(|diagnostic| diagnostic
+                .message
+                .contains("cannot prove a write through an unmodeled receiver")),
+            "{diagnostics:#?}"
+        );
     }
 }

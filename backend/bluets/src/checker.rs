@@ -15,6 +15,15 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 pub use crate::parser::Type;
 
+mod properties;
+use properties::{property_type, PropertyType, TypeExpansionBudget};
+
+const MAX_LITERAL_INFERENCE_CONTAINERS: usize = 128;
+const MAX_LOGICAL_ASSIGNMENT_INFERENCE_OPERATORS: usize = 128;
+const INFERRED_LOGICAL_ASSIGNMENT_OPERATORS: &[&str] = &["&&=", "||=", "??="];
+const MAX_LOGICAL_EXPRESSION_INFERENCE_OPERATORS: usize = 128;
+const INFERRED_LOGICAL_EXPRESSION_OPERATORS: &[&str] = &["&&", "||", "??"];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolKind {
     Import,
@@ -82,30 +91,6 @@ struct AmbientDeclarations {
     types: BTreeMap<String, TypeDefinition>,
     values: BTreeMap<String, Type>,
     functions: BTreeMap<String, Vec<FunctionSignature>>,
-}
-
-struct TypeExpansionBudget {
-    remaining: usize,
-    exhausted: bool,
-}
-
-impl TypeExpansionBudget {
-    fn new(limit: usize) -> Self {
-        Self {
-            remaining: limit,
-            exhausted: false,
-        }
-    }
-
-    fn consume(&mut self) -> bool {
-        if let Some(remaining) = self.remaining.checked_sub(1) {
-            self.remaining = remaining;
-            true
-        } else {
-            self.exhausted = true;
-            false
-        }
-    }
 }
 
 /// Rechecks the requested modules while retaining checker output for modules
@@ -715,106 +700,6 @@ fn infer_type_arguments(
     }
 }
 
-enum PropertyType {
-    Found {
-        value: Type,
-        readonly: bool,
-    },
-    Missing,
-    /// The initial checker has no property semantics for this expression, so
-    /// retain its conservative `unknown` behavior rather than rejecting a
-    /// potentially valid JavaScript property access.
-    Indeterminate,
-    Exhausted,
-}
-
-fn property_type(
-    value: &Type,
-    property: &str,
-    aliases: &BTreeMap<String, TypeDefinition>,
-    visited: &mut HashSet<String>,
-    budget: &mut TypeExpansionBudget,
-) -> PropertyType {
-    match value {
-        Type::Record(fields) => fields
-            .iter()
-            .find(|field| field.name == property)
-            .map(|field| PropertyType::Found {
-                value: if field.optional {
-                    Type::Union(vec![field.value.clone(), Type::Undefined])
-                } else {
-                    field.value.clone()
-                },
-                readonly: field.readonly,
-            })
-            .unwrap_or(PropertyType::Missing),
-        Type::Named { .. } => {
-            match instantiate_named(value, aliases, visited, budget, "property") {
-                Some(value) => property_type(&value, property, aliases, visited, budget),
-                None if budget.exhausted => PropertyType::Exhausted,
-                None => PropertyType::Indeterminate,
-            }
-        }
-        Type::Intersection(parts) => {
-            let mut indeterminate = false;
-            let mut found: Option<(Type, bool)> = None;
-            for part in parts {
-                match property_type(part, property, aliases, visited, budget) {
-                    PropertyType::Found { value, readonly } => {
-                        if let Some((_, found_readonly)) = &mut found {
-                            *found_readonly |= readonly;
-                        } else {
-                            found = Some((value, readonly));
-                        }
-                    }
-                    PropertyType::Missing => {}
-                    PropertyType::Indeterminate => indeterminate = true,
-                    PropertyType::Exhausted => return PropertyType::Exhausted,
-                }
-            }
-            if let Some((value, readonly)) = found {
-                PropertyType::Found { value, readonly }
-            } else if indeterminate {
-                PropertyType::Indeterminate
-            } else {
-                PropertyType::Missing
-            }
-        }
-        Type::Any | Type::Unknown => PropertyType::Indeterminate,
-        _ => PropertyType::Missing,
-    }
-}
-
-fn infer_array(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
-    let mut values = Vec::new();
-    let mut start = 1usize;
-    let mut depth = 0usize;
-    for index in 1..tokens.len() {
-        match tokens[index].text.as_str() {
-            "[" | "(" | "{" => depth += 1,
-            "]" | ")" | "}" if depth > 0 => depth -= 1,
-            "," if depth == 0 => {
-                if start < index {
-                    values.push(infer_array_element(&tokens[start..index], scope));
-                }
-                start = index + 1;
-            }
-            _ => {}
-        }
-    }
-    if start + 1 < tokens.len() {
-        values.push(infer_array_element(&tokens[start..tokens.len() - 1], scope));
-    }
-    let Some(first) = values.first().cloned() else {
-        return Type::Array(Box::new(Type::Unknown));
-    };
-    if values.iter().all(|value| value == &first) {
-        Type::Array(Box::new(first))
-    } else {
-        Type::Array(Box::new(Type::Union(values)))
-    }
-}
-
 /// Infers an array literal against an explicit tuple annotation without
 /// changing ordinary array-literal inference. A tuple spread is expanded only
 /// when its source is itself known to be a tuple, preserving fixed arity.
@@ -861,99 +746,9 @@ fn push_contextual_tuple_element(
         };
         values.extend(spread);
     } else {
-        values.push(infer_array_element(tokens, scope));
+        values.push(infer_simple(tokens, scope));
     }
     Some(())
-}
-
-fn infer_array_element(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
-    if tokens.first().is_some_and(|token| token.is("...")) {
-        return match infer_simple(&tokens[1..], scope) {
-            Type::Array(element) => *element,
-            _ => Type::Unknown,
-        };
-    }
-    infer_simple(tokens, scope)
-}
-
-fn infer_record(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
-    let mut fields = Vec::new();
-    let mut index = 1usize;
-    while index < tokens.len() && !tokens[index].is("}") {
-        if tokens[index].is("...") {
-            let Some(source) = tokens.get(index + 1) else {
-                return Type::Unknown;
-            };
-            let Some(separator) = tokens.get(index + 2) else {
-                return Type::Unknown;
-            };
-            if source.kind != TokenKind::Identifier || !matches!(separator.text.as_str(), "," | "}")
-            {
-                return Type::Unknown;
-            }
-            let Type::Record(spread) = scope.get(&source.text).cloned().unwrap_or(Type::Unknown)
-            else {
-                return Type::Unknown;
-            };
-            for field in spread {
-                insert_inferred_record_field(&mut fields, field);
-            }
-            index += if separator.is(",") { 3 } else { 2 };
-            continue;
-        }
-        let name = tokens[index].text.clone();
-        let (value, value_end) = if tokens.get(index + 1).is_some_and(|token| token.is(":")) {
-            let value_start = index + 2;
-            let mut value_end = value_start;
-            while value_end < tokens.len()
-                && !tokens[value_end].is(",")
-                && !tokens[value_end].is("}")
-            {
-                value_end += 1;
-            }
-            (
-                infer_simple(&tokens[value_start..value_end], scope),
-                value_end,
-            )
-        } else if tokens
-            .get(index + 1)
-            .is_some_and(|token| token.is(",") || token.is("}"))
-        {
-            (
-                scope.get(&name).cloned().unwrap_or(Type::Unknown),
-                index + 1,
-            )
-        } else {
-            return Type::Unknown;
-        };
-        insert_inferred_record_field(
-            &mut fields,
-            TypeField {
-                name,
-                readonly: false,
-                optional: false,
-                value,
-                span: SourceSpan::new(
-                    "<inferred>",
-                    tokens[index].start,
-                    tokens[value_end.saturating_sub(1)].end,
-                ),
-            },
-        );
-        index = value_end.saturating_add(1);
-    }
-    Type::Record(fields)
-}
-
-fn insert_inferred_record_field(fields: &mut Vec<TypeField>, field: TypeField) {
-    if let Some(existing) = fields
-        .iter_mut()
-        .find(|existing| existing.name == field.name)
-    {
-        *existing = field;
-    } else {
-        fields.push(field);
-    }
 }
 
 fn infer_simple(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
@@ -1208,11 +1003,11 @@ fn conditional_expression_parts(tokens: &[Token]) -> Option<(&[Token], &[Token],
     None
 }
 
-fn infer_boolean_logical_expression(left: Type, right: Type) -> Type {
+fn infer_logical_expression(left: Type, right: Type) -> Type {
     if left == Type::Boolean && right == Type::Boolean {
         Type::Boolean
     } else {
-        Type::Unknown
+        merge_conditional_branch_types(left, right)
     }
 }
 

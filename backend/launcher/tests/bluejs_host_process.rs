@@ -218,6 +218,78 @@ fn blue_ts_module_with_dependency(ordinal: u32) -> PageHostScript {
 }
 
 #[test]
+fn isolated_child_admits_a_bluets_module_graph_before_debugger_advance() {
+    assert!(std::path::Path::new(CHILD_BINARY).exists());
+    let mut host = SpawnedBlueJsHost::spawn().unwrap();
+    let mut page = document(1, vec![blue_ts_module_with_dependency(0)]);
+    page.debugger_execution_control = true;
+    assert!(matches!(
+        host.synchronize_document(page).unwrap(),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let programs = match host
+        .request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerPrograms { programs, .. } => programs,
+        reply => panic!("expected both linked BlueTS programs, got {reply:?}"),
+    };
+    assert_eq!(programs.len(), 2);
+    let mut entry = None;
+    for program in programs {
+        assert!(matches!(
+            host.request(PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+            })
+            .unwrap(),
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } if metadata.len() == 1
+        ));
+        if matches!(
+            host.request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+            })
+            .unwrap(),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::Pending,
+                ..
+            }
+        ) {
+            assert!(entry.replace(program).is_none());
+        }
+    }
+    let entry = entry.expect("exactly one module entry must be pending");
+    assert!(matches!(
+        host.request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+            if reports.len() == 1 && reports[0].outcome == PageHostScriptOutcome::Executed
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::GetDebuggerExecutionState {
+            tab_id: 41,
+            document_generation: 1,
+            program: entry,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionState {
+            state: PageHostDebuggerExecutionState::Completed,
+            ..
+        }
+    ));
+    host.shutdown().unwrap();
+}
+
+#[test]
 fn launcher_spawns_an_isolated_host_that_executes_closed_graphs_and_reaps_cleanly() {
     assert!(
         std::path::Path::new(CHILD_BINARY).exists(),

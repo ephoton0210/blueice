@@ -18,6 +18,7 @@ blueice-bluets = { path = "../../bluets" }
 blueice-bluets-bluejs = { path = "../../bluets-bluejs" }
 blueice-bluejs = { path = "../../bluejs" }
 ureq = "3"
+getrandom = "0.3"
 
 [dev-dependencies]
 blueice-testing = { path = "../../testing" }

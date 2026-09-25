@@ -236,8 +236,15 @@ fn compile_with_limit_and_mode(
     }
     compiler.enter_scope(lexical, &vars, true)?;
     let mut root_statement_offsets = vec![None; program.body.len()];
+    let mut root_statement_ranges = vec![None; program.body.len()];
+    let mut root_function_child_indices = vec![None; program.body.len()];
     if module {
-        compiler.top_level_function_declarations(&program.body, &mut root_statement_offsets)?;
+        compiler.top_level_function_declarations(
+            &program.body,
+            &mut root_statement_offsets,
+            &mut root_statement_ranges,
+            &mut root_function_child_indices,
+        )?;
         compiler.bytecode.module_evaluate_entry = Some(compiler.offset());
         // Unlike a Script, a Module's top level *is* one of the
         // UsingDeclaration-permitted contexts: a `using`/`await using`
@@ -248,12 +255,14 @@ fn compile_with_limit_and_mode(
                 this.top_level_statements_after_function_declarations(
                     &program.body,
                     &mut root_statement_offsets,
+                    &mut root_statement_ranges,
                 )
             })?;
         } else {
             compiler.top_level_statements_after_function_declarations(
                 &program.body,
                 &mut root_statement_offsets,
+                &mut root_statement_ranges,
             )?;
         }
     } else {
@@ -267,13 +276,21 @@ fn compile_with_limit_and_mode(
                 "a using declaration is not allowed directly at the top level of a Script",
             ));
         }
-        compiler.top_level_function_declarations(&program.body, &mut root_statement_offsets)?;
+        compiler.top_level_function_declarations(
+            &program.body,
+            &mut root_statement_offsets,
+            &mut root_statement_ranges,
+            &mut root_function_child_indices,
+        )?;
         compiler.top_level_statements_after_function_declarations(
             &program.body,
             &mut root_statement_offsets,
+            &mut root_statement_ranges,
         )?;
     }
     compiler.bytecode.root_statement_offsets = root_statement_offsets;
+    compiler.bytecode.root_statement_ranges = root_statement_ranges;
+    compiler.bytecode.root_function_child_indices = root_function_child_indices;
     compiler.emit(Opcode::Halt, 0)?;
     if module {
         compiler.bytecode.module_imports = module_imports

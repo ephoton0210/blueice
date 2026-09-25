@@ -43,6 +43,7 @@ pub(crate) use binary_data::{f16_bits_to_f64, f64_to_f16_bits};
 mod collection_iteration;
 pub(crate) use collection_iteration::CollectionEntry;
 mod core;
+mod debugger;
 mod exotic;
 mod lifecycle;
 mod object_storage;

@@ -8,16 +8,20 @@
 //! [`SpawnedBlueJsHost`] owns a separate `blueice-bluejs-host` child, its
 //! private Unix socket, and its one-time connection capability. The child
 //! owns every [`BlueJsPageRuntime`] VM and program registry; no `Vm`, source
-//! text, program handle, DOM object, or runtime value crosses back into the
-//! launcher. A future core page-loader adapter is responsible for deriving
+//! text, program handle, or DOM object crosses back into the launcher. Only
+//! an exact paused-slot, bounded plain-data debugger preview may now carry a
+//! runtime value. A future core page-loader adapter is responsible for deriving
 //! [`PageHostDocument`] from an already-authorized navigation. This module
 //! deliberately does not let a page or a frontend connect to the child.
 
 use blueice_bluejs::{
-    parse, parse_module, BlueJsPageDebuggerExecutionState, BlueJsPageOrigin, BlueJsPageRuntime,
-    BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BlueJsProgramHandle, BlueJsProgramV1,
-    BlueJsSourceIdentity, CompileError, HeapConfig, HostFunctionError, HostObjectFamily,
-    HostObjectKey, HostValue, Module, ParseError, RuntimeError, Value, Vm, VmConfig,
+    parse, parse_module, BlueJsPageDebuggerExecutionState, BlueJsPageDebuggerFrame,
+    BlueJsPageDebuggerNestedExecutionState, BlueJsPageDebuggerValueTarget, BlueJsPageOrigin,
+    BlueJsPageRuntime, BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BlueJsProgramHandle,
+    BlueJsProgramV1, BlueJsSourceIdentity, CompileError, HeapConfig, HostFunctionError,
+    HostObjectFamily, HostObjectKey, HostValue, Module, ParseError, RuntimeError, Value, Vm,
+    VmConfig, VmDebuggerScopeEntry, VmDebuggerValuePreview, VM_DEBUGGER_MAX_SCOPE_ENTRIES,
+    VM_DEBUGGER_MAX_STACK_FRAMES,
 };
 use blueice_bluets::{
     AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
@@ -30,7 +34,7 @@ use blueice_bluets_bluejs::page_host_typings::{
 };
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
-    DirectModuleGraph, DirectSafePointBinding, DirectScript,
+    DirectModuleGraph, DirectPageModuleGraphAttachment, DirectSafePointBinding, DirectScript,
 };
 use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
@@ -55,13 +59,16 @@ use blueice_ipc::page_host::{
     PageHostDebuggerBlueTsMetadataSymbolId, PageHostDebuggerBlueTsMetadataSymbolLocation,
     PageHostDebuggerBlueTsMetadataSymbolType, PageHostDebuggerBlueTsMetadataTypeDisplay,
     PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerBlueTsSafePointSpan,
-    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
-    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
-    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
-    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
-    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
-    PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
-    PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
+    PageHostDebuggerExecutionState, PageHostDebuggerFrame, PageHostDebuggerMetadataHandle,
+    PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDebuggerScopeEntry,
+    PageHostDebuggerStackFrame, PageHostDebuggerStackSnapshot, PageHostDebuggerValuePreview,
+    PageHostDebuggerValueSnapshot, PageHostDebuggerValueTarget, PageHostDocument,
+    PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph, PageHostRealmStats,
+    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
+    PageHostScriptOutcome, PageHostScriptReport, PageHostSource, PageHostStaticResolution,
+    PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+    PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES, PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES,
+    PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES, PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
 use blueice_ipc::script::{
     self, ScriptDocumentTarget, ScriptReply, ScriptRequest, SCRIPT_MAX_NAME_BYTES,
@@ -197,6 +204,7 @@ struct LiveDocument {
     generation: u64,
     origin: BlueJsPageOrigin,
     click_event_family: Option<HostObjectFamily>,
+    pending_click_tasks: VecDeque<PendingClickTask>,
     debugger_execution_control: bool,
     debugger_programs: BTreeMap<u64, ChildDebuggerProgram>,
     /// Exact child-private breakpoint configuration records. These are not a
@@ -205,6 +213,20 @@ struct LiveDocument {
     pending_debugger_executions: VecDeque<PendingDebuggerExecution>,
     debugger_execution_states: BTreeMap<PageHostDebuggerProgram, ChildDebuggerExecutionStatus>,
 }
+
+/// A core-originated click is bound to its original document, never to a
+/// successor realm or a page-supplied target.
+#[derive(Clone, Copy)]
+struct PendingClickTask {
+    generation: u64,
+    node_id: u64,
+}
+
+// Page-host requests are sequential today: the child must complete the
+// current click task and its checkpoint before replying to core. Retain an
+// explicit, one-slot per-realm queue so future scheduling cannot silently
+// turn this into an unbounded collection of pending page work.
+const MAX_PENDING_CLICK_TASKS_PER_REALM: usize = 1;
 
 /// A source-span step can consume no more than this many root instructions
 /// before yielding the still-live continuation at an exact root boundary.
@@ -231,12 +253,24 @@ struct ChildDebuggerProgram {
     metadata: Option<PageHostDebuggerMetadataHandle>,
 }
 
-/// Child-private execution state for the narrow root-classic continuation.
+/// Child-private execution state for one retained classic or module root.
 /// It has no serializable VM frame, source, bytecode, or completion value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ChildDebuggerExecutionStatus {
     Pending,
     Paused(PageHostDebuggerSafePoint),
+    NestedPaused {
+        frame: BlueJsPageDebuggerFrame,
+        safe_point: PageHostDebuggerSafePoint,
+    },
+    NestedStepRequested {
+        frame: BlueJsPageDebuggerFrame,
+        safe_point: PageHostDebuggerSafePoint,
+    },
+    NestedResumeRequested {
+        frame: BlueJsPageDebuggerFrame,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     StepRequested,
     BlueTsSourceStepRequested {
         origin: BlueTsSourceSpanKey,
@@ -249,8 +283,9 @@ enum ChildDebuggerExecutionStatus {
 
 /// A document-order declaration retained by the child in an explicitly
 /// core-selected debugger-execution document. Classic programs are admitted
-/// before the first advance so core can discover an opaque identity; all
-/// source-bearing data remains in this child-only queue.
+/// before the first advance so core can discover an opaque identity; a BlueTS
+/// ESM entry is also admitted with its graph. All source-bearing data remains
+/// in this child-only queue.
 enum DeferredChildExecution {
     JavaScriptClassic {
         handle: BlueJsProgramHandle,
@@ -265,7 +300,8 @@ enum DeferredChildExecution {
         root_safe_point: Option<PageHostDebuggerSafePoint>,
     },
     BlueTsModule {
-        graph: Box<DirectModuleGraph>,
+        attachment: DirectPageModuleGraphAttachment,
+        root_safe_point: Option<PageHostDebuggerSafePoint>,
     },
 }
 
@@ -274,6 +310,7 @@ struct PendingDebuggerExecution {
     language: PageHostScriptLanguage,
     kind: PageHostScriptKind,
     program: Option<PageHostDebuggerProgram>,
+    nested_safe_point: Option<PageHostDebuggerSafePoint>,
     execution: DeferredChildExecution,
 }
 
@@ -969,6 +1006,15 @@ impl BlueJsChildHost {
                 document_generation,
                 safe_point,
             ),
+            PageHostRequest::ArmDebuggerNestedSafePointBreakpoint {
+                tab_id,
+                document_generation,
+                safe_point,
+            } => self.arm_debugger_nested_safe_point_breakpoint(
+                tab_id,
+                document_generation,
+                safe_point,
+            ),
             PageHostRequest::GetDebuggerExecutionState {
                 tab_id,
                 document_generation,
@@ -984,6 +1030,30 @@ impl BlueJsChildHost {
                 document_generation,
                 program,
             } => self.step_debugger_root_instruction(tab_id, document_generation, program),
+            PageHostRequest::StepDebuggerNestedInstruction { frame } => {
+                self.step_debugger_nested_instruction(frame)
+            }
+            PageHostRequest::ResumeDebuggerNestedExecution { frame } => {
+                self.resume_debugger_nested_execution(frame)
+            }
+            PageHostRequest::GetDebuggerStackSnapshot {
+                tab_id,
+                document_generation,
+                program,
+                frame,
+                max_frames,
+                max_scope_entries,
+            } => self.debugger_stack_snapshot(
+                tab_id,
+                document_generation,
+                program,
+                frame,
+                max_frames,
+                max_scope_entries,
+            ),
+            PageHostRequest::GetDebuggerValueSnapshot { target } => {
+                self.debugger_value_snapshot(target)
+            }
             PageHostRequest::StepDebuggerBlueTsSourceSpan {
                 tab_id,
                 document_generation,
@@ -1107,6 +1177,7 @@ impl BlueJsChildHost {
                 generation: document.document_generation,
                 origin: origin.clone(),
                 click_event_family,
+                pending_click_tasks: VecDeque::new(),
                 debugger_execution_control: document.debugger_execution_control,
                 debugger_programs: BTreeMap::new(),
                 debugger_breakpoints: BTreeSet::new(),
@@ -1242,27 +1313,50 @@ impl BlueJsChildHost {
         document_generation: u64,
         node_id: u64,
     ) -> PageHostReply {
-        let Some(document) = self.documents.get(&tab_id) else {
+        let Some(document) = self.documents.get_mut(&tab_id) else {
             return stale_document();
         };
         if document.generation != document_generation {
             return stale_document();
         }
-        let default_prevented = if let Some(family) = document.click_event_family {
+        if document.pending_click_tasks.len() >= MAX_PENDING_CLICK_TASKS_PER_REALM {
+            return resource_limit();
+        }
+        document.pending_click_tasks.push_back(PendingClickTask {
+            generation: document_generation,
+            node_id,
+        });
+        self.run_next_click_task(tab_id)
+    }
+
+    fn run_next_click_task(&mut self, tab_id: u64) -> PageHostReply {
+        let Some(document) = self.documents.get_mut(&tab_id) else {
+            return stale_document();
+        };
+        let Some(task) = document.pending_click_tasks.pop_front() else {
+            return invalid_request();
+        };
+        if document.generation != task.generation {
+            return stale_document();
+        }
+        let family = document.click_event_family;
+        let default_prevented = if let Some(family) = family {
             match self.runtime.dispatch_host_click(
                 tab_id,
                 family,
-                HostObjectKey::new(tab_id, document_generation, node_id),
+                HostObjectKey::new(tab_id, task.generation, task.node_id),
             ) {
                 Ok(prevented) => prevented,
                 Err(_) => return host_failure(),
             }
+        } else if self.runtime.run_click_microtask_checkpoint(tab_id).is_err() {
+            return host_failure();
         } else {
             false
         };
         PageHostReply::ClickDispatched {
             tab_id,
-            document_generation,
+            document_generation: task.generation,
             default_prevented,
         }
     }
@@ -1312,7 +1406,6 @@ impl BlueJsChildHost {
         prepared: Vec<PreparedScript>,
     ) -> PageHostReply {
         let mut reports = Vec::new();
-        let mut may_execute_bluets_immediately = true;
         for prepared in prepared {
             match prepared {
                 PreparedScript::Rejected {
@@ -1371,7 +1464,6 @@ impl BlueJsChildHost {
                     let Some(document) = self.documents.get_mut(&tab_id) else {
                         return self.fail_debugger_execution_document(tab_id);
                     };
-                    may_execute_bluets_immediately = false;
                     document
                         .debugger_execution_states
                         .insert(program, ChildDebuggerExecutionStatus::Pending);
@@ -1382,6 +1474,7 @@ impl BlueJsChildHost {
                             language: PageHostScriptLanguage::JavaScript,
                             kind: PageHostScriptKind::Classic,
                             program: Some(program),
+                            nested_safe_point: None,
                             execution: DeferredChildExecution::JavaScriptClassic {
                                 handle,
                                 root_safe_point: None,
@@ -1393,7 +1486,6 @@ impl BlueJsChildHost {
                     graph,
                     programs,
                 } => {
-                    may_execute_bluets_immediately = false;
                     self.enqueue_debugger_execution(
                         tab_id,
                         PendingDebuggerExecution {
@@ -1401,6 +1493,7 @@ impl BlueJsChildHost {
                             language: PageHostScriptLanguage::JavaScript,
                             kind: PageHostScriptKind::Module,
                             program: None,
+                            nested_safe_point: None,
                             execution: DeferredChildExecution::JavaScriptModule { graph, programs },
                         },
                     );
@@ -1429,7 +1522,6 @@ impl BlueJsChildHost {
                         Ok(program) => program,
                         Err(()) => return self.fail_debugger_execution_document(tab_id),
                     };
-                    may_execute_bluets_immediately = false;
                     let Some(document) = self.documents.get_mut(&tab_id) else {
                         return self.fail_debugger_execution_document(tab_id);
                     };
@@ -1443,6 +1535,7 @@ impl BlueJsChildHost {
                             language: PageHostScriptLanguage::BlueTs,
                             kind: PageHostScriptKind::Classic,
                             program: Some(program),
+                            nested_safe_point: None,
                             execution: DeferredChildExecution::BlueTsClassic {
                                 handle: attachment.handle,
                                 root_safe_point: None,
@@ -1450,33 +1543,50 @@ impl BlueJsChildHost {
                         });
                 }
                 PreparedScript::BlueTsModule { ordinal, graph } => {
-                    if may_execute_bluets_immediately {
-                        reports.push(script_report(
-                            tab_id,
-                            document_generation,
-                            ordinal,
-                            PageHostScriptLanguage::BlueTs,
-                            PageHostScriptKind::Module,
-                            execute_bluets_module_graph(
-                                &mut self.runtime,
-                                &mut self.debug_registry,
+                    let attachment = match graph.attach_debug_in_page_realm(
+                        &mut self.runtime,
+                        tab_id,
+                        origin,
+                        &mut self.debug_registry,
+                    ) {
+                        Ok(attachment) => attachment,
+                        Err(error) => {
+                            reports.push(script_report(
                                 tab_id,
-                                origin,
-                                &graph,
-                            ),
-                        ));
-                    } else {
-                        self.enqueue_debugger_execution(
-                            tab_id,
-                            PendingDebuggerExecution {
+                                document_generation,
                                 ordinal,
-                                language: PageHostScriptLanguage::BlueTs,
-                                kind: PageHostScriptKind::Module,
-                                program: None,
-                                execution: DeferredChildExecution::BlueTsModule { graph },
+                                PageHostScriptLanguage::BlueTs,
+                                PageHostScriptKind::Module,
+                                rejected(bluets_bridge_category(error)),
+                            ));
+                            continue;
+                        }
+                    };
+                    let program =
+                        match self.register_debugger_program(tab_id, attachment.entry.handle) {
+                            Ok(program) => program,
+                            Err(()) => return self.fail_debugger_execution_document(tab_id),
+                        };
+                    let document = self
+                        .documents
+                        .get_mut(&tab_id)
+                        .expect("the checked module graph's document remains live");
+                    document
+                        .debugger_execution_states
+                        .insert(program, ChildDebuggerExecutionStatus::Pending);
+                    document
+                        .pending_debugger_executions
+                        .push_back(PendingDebuggerExecution {
+                            ordinal,
+                            language: PageHostScriptLanguage::BlueTs,
+                            kind: PageHostScriptKind::Module,
+                            program: Some(program),
+                            nested_safe_point: None,
+                            execution: DeferredChildExecution::BlueTsModule {
+                                attachment,
+                                root_safe_point: None,
                             },
-                        );
-                    }
+                        });
                 }
             }
         }
@@ -3266,16 +3376,33 @@ impl BlueJsChildHost {
         else {
             return invalid_debugger_state();
         };
-        let (DeferredChildExecution::JavaScriptClassic {
-            root_safe_point, ..
-        }
-        | DeferredChildExecution::BlueTsClassic {
-            root_safe_point, ..
-        }) = &mut pending.execution
-        else {
-            return invalid_debugger_state();
+        let root_safe_point = match &mut pending.execution {
+            DeferredChildExecution::JavaScriptClassic {
+                root_safe_point, ..
+            }
+            | DeferredChildExecution::BlueTsClassic {
+                root_safe_point, ..
+            } => root_safe_point,
+            DeferredChildExecution::BlueTsModule {
+                attachment,
+                root_safe_point,
+            } => {
+                let Ok(expected) = self
+                    .runtime
+                    .module_evaluate_entry_safe_point(tab_id, attachment.entry.handle)
+                else {
+                    return invalid_debugger_state();
+                };
+                if expected.code_unit.ordinal() != safe_point.code_unit_ordinal
+                    || expected.bytecode_offset != safe_point.bytecode_offset
+                {
+                    return invalid_debugger_state();
+                }
+                root_safe_point
+            }
+            DeferredChildExecution::JavaScriptModule { .. } => return invalid_debugger_state(),
         };
-        if root_safe_point.is_some() {
+        if root_safe_point.is_some() || pending.nested_safe_point.is_some() {
             return invalid_debugger_state();
         }
         let max = usize::try_from(PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
@@ -3292,6 +3419,371 @@ impl BlueJsChildHost {
             document_generation,
             safe_point,
         }
+    }
+
+    /// Child-private until the versioned page-host active-frame route is
+    /// complete. This never reuses the root-breakpoint request for a child.
+    fn arm_debugger_nested_target(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> Result<(), PageHostReply> {
+        self.exact_debugger_safe_point(tab_id, document_generation, safe_point)?;
+        if safe_point.code_unit_ordinal == 0 {
+            return Err(invalid_debugger_state());
+        }
+        let document = self.documents.get_mut(&tab_id).expect("validated document");
+        if !document.debugger_execution_control
+            || document.debugger_execution_states.get(&safe_point.program)
+                != Some(&ChildDebuggerExecutionStatus::Pending)
+        {
+            return Err(invalid_debugger_state());
+        }
+        let pending = document
+            .pending_debugger_executions
+            .iter_mut()
+            .find(|pending| pending.program == Some(safe_point.program))
+            .ok_or_else(invalid_debugger_state)?;
+        if pending.nested_safe_point.is_some()
+            || !matches!(
+                pending.execution,
+                DeferredChildExecution::JavaScriptClassic {
+                    root_safe_point: None,
+                    ..
+                } | DeferredChildExecution::BlueTsClassic {
+                    root_safe_point: None,
+                    ..
+                } | DeferredChildExecution::BlueTsModule {
+                    root_safe_point: None,
+                    ..
+                }
+            )
+        {
+            return Err(invalid_debugger_state());
+        }
+        let max = usize::try_from(PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
+            .expect("page-host debugger breakpoint cap fits usize");
+        if !document.debugger_breakpoints.contains(&safe_point)
+            && document.debugger_breakpoints.len() == max
+        {
+            return Err(resource_limit());
+        }
+        document.debugger_breakpoints.insert(safe_point);
+        pending.nested_safe_point = Some(safe_point);
+        Ok(())
+    }
+
+    fn arm_debugger_nested_safe_point_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> PageHostReply {
+        match self.arm_debugger_nested_target(tab_id, document_generation, safe_point) {
+            Ok(()) => PageHostReply::DebuggerNestedSafePointBreakpointArmed {
+                tab_id,
+                document_generation,
+                safe_point,
+            },
+            Err(reply) => reply,
+        }
+    }
+
+    /// Schedules one step only for the exact paused child invocation.
+    fn request_debugger_nested_advance(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        frame: BlueJsPageDebuggerFrame,
+        resume: bool,
+    ) -> Result<(), PageHostReply> {
+        let document = self.exact_document(tab_id, document_generation)?;
+        if frame.tab_id() != tab_id || !document.debugger_execution_control {
+            return Err(invalid_debugger_state());
+        }
+        let pending = document
+            .pending_debugger_executions
+            .front()
+            .ok_or_else(invalid_debugger_state)?;
+        let program = pending.program.ok_or_else(invalid_debugger_state)?;
+        let status = document
+            .debugger_execution_states
+            .get(&program)
+            .copied()
+            .ok_or_else(invalid_debugger_state)?;
+        let ChildDebuggerExecutionStatus::NestedPaused {
+            frame: active,
+            safe_point,
+        } = status
+        else {
+            return Err(invalid_debugger_state());
+        };
+        if active != frame
+            || !document
+                .debugger_programs
+                .get(&program.program_handle)
+                .is_some_and(|record| {
+                    record.program_generation == program.program_generation
+                        && record.runtime_handle == frame.program()
+                })
+            || safe_point.code_unit_ordinal != frame.code_unit_ordinal()
+        {
+            return Err(invalid_debugger_state());
+        }
+        let requested = if resume {
+            ChildDebuggerExecutionStatus::NestedResumeRequested { frame, safe_point }
+        } else {
+            ChildDebuggerExecutionStatus::NestedStepRequested { frame, safe_point }
+        };
+        self.documents
+            .get_mut(&tab_id)
+            .expect("validated document")
+            .debugger_execution_states
+            .insert(program, requested);
+        Ok(())
+    }
+
+    fn step_debugger_nested_instruction(&mut self, frame: PageHostDebuggerFrame) -> PageHostReply {
+        self.continue_debugger_nested_execution(frame, false)
+    }
+
+    fn resume_debugger_nested_execution(&mut self, frame: PageHostDebuggerFrame) -> PageHostReply {
+        self.continue_debugger_nested_execution(frame, true)
+    }
+
+    fn continue_debugger_nested_execution(
+        &mut self,
+        frame: PageHostDebuggerFrame,
+        resume: bool,
+    ) -> PageHostReply {
+        if !frame.is_well_formed() {
+            return invalid_request();
+        }
+        let document = match self.exact_document(frame.tab_id, frame.document_generation) {
+            Ok(document) => document,
+            Err(reply) => return reply,
+        };
+        let Some(ChildDebuggerExecutionStatus::NestedPaused {
+            frame: active,
+            safe_point,
+        }) = document
+            .debugger_execution_states
+            .get(&frame.program)
+            .copied()
+        else {
+            return invalid_debugger_state();
+        };
+        if frame
+            != child_debugger_frame(
+                frame.tab_id,
+                frame.document_generation,
+                frame.program,
+                active,
+            )
+            || !frame.matches_safe_point(safe_point)
+        {
+            return invalid_debugger_state();
+        }
+        match self.request_debugger_nested_advance(
+            frame.tab_id,
+            frame.document_generation,
+            active,
+            resume,
+        ) {
+            Ok(()) if resume => PageHostReply::DebuggerNestedResumeRequested { frame },
+            Ok(()) => PageHostReply::DebuggerNestedStepRequested { frame },
+            Err(reply) => reply,
+        }
+    }
+
+    fn debugger_stack_snapshot(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        frame: Option<PageHostDebuggerFrame>,
+        max_frames: u32,
+        max_scope_entries: u32,
+    ) -> PageHostReply {
+        if max_frames == 0
+            || max_frames > PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES
+            || max_frames > VM_DEBUGGER_MAX_STACK_FRAMES
+            || max_scope_entries == 0
+            || max_scope_entries > PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES
+            || max_scope_entries > VM_DEBUGGER_MAX_SCOPE_ENTRIES
+            || !program.is_well_formed()
+            || frame.is_some_and(|frame| !frame.is_well_formed())
+        {
+            return invalid_request();
+        }
+        let document = match self.exact_document(tab_id, document_generation) {
+            Ok(document) => document,
+            Err(reply) => return reply,
+        };
+        if !document.debugger_execution_control
+            || document
+                .pending_debugger_executions
+                .front()
+                .and_then(|pending| pending.program)
+                != Some(program)
+        {
+            return invalid_debugger_state();
+        }
+        let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+            return invalid_debugger_state();
+        };
+        if record.program_generation != program.program_generation {
+            return invalid_debugger_state();
+        }
+        let runtime_frame = match (
+            frame,
+            document.debugger_execution_states.get(&program).copied(),
+        ) {
+            (
+                None,
+                Some(
+                    ChildDebuggerExecutionStatus::Paused(_)
+                    | ChildDebuggerExecutionStatus::SourceStepLimitReached(_),
+                ),
+            ) => None,
+            (
+                Some(frame),
+                Some(ChildDebuggerExecutionStatus::NestedPaused {
+                    frame: active,
+                    safe_point,
+                }),
+            ) if frame == child_debugger_frame(tab_id, document_generation, program, active)
+                && frame.matches_safe_point(safe_point) =>
+            {
+                Some(active)
+            }
+            _ => return invalid_debugger_state(),
+        };
+        let snapshot = match self.runtime.debugger_stack_snapshot(
+            tab_id,
+            record.runtime_handle,
+            runtime_frame,
+            max_frames,
+            max_scope_entries,
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(_) => return invalid_debugger_state(),
+        };
+        PageHostReply::DebuggerStackSnapshot {
+            tab_id,
+            document_generation,
+            program,
+            frame,
+            snapshot: PageHostDebuggerStackSnapshot {
+                frames: snapshot
+                    .frames
+                    .into_iter()
+                    .map(|frame| PageHostDebuggerStackFrame {
+                        code_unit_ordinal: frame.code_unit_ordinal,
+                        bytecode_offset: frame.bytecode_offset,
+                        scope_entries: frame
+                            .scope_entries
+                            .into_iter()
+                            .map(|entry| PageHostDebuggerScopeEntry {
+                                slot_ordinal: entry.slot_ordinal,
+                                scope_depth: entry.scope_depth,
+                            })
+                            .collect(),
+                        scope_truncated: frame.scope_truncated,
+                    })
+                    .collect(),
+                stack_truncated: snapshot.stack_truncated,
+            },
+        }
+    }
+
+    fn debugger_value_snapshot(&self, target: PageHostDebuggerValueTarget) -> PageHostReply {
+        if !target.is_well_formed() {
+            return invalid_request();
+        }
+        let document = match self.exact_document(target.tab_id, target.document_generation) {
+            Ok(document) => document,
+            Err(reply) => return reply,
+        };
+        if !document.debugger_execution_control
+            || document
+                .pending_debugger_executions
+                .front()
+                .and_then(|pending| pending.program)
+                != Some(target.program)
+        {
+            return invalid_debugger_state();
+        }
+        let Some(record) = document
+            .debugger_programs
+            .get(&target.program.program_handle)
+        else {
+            return invalid_debugger_state();
+        };
+        if record.program_generation != target.program.program_generation
+            || self
+                .debug_registry
+                .get(self.runtime.program_registry(), record.runtime_handle)
+                .is_err()
+        {
+            return invalid_debugger_state();
+        }
+        let runtime_frame = match (
+            target.frame,
+            document
+                .debugger_execution_states
+                .get(&target.program)
+                .copied(),
+        ) {
+            (
+                None,
+                Some(
+                    ChildDebuggerExecutionStatus::Paused(_)
+                    | ChildDebuggerExecutionStatus::SourceStepLimitReached(_),
+                ),
+            ) => None,
+            (
+                Some(frame),
+                Some(ChildDebuggerExecutionStatus::NestedPaused {
+                    frame: active,
+                    safe_point,
+                }),
+            ) if frame
+                == child_debugger_frame(
+                    target.tab_id,
+                    target.document_generation,
+                    target.program,
+                    active,
+                )
+                && frame.matches_safe_point(safe_point) =>
+            {
+                Some(active)
+            }
+            _ => return invalid_debugger_state(),
+        };
+        let preview = match self.runtime.debugger_value_preview(
+            target.tab_id,
+            record.runtime_handle,
+            runtime_frame,
+            BlueJsPageDebuggerValueTarget {
+                frame_index: target.frame_index,
+                code_unit_ordinal: target.safe_point.code_unit_ordinal,
+                bytecode_offset: target.safe_point.bytecode_offset,
+                scope_entry: VmDebuggerScopeEntry {
+                    slot_ordinal: target.scope_entry.slot_ordinal,
+                    scope_depth: target.scope_entry.scope_depth,
+                },
+            },
+        ) {
+            Ok(preview) => page_host_debugger_value_preview(preview),
+            Err(_) => return invalid_debugger_state(),
+        };
+        let snapshot = PageHostDebuggerValueSnapshot { target, preview };
+        if !snapshot.is_well_formed() {
+            return invalid_debugger_state();
+        }
+        PageHostReply::DebuggerValueSnapshot(Box::new(snapshot))
     }
 
     fn debugger_execution_state(
@@ -3314,7 +3806,7 @@ impl BlueJsChildHost {
             tab_id,
             document_generation,
             program,
-            state: child_debugger_execution_state(status),
+            state: child_debugger_execution_state(tab_id, document_generation, program, status),
         }
     }
 
@@ -3374,6 +3866,9 @@ impl BlueJsChildHost {
                     root_safe_point: Some(_),
                     ..
                 } | DeferredChildExecution::BlueTsClassic {
+                    root_safe_point: Some(_),
+                    ..
+                } | DeferredChildExecution::BlueTsModule {
                     root_safe_point: Some(_),
                     ..
                 }
@@ -3476,6 +3971,10 @@ impl BlueJsChildHost {
                             && matches!(
                                 pending.execution,
                                 DeferredChildExecution::BlueTsClassic { .. }
+                                    | DeferredChildExecution::BlueTsModule {
+                                        root_safe_point: Some(_),
+                                        ..
+                                    }
                             )
                     })
                 || !matches!(
@@ -3518,6 +4017,267 @@ impl BlueJsChildHost {
         }
     }
 
+    fn record_nested_pause(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        runtime_handle: BlueJsProgramHandle,
+        target: PageHostDebuggerSafePoint,
+        result: Option<Result<BlueJsPageDebuggerNestedExecutionState, BlueJsPageRuntimeError>>,
+    ) -> (bool, PageHostScriptOutcome) {
+        let (status, outcome) = match result {
+            Some(Ok(BlueJsPageDebuggerNestedExecutionState::Paused {
+                frame,
+                bytecode_offset,
+            })) if frame.tab_id() == tab_id
+                && frame.program() == runtime_handle
+                && frame.code_unit_ordinal() == target.code_unit_ordinal =>
+            {
+                let successor = PageHostDebuggerSafePoint {
+                    bytecode_offset,
+                    ..target
+                };
+                if self
+                    .exact_debugger_safe_point(tab_id, document_generation, successor)
+                    .is_ok()
+                {
+                    (
+                        ChildDebuggerExecutionStatus::NestedPaused {
+                            frame,
+                            safe_point: successor,
+                        },
+                        PageHostScriptOutcome::Executed,
+                    )
+                } else {
+                    (
+                        ChildDebuggerExecutionStatus::Completed,
+                        rejected("BlueJS nested pause lost its verified boundary"),
+                    )
+                }
+            }
+            Some(Ok(BlueJsPageDebuggerNestedExecutionState::Completed)) => (
+                ChildDebuggerExecutionStatus::Completed,
+                PageHostScriptOutcome::Executed,
+            ),
+            Some(Err(error)) => (
+                ChildDebuggerExecutionStatus::Completed,
+                rejected(page_runtime_category(error)),
+            ),
+            _ => (
+                ChildDebuggerExecutionStatus::Completed,
+                rejected("BlueJS nested pause returned an inconsistent frame"),
+            ),
+        };
+        self.documents
+            .get_mut(&tab_id)
+            .expect("the nested document remains live")
+            .debugger_execution_states
+            .insert(program, status);
+        (
+            matches!(status, ChildDebuggerExecutionStatus::NestedPaused { .. }),
+            outcome,
+        )
+    }
+
+    fn advance_nested_frame(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        frame: BlueJsPageDebuggerFrame,
+        safe_point: PageHostDebuggerSafePoint,
+        resume: bool,
+    ) -> (
+        bool,
+        PageHostScriptOutcome,
+        Option<PageHostDebuggerSafePoint>,
+    ) {
+        let result = if resume {
+            self.runtime.resume_debugger_nested_execution(frame)
+        } else {
+            self.runtime.step_debugger_nested_instruction(frame)
+        };
+        let (status, outcome, root_successor) = match result {
+            Ok(BlueJsPageDebuggerNestedExecutionState::Paused {
+                frame: same_frame,
+                bytecode_offset,
+            }) if same_frame == frame => {
+                let successor = PageHostDebuggerSafePoint {
+                    bytecode_offset,
+                    ..safe_point
+                };
+                if self
+                    .exact_debugger_safe_point(tab_id, document_generation, successor)
+                    .is_ok()
+                {
+                    (
+                        ChildDebuggerExecutionStatus::NestedPaused {
+                            frame,
+                            safe_point: successor,
+                        },
+                        PageHostScriptOutcome::Executed,
+                        None,
+                    )
+                } else {
+                    (
+                        ChildDebuggerExecutionStatus::Completed,
+                        rejected("BlueJS nested step lost its verified boundary"),
+                        None,
+                    )
+                }
+            }
+            Ok(BlueJsPageDebuggerNestedExecutionState::FrameReturned {
+                root_bytecode_offset,
+            }) => {
+                let successor = PageHostDebuggerSafePoint {
+                    code_unit_ordinal: 0,
+                    bytecode_offset: root_bytecode_offset,
+                    ..safe_point
+                };
+                if self
+                    .exact_debugger_safe_point(tab_id, document_generation, successor)
+                    .is_ok()
+                {
+                    (
+                        ChildDebuggerExecutionStatus::Paused(successor),
+                        PageHostScriptOutcome::Executed,
+                        Some(successor),
+                    )
+                } else {
+                    (
+                        ChildDebuggerExecutionStatus::Completed,
+                        rejected("BlueJS nested return lost its root boundary"),
+                        None,
+                    )
+                }
+            }
+            Ok(_) => (
+                ChildDebuggerExecutionStatus::Completed,
+                rejected("BlueJS nested step returned an inconsistent frame"),
+                None,
+            ),
+            Err(error) => (
+                ChildDebuggerExecutionStatus::Completed,
+                rejected(page_runtime_category(error)),
+                None,
+            ),
+        };
+        self.documents
+            .get_mut(&tab_id)
+            .expect("the nested document remains live")
+            .debugger_execution_states
+            .insert(program, status);
+        (
+            matches!(
+                status,
+                ChildDebuggerExecutionStatus::NestedPaused { .. }
+                    | ChildDebuggerExecutionStatus::Paused(_)
+            ),
+            outcome,
+            root_successor,
+        )
+    }
+
+    fn advance_bluets_source_step(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        root_safe_point: PageHostDebuggerSafePoint,
+        source_step: (BlueTsSourceSpanKey, u16),
+        module_root: bool,
+    ) -> (bool, PageHostScriptOutcome) {
+        let (origin, remaining) = source_step;
+        if remaining == 0 {
+            self.documents
+                .get_mut(&tab_id)
+                .expect("the source-step document remains live")
+                .debugger_execution_states
+                .insert(program, ChildDebuggerExecutionStatus::Completed);
+            return (false, rejected("BlueTS source step state was inconsistent"));
+        }
+        let result = if module_root {
+            self.runtime.step_debugger_module_root_instruction(tab_id)
+        } else {
+            self.runtime.step_debugger_root_instruction(tab_id)
+        };
+        match result {
+            Ok(BlueJsPageDebuggerExecutionState::Paused { bytecode_offset }) => {
+                let successor = PageHostDebuggerSafePoint {
+                    bytecode_offset,
+                    ..root_safe_point
+                };
+                let metadata = self
+                    .documents
+                    .get(&tab_id)
+                    .and_then(|document| document.debugger_programs.get(&program.program_handle))
+                    .and_then(|record| record.metadata);
+                let next_span = if self
+                    .exact_debugger_safe_point(tab_id, document_generation, successor)
+                    .is_ok()
+                {
+                    metadata.ok_or_else(invalid_request).and_then(|metadata| {
+                        self.debugger_bluets_source_span_key(
+                            tab_id,
+                            document_generation,
+                            metadata,
+                            successor,
+                        )
+                    })
+                } else {
+                    Err(invalid_request())
+                };
+                if let Ok(next_span) = next_span {
+                    let next_status = match next_span {
+                        Some(span) if span != origin => {
+                            ChildDebuggerExecutionStatus::Paused(successor)
+                        }
+                        _ if remaining > 1 => {
+                            ChildDebuggerExecutionStatus::BlueTsSourceStepRequested {
+                                origin,
+                                remaining: remaining - 1,
+                            }
+                        }
+                        _ => ChildDebuggerExecutionStatus::SourceStepLimitReached(successor),
+                    };
+                    self.documents
+                        .get_mut(&tab_id)
+                        .expect("the source-step document remains live")
+                        .debugger_execution_states
+                        .insert(program, next_status);
+                    (true, PageHostScriptOutcome::Executed)
+                } else {
+                    self.documents
+                        .get_mut(&tab_id)
+                        .expect("the source-step document remains live")
+                        .debugger_execution_states
+                        .insert(program, ChildDebuggerExecutionStatus::Completed);
+                    (
+                        false,
+                        rejected("BlueTS source step lost its verified boundary"),
+                    )
+                }
+            }
+            Ok(BlueJsPageDebuggerExecutionState::Completed) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the source-step document remains live")
+                    .debugger_execution_states
+                    .insert(program, ChildDebuggerExecutionStatus::Completed);
+                (false, PageHostScriptOutcome::Executed)
+            }
+            Err(error) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the source-step document remains live")
+                    .debugger_execution_states
+                    .insert(program, ChildDebuggerExecutionStatus::Completed);
+                (false, rejected(page_runtime_category(error)))
+            }
+        }
+    }
+
     fn advance_debugger_execution(
         &mut self,
         tab_id: u64,
@@ -3557,9 +4317,128 @@ impl BlueJsChildHost {
                         .expect("every deferred classic has scheduler state");
                     match status {
                         ChildDebuggerExecutionStatus::Paused(_)
-                        | ChildDebuggerExecutionStatus::SourceStepLimitReached(_) => {
+                        | ChildDebuggerExecutionStatus::SourceStepLimitReached(_)
+                        | ChildDebuggerExecutionStatus::NestedPaused { .. } => {
                             paused = true;
                             PageHostScriptOutcome::Executed
+                        }
+                        ChildDebuggerExecutionStatus::NestedStepRequested { frame, safe_point } => {
+                            let result = self.runtime.step_debugger_nested_instruction(frame);
+                            match result {
+                                Ok(BlueJsPageDebuggerNestedExecutionState::Paused {
+                                    frame: same_frame,
+                                    bytecode_offset,
+                                }) if same_frame == frame => {
+                                    let successor = PageHostDebuggerSafePoint {
+                                        bytecode_offset,
+                                        ..safe_point
+                                    };
+                                    if self
+                                        .exact_debugger_safe_point(
+                                            tab_id,
+                                            document_generation,
+                                            successor,
+                                        )
+                                        .is_ok()
+                                    {
+                                        self.documents
+                                            .get_mut(&tab_id)
+                                            .expect("the nested document remains live")
+                                            .debugger_execution_states
+                                            .insert(
+                                                program,
+                                                ChildDebuggerExecutionStatus::NestedPaused {
+                                                    frame,
+                                                    safe_point: successor,
+                                                },
+                                            );
+                                        paused = true;
+                                        PageHostScriptOutcome::Executed
+                                    } else {
+                                        self.documents
+                                            .get_mut(&tab_id)
+                                            .expect("the nested document remains live")
+                                            .debugger_execution_states
+                                            .insert(
+                                                program,
+                                                ChildDebuggerExecutionStatus::Completed,
+                                            );
+                                        rejected("BlueJS nested step lost its verified boundary")
+                                    }
+                                }
+                                Ok(BlueJsPageDebuggerNestedExecutionState::FrameReturned {
+                                    root_bytecode_offset,
+                                }) => {
+                                    let successor = PageHostDebuggerSafePoint {
+                                        code_unit_ordinal: 0,
+                                        bytecode_offset: root_bytecode_offset,
+                                        ..safe_point
+                                    };
+                                    if self
+                                        .exact_debugger_safe_point(
+                                            tab_id,
+                                            document_generation,
+                                            successor,
+                                        )
+                                        .is_ok()
+                                    {
+                                        *root_safe_point = Some(successor);
+                                        self.documents
+                                            .get_mut(&tab_id)
+                                            .expect("the nested document remains live")
+                                            .debugger_execution_states
+                                            .insert(
+                                                program,
+                                                ChildDebuggerExecutionStatus::Paused(successor),
+                                            );
+                                        paused = true;
+                                        PageHostScriptOutcome::Executed
+                                    } else {
+                                        self.documents
+                                            .get_mut(&tab_id)
+                                            .expect("the nested document remains live")
+                                            .debugger_execution_states
+                                            .insert(
+                                                program,
+                                                ChildDebuggerExecutionStatus::Completed,
+                                            );
+                                        rejected("BlueJS nested return lost its root boundary")
+                                    }
+                                }
+                                Ok(_) => {
+                                    self.documents
+                                        .get_mut(&tab_id)
+                                        .expect("the nested document remains live")
+                                        .debugger_execution_states
+                                        .insert(program, ChildDebuggerExecutionStatus::Completed);
+                                    rejected("BlueJS nested step returned an inconsistent frame")
+                                }
+                                Err(error) => {
+                                    self.documents
+                                        .get_mut(&tab_id)
+                                        .expect("the nested document remains live")
+                                        .debugger_execution_states
+                                        .insert(program, ChildDebuggerExecutionStatus::Completed);
+                                    rejected(page_runtime_category(error))
+                                }
+                            }
+                        }
+                        ChildDebuggerExecutionStatus::NestedResumeRequested {
+                            frame,
+                            safe_point,
+                        } => {
+                            let (still_paused, outcome, root_successor) = self
+                                .advance_nested_frame(
+                                    tab_id,
+                                    document_generation,
+                                    program,
+                                    frame,
+                                    safe_point,
+                                    true,
+                                );
+                            *root_safe_point = root_successor;
+                            paused = still_paused;
+                            outcome
                         }
                         ChildDebuggerExecutionStatus::StepRequested => {
                             match self.runtime.step_debugger_root_instruction(tab_id) {
@@ -3624,8 +4503,7 @@ impl BlueJsChildHost {
                             origin,
                             remaining,
                         } => {
-                            if pending.language != PageHostScriptLanguage::BlueTs || remaining == 0
-                            {
+                            if pending.language != PageHostScriptLanguage::BlueTs {
                                 self.documents
                                     .get_mut(&tab_id)
                                     .expect("the source-step document remains live")
@@ -3633,27 +4511,62 @@ impl BlueJsChildHost {
                                     .insert(program, ChildDebuggerExecutionStatus::Completed);
                                 rejected("BlueTS source step state was inconsistent")
                             } else {
-                                match self.runtime.step_debugger_root_instruction(tab_id) {
-                                    Ok(BlueJsPageDebuggerExecutionState::Paused {
+                                let original = root_safe_point.expect(
+                                    "a BlueTS source step requires an armed root safe point",
+                                );
+                                let (still_paused, outcome) = self.advance_bluets_source_step(
+                                    tab_id,
+                                    document_generation,
+                                    program,
+                                    original,
+                                    (origin, remaining),
+                                    false,
+                                );
+                                paused = still_paused;
+                                outcome
+                            }
+                        }
+                        ChildDebuggerExecutionStatus::Pending
+                        | ChildDebuggerExecutionStatus::ResumeRequested => {
+                            if let (Some(target), ChildDebuggerExecutionStatus::Pending) =
+                                (pending.nested_safe_point, status)
+                            {
+                                let point = self
+                                    .runtime
+                                    .safe_points(
+                                        tab_id,
+                                        *handle,
+                                        usize::try_from(
+                                            PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+                                        )
+                                        .expect("page-host safe-point cap fits usize"),
+                                    )
+                                    .ok()
+                                    .and_then(|points| {
+                                        points.into_iter().find(|point| {
+                                            point.code_unit.ordinal() == target.code_unit_ordinal
+                                                && point.bytecode_offset == target.bytecode_offset
+                                        })
+                                    });
+                                let result = point.map(|point| {
+                                    self.runtime.execute_program_until_nested_debugger_pause(
+                                        tab_id, *handle, point,
+                                    )
+                                });
+                                let outcome = match result {
+                                    Some(Ok(BlueJsPageDebuggerNestedExecutionState::Paused {
+                                        frame,
                                         bytecode_offset,
-                                    }) => {
-                                        let original = root_safe_point.expect(
-                                            "a BlueTS source step requires an armed root safe point",
-                                        );
+                                    })) if frame.tab_id() == tab_id
+                                        && frame.program() == *handle
+                                        && frame.code_unit_ordinal()
+                                            == target.code_unit_ordinal =>
+                                    {
                                         let successor = PageHostDebuggerSafePoint {
                                             bytecode_offset,
-                                            ..original
+                                            ..target
                                         };
-                                        let metadata = self
-                                            .documents
-                                            .get(&tab_id)
-                                            .and_then(|document| {
-                                                document
-                                                    .debugger_programs
-                                                    .get(&program.program_handle)
-                                            })
-                                            .and_then(|record| record.metadata);
-                                        let next_span = if self
+                                        if self
                                             .exact_debugger_safe_point(
                                                 tab_id,
                                                 document_generation,
@@ -3661,57 +4574,87 @@ impl BlueJsChildHost {
                                             )
                                             .is_ok()
                                         {
-                                            metadata.ok_or_else(invalid_request).and_then(
-                                                |metadata| {
-                                                    self.debugger_bluets_source_span_key(
-                                                        tab_id,
-                                                        document_generation,
-                                                        metadata,
-                                                        successor,
-                                                    )
-                                                },
-                                            )
-                                        } else {
-                                            Err(invalid_request())
-                                        };
-                                        if let Ok(next_span) = next_span {
-                                            let next_status = match next_span {
-                                                Some(span) if span != origin => {
-                                                    ChildDebuggerExecutionStatus::Paused(successor)
-                                                }
-                                                _ if remaining > 1 => {
-                                                    ChildDebuggerExecutionStatus::BlueTsSourceStepRequested {
-                                                        origin,
-                                                        remaining: remaining - 1,
-                                                    }
-                                                }
-                                                _ => ChildDebuggerExecutionStatus::SourceStepLimitReached(successor),
-                                            };
                                             self.documents
                                                 .get_mut(&tab_id)
-                                                .expect("the source-step document remains live")
-                                                .debugger_execution_states
-                                                .insert(program, next_status);
-                                            paused = true;
-                                            PageHostScriptOutcome::Executed
-                                        } else {
-                                            self.documents
-                                                .get_mut(&tab_id)
-                                                .expect("the source-step document remains live")
+                                                .expect("the nested document remains live")
                                                 .debugger_execution_states
                                                 .insert(
                                                     program,
-                                                    ChildDebuggerExecutionStatus::Completed,
+                                                    ChildDebuggerExecutionStatus::NestedPaused {
+                                                        frame,
+                                                        safe_point: successor,
+                                                    },
                                                 );
+                                            paused = true;
+                                            PageHostScriptOutcome::Executed
+                                        } else {
                                             rejected(
-                                                "BlueTS source step lost its verified boundary",
+                                                "BlueJS nested pause lost its verified boundary",
                                             )
                                         }
                                     }
-                                    Ok(BlueJsPageDebuggerExecutionState::Completed) => {
+                                    Some(Ok(BlueJsPageDebuggerNestedExecutionState::Completed)) => {
+                                        PageHostScriptOutcome::Executed
+                                    }
+                                    Some(Err(error)) => rejected(page_runtime_category(error)),
+                                    _ => rejected(
+                                        "BlueJS nested pause returned an inconsistent frame",
+                                    ),
+                                };
+                                if !paused {
+                                    self.documents
+                                        .get_mut(&tab_id)
+                                        .expect("the nested document remains live")
+                                        .debugger_execution_states
+                                        .insert(program, ChildDebuggerExecutionStatus::Completed);
+                                }
+                                outcome
+                            } else {
+                                let result = match (*root_safe_point, status) {
+                                    (Some(target), ChildDebuggerExecutionStatus::Pending) => self
+                                        .runtime
+                                        .execute_program_until_debugger_pause_at_root_offset(
+                                            tab_id,
+                                            *handle,
+                                            target.bytecode_offset,
+                                        )
+                                        .map(|state| (state, true)),
+                                    (Some(_), ChildDebuggerExecutionStatus::ResumeRequested) => {
+                                        self.runtime
+                                            .resume_debugger_execution(tab_id)
+                                            .map(|state| (state, false))
+                                    }
+                                    (None, _) => {
+                                        self.runtime.execute_program(tab_id, *handle).map(|_| {
+                                            (BlueJsPageDebuggerExecutionState::Completed, false)
+                                        })
+                                    }
+                                    _ => {
+                                        unreachable!(
+                                            "only pending or resuming states reach execution"
+                                        )
+                                    }
+                                };
+                                match result {
+                                    Ok((BlueJsPageDebuggerExecutionState::Paused { .. }, true)) => {
+                                        let target = root_safe_point.expect(
+                                            "a child pause has an armed exact root safe point",
+                                        );
                                         self.documents
                                             .get_mut(&tab_id)
-                                            .expect("the source-step document remains live")
+                                            .expect("the advancing document remains live")
+                                            .debugger_execution_states
+                                            .insert(
+                                                program,
+                                                ChildDebuggerExecutionStatus::Paused(target),
+                                            );
+                                        paused = true;
+                                        PageHostScriptOutcome::Executed
+                                    }
+                                    Ok((BlueJsPageDebuggerExecutionState::Completed, _)) => {
+                                        self.documents
+                                            .get_mut(&tab_id)
+                                            .expect("the advancing document remains live")
                                             .debugger_execution_states
                                             .insert(
                                                 program,
@@ -3719,10 +4662,24 @@ impl BlueJsChildHost {
                                             );
                                         PageHostScriptOutcome::Executed
                                     }
+                                    Ok((
+                                        BlueJsPageDebuggerExecutionState::Paused { .. },
+                                        false,
+                                    )) => {
+                                        self.documents
+                                            .get_mut(&tab_id)
+                                            .expect("the advancing document remains live")
+                                            .debugger_execution_states
+                                            .insert(
+                                                program,
+                                                ChildDebuggerExecutionStatus::Completed,
+                                            );
+                                        rejected("BlueJS debugger continuation did not complete after resume")
+                                    }
                                     Err(error) => {
                                         self.documents
                                             .get_mut(&tab_id)
-                                            .expect("the source-step document remains live")
+                                            .expect("the advancing document remains live")
                                             .debugger_execution_states
                                             .insert(
                                                 program,
@@ -3730,70 +4687,6 @@ impl BlueJsChildHost {
                                             );
                                         rejected(page_runtime_category(error))
                                     }
-                                }
-                            }
-                        }
-                        ChildDebuggerExecutionStatus::Pending
-                        | ChildDebuggerExecutionStatus::ResumeRequested => {
-                            let result = match (*root_safe_point, status) {
-                                (Some(target), ChildDebuggerExecutionStatus::Pending) => self
-                                    .runtime
-                                    .execute_program_until_debugger_pause_at_root_offset(
-                                        tab_id,
-                                        *handle,
-                                        target.bytecode_offset,
-                                    )
-                                    .map(|state| (state, true)),
-                                (Some(_), ChildDebuggerExecutionStatus::ResumeRequested) => self
-                                    .runtime
-                                    .resume_debugger_execution(tab_id)
-                                    .map(|state| (state, false)),
-                                (None, _) => self
-                                    .runtime
-                                    .execute_program(tab_id, *handle)
-                                    .map(|_| (BlueJsPageDebuggerExecutionState::Completed, false)),
-                                _ => {
-                                    unreachable!("only pending or resuming states reach execution")
-                                }
-                            };
-                            match result {
-                                Ok((BlueJsPageDebuggerExecutionState::Paused { .. }, true)) => {
-                                    let target = root_safe_point
-                                        .expect("a child pause has an armed exact root safe point");
-                                    self.documents
-                                        .get_mut(&tab_id)
-                                        .expect("the advancing document remains live")
-                                        .debugger_execution_states
-                                        .insert(
-                                            program,
-                                            ChildDebuggerExecutionStatus::Paused(target),
-                                        );
-                                    paused = true;
-                                    PageHostScriptOutcome::Executed
-                                }
-                                Ok((BlueJsPageDebuggerExecutionState::Completed, _)) => {
-                                    self.documents
-                                        .get_mut(&tab_id)
-                                        .expect("the advancing document remains live")
-                                        .debugger_execution_states
-                                        .insert(program, ChildDebuggerExecutionStatus::Completed);
-                                    PageHostScriptOutcome::Executed
-                                }
-                                Ok((BlueJsPageDebuggerExecutionState::Paused { .. }, false)) => {
-                                    self.documents
-                                        .get_mut(&tab_id)
-                                        .expect("the advancing document remains live")
-                                        .debugger_execution_states
-                                        .insert(program, ChildDebuggerExecutionStatus::Completed);
-                                    rejected("BlueJS debugger continuation did not complete after resume")
-                                }
-                                Err(error) => {
-                                    self.documents
-                                        .get_mut(&tab_id)
-                                        .expect("the advancing document remains live")
-                                        .debugger_execution_states
-                                        .insert(program, ChildDebuggerExecutionStatus::Completed);
-                                    rejected(page_runtime_category(error))
                                 }
                             }
                         }
@@ -3811,13 +4704,260 @@ impl BlueJsChildHost {
                         programs.clone(),
                     )
                 }
-                DeferredChildExecution::BlueTsModule { graph } => execute_bluets_module_graph(
-                    &mut self.runtime,
-                    &mut self.debug_registry,
-                    tab_id,
-                    &origin,
-                    graph,
-                ),
+                DeferredChildExecution::BlueTsModule {
+                    attachment,
+                    root_safe_point,
+                } => {
+                    let program = pending
+                        .program
+                        .expect("every deferred BlueTS module has an entry debugger program");
+                    let status = self.documents[&tab_id].debugger_execution_states[&program];
+                    match (root_safe_point, status) {
+                        (
+                            _,
+                            ChildDebuggerExecutionStatus::Paused(_)
+                            | ChildDebuggerExecutionStatus::SourceStepLimitReached(_)
+                            | ChildDebuggerExecutionStatus::NestedPaused { .. },
+                        ) => {
+                            paused = true;
+                            PageHostScriptOutcome::Executed
+                        }
+                        (
+                            root_slot,
+                            ChildDebuggerExecutionStatus::NestedStepRequested { frame, safe_point },
+                        ) => {
+                            let (still_paused, outcome, root_successor) = self
+                                .advance_nested_frame(
+                                    tab_id,
+                                    document_generation,
+                                    program,
+                                    frame,
+                                    safe_point,
+                                    false,
+                                );
+                            *root_slot = root_successor;
+                            paused = still_paused;
+                            outcome
+                        }
+                        (
+                            root_slot,
+                            ChildDebuggerExecutionStatus::NestedResumeRequested {
+                                frame,
+                                safe_point,
+                            },
+                        ) => {
+                            let (still_paused, outcome, root_successor) = self
+                                .advance_nested_frame(
+                                    tab_id,
+                                    document_generation,
+                                    program,
+                                    frame,
+                                    safe_point,
+                                    true,
+                                );
+                            *root_slot = root_successor;
+                            paused = still_paused;
+                            outcome
+                        }
+                        (Some(target), ChildDebuggerExecutionStatus::StepRequested) => {
+                            match self.runtime.step_debugger_module_root_instruction(tab_id) {
+                                Ok(BlueJsPageDebuggerExecutionState::Paused {
+                                    bytecode_offset,
+                                }) => {
+                                    let successor = PageHostDebuggerSafePoint {
+                                        bytecode_offset,
+                                        ..*target
+                                    };
+                                    if self
+                                        .exact_debugger_safe_point(
+                                            tab_id,
+                                            document_generation,
+                                            successor,
+                                        )
+                                        .is_ok()
+                                    {
+                                        self.documents
+                                            .get_mut(&tab_id)
+                                            .expect("the stepping module document remains live")
+                                            .debugger_execution_states
+                                            .insert(
+                                                program,
+                                                ChildDebuggerExecutionStatus::Paused(successor),
+                                            );
+                                        paused = true;
+                                        PageHostScriptOutcome::Executed
+                                    } else {
+                                        self.documents
+                                            .get_mut(&tab_id)
+                                            .expect("the stepping module document remains live")
+                                            .debugger_execution_states
+                                            .insert(
+                                                program,
+                                                ChildDebuggerExecutionStatus::Completed,
+                                            );
+                                        rejected(
+                                            "BlueJS module step returned an invalid root boundary",
+                                        )
+                                    }
+                                }
+                                Ok(BlueJsPageDebuggerExecutionState::Completed) => {
+                                    self.documents
+                                        .get_mut(&tab_id)
+                                        .expect("the stepping module document remains live")
+                                        .debugger_execution_states
+                                        .insert(program, ChildDebuggerExecutionStatus::Completed);
+                                    PageHostScriptOutcome::Executed
+                                }
+                                Err(error) => {
+                                    self.documents
+                                        .get_mut(&tab_id)
+                                        .expect("the stepping module document remains live")
+                                        .debugger_execution_states
+                                        .insert(program, ChildDebuggerExecutionStatus::Completed);
+                                    rejected(page_runtime_category(error))
+                                }
+                            }
+                        }
+                        (
+                            Some(target),
+                            ChildDebuggerExecutionStatus::BlueTsSourceStepRequested {
+                                origin,
+                                remaining,
+                            },
+                        ) => {
+                            let (still_paused, outcome) = self.advance_bluets_source_step(
+                                tab_id,
+                                document_generation,
+                                program,
+                                *target,
+                                (origin, remaining),
+                                true,
+                            );
+                            paused = still_paused;
+                            outcome
+                        }
+                        (Some(target), ChildDebuggerExecutionStatus::Pending) => {
+                            let result = self
+                                .runtime
+                                .module_evaluate_entry_safe_point(tab_id, attachment.entry.handle)
+                                .and_then(|point| {
+                                    if point.bytecode_offset != target.bytecode_offset {
+                                        return Err(
+                                            BlueJsPageRuntimeError::DebuggerModuleEntrySafePointOnly,
+                                        );
+                                    }
+                                    self.runtime.execute_module_graph_until_debugger_pause(
+                                        tab_id,
+                                        attachment.entry.handle,
+                                        attachment.modules.values().map(|module| module.handle),
+                                        point,
+                                    )
+                                });
+                            match result {
+                                Ok(BlueJsPageDebuggerExecutionState::Paused { .. }) => {
+                                    self.documents
+                                        .get_mut(&tab_id)
+                                        .expect("the advancing module document remains live")
+                                        .debugger_execution_states
+                                        .insert(
+                                            program,
+                                            ChildDebuggerExecutionStatus::Paused(*target),
+                                        );
+                                    paused = true;
+                                    PageHostScriptOutcome::Executed
+                                }
+                                Ok(BlueJsPageDebuggerExecutionState::Completed) => {
+                                    self.documents
+                                        .get_mut(&tab_id)
+                                        .expect("the advancing module document remains live")
+                                        .debugger_execution_states
+                                        .insert(program, ChildDebuggerExecutionStatus::Completed);
+                                    PageHostScriptOutcome::Executed
+                                }
+                                Err(error) => {
+                                    self.documents
+                                        .get_mut(&tab_id)
+                                        .expect("the advancing module document remains live")
+                                        .debugger_execution_states
+                                        .insert(program, ChildDebuggerExecutionStatus::Completed);
+                                    rejected(page_runtime_category(error))
+                                }
+                            }
+                        }
+                        (Some(_), ChildDebuggerExecutionStatus::ResumeRequested) => {
+                            let result = self.runtime.resume_debugger_module_execution(tab_id);
+                            self.documents
+                                .get_mut(&tab_id)
+                                .expect("the advancing module document remains live")
+                                .debugger_execution_states
+                                .insert(program, ChildDebuggerExecutionStatus::Completed);
+                            match result {
+                                Ok(BlueJsPageDebuggerExecutionState::Completed) => {
+                                    PageHostScriptOutcome::Executed
+                                }
+                                Ok(BlueJsPageDebuggerExecutionState::Paused { .. }) => {
+                                    rejected("BlueJS module debugger continuation did not complete")
+                                }
+                                Err(error) => rejected(page_runtime_category(error)),
+                            }
+                        }
+                        (None, ChildDebuggerExecutionStatus::Pending)
+                            if pending.nested_safe_point.is_some() =>
+                        {
+                            let target = pending
+                                .nested_safe_point
+                                .expect("the guarded module has a nested target");
+                            let point = self
+                                .runtime
+                                .safe_points(
+                                    tab_id,
+                                    attachment.entry.handle,
+                                    usize::try_from(PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM)
+                                        .expect("page-host safe-point cap fits usize"),
+                                )
+                                .ok()
+                                .and_then(|points| {
+                                    points.into_iter().find(|point| {
+                                        point.code_unit.ordinal() == target.code_unit_ordinal
+                                            && point.bytecode_offset == target.bytecode_offset
+                                    })
+                                });
+                            let result = point.map(|point| {
+                                self.runtime
+                                    .execute_module_graph_until_nested_debugger_pause(
+                                        tab_id,
+                                        attachment.entry.handle,
+                                        attachment.modules.values().map(|module| module.handle),
+                                        point,
+                                    )
+                            });
+                            let (still_paused, outcome) = self.record_nested_pause(
+                                tab_id,
+                                document_generation,
+                                program,
+                                attachment.entry.handle,
+                                target,
+                                result,
+                            );
+                            paused = still_paused;
+                            outcome
+                        }
+                        (None, ChildDebuggerExecutionStatus::Pending) => {
+                            let outcome =
+                                match attachment.execute_in_page_realm(&mut self.runtime, tab_id) {
+                                    Ok(_) => PageHostScriptOutcome::Executed,
+                                    Err(error) => rejected(bluets_bridge_category(error)),
+                                };
+                            self.documents
+                                .get_mut(&tab_id)
+                                .expect("the advancing module document remains live")
+                                .debugger_execution_states
+                                .insert(program, ChildDebuggerExecutionStatus::Completed);
+                            outcome
+                        }
+                        _ => rejected("child module debugger execution state was inconsistent"),
+                    }
+                }
             };
             if paused {
                 self.documents
@@ -4757,13 +5897,79 @@ fn script_report(
     }
 }
 
+fn child_debugger_frame(
+    tab_id: u64,
+    document_generation: u64,
+    program: PageHostDebuggerProgram,
+    frame: BlueJsPageDebuggerFrame,
+) -> PageHostDebuggerFrame {
+    PageHostDebuggerFrame {
+        tab_id,
+        document_generation,
+        program,
+        code_unit_ordinal: frame.code_unit_ordinal(),
+        invocation_serial: frame.invocation_serial(),
+    }
+}
+
+fn page_host_debugger_value_preview(value: VmDebuggerValuePreview) -> PageHostDebuggerValuePreview {
+    match value {
+        VmDebuggerValuePreview::Undefined => PageHostDebuggerValuePreview::Undefined,
+        VmDebuggerValuePreview::Null => PageHostDebuggerValuePreview::Null,
+        VmDebuggerValuePreview::Bool(value) => PageHostDebuggerValuePreview::Bool(value),
+        VmDebuggerValuePreview::NumberBits(bits) => PageHostDebuggerValuePreview::NumberBits(bits),
+        VmDebuggerValuePreview::BigIntBytes(bytes) => {
+            PageHostDebuggerValuePreview::BigIntBytes(bytes)
+        }
+        VmDebuggerValuePreview::StringUnits(units) => {
+            PageHostDebuggerValuePreview::StringUnits(units)
+        }
+        VmDebuggerValuePreview::Array(elements) => PageHostDebuggerValuePreview::Array(
+            elements
+                .into_iter()
+                .map(|element| element.map(page_host_debugger_value_preview))
+                .collect(),
+        ),
+        VmDebuggerValuePreview::Record(entries) => PageHostDebuggerValuePreview::Record(
+            entries
+                .into_iter()
+                .map(|(key, value)| {
+                    (
+                        key.as_code_units().to_vec(),
+                        page_host_debugger_value_preview(value),
+                    )
+                })
+                .collect(),
+        ),
+    }
+}
+
 fn child_debugger_execution_state(
+    tab_id: u64,
+    document_generation: u64,
+    program: PageHostDebuggerProgram,
     status: ChildDebuggerExecutionStatus,
 ) -> PageHostDebuggerExecutionState {
     match status {
         ChildDebuggerExecutionStatus::Pending => PageHostDebuggerExecutionState::Pending,
         ChildDebuggerExecutionStatus::Paused(safe_point) => {
             PageHostDebuggerExecutionState::Paused { safe_point }
+        }
+        ChildDebuggerExecutionStatus::NestedPaused { frame, safe_point } => {
+            PageHostDebuggerExecutionState::NestedPaused {
+                frame: child_debugger_frame(tab_id, document_generation, program, frame),
+                safe_point,
+            }
+        }
+        ChildDebuggerExecutionStatus::NestedStepRequested { frame, .. } => {
+            PageHostDebuggerExecutionState::NestedStepping {
+                frame: child_debugger_frame(tab_id, document_generation, program, frame),
+            }
+        }
+        ChildDebuggerExecutionStatus::NestedResumeRequested { frame, .. } => {
+            PageHostDebuggerExecutionState::NestedResuming {
+                frame: child_debugger_frame(tab_id, document_generation, program, frame),
+            }
         }
         ChildDebuggerExecutionStatus::StepRequested
         | ChildDebuggerExecutionStatus::BlueTsSourceStepRequested { .. } => {
@@ -5738,8 +6944,15 @@ mod tests {
                     0,
                     "let live = document.getElementById('live'); \
                      let removed = document.getElementById('removed'); \
-                     function cancel(event) { event.preventDefault(); } \
+                     function cancel(event) { \
+                       event.preventDefault(); \
+                       Promise.resolve().then(function() { \
+                         if (globalThis.ranLater) live.removeEventListener('click', cancel); \
+                       }); \
+                       throw 'listener failure'; \
+                     } \
                      live.addEventListener('click', cancel); \
+                     live.addEventListener('click', function() { globalThis.ranLater = true; }); \
                      removed.addEventListener('click', cancel); \
                      removed.removeEventListener('click', cancel);",
                 )],
@@ -5750,6 +6963,27 @@ mod tests {
         };
         assert_eq!(reports.len(), 1);
         assert_eq!(reports[0].outcome, PageHostScriptOutcome::Executed);
+        host.documents
+            .get_mut(&7)
+            .unwrap()
+            .pending_click_tasks
+            .push_back(PendingClickTask {
+                generation: 1,
+                node_id: 11,
+            });
+        assert_eq!(
+            host.handle_request(PageHostRequest::DispatchClick {
+                tab_id: 7,
+                document_generation: 1,
+                node_id: 11,
+            }),
+            resource_limit()
+        );
+        host.documents
+            .get_mut(&7)
+            .unwrap()
+            .pending_click_tasks
+            .pop_front();
         assert_eq!(
             host.handle_request(PageHostRequest::DispatchClick {
                 tab_id: 7,
@@ -5760,6 +6994,21 @@ mod tests {
                 tab_id: 7,
                 document_generation: 1,
                 default_prevented: true,
+            }
+        );
+        // The first callback threw after canceling, but the next callback
+        // still ran. Its state is visible to the microtask checkpoint, which
+        // removes the canceler before core can apply a default action.
+        assert_eq!(
+            host.handle_request(PageHostRequest::DispatchClick {
+                tab_id: 7,
+                document_generation: 1,
+                node_id: 11,
+            }),
+            PageHostReply::ClickDispatched {
+                tab_id: 7,
+                document_generation: 1,
+                default_prevented: false,
             }
         );
         assert_eq!(
@@ -5774,12 +7023,26 @@ mod tests {
                 default_prevented: false,
             }
         );
+        host.documents
+            .get_mut(&7)
+            .unwrap()
+            .pending_click_tasks
+            .push_back(PendingClickTask {
+                generation: 1,
+                node_id: 11,
+            });
         assert!(matches!(
             host.handle_request(PageHostRequest::SynchronizeDocument {
                 document: document(2, vec![]),
             }),
             PageHostReply::Synchronized { .. }
         ));
+        assert!(host
+            .documents
+            .get(&7)
+            .unwrap()
+            .pending_click_tasks
+            .is_empty());
         assert_eq!(
             host.handle_request(PageHostRequest::DispatchClick {
                 tab_id: 7,
@@ -6064,6 +7327,666 @@ mod tests {
         document
     }
 
+    #[test]
+    fn private_child_classic_scheduler_steps_only_its_paused_nested_invocation() {
+        let mut host = BlueJsChildHost::default();
+        let source = "var calls = 0; function inner() { calls++; return 4; } globalThis.answer = inner() + 1;";
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(1, vec![classic(0, source)]),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs[0],
+            reply => panic!("expected one private program: {reply:?}"),
+        };
+        let target = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+                .expect("the inner function has a first verified instruction"),
+            reply => panic!("expected child safe points: {reply:?}"),
+        };
+        host.arm_debugger_nested_target(7, 1, target).unwrap();
+        assert!(host.arm_debugger_nested_target(7, 1, target).is_err());
+        let root = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 0)
+                .unwrap(),
+            reply => panic!("expected root safe points: {reply:?}"),
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: root,
+            }),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let frame = match host.documents[&7].debugger_execution_states[&program] {
+            ChildDebuggerExecutionStatus::NestedPaused { frame, safe_point } => {
+                assert_eq!(safe_point, target);
+                frame
+            }
+            status => panic!("the actual inner invocation must pause: {status:?}"),
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::NestedPaused {
+                    frame: wire_frame,
+                    safe_point,
+                },
+                ..
+            } if wire_frame == child_debugger_frame(7, 1, program, frame)
+                && safe_point == target
+        ));
+        assert!(host
+            .request_debugger_nested_advance(7, 2, frame, false)
+            .is_err());
+        let mut returned = false;
+        for _ in 0..96 {
+            host.request_debugger_nested_advance(7, 1, frame, false)
+                .unwrap();
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+            match host.documents[&7].debugger_execution_states[&program] {
+                ChildDebuggerExecutionStatus::NestedPaused {
+                    frame: same_frame,
+                    safe_point,
+                } => {
+                    assert_eq!(same_frame, frame);
+                    host.exact_debugger_safe_point(7, 1, safe_point).unwrap();
+                }
+                ChildDebuggerExecutionStatus::Paused(root) => {
+                    assert_eq!(root.code_unit_ordinal, 0);
+                    host.exact_debugger_safe_point(7, 1, root).unwrap();
+                    returned = true;
+                    break;
+                }
+                status => panic!("unexpected nested step: {status:?}"),
+            }
+        }
+        assert!(returned);
+        assert!(host
+            .request_debugger_nested_advance(7, 1, frame, false)
+            .is_err());
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionResumed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+                if reports.len() == 1 && reports[0].outcome == PageHostScriptOutcome::Executed
+        ));
+    }
+
+    #[test]
+    fn child_nested_wire_requires_the_exact_live_frame_and_reports_step_state() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(
+                    1,
+                    vec![classic(0, "function inner() { return 4; } inner();")],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs[0],
+            reply => panic!("expected a child program: {reply:?}"),
+        };
+        let point = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+                .unwrap(),
+            reply => panic!("expected child points: {reply:?}"),
+        };
+        assert_eq!(
+            host.handle_request(PageHostRequest::ArmDebuggerNestedSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: point,
+            }),
+            PageHostReply::DebuggerNestedSafePointBreakpointArmed {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: point,
+            }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let frame = match host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::NestedPaused { frame, safe_point },
+                ..
+            } => {
+                assert_eq!(safe_point, point);
+                frame
+            }
+            reply => panic!("expected active frame state: {reply:?}"),
+        };
+        assert!(frame.is_well_formed());
+        let snapshot = |frame: Option<PageHostDebuggerFrame>, max_frames, max_scope_entries| {
+            PageHostRequest::GetDebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                frame,
+                max_frames,
+                max_scope_entries,
+            }
+        };
+        assert!(matches!(
+            host.handle_request(snapshot(Some(frame), 1, 1)),
+            PageHostReply::DebuggerStackSnapshot {
+                frame: Some(reply_frame),
+                snapshot: PageHostDebuggerStackSnapshot { frames, stack_truncated: true },
+                ..
+            } if reply_frame == frame && frames.len() == 1 && frames[0].code_unit_ordinal == 1
+        ));
+        assert!(matches!(
+            host.handle_request(snapshot(Some(frame), 2, 256)),
+            PageHostReply::DebuggerStackSnapshot {
+                snapshot: PageHostDebuggerStackSnapshot { frames, stack_truncated: false },
+                ..
+            } if frames.len() == 2 && frames[0].code_unit_ordinal == 1 && frames[1].code_unit_ordinal == 0
+        ));
+        assert!(matches!(
+            host.handle_request(snapshot(None, 2, 256)),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(snapshot(Some(frame), 0, 1)),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(snapshot(Some(frame), 2, 257)),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 1,
+                program: PageHostDebuggerProgram {
+                    program_generation: program.program_generation + 1,
+                    ..program
+                },
+                frame: Some(frame),
+                max_frames: 2,
+                max_scope_entries: 256,
+            }),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 2,
+                program,
+                frame: Some(frame),
+                max_frames: 2,
+                max_scope_entries: 256,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+        for wrong in [
+            PageHostDebuggerFrame {
+                invocation_serial: frame.invocation_serial + 1,
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                code_unit_ordinal: frame.code_unit_ordinal + 1,
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                document_generation: frame.document_generation + 1,
+                ..frame
+            },
+            PageHostDebuggerFrame { tab_id: 8, ..frame },
+        ] {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::StepDebuggerNestedInstruction {
+                    frame: wrong,
+                }),
+                PageHostReply::Error { .. }
+            ));
+            assert!(matches!(
+                host.handle_request(snapshot(Some(wrong), 2, 256)),
+                PageHostReply::Error { .. }
+            ));
+        }
+        assert_eq!(
+            host.handle_request(PageHostRequest::StepDebuggerNestedInstruction { frame }),
+            PageHostReply::DebuggerNestedStepRequested { frame }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::NestedStepping {
+                    frame: same_frame,
+                },
+                ..
+            } if same_frame == frame
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerNestedInstruction { frame }),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(snapshot(Some(frame), 2, 256)),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::NestedPaused { frame: same, .. },
+                ..
+            } if same == frame
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerNestedExecution {
+                frame: PageHostDebuggerFrame {
+                    invocation_serial: frame.invocation_serial + 1,
+                    ..frame
+                },
+            }),
+            PageHostReply::Error { .. }
+        ));
+        assert_eq!(
+            host.handle_request(PageHostRequest::ResumeDebuggerNestedExecution { frame }),
+            PageHostReply::DebuggerNestedResumeRequested { frame }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::NestedResuming { frame: same },
+                ..
+            } if same == frame
+        ));
+        assert!(matches!(
+            host.handle_request(snapshot(Some(frame), 2, 256)),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::Paused { safe_point },
+                ..
+            } if safe_point.code_unit_ordinal == 0
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerNestedExecution { frame }),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(snapshot(None, 2, 256)),
+            PageHostReply::DebuggerStackSnapshot { frame: None, snapshot: PageHostDebuggerStackSnapshot { frames, stack_truncated: false }, .. }
+                if frames.len() == 1 && frames[0].code_unit_ordinal == 0
+        ));
+    }
+
+    #[test]
+    fn private_child_bluets_classic_uses_the_same_nested_frame_scheduler() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(
+                    1,
+                    vec![blue_ts_classic(
+                        0,
+                        "function inner(): number { return 4; } globalThis.answer = inner() + 1;",
+                    )],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs[0],
+            reply => panic!("expected one BlueTS program: {reply:?}"),
+        };
+        let target = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+                .unwrap(),
+            reply => panic!("expected BlueTS child points: {reply:?}"),
+        };
+        host.arm_debugger_nested_target(7, 1, target).unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let frame = match host.documents[&7].debugger_execution_states[&program] {
+            ChildDebuggerExecutionStatus::NestedPaused { frame, .. } => frame,
+            status => panic!("BlueTS child must pause: {status:?}"),
+        };
+        host.request_debugger_nested_advance(7, 1, frame, false)
+            .unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        assert!(matches!(
+            host.documents[&7].debugger_execution_states[&program],
+            ChildDebuggerExecutionStatus::NestedPaused { frame: same, .. } if same == frame
+        ));
+    }
+
+    #[test]
+    fn private_child_classic_rejects_an_unsupported_deeper_nested_target() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(
+                    1,
+                    vec![classic(
+                        0,
+                        "function inner() { return 4; } function outer() { return inner(); } outer();",
+                    )],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs[0],
+            reply => panic!("expected one private program: {reply:?}"),
+        };
+        let target = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+                .unwrap(),
+            reply => panic!("expected child safe points: {reply:?}"),
+        };
+        host.arm_debugger_nested_target(7, 1, target).unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+                if matches!(reports.as_slice(), [PageHostScriptReport {
+                    outcome: PageHostScriptOutcome::Rejected { .. }, ..
+                }])
+        ));
+        assert_eq!(
+            host.documents[&7].debugger_execution_states[&program],
+            ChildDebuggerExecutionStatus::Completed
+        );
+    }
+
+    #[test]
+    fn private_child_bluets_module_nested_frame_rejoins_its_linked_entry_once() {
+        let entry = "blueice://page/nested-entry.ts";
+        let dependency = "blueice://page/nested-dependency.ts";
+        let mut module = PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Module,
+            graph: graph(
+                entry,
+                vec![
+                    PageHostSource::new(
+                        entry,
+                        "import { value } from './nested-dependency.ts'; function inner(): number { return value + 1; } globalThis.moduleAnswer = inner();",
+                    ),
+                    PageHostSource::new(
+                        dependency,
+                        "globalThis.depRuns = (globalThis.depRuns || 0) + 1; export const value: number = 40;",
+                    ),
+                ],
+            ),
+        };
+        module.graph.resolutions.push(PageHostStaticResolution {
+            from_module: entry.to_string(),
+            specifier: "./nested-dependency.ts".to_string(),
+            canonical_target: dependency.to_string(),
+        });
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(1, vec![module]),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let pending = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap();
+        let program = pending.program.unwrap();
+        let target = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+                .unwrap(),
+            reply => panic!("expected module child points: {reply:?}"),
+        };
+        host.arm_debugger_nested_target(7, 1, target).unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let frame = match host.documents[&7].debugger_execution_states[&program] {
+            ChildDebuggerExecutionStatus::NestedPaused { frame, safe_point } => {
+                assert_eq!(safe_point, target);
+                frame
+            }
+            status => panic!("the module entry child must pause: {status:?}"),
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::Error { .. }
+        ));
+        host.request_debugger_nested_advance(7, 1, frame, false)
+            .unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        assert!(matches!(
+            host.documents[&7].debugger_execution_states[&program],
+            ChildDebuggerExecutionStatus::NestedPaused { frame: same, .. } if same == frame
+        ));
+        let child_frame = child_debugger_frame(7, 1, program, frame);
+        assert_eq!(
+            host.handle_request(PageHostRequest::ResumeDebuggerNestedExecution {
+                frame: child_frame,
+            }),
+            PageHostReply::DebuggerNestedResumeRequested { frame: child_frame }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let ChildDebuggerExecutionStatus::Paused(root) =
+            host.documents[&7].debugger_execution_states[&program]
+        else {
+            panic!("module child resume must park its original root");
+        };
+        assert_eq!(root.code_unit_ordinal, 0);
+        host.exact_debugger_safe_point(7, 1, root).unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerNestedExecution {
+                frame: child_frame,
+            }),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionResumed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+                if reports.len() == 1 && reports[0].outcome == PageHostScriptOutcome::Executed
+        ));
+        let origin = BlueJsPageOrigin::new("https://example.test").unwrap();
+        let probe = host
+            .runtime
+            .install_program(
+                7,
+                &origin,
+                BlueJsSourceIdentity::new("page:///nested-probe.js", "sha256:nested-probe")
+                    .unwrap(),
+                &BlueJsProgramV1::Script(
+                    parse("globalThis.depRuns + globalThis.moduleAnswer").unwrap(),
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            host.runtime.execute_program(7, probe),
+            Ok(Value::Number(42.0))
+        );
+    }
+
     fn classic(ordinal: u32, source: &str) -> PageHostScript {
         let id = format!("blueice://page/inline-{ordinal}.js");
         PageHostScript {
@@ -6082,6 +8005,340 @@ mod tests {
             kind: PageHostScriptKind::Classic,
             graph: graph(&id, vec![PageHostSource::new(id.clone(), source)]),
         }
+    }
+
+    fn paused_value_targets(
+        host: &mut BlueJsChildHost,
+        program: PageHostDebuggerProgram,
+        frame: Option<PageHostDebuggerFrame>,
+        frame_index: usize,
+    ) -> Vec<PageHostDebuggerValueTarget> {
+        let snapshot = match host.handle_request(PageHostRequest::GetDebuggerStackSnapshot {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+            frame,
+            max_frames: 2,
+            max_scope_entries: 256,
+        }) {
+            PageHostReply::DebuggerStackSnapshot { snapshot, .. } => snapshot,
+            reply => panic!("expected active stack: {reply:?}"),
+        };
+        let selected = &snapshot.frames[frame_index];
+        selected
+            .scope_entries
+            .iter()
+            .copied()
+            .map(|scope_entry| PageHostDebuggerValueTarget {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                frame,
+                frame_index: frame_index as u32,
+                safe_point: PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: selected.code_unit_ordinal,
+                    bytecode_offset: selected.bytecode_offset,
+                },
+                scope_entry,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn private_child_bluets_classic_returns_only_exact_paused_plain_values() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(
+                    1,
+                    vec![blue_ts_classic(
+                        0,
+                        "let answer: number = 41; let data = { answer: answer };",
+                    )],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap()
+            .program
+            .unwrap();
+        let halt = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .filter(|point| point.code_unit_ordinal == 0)
+                .max_by_key(|point| point.bytecode_offset)
+                .unwrap(),
+            reply => panic!("expected BlueTS root points: {reply:?}"),
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: halt,
+            }),
+            PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let targets = paused_value_targets(&mut host, program, None, 0);
+        let replies: Vec<_> = targets
+            .iter()
+            .map(|target| {
+                host.handle_request(PageHostRequest::GetDebuggerValueSnapshot { target: *target })
+            })
+            .collect();
+        assert!(replies.iter().any(|reply| matches!(
+            reply,
+            PageHostReply::DebuggerValueSnapshot(snapshot)
+                if matches!(&snapshot.preview, PageHostDebuggerValuePreview::NumberBits(bits) if *bits == 41.0_f64.to_bits())
+        )));
+        assert!(replies.iter().any(|reply| matches!(
+            reply,
+            PageHostReply::DebuggerValueSnapshot(snapshot)
+                if matches!(&snapshot.preview, PageHostDebuggerValuePreview::Record(entries)
+                    if entries == &vec![("answer".encode_utf16().collect(), PageHostDebuggerValuePreview::NumberBits(41.0_f64.to_bits()))])
+        )));
+        let target = targets[0];
+        for invalid in [
+            PageHostDebuggerValueTarget {
+                safe_point: PageHostDebuggerSafePoint {
+                    bytecode_offset: target.safe_point.bytecode_offset + 1,
+                    ..target.safe_point
+                },
+                ..target
+            },
+            PageHostDebuggerValueTarget {
+                scope_entry: PageHostDebuggerScopeEntry {
+                    slot_ordinal: u32::MAX,
+                    ..target.scope_entry
+                },
+                ..target
+            },
+        ] {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::GetDebuggerValueSnapshot { target: invalid }),
+                PageHostReply::Error { .. }
+            ));
+        }
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerValueSnapshot {
+                target: PageHostDebuggerValueTarget {
+                    document_generation: 2,
+                    ..target
+                },
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn private_child_bluets_nested_preview_requires_its_active_frame() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(
+                    1,
+                    vec![blue_ts_classic(
+                        0,
+                        "let seed: number = 7; function inner(value: number): number { let local: number = value; return local; } inner(seed);",
+                    )],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap()
+            .program
+            .unwrap();
+        let point = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+                .unwrap(),
+            reply => panic!("expected BlueTS nested points: {reply:?}"),
+        };
+        host.arm_debugger_nested_target(7, 1, point).unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let frame = match host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::NestedPaused { frame, .. },
+                ..
+            } => frame,
+            reply => panic!("expected nested pause: {reply:?}"),
+        };
+        let mut selected = None;
+        for _ in 0..64 {
+            for target in paused_value_targets(&mut host, program, Some(frame), 0) {
+                if matches!(
+                    host.handle_request(PageHostRequest::GetDebuggerValueSnapshot { target }),
+                    PageHostReply::DebuggerValueSnapshot(snapshot)
+                        if matches!(&snapshot.preview, PageHostDebuggerValuePreview::NumberBits(bits) if *bits == 7.0_f64.to_bits())
+                ) {
+                    selected = Some(target);
+                    break;
+                }
+            }
+            if selected.is_some() {
+                break;
+            }
+            assert!(matches!(
+                host.handle_request(PageHostRequest::StepDebuggerNestedInstruction { frame }),
+                PageHostReply::DebuggerNestedStepRequested { .. }
+            ));
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+        }
+        let target = selected.expect("one active child slot must hold the parameter value");
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerValueSnapshot {
+                target: PageHostDebuggerValueTarget {
+                    frame: None,
+                    ..target
+                }
+            }),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerValueSnapshot {
+                target: PageHostDebuggerValueTarget {
+                    frame: Some(PageHostDebuggerFrame {
+                        invocation_serial: frame.invocation_serial + 1,
+                        ..frame
+                    }),
+                    ..target
+                }
+            }),
+            PageHostReply::Error { .. }
+        ));
+    }
+
+    #[test]
+    fn private_child_bluets_module_root_preview_reads_retained_binding() {
+        let entry = "blueice://page/private-values.ts";
+        let module = PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Module,
+            graph: graph(
+                entry,
+                vec![PageHostSource::new(
+                    entry,
+                    "let answer: number = 41; export const result: number = answer + 1;",
+                )],
+            ),
+        };
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(1, vec![module]),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let pending = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap();
+        let program = pending.program.unwrap();
+        let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
+            panic!("the checked module must be pending");
+        };
+        let point = host
+            .runtime
+            .module_evaluate_entry_safe_point(7, attachment.entry.handle)
+            .unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: 0,
+                    bytecode_offset: point.bytecode_offset,
+                },
+            }),
+            PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let mut selected = None;
+        for _ in 0..64 {
+            for target in paused_value_targets(&mut host, program, None, 0) {
+                if matches!(
+                    host.handle_request(PageHostRequest::GetDebuggerValueSnapshot { target }),
+                    PageHostReply::DebuggerValueSnapshot(snapshot)
+                        if matches!(&snapshot.preview, PageHostDebuggerValuePreview::NumberBits(bits) if *bits == 41.0_f64.to_bits())
+                ) {
+                    selected = Some(target);
+                    break;
+                }
+            }
+            if selected.is_some() {
+                break;
+            }
+            assert!(matches!(
+                host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                }),
+                PageHostReply::DebuggerExecutionStepRequested { .. }
+            ));
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+        }
+        let target = selected.expect("module root must expose its initialized binding");
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerValueSnapshot { target }),
+            PageHostReply::DebuggerValueSnapshot(snapshot)
+                if matches!(&snapshot.preview, PageHostDebuggerValuePreview::NumberBits(bits) if *bits == 41.0_f64.to_bits())
+        ));
     }
 
     #[test]
@@ -8176,6 +10433,441 @@ mod tests {
             retained_modules,
             vec![dependency.to_string(), entry.to_string()]
         );
+    }
+
+    #[test]
+    fn bluets_module_child_pauses_steps_and_resumes_the_exact_pending_entry() {
+        let entry = "blueice://page/debug-entry.ts";
+        let dependency = "blueice://page/debug-dependency.ts";
+        let mut module = PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Module,
+            graph: graph(
+                entry,
+                vec![
+                    PageHostSource::new(
+                        entry,
+                        "import { answer } from './debug-dependency.ts'; export const result: number = answer + 1;",
+                    ),
+                    PageHostSource::new(dependency, "export const answer: number = 41;"),
+                ],
+            ),
+        };
+        module.graph.resolutions.push(PageHostStaticResolution {
+            from_module: entry.to_string(),
+            specifier: "./debug-dependency.ts".to_string(),
+            canonical_target: dependency.to_string(),
+        });
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(1, vec![module]),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let pending = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap();
+        let program = pending.program.unwrap();
+        let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
+            panic!("the attached module is pending");
+        };
+        let entry_handle = attachment.entry.handle;
+        let point = host
+            .runtime
+            .module_evaluate_entry_safe_point(7, entry_handle)
+            .unwrap();
+        let target = PageHostDebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: point.bytecode_offset,
+        };
+        let wrong_entry_point = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 0 && *point != target)
+                .unwrap(),
+            reply => panic!("expected entry safe points, got {reply:?}"),
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: wrong_entry_point,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidDebuggerState,
+                ..
+            }
+        ));
+        let dependency_program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => *programs
+                .iter()
+                .find(|candidate| **candidate != program)
+                .unwrap(),
+            reply => panic!("expected both module programs, got {reply:?}"),
+        };
+        let dependency_point = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program: dependency_program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 0)
+                .unwrap(),
+            reply => panic!("expected dependency safe points, got {reply:?}"),
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: dependency_point,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidDebuggerState,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: target,
+            }),
+            PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+        ));
+        for _ in 0..2 {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+            assert_eq!(
+                host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                }),
+                PageHostReply::DebuggerExecutionState {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                    state: PageHostDebuggerExecutionState::Paused { safe_point: target },
+                }
+            );
+        }
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+                tab_id: 7,
+                document_generation: 1,
+                program: dependency_program,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidDebuggerState,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionStepRequested { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let successor = match host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::Paused { safe_point },
+                ..
+            } => safe_point,
+            reply => panic!("expected verified module step successor, got {reply:?}"),
+        };
+        assert_eq!(successor.program, program);
+        assert_eq!(successor.code_unit_ordinal, 0);
+        assert_ne!(successor, target);
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        assert_eq!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                state: PageHostDebuggerExecutionState::Paused {
+                    safe_point: successor
+                },
+            }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ValidateDebuggerSafePoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: successor,
+            }),
+            PageHostReply::DebuggerSafePointValidated { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionResumed { .. }
+        ));
+        assert_eq!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                state: PageHostDebuggerExecutionState::Resuming,
+            }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+                if reports.len() == 1 && reports[0].outcome == PageHostScriptOutcome::Executed
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::Completed,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(2, Vec::new()),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: target,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn bluets_module_source_span_step_stops_at_the_next_bound_statement() {
+        let entry = "blueice://page/module-source-step.ts";
+        let module = PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Module,
+            graph: graph(
+                entry,
+                vec![PageHostSource::new(
+                    entry,
+                    "let first: number = 1; let second: number = first + 1; export const answer: number = second + 1;",
+                )],
+            ),
+        };
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(1, vec![module]),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let pending = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap();
+        let program = pending.program.unwrap();
+        let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
+            panic!("the checked entry module must be pending");
+        };
+        let point = host
+            .runtime
+            .module_evaluate_entry_safe_point(7, attachment.entry.handle)
+            .unwrap();
+        let target = PageHostDebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: point.bytecode_offset,
+        };
+        let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+            reply => panic!("expected entry metadata, got {reply:?}"),
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: target,
+            }),
+            PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let mut current = target;
+        let origin = loop {
+            if let Some(span) = host
+                .debugger_bluets_source_span_key(7, 1, metadata, current)
+                .unwrap()
+            {
+                break span;
+            }
+            assert!(matches!(
+                host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                }),
+                PageHostReply::DebuggerExecutionStepRequested { .. }
+            ));
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+            current = match host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }) {
+                PageHostReply::DebuggerExecutionState {
+                    state: PageHostDebuggerExecutionState::Paused { safe_point },
+                    ..
+                } => safe_point,
+                reply => panic!("module must remain paused until a bound span: {reply:?}"),
+            };
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerBlueTsSourceSpan {
+                tab_id: 7,
+                document_generation: 1,
+                metadata,
+                source_id: origin.source_id + 1,
+                safe_point: current,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerBlueTsSourceSpan {
+                tab_id: 7,
+                document_generation: 1,
+                metadata,
+                source_id: origin.source_id,
+                safe_point: current,
+            }),
+            PageHostReply::DebuggerBlueTsSourceStepRequested { .. }
+        ));
+        let mut successor = None;
+        for _ in 0..MAX_BLUETS_SOURCE_STEP_ROOT_INSTRUCTIONS {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+            match host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }) {
+                PageHostReply::DebuggerExecutionState {
+                    state: PageHostDebuggerExecutionState::Stepping,
+                    ..
+                } => {}
+                PageHostReply::DebuggerExecutionState {
+                    state: PageHostDebuggerExecutionState::Paused { safe_point },
+                    ..
+                } => {
+                    successor = Some(safe_point);
+                    break;
+                }
+                reply => panic!("module source step did not find a new span: {reply:?}"),
+            }
+        }
+        let successor = successor.expect("bounded module step must find another statement");
+        assert_ne!(successor, current);
+        assert_ne!(
+            host.debugger_bluets_source_span_key(7, 1, metadata, successor)
+                .unwrap(),
+            Some(origin)
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionResumed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+                if reports.len() == 1 && reports[0].outcome == PageHostScriptOutcome::Executed
+        ));
     }
 
     #[test]
