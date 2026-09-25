@@ -357,7 +357,30 @@ bindings remains allowed. Through the verified event-v1 public bridge, a
 registered click callback writing `pick(event).type = 'click'` receives a
 BlueTS diagnostic before an executable script is produced. This is a
 conservative scope-level policy, not proof that every unmodeled receiver
-actually aliases the event; B4.2.3 records the remaining limits.
+actually aliases the event; the remaining limits are recorded below.
+
+**B4.2.3 finite acceptance and limitations:** The delivered readonly guarantee
+covers the expression forms listed in TODO.md B4.2, plus the bounded
+fail-closed rule for an unmodeled (`Unknown`) write receiver. It is not a
+claim of general TypeScript expression or data-flow support:
+
+- Arithmetic and bitwise compound *targets* receive the readonly mutation
+  check, but their result types are not part of the precise assignment-result
+  inference implemented for `=` and `&&=`/`||=`/`??=`. Do not count an alias
+  of such a result as a proven readonly-object carrier. An unmodeled result
+  used as a write receiver is subject to the fail-closed rule.
+- Destructuring bindings are not in the supported declaration model: variable
+  names and function parameters require identifiers, not binding patterns.
+  No destructured alias is in the delivered qualifier-preservation list.
+- Nested closure capture has no separate lexical-capture/alias analysis.
+  The verified event-v1 case is a named click callback with a typed event
+  parameter; it does not establish readonly flow through an inner closure.
+  Arrow expressions are outside the current direct BlueTS-to-BlueJS bridge.
+
+The event object's runtime properties remain non-writable and
+non-configurable. A new expression or binding form needs a concrete page
+fixture, checker and direct-bridge evidence, and a public event-v1 regression
+before it joins the accepted list; otherwise the bridge must fail closed.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

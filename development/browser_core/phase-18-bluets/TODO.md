@@ -14,10 +14,10 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: B4.2.3.** Record the known readonly-policy limitations in
-PLAN.md. Every item has an ID (`<section>.<item>[.<step>]`, e.g.
-`B4.2.2`); commit messages and PLAN.md cite these IDs, and a parent is checked
-only when all its steps are.
+**Current leaf: B4.3.1.** Compile and run one supported click-handler page
+through the event-v1 profile and real child. Every item has an ID
+(`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit messages and PLAN.md cite
+these IDs, and a parent is checked only when all its steps are.
 
 ## Current boundary
 
@@ -192,7 +192,7 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   its runtime installer exists; do not add broad lib.dom declarations. The
   owner-selected event-v1 profile has the exact 10-binding installer inventory
   and the BlueTS checker verifies the click callback type and literal name.
-- [ ] **B4.2** Enforce the event object's `readonly` type, target, and currentTarget
+- [x] **B4.2** Enforce the event object's `readonly` type, target, and currentTarget
   qualifiers in BlueTS checking. Acceptance is a finite list, not "every
   expression form". Delivered forms (each has a test under
   `backend/bluets/src/checker/tests/readonly*.rs`): direct, chained, and
@@ -214,9 +214,10 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   - [x] **B4.2.2** Verify the policy against the event-v1 bridge (public boundary):
     `pick(event).type = 'click'` in a registered click callback is rejected
     with a BlueTS diagnostic before an executable script is produced.
-  - [ ] **B4.2.3** Record known limitations (arithmetic/bitwise compound results,
-    destructuring, closure capture) in PLAN.md instead of adding forms; do
-    not add another expression form without a concrete failing page.
+  - [x] **B4.2.3** Record known limitations (arithmetic/bitwise compound
+    results, destructuring, closure capture) in PLAN.md instead of adding
+    forms; require a concrete failing page before expanding the accepted
+    expression list.
 - [ ] **B4.3** Execute a supported BlueTS page through B2/B3; unsupported members
   must fail both static checking and JavaScript runtime access.
   - [ ] **B4.3.1** Compile one click-handler page (getElementById, textContent, createElement/appendChild, addEventListener) through the event-v1 profile and run it in the real child; assert the resulting DOM through a core DOM dump.
