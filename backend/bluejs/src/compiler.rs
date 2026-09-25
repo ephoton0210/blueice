@@ -1397,7 +1397,12 @@ fn is_super_member(expr: &Expr) -> bool {
 }
 
 fn private_member_name(expr: &Expr) -> Option<&str> {
+    private_member_parts(expr).map(|(_, name)| name)
+}
+
+fn private_member_parts(expr: &Expr) -> Option<(&Expr, &str)> {
     let Expr::Member {
+        object,
         property,
         computed: false,
         ..
@@ -1408,7 +1413,7 @@ fn private_member_name(expr: &Expr) -> Option<&str> {
     let Expr::Identifier(name) = property.as_ref() else {
         return None;
     };
-    name.strip_prefix('#')
+    name.strip_prefix('#').map(|name| (object.as_ref(), name))
 }
 
 fn undefined_expression() -> Expr {

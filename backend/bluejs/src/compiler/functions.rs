@@ -707,8 +707,8 @@ impl Compiler {
     fn decorator_and_receiver(&mut self, decorator: &Expr) -> Result<(), CompileError> {
         match decorator {
             Expr::Member { .. } if !is_super_member(decorator) => {
-                if private_member_name(decorator).is_some() {
-                    let owner = self.private_member_reference(decorator)?;
+                if let Some((object, name)) = private_member_parts(decorator) {
+                    let owner = self.private_member_reference(object, name)?;
                     self.emit(Opcode::PrivateGetMethod, owner)?;
                 } else {
                     self.member_reference(decorator)?;

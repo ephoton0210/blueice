@@ -122,8 +122,9 @@ impl Compiler {
         let Stmt::Expr(Expr::Assign { target, value, .. }) = statement else {
             return Err(CompileError::InvalidSyntax("invalid class field AST"));
         };
-        let owner = self.private_member_reference(target)?;
-        let name = private_member_name(target).expect("private field target is a private member");
+        let (object, name) =
+            private_member_parts(target).expect("private field target is a private member");
+        let owner = self.private_member_reference(object, name)?;
         if name.starts_with('\0') {
             // An auto-accessor's hidden storage has no name to give a function.
             self.expression(value)?;

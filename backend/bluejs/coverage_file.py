@@ -33,6 +33,7 @@ METRICS = ("lines", "functions", "regions")
 # Files without executable coverage targets are audited here. An unexpected
 # uninstrumented source file is an error rather than a silently omitted row.
 NO_COUNTER_REASONS = {
+    "compiler/expressions/tests.rs": "Test source; not a coverage target",
     "heap/tests.rs": "Test source; not a coverage target",
     "lib.rs": "Declarations/re-exports only; no executable code",
     "parser/tests.rs": "Test source; not a coverage target",

@@ -16,6 +16,21 @@ fn argument_expr(argument: &Argument) -> &Expr {
     }
 }
 
+fn next_template_site_id(counter: &std::sync::atomic::AtomicU64) -> Result<u64, CompileError> {
+    counter
+        .fetch_update(
+            std::sync::atomic::Ordering::Relaxed,
+            std::sync::atomic::Ordering::Relaxed,
+            |id| id.checked_add(1),
+        )
+        .map_err(|_| CompileError::ProgramTooLarge)
+}
+
+fn private_update_operand(owner: u32, op: UpdateOp, prefix: bool) -> Result<u32, CompileError> {
+    let owner = owner.checked_mul(4).ok_or(CompileError::ProgramTooLarge)?;
+    Ok(owner | u32::from(op == UpdateOp::Dec) | (u32::from(prefix) << 1))
+}
+
 impl Compiler {
     pub(super) fn expression(&mut self, expr: &Expr) -> Result<(), CompileError> {
         if optional_chain_root(expr) {
@@ -47,8 +62,8 @@ impl Compiler {
                 let argument_count = self.list_count(expressions.len().saturating_add(1))?;
                 let tail = std::mem::take(&mut self.tail_call_pending);
                 if matches!(&**tag, Expr::Member { .. }) {
-                    if private_member_name(tag).is_some() {
-                        let owner = self.private_member_reference(tag)?;
+                    if let Some((object, name)) = private_member_parts(tag) {
+                        let owner = self.private_member_reference(object, name)?;
                         self.emit(Opcode::PrivateGetMethod, owner)?;
                     } else if is_super_member(tag) {
                         self.member_reference(tag)?;
@@ -64,13 +79,7 @@ impl Compiler {
                 }
                 static NEXT_SITE: std::sync::atomic::AtomicU64 =
                     std::sync::atomic::AtomicU64::new(1);
-                let id = NEXT_SITE
-                    .fetch_update(
-                        std::sync::atomic::Ordering::Relaxed,
-                        std::sync::atomic::Ordering::Relaxed,
-                        |n| n.checked_add(1),
-                    )
-                    .map_err(|_| CompileError::ProgramTooLarge)?;
+                let id = next_template_site_id(&NEXT_SITE)?;
                 let site = self.bytecode.templates.len() as u32;
                 self.bytecode.templates.push(crate::bytecode::TemplateSite {
                     id,
@@ -233,32 +242,30 @@ impl Compiler {
                         self.emit(Opcode::Pop, 0)?;
                         self.constant(Value::Bool(true))?;
                         self.patch(deleted, self.offset());
-                    } else if matches!(&**arg, Expr::Member { .. }) {
+                    } else if let Expr::Member {
+                        property, computed, ..
+                    } = &**arg
+                    {
                         if private_member_name(arg).is_some() {
                             return Err(CompileError::InvalidSyntax(
                                 "cannot delete a private element",
                             ));
                         }
-                        if let Expr::Member {
-                            property, computed, ..
-                        } = &**arg
-                        {
-                            if is_super_member(arg) {
-                                // `delete super.x` evaluates its Reference (so
-                                // `this` must be bound and a computed key
-                                // runs) and then always throws.
-                                if let Some(slot) = self.resolve(DERIVED_THIS_BINDING) {
-                                    self.emit(Opcode::ThisBinding, slot)?;
-                                    self.emit(Opcode::Pop, 0)?;
-                                }
-                                if *computed {
-                                    self.expression(property)?;
-                                    self.emit(Opcode::Pop, 0)?;
-                                }
-                                self.emit(Opcode::DeleteSuperProperty, 0)?;
-                                self.constant(Value::Bool(true))?;
-                                return Ok(());
+                        if is_super_member(arg) {
+                            // `delete super.x` evaluates its Reference (so
+                            // `this` must be bound and a computed key runs)
+                            // and then always throws.
+                            if let Some(slot) = self.resolve(DERIVED_THIS_BINDING) {
+                                self.emit(Opcode::ThisBinding, slot)?;
+                                self.emit(Opcode::Pop, 0)?;
                             }
+                            if *computed {
+                                self.expression(property)?;
+                                self.emit(Opcode::Pop, 0)?;
+                            }
+                            self.emit(Opcode::DeleteSuperProperty, 0)?;
+                            self.constant(Value::Bool(true))?;
+                            return Ok(());
                         }
                         self.member_reference(arg)?;
                         self.emit(opcode, 0)?;
@@ -606,13 +613,14 @@ impl Compiler {
                 self.emit_this()?;
                 self.emit(Opcode::SuperGet, 0)?;
             }
-            Expr::Member { .. } if private_member_name(expr).is_some() => {
-                let owner = self.private_member_reference(expr)?;
-                self.emit(Opcode::PrivateGet, owner)?;
-            }
-            Expr::Member { .. } => {
-                self.member_reference(expr)?;
-                self.emit(Opcode::GetProperty, 0)?;
+            Expr::Member { object, .. } => {
+                if let Some(name) = private_member_name(expr) {
+                    let owner = self.private_member_reference(object, name)?;
+                    self.emit(Opcode::PrivateGet, owner)?;
+                } else {
+                    self.member_reference(expr)?;
+                    self.emit(Opcode::GetProperty, 0)?;
+                }
             }
             Expr::Parenthesized(expr) => self.expression(expr)?,
             Expr::OptionalMember { .. } => {
@@ -679,11 +687,9 @@ impl Compiler {
                     computed,
                 } = arg.as_ref()
                 {
-                    if private_member_name(arg).is_some() {
-                        let owner = self.private_member_reference(arg)?;
-                        let operand = owner.checked_mul(4).ok_or(CompileError::ProgramTooLarge)?
-                            | u32::from(*op == UpdateOp::Dec)
-                            | (u32::from(*prefix) << 1);
+                    if let Some(name) = private_member_name(arg) {
+                        let owner = self.private_member_reference(object, name)?;
+                        let operand = private_update_operand(owner, *op, *prefix)?;
                         self.emit(Opcode::PrivateUpdate, operand)?;
                     } else if matches!(&**object, Expr::Super) {
                         self.super_reference(property, *computed)?;
@@ -777,9 +783,9 @@ impl Compiler {
                     {
                         self.parenthesized_optional_member_method(inner)?;
                     }
-                    (false, Expr::Member { .. }) => {
-                        if private_member_name(callee).is_some() {
-                            let owner = self.private_member_reference(callee)?;
+                    (false, Expr::Member { object, .. }) => {
+                        if let Some(name) = private_member_name(callee) {
+                            let owner = self.private_member_reference(object, name)?;
                             self.emit(Opcode::PrivateGetMethod, owner)?;
                         } else {
                             self.member_reference(callee)?;
@@ -979,15 +985,16 @@ impl Compiler {
         exits: &mut Vec<usize>,
     ) -> Result<(), CompileError> {
         match expr {
-            Expr::Member { .. } if private_member_name(expr).is_some() => {
-                let owner = self.private_member_chain_reference(expr, exits)?;
-                self.emit(Opcode::PrivateGet, owner)?;
-            }
-            Expr::Member { .. } | Expr::OptionalMember { .. } => {
-                match self.optional_chain_member_reference(expr, exits)? {
-                    Some(owner) => self.emit(Opcode::PrivateGet, owner)?,
-                    None => self.emit(Opcode::GetProperty, 0)?,
-                };
+            Expr::Member { object, .. } | Expr::OptionalMember { object, .. } => {
+                if let Some(name) = private_member_name(expr) {
+                    let owner = self.private_member_chain_reference(object, name, exits)?;
+                    self.emit(Opcode::PrivateGet, owner)?;
+                } else {
+                    match self.optional_chain_member_reference(expr, exits)? {
+                        Some(owner) => self.emit(Opcode::PrivateGet, owner)?,
+                        None => self.emit(Opcode::GetProperty, 0)?,
+                    };
+                }
             }
             Expr::Call { callee, args } | Expr::OptionalCall { callee, args } => {
                 let argument_count = self.list_count(args.len())?;
@@ -1002,15 +1009,16 @@ impl Compiler {
                         self.emit_this()?;
                         self.emit(Opcode::SuperGetMethod, 0)?;
                     }
-                    _ if private_member_name(callee).is_some() => {
-                        let owner = self.private_member_chain_reference(callee, exits)?;
-                        self.emit(Opcode::PrivateGetMethod, owner)?;
-                    }
-                    Expr::Member { .. } | Expr::OptionalMember { .. } => {
-                        match self.optional_chain_member_reference(callee, exits)? {
-                            Some(owner) => self.emit(Opcode::PrivateGetMethod, owner)?,
-                            None => self.emit(Opcode::GetMethod, 0)?,
-                        };
+                    Expr::Member { object, .. } | Expr::OptionalMember { object, .. } => {
+                        if let Some(name) = private_member_name(callee) {
+                            let owner = self.private_member_chain_reference(object, name, exits)?;
+                            self.emit(Opcode::PrivateGetMethod, owner)?;
+                        } else {
+                            match self.optional_chain_member_reference(callee, exits)? {
+                                Some(owner) => self.emit(Opcode::PrivateGetMethod, owner)?,
+                                None => self.emit(Opcode::GetMethod, 0)?,
+                            };
+                        }
                     }
                     Expr::Parenthesized(inner)
                         if matches!(
@@ -1125,27 +1133,15 @@ impl Compiler {
         Ok(None)
     }
 
-    /// Like `private_member_reference`, for a private member whose object may
-    /// itself be part of an optional chain: a nullish `o` in `o?.c.#f`
-    /// short-circuits the whole chain instead of reaching the private access.
+    /// Like `private_member_reference`, for a previously validated private
+    /// member whose object may itself be part of an optional chain: a nullish
+    /// `o` in `o?.c.#f` short-circuits before reaching the private access.
     pub(super) fn private_member_chain_reference(
         &mut self,
-        target: &Expr,
+        object: &Expr,
+        name: &str,
         exits: &mut Vec<usize>,
     ) -> Result<u32, CompileError> {
-        let Expr::Member {
-            object,
-            property,
-            computed: false,
-        } = target
-        else {
-            return Err(CompileError::InvalidSyntax("invalid private member AST"));
-        };
-        let name = match property.as_ref() {
-            Expr::Identifier(name) => name.strip_prefix('#'),
-            _ => None,
-        }
-        .ok_or(CompileError::InvalidSyntax("invalid private member name"))?;
         let owner = self.resolve_private_name(name)?;
         if optional_chain_root(object) {
             self.optional_chain_expression(object, exits)?;
@@ -1170,8 +1166,8 @@ impl Compiler {
             self.emit(Opcode::SuperGetMethod, 0)?;
             return Ok(());
         }
-        if private_member_name(expr).is_some() {
-            let owner = self.private_member_reference(expr)?;
+        if let Some((object, name)) = private_member_parts(expr) {
+            let owner = self.private_member_reference(object, name)?;
             self.emit(Opcode::PrivateGetMethod, owner)?;
             return Ok(());
         }
@@ -1281,10 +1277,14 @@ impl Compiler {
             // `for (var x = init in ...)` names an anonymous function or class
             // initializer after `x`, as `var x = init` does.
             let inferred_name = match pattern {
-                Some(Pattern::Identifier(name)) => Some(name.as_str()),
-                _ => None,
+                Some(Pattern::Identifier(name)) => name.as_str(),
+                _ => {
+                    return Err(CompileError::InvalidSyntax(
+                        "Annex B for-in initializer requires an identifier",
+                    ))
+                }
             };
-            self.expression_with_name(initializer, inferred_name)?;
+            self.expression_with_name(initializer, Some(inferred_name))?;
             self.bind_pattern(
                 pattern.expect("Annex B initializer has a declaration pattern"),
                 DeclKind::Var,
@@ -1459,8 +1459,8 @@ impl Compiler {
                 return Ok(());
             }
         }
-        if private_member_name(target).is_some() {
-            let owner = self.private_member_reference(target)?;
+        if let Some((object, name)) = private_member_parts(target) {
+            let owner = self.private_member_reference(object, name)?;
             if let Some(logical_op) = logical_assignment {
                 self.emit(Opcode::Dup2, 0)?;
                 self.emit(Opcode::PrivateGet, owner)?;
@@ -1876,10 +1876,10 @@ impl Compiler {
         else {
             return Err(CompileError::InvalidSyntax("invalid assignment/member AST"));
         };
-        if private_member_name(target).is_some() {
+        if let Some(name) = private_member_name(target) {
             // A private Reference is `object, name`; its consumer supplies the
             // owner.
-            self.private_member_reference(target)?;
+            self.private_member_reference(object, name)?;
             return Ok(());
         }
         if matches!(&**object, Expr::Super) {
@@ -1911,21 +1911,12 @@ impl Compiler {
         Ok(())
     }
 
-    pub(super) fn private_member_reference(&mut self, target: &Expr) -> Result<u32, CompileError> {
-        let Expr::Member {
-            object,
-            property,
-            computed: false,
-        } = target
-        else {
-            return Err(CompileError::InvalidSyntax("invalid private member AST"));
-        };
-        let Expr::Identifier(name) = property.as_ref() else {
-            return Err(CompileError::InvalidSyntax("invalid private member name"));
-        };
-        let Some(name) = name.strip_prefix('#') else {
-            return Err(CompileError::InvalidSyntax("invalid private member name"));
-        };
+    /// Compile an already validated private member's base and key.
+    pub(super) fn private_member_reference(
+        &mut self,
+        object: &Expr,
+        name: &str,
+    ) -> Result<u32, CompileError> {
         let owner = self.resolve_private_name(name)?;
         self.expression(object)?;
         self.constant(Value::String(name.into()))?;
@@ -2015,3 +2006,6 @@ impl Compiler {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

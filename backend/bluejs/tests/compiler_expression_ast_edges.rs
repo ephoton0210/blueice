@@ -6,9 +6,9 @@
 //! reject malformed expression shapes at the relevant boundary.
 
 use blueice_bluejs::{
-    compile, compile_module, compile_with_limit, parse, parse_module, AssignOp, Bytecode, Class,
-    ClassElement, CompileError, Expr, ForHead, Function, Program, PropertyKey, RuntimeError, Stmt,
-    UnaryOp, UpdateOp, Value, Vm,
+    compile, compile_module, compile_with_limit, parse, parse_module, Argument, ArrowBody,
+    AssignOp, Bytecode, Class, ClassElement, CompileError, Expr, ForHead, Function, Pattern,
+    Program, PropertyKey, RuntimeError, SourceText, Stmt, UnaryOp, UpdateOp, Value, Vm,
 };
 
 fn expression_program(expr: Expr) -> Program {
@@ -102,6 +102,33 @@ fn malformed_optional_member_keys_fail_during_compilation() {
             Err(CompileError::InvalidSyntax(
                 "invalid non-computed optional-chain member AST"
             ))
+        ));
+    }
+}
+
+#[test]
+fn malformed_ordinary_and_unbound_private_members_fail_during_compilation() {
+    for (expr, expected) in [
+        (
+            Expr::Member {
+                object: Box::new(Expr::Number(1.0)),
+                property: Box::new(Expr::Number(2.0)),
+                computed: false,
+            },
+            "invalid non-computed member AST",
+        ),
+        (
+            Expr::Member {
+                object: Box::new(Expr::Number(1.0)),
+                property: Box::new(Expr::Identifier("#missing".into())),
+                computed: false,
+            },
+            "private name is not declared in an enclosing class",
+        ),
+    ] {
+        assert!(matches!(
+            compile(&expression_program(expr)),
+            Err(CompileError::InvalidSyntax(message)) if message == expected
         ));
     }
 }
@@ -301,6 +328,12 @@ fn invalid_nested_super_expressions_are_rejected_at_their_original_site() {
     for expr in [
         Expr::Parenthesized(Box::new(Expr::Super)),
         malformed_key.clone(),
+        Expr::Arrow {
+            params: Vec::new(),
+            body: ArrowBody::Expr(Box::new(Expr::Super)),
+            is_async: false,
+            source_text: SourceText::default(),
+        },
         Expr::Call {
             callee: Box::new(Expr::Parenthesized(Box::new(malformed_key))),
             args: Vec::new(),
@@ -334,6 +367,42 @@ fn invalid_nested_super_expressions_are_rejected_at_their_original_site() {
         compile(&program),
         Err(CompileError::InvalidSyntax(
             "super must be used as a property access or constructor call"
+        ))
+    ));
+
+    let mut program =
+        parse("class A {} class B extends A { constructor() { super(...[]); } }").unwrap();
+    let Stmt::ClassDecl(class) = &mut program.body[1] else {
+        panic!("expected derived class");
+    };
+    let ClassElement::Method { function, .. } = &mut class.elements[0] else {
+        panic!("expected constructor");
+    };
+    let Stmt::Expr(Expr::Call { args, .. }) = &mut function.body[0] else {
+        panic!("expected super call");
+    };
+    args[0] = Argument::Spread(Expr::Super);
+    assert!(matches!(
+        compile(&program),
+        Err(CompileError::InvalidSyntax(
+            "super must be used as a property access or constructor call"
+        ))
+    ));
+}
+
+#[test]
+fn annex_b_for_in_initializer_requires_an_identifier_in_external_ast() {
+    let program = Program {
+        body: vec![Stmt::ForIn {
+            left: ForHead::AnnexBVarInit(Pattern::Array(Vec::new()), Expr::Number(1.0)),
+            right: Expr::Object(Vec::new()),
+            body: Box::new(Stmt::Empty),
+        }],
+    };
+    assert!(matches!(
+        compile(&program),
+        Err(CompileError::InvalidSyntax(
+            "Annex B for-in initializer requires an identifier"
         ))
     ));
 }
