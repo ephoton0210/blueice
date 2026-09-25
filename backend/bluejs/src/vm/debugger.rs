@@ -348,6 +348,9 @@ impl Vm {
                 "debugger safe point is not the first module evaluate-body instruction",
             ));
         }
+        self.pending_throw_site = None;
+        self.uncaught_throw_site = None;
+        self.throw_epoch = 0;
         self.debugger_module_pause_request = Some(ModuleDebuggerPauseRequest {
             entry: entry.to_string(),
             target,
@@ -510,6 +513,9 @@ impl Vm {
         }
         let generation =
             Self::nested_debugger_target_generation(code, code_unit_ordinal, bytecode_offset)?;
+        self.pending_throw_site = None;
+        self.uncaught_throw_site = None;
+        self.throw_epoch = 0;
         self.debugger_nested_pause_request = Some(NestedDebuggerPauseRequest {
             program_generation: generation,
             code_unit_ordinal,
@@ -1189,6 +1195,30 @@ mod tests {
         registry.get(handle).unwrap().bytecode().clone()
     }
 
+    fn installed_module(entry: &str, source: &str) -> Bytecode {
+        let mut registry = BlueJsProgramRegistry::default();
+        let handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(entry, "sha256:throw-site").unwrap(),
+                module_code(source),
+            )
+            .unwrap();
+        registry.get(handle).unwrap().bytecode().clone()
+    }
+
+    fn last_throw_site(code: &Bytecode) -> VmDebuggerThrowSite {
+        VmDebuggerThrowSite {
+            program_generation: code.debugger_program_generation.unwrap(),
+            code_unit_ordinal: code.debugger_code_unit_ordinal.unwrap(),
+            bytecode_offset: code
+                .instructions()
+                .filter(|instruction| instruction.opcode == Opcode::Throw)
+                .last()
+                .unwrap()
+                .offset as u32,
+        }
+    }
+
     #[test]
     fn uncaught_classic_throw_site_is_exact_and_caught_or_successor_sites_clear() {
         let program = installed_script("let before = 1; throw 7;");
@@ -1227,6 +1257,81 @@ mod tests {
             Err(RuntimeError::Thrown(Value::Number(9.0)))
         );
         assert_eq!(vm.debugger_uncaught_throw_site(), None);
+    }
+
+    #[test]
+    fn nested_throw_origin_survives_caller_and_rethrow_records_catch_site() {
+        let nested = installed_script("function inner() { throw 7; } inner();");
+        let child_site = last_throw_site(nested.child_code_units().next().unwrap());
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_script(&nested),
+            Err(RuntimeError::Thrown(Value::Number(7.0)))
+        );
+        assert_eq!(vm.debugger_uncaught_throw_site(), Some(child_site));
+
+        let rethrow = installed_script(
+            "function inner() { throw 7; } try { inner(); } catch (error) { throw 8; }",
+        );
+        assert_eq!(
+            vm.execute_script(&rethrow),
+            Err(RuntimeError::Thrown(Value::Number(8.0)))
+        );
+        assert_eq!(
+            vm.debugger_uncaught_throw_site(),
+            Some(last_throw_site(&rethrow))
+        );
+    }
+
+    #[test]
+    fn finally_throw_replaces_prior_site_even_when_the_replacement_is_nested() {
+        let direct = installed_script("try { throw 7; } finally { throw 8; }");
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_script(&direct),
+            Err(RuntimeError::Thrown(Value::Number(8.0)))
+        );
+        assert_eq!(
+            vm.debugger_uncaught_throw_site(),
+            Some(last_throw_site(&direct))
+        );
+
+        let nested = installed_script(
+            "function replacement() { throw 9; } try { throw 7; } finally { replacement(); }",
+        );
+        let child_site = last_throw_site(nested.child_code_units().next().unwrap());
+        assert_eq!(
+            vm.execute_script(&nested),
+            Err(RuntimeError::Thrown(Value::Number(9.0)))
+        );
+        assert_eq!(vm.debugger_uncaught_throw_site(), Some(child_site));
+    }
+
+    #[test]
+    fn module_root_and_nested_throw_sites_keep_their_installed_code_units() {
+        let entry = "page:///throw-site.mjs";
+        let root = installed_module(entry, "throw 7;");
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_module_graph(entry, &HashMap::from([(entry.to_string(), root.clone())])),
+            Err(RuntimeError::Thrown(Value::Number(7.0)))
+        );
+        assert_eq!(
+            vm.debugger_uncaught_throw_site(),
+            Some(last_throw_site(&root))
+        );
+
+        let nested = installed_module(
+            entry,
+            "function inner() { throw 9; } export const answer = inner();",
+        );
+        let child_site = last_throw_site(nested.child_code_units().next().unwrap());
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_module_graph(entry, &HashMap::from([(entry.to_string(), nested)])),
+            Err(RuntimeError::Thrown(Value::Number(9.0)))
+        );
+        assert_eq!(vm.debugger_uncaught_throw_site(), Some(child_site));
     }
 
     #[test]
@@ -1944,6 +2049,7 @@ mod tests {
             vm.resume_debugger_execution().unwrap(),
             VmDebuggerExecutionState::Completed
         );
+        assert_eq!(vm.debugger_uncaught_throw_site(), None);
         assert_eq!(
             vm.lookup_global_name("caught").unwrap(),
             Some(Value::Number(7.0))
@@ -2123,6 +2229,12 @@ mod tests {
             }
         }
         assert_eq!(thrown, Some(RuntimeError::Thrown(Value::Number(7.0))));
+        assert_eq!(
+            vm.debugger_uncaught_throw_site(),
+            Some(last_throw_site(
+                graph[entry].child_code_units().next().unwrap()
+            ))
+        );
         assert!(vm.debugger_module_continuation.is_none());
         assert!(vm.debugger_nested_continuation.is_none());
         let record = vm.linked_record(entry).unwrap();
@@ -2173,6 +2285,7 @@ mod tests {
             vm.resume_debugger_module_execution().unwrap(),
             VmDebuggerExecutionState::Completed
         );
+        assert_eq!(vm.debugger_uncaught_throw_site(), None);
         let record = vm.linked_record(entry).unwrap();
         assert!(record.evaluated);
         assert!(record.error.is_none());

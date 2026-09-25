@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.3.1.2.2.** Preserve exact throw origins through nested and
-module evaluation, catches, and finally replacement.
+**Current leaf: C2.3.1.3.** Map the retained site through the exact live
+BlueTS safe-point attachment and carry it over a versioned private route.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -347,9 +347,9 @@ channel with explicit owner/client grants.
 - [ ] **C2.3** Report an exception at its original BlueTS source position.
   - [ ] **C2.3.1** Map a thrown error's position to the original BlueTS span for classic, module, and nested frames.
     - [x] **C2.3.1.1** Specify uncaught throw-site capture across nested calls and catches, exact compiler-bound mapping with no nearest-span fallback, source-free child/core retention, and a separately granted public location request/reply before changing code. PLAN.md binds the VM sidecar to debugger generation/code-unit/instruction offset, maps only exact live BlueTS attachment records, keeps frontend reports source-free, and reserves existing `OpaqueSafePointSpan` owner/client plus same-stream source receipt for the future public location; private/public version bumps occur only with complete routes.
-    - [ ] **C2.3.1.2** Capture the exact originating BlueJS debugger code-unit generation/ordinal and instruction offset for an uncaught catchable exception; clear caught/superseded sites and prove classic, module, and nested VM behavior without a wire change.
+    - [x] **C2.3.1.2** Capture the exact originating BlueJS debugger code-unit generation/ordinal and instruction offset for an uncaught catchable exception; clear caught/superseded sites and prove classic, module, and nested VM behavior without a wire change. Native source-free sidecar preserves child origins through classic/module propagation, clears catches, and replaces superseded throws; direct/nested/catch/finally debugger VM tests, workspace Clippy, and format checking pass.
       - [x] **C2.3.1.2.1** Add a source-free, generation-bound native throw-site record for exact classic root instructions; expose it only after uncaught catchable failure, clear it on catch/new execution/normal completion, and test direct throw plus caught and successor cases. `VmDebuggerThrowSite` records only program generation, code-unit ordinal, and instruction offset. Interpreter completion stamps an exact catchable throw; catch entry clears the transient site; outer completion publishes it only for an uncaught error and clears it on the next execution. The focused test, all 31 debugger VM tests, and workspace Clippy pass; no wire changed.
-      - [ ] **C2.3.1.2.2** Preserve the original child site through nested propagation and module evaluation, replace it for a new throw, and prove nested/classic/module/catch/finally cases; then check off C2.3.1.2.
+      - [x] **C2.3.1.2.2** Preserve the original child site through nested propagation and module evaluation, replace it for a new throw, and prove nested/classic/module/catch/finally cases; then check off C2.3.1.2. A per-execution throw epoch distinguishes fresh throws from caller propagation; module completion publishes only uncaught catchable sites. All 34 native debugger VM tests, workspace Clippy, and format checking pass; no wire changed.
     - [ ] **C2.3.1.3** Map the retained site only through its exact live BlueTS safe-point attachment in the supervised child, add a versioned private location route, and prove classic/module/nested mapping, unbound refusal, and replacement expiry.
     - [ ] **C2.3.1.4** Remint the exception location through core behind the existing independent safe-point-span owner/client grant and same-stream source receipt; add the complete public request/reply and protocol bump with typed denial tests.
     - [ ] **C2.3.1.5** Prove original classic/module/nested UTF-8 and UTF-16 exception spans, missing grants/receipts, caught errors, and stale generations on real Launcher-supervised debugger sockets; then check off C2.3.1 and C2.3.

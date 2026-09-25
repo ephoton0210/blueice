@@ -120,6 +120,7 @@ impl Vm {
         self.ensure_no_debugger_continuation()?;
         self.pending_throw_site = None;
         self.uncaught_throw_site = None;
+        self.throw_epoch = 0;
         if let Some(root) = self.result_root.take() {
             self.heap.unroot(root)?;
         }

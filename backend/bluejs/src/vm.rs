@@ -830,6 +830,8 @@ pub struct Vm {
     pending_throw_site: Option<VmDebuggerThrowSite>,
     /// Published only after an outer execution ends with an uncaught throw.
     uncaught_throw_site: Option<VmDebuggerThrowSite>,
+    /// Distinguishes a new callee throw from its propagation through `Call`.
+    throw_epoch: u64,
     stack: Vec<Value>,
     // None is a lexical binding's uninitialized state, never JS undefined.
     bindings: Vec<Option<Value>>,

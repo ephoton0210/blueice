@@ -1265,6 +1265,19 @@ alongside all 31 native debugger VM tests and workspace Clippy. No IPC or
 source-map lookup changed. Nested/module propagation and replacement by a
 new throw remain C2.3.1.2.2.
 
+**Nested and module native throw sites (C2.3.1.2.2):** The VM now distinguishes
+a new catchable throw from an error propagating through its caller by a
+per-execution throw epoch. The first throwing child instruction keeps its
+installed generation/code-unit/offset through a classic or module call;
+catch entry clears that transient site, while a new catch or finally throw
+replaces it, including when finally calls another throwing child. Module
+completion publishes the same source-free sidecar only for an uncaught
+catchable error, and new module/debugger executions clear it after their
+entry is validated. Direct classic, nested classic, direct module, nested
+module, catch/rethrow, finally replacement, and retained debugger-continuation
+regressions pass; all 34 native debugger VM tests, workspace Clippy, and
+format checking pass. No IPC or source-map lookup changed.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

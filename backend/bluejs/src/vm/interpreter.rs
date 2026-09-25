@@ -57,6 +57,7 @@ impl Vm {
                 .expect("compiler emits valid instruction boundaries");
             let operand = instruction.operand.unwrap_or(0) as usize;
             pc += instruction.opcode.width();
+            let throw_epoch_before = self.throw_epoch;
             let outcome: Result<Option<Completion>, RuntimeError> = (|| {
                 match instruction.opcode {
                     Opcode::SetFunctionName => {
@@ -1720,14 +1721,20 @@ impl Vm {
                 }
                 Ok(None)
             })();
+            let new_throw = match &outcome {
+                Ok(Some(Completion::Throw(error))) => error.is_catchable(),
+                Err(error) if error.is_catchable() => {
+                    self.throw_epoch == throw_epoch_before || self.pending_throw_site.is_none()
+                }
+                _ => false,
+            };
             let completion = match outcome {
                 Ok(completion) => completion,
                 Err(error) if error.is_catchable() => Some(Completion::Throw(error)),
                 Err(error) => return Err(error),
             };
-            if matches!(&completion, Some(Completion::Throw(error)) if error.is_catchable())
-                && self.pending_throw_site.is_none()
-            {
+            if new_throw {
+                self.throw_epoch = self.throw_epoch.wrapping_add(1);
                 self.pending_throw_site = code
                     .debugger_program_generation
                     .zip(code.debugger_code_unit_ordinal)

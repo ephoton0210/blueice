@@ -542,6 +542,12 @@ impl Vm {
             Ok(())
         })?;
         self.enqueue_finalization_cleanup_jobs();
+        self.uncaught_throw_site = if result.as_ref().is_err_and(RuntimeError::is_catchable) {
+            self.pending_throw_site
+        } else {
+            None
+        };
+        self.pending_throw_site = None;
         result
     }
 

@@ -50,6 +50,7 @@ impl Vm {
             next_debugger_frame_serial: 1,
             pending_throw_site: None,
             uncaught_throw_site: None,
+            throw_epoch: 0,
             stack: Vec::new(),
             bindings: Vec::new(),
             binding_metadata: Vec::new(),
@@ -279,6 +280,9 @@ impl Vm {
         modules: &HashMap<String, Bytecode>,
     ) -> Result<Value, RuntimeError> {
         self.ensure_no_debugger_continuation()?;
+        self.pending_throw_site = None;
+        self.uncaught_throw_site = None;
+        self.throw_epoch = 0;
         self.execute_module_graph_inner(entry, modules, true, false, ImportPhase::Evaluation)
     }
 }
