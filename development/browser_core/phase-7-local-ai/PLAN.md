@@ -116,17 +116,42 @@ Organizing data, summarization, and **live translation** per the given scope. Ca
 
 **Resource governance**: since both agents run as separate OS processes from `core`, plan §1's "core must not crash" guarantee already holds structurally — but a runaway inference process could still starve the host machine's shared resources (RAM/CPU) and degrade `core` indirectly. Worth enforcing an OS-level resource ceiling on both processes (cgroups on Linux, Job Objects on Windows, similar on macOS) once this phase is built, not just relying on process isolation alone. **Refined by [`research/multi-process-memory.md`](../research/multi-process-memory.md), which studied Chromium's and Firefox's fleet-wide memory management (neither has a true whole-fleet budget, only per-process limits) and made per-BlueIce-process recommendations**: `ai-gatekeeper` should stay always-resident (it's a fail-closed dependency — treating it as a teardown candidate would conflict with the fail-closed policy above), while `ai-assistant` is a reasonable idle-teardown candidate (with a carve-out for live translation, which needs to stay responsive while active) — the Phase 8 supervisor is flagged as the natural place to own that idle-teardown authority once it exists.
 
+### Assistant design decisions (resolved 2026-09-25)
+
+**Scope**: the initial capability list is live translation, summarization, and data organization (all three).
+
+**Live translation** hooks in after HTML→DOM and before the CSS cascade. The original text is **retained**, never overwritten: the DOM keeps the source text next to the translation so the user can toggle back, and the gatekeeper/rule-base always reviews the original content, never a translation. If the assistant is slow, fails, or is torn down, the page shows the original (**fail-open to original**, the opposite of the gatekeeper's fail-closed).
+
+**AI-facing representation**: translated text is primary (it is what is on screen, so human and AI still share one render pass); each translated node also carries the original text as an extra field an AI can read on demand.
+
+**Summaries and organized data** are shown in a **side/separate panel**, never written back into the page. The panel is rendered by BlueIce's own engine (like `about:downloads`) and appears in the AI representation snapshot, so a human and an AI see the same render. It is not a frontend-local widget (unlike Phase 16's tab strip).
+
+**Backends**: both `llama.cpp` (external loopback server, the path the gatekeeper already validated) and `candle` (in-process, behind a cargo feature, off by default) are supported behind one `InferenceBackend` trait. The user can select one, or enable **simultaneous** mode (double resources): the same request goes to both, the first to finish wins and the other is cancelled — results are never merged. Simultaneous mode is an advanced opt-in.
+
+**Process and module boundary**:
+
+- `backend/ai-assistant/` is its own OS process (`blueice-ai-assistant`); `core` owns the DOM and applies results, the assistant never mutates the DOM itself (same idea as `GatekeeperClearance`: authority stays with `core`).
+- Layout: `lib.rs` (task model/scheduling), `backend/` (`InferenceBackend`, `llama_cpp.rs`, feature-gated `candle.rs`), `settings.rs`, and a thin `bin/blueice-ai-assistant.rs`.
+- The assistant does not depend on `ai-gatekeeper` (nor the reverse), and its output never feeds the gatekeeper.
+- The loopback-only model rules (loopback endpoint, no credentials, no proxy, no redirects, provider response parsing, input/output/concurrency/latency limits) live in one small dependency-light shared crate, `blueice-loopback-model`, used by both processes, so the security limits exist once. Heavy dependencies (`candle`) and assistant logic stay in the assistant only. Moving the code out of `ai-gatekeeper` must not change its behavior.
+
+**New interface**: `blueice_ipc::assistant`, its own long-lived, `Hello`-handshaked request/reply protocol in the style of `blueice_ipc::script`/`gatekeeper`. Translation uses a pre-layout path (batched text nodes with a timeout and fall-back to the original); summarize/organize use a separate post-render path.
+
+**Resources**: OS-level ceilings (cgroups on Linux, Job Objects on Windows) are enforced by the launcher, not by the assistant itself, sized for the simultaneous-mode worst case. Advanced settings are complete but only writable from the trusted settings window, never by page content, and keep the loopback-only rules. `ai-assistant` is idle-teardown eligible, except that it stays resident while live translation is active.
+
+**Risk taxonomy** gains two categories beyond the original six: prompt injection carried in page content, and personal data leaking to third parties.
+
 ## Open questions (blocking real design)
 
 - ~~Enforcement architecture~~ — **resolved for `core` navigation** by "Wiring design (resolved 2026-09-08)" above (per-component detail for `backend/downloads`, the `extension` host, and the Phase 12 MCP adapter still follows once those exist). Still open: the IPC-wire-protocol-level enforcement the design above flags as a separate, still-necessary layer (ties into Phase 9's wire-protocol work, which now has a concrete `GatekeeperClearance` shape to build against).
 - ~~Failure mode~~ — **resolved, and now independently corroborated**: fail-closed, including when the gatekeeper process itself is down/unresponsive (a timeout is not "safe"). `research/safe-browsing-enforcement.md` found both Chromium's Safe Browsing and Firefox's url-classifier fail *open* on exactly this case — confirms BlueIce's policy is a deliberate improvement, not something to reconsider toward matching prior art.
 - ~~Synchronous blocking vs. async review~~ — **resolved**: every page load and every risky action goes through both review stages (URL and content), and the round-trip is *non-blocking* with respect to other clients/tabs sharing `core`'s one connection — see "Wiring design" above for the concurrency mechanism. The requesting client's own request still waits for its own result (that's inherent to "review everything before it happens"), but other traffic on the shared connection is never stalled by someone else's pending review.
 - **Rule-base content/format**: the candidate signature categories above need to become an actual maintained ruleset — sourced from a threat-intel feed (e.g. Google Safe Browsing-style lists) plus BlueIce-specific heuristics (the hidden-AI-targeted-content patterns), versioned and updatable independently of the AI model.
-- **Risk taxonomy completeness**: the AI-layer candidate list above is a starting draft — needs review for gaps and for false-positive risk (a gatekeeper that blocks too aggressively makes the browser unusable, the same practical failure mode as fail-closed-when-down).
-- **Live translation and the Phase 1/5 AI-facing representation**: when translation is active, should an *external* AI agent (via Phase 5/12) see the original text or the translated text? Plan §1's whole premise is human and AI perceiving the same rendered state — since translated text is what's actually on screen once substituted pre-layout, the representation reflecting translated text seems like the consistent answer, but this is a real consequence worth confirming rather than assuming.
-- **Live translation reversibility**: does BlueIce retain the original-language DOM/text alongside the translated version (so a user can toggle back, and so the gatekeeper/rule-base review — which should probably run on the *original* content, not a translation of it — has something authoritative to check), or is the substitution destructive?
-- **Assistant capability scope**: organizing data, summarization, live translation are the given starting scope — worth confirming whether that's the complete initial capability list.
-- **Model/runtime choice per agent**, once the above firm up.
+- [resolved 2026-09-25: added prompt injection in page content and personal-data leakage; see "Assistant design decisions".] **Risk taxonomy completeness**: the AI-layer candidate list above is a starting draft — needs review for gaps and for false-positive risk (a gatekeeper that blocks too aggressively makes the browser unusable, the same practical failure mode as fail-closed-when-down).
+- [resolved 2026-09-25: translated text is primary, with the original attached per node.] **Live translation and the Phase 1/5 AI-facing representation**: when translation is active, should an *external* AI agent (via Phase 5/12) see the original text or the translated text? Plan §1's whole premise is human and AI perceiving the same rendered state — since translated text is what's actually on screen once substituted pre-layout, the representation reflecting translated text seems like the consistent answer, but this is a real consequence worth confirming rather than assuming.
+- [resolved 2026-09-25: the original is retained; the gatekeeper reviews the original.] **Live translation reversibility**: does BlueIce retain the original-language DOM/text alongside the translated version (so a user can toggle back, and so the gatekeeper/rule-base review — which should probably run on the *original* content, not a translation of it — has something authoritative to check), or is the substitution destructive?
+- [resolved 2026-09-25: translation, summarization, and data organization.] **Assistant capability scope**: organizing data, summarization, live translation are the given starting scope — worth confirming whether that's the complete initial capability list.
+- [resolved 2026-09-25: `llama.cpp` and `candle` behind one trait, selectable or simultaneous; see "Assistant design decisions".] **Model/runtime choice per agent**, once the above firm up.
 
 ## Checklist
 
@@ -141,13 +166,19 @@ Organizing data, summarization, and **live translation** per the given scope. Ca
 - [x] Expose the enforced rule-base and workflow in a complete settings page, with bounded user adjustment — `about:settings` is sourced from the live gatekeeper, includes concrete rule conditions and model-layer status, permits a loopback-only Ollama/Hugging Face TGI/llama.cpp model configuration, and permits persistent additive custom blocked-host, HTML-text phrase, download-extension, and extension-popup phrase entries; release-owned baseline rules and mandatory workflow stages remain non-editable
 - [x] Implement a bounded optional local model-review transport behind the independent rule-base — strict verdicts and fail-closed errors are tested with both provider labels and a compiled gatekeeper against a scripted loopback server; a real model run and quality evaluation remain open
 - [x] Run and evaluate at least one actual local model, including adversarial content and ordinary-page false positives — [MODEL_EVALUATION.md](MODEL_EVALUATION.md) records the Qwen3.5-4B GGUF/llama.cpp result, an initial thinking-token interoperability failure, calibration and held-out cases, and one remaining held-out false positive; this is an exploratory probe, not a production precision/recall claim
-- [ ] Review and firm up the AI-layer risk taxonomy draft above
-- [ ] Decide where the live-translation DOM-substitution hook sits relative to Phase 3's HTML→DOM pipeline, and whether original text is retained alongside the translation
-- [ ] Decide whether the Phase 1/5 AI-facing representation reflects translated or original text when live translation is active
-- [ ] Confirm the assistant's initial capability scope
-- [ ] Choose the model/runtime per agent (may differ between gatekeeper and assistant)
-- [ ] Finalize `backend/ai-gatekeeper/` vs. `backend/ai-assistant/` module boundaries, and where the rule-base layer's code lives relative to both
-- [ ] Decide whether each agent is a client of the Phase 1/5 IPC surface or needs something that surface doesn't expose
-- [ ] Define the resource budget (memory/CPU ceiling) for each process
-- [ ] Design `ai-assistant`'s idle-teardown behavior (with a live-translation carve-out), coordinated with the Phase 8 supervisor once it exists
-- [ ] Cross-reference the finished risk taxonomy back into plan §5's "AI agent browsing" risk entry
+- [x] Review and firm up the AI-layer risk taxonomy draft above — two categories added (page-content prompt injection, personal-data leakage to third parties); see "Assistant design decisions"
+- [x] Decide where the live-translation DOM-substitution hook sits relative to Phase 3's HTML→DOM pipeline, and whether original text is retained alongside the translation — after HTML→DOM, before cascade; original retained
+- [x] Decide whether the Phase 1/5 AI-facing representation reflects translated or original text when live translation is active — translated primary, original attached per node
+- [x] Confirm the assistant's initial capability scope — translation, summarization, data organization
+- [x] Choose the model/runtime per agent — `llama.cpp` and `candle` behind `InferenceBackend`; selectable or simultaneous
+- [x] Finalize `backend/ai-gatekeeper/` vs. `backend/ai-assistant/` module boundaries — separate processes, shared `blueice-loopback-model` crate for loopback limits only
+- [x] Decide whether each agent is a client of the Phase 1/5 IPC surface or needs something that surface doesn't expose — new `blueice_ipc::assistant` interface
+- [x] Define the resource budget policy for each process — launcher-enforced OS ceilings sized for simultaneous mode; complete advanced settings (implementation open)
+- [x] Design `ai-assistant`'s idle-teardown behavior — idle-eligible, resident while live translation is active (registry wiring open)
+- [x] Cross-reference the finished risk taxonomy back into plan §5's "AI agent browsing" risk entry
+- [ ] Extract `blueice-loopback-model` from `ai-gatekeeper` with unchanged gatekeeper behavior
+- [ ] Add `blueice_ipc::assistant` and the `ai-assistant` process skeleton with the `InferenceBackend` trait and `llama.cpp` backend
+- [ ] Live translation: pre-layout hook in `core`, retained original text, representation field, fail-open to original
+- [ ] Summary/organize side panel rendered by the engine and visible in the AI snapshot
+- [ ] `candle` backend behind a cargo feature; simultaneous mode
+- [ ] Launcher-enforced resource ceilings and assistant idle-teardown registration; advanced settings page
