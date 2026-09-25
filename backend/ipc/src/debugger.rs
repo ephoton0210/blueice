@@ -9,7 +9,9 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version thirty-four binds
+//! and an opt-in root-code-unit pause/resume seam. Version thirty-five adds
+//! separately gated bounded stack-location and active-scope snapshots for an
+//! exact paused target, without values or BlueTS source coordinates. Version thirty-four binds
 //! each active frame handle to its core instance across supervised cutover.
 //! Version thirty-three adds
 //! an exact active-frame resume command and distinct resuming state. Version
@@ -78,7 +80,10 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 34;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 35;
+
+pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
+pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -739,6 +744,33 @@ impl DebuggerFrame {
             && self.program == safe_point.program
             && self.code_unit_ordinal == safe_point.code_unit_ordinal
     }
+}
+
+/// Source-free ordered locations of only the actually paused continuation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStackSnapshot {
+    pub program: DebuggerProgram,
+    pub frame: Option<DebuggerFrame>,
+    pub safe_points: Vec<DebuggerSafePoint>,
+    pub stack_truncated: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerScopeEntry {
+    pub slot_ordinal: u32,
+    pub scope_depth: u32,
+}
+
+/// One currently active frame's bounded lexical-slot inventory. It is not a
+/// value lookup, binding name inventory, or source-position disclosure.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerScopeSnapshot {
+    pub program: DebuggerProgram,
+    pub frame: Option<DebuggerFrame>,
+    pub frame_index: u32,
+    pub safe_point: DebuggerSafePoint,
+    pub entries: Vec<DebuggerScopeEntry>,
+    pub scope_truncated: bool,
 }
 
 /// Native debugger features that a host may explicitly advertise.
@@ -2424,6 +2456,21 @@ pub enum DebuggerRequest {
     ResumeNestedExecution {
         frame: DebuggerFrame,
     },
+    /// Reads only paused frame locations. Scopes require their own gate.
+    GetStack {
+        program: DebuggerProgram,
+        frame: Option<DebuggerFrame>,
+        max_frames: u32,
+    },
+    /// Reads one frame's active lexical slots only when its exact currently
+    /// paused safe point still equals the caller's expected location.
+    GetScopes {
+        program: DebuggerProgram,
+        frame: Option<DebuggerFrame>,
+        frame_index: u32,
+        expected_safe_point: DebuggerSafePoint,
+        max_scope_entries: u32,
+    },
     /// Steps from one exact paused BlueTS root safe point to the next distinct
     /// compiler-bound source span, completion, or a bounded-limit stop.
     /// Requires a separate metadata grant and same-stream source receipt.
@@ -2549,6 +2596,8 @@ pub enum DebuggerReply {
     NestedResumeRequested {
         frame: DebuggerFrame,
     },
+    Stack(DebuggerStackSnapshot),
+    Scopes(DebuggerScopeSnapshot),
     ExecutionSourceSpanStepRequested {
         safe_point: DebuggerSafePoint,
     },
@@ -2644,6 +2693,8 @@ pub fn negotiate(
         | DebuggerRequest::StepRootInstruction { .. }
         | DebuggerRequest::StepNestedInstruction { .. }
         | DebuggerRequest::ResumeNestedExecution { .. }
+        | DebuggerRequest::GetStack { .. }
+        | DebuggerRequest::GetScopes { .. }
         | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
         | DebuggerRequest::Unknown => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
@@ -2723,6 +2774,18 @@ mod tests {
             DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point },
             DebuggerRequest::StepNestedInstruction { frame },
             DebuggerRequest::ResumeNestedExecution { frame },
+            DebuggerRequest::GetStack {
+                program,
+                frame: Some(frame),
+                max_frames: 1,
+            },
+            DebuggerRequest::GetScopes {
+                program,
+                frame: Some(frame),
+                frame_index: 0,
+                expected_safe_point: safe_point,
+                max_scope_entries: 1,
+            },
         ] {
             let (mut writer, mut reader) = UnixStream::pair().unwrap();
             write_debugger_request(&mut writer, &request).unwrap();
@@ -2736,6 +2799,23 @@ mod tests {
             },
             DebuggerReply::NestedStepRequested { frame },
             DebuggerReply::NestedResumeRequested { frame },
+            DebuggerReply::Stack(DebuggerStackSnapshot {
+                program,
+                frame: Some(frame),
+                safe_points: vec![safe_point],
+                stack_truncated: true,
+            }),
+            DebuggerReply::Scopes(DebuggerScopeSnapshot {
+                program,
+                frame: Some(frame),
+                frame_index: 0,
+                safe_point,
+                entries: vec![DebuggerScopeEntry {
+                    slot_ordinal: 2,
+                    scope_depth: 0,
+                }],
+                scope_truncated: true,
+            }),
             DebuggerReply::ExecutionState {
                 program,
                 state: DebuggerExecutionState::NestedStepping { frame },

@@ -759,7 +759,7 @@ fn public_socket_steps_and_resumes_one_real_bluets_nested_frame() {
         let (mut stream, _) = listener.accept().unwrap();
         let mut request = [0_u8; 1024];
         let _ = stream.read(&mut request);
-        let source = "function inner(): number { let value: number = 4; return value; } globalThis.answer = inner() + 1;";
+        let source = "function inner(a: number, b: number): number { let first: number = a; let second: number = b; return first + second; } globalThis.answer = inner(2, 2) + 1;";
         let body = format!(
             "<main>nested-bluets</main><script type=\"application/x-blueice-typescript\">{source}</script>"
         );
@@ -808,7 +808,7 @@ fn public_socket_steps_and_resumes_one_real_bluets_nested_frame() {
     }));
     for capability in [DebuggerCapability::Stack, DebuggerCapability::Scopes] {
         assert!(capabilities.reports.iter().any(|report| {
-            report.capability == capability && report.state == DebuggerCapabilityState::Planned
+            report.capability == capability && report.state == DebuggerCapabilityState::Available
         }));
     }
     let program = one_program(
@@ -854,6 +854,145 @@ fn public_socket_steps_and_resumes_one_real_bluets_nested_frame() {
     assert_ne!(successor, first);
     assert_eq!(successor.code_unit_ordinal, first.code_unit_ordinal);
 
+    let mut active_stack = None;
+    for _ in 0..64 {
+        let DebuggerReply::Stack(stack) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStack {
+                program,
+                frame: Some(frame),
+                max_frames: 2,
+            },
+        ) else {
+            panic!("the paused BlueTS child must expose a bounded stack");
+        };
+        assert_eq!(stack.program, program);
+        assert_eq!(stack.frame, Some(frame));
+        assert_eq!(stack.safe_points.len(), 2);
+        assert_eq!(stack.safe_points[0].code_unit_ordinal, 1);
+        assert_eq!(stack.safe_points[1].code_unit_ordinal, 0);
+        assert!(!stack.stack_truncated);
+        let DebuggerReply::Scopes(scopes) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetScopes {
+                program,
+                frame: Some(frame),
+                frame_index: 0,
+                expected_safe_point: stack.safe_points[0],
+                max_scope_entries: 256,
+            },
+        ) else {
+            panic!("the exact paused BlueTS child must expose active lexical slots");
+        };
+        assert_eq!(scopes.safe_point, stack.safe_points[0]);
+        assert!(!scopes.scope_truncated);
+        if scopes.entries.len() >= 2 {
+            active_stack = Some(stack);
+            break;
+        }
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::StepNestedInstruction { frame },
+            ),
+            DebuggerReply::NestedStepRequested { frame }
+        );
+        let (same_frame, _) = await_nested_paused_execution(&mut debugger, program);
+        assert_eq!(same_frame, frame);
+    }
+    let stack = active_stack.expect("BlueTS child must enter a scope with two slots");
+    let DebuggerReply::Stack(limited_stack) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetStack {
+            program,
+            frame: Some(frame),
+            max_frames: 1,
+        },
+    ) else {
+        panic!("the smaller stack budget must return an explicit truncation");
+    };
+    assert_eq!(limited_stack.safe_points, vec![stack.safe_points[0]]);
+    assert!(limited_stack.stack_truncated);
+    let DebuggerReply::Scopes(limited_scopes) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetScopes {
+            program,
+            frame: Some(frame),
+            frame_index: 0,
+            expected_safe_point: stack.safe_points[0],
+            max_scope_entries: 1,
+        },
+    ) else {
+        panic!("the smaller scope budget must return an explicit truncation");
+    };
+    assert_eq!(limited_scopes.entries.len(), 1);
+    assert!(limited_scopes.scope_truncated);
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetScopes {
+                program,
+                frame: Some(frame),
+                frame_index: 0,
+                expected_safe_point: DebuggerSafePoint {
+                    bytecode_offset: stack.safe_points[0].bytecode_offset + 1,
+                    ..stack.safe_points[0]
+                },
+                max_scope_entries: 1,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
+    for max_frames in [0, 65] {
+        assert!(matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetStack {
+                    program,
+                    frame: Some(frame),
+                    max_frames,
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::ResourceLimit,
+                ..
+            }
+        ));
+    }
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetScopes {
+                program,
+                frame: Some(frame),
+                frame_index: 0,
+                expected_safe_point: stack.safe_points[0],
+                max_scope_entries: 257,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::ResourceLimit,
+            ..
+        }
+    ));
+    let DebuggerReply::Scopes(parent_scopes) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetScopes {
+            program,
+            frame: Some(frame),
+            frame_index: 1,
+            expected_safe_point: stack.safe_points[1],
+            max_scope_entries: 256,
+        },
+    ) else {
+        panic!("the waiting root must remain the exact second stack frame");
+    };
+    assert_eq!(parent_scopes.frame_index, 1);
+    assert_eq!(parent_scopes.safe_point, stack.safe_points[1]);
+
     assert!(matches!(
         debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
         DebuggerReply::Error {
@@ -863,6 +1002,20 @@ fn public_socket_steps_and_resumes_one_real_bluets_nested_frame() {
     ));
     let mut wrong_frame = frame;
     wrong_frame.frame_handle += 1;
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStack {
+                program,
+                frame: Some(wrong_frame),
+                max_frames: 2,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
     assert!(matches!(
         debugger_request(
             &mut debugger,
@@ -922,11 +1075,38 @@ fn public_socket_steps_and_resumes_one_real_bluets_nested_frame() {
             ..
         }
     ));
+    let DebuggerReply::Stack(root_stack) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetStack {
+            program,
+            frame: None,
+            max_frames: 2,
+        },
+    ) else {
+        panic!("the waiting root must be inspectable after its child returns");
+    };
+    assert_eq!(root_stack.safe_points.len(), 1);
+    assert_eq!(root_stack.safe_points[0].code_unit_ordinal, 0);
+    assert!(!root_stack.stack_truncated);
     assert_eq!(
         debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
         DebuggerReply::ExecutionResumed { program }
     );
     await_completed_execution(&mut debugger, program);
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStack {
+                program,
+                frame: None,
+                max_frames: 2,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
     write_client_message(&mut browser, &ClientMessage::GetBlueTsScriptReports).unwrap();
     assert!(matches!(
         read_server_message(&mut browser).unwrap(),
@@ -1150,6 +1330,22 @@ fn public_socket_rejects_predecessor_frame_after_supervised_child_cutover() {
         },
         DebuggerRequest::ResumeNestedExecution {
             frame: predecessor_frame,
+        },
+        DebuggerRequest::GetStack {
+            program: predecessor_program,
+            frame: Some(predecessor_frame),
+            max_frames: 2,
+        },
+        DebuggerRequest::GetScopes {
+            program: predecessor_program,
+            frame: Some(predecessor_frame),
+            frame_index: 0,
+            expected_safe_point: DebuggerSafePoint {
+                program: predecessor_program,
+                code_unit_ordinal: 1,
+                bytecode_offset: 0,
+            },
+            max_scope_entries: 1,
         },
     ] {
         assert!(matches!(

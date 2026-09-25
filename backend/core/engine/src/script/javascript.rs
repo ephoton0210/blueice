@@ -75,7 +75,8 @@ pub use debugger_support::{
 /// configuration table in addition to location discovery. The table neither
 /// pauses nor executes its VM unless an explicitly selected child execution
 /// controller implements the separate root-classic methods below. Nested
-/// stepping, stacks, scopes, source, bytecode, and runtime values remain excluded.
+/// stepping and bounded stack/scope snapshots require separate exact-target
+/// methods and capability gates; source, bytecode, and values remain excluded.
 pub trait PageJavaScriptDebuggerLocations {
     /// Whether this owner currently has the exact live tab/document realm.
     fn debugger_has_live_realm(&mut self, tab_id: TabId, document_generation: u64) -> bool;
@@ -582,8 +583,8 @@ pub trait PageJavaScriptDebuggerLocations {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 
-    /// Private core-facing bounded inspection; no public debugger capability
-    /// is implied until an independently gated socket command exists.
+    /// Private core-facing bounded inspection. Public stack and scope reads
+    /// still require their own separately advertised capability gates.
     fn debugger_stack_snapshot(
         &mut self,
         _tab_id: TabId,
@@ -594,6 +595,16 @@ pub trait PageJavaScriptDebuggerLocations {
         _max_scope_entries: u32,
     ) -> Result<JavaScriptPageDebuggerStackSnapshot, JavaScriptPageDebuggerError> {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Stack locations and active lexical scopes are separately granted on
+    /// the owner-selected debugger route; neither follows from stepping.
+    fn debugger_stack_available(&self) -> bool {
+        false
+    }
+
+    fn debugger_scopes_available(&self) -> bool {
+        false
     }
 
     /// Arms one pending classic program at an already validated root safe

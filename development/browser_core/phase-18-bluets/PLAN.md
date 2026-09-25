@@ -779,7 +779,8 @@ paused target, a zero-based frame index in that live stack, and the exact
 expected safe point of that frame. It requests a positive per-frame entry
 limit up to 256 and returns only active lexical slot ordinals/depths plus
 `scope_truncated`. The exact expected safe point makes a scope query fail if
-the frame moved between stack and scope reads; neither operation treats a
+the frame is now at a different instruction; it is a location check, not a
+step-epoch token. Neither operation treats a
 configured breakpoint or static code unit as a paused frame. Both operations
 check the core-owned realm/program generation and, for nested targets, the
 whole core-instance-bound frame identity before using the private snapshot.
@@ -792,6 +793,24 @@ capabilities. The public wire and protocol version stay unchanged in this
 design leaf; bump them together only after both operations and their real
 BlueTS socket regressions are complete. Original BlueTS coordinates remain
 C2.1.2, and value inspection remains C2.2.
+
+**Public bounded stack/scope route (C2.1.1.4.2):** Debugger protocol v35
+adds independent `GetStack`/`Stack` and `GetScopes`/`Scopes` messages. The
+owner-selected route advertises Stack and Scopes separately only when the
+live core executor can inspect an actual paused continuation; ordinary and
+unsupported routes remain Planned and reject both requests. A stack reply
+contains the exact current child-first/root-only safe points and explicit
+stack truncation, but no lexical entries. A scope request selects one current
+frame by index and expected safe point, and its reply contains only active
+opaque binding-slot ordinals/depths with explicit scope truncation. Core
+checks the live realm/program, complete core-instance-bound nested handle,
+positive 64/256 budgets, selected frame and expected safe point before
+returning either result. A real Launcher/core/host BlueTS debugger socket
+regression proves both truncation flags, invalid-budget and moved-frame
+denial, root inspection after child return, and completion denial. A real
+supervised-core cutover regression rejects predecessor Stack and Scopes
+requests even when tab/program/frame numbers collide. No source text, runtime
+value, original BlueTS coordinate, or metadata authority is granted by v35.
 
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant

@@ -4401,6 +4401,16 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         })
     }
 
+    fn debugger_stack_available(&self) -> bool {
+        self.debugger_execution_control_available()
+            && self.child.debugger_stack_snapshot_available()
+    }
+
+    fn debugger_scopes_available(&self) -> bool {
+        self.debugger_execution_control_available()
+            && self.child.debugger_stack_snapshot_available()
+    }
+
     fn debugger_stepping_available(&self) -> bool {
         self.debugger_execution_control_available() && self.child.debugger_stepping_available()
     }
@@ -9079,7 +9089,7 @@ mod tests {
     }
 
     #[test]
-    fn real_bluets_child_private_stack_is_bounded_and_publicly_disabled() {
+    fn real_bluets_child_private_stack_is_bounded_before_public_queries() {
         use blueice_ipc::debugger::{
             DebuggerCapability, DebuggerCapabilityState, DebuggerPageRealm, DebuggerReply,
             DebuggerRequest,
@@ -9112,7 +9122,8 @@ mod tests {
         };
         for capability in [DebuggerCapability::Stack, DebuggerCapability::Scopes] {
             assert!(capabilities.reports.iter().any(|report| {
-                report.capability == capability && report.state == DebuggerCapabilityState::Planned
+                report.capability == capability
+                    && report.state == DebuggerCapabilityState::Available
             }));
         }
         let program = executor.debugger_programs(tab_id, 1).unwrap()[0];
