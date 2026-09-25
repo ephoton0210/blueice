@@ -778,7 +778,6 @@ fn public_socket_steps_and_resumes_one_real_bluets_nested_frame() {
     let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).unwrap();
-    navigate(&mut browser, &url);
 
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
     assert_eq!(
@@ -794,6 +793,7 @@ fn public_socket_steps_and_resumes_one_real_bluets_nested_frame() {
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         }
     );
+    navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,
@@ -1732,7 +1732,6 @@ fn launcher_steps_a_real_bluets_module_then_rejects_stale_generation() {
     );
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
-    navigate(&mut browser, &url);
 
     let manifest = DebuggerMetadataCapabilityManifest::opaque_source_span_step();
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
@@ -1749,6 +1748,7 @@ fn launcher_steps_a_real_bluets_module_then_rejects_stale_generation() {
             granted_metadata_capabilities: manifest,
         }
     );
+    navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,
@@ -3910,7 +3910,6 @@ fn launcher_resolves_receipted_bluets_source_positions_to_live_breakpoints() {
     );
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
-    navigate(&mut browser, &url);
 
     let manifest = DebuggerMetadataCapabilityManifest::opaque_source_breakpoint();
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
@@ -3927,6 +3926,7 @@ fn launcher_resolves_receipted_bluets_source_positions_to_live_breakpoints() {
             granted_metadata_capabilities: manifest.clone(),
         }
     );
+    navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,

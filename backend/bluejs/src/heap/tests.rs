@@ -1164,3 +1164,544 @@ fn duration_cannot_be_interpreted_as_a_plain_date_time() {
     };
     duration.plain_epoch_milliseconds();
 }
+
+#[test]
+fn buffer_allocation_rejects_limits_before_installing_a_shared_backing() {
+    let mut heap = Heap::new(HeapConfig {
+        nursery_capacity: 32,
+        major_threshold_bytes: OBJECT_BYTES,
+        max_heap_bytes: OBJECT_BYTES + 32,
+    })
+    .unwrap();
+    let capacity = heap.max_array_buffer_byte_length();
+    assert_eq!(capacity, 32);
+    assert_eq!(
+        heap.alloc_array_buffer(capacity + 1, None),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.alloc_resizable_array_buffer(2, 1, None),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.alloc_shared_array_buffer(2, Some(capacity + 1), None),
+        Err(HeapError::InvalidBufferRange)
+    );
+
+    let large = std::sync::Arc::new(SharedBuffer::new(capacity + 1));
+    assert_eq!(
+        heap.alloc_shared_array_buffer_backing(large, None, None),
+        Err(HeapError::InvalidBufferRange)
+    );
+    let backing = std::sync::Arc::new(SharedBuffer::new(2));
+    for maximum in [1, capacity + 1] {
+        assert_eq!(
+            heap.alloc_shared_array_buffer_backing(backing.clone(), Some(maximum), None),
+            Err(HeapError::InvalidBufferRange)
+        );
+    }
+    let shared = heap
+        .alloc_shared_array_buffer_backing(backing.clone(), Some(capacity), None)
+        .unwrap();
+    assert!(std::sync::Arc::ptr_eq(
+        &heap.shared_buffer_backing(shared).unwrap(),
+        &backing
+    ));
+    assert_eq!(heap.buffer_byte_length(shared), Ok(2));
+}
+
+#[test]
+fn binary_data_accessors_reject_other_kinds_and_preserve_detached_view_slots() {
+    let mut heap = Heap::default();
+    let object = heap.alloc_object(None).unwrap();
+    let buffer = heap.alloc_resizable_array_buffer(8, 16, None).unwrap();
+    let shared = heap.alloc_shared_array_buffer(2, Some(8), None).unwrap();
+    let view = heap.alloc_data_view(buffer, 4, 4, false, None).unwrap();
+    let tracking = heap.alloc_data_view(buffer, 2, 0, true, None).unwrap();
+    let typed = heap
+        .alloc_typed_array(buffer, 4, 4, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+
+    assert_eq!(heap.is_data_view(view), Ok(true));
+    assert_eq!(heap.is_data_view(object), Ok(false));
+    assert_eq!(heap.data_view_buffer(view), Ok(buffer));
+    assert_eq!(heap.data_view_current_info(view), Ok((buffer, 4, 4)));
+    assert_eq!(heap.array_buffer_is_resizable(buffer), Ok(true));
+    assert_eq!(heap.buffer_growable(shared), Ok(true));
+    assert_eq!(heap.buffer_growable(buffer), Ok(false));
+    assert_eq!(heap.typed_array_is_length_tracking(typed), Ok(false));
+
+    macro_rules! invalid_slot {
+        () => {
+            Err(HeapError::InvalidInternalSlot(object))
+        };
+    }
+    assert_eq!(heap.array_buffer_byte_length(object), invalid_slot!());
+    assert_eq!(heap.buffer_byte_length(object), invalid_slot!());
+    assert_eq!(heap.array_buffer_is_detached(object), invalid_slot!());
+    assert_eq!(heap.buffer_is_shared(object), invalid_slot!());
+    assert_eq!(heap.buffer_max_byte_length(object), invalid_slot!());
+    assert_eq!(heap.buffer_resizable(object), invalid_slot!());
+    assert_eq!(heap.array_buffer_is_resizable(object), invalid_slot!());
+    assert_eq!(heap.buffer_growable(object), invalid_slot!());
+    assert_eq!(heap.data_view_raw_info(object), invalid_slot!());
+    assert_eq!(heap.data_view_current_info(object), invalid_slot!());
+    assert_eq!(heap.data_view_buffer(object), invalid_slot!());
+    assert_eq!(heap.typed_array_info(object), invalid_slot!());
+    assert_eq!(heap.typed_array_is_out_of_bounds(object), invalid_slot!());
+    assert_eq!(heap.typed_array_is_length_tracking(object), invalid_slot!());
+    assert_eq!(
+        heap.typed_array_prevent_extensions_allowed(object),
+        invalid_slot!()
+    );
+    assert_eq!(heap.detach_array_buffer(object), invalid_slot!());
+    assert_eq!(heap.array_buffer_copy(object, 0, 1), invalid_slot!());
+    assert_eq!(
+        heap.array_buffer_write(object, 0, &[1]),
+        Err(HeapError::InvalidObject(object))
+    );
+    assert_eq!(
+        heap.array_buffer_byte_length(shared),
+        Err(HeapError::InvalidInternalSlot(shared))
+    );
+    assert_eq!(
+        heap.array_buffer_is_detached(shared),
+        Err(HeapError::InvalidInternalSlot(shared))
+    );
+    assert_eq!(
+        heap.detach_array_buffer(shared),
+        Err(HeapError::InvalidInternalSlot(shared))
+    );
+
+    assert_eq!(
+        heap.alloc_data_view(buffer, usize::MAX, 1, false, None),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.alloc_data_view(buffer, 7, 2, false, None),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.alloc_typed_array(buffer, 0, usize::MAX, false, TypedArrayKind::Uint16, None),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.alloc_typed_array(buffer, usize::MAX, 1, false, TypedArrayKind::Uint8, None),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.alloc_typed_array(buffer, 7, 2, false, TypedArrayKind::Uint8, None),
+        Err(HeapError::InvalidBufferRange)
+    );
+
+    heap.resize_array_buffer(buffer, 3).unwrap();
+    assert_eq!(heap.data_view_raw_info(view), Ok((buffer, 4, 4)));
+    assert_eq!(
+        heap.data_view_current_info(view),
+        Err(HeapError::InvalidInternalSlot(view))
+    );
+    assert_eq!(heap.data_view_current_info(tracking), Ok((buffer, 2, 1)));
+    assert_eq!(
+        heap.typed_array_info(typed),
+        Ok((buffer, 4, 0, TypedArrayKind::Uint8))
+    );
+    assert_eq!(heap.typed_array_is_out_of_bounds(typed), Ok(true));
+    assert_eq!(heap.typed_array_index_value(typed, 0), Ok(None));
+    heap.resize_array_buffer(buffer, 1).unwrap();
+    assert_eq!(
+        heap.data_view_current_info(tracking),
+        Err(HeapError::InvalidInternalSlot(tracking))
+    );
+    assert_eq!(heap.typed_array_is_out_of_bounds(typed), Ok(true));
+
+    heap.detach_array_buffer(buffer).unwrap();
+    assert_eq!(heap.data_view_buffer(view), Ok(buffer));
+    assert_eq!(
+        heap.data_view_current_info(view),
+        Err(HeapError::DetachedArrayBuffer)
+    );
+    assert_eq!(heap.typed_array_index_value(typed, 0), Ok(None));
+    assert_eq!(
+        heap.array_buffer_copy(buffer, 0, 0),
+        Err(HeapError::DetachedArrayBuffer)
+    );
+    assert_eq!(
+        heap.array_buffer_write(buffer, 0, &[]),
+        Err(HeapError::DetachedArrayBuffer)
+    );
+    assert_eq!(
+        heap.detach_array_buffer(buffer),
+        Err(HeapError::DetachedArrayBuffer)
+    );
+}
+
+#[test]
+fn growable_and_fixed_buffers_reject_wrong_or_excessive_resize_operations() {
+    let mut heap = Heap::default();
+    let object = heap.alloc_object(None).unwrap();
+    let ordinary = heap.alloc_array_buffer(2, None).unwrap();
+    let resizable = heap.alloc_resizable_array_buffer(2, 4, None).unwrap();
+    let shared = heap.alloc_shared_array_buffer(2, Some(4), None).unwrap();
+    let fixed_shared = heap.alloc_shared_array_buffer(2, None, None).unwrap();
+    assert_eq!(
+        heap.resize_array_buffer(object, 3),
+        Err(HeapError::InvalidInternalSlot(object))
+    );
+    assert_eq!(
+        heap.resize_array_buffer(ordinary, 3),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.grow_shared_array_buffer(fixed_shared, 3),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.resize_array_buffer(resizable, 5),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.grow_shared_array_buffer(shared, 1),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.grow_shared_array_buffer(shared, 5),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.resize_array_buffer(shared, 3),
+        Err(HeapError::InvalidInternalSlot(shared))
+    );
+    assert_eq!(
+        heap.grow_shared_array_buffer(resizable, 3),
+        Err(HeapError::InvalidInternalSlot(resizable))
+    );
+    assert_eq!(heap.grow_shared_array_buffer(shared, 4), Ok(()));
+    assert_eq!(heap.buffer_byte_length(shared), Ok(4));
+}
+
+#[test]
+fn numeric_key_and_float16_boundary_helpers_preserve_canonical_values() {
+    use binary_data::{f64_to_f16_bits, fixed_to_scientific, scientific_to_fixed};
+
+    assert_eq!(
+        binary_data::typed_array_numeric_key(&"4294967295".into()),
+        Some(TypedArrayNumericKey::Index(4_294_967_295))
+    );
+    assert_eq!(scientific_to_fixed("-1.25e3"), Some("-1250".into()));
+    assert_eq!(scientific_to_fixed("1e-7"), Some("0.0000001".into()));
+    assert_eq!(scientific_to_fixed("1.2e-2"), Some("0.012".into()));
+    assert_eq!(scientific_to_fixed("1.25e0"), Some("1.25".into()));
+    assert_eq!(scientific_to_fixed("1.25e2"), Some("125".into()));
+    assert_eq!(scientific_to_fixed("1.25eX"), None);
+    assert_eq!(scientific_to_fixed("1.25"), None);
+    assert_eq!(
+        fixed_to_scientific("-1200000000000000000000"),
+        Some("-1.2e+21".into())
+    );
+    assert_eq!(fixed_to_scientific("0.0000001"), Some("1e-7".into()));
+    assert_eq!(fixed_to_scientific("0"), None);
+
+    assert_eq!(f64_to_f16_bits(f64::from_bits(1)), 0x0000);
+    assert_eq!(f64_to_f16_bits(2.0 - 2f64.powi(-11)), 0x4000);
+    assert_eq!(f64_to_f16_bits(65520.0), 0x7c00);
+}
+
+#[test]
+fn buffer_growth_observes_the_heap_budget_without_changing_existing_bytes() {
+    let limit = OBJECT_BYTES * 3 + 16;
+    let mut heap = Heap::new(HeapConfig {
+        nursery_capacity: 32,
+        major_threshold_bytes: limit,
+        max_heap_bytes: limit,
+    })
+    .unwrap();
+    let buffer = heap.alloc_resizable_array_buffer(1, 17, None).unwrap();
+    heap.array_buffer_write(buffer, 0, &[9]).unwrap();
+    let _first = heap.alloc_object(None).unwrap();
+    let _second = heap.alloc_object(None).unwrap();
+    assert_eq!(
+        heap.resize_array_buffer(buffer, 17),
+        Err(HeapError::HeapLimitExceeded { limit })
+    );
+    assert_eq!(heap.array_buffer_copy(buffer, 0, 1), Ok(vec![9]));
+    assert_eq!(heap.buffer_byte_length(buffer), Ok(1));
+}
+
+#[test]
+fn shared_and_plain_typed_array_atomic_bounds_are_checked_before_modification() {
+    let mut heap = Heap::default();
+    let plain = heap.alloc_array_buffer(2, None).unwrap();
+    let shared = heap.alloc_shared_array_buffer(2, None, None).unwrap();
+    let plain_view = heap
+        .alloc_typed_array(plain, 0, 2, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    let shared_view = heap
+        .alloc_typed_array(shared, 0, 2, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    assert_eq!(
+        heap.typed_array_atomic_modify(plain_view, 2, |_| (Some(Value::Number(9.0)), ())),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.shared_typed_array_atomic_modify(shared_view, 2, |_| {
+            (Some(Value::Number(9.0)), ())
+        }),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.shared_typed_array_atomic_modify(shared_view, 0, |value| {
+            (Some(Value::Number(7.0)), value)
+        }),
+        Ok(Value::Number(0.0))
+    );
+    assert_eq!(
+        heap.shared_typed_array_atomic_modify(shared_view, 0, |value| (None, value)),
+        Ok(Value::Number(7.0))
+    );
+    assert_eq!(
+        heap.typed_array_index_value(shared_view, 0),
+        Ok(Some(Value::Number(7.0)))
+    );
+    assert_eq!(heap.buffer_max_byte_length(shared), Ok(2));
+}
+
+#[test]
+fn uint8_clamping_obeys_range_and_ties_to_even() {
+    let heap = Heap::default();
+    for (input, expected) in [
+        (f64::NAN, 0.0),
+        (-1.0, 0.0),
+        (300.0, 255.0),
+        (1.5, 2.0),
+        (2.5, 2.0),
+        (2.6, 3.0),
+    ] {
+        assert_eq!(
+            heap.typed_array_normalize_value(TypedArrayKind::Uint8Clamped, &Value::Number(input)),
+            Value::Number(expected)
+        );
+    }
+}
+
+#[test]
+#[should_panic(expected = "BigInt typed arrays receive a BigInt element value")]
+fn bigint_typed_write_rejects_a_number_before_mutating_bytes() {
+    binary_data::typed_write(TypedArrayKind::BigInt64, &mut [0; 8], &Value::Number(1.0));
+}
+
+#[test]
+#[should_panic(expected = "numeric typed arrays receive a Number element value")]
+fn numeric_typed_write_rejects_a_bigint_before_mutating_bytes() {
+    binary_data::typed_write(
+        TypedArrayKind::Uint8,
+        &mut [0],
+        &Value::BigInt(BigInt::from(1)),
+    );
+}
+
+#[test]
+fn binary_data_rejects_foreign_heap_ids_through_each_accessor_family() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    macro_rules! missing {
+        () => {
+            Err(HeapError::InvalidObject(foreign))
+        };
+    }
+    assert_eq!(heap.is_array_buffer(foreign), missing!());
+    assert_eq!(heap.is_shared_array_buffer(foreign), missing!());
+    assert_eq!(heap.is_buffer(foreign), missing!());
+    assert_eq!(heap.is_data_view(foreign), missing!());
+    assert_eq!(heap.is_typed_array(foreign), missing!());
+    assert_eq!(heap.array_buffer_byte_length(foreign), missing!());
+    assert_eq!(heap.buffer_byte_length(foreign), missing!());
+    assert_eq!(heap.shared_buffer_backing(foreign).map(|_| ()), missing!());
+    assert_eq!(heap.array_buffer_is_detached(foreign), missing!());
+    assert_eq!(heap.buffer_is_detached(foreign), missing!());
+    assert_eq!(heap.buffer_is_shared(foreign), missing!());
+    assert_eq!(heap.buffer_is_immutable(foreign), missing!());
+    assert_eq!(heap.typed_array_is_immutable(foreign), missing!());
+    assert_eq!(heap.buffer_max_byte_length(foreign), missing!());
+    assert_eq!(heap.buffer_resizable(foreign), missing!());
+    assert_eq!(heap.array_buffer_is_resizable(foreign), missing!());
+    assert_eq!(heap.buffer_growable(foreign), missing!());
+    assert_eq!(heap.alloc_data_view(foreign, 0, 0, false, None), missing!());
+    assert_eq!(
+        heap.alloc_typed_array(foreign, 0, 0, false, TypedArrayKind::Uint8, None),
+        missing!()
+    );
+    assert_eq!(heap.detach_array_buffer(foreign), missing!());
+    assert_eq!(heap.resize_array_buffer(foreign, 0), missing!());
+    assert_eq!(heap.array_buffer_copy(foreign, 0, 0), missing!());
+    assert_eq!(heap.array_buffer_write(foreign, 0, &[]), missing!());
+    assert_eq!(heap.data_view_raw_info(foreign), missing!());
+    assert_eq!(heap.data_view_current_info(foreign), missing!());
+    assert_eq!(heap.data_view_buffer(foreign), missing!());
+    assert_eq!(heap.typed_array_info(foreign), missing!());
+    assert_eq!(heap.typed_array_is_out_of_bounds(foreign), missing!());
+    assert_eq!(heap.typed_array_is_length_tracking(foreign), missing!());
+    assert_eq!(
+        heap.typed_array_prevent_extensions_allowed(foreign),
+        missing!()
+    );
+    assert_eq!(
+        heap.typed_array_numeric_key(foreign, &"0".into()),
+        missing!()
+    );
+    assert_eq!(heap.typed_array_index_value(foreign, 0), missing!());
+    assert_eq!(
+        heap.typed_array_set_index(foreign, 0, &Value::Number(1.0)),
+        missing!()
+    );
+    assert_eq!(
+        heap.shared_typed_array_atomic_modify(foreign, 0, |value| (None, value)),
+        missing!()
+    );
+    assert_eq!(
+        heap.typed_array_atomic_modify(foreign, 0, |value| (None, value)),
+        missing!()
+    );
+}
+
+#[test]
+fn malformed_view_backings_fail_without_reading_ordinary_object_storage() {
+    let mut heap = Heap::default();
+    let ordinary = heap.alloc_object(None).unwrap();
+    let view = heap
+        .alloc(
+            ObjectKind::DataView {
+                buffer: ordinary,
+                byte_offset: 0,
+                byte_length: 1,
+                length_tracking: false,
+            },
+            None,
+        )
+        .unwrap();
+    let typed = heap
+        .alloc(
+            ObjectKind::TypedArray {
+                buffer: ordinary,
+                byte_offset: 0,
+                length: 1,
+                length_tracking: false,
+                kind: TypedArrayKind::Uint8,
+            },
+            None,
+        )
+        .unwrap();
+    assert_eq!(
+        heap.data_view_current_info(view),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+    assert_eq!(
+        heap.typed_array_info(typed),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+    assert_eq!(
+        heap.typed_array_is_out_of_bounds(typed),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+    assert_eq!(
+        heap.typed_array_prevent_extensions_allowed(typed),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+    assert_eq!(
+        heap.typed_array_index_value(typed, 0),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+    assert_eq!(
+        heap.typed_array_set_index(typed, 0, &Value::Number(1.0)),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+    assert_eq!(
+        heap.shared_typed_array_atomic_modify(typed, 0, |value| (None, value)),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+    assert_eq!(
+        heap.typed_array_atomic_modify(typed, 0, |value| (None, value)),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+}
+
+#[test]
+fn buffer_view_construction_and_byte_ranges_reject_detachment_and_overflow() {
+    let mut heap = Heap::default();
+    let buffer = heap.alloc_array_buffer(4, None).unwrap();
+    assert_eq!(
+        heap.array_buffer_copy(buffer, usize::MAX, 1),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.array_buffer_copy(buffer, 3, 2),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.array_buffer_write(buffer, usize::MAX, &[1]),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(
+        heap.array_buffer_write(buffer, 3, &[1, 2]),
+        Err(HeapError::InvalidBufferRange)
+    );
+    assert_eq!(heap.array_buffer_copy(buffer, 0, 4), Ok(vec![0; 4]));
+    heap.detach_array_buffer(buffer).unwrap();
+    assert_eq!(
+        heap.alloc_data_view(buffer, 0, 0, false, None),
+        Err(HeapError::DetachedArrayBuffer)
+    );
+    assert_eq!(
+        heap.alloc_typed_array(buffer, 0, 0, false, TypedArrayKind::Uint8, None),
+        Err(HeapError::DetachedArrayBuffer)
+    );
+}
+
+#[test]
+fn only_a_length_tracking_view_of_a_growable_shared_buffer_can_gain_indices() {
+    let mut heap = Heap::default();
+    let shared = heap.alloc_shared_array_buffer(2, Some(4), None).unwrap();
+    let fixed = heap
+        .alloc_typed_array(shared, 0, 2, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    let tracking = heap
+        .alloc_typed_array(shared, 0, 0, true, TypedArrayKind::Uint8, None)
+        .unwrap();
+    assert_eq!(heap.typed_array_prevent_extensions_allowed(fixed), Ok(true));
+    assert_eq!(
+        heap.typed_array_prevent_extensions_allowed(tracking),
+        Ok(false)
+    );
+    let ordinary = heap.alloc_array_buffer(2, None).unwrap();
+    let plain_view = heap
+        .alloc_typed_array(ordinary, 0, 2, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    assert_eq!(
+        heap.shared_typed_array_atomic_modify(plain_view, 0, |value| (None, value)),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+}
+
+#[test]
+fn numeric_index_keys_reject_ill_formed_utf16_and_noncanonical_spellings() {
+    let ill_formed = PropertyName::String(JsString::from_code_units(vec![0xd800]));
+    assert_eq!(binary_data::typed_array_numeric_key(&ill_formed), None);
+    assert_eq!(
+        binary_data::typed_array_numeric_key(&"9007199254740991".into()),
+        Some(TypedArrayNumericKey::Index(9_007_199_254_740_991))
+    );
+    assert_eq!(binary_data::typed_array_numeric_key(&"01".into()), None);
+    assert_eq!(binary_data::ecmascript_number_string(0.0), "0");
+    assert_eq!(
+        binary_data::normalize_scientific_rendering("1e21".into()),
+        "1e+21"
+    );
+    assert_eq!(
+        binary_data::normalize_scientific_rendering("-1.5e-7".into()),
+        "-1.5e-7"
+    );
+    assert_eq!(binary_data::normalize_scientific_rendering("0".into()), "0");
+    assert_eq!(binary_data::scientific_to_fixed("1.0e2147483647"), None);
+    assert_eq!(binary_data::f64_to_f16_bits(1.0006), 0x3c01);
+    assert_eq!(binary_data::f64_to_f16_bits(1.5 * 2f64.powi(-24)), 0x0002);
+}
