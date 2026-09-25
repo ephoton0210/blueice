@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.2.1.5.4.** Prove bounded values and denial on real
-Launcher-supervised classic/module root and nested BlueTS debugger sockets.
+**Current leaf: C2.2.1.5.4.2.** Prove value denial and every preview budget on
+real Launcher-supervised BlueTS debugger sockets.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -336,6 +336,8 @@ channel with explicit owner/client grants.
             - [x] **C2.2.1.5.3.2.2.1** Build and test the core-internal value read: gate an exact same-stream scope receipt and pause incarnation, re-read the active scope, invoke the already validated child proxy, and remint an independently budgeted public snapshot. Do not add wire variants or alter v36 availability. Exact core-frame and slot routing, cross-stream/old-pause/forged-slot denial, moved-frame rejection, lossless payload, and all remint budgets pass two focused tests, all 295 engine library tests, and workspace Clippy.
             - [x] **C2.2.1.5.3.2.2.2** Bind the owner/client grant to Hello, wire the complete GetValue/Value dispatch and receipt recording, advertise only live granted BoundedValues, bump to v37, and prove negotiation, denial, and limits before checking off C2.2.1.5.3.2.2 and its parents. IPC 108/108 and engine 296/296 pass; a real core socket proves unrequested versus separately owner-granted HelloAck, the Launcher cutover endpoint passes, and workspace Clippy passes. Mock public dispatch proves missing/cross-stream/stale-pause denial, exact Scopes receipt, moved-frame rejection and lossless preview.
       - [ ] **C2.2.1.5.4** Prove classic/module root and nested value reads, cross-stream and stale-pause denial, forged slots, and all preview budgets on real Launcher-supervised BlueTS sockets; then check off C2.2.1.5 and C2.2.1.
+        - [x] **C2.2.1.5.4.1** Prove exact granted classic/module nested and caller-root reads, then resumed root reads, through the real public Launcher-supervised socket. A real public v37 socket with independent owner/client grant reads lossless numeric slots from each nested child, its waiting caller root, and its resumed root; both classic and module paths pass.
+        - [ ] **C2.2.1.5.4.2** Prove cross-stream and stale-pause denial, forged slots, and all preview budgets on real Launcher-supervised BlueTS sockets; then check off C2.2.1.5.4 and its parents.
   - [ ] **C2.2.2** Refuse guessed handles, source text, and cross-realm references with a typed error.
 - [ ] **C2.3** Report an exception at its original BlueTS source position.
   - [ ] **C2.3.1** Map a thrown error's position to the original BlueTS span for classic, module, and nested frames.

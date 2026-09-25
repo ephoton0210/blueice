@@ -20,7 +20,8 @@ use blueice_ipc::debugger::{
     DebuggerMetadataCapabilitySelection, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
     DebuggerRequest, DebuggerSafePoint, DebuggerStackCoordinatesTarget,
     DebuggerStaticMetadataSafePointSpanTarget, DebuggerStaticMetadataSourceId,
-    DebuggerStaticMetadataSymbolKind, DEBUGGER_PROTOCOL_VERSION,
+    DebuggerStaticMetadataSymbolKind, DebuggerValuePreview, DebuggerValueTarget,
+    DEBUGGER_PROTOCOL_VERSION,
 };
 use blueice_ipc::{read_server_message, write_client_message, ClientMessage, ServerMessage};
 use blueice_launcher::control::{
@@ -47,6 +48,7 @@ const MODULE_BLUETS_SOURCE: &str = "/* 🚀 */\r\nexport const moduleAnswer: num
 const MODULE_STEP_BLUETS_SOURCE: &str =
     "let first: number = 1; let second: number = first + 1; export const answer: number = second + 1;";
 const STACK_COORDINATE_BLUETS_SOURCE: &str = "/* 🚀 */ function inner(a: number): number { let value: number = a + 1; return value; } globalThis.answer = inner(3);";
+const BOUNDED_VALUE_BLUETS_SOURCE: &str = "let rootValue: number = 9; function inner(a: number): number { let childValue: number = a + 1; return childValue; } globalThis.answer = inner(3) + rootValue;";
 
 fn unique_path(label: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -87,6 +89,7 @@ fn clearing_gatekeeper() -> PathBuf {
 /// widening the public debugger test policy as capabilities are added.
 #[derive(Default)]
 struct StaticMetadataPolicy {
+    bounded_values: bool,
     inventory: bool,
     summary: bool,
     source_inventory: bool,
@@ -156,6 +159,9 @@ impl LauncherProcess {
             "--frame-dir",
             frame_dir.to_str().unwrap(),
         ]);
+        if policy.bounded_values {
+            command.arg("--debugger-bounded-values");
+        }
         if policy.inventory {
             command.arg("--debugger-static-metadata-inventory");
         }
@@ -472,6 +478,53 @@ fn arm_first_nested_frame(
     (program, frame)
 }
 
+fn find_number_value(
+    debugger: &mut UnixStream,
+    program: DebuggerProgram,
+    frame: Option<blueice_ipc::debugger::DebuggerFrame>,
+    frame_index: u32,
+    safe_point: DebuggerSafePoint,
+    expected: f64,
+) -> Option<DebuggerValueTarget> {
+    let DebuggerReply::Scopes(scopes) = debugger_request(
+        debugger,
+        DebuggerRequest::GetScopes {
+            program,
+            frame,
+            frame_index,
+            expected_safe_point: safe_point,
+            max_scope_entries: 256,
+        },
+    ) else {
+        panic!("the exact paused frame must expose its scope slots");
+    };
+    assert_eq!(scopes.safe_point, safe_point);
+    for scope_entry in scopes.entries {
+        let target = DebuggerValueTarget {
+            program,
+            frame,
+            frame_index,
+            safe_point,
+            scope_entry,
+        };
+        match debugger_request(debugger, DebuggerRequest::GetValue { target }) {
+            DebuggerReply::Value(snapshot) => {
+                assert_eq!(snapshot.target, target);
+                assert!(snapshot.is_well_formed());
+                if snapshot.preview == DebuggerValuePreview::NumberBits(expected.to_bits()) {
+                    return Some(target);
+                }
+            }
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                ..
+            } => {}
+            other => panic!("exact receipted BlueTS value read must not fail: {other:?}"),
+        }
+    }
+    None
+}
+
 fn serve_two_classic_documents(listener: TcpListener) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         for _ in 0..2 {
@@ -752,6 +805,179 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
         "launcher shutdown must remove its generation frame state"
     );
     let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
+    for (mime, slug) in [
+        ("application/x-blueice-typescript", "classic"),
+        ("application/x-blueice-typescript-module", "module"),
+    ] {
+        let gatekeeper_socket = clearing_gatekeeper();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let fixture = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let body = format!(
+                "<main>{slug}-bounded-values</main><script type=\"{mime}\">{BOUNDED_VALUE_BLUETS_SOURCE}</script>"
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        });
+        let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+            &gatekeeper_socket,
+            StaticMetadataPolicy {
+                bounded_values: true,
+                ..StaticMetadataPolicy::default()
+            },
+        );
+        let mut browser = launcher.connect_browser();
+        blueice_ipc::client_handshake(&mut browser).unwrap();
+        navigate(&mut browser, &url);
+        fixture.join().unwrap();
+
+        let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::Hello {
+                    protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    requested_bounded_values: true,
+                    requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+                },
+            ),
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_bounded_values: true,
+                granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            }
+        );
+        let realm = one_realm(debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListPageRealms,
+        ));
+        let DebuggerReply::Capabilities(capabilities) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeCapabilities { realm },
+        ) else {
+            panic!("{slug} must report public debugger capabilities");
+        };
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::BoundedValues
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        let (program, frame) = arm_first_nested_frame(&mut debugger, realm);
+        let mut values_ready = false;
+        for _ in 0..96 {
+            let DebuggerReply::Stack(stack) = debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetStack {
+                    program,
+                    frame: Some(frame),
+                    max_frames: 2,
+                },
+            ) else {
+                panic!("{slug} nested frame must expose a bounded stack");
+            };
+            assert_eq!(stack.safe_points.len(), 2);
+            values_ready = find_number_value(
+                &mut debugger,
+                program,
+                Some(frame),
+                0,
+                stack.safe_points[0],
+                3.0,
+            )
+            .is_some()
+                && find_number_value(
+                    &mut debugger,
+                    program,
+                    Some(frame),
+                    1,
+                    stack.safe_points[1],
+                    9.0,
+                )
+                .is_some();
+            if values_ready {
+                break;
+            }
+            assert_eq!(
+                debugger_request(
+                    &mut debugger,
+                    DebuggerRequest::StepNestedInstruction { frame },
+                ),
+                DebuggerReply::NestedStepRequested { frame }
+            );
+            let (same_frame, _) = await_nested_paused_execution(&mut debugger, program);
+            assert_eq!(same_frame, frame);
+        }
+        assert!(
+            values_ready,
+            "{slug} nested and caller-root values must be readable"
+        );
+
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::ResumeNestedExecution { frame },
+            ),
+            DebuggerReply::NestedResumeRequested { frame }
+        );
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetExecutionState { program },
+            ) {
+                DebuggerReply::ExecutionState {
+                    state: DebuggerExecutionState::Paused { .. },
+                    ..
+                } => break,
+                DebuggerReply::ExecutionState {
+                    state: DebuggerExecutionState::NestedResuming { frame: same },
+                    ..
+                } if same == frame && Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                other => panic!("{slug} nested return must rejoin paused root: {other:?}"),
+            }
+        }
+        let DebuggerReply::Stack(root_stack) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStack {
+                program,
+                frame: None,
+                max_frames: 1,
+            },
+        ) else {
+            panic!("{slug} returned root must expose its paused stack");
+        };
+        assert_eq!(root_stack.safe_points.len(), 1);
+        assert!(
+            find_number_value(
+                &mut debugger,
+                program,
+                None,
+                0,
+                root_stack.safe_points[0],
+                9.0,
+            )
+            .is_some(),
+            "{slug} returned root must retain its own binding"
+        );
+        drop(debugger);
+        launcher.shutdown();
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
 }
 
 #[test]
@@ -2076,6 +2302,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             safe_point_span: false,
             source_breakpoint: false,
             source_span_step: false,
+            bounded_values: false,
             contract_location: true,
             symbol_type: true,
             symbol_contract: true,

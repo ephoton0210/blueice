@@ -1136,6 +1136,15 @@ All 108 IPC and 296 engine library tests, format, and workspace Clippy pass.
 The Launcher-supervised classic/module root/nested and budget regressions
 remain C2.2.1.5.4.
 
+**Real public value reads (C2.2.1.5.4.1):** The Launcher-supervised
+classic and module fixtures now enable the independent owner value policy and
+request the v37 client grant. Through only the public debugger socket, each
+test arms a nested BlueTS entry, receipts exact current Scopes slots, reads
+lossless nested and waiting caller-root numbers, then resumes the child and
+reads the returned root's own number from a newly receipted slot. Both paths
+pass the focused real-process test. Cross-stream, stale-pause, forged-slot,
+and complete budget denials remain C2.2.1.5.4.2.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
