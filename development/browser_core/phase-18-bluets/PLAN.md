@@ -1058,6 +1058,22 @@ The wire has no expression, source-text, arbitrary object, or property-path
 selector. C2.2.1.5.2 installs the internal receipt boundary, C2.2.1.5.3
 installs the complete public route, and C2.2.1.5.4 proves it on real sockets.
 
+**Core-local scope receipt groundwork (C2.2.1.5.2):** The existing
+per-debugger-stream authorization now owns a bounded set of exact Scopes
+slot targets, with an independent core pause-incarnation number. The set
+remembers no value and cannot be supplied by the client. A snapshot with
+duplicate or malformed entries fails atomically, as does any insertion past
+4,096 distinct tuples. A new incarnation clears the stream's old tuples;
+another stream never shares them. The core request receiver increments its
+incarnation on successful arm/step/resume control replies before a later
+request can use an old receipt. Counter exhaustion enters permanent deny
+rather than wrapping to a previously valid incarnation. The public Scopes
+handler does not yet record receipts because no value grant exists; the
+complete guarded dispatch in C2.2.1.5.3 will activate observation. Public
+debugger v36, Hello, and BoundedValues Planned remain unchanged. Two focused
+IPC receipt/budget tests, the engine invalidation test, and all-target
+workspace Clippy pass.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -50,6 +50,7 @@ use blueice_ipc::debugger::{
     DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_SYMBOLS,
     DEBUGGER_STATIC_METADATA_MAX_TYPES,
 };
+use std::cell::Cell;
 use std::io;
 use std::sync::mpsc;
 
@@ -91,7 +92,12 @@ const MAX_STATIC_METADATA_HANDLES_PER_PROGRAM: usize = 1;
 pub struct DebuggerRequestSender(mpsc::Sender<DebuggerRequestEnvelope>);
 
 /// Receiver owned exclusively by the core session thread.
-pub struct DebuggerRequestReceiver(mpsc::Receiver<DebuggerRequestEnvelope>);
+pub struct DebuggerRequestReceiver {
+    requests: mpsc::Receiver<DebuggerRequestEnvelope>,
+    /// Shared by every debugger socket routed through this core session.
+    /// Zero is terminal exhaustion, never a valid pause incarnation.
+    pause_incarnation: Cell<u64>,
+}
 
 struct DebuggerRequestEnvelope {
     request: DebuggerRequest,
@@ -105,7 +111,10 @@ pub fn debugger_request_channel() -> (DebuggerRequestSender, DebuggerRequestRece
     let (sender, receiver) = mpsc::channel();
     (
         DebuggerRequestSender(sender),
-        DebuggerRequestReceiver(receiver),
+        DebuggerRequestReceiver {
+            requests: receiver,
+            pause_incarnation: Cell::new(1),
+        },
     )
 }
 
@@ -154,6 +163,27 @@ impl DebuggerRequestSender {
 }
 
 impl DebuggerRequestReceiver {
+    fn invalidate_pause_receipts_for(&self, reply: &DebuggerReply) {
+        if matches!(
+            reply,
+            DebuggerReply::BreakpointArmed { .. }
+                | DebuggerReply::RootSafePointBreakpointArmed { .. }
+                | DebuggerReply::NestedSafePointBreakpointArmed { .. }
+                | DebuggerReply::ExecutionResumed { .. }
+                | DebuggerReply::ExecutionStepRequested { .. }
+                | DebuggerReply::NestedStepRequested { .. }
+                | DebuggerReply::NestedResumeRequested { .. }
+                | DebuggerReply::ExecutionSourceSpanStepRequested { .. }
+        ) {
+            let current = self.pause_incarnation.get();
+            self.pause_incarnation.set(if current == 0 {
+                0
+            } else {
+                current.checked_add(1).unwrap_or(0)
+            });
+        }
+    }
+
     /// Resolves a bounded number of worker requests against the current core
     /// state. Replies are best effort: a disconnected debugger client cannot
     /// interrupt rendering or a frontend session.
@@ -167,7 +197,7 @@ impl DebuggerRequestReceiver {
         let mut advance_pending_entry = false;
         let mut preserve_execution_transition = false;
         while dispatched < MAX_DEBUGGER_REQUESTS_PER_SESSION_TICK {
-            let Ok(envelope) = self.0.try_recv() else {
+            let Ok(envelope) = self.requests.try_recv() else {
                 break;
             };
             let requests_execution_transition = matches!(
@@ -188,6 +218,7 @@ impl DebuggerRequestReceiver {
                 envelope.metadata_session.as_ref(),
                 envelope.request,
             );
+            self.invalidate_pause_receipts_for(&reply);
             // A rejected arm/resume request must not consume the pending
             // declaration's only discovery turn. Otherwise an invalid child
             // or module target could race the valid root target by causing
@@ -8035,6 +8066,32 @@ mod tests {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn successful_execution_controls_invalidate_scope_pause_incarnation() {
+        let (_, realm) = loaded_tabs();
+        let (_, receiver) = debugger_request_channel();
+        let program = DebuggerProgram {
+            realm,
+            program_handle: 1,
+            program_generation: 1,
+        };
+        assert_eq!(receiver.pause_incarnation.get(), 1);
+        receiver.invalidate_pause_receipts_for(&DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: String::new(),
+        });
+        assert_eq!(receiver.pause_incarnation.get(), 1);
+        receiver.invalidate_pause_receipts_for(&DebuggerReply::ExecutionResumed { program });
+        assert_eq!(receiver.pause_incarnation.get(), 2);
+        receiver.invalidate_pause_receipts_for(&DebuggerReply::ExecutionStepRequested { program });
+        assert_eq!(receiver.pause_incarnation.get(), 3);
+        receiver.pause_incarnation.set(u64::MAX);
+        receiver.invalidate_pause_receipts_for(&DebuggerReply::ExecutionResumed { program });
+        assert_eq!(receiver.pause_incarnation.get(), 0);
+        receiver.invalidate_pause_receipts_for(&DebuggerReply::ExecutionResumed { program });
+        assert_eq!(receiver.pause_incarnation.get(), 0);
     }
 
     #[test]

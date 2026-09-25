@@ -73,7 +73,7 @@
 
 use crate::compiler::CompilerContractValue;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::io::{self, Read, Write};
 use std::sync::{Arc, Mutex};
 
@@ -842,7 +842,7 @@ impl DebuggerStackCoordinates {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DebuggerScopeEntry {
     pub slot_ordinal: u32,
     pub scope_depth: u32,
@@ -858,6 +858,56 @@ pub struct DebuggerScopeSnapshot {
     pub safe_point: DebuggerSafePoint,
     pub entries: Vec<DebuggerScopeEntry>,
     pub scope_truncated: bool,
+}
+
+/// Exact selector for a slot previously emitted by Scopes on this stream.
+/// It is not yet a debugger request and carries no heap-object handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DebuggerValueTarget {
+    pub program: DebuggerProgram,
+    pub frame: Option<DebuggerFrame>,
+    pub frame_index: u32,
+    pub safe_point: DebuggerSafePoint,
+    pub scope_entry: DebuggerScopeEntry,
+}
+
+impl DebuggerValueTarget {
+    pub fn is_well_formed(self) -> bool {
+        self.program.is_well_formed()
+            && self.safe_point.is_well_formed()
+            && self.safe_point.program == self.program
+            && self.frame_index < DEBUGGER_MAX_STACK_FRAMES
+            && match self.frame {
+                None => self.frame_index == 0 && self.safe_point.code_unit_ordinal == 0,
+                Some(frame) => {
+                    frame.is_well_formed()
+                        && frame.program == self.program
+                        && (self.frame_index != 0 || frame.matches_safe_point(self.safe_point))
+                }
+            }
+    }
+}
+
+impl DebuggerScopeSnapshot {
+    fn receipt_targets(&self) -> Option<HashSet<DebuggerValueTarget>> {
+        if self.entries.len() > DEBUGGER_MAX_SCOPE_ENTRIES as usize {
+            return None;
+        }
+        let mut targets = HashSet::with_capacity(self.entries.len());
+        for scope_entry in &self.entries {
+            let target = DebuggerValueTarget {
+                program: self.program,
+                frame: self.frame,
+                frame_index: self.frame_index,
+                safe_point: self.safe_point,
+                scope_entry: *scope_entry,
+            };
+            if !target.is_well_formed() || !targets.insert(target) {
+                return None;
+            }
+        }
+        Some(targets)
+    }
 }
 
 /// Native debugger features that a host may explicitly advertise.
@@ -1834,6 +1884,10 @@ pub struct DebuggerCapabilities {
 #[derive(Debug, Clone)]
 pub struct DebuggerMetadataSessionAuthorization {
     granted: DebuggerMetadataCapabilityManifest,
+    /// Exact Scopes entries emitted on this stream during one core-owned
+    /// pause incarnation. This is not an authority until the public value
+    /// grant and dispatcher are installed.
+    observed_scope_entries: Arc<Mutex<DebuggerScopeReceipts>>,
     /// Bounded per-stream receipts for opaque metadata handles emitted by the
     /// public inventory operation. A handle must not become a summary or
     /// source-inventory target merely because its numeric fields are guessed.
@@ -1855,6 +1909,14 @@ pub struct DebuggerMetadataSessionAuthorization {
     /// cannot turn a guessed ID into a child metadata probe.
     observed_contract_identities: Arc<Mutex<BTreeSet<DebuggerMetadataContractIdentity>>>,
 }
+
+#[derive(Debug, Default)]
+struct DebuggerScopeReceipts {
+    pause_incarnation: u64,
+    targets: HashSet<DebuggerValueTarget>,
+}
+
+pub const DEBUGGER_SESSION_MAX_OBSERVED_SCOPE_ENTRIES: usize = 4_096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct DebuggerMetadataIdentity {
@@ -2016,6 +2078,42 @@ pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_SYMBOL_IDENTITIES: usize = 65_5
 pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_CONTRACT_IDENTITIES: usize = 65_536;
 
 impl DebuggerMetadataSessionAuthorization {
+    /// Atomically receipt every slot actually returned by one Scopes reply.
+    /// A changed core pause incarnation drops old receipts first, even when
+    /// the new reply is malformed or would exceed the fixed stream budget.
+    pub fn observe_scopes(&self, snapshot: &DebuggerScopeSnapshot, incarnation: u64) -> bool {
+        let Ok(mut observed) = self.observed_scope_entries.lock() else {
+            return false;
+        };
+        if incarnation == 0 || incarnation < observed.pause_incarnation {
+            return false;
+        }
+        if observed.pause_incarnation != incarnation {
+            observed.targets.clear();
+            observed.pause_incarnation = incarnation;
+        }
+        let Some(targets) = snapshot.receipt_targets() else {
+            return false;
+        };
+        let new_count = targets.difference(&observed.targets).count();
+        if observed.targets.len().saturating_add(new_count)
+            > DEBUGGER_SESSION_MAX_OBSERVED_SCOPE_ENTRIES
+        {
+            return false;
+        }
+        observed.targets.extend(targets);
+        true
+    }
+
+    /// Checks one exact same-stream scope receipt from the current pause.
+    pub fn observed_scope(&self, target: DebuggerValueTarget, incarnation: u64) -> bool {
+        incarnation != 0
+            && target.is_well_formed()
+            && self.observed_scope_entries.lock().is_ok_and(|observed| {
+                observed.pause_incarnation == incarnation && observed.targets.contains(&target)
+            })
+    }
+
     /// Whether this session negotiated one exact metadata capability. A
     /// handler must also require the per-realm authorization below; session
     /// negotiation alone does not prove a realm can currently supply data.
@@ -2227,6 +2325,7 @@ pub fn metadata_session_authorization(
 
     Some(DebuggerMetadataSessionAuthorization {
         granted: granted_metadata_capabilities.clone(),
+        observed_scope_entries: Arc::new(Mutex::new(DebuggerScopeReceipts::default())),
         observed_metadata_identities: Arc::new(Mutex::new(BTreeSet::new())),
         observed_source_identities: Arc::new(Mutex::new(BTreeSet::new())),
         observed_type_identities: Arc::new(Mutex::new(BTreeSet::new())),
@@ -5122,6 +5221,116 @@ mod tests {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+    }
+
+    #[test]
+    fn scope_receipts_are_exact_stream_local_and_pause_bound() {
+        let hello = hello(DebuggerMetadataCapabilityManifest::empty());
+        let ack = negotiate(&hello, &DebuggerMetadataCapabilityManifest::empty());
+        let session = metadata_session_authorization(&hello, &ack).unwrap();
+        let other = metadata_session_authorization(&hello, &ack).unwrap();
+        let program = DebuggerProgram {
+            realm: realm(),
+            program_handle: 12,
+            program_generation: 5,
+        };
+        let snapshot = DebuggerScopeSnapshot {
+            program,
+            frame: None,
+            frame_index: 0,
+            safe_point: DebuggerSafePoint {
+                program,
+                code_unit_ordinal: 0,
+                bytecode_offset: 8,
+            },
+            entries: vec![DebuggerScopeEntry {
+                slot_ordinal: 512,
+                scope_depth: 1,
+            }],
+            scope_truncated: false,
+        };
+        let target = snapshot
+            .receipt_targets()
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+        assert!(!session.observed_scope(target, 1));
+        assert!(session.observe_scopes(&snapshot, 1));
+        assert!(session.observed_scope(target, 1));
+        assert!(session.clone().observed_scope(target, 1));
+        assert!(!other.observed_scope(target, 1));
+        assert!(!session.observed_scope(
+            DebuggerValueTarget {
+                scope_entry: DebuggerScopeEntry {
+                    scope_depth: 2,
+                    ..target.scope_entry
+                },
+                ..target
+            },
+            1
+        ));
+        assert!(!session.observed_scope(target, 2));
+        assert!(session.observe_scopes(&snapshot, 2));
+        assert!(session.observed_scope(target, 2));
+        assert!(!session.observe_scopes(&snapshot, 1));
+        assert!(!session.observed_scope(target, 1));
+        assert!(!session.observe_scopes(
+            &DebuggerScopeSnapshot {
+                entries: vec![target.scope_entry, target.scope_entry],
+                ..snapshot.clone()
+            },
+            2
+        ));
+        assert!(!session.observe_scopes(&snapshot, 0));
+        assert!(!session.observed_scope(target, 0));
+    }
+
+    #[test]
+    fn scope_receipt_budget_rejects_a_whole_new_snapshot() {
+        let hello = hello(DebuggerMetadataCapabilityManifest::empty());
+        let ack = negotiate(&hello, &DebuggerMetadataCapabilityManifest::empty());
+        let session = metadata_session_authorization(&hello, &ack).unwrap();
+        let program = DebuggerProgram {
+            realm: realm(),
+            program_handle: 12,
+            program_generation: 5,
+        };
+        let mut snapshot = DebuggerScopeSnapshot {
+            program,
+            frame: None,
+            frame_index: 0,
+            safe_point: DebuggerSafePoint {
+                program,
+                code_unit_ordinal: 0,
+                bytecode_offset: 8,
+            },
+            entries: Vec::new(),
+            scope_truncated: true,
+        };
+        for batch in 0..(DEBUGGER_SESSION_MAX_OBSERVED_SCOPE_ENTRIES / 256) {
+            snapshot.entries = (0..256)
+                .map(|index| DebuggerScopeEntry {
+                    slot_ordinal: (batch * 256 + index) as u32,
+                    scope_depth: 0,
+                })
+                .collect();
+            assert!(session.observe_scopes(&snapshot, 1));
+        }
+        snapshot.entries = vec![DebuggerScopeEntry {
+            slot_ordinal: DEBUGGER_SESSION_MAX_OBSERVED_SCOPE_ENTRIES as u32,
+            scope_depth: 0,
+        }];
+        let excess = snapshot
+            .receipt_targets()
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+        assert!(!session.observe_scopes(&snapshot, 1));
+        assert!(!session.observed_scope(excess, 1));
+        assert!(session.observe_scopes(&snapshot, 2));
+        assert!(session.observed_scope(excess, 2));
     }
 
     #[test]
