@@ -436,7 +436,7 @@ impl BlueJsProgramRegistry {
     fn install_with_ast_nodes(
         &mut self,
         source: BlueJsSourceIdentity,
-        bytecode: Bytecode,
+        mut bytecode: Bytecode,
         ast_descriptors: Vec<AstNodeDescriptor>,
     ) -> Result<BlueJsProgramHandle, BlueJsProgramDebugError> {
         let generation = BlueJsProgramGeneration(self.next_generation);
@@ -446,7 +446,7 @@ impl BlueJsProgramRegistry {
             .ok_or(BlueJsProgramDebugError::GenerationExhausted)?;
         let handle = BlueJsProgramHandle { generation };
         let mut code_units = Vec::new();
-        collect_code_units(&bytecode, generation, &mut code_units)?;
+        collect_code_units(&mut bytecode, generation, &mut code_units)?;
         let ast_nodes = ast_descriptors
             .into_iter()
             .enumerate()
@@ -586,12 +586,13 @@ impl BlueJsProgramRegistry {
 }
 
 fn collect_code_units(
-    bytecode: &Bytecode,
+    bytecode: &mut Bytecode,
     generation: BlueJsProgramGeneration,
     code_units: &mut Vec<BlueJsCodeUnitInfo>,
 ) -> Result<(), BlueJsProgramDebugError> {
     let ordinal = u32::try_from(code_units.len())
         .map_err(|_| BlueJsProgramDebugError::CodeUnitLimitExceeded)?;
+    bytecode.debugger_code_unit_ordinal = Some(ordinal);
     let instruction_offsets = bytecode
         .instructions()
         .map(|instruction| {
@@ -606,8 +607,8 @@ fn collect_code_units(
         },
         instruction_offsets,
     });
-    for child in bytecode.child_code_units() {
-        collect_code_units(child, generation, code_units)?;
+    for child in &mut bytecode.functions {
+        collect_code_units(std::rc::Rc::make_mut(child), generation, code_units)?;
     }
     Ok(())
 }
@@ -673,6 +674,63 @@ mod tests {
         registry
             .validate_safe_point(handle, nested_safe_point)
             .unwrap();
+    }
+
+    #[test]
+    fn installed_bytecode_carries_exact_ordinals_for_duplicate_shaped_closures() {
+        let program =
+            script("function first(){return 1;} function second(){return 1;} first() + second();");
+        let bare = program.compile().unwrap();
+        assert_eq!(bare.debugger_code_unit_ordinal, None);
+        assert!(bare
+            .child_code_units()
+            .all(|child| child.debugger_code_unit_ordinal.is_none()));
+        let mut registry = BlueJsProgramRegistry::default();
+        let precompiled = registry
+            .install_precompiled(source("page:///duplicate.js", "sha256:precompiled"), bare)
+            .unwrap();
+        let recompiled = registry
+            .install(
+                source("page:///duplicate.js", "sha256:recompiled"),
+                &program,
+            )
+            .unwrap();
+        assert_ne!(precompiled.generation(), recompiled.generation());
+        for handle in [precompiled, recompiled] {
+            let compiled = registry.get(handle).unwrap();
+            let code = compiled.bytecode();
+            let children = code.child_code_units().collect::<Vec<_>>();
+            assert_eq!(compiled.code_units().len(), 3);
+            assert_eq!(code.debugger_code_unit_ordinal, Some(0));
+            assert_eq!(children[0].bytes(), children[1].bytes());
+            assert_eq!(children[0].debugger_code_unit_ordinal, Some(1));
+            assert_eq!(children[1].debugger_code_unit_ordinal, Some(2));
+            for (ordinal, unit) in compiled.code_units().iter().enumerate() {
+                assert_eq!(unit.id().generation(), handle.generation());
+                assert_eq!(unit.id().ordinal(), ordinal as u32);
+            }
+            assert_eq!(
+                code.clone().functions[1].debugger_code_unit_ordinal,
+                Some(2)
+            );
+            assert_eq!(Vm::default().execute(code).unwrap(), Value::Number(2.0));
+        }
+        let deep = registry
+            .install(
+                source("page:///deep.js", "sha256:deep"),
+                &script("function outer(){function inner(){return 3;} return inner();} outer();"),
+            )
+            .unwrap();
+        let deep_code = registry.get(deep).unwrap().bytecode();
+        assert_eq!(deep_code.debugger_code_unit_ordinal, Some(0));
+        let outer = deep_code.child_code_units().next().unwrap();
+        assert_eq!(outer.debugger_code_unit_ordinal, Some(1));
+        let inner = outer.child_code_units().next().unwrap();
+        assert_eq!(inner.debugger_code_unit_ordinal, Some(2));
+        assert_eq!(
+            Vm::default().execute(deep_code).unwrap(),
+            Value::Number(3.0)
+        );
     }
 
     #[test]

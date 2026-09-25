@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.2.1.2.** Retain and step one synchronous nested frame in
-BlueJS without replaying its caller.
+**Current leaf: C1.2.1.2.2.** Capture one direct synchronous caller/child
+invocation at an exact inner instruction.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -262,6 +262,9 @@ channel with explicit owner/client grants.
   - [ ] **C1.2.1** Pause inside a nested call frame and step within that frame.
     - [x] **C1.2.1.1** Specify the first nested-frame pause/step boundary, exact invocation identity, continuation lifetime, and fail-closed unsupported cases in PLAN.md. The decision distinguishes static code-unit safe points from invocation handles, constrains the initial synchronous direct-call shape, requires GC-visible parent/child continuations and exact successor steps, and reserves protocol widening until the entire route is wired.
     - [ ] **C1.2.1.2** Retain one synchronous nested interpreted call and its caller at a verified inner safe point in BlueJS; step exactly one instruction in that same invocation, preserving operands, handlers, GC roots, and caller effects.
+      - [x] **C1.2.1.2.1** Stamp each installed root/closure bytecode with the exact pre-order code-unit ordinal used by the safe-point inventory, including precompiled BlueTS input; test duplicate-shaped closures and reinstallations. Registry installation now stamps the bytecode tree while collecting its safe-point inventory; bare compiled bytecode remains untagged. A regression checks distinct ordinals for identical closure bodies, nested descendants, cloned code, separate generations, and both structured and precompiled installs. All 507 non-environmental BlueJS library tests pass.
+      - [ ] **C1.2.1.2.2** Capture one direct synchronous caller/child invocation at a selected verified inner instruction without treating suspension as a catchable JavaScript error; keep both frames GC-visible and reject unsupported call shapes.
+      - [ ] **C1.2.1.2.3** Step the retained child by one actual instruction under an invocation serial, restore the same child/caller on a successor, and integrate one terminal child result without replaying its call site.
     - [ ] **C1.2.1.3** Add an opaque, generation-bound active-frame debugger identity and route nested pause/step through the page runtime, child, page-host IPC, and public debugger protocol without conflating it with a static code unit.
     - [ ] **C1.2.1.4** Prove the nested pause and same-frame instruction successor on a real BlueTS page through the public debugger socket; keep unsupported call shapes unavailable.
   - [ ] **C1.2.2** Resume that same frame; reject a stale frame identity after it returns.

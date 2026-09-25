@@ -611,6 +611,26 @@ unavailable on hosts lacking the continuation. C1.2.2 adds one-shot resume of
 that same active frame; C1.2.3 proves returned-frame, cross-tab and predecessor-
 child rejection.
 
+**Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
+pre-order code-unit ordinal into installed bytecode and each closure descendant
+before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
+runtime-code match even when two functions have identical instructions; the
+generation still belongs to the page program, not to the ordinal alone.
+Then capture a direct synchronous caller and child at the selected inner
+instruction without passing a pause marker through JavaScript exception
+handling (C1.2.1.2.2). Finally step only that retained invocation and rejoin
+its caller once at terminal completion (C1.2.1.2.3). Each checkpoint needs a
+native regression before the public transport gains this control.
+
+**Installed code-unit identity (C1.2.1.2.1):** The debugger registry now
+assigns each root and closure bytecode its ordinal in the same traversal that
+builds the immutable safe-point inventory. Bare compiler output has no such
+tag; both structured-program and precompiled BlueTS installations receive it.
+Equal bytecode bodies retain distinct ordinals, deeper closure descendants
+keep pre-order identity, and cloning preserves the tag. The ordinal does not
+contain a generation or identify an invocation by itself. The registry tests,
+BlueJS Clippy, and 507 non-environmental library tests pass.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
