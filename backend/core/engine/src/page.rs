@@ -18,6 +18,7 @@
 //! it" ([`Page::render_visible`]), not overflow/clipping during layout
 //! itself.
 
+use crate::assistant_page::{assistant_html, is_assistant_url, AssistantPanel};
 use crate::downloads_page::{downloads_html, is_downloads_url, DownloadsSource, DownloadsView};
 use crate::gatekeeper_settings_page::{
     gatekeeper_settings_html, is_gatekeeper_settings_url, GatekeeperSettingsSource,
@@ -70,6 +71,9 @@ pub struct Page {
     /// not need a process, in which case the page says it is unavailable.
     gatekeeper_settings: Option<Arc<GatekeeperSettingsSource>>,
     settings_notice: Option<SettingsNotice>,
+    /// Where `about:assistant` reads the shared list of assistant results;
+    /// `None` (isolated tests) renders the "not configured" page.
+    assistant_panel: Option<Arc<AssistantPanel>>,
     /// Live-translation substitutions for the current document, with the
     /// retained originals (`phase-7-local-ai/PLAN.md`). Empty when the page
     /// was not translated.
@@ -111,6 +115,7 @@ impl Page {
             downloads: None,
             gatekeeper_settings: None,
             settings_notice: None,
+            assistant_panel: None,
             translation: crate::translation::TranslationState::default(),
         }
     }
@@ -216,12 +221,41 @@ impl Page {
         self.gatekeeper_settings = source;
     }
 
+    /// Where `about:assistant` reads the assistant's results. Every tab of one
+    /// `core` shares one panel through [`crate::TabManager`].
+    pub fn set_assistant_panel(&mut self, panel: Option<Arc<AssistantPanel>>) {
+        self.assistant_panel = panel;
+    }
+
+    /// `about:assistant`'s HTML for `url` from the shared panel's current state.
+    fn assistant_panel_html(&self, url: &str) -> String {
+        let (entries, available) = match &self.assistant_panel {
+            Some(panel) => (panel.entries(), panel.is_available()),
+            None => (Vec::new(), false),
+        };
+        assistant_html(&entries, available, crate::credits::locale_from_url(url))
+    }
+
+    /// Re-renders this page from the panel's current state, keeping the scroll
+    /// position, when (and only when) it is showing `about:assistant`.
+    /// Returns whether it did, so the caller knows a fresh frame is due.
+    // Called by the session when a task finishes (step S4 of the panel checklist).
+    #[allow(dead_code)]
+    pub(crate) fn refresh_assistant_panel(&mut self) -> bool {
+        let Some(url) = self.url.clone().filter(|url| is_assistant_url(url)) else {
+            return false;
+        };
+        let html = self.assistant_panel_html(&url);
+        self.refresh_html(&html);
+        true
+    }
+
     pub fn gatekeeper_settings_source(&self) -> Option<&Arc<GatekeeperSettingsSource>> {
         self.gatekeeper_settings.as_ref()
     }
 
     /// Loads the built-in page for `url` if it is one (`about:blank`,
-    /// `about:credits`, `about:downloads`, `about:settings`), returning whether it was --
+    /// `about:credits`, `about:downloads`, `about:settings`, `about:assistant`), returning whether it was --
     /// never touching the network. The downloads page reads the downloads
     /// process over its socket, quickly and with a hard time bound (a
     /// hung process must not stall the session), and falls back to the
@@ -237,6 +271,8 @@ impl Page {
                 }
                 _ => downloads_html(&DownloadsView::Unavailable, locale),
             }
+        } else if is_assistant_url(url) {
+            self.assistant_panel_html(url)
         } else if is_gatekeeper_settings_url(url) {
             let locale = crate::credits::locale_from_url(url);
             let notice = self.settings_notice.take();
@@ -1944,6 +1980,47 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::thread;
+
+    #[test]
+    fn about_assistant_reads_the_shared_panel_and_refreshes_in_place() {
+        use crate::assistant_page::{AssistantPanel, PanelKind};
+        let panel = Arc::new(AssistantPanel::new());
+        panel.set_available(true);
+        let mut page = Page::new(320.0, 400.0);
+        page.set_assistant_panel(Some(panel.clone()));
+        assert!(page.load_built_in("about:assistant"));
+        assert_eq!(page.url(), Some("about:assistant"));
+        assert!(all_text(&page.render()).contains("Nothing here yet"));
+
+        panel.push(PanelKind::Summary, None, None, Ok("a fresh summary".into()));
+        assert!(page.refresh_assistant_panel());
+        assert!(all_text(&page.render()).contains("a fresh summary"));
+        assert_eq!(page.url(), Some("about:assistant"));
+    }
+
+    #[test]
+    fn only_a_page_showing_about_assistant_refreshes() {
+        let mut page = Page::new(320.0, 400.0);
+        page.load_html_str("<p>ordinary</p>", Some("https://example.com/".into()));
+        assert!(!page.refresh_assistant_panel());
+        assert_eq!(shown_text(&page), ["ordinary"]);
+        let mut blank = Page::new(320.0, 400.0);
+        assert!(!blank.refresh_assistant_panel());
+    }
+
+    #[test]
+    fn about_assistant_without_a_panel_says_it_is_not_configured() {
+        let mut page = Page::new(320.0, 400.0);
+        assert!(page.load_built_in("about:assistant"));
+        assert!(all_text(&page.render()).contains("No local assistant is configured"));
+    }
+
+    #[test]
+    fn about_assistant_honours_the_lang_parameter() {
+        let mut page = Page::new(320.0, 400.0);
+        assert!(page.load_built_in("about:assistant?lang=zh-TW"));
+        assert!(all_text(&page.render()).contains("助理"));
+    }
 
     #[test]
     fn new_page_is_blank_with_no_url() {

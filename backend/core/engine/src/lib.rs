@@ -13,6 +13,7 @@ pub mod credits;
 pub mod downloads_page;
 pub mod gatekeeper_settings_page;
 pub mod assistant_client;
+pub mod assistant_page;
 mod gatekeeper_client;
 mod page;
 mod page_text;

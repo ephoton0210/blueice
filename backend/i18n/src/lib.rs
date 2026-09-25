@@ -42,12 +42,14 @@ pub const SUPPORTED_LOCALES: &[&str] = &["en", "zh-TW"];
 
 fn resource_text(locale: &str, namespace: &str) -> Option<&'static str> {
     match (locale, namespace) {
+        ("en", "assistant") => Some(include_str!("../locales/en/assistant.ftl")),
         ("en", "credits") => Some(include_str!("../locales/en/credits.ftl")),
         ("en", "downloads") => Some(include_str!("../locales/en/downloads.ftl")),
         ("en", "frontend") => Some(include_str!("../locales/en/frontend.ftl")),
         ("en", "gatekeeper-settings") => {
             Some(include_str!("../locales/en/gatekeeper-settings.ftl"))
         }
+        ("zh-TW", "assistant") => Some(include_str!("../locales/zh-TW/assistant.ftl")),
         ("zh-TW", "credits") => Some(include_str!("../locales/zh-TW/credits.ftl")),
         ("zh-TW", "downloads") => Some(include_str!("../locales/zh-TW/downloads.ftl")),
         ("zh-TW", "frontend") => Some(include_str!("../locales/zh-TW/frontend.ftl")),
@@ -233,6 +235,18 @@ mod tests {
         "note-resume-unsafe",
         "segments-heading",
     ];
+    /// The `about:assistant` page (`phase-7-local-ai/PLAN.md`).
+    const ASSISTANT_KEYS: &[&str] = &[
+        "assistant-title",
+        "assistant-empty",
+        "assistant-unavailable",
+        "assistant-note",
+        "kind-summary",
+        "kind-organized",
+        "label-source",
+        "label-request",
+        "label-failed",
+    ];
     const GATEKEEPER_SETTINGS_KEYS: &[&str] = &[
         "title",
         "intro",
@@ -283,6 +297,7 @@ mod tests {
             ("credits", CREDITS_KEYS),
             ("frontend", FRONTEND_KEYS),
             ("downloads", DOWNLOADS_KEYS),
+            ("assistant", ASSISTANT_KEYS),
             ("gatekeeper-settings", GATEKEEPER_SETTINGS_KEYS),
         ] {
             for locale in SUPPORTED_LOCALES {

@@ -16,6 +16,7 @@
 //! un-reversed). What changes is that `core` now owns a collection of
 //! them instead of exactly one.
 
+use crate::assistant_page::AssistantPanel;
 use crate::downloads_page::DownloadsSource;
 use crate::gatekeeper_settings_page::GatekeeperSettingsSource;
 use crate::Page;
@@ -270,6 +271,9 @@ pub struct TabManager {
     /// in any of them.
     downloads: Option<Arc<DownloadsSource>>,
     gatekeeper_settings: Option<Arc<GatekeeperSettingsSource>>,
+    /// The results `about:assistant` shows, shared by every tab. Always
+    /// present; whether an assistant exists is the panel's own flag.
+    assistant_panel: Arc<AssistantPanel>,
     /// Whether leaving an entry retains a locally displayable page snapshot,
     /// rather than the default URL-only history record.
     history_snapshot_mode: HistorySnapshotMode,
@@ -312,11 +316,14 @@ impl TabManager {
         history_snapshot_mode: HistorySnapshotMode,
     ) -> Self {
         let default_tab = TabId(1);
+        let assistant_panel = Arc::new(AssistantPanel::new());
+        let mut first_page = Page::new(viewport_width, viewport_height);
+        first_page.set_assistant_panel(Some(assistant_panel.clone()));
         let mut tabs = HashMap::new();
         tabs.insert(
             default_tab,
             Tab {
-                page: Page::new(viewport_width, viewport_height),
+                page: first_page,
                 document_epoch: 0,
                 back: Vec::new(),
                 forward: Vec::new(),
@@ -335,6 +342,7 @@ impl TabManager {
             viewport_height,
             downloads: None,
             gatekeeper_settings: None,
+            assistant_panel,
             history_snapshot_mode,
             extension_navigation_block_rules: HashMap::new(),
             translation_endpoint: None,
@@ -593,6 +601,7 @@ impl TabManager {
         let mut page = Page::new(self.viewport_width, self.viewport_height);
         page.set_downloads_source(self.downloads.clone());
         page.set_gatekeeper_settings_source(self.gatekeeper_settings.clone());
+        page.set_assistant_panel(Some(self.assistant_panel.clone()));
         self.tabs.insert(
             id,
             Tab {
@@ -752,6 +761,28 @@ impl TabManager {
         deadline: std::time::Duration,
     ) {
         self.translation_endpoint = Some((socket, deadline));
+        self.assistant_panel.set_available(true);
+    }
+
+    /// The shared results behind every tab's `about:assistant`.
+    pub fn assistant_panel(&self) -> &Arc<AssistantPanel> {
+        &self.assistant_panel
+    }
+
+    /// Re-renders every tab currently showing `about:assistant` from the
+    /// panel's state and returns those tabs, so the caller can send each a
+    /// fresh frame.
+    // Called by the session when a task finishes (step S4 of the panel checklist).
+    #[allow(dead_code)]
+    pub(crate) fn refresh_assistant_panels(&mut self) -> Vec<TabId> {
+        let ids: Vec<TabId> = self.order.clone();
+        ids.into_iter()
+            .filter(|id| {
+                self.tabs
+                    .get_mut(id)
+                    .is_some_and(|tab| tab.page.refresh_assistant_panel())
+            })
+            .collect()
     }
 
     /// Whether core was started with an assistant for translation.
@@ -883,6 +914,7 @@ impl TabManager {
             Page::new_continuing_from(self.viewport_width, self.viewport_height, next_node_id);
         page.set_downloads_source(self.downloads.clone());
         page.set_gatekeeper_settings_source(self.gatekeeper_settings.clone());
+        page.set_assistant_panel(Some(self.assistant_panel.clone()));
         page
     }
 
@@ -1535,6 +1567,56 @@ mod tests {
     fn tab_id_round_trips_through_as_u64_and_from_u64() {
         let id = TabId::from_u64(42);
         assert_eq!(TabId::from_u64(id.as_u64()), id);
+    }
+
+    #[test]
+    fn the_assistant_panel_reaches_every_tab_and_follows_the_endpoint() {
+        use crate::assistant_page::PanelKind;
+        let mut tabs = TabManager::new(320.0, 200.0);
+        assert!(!tabs.assistant_panel().is_available());
+        tabs.set_translation_endpoint("/tmp/as.sock".into(), std::time::Duration::from_secs(1));
+        assert!(tabs.assistant_panel().is_available());
+
+        let first = tabs.default_tab();
+        let second = tabs.open_tab();
+        for id in [first, second] {
+            assert!(tabs.navigate_to_built_in(id, "about:assistant"));
+        }
+        // A tab that is not on the panel is left alone.
+        let third = tabs.open_tab();
+        tabs.get_mut(third)
+            .unwrap()
+            .load_html_str("<p>x</p>", Some("https://example.com/".into()));
+
+        tabs.assistant_panel()
+            .push(PanelKind::Summary, None, None, Ok("shared result".into()));
+        let refreshed = tabs.refresh_assistant_panels();
+        assert_eq!(refreshed, vec![first, second]);
+        for id in [first, second] {
+            let page = tabs.get(id).unwrap();
+            let text: String = page
+                .render()
+                .commands
+                .iter()
+                .filter_map(|c| match c {
+                    blueice_paint::PaintCommand::Text { text, .. } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            assert!(text.contains("shared"), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_page_from_history_reload_also_reads_the_shared_panel() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let id = tabs.default_tab();
+        assert!(tabs.navigate_to_built_in(id, "about:assistant"));
+        assert!(tabs.navigate_to_built_in(id, "about:blank"));
+        assert!(tabs.navigate_history_to_built_in(id, HistoryDirection::Back, "about:assistant"));
+        tabs.assistant_panel().set_available(true);
+        assert_eq!(tabs.refresh_assistant_panels(), vec![id]);
     }
 
     #[test]
