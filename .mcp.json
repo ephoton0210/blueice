@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "blueice": {
+      "command": "target/debug/blueice-mcp-server",
+      "args": [
+        "--launcher-socket", "/tmp/blueice-dev/rv.sock",
+        "--launcher-control-socket", "/tmp/blueice-dev/ctl.sock"
+      ]
+    }
+  }
+}
