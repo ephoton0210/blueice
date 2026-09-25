@@ -859,10 +859,23 @@ fn a_cutover_that_fails_during_replay_leaves_v1_serving_normally() {
     // cutover" path this test exercises. This is the very first cutover
     // attempt against a freshly-started launcher (generation 0 -> target
     // generation 1), so the frame_dir name is fully predictable.
-    let blocked_v2_frame_dir = expected_v2_frame_dir(&launcher.frame_dir, 1);
-    let _ = std::fs::remove_file(&blocked_v2_frame_dir);
-    std::fs::write(&blocked_v2_frame_dir, b"not a directory")
-        .expect("failed to pre-create the blocking file");
+    //
+    // A cutover now retries a transient failure, and each retry uses a fresh
+    // frame directory (`<name>-retryN`), so every attempt's directory is
+    // blocked: the failure must be one no retry can clear.
+    let first_attempt_dir = expected_v2_frame_dir(&launcher.frame_dir, 1);
+    let blocked_dirs: Vec<PathBuf> = std::iter::once(first_attempt_dir.clone())
+        .chain((2..=3).map(|attempt| {
+            let mut dir = first_attempt_dir.clone();
+            let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+            dir.set_file_name(format!("{name}-retry{attempt}"));
+            dir
+        }))
+        .collect();
+    for dir in &blocked_dirs {
+        let _ = std::fs::remove_file(dir);
+        std::fs::write(dir, b"not a directory").expect("failed to pre-create the blocking file");
+    }
 
     let mut control = launcher.connect_control();
     write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
@@ -893,7 +906,9 @@ fn a_cutover_that_fails_during_replay_leaves_v1_serving_normally() {
         "expected v1 to keep answering normally, got {rep:?}"
     );
 
-    let _ = std::fs::remove_file(&blocked_v2_frame_dir);
+    for dir in &blocked_dirs {
+        let _ = std::fs::remove_file(dir);
+    }
     write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
     launcher.wait_or_kill(Duration::from_secs(5));
 }

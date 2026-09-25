@@ -32,7 +32,9 @@ pub enum ControlRequest {
     /// Spawn a fresh `core` (v2), replay v1's currently-open tabs into
     /// it, health-check it, and -- only if that all succeeds -- cut
     /// every already-connected external client's traffic over to it,
-    /// then tear v1 down. No fields for this minimal slice: v2 is
+    /// then tear v1 down. A transient failure is retried (see
+    /// `phase-8-live-core-hotswap/PLAN.md`, "Fuller hot-swap"): up to three
+    /// attempts, none of which touches v1. No fields for this minimal slice: v2 is
     /// spawned with the same width/height the launcher itself was
     /// started with, and a fresh frame directory derived from v1's own.
     Cutover,

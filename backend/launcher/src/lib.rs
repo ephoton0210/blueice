@@ -719,6 +719,117 @@ fn perform_swap(
 /// closed to v1 on any error -- see `phase-8-live-core-hotswap/PLAN.md`'s
 /// "Wiring design" for why no retry policy exists yet. v1 is never
 /// touched until every step through the health check has succeeded.
+/// Why one cutover attempt did not succeed, and whether trying again could
+/// plausibly help. Every failure leaves v1 untouched and serving.
+#[derive(Debug, PartialEq, Eq)]
+enum AttemptFailure {
+    /// Environmental and plausibly transient (v2 failed to start, a reply timed
+    /// out): retry.
+    Retry(String),
+    /// v2 ran and failed its health check. One more attempt is reasonable (it
+    /// may have been a startup race); a second identical failure is
+    /// deterministic.
+    RetryOnce(String),
+    /// Deterministic: v2 rejected the replay, or its gatekeeper blocked a
+    /// replayed URL. Trying again would only repeat it.
+    Final(String),
+}
+
+/// A cutover makes at most this many attempts.
+const MAX_CUTOVER_ATTEMPTS: u32 = 3;
+/// The pause before attempt `n + 1` is this times `2^(n - 1)`.
+const CUTOVER_RETRY_BASE_PAUSE: Duration = Duration::from_millis(250);
+/// How long v2 may take to answer any single replay or health-check message
+/// before the attempt is abandoned rather than left hanging.
+const V2_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Classifies a replay or health-check error message by what produced it. The
+/// messages are all created in this file, and a test pins every one, so a
+/// reworded message cannot silently change how it is retried.
+fn classify_attempt_error(reason: String) -> AttemptFailure {
+    if reason.contains("gatekeeper blocked") || reason.contains("rejected the replayed") {
+        AttemptFailure::Final(reason)
+    } else if reason.contains("post-replay ListTabs") {
+        AttemptFailure::RetryOnce(reason)
+    } else {
+        AttemptFailure::Retry(reason)
+    }
+}
+
+/// Runs `attempt` (given its 1-based number) until it succeeds or the policy
+/// gives up: never more than [`MAX_CUTOVER_ATTEMPTS`], never again after a
+/// [`AttemptFailure::Final`], and at most once again after a
+/// [`AttemptFailure::RetryOnce`] has already happened. `pause` is called with
+/// the delay before each retry (a parameter so the policy is a plain unit test).
+fn run_with_retries<T>(
+    mut attempt: impl FnMut(u32) -> Result<T, AttemptFailure>,
+    mut pause: impl FnMut(Duration),
+) -> Result<T, String> {
+    let mut health_failures = 0u32;
+    let mut last_reason = String::new();
+    for number in 1..=MAX_CUTOVER_ATTEMPTS {
+        match attempt(number) {
+            Ok(done) => return Ok(done),
+            Err(AttemptFailure::Final(reason)) => {
+                return Err(format!("{reason} (attempt {number}; not retryable)"));
+            }
+            Err(AttemptFailure::RetryOnce(reason)) => {
+                health_failures += 1;
+                if health_failures >= 2 {
+                    return Err(format!(
+                        "{reason} (attempt {number}; failed the health check twice)"
+                    ));
+                }
+                last_reason = reason;
+            }
+            Err(AttemptFailure::Retry(reason)) => last_reason = reason,
+        }
+        if number < MAX_CUTOVER_ATTEMPTS {
+            pause(CUTOVER_RETRY_BASE_PAUSE * 2u32.pow(number - 1));
+        }
+    }
+    Err(format!(
+        "{last_reason} (gave up after {MAX_CUTOVER_ATTEMPTS} attempts)"
+    ))
+}
+
+/// One try: spawn v2, replay v1's tabs into it, and health-check it. On any
+/// failure v2 is dropped (killed and cleaned up) and v1 has not been touched.
+fn attempt_cutover(
+    broker: &Arc<Broker>,
+    captured_tabs: &[TabSummary],
+    target_generation: u64,
+    attempt: u32,
+) -> Result<(SpawnedCore, Vec<TaggedServerMessage>), AttemptFailure> {
+    let mut frame_dir = v2_frame_dir(&broker.frame_dir, target_generation);
+    if attempt > 1 {
+        // A failed earlier attempt may not have finished removing its own.
+        let name = frame_dir
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        frame_dir.set_file_name(format!("{name}-retry{attempt}"));
+    }
+    let mut v2 = SpawnedCore::spawn_with_assistant(
+        broker.width,
+        broker.height,
+        &frame_dir,
+        &broker.gatekeeper_socket,
+        broker.extension_manifest.as_deref(),
+        broker.assistant_socket.as_deref(),
+    )
+    .map_err(|e| AttemptFailure::Retry(format!("failed to spawn v2: {e}")))?;
+
+    // A v2 that stops answering must fail this attempt, not hang the cutover.
+    let _ = v2.stream.set_read_timeout(Some(V2_REPLY_TIMEOUT));
+    let replay_frames = replay_tabs(&mut v2.stream, captured_tabs).map_err(classify_attempt_error)?;
+    health_check(&mut v2.stream, captured_tabs).map_err(classify_attempt_error)?;
+    // v2's stream is about to become the live connection, read by a broadcast
+    // thread that blocks indefinitely by design.
+    let _ = v2.stream.set_read_timeout(None);
+    Ok((v2, replay_frames))
+}
+
 fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
     let Some(_guard) = broker.cutover_gate.try_acquire() else {
         return control::ControlReply::CutoverBusy;
@@ -731,34 +842,17 @@ fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
         };
 
     let target_generation = broker.generation.load(Ordering::SeqCst) + 1;
-    let frame_dir = v2_frame_dir(&broker.frame_dir, target_generation);
-    let mut v2 = match SpawnedCore::spawn_with_assistant(
-        broker.width,
-        broker.height,
-        &frame_dir,
-        &broker.gatekeeper_socket,
-        broker.extension_manifest.as_deref(),
-        broker.assistant_socket.as_deref(),
+    match run_with_retries(
+        |attempt| attempt_cutover(broker, &captured_tabs, target_generation, attempt),
+        thread::sleep,
     ) {
-        Ok(v2) => v2,
-        Err(e) => {
-            return control::ControlReply::CutoverFailed {
-                reason: format!("failed to spawn v2: {e}"),
-            };
+        Ok((v2, replay_frames)) => {
+            let tabs_migrated = captured_tabs.len();
+            perform_swap(broker, v2, target_generation, replay_frames);
+            control::ControlReply::CutoverDone { tabs_migrated }
         }
-    };
-
-    let replay_frames = match replay_tabs(&mut v2.stream, &captured_tabs) {
-        Ok(frames) => frames,
-        Err(reason) => return control::ControlReply::CutoverFailed { reason },
-    };
-    if let Err(reason) = health_check(&mut v2.stream, &captured_tabs) {
-        return control::ControlReply::CutoverFailed { reason }; // v2 dropped here: killed, cleaned up
+        Err(reason) => control::ControlReply::CutoverFailed { reason },
     }
-
-    let tabs_migrated = captured_tabs.len();
-    perform_swap(broker, v2, target_generation, replay_frames);
-    control::ControlReply::CutoverDone { tabs_migrated }
 }
 
 /// Handles one control-socket connection: routes cutover through the
@@ -1300,6 +1394,23 @@ fn unique_internal_gatekeeper_socket_path() -> PathBuf {
     ))
 }
 
+/// [`wait_for_socket`], but gives up at once if `child` exits first: a core
+/// that died on startup will never create its socket, and waiting out the full
+/// timeout only delays reporting (and retrying) the failure.
+fn wait_for_socket_or_exit(path: &Path, child: &mut Child, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if path.exists() {
+            return true;
+        }
+        if child.try_wait().ok().flatten().is_some() {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    false
+}
+
 fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
@@ -1556,7 +1667,7 @@ impl SpawnedCore {
         } else {
             Duration::from_secs(5)
         };
-        if !wait_for_socket(&internal_socket_path, startup_timeout) {
+        if !wait_for_socket_or_exit(&internal_socket_path, &mut child, startup_timeout) {
             let _ = child.kill();
             let _ = child.wait();
             if let Some(path) = extension_socket_path.as_deref() {
@@ -2208,6 +2319,143 @@ mod tests {
         worker.join().unwrap();
         fake_core.join().unwrap();
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    // ---- bounded retry (`phase-8-live-core-hotswap/PLAN.md`) ----
+
+    fn no_pause(_: Duration) {}
+
+    #[test]
+    fn a_first_attempt_that_succeeds_is_not_retried() {
+        let mut attempts = 0;
+        let out = run_with_retries(
+            |n| {
+                attempts += 1;
+                Ok::<_, AttemptFailure>(n)
+            },
+            no_pause,
+        );
+        assert_eq!(out, Ok(1));
+        assert_eq!(attempts, 1);
+    }
+
+    #[test]
+    fn a_transient_failure_is_retried_until_it_clears() {
+        let out = run_with_retries(
+            |n| {
+                if n < 3 {
+                    Err(AttemptFailure::Retry(format!("spawn failed on {n}")))
+                } else {
+                    Ok(n)
+                }
+            },
+            no_pause,
+        );
+        assert_eq!(out, Ok(3));
+    }
+
+    #[test]
+    fn retries_are_bounded_and_the_last_reason_is_reported() {
+        let mut attempts = 0;
+        let out: Result<(), String> = run_with_retries(
+            |n| {
+                attempts += 1;
+                Err(AttemptFailure::Retry(format!("still failing on {n}")))
+            },
+            no_pause,
+        );
+        assert_eq!(attempts, MAX_CUTOVER_ATTEMPTS);
+        let reason = out.unwrap_err();
+        assert!(reason.contains("still failing on 3"), "{reason}");
+        assert!(reason.contains("gave up after 3 attempts"), "{reason}");
+    }
+
+    #[test]
+    fn a_deterministic_failure_is_never_retried() {
+        let mut attempts = 0;
+        let out: Result<(), String> = run_with_retries(
+            |_| {
+                attempts += 1;
+                Err(AttemptFailure::Final("v2's gatekeeper blocked it".into()))
+            },
+            no_pause,
+        );
+        assert_eq!(attempts, 1);
+        assert!(out.unwrap_err().contains("not retryable"));
+    }
+
+    #[test]
+    fn a_failed_health_check_is_retried_once_and_a_second_is_final() {
+        let mut attempts = 0;
+        let out: Result<(), String> = run_with_retries(
+            |_| {
+                attempts += 1;
+                Err(AttemptFailure::RetryOnce("post-replay ListTabs differed".into()))
+            },
+            no_pause,
+        );
+        assert_eq!(attempts, 2, "one retry, then stop");
+        assert!(out.unwrap_err().contains("failed the health check twice"));
+        // A health failure followed by a transient one still leaves a budget.
+        let mut seen = Vec::new();
+        let _: Result<(), String> = run_with_retries(
+            |n| {
+                seen.push(n);
+                if n == 1 {
+                    Err(AttemptFailure::RetryOnce("health".into()))
+                } else {
+                    Err(AttemptFailure::Retry("spawn".into()))
+                }
+            },
+            no_pause,
+        );
+        assert_eq!(seen, [1, 2, 3]);
+    }
+
+    #[test]
+    fn the_pause_grows_between_attempts_and_there_is_none_after_the_last() {
+        let mut pauses = Vec::new();
+        let _: Result<(), String> = run_with_retries(
+            |_| Err(AttemptFailure::Retry("x".into())),
+            |d| pauses.push(d),
+        );
+        assert_eq!(
+            pauses,
+            [CUTOVER_RETRY_BASE_PAUSE, CUTOVER_RETRY_BASE_PAUSE * 2]
+        );
+    }
+
+    #[test]
+    fn every_replay_and_health_message_this_file_produces_is_classified_as_intended() {
+        for (reason, expected) in [
+            ("v2 rejected the replayed Navigate: bad url", "final"),
+            ("v2 rejected the replayed OpenTab: bad url", "final"),
+            ("v2's gatekeeper blocked the replayed Navigate: rule", "final"),
+            ("v2's gatekeeper blocked the replayed OpenTab: rule", "final"),
+            ("v2's post-replay ListTabs didn't match what was captured from v1", "once"),
+            ("failed reading v2's reply while replaying: timed out", "retry"),
+            ("failed reading v2's health-check reply: eof", "retry"),
+            ("failed to send v2's health-check ListTabs: broken pipe", "retry"),
+            ("failed to replay the default tab's Navigate into v2: broken pipe", "retry"),
+            ("failed to replay tab 1's OpenTab into v2: broken pipe", "retry"),
+        ] {
+            let got = match classify_attempt_error(reason.to_string()) {
+                AttemptFailure::Final(_) => "final",
+                AttemptFailure::RetryOnce(_) => "once",
+                AttemptFailure::Retry(_) => "retry",
+            };
+            assert_eq!(got, expected, "{reason}");
+        }
+    }
+
+    #[test]
+    fn waiting_for_a_socket_gives_up_at_once_when_the_child_exits() {
+        let mut child = Command::new("true").spawn().unwrap();
+        let started = Instant::now();
+        let path = std::env::temp_dir().join(format!("never-{}.sock", std::process::id()));
+        assert!(!wait_for_socket_or_exit(&path, &mut child, Duration::from_secs(20)));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        let _ = child.wait();
     }
 
     #[test]
