@@ -846,6 +846,19 @@ The map preserves the compiler's original byte/UTF-16 locations, including
 non-BMP prefixes, and never infers a nearest statement from an offset. Both
 classic and module frames passed the exact private child/core span route.
 
+**Batched stack-coordinate values (C2.1.2.3.1):** The pending public request
+uses the complete prior `Stack` snapshot as its expected state, including
+program, exact optional nested frame, ordered safe points, and truncation
+flag. A parallel source-ID vector has exactly one entry per frame, all under
+one live metadata parent for that program. The result repeats the same stack
+and ordered exact safe-point/source span pairs. Value-shape validation requires
+one to 64 frames, a root-only stack without a nested handle or a matching
+nested top frame, well-formed original coordinates, and equal vector lengths.
+These types do not themselves grant source access or establish a live pause;
+the future dispatcher must verify same-stream receipts, authorization, and
+the entire current stack before making any child span queries. No request or
+reply variant exists yet, and public debugger v35 is unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

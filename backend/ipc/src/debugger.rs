@@ -755,6 +755,93 @@ pub struct DebuggerStackSnapshot {
     pub stack_truncated: bool,
 }
 
+impl DebuggerStackSnapshot {
+    /// Checks only the bounded, internally consistent shape. The core must
+    /// separately re-read the live continuation before trusting a snapshot.
+    pub fn is_well_formed(&self) -> bool {
+        if !self.program.is_well_formed()
+            || self.safe_points.is_empty()
+            || self.safe_points.len() > DEBUGGER_MAX_STACK_FRAMES as usize
+            || !self
+                .safe_points
+                .iter()
+                .all(|point| point.is_well_formed() && point.program == self.program)
+        {
+            return false;
+        }
+        match self.frame {
+            Some(frame) => {
+                frame.program == self.program
+                    && frame.matches_safe_point(self.safe_points[0])
+                    && (self.stack_truncated
+                        || self
+                            .safe_points
+                            .last()
+                            .is_some_and(|point| point.code_unit_ordinal == 0))
+            }
+            None => {
+                self.safe_points.len() == 1
+                    && self.safe_points[0].code_unit_ordinal == 0
+                    && !self.stack_truncated
+            }
+        }
+    }
+}
+
+/// One previously returned, bounded Stack snapshot plus a separately
+/// inventoried BlueTS source ID for each frame in exact top-first order.
+/// This value alone grants no source access; the core must verify every
+/// receipt and compare the whole snapshot with the live paused stack.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStackCoordinatesTarget {
+    pub expected_stack: DebuggerStackSnapshot,
+    pub sources: Vec<DebuggerStaticMetadataSourceId>,
+}
+
+impl DebuggerStackCoordinatesTarget {
+    pub fn is_well_formed(&self) -> bool {
+        self.expected_stack.is_well_formed()
+            && self.sources.len() == self.expected_stack.safe_points.len()
+            && self.sources.first().is_some_and(|first| {
+                first.is_well_formed()
+                    && first.metadata.program == self.expected_stack.program
+                    && self
+                        .sources
+                        .iter()
+                        .all(|source| source.is_well_formed() && source.metadata == first.metadata)
+            })
+    }
+}
+
+/// A complete original BlueTS coordinate result for that exact stack.
+/// Each entry repeats its ordered safe point and receipted source ID so a
+/// partial, reordered, or cross-metadata response is malformed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStackCoordinates {
+    pub stack: DebuggerStackSnapshot,
+    pub spans: Vec<DebuggerStaticMetadataSafePointSpan>,
+}
+
+impl DebuggerStackCoordinates {
+    pub fn is_well_formed(&self) -> bool {
+        self.stack.is_well_formed()
+            && self.spans.len() == self.stack.safe_points.len()
+            && self.spans.first().is_some_and(|first| {
+                first.is_well_formed()
+                    && first.source.metadata.program == self.stack.program
+                    && self
+                        .spans
+                        .iter()
+                        .zip(&self.stack.safe_points)
+                        .all(|(span, point)| {
+                            span.is_well_formed()
+                                && span.safe_point == *point
+                                && span.source.metadata == first.source.metadata
+                        })
+            })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DebuggerScopeEntry {
     pub slot_ordinal: u32,
@@ -2833,6 +2920,152 @@ mod tests {
             write_debugger_reply(&mut writer, &reply).unwrap();
             assert_eq!(read_debugger_reply(&mut reader).unwrap(), reply);
         }
+    }
+
+    #[test]
+    fn stack_coordinate_values_require_one_exact_stack_and_one_metadata_parent() {
+        let program = DebuggerProgram {
+            realm: realm(),
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let child = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 1,
+            bytecode_offset: 0,
+        };
+        let root = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 41,
+        };
+        let frame = DebuggerFrame {
+            program,
+            code_unit_ordinal: 1,
+            core_instance: [7; 16],
+            frame_handle: 19,
+        };
+        let stack = DebuggerStackSnapshot {
+            program,
+            frame: Some(frame),
+            safe_points: vec![child, root],
+            stack_truncated: false,
+        };
+        let metadata = DebuggerStaticMetadataHandle {
+            program,
+            metadata_handle: 23,
+            metadata_generation: 29,
+        };
+        let first_source = DebuggerStaticMetadataSourceId {
+            metadata,
+            source_id: 0,
+        };
+        let second_source = DebuggerStaticMetadataSourceId {
+            metadata,
+            source_id: 1,
+        };
+        let target = DebuggerStackCoordinatesTarget {
+            expected_stack: stack.clone(),
+            sources: vec![first_source, second_source],
+        };
+        assert!(target.is_well_formed());
+        assert_eq!(
+            serde_json::from_slice::<DebuggerStackCoordinatesTarget>(
+                &serde_json::to_vec(&target).unwrap()
+            )
+            .unwrap(),
+            target
+        );
+
+        let mut malformed = target.clone();
+        malformed.sources.pop();
+        assert!(!malformed.is_well_formed());
+        malformed = target.clone();
+        malformed.sources[1].metadata.metadata_generation += 1;
+        assert!(!malformed.is_well_formed());
+        malformed = target.clone();
+        malformed.expected_stack.frame = None;
+        assert!(!malformed.is_well_formed());
+        malformed = target.clone();
+        malformed.expected_stack.safe_points[1]
+            .program
+            .program_generation += 1;
+        assert!(!malformed.is_well_formed());
+        malformed = target.clone();
+        malformed.expected_stack.safe_points = vec![child; DEBUGGER_MAX_STACK_FRAMES as usize + 1];
+        malformed.sources = vec![first_source; malformed.expected_stack.safe_points.len()];
+        assert!(!malformed.is_well_formed());
+
+        let span = |safe_point, source, start_byte, end_byte| DebuggerStaticMetadataSafePointSpan {
+            safe_point,
+            source,
+            start_byte,
+            end_byte,
+            coordinates: DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: start_byte,
+                end_line: 0,
+                end_column_utf16: end_byte,
+            },
+        };
+        let coordinates = DebuggerStackCoordinates {
+            stack,
+            spans: vec![
+                span(child, first_source, 8, 40),
+                span(root, second_source, 42, 60),
+            ],
+        };
+        assert!(coordinates.is_well_formed());
+        assert_eq!(
+            serde_json::from_slice::<DebuggerStackCoordinates>(
+                &serde_json::to_vec(&coordinates).unwrap()
+            )
+            .unwrap(),
+            coordinates
+        );
+        let mut malformed_reply = coordinates.clone();
+        malformed_reply.spans.swap(0, 1);
+        assert!(!malformed_reply.is_well_formed());
+        malformed_reply = coordinates.clone();
+        malformed_reply.spans[1].source.metadata.metadata_handle += 1;
+        assert!(!malformed_reply.is_well_formed());
+        malformed_reply = coordinates.clone();
+        malformed_reply.spans.pop();
+        assert!(!malformed_reply.is_well_formed());
+
+        let root_only = DebuggerStackSnapshot {
+            program,
+            frame: None,
+            safe_points: vec![root],
+            stack_truncated: false,
+        };
+        assert!(root_only.is_well_formed());
+        assert!(!DebuggerStackSnapshot {
+            safe_points: vec![child],
+            ..root_only.clone()
+        }
+        .is_well_formed());
+        assert!(!DebuggerStackSnapshot {
+            stack_truncated: true,
+            ..root_only
+        }
+        .is_well_formed());
+        assert!(!DebuggerStackSnapshot {
+            safe_points: vec![],
+            ..coordinates.stack.clone()
+        }
+        .is_well_formed());
+        assert!(!DebuggerStackSnapshot {
+            safe_points: vec![child],
+            ..coordinates.stack.clone()
+        }
+        .is_well_formed());
+        assert!(DebuggerStackSnapshot {
+            safe_points: vec![child],
+            stack_truncated: true,
+            ..coordinates.stack
+        }
+        .is_well_formed());
     }
 
     fn capabilities(reports: Vec<DebuggerCapabilityReport>) -> DebuggerCapabilities {
