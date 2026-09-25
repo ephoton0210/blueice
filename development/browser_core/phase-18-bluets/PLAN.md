@@ -648,6 +648,15 @@ caller and the page completes. A separate real BlueTS page arms an unsupported
 deeper call and observes a rejected script rather than a fabricated pause.
 This closes nested pause/step; same-frame resume remains C1.2.2.
 
+**Native same-frame resume (C1.2.2.1):** The VM can now continue only the
+retained nested invocation identified by its serial without an instruction
+suspension. It rejoins the original classic or module root at the saved `Call`
+successor, leaving that root paused for its own resume. The page runtime checks
+the whole live tab/program/code-unit/serial identity before entering the VM
+and revokes it on child return. Classic effects occur once, a linked module
+dependency and entry complete once, and wrong or returned identities are
+refused. No child or public resume command is exposed by this checkpoint.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -8,9 +8,9 @@
 //! session thread.  A debugger cannot truthfully pause an arbitrary bytecode
 //! instruction merely by remembering its offset: the operand stack, handler
 //! stack, active iterator records and execution-context fields are also live.
-//! This module retains those states for one classic-script root frame. Nested
-//! function frames still use the Rust call stack and are deliberately outside
-//! this capability.
+//! This module retains those states for a classic or module root and one
+//! explicitly selected synchronous child invocation. The nested frame has a
+//! distinct serial and continuation; root-only controls cannot resume it.
 
 use super::*;
 
@@ -19,8 +19,8 @@ use super::*;
 /// `Paused` means no instruction at `bytecode_offset` has executed yet. The
 /// VM owns the complete root interpreter frame until
 /// [`Vm::resume_debugger_execution`] finishes it. A root-instruction step may
-/// instead suspend the same continuation again; stack inspection and nested
-/// function control remain outside this surface.
+/// instead suspend the same continuation again; stack inspection remains
+/// outside this surface, and nested control uses a separate frame serial.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VmDebuggerExecutionState {
     Paused { bytecode_offset: u32 },
@@ -331,6 +331,27 @@ impl Vm {
         &mut self,
         frame_serial: u64,
     ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
+        self.continue_debugger_nested_instruction(
+            frame_serial,
+            Some(InterpreterSuspensionPoint::AfterRootInstruction),
+        )
+    }
+
+    /// Finishes only the exact paused nested invocation, then parks its
+    /// original caller at the instruction after the call. A returned serial
+    /// cannot be reused to resume another invocation of the same code unit.
+    pub fn resume_debugger_nested_execution(
+        &mut self,
+        frame_serial: u64,
+    ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
+        self.continue_debugger_nested_instruction(frame_serial, None)
+    }
+
+    fn continue_debugger_nested_instruction(
+        &mut self,
+        frame_serial: u64,
+        suspension_point: Option<InterpreterSuspensionPoint>,
+    ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
         let continuation =
             self.debugger_nested_continuation
                 .take()
@@ -376,7 +397,7 @@ impl Vm {
             &mut iterators,
             pc,
             None,
-            Some(InterpreterSuspensionPoint::AfterRootInstruction),
+            suspension_point,
             Some((handlers, 0)),
         );
         self.call_stack.truncate(previous_call_stack_len);
@@ -1160,6 +1181,59 @@ mod tests {
         assert_eq!(
             vm.lookup_global_name("result").unwrap(),
             Some(Value::Number(4.0))
+        );
+    }
+
+    #[test]
+    fn nested_resume_keeps_one_original_call_and_revokes_its_serial() {
+        let code = installed_script(
+            "var calls = 0; var result = 0; function inner(){ calls++; return 4; } result = inner() + 1;",
+        );
+        let mut vm = Vm::default();
+        let VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = vm
+            .execute_script_until_nested_debugger_pause(&code, 1, 0)
+            .unwrap()
+        else {
+            panic!("direct child must pause before its first instruction");
+        };
+        assert_eq!(
+            vm.resume_debugger_nested_execution(frame_serial + 1),
+            Err(RuntimeError::Unsupported(
+                "debugger nested frame invocation is stale"
+            ))
+        );
+        assert!(matches!(
+            vm.step_debugger_nested_instruction(frame_serial),
+            Ok(VmDebuggerNestedExecutionState::Paused { .. })
+        ));
+        let VmDebuggerNestedExecutionState::FrameReturned {
+            root_bytecode_offset,
+        } = vm.resume_debugger_nested_execution(frame_serial).unwrap()
+        else {
+            panic!("nested resume must rejoin the original root");
+        };
+        assert_eq!(
+            vm.debugger_continuation.as_ref().unwrap().pc,
+            root_bytecode_offset as usize
+        );
+        assert!(vm.debugger_nested_continuation.is_none());
+        assert_eq!(
+            vm.resume_debugger_nested_execution(frame_serial),
+            Err(RuntimeError::Unsupported(
+                "no debugger-paused nested frame is available"
+            ))
+        );
+        assert_eq!(
+            vm.resume_debugger_execution().unwrap(),
+            VmDebuggerExecutionState::Completed
+        );
+        assert_eq!(
+            vm.lookup_global_name("calls").unwrap(),
+            Some(Value::Number(1.0))
+        );
+        assert_eq!(
+            vm.lookup_global_name("result").unwrap(),
+            Some(Value::Number(5.0))
         );
     }
 

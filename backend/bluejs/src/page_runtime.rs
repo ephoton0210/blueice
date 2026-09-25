@@ -673,6 +673,23 @@ impl BlueJsPageRuntime {
         &mut self,
         frame: BlueJsPageDebuggerFrame,
     ) -> Result<BlueJsPageDebuggerNestedExecutionState, BlueJsPageRuntimeError> {
+        self.continue_debugger_nested_execution(frame, true)
+    }
+
+    /// Completes only the live nested invocation named by this exact frame;
+    /// the original classic or module root remains paused for its own resume.
+    pub fn resume_debugger_nested_execution(
+        &mut self,
+        frame: BlueJsPageDebuggerFrame,
+    ) -> Result<BlueJsPageDebuggerNestedExecutionState, BlueJsPageRuntimeError> {
+        self.continue_debugger_nested_execution(frame, false)
+    }
+
+    fn continue_debugger_nested_execution(
+        &mut self,
+        frame: BlueJsPageDebuggerFrame,
+        single_instruction: bool,
+    ) -> Result<BlueJsPageDebuggerNestedExecutionState, BlueJsPageRuntimeError> {
         let realm = self
             .realms
             .get_mut(&frame.tab_id)
@@ -680,9 +697,15 @@ impl BlueJsPageRuntime {
         if !realm.programs.contains(&frame.program) || realm.debugger_nested_frame != Some(frame) {
             return Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable);
         }
-        let state = realm
-            .vm
-            .step_debugger_nested_instruction(frame.invocation_serial);
+        let state = if single_instruction {
+            realm
+                .vm
+                .step_debugger_nested_instruction(frame.invocation_serial)
+        } else {
+            realm
+                .vm
+                .resume_debugger_nested_execution(frame.invocation_serial)
+        };
         if state.is_err() {
             realm.debugger_nested_frame = None;
         }
@@ -1458,6 +1481,72 @@ mod tests {
             runtime.execute_program(7, answer_reader),
             Ok(Value::Number(5.0))
         );
+    }
+
+    #[test]
+    fn nested_page_resume_rejoins_one_module_graph_and_revokes_exact_frame() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        runtime.open_realm(8, origin()).unwrap();
+        let dependency = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///resume-dep.mjs"),
+                &BlueJsProgramV1::Module(
+                    parse_module("globalThis.depRuns = (globalThis.depRuns || 0) + 1;").unwrap(),
+                ),
+            )
+            .unwrap();
+        let entry = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///resume-entry.mjs"),
+                &BlueJsProgramV1::Module(
+                    parse_module(
+                        "import './resume-dep.mjs'; function inner() { globalThis.childRuns = (globalThis.childRuns || 0) + 1; return 4; } globalThis.answer = inner() + 1;",
+                    )
+                    .unwrap(),
+                ),
+            )
+            .unwrap();
+        let point = first_nested_point(&runtime, 7, entry);
+        let BlueJsPageDebuggerNestedExecutionState::Paused { frame, .. } = runtime
+            .execute_module_graph_until_nested_debugger_pause(7, entry, [dependency, entry], point)
+            .unwrap()
+        else {
+            panic!("module child must pause before its first instruction");
+        };
+        let mut wrong = frame;
+        wrong.tab_id = 8;
+        assert_eq!(
+            runtime.resume_debugger_nested_execution(wrong),
+            Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable)
+        );
+        assert!(matches!(
+            runtime.resume_debugger_nested_execution(frame),
+            Ok(BlueJsPageDebuggerNestedExecutionState::FrameReturned { .. })
+        ));
+        assert_eq!(
+            runtime.resume_debugger_nested_execution(frame),
+            Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable)
+        );
+        assert_eq!(
+            runtime.resume_debugger_module_execution(7),
+            Ok(BlueJsPageDebuggerExecutionState::Completed)
+        );
+        let probe = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///resume-probe.js"),
+                &BlueJsProgramV1::Script(
+                    parse("globalThis.depRuns + globalThis.childRuns + globalThis.answer").unwrap(),
+                ),
+            )
+            .unwrap();
+        assert_eq!(runtime.execute_program(7, probe), Ok(Value::Number(7.0)));
     }
 
     #[test]

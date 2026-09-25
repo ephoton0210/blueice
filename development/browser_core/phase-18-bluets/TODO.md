@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.2.2.** Resume the exact paused nested invocation and reject
-its frame handle after return.
+**Current leaf: C1.2.2.2.** Carry exact nested-frame resume through the child
+scheduler, private page-host IPC, and core child proxy.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -286,6 +286,9 @@ channel with explicit owner/client grants.
         - [x] **C1.2.1.3.3.2** Add the distinct public frame type, capability, nested arm/state/step commands, core route, protocol-version bump, and real-process checks without aliasing root controls or exposing the child serial. Public debugger v32 carries a core-reminted frame handle, separate nested capability/requests/states, and exact per-program checks. A real child/core route test proves nested step and root-control separation; public-socket BlueTS acceptance follows in C1.2.1.4.
     - [x] **C1.2.1.4** Prove the nested pause and same-frame instruction successor on a real BlueTS page through the public debugger socket; keep unsupported call shapes unavailable. A launcher-supervised BlueTS classic page advertises the distinct nested capability, pauses on its inner function's first verified instruction, steps to another safe point under the same core-owned frame, then rejoins and completes its root once. Root stepping cannot alias the child, and a second real page rejects an armed deeper call shape without exposing a frame. All 12 real-process public debugger tests pass.
   - [ ] **C1.2.2** Resume that same frame; reject a stale frame identity after it returns.
+    - [x] **C1.2.2.1** Add exact-frame resume to the BlueJS VM and page runtime for classic and entry-module roots, preserving caller/graph completion and rejecting wrong or returned frames. The VM runs the retained child to return without a step suspension, then parks its original caller at the next root instruction. The page runtime requires its complete live frame tuple and revokes it on return. Classic serial/call-count and linked-module graph/identity regressions pass; 524 non-environmental BlueJS library tests pass.
+    - [ ] **C1.2.2.2** Route that resume through the child scheduler, page-host IPC, and core child proxy under the existing nested-frame capability; distinguish its requested state from one-instruction stepping.
+    - [ ] **C1.2.2.3** Add a separate public frame-resume command and reply, bump the public protocol only when it works over the socket, and prove exact-frame completion plus stale-handle denial in a real BlueTS page.
   - [ ] **C1.2.3** Reject a cross-tab target and a target from a predecessor child.
 
 #### C2. Inspect execution within fixed budgets.
