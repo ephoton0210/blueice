@@ -76,7 +76,7 @@ struct Args {
     /// supplies each core generation a fresh private listener. Debugger
     /// protocol authorization remains in `blueice-core`.
     debugger_socket: Option<PathBuf>,
-    /// Owner opt-in for the future bounded paused-value debugger route.
+    /// Owner opt-in for the separately negotiated bounded-value debugger route.
     debugger_bounded_values: bool,
     /// Owner opt-in for the debugger's source-free opaque static-metadata
     /// inventory. It requires the separate debugger endpoint and does not

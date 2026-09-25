@@ -598,11 +598,13 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         }
     );
@@ -786,11 +788,13 @@ fn public_socket_steps_and_resumes_one_real_bluets_nested_frame() {
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         }
     );
@@ -1157,6 +1161,7 @@ fn public_socket_rejects_cross_tab_nested_frames_with_two_live_bluets_pages() {
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
             },
         ),
@@ -1280,6 +1285,7 @@ fn public_socket_rejects_predecessor_frame_after_supervised_child_cutover() {
             &mut predecessor_debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
             },
         ),
@@ -1308,6 +1314,7 @@ fn public_socket_rejects_predecessor_frame_after_supervised_child_cutover() {
             &mut successor_debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
             },
         ),
@@ -1421,6 +1428,7 @@ fn public_socket_keeps_unsupported_deeper_bluets_call_shape_unavailable() {
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
             },
         ),
@@ -1513,11 +1521,13 @@ fn launcher_inventories_a_pending_bluets_module_before_execution() {
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         }
     );
@@ -1599,11 +1609,13 @@ fn launcher_pauses_and_resumes_a_real_bluets_module_entry() {
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         }
     );
@@ -1741,11 +1753,13 @@ fn launcher_steps_a_real_bluets_module_then_rejects_stale_generation() {
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: manifest.clone(),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities: manifest,
         }
     );
@@ -1939,11 +1953,13 @@ fn launcher_exposes_bluets_metadata_while_its_root_frame_is_pending_and_paused()
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: metadata_capabilities.clone(),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities: metadata_capabilities,
         }
     );
@@ -2080,6 +2096,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities:
                     DebuggerMetadataCapabilityManifest::opaque_selected(
                         DebuggerMetadataCapabilitySelection {
@@ -2107,6 +2124,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_selected(
                 DebuggerMetadataCapabilitySelection {
                     summary: true,
@@ -3174,11 +3192,13 @@ fn launcher_exposes_exact_bluets_safe_point_spans_only_after_same_stream_source_
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: manifest.clone(),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities: manifest.clone(),
         }
     );
@@ -3356,6 +3376,7 @@ fn launcher_exposes_exact_bluets_safe_point_spans_only_after_same_stream_source_
             &mut separate,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: manifest,
             },
         ),
@@ -3420,11 +3441,13 @@ fn launcher_batches_exact_classic_and_module_stack_coordinates_only_with_receipt
                 &mut debugger,
                 DebuggerRequest::Hello {
                     protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    requested_bounded_values: false,
                     requested_metadata_capabilities: manifest.clone(),
                 },
             ),
             DebuggerReply::HelloAck {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_bounded_values: false,
                 granted_metadata_capabilities: manifest.clone(),
             }
         );
@@ -3612,6 +3635,7 @@ fn launcher_batches_exact_classic_and_module_stack_coordinates_only_with_receipt
                 &mut separate,
                 DebuggerRequest::Hello {
                     protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    requested_bounded_values: false,
                     requested_metadata_capabilities: manifest,
                 },
             ),
@@ -3670,11 +3694,13 @@ fn launcher_rejects_a_real_paused_unbound_bluets_stack_without_partial_coordinat
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: manifest.clone(),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities: manifest,
         }
     );
@@ -3814,11 +3840,13 @@ fn launcher_maps_a_real_bluets_module_safe_point_to_original_coordinates() {
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: manifest.clone(),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities: manifest,
         }
     );
@@ -3919,11 +3947,13 @@ fn launcher_resolves_receipted_bluets_source_positions_to_live_breakpoints() {
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: manifest.clone(),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities: manifest.clone(),
         }
     );
@@ -4144,6 +4174,7 @@ fn launcher_resolves_receipted_bluets_source_positions_to_live_breakpoints() {
             &mut separate,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: manifest,
             },
         ),
@@ -4200,11 +4231,13 @@ fn launcher_steps_only_receipted_paused_bluets_source_spans() {
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: manifest.clone(),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities: manifest.clone(),
         }
     );
@@ -4354,6 +4387,7 @@ fn launcher_steps_only_receipted_paused_bluets_source_spans() {
             &mut separate,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities: manifest,
             },
         ),

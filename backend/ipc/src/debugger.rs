@@ -9,7 +9,10 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version thirty-five adds
+//! and an opt-in root-code-unit pause/resume seam. Version thirty-seven adds
+//! independently owner/client-gated, same-stream Scopes-receipted bounded
+//! paused values. Version thirty-six adds atomic stack-coordinate batches.
+//! Version thirty-five adds
 //! separately gated bounded stack-location and active-scope snapshots for an
 //! exact paused target, without values or BlueTS source coordinates. Version thirty-four binds
 //! each active frame handle to its core instance across supervised cutover.
@@ -80,7 +83,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 36;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 37;
 
 pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -877,7 +880,7 @@ pub struct DebuggerValueTarget {
 
 /// A handle-free, lossless tree copied from one paused active binding.
 /// `None` in an array is a hole, distinct from an explicit `Undefined`.
-/// This type does not yet introduce a public request or reply variant.
+/// The v37 request/reply route still requires an independent session grant.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DebuggerValuePreview {
     Undefined,
@@ -1987,16 +1990,17 @@ pub struct DebuggerCapabilities {
     pub max_breakpoints_per_realm: u32,
 }
 
-/// A core-local authorization for the metadata capabilities granted by one
-/// successfully negotiated debugger `Hello`. It intentionally has no public
-/// constructor and is not serializable: it is an implementation guard for a
-/// future core/host dispatcher, never a client-supplied wire token.
+/// A core-local authorization for the metadata and bounded-value capabilities
+/// granted by one successfully negotiated debugger `Hello`. It intentionally
+/// has no public constructor and is not serializable: it is a dispatcher
+/// guard, never a client-supplied wire token.
 #[derive(Debug, Clone)]
 pub struct DebuggerMetadataSessionAuthorization {
     granted: DebuggerMetadataCapabilityManifest,
+    granted_bounded_values: bool,
     /// Exact Scopes entries emitted on this stream during one core-owned
-    /// pause incarnation. This is not an authority until the public value
-    /// grant and dispatcher are installed.
+    /// pause incarnation. Only the separately granted value route consumes
+    /// these receipts.
     observed_scope_entries: Arc<Mutex<DebuggerScopeReceipts>>,
     /// Bounded per-stream receipts for opaque metadata handles emitted by the
     /// public inventory operation. A handle must not become a summary or
@@ -2188,6 +2192,12 @@ pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_SYMBOL_IDENTITIES: usize = 65_5
 pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_CONTRACT_IDENTITIES: usize = 65_536;
 
 impl DebuggerMetadataSessionAuthorization {
+    /// An independent owner/client grant; scope and metadata grants do not
+    /// imply permission to read a runtime value.
+    pub fn permits_bounded_values(&self) -> bool {
+        self.granted_bounded_values
+    }
+
     /// Atomically receipt every slot actually returned by one Scopes reply.
     /// A changed core pause incarnation drops old receipts first, even when
     /// the new reply is malformed or would exceed the fixed stream budget.
@@ -2414,6 +2424,7 @@ pub fn metadata_session_authorization(
     let DebuggerRequest::Hello {
         protocol_version,
         requested_metadata_capabilities,
+        requested_bounded_values,
     } = request
     else {
         return None;
@@ -2421,6 +2432,7 @@ pub fn metadata_session_authorization(
     let DebuggerReply::HelloAck {
         protocol_version: acknowledged_version,
         granted_metadata_capabilities,
+        granted_bounded_values,
     } = reply
     else {
         return None;
@@ -2429,12 +2441,14 @@ pub fn metadata_session_authorization(
         || *acknowledged_version != DEBUGGER_PROTOCOL_VERSION
         || !requested_metadata_capabilities.is_well_formed()
         || !granted_metadata_capabilities.is_subset_of(requested_metadata_capabilities)
+        || (*granted_bounded_values && !*requested_bounded_values)
     {
         return None;
     }
 
     Some(DebuggerMetadataSessionAuthorization {
         granted: granted_metadata_capabilities.clone(),
+        granted_bounded_values: *granted_bounded_values,
         observed_scope_entries: Arc::new(Mutex::new(DebuggerScopeReceipts::default())),
         observed_metadata_identities: Arc::new(Mutex::new(BTreeSet::new())),
         observed_source_identities: Arc::new(Mutex::new(BTreeSet::new())),
@@ -2552,6 +2566,8 @@ pub enum DebuggerRequest {
         /// Requesting one grants nothing; the core replies with only its
         /// policy intersection in [`DebuggerReply::HelloAck`].
         requested_metadata_capabilities: DebuggerMetadataCapabilityManifest,
+        /// Independent opt-in to one bounded active-scope value read.
+        requested_bounded_values: bool,
     },
     /// Lists bounded, currently loaded page realm identities. The reply carries
     /// no URL, source, program, bytecode, or runtime object; clients use the
@@ -2773,6 +2789,11 @@ pub enum DebuggerRequest {
         expected_safe_point: DebuggerSafePoint,
         max_scope_entries: u32,
     },
+    /// Reads only a Scopes slot receipted on this debugger stream during the
+    /// same core-owned pause incarnation and independently granted in Hello.
+    GetValue {
+        target: DebuggerValueTarget,
+    },
     /// Steps from one exact paused BlueTS root safe point to the next distinct
     /// compiler-bound source span, completion, or a bounded-limit stop.
     /// Requires a separate metadata grant and same-stream source receipt.
@@ -2795,6 +2816,8 @@ pub enum DebuggerReply {
         /// capabilities and the core-owned allow policy for this one stream.
         /// An empty set is a successful handshake with no metadata authority.
         granted_metadata_capabilities: DebuggerMetadataCapabilityManifest,
+        /// Granted only if both the owner and this client selected values.
+        granted_bounded_values: bool,
     },
     /// Reply to [`DebuggerRequest::ListPageRealms`].
     PageRealms(Vec<DebuggerPageRealm>),
@@ -2901,6 +2924,7 @@ pub enum DebuggerReply {
     Stack(DebuggerStackSnapshot),
     StackCoordinates(DebuggerStackCoordinates),
     Scopes(DebuggerScopeSnapshot),
+    Value(Box<DebuggerValueSnapshot>),
     ExecutionSourceSpanStepRequested {
         safe_point: DebuggerSafePoint,
     },
@@ -2937,10 +2961,21 @@ pub fn negotiate(
     request: &DebuggerRequest,
     allowed_metadata_capabilities: &DebuggerMetadataCapabilityManifest,
 ) -> DebuggerReply {
+    negotiate_with_values(request, allowed_metadata_capabilities, false)
+}
+
+/// Negotiates the independent owner/client value policy alongside the
+/// unchanged canonical static-metadata manifest.
+pub fn negotiate_with_values(
+    request: &DebuggerRequest,
+    allowed_metadata_capabilities: &DebuggerMetadataCapabilityManifest,
+    allowed_bounded_values: bool,
+) -> DebuggerReply {
     match request {
         DebuggerRequest::Hello {
             protocol_version,
             requested_metadata_capabilities,
+            requested_bounded_values,
         } if *protocol_version == DEBUGGER_PROTOCOL_VERSION
             && requested_metadata_capabilities.is_well_formed()
             && allowed_metadata_capabilities.is_well_formed() =>
@@ -2949,6 +2984,7 @@ pub fn negotiate(
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
                 granted_metadata_capabilities: allowed_metadata_capabilities
                     .intersection(requested_metadata_capabilities),
+                granted_bounded_values: allowed_bounded_values && *requested_bounded_values,
             }
         }
         DebuggerRequest::Hello {
@@ -2999,6 +3035,7 @@ pub fn negotiate(
         | DebuggerRequest::GetStack { .. }
         | DebuggerRequest::GetStackCoordinates { .. }
         | DebuggerRequest::GetScopes { .. }
+        | DebuggerRequest::GetValue { .. }
         | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
         | DebuggerRequest::Unknown => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
@@ -3325,6 +3362,7 @@ mod tests {
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
                 requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+                requested_bounded_values: false,
             },
             DebuggerRequest::ListPageRealms,
             DebuggerRequest::DescribeCapabilities { realm: realm() },
@@ -3789,6 +3827,7 @@ mod tests {
         DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
             requested_metadata_capabilities,
+            requested_bounded_values: false,
         }
     }
 
@@ -3803,6 +3842,7 @@ mod tests {
             DebuggerReply::HelloAck {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
                 granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+                granted_bounded_values: false,
             }
         );
         for unsupported_version in [
@@ -3817,6 +3857,7 @@ mod tests {
                         protocol_version: unsupported_version,
                         requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(
                         ),
+                        requested_bounded_values: false,
                     },
                     &empty_policy,
                 ),
@@ -3854,6 +3895,7 @@ mod tests {
             DebuggerReply::HelloAck {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
                 granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+                granted_bounded_values: false,
             }
         );
         let denied_session = metadata_session_authorization(&request, &deny_reply)
@@ -3873,6 +3915,7 @@ mod tests {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
                 granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_inventory(
                 ),
+                granted_bounded_values: false,
             }
         );
 
@@ -3885,6 +3928,7 @@ mod tests {
             DebuggerReply::HelloAck {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
                 granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+                granted_bounded_values: false,
             }
         );
 
@@ -3927,6 +3971,7 @@ mod tests {
         let unknown_wire_request: DebuggerRequest = serde_json::from_value(serde_json::json!({
             "Hello": {
                 "protocol_version": DEBUGGER_PROTOCOL_VERSION,
+                "requested_bounded_values": false,
                 "requested_metadata_capabilities": {
                     "version": DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
                     "capabilities": ["future-metadata-surface"],
@@ -3964,9 +4009,56 @@ mod tests {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
                 granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_inventory(
                 ),
+                granted_bounded_values: false,
             },
         )
         .is_none());
+    }
+
+    #[test]
+    fn bounded_values_handshake_requires_independent_owner_and_client_opt_in() {
+        let metadata = DebuggerMetadataCapabilityManifest::empty();
+        let requested = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities: metadata.clone(),
+            requested_bounded_values: true,
+        };
+        let denied = negotiate(&requested, &metadata);
+        assert_eq!(
+            denied,
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_metadata_capabilities: metadata.clone(),
+                granted_bounded_values: false,
+            }
+        );
+        assert!(!metadata_session_authorization(&requested, &denied)
+            .unwrap()
+            .permits_bounded_values());
+        let granted = negotiate_with_values(&requested, &metadata, true);
+        assert_eq!(
+            granted,
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_metadata_capabilities: metadata.clone(),
+                granted_bounded_values: true,
+            }
+        );
+        assert!(metadata_session_authorization(&requested, &granted)
+            .unwrap()
+            .permits_bounded_values());
+        let unrequested = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities: metadata.clone(),
+            requested_bounded_values: false,
+        };
+        assert!(metadata_session_authorization(&unrequested, &granted).is_none());
+        assert!(!metadata_session_authorization(
+            &unrequested,
+            &negotiate_with_values(&unrequested, &metadata, true)
+        )
+        .unwrap()
+        .permits_bounded_values());
     }
 
     #[test]
@@ -5373,6 +5465,14 @@ mod tests {
             .unwrap(),
             snapshot
         );
+        let request = DebuggerRequest::GetValue { target: root };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_debugger_request(&mut writer, &request).unwrap();
+        assert_eq!(read_debugger_request(&mut reader).unwrap(), request);
+        let reply = DebuggerReply::Value(Box::new(snapshot));
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_debugger_reply(&mut writer, &reply).unwrap();
+        assert_eq!(read_debugger_reply(&mut reader).unwrap(), reply);
         assert!(!DebuggerValueTarget {
             frame_index: 1,
             ..root
@@ -5425,7 +5525,7 @@ mod tests {
             ..nested
         }
         .is_well_formed());
-        assert_eq!(DEBUGGER_PROTOCOL_VERSION, 36);
+        assert_eq!(DEBUGGER_PROTOCOL_VERSION, 37);
     }
 
     #[test]

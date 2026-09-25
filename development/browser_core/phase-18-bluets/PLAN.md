@@ -1115,6 +1115,27 @@ array holes, and every remint budget. Two focused tests, all 295 engine
 library tests, and workspace Clippy pass. Public debugger v36 and
 BoundedValues Planned are unchanged.
 
+**Complete public paused-value route (C2.2.1.5.3.2.2.2):** Debugger v37
+introduces `requested_bounded_values` in `Hello` and its exact owner-policy
+intersection in `HelloAck`; the static-metadata manifest remains independent.
+The core listener reconstructs a stream-local grant that cannot be supplied
+by a later request. Only a granted live child route advertises
+`BoundedValues` Available. An authorized `GetScopes` records exactly the
+returned slots under the core session's current pause incarnation, refusing
+an over-budget receipt set atomically; ungranted Scopes remains source-free
+and unaffected. `GetValue` requires that same stream/slot/incarnation,
+rechecks the active scope and exact frame, invokes the private child proxy,
+and returns only a complete validated handle-free `Value` snapshot. The
+independently bounded public remint rejects oversized or duplicate-key trees
+without returning a partial preview. IPC socket serialization and separate
+owner/client handshake tests pass; a mock public dispatcher proves grant,
+receipt, cross-stream, stale-pause and moved-frame behavior. A real core
+socket confirms owner-enabled v37 grants only the requesting stream; the
+Launcher endpoint cutover regression passes with matching rebuilt binaries.
+All 108 IPC and 296 engine library tests, format, and workspace Clippy pass.
+The Launcher-supervised classic/module root/nested and budget regressions
+remain C2.2.1.5.4.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

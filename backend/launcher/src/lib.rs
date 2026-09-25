@@ -125,8 +125,8 @@ mod unix {
         /// protocol versioning and every target-bound operation remain
         /// enforced by the trusted core.
         debugger_socket: Option<PathBuf>,
-        /// Owner-selected value-read policy; inert until the separately
-        /// negotiated public debugger value route is installed.
+        /// Owner-selected value-read policy. A debugger client must still
+        /// negotiate its separate v37 grant and observe the active slot.
         debugger_bounded_values: bool,
         /// Owner-only policy for source-free opaque-handle inventory after a
         /// client requests it in `Hello`; it never grants a metadata record

@@ -125,6 +125,67 @@ fn connect_with_retry(path: &std::path::Path, timeout: Duration) -> std::io::Res
     }
 }
 
+#[test]
+fn real_core_negotiates_bounded_values_only_for_owner_and_client_opt_in() {
+    use blueice_ipc::debugger::{
+        read_debugger_reply, write_debugger_request, DebuggerMetadataCapabilityManifest,
+        DebuggerReply, DebuggerRequest, DEBUGGER_PROTOCOL_VERSION,
+    };
+
+    let socket_path = unique_socket_path("value-grant-front");
+    let debugger_path = unique_socket_path("value-grant-debug");
+    let frame_dir =
+        std::env::temp_dir().join(format!("blueice-value-grant-frames-{}", std::process::id()));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&debugger_path);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--debugger-socket",
+            debugger_path.to_str().unwrap(),
+            "--debugger-bounded-values",
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("core must start with explicit value owner policy");
+    assert!(wait_for(&socket_path, Duration::from_secs(5)));
+    assert!(wait_for(&debugger_path, Duration::from_secs(5)));
+    let mut frontend = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    for (requested, expected_grant) in [(false, false), (true, true)] {
+        let mut debugger = connect_with_retry(&debugger_path, Duration::from_secs(5)).unwrap();
+        debugger
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        write_debugger_request(
+            &mut debugger,
+            &DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+                requested_bounded_values: requested,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_debugger_reply(&mut debugger).unwrap(),
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+                granted_bounded_values: expected_grant,
+            }
+        );
+    }
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    assert!(child.wait().unwrap().success());
+    assert!(!socket_path.exists());
+    assert!(!debugger_path.exists());
+    assert!(!frame_dir.exists());
+}
+
 fn serve_html_once(body: &'static str) -> (std::net::SocketAddr, thread::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
@@ -1576,6 +1637,7 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
         &mut debugger,
         &blueice_ipc::debugger::DebuggerRequest::Hello {
             protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
         },
@@ -1585,6 +1647,7 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
         blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
         blueice_ipc::debugger::DebuggerReply::HelloAck {
             protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
         }
@@ -2038,6 +2101,7 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
             &mut debugger,
             &blueice_ipc::debugger::DebuggerRequest::Hello {
                 protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities:
                     blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
             },
@@ -2045,6 +2109,7 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
         ),
         blueice_ipc::debugger::DebuggerReply::HelloAck {
             protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
         }
@@ -3081,6 +3146,7 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
             &mut debugger,
             &blueice_ipc::debugger::DebuggerRequest::Hello {
                 protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
                 requested_metadata_capabilities:
                     blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
             },
@@ -3088,6 +3154,7 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
         ),
         blueice_ipc::debugger::DebuggerReply::HelloAck {
             protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
             granted_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
         }

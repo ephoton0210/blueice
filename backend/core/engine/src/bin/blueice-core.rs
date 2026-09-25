@@ -68,8 +68,8 @@ struct Args {
     /// separate from both frontend and DOM-script IPC; the session thread
     /// validates each requested tab/document generation before replying.
     debugger_socket: Option<PathBuf>,
-    /// Owner policy for a future separately negotiated bounded paused-value
-    /// read. It has no effect on debugger v36.
+    /// Owner policy for the separately negotiated bounded paused-value read.
+    /// The owner flag alone never grants a debugger client access.
     debugger_bounded_values: bool,
     /// Core-owner opt-in for a bounded opaque static-metadata inventory. It
     /// never exposes a metadata record itself and still requires a client
@@ -932,10 +932,14 @@ fn serve_debugger_connection(
     mut stream: UnixStream,
     sender: blueice_engine::debugger::DebuggerRequestSender,
     allowed_metadata_capabilities: &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest,
-    _allow_bounded_values: bool,
+    allow_bounded_values: bool,
 ) -> io::Result<()> {
     let first = blueice_ipc::debugger::read_debugger_request(&mut stream)?;
-    let reply = blueice_ipc::debugger::negotiate(&first, allowed_metadata_capabilities);
+    let reply = blueice_ipc::debugger::negotiate_with_values(
+        &first,
+        allowed_metadata_capabilities,
+        allow_bounded_values,
+    );
     blueice_ipc::debugger::write_debugger_reply(&mut stream, &reply)?;
     let Some(metadata_session) =
         blueice_ipc::debugger::metadata_session_authorization(&first, &reply)
@@ -1146,7 +1150,7 @@ fn main() -> ExitCode {
     let script_session_token = args.script_session_token.clone();
     let debugger_socket = args.debugger_socket.clone();
     // The owner choice is carried to this core generation's debugger
-    // listener, but v36 still has no client value grant or route.
+    // listener and intersected with each client's v37 Hello request.
     let debugger_bounded_values = args.debugger_bounded_values;
     let debugger_allowed_metadata_capabilities = if args.debugger_static_metadata_inventory {
         blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_selected(

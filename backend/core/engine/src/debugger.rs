@@ -222,6 +222,7 @@ impl DebuggerRequestReceiver {
                 tabs,
                 javascript_executor.as_deref_mut(),
                 envelope.metadata_session.as_ref(),
+                self.pause_incarnation.get(),
                 envelope.request,
             );
             self.invalidate_pause_receipts_for(&reply);
@@ -417,6 +418,7 @@ pub fn handle_debugger_request_with_javascript_executor(
             unavailable_static_metadata_safe_point_span()
         }
         DebuggerRequest::GetScopes { .. } => unavailable_scopes(),
+        DebuggerRequest::GetValue { .. } => unavailable_values(),
         DebuggerRequest::Hello { .. } => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
             message: "debugger Hello is valid only as the first request".to_string(),
@@ -445,6 +447,7 @@ pub fn handle_debugger_request_with_page_javascript_executor(
         tabs,
         javascript_executor,
         None,
+        0,
         request,
     )
 }
@@ -457,6 +460,7 @@ fn handle_debugger_request_with_page_javascript_executor_and_metadata_session(
     tabs: &TabManager,
     javascript_executor: Option<&mut (dyn PageJavaScriptExecutor + '_)>,
     metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    pause_incarnation: u64,
     request: DebuggerRequest,
 ) -> DebuggerReply {
     let Some(executor) = javascript_executor else {
@@ -468,13 +472,36 @@ fn handle_debugger_request_with_page_javascript_executor_and_metadata_session(
     let Some(locations) = executor.debugger_locations() else {
         return handle_debugger_request_with_javascript_executor(tabs, None, request);
     };
-    handle_debugger_request_with_child_locations(tabs, locations, metadata_session, request)
+    handle_debugger_request_with_child_locations_and_pause(
+        tabs,
+        locations,
+        metadata_session,
+        pause_incarnation,
+        request,
+    )
 }
 
+#[cfg(test)]
 fn handle_debugger_request_with_child_locations(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,
     metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    request: DebuggerRequest,
+) -> DebuggerReply {
+    handle_debugger_request_with_child_locations_and_pause(
+        tabs,
+        locations,
+        metadata_session,
+        0,
+        request,
+    )
+}
+
+fn handle_debugger_request_with_child_locations_and_pause(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    pause_incarnation: u64,
     request: DebuggerRequest,
 ) -> DebuggerReply {
     match request {
@@ -631,15 +658,40 @@ fn handle_debugger_request_with_child_locations(
             frame_index,
             expected_safe_point,
             max_scope_entries,
-        } => child_scopes(
+        } => {
+            let reply = child_scopes(
+                tabs,
+                locations,
+                program,
+                frame,
+                frame_index,
+                expected_safe_point,
+                max_scope_entries,
+            );
+            if let DebuggerReply::Scopes(snapshot) = &reply {
+                if metadata_session.is_some_and(|session| session.permits_bounded_values())
+                    && !metadata_session
+                        .is_some_and(|session| session.observe_scopes(snapshot, pause_incarnation))
+                {
+                    return DebuggerReply::Error {
+                        code: DebuggerErrorCode::ResourceLimit,
+                        message: "debugger scope receipt budget is exhausted".to_string(),
+                    };
+                }
+            }
+            reply
+        }
+        DebuggerRequest::GetValue { target } => match child_value_snapshot(
             tabs,
             locations,
-            program,
-            frame,
-            frame_index,
-            expected_safe_point,
-            max_scope_entries,
-        ),
+            metadata_session,
+            metadata_session.is_some_and(|session| session.permits_bounded_values()),
+            pause_incarnation,
+            target,
+        ) {
+            Ok(snapshot) => DebuggerReply::Value(Box::new(snapshot)),
+            Err(reply) => *reply,
+        },
         DebuggerRequest::StepStaticMetadataSourceSpan { target } => {
             step_child_static_metadata_source_span(tabs, locations, metadata_session, target)
         }
@@ -700,6 +752,9 @@ fn describe_child_location_capabilities(
         locations_available && locations.debugger_execution_control_available();
     let stack_available = execution_control_available && locations.debugger_stack_available();
     let scopes_available = execution_control_available && locations.debugger_scopes_available();
+    let values_available = scopes_available
+        && metadata_session.is_some_and(|session| session.permits_bounded_values())
+        && locations.debugger_values_available();
     // Do not advertise an installed private inventory to a peer that has no
     // negotiated grant. This makes the public capability view fail closed as
     // well as the eventual operation; a successful `Hello` still needs this
@@ -821,6 +876,7 @@ fn describe_child_location_capabilities(
                 && locations.debugger_nested_frames_available(),
             stack_available,
             scopes_available,
+            values_available,
             static_metadata_inventory_available,
             static_metadata_summary_available,
             static_metadata_lowering_summary_available,
@@ -3255,10 +3311,9 @@ fn child_scopes(
     })
 }
 
-/// Private core-side half of the future public value route. The caller must
+/// Private core-side half of the public value route. The caller must
 /// supply the combined owner/client grant and this core session's current
-/// pause incarnation; no wire variant reaches it in debugger v36.
-#[allow(dead_code)] // C2.2.1.5.3.2.2.2 wires the complete v37 request to this guarded route.
+/// pause incarnation; a client never supplies either authority directly.
 fn child_value_snapshot(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,
@@ -3550,6 +3605,7 @@ fn describe_capabilities(
             nested_frames_available: false,
             stack_available: false,
             scopes_available: false,
+            values_available: false,
             static_metadata_inventory_available: false,
             static_metadata_summary_available: false,
             static_metadata_lowering_summary_available: false,
@@ -4289,6 +4345,7 @@ struct DebuggerCapabilityAvailability {
     nested_frames_available: bool,
     stack_available: bool,
     scopes_available: bool,
+    values_available: bool,
     static_metadata_inventory_available: bool,
     static_metadata_summary_available: bool,
     static_metadata_lowering_summary_available: bool,
@@ -4319,6 +4376,7 @@ fn capability_reports(
         nested_frames_available,
         stack_available,
         scopes_available,
+        values_available,
         static_metadata_inventory_available,
         static_metadata_summary_available,
         static_metadata_lowering_summary_available,
@@ -4452,8 +4510,16 @@ fn capability_reports(
         ),
         (
             DebuggerCapability::BoundedValues,
-            DebuggerCapabilityState::Planned,
-            "native value inspection is not installed",
+            if values_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if values_available {
+                "bounded paused-slot value reads require this stream's grant and Scopes receipt"
+            } else {
+                "native value inspection requires a separate owner/client grant and live child route"
+            },
         ),
         (
             DebuggerCapability::StaticMetadataInventory,
@@ -5447,6 +5513,7 @@ mod tests {
 
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_inventory(),
         };
@@ -5560,6 +5627,7 @@ mod tests {
 
         let symbol_inventory_hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_symbol_inventory(),
         };
@@ -5631,6 +5699,7 @@ mod tests {
 
         let symbol_display_hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_symbol_display(),
         };
@@ -5720,6 +5789,7 @@ mod tests {
 
         let contract_inventory_hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_contract_inventory(
                 ),
@@ -5793,6 +5863,7 @@ mod tests {
 
         let contract_display_hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_contract_display(),
         };
@@ -5878,6 +5949,7 @@ mod tests {
 
         let source_inventory_hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_inventory(),
         };
@@ -5939,6 +6011,7 @@ mod tests {
 
         let summary_hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_summary(),
         };
@@ -6016,6 +6089,7 @@ mod tests {
         };
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_summary(),
         };
@@ -6082,6 +6156,7 @@ mod tests {
         let target = DebuggerStaticMetadataSymbolLocationTarget { symbol, source };
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_symbol_location(),
         };
@@ -6229,6 +6304,7 @@ mod tests {
             blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities: manifest.clone(),
         };
         let reply = blueice_ipc::debugger::negotiate(&hello, &manifest);
@@ -6400,6 +6476,7 @@ mod tests {
             blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_breakpoint();
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities: manifest.clone(),
         };
         let reply = blueice_ipc::debugger::negotiate(&hello, &manifest);
@@ -6593,6 +6670,7 @@ mod tests {
             blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_contract_location();
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities: manifest.clone(),
         };
         let hello_reply = blueice_ipc::debugger::negotiate(&hello, &manifest);
@@ -6739,6 +6817,7 @@ mod tests {
             blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_symbol_type();
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities: manifest.clone(),
         };
         let hello_reply = blueice_ipc::debugger::negotiate(&hello, &manifest);
@@ -6905,6 +6984,7 @@ mod tests {
             blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_symbol_contract();
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities: manifest.clone(),
         };
         let hello_reply = blueice_ipc::debugger::negotiate(&hello, &manifest);
@@ -7059,6 +7139,7 @@ mod tests {
         };
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_lowering_summary(),
         };
@@ -7172,6 +7253,7 @@ mod tests {
         };
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_symbol_display(),
         };
@@ -7243,6 +7325,7 @@ mod tests {
         };
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_contract_display(),
         };
@@ -7315,6 +7398,7 @@ mod tests {
         };
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_contract_validation(),
         };
@@ -7484,6 +7568,7 @@ mod tests {
 
         let source_inventory_hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_inventory(),
         };
@@ -7508,6 +7593,7 @@ mod tests {
 
         let provenance_hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_provenance(
                 ),
@@ -8610,6 +8696,7 @@ mod tests {
             blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities: manifest.clone(),
         };
         let reply = blueice_ipc::debugger::negotiate(&hello, &manifest);
@@ -8729,6 +8816,192 @@ mod tests {
     }
 
     #[test]
+    fn public_value_dispatch_requires_granted_scopes_receipt_and_current_pause() {
+        let (tabs, realm) = loaded_tabs();
+        let program = DebuggerProgram {
+            realm,
+            program_handle: 7,
+            program_generation: 3,
+        };
+        let frame = DebuggerFrame {
+            program,
+            code_unit_ordinal: 1,
+            core_instance: [7; 16],
+            frame_handle: 19,
+        };
+        let safe_point = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 41,
+        };
+        let hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: true,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
+        };
+        let manifest = blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty();
+        let granted_ack = blueice_ipc::debugger::negotiate_with_values(&hello, &manifest, true);
+        let denied_ack = blueice_ipc::debugger::negotiate_with_values(&hello, &manifest, false);
+        let granted =
+            blueice_ipc::debugger::metadata_session_authorization(&hello, &granted_ack).unwrap();
+        let separate =
+            blueice_ipc::debugger::metadata_session_authorization(&hello, &granted_ack).unwrap();
+        let denied =
+            blueice_ipc::debugger::metadata_session_authorization(&hello, &denied_ack).unwrap();
+        let mut locations = StackCoordinateLocations {
+            moved_root_offset: 41,
+            unbound_root: false,
+            span_calls: 0,
+            value_preview: Some(JavaScriptPageDebuggerValuePreview::Array(vec![
+                Some(JavaScriptPageDebuggerValuePreview::NumberBits(
+                    7.0_f64.to_bits(),
+                )),
+                None,
+            ])),
+            value_calls: 0,
+        };
+        let scope_request = DebuggerRequest::GetScopes {
+            program,
+            frame: Some(frame),
+            frame_index: 1,
+            expected_safe_point: safe_point,
+            max_scope_entries: 1,
+        };
+        let target = DebuggerValueTarget {
+            program,
+            frame: Some(frame),
+            frame_index: 1,
+            safe_point,
+            scope_entry: DebuggerScopeEntry {
+                slot_ordinal: 3,
+                scope_depth: 0,
+            },
+        };
+        let value_request = DebuggerRequest::GetValue { target };
+        let available = handle_debugger_request_with_child_locations_and_pause(
+            &tabs,
+            &mut locations,
+            Some(&granted),
+            1,
+            DebuggerRequest::DescribeCapabilities { realm },
+        );
+        assert!(
+            matches!(available, DebuggerReply::Capabilities(capabilities)
+            if capabilities.reports.iter().any(|report| {
+                report.capability == DebuggerCapability::BoundedValues
+                    && report.state == DebuggerCapabilityState::Available
+            }))
+        );
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&granted),
+                1,
+                value_request.clone(),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&denied),
+                1,
+                scope_request.clone(),
+            ),
+            DebuggerReply::Scopes(_)
+        ));
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&denied),
+                1,
+                value_request.clone(),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::CapabilityUnavailable,
+                ..
+            }
+        ));
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&granted),
+                1,
+                scope_request,
+            ),
+            DebuggerReply::Scopes(_)
+        ));
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&separate),
+                1,
+                value_request.clone(),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&granted),
+                2,
+                value_request.clone(),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+        assert_eq!(locations.value_calls, 0);
+        let reply = handle_debugger_request_with_child_locations_and_pause(
+            &tabs,
+            &mut locations,
+            Some(&granted),
+            1,
+            value_request.clone(),
+        );
+        assert_eq!(
+            reply,
+            DebuggerReply::Value(Box::new(DebuggerValueSnapshot {
+                target,
+                preview: DebuggerValuePreview::Array(vec![
+                    Some(DebuggerValuePreview::NumberBits(7.0_f64.to_bits())),
+                    None,
+                ]),
+            }))
+        );
+        assert_eq!(locations.value_calls, 1);
+        locations.moved_root_offset = 42;
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&granted),
+                1,
+                value_request,
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                ..
+            }
+        ));
+        assert_eq!(locations.value_calls, 1);
+    }
+
+    #[test]
     fn core_value_remint_enforces_all_tree_budgets_before_reply() {
         let remint =
             |value| remint_core_debugger_value(value, 0, &mut ValueRemintBudget::default());
@@ -8778,6 +9051,7 @@ mod tests {
         };
         let hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
             requested_metadata_capabilities:
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
         };
