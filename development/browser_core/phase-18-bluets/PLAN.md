@@ -611,6 +611,15 @@ unavailable on hosts lacking the continuation. C1.2.2 adds one-shot resume of
 that same active frame; C1.2.3 proves returned-frame, cross-tab and predecessor-
 child rejection.
 
+**Private route checkpoint (C1.2.1.3.2):** Page-host v35 carries a separate
+source-free frame tuple and nested arm/state/step commands from the core proxy
+to the isolated child. The child issues it only after an actual paused
+invocation and compares the whole live tab/document/program/code-unit/serial
+tuple before scheduling a step. Core maps the child program identity to its
+own program identity and validates each reply. Root-only execution state and
+controls do not alias the active child; no public debugger frame or nested
+capability is advertised until C1.2.1.3.3.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -313,6 +313,30 @@ pub struct JavaScriptPageDebuggerSafePoint {
     pub bytecode_offset: u32,
 }
 
+/// Core-facing identity for one actually paused nested invocation. The child
+/// program handle is remapped to the enclosing core program identity before
+/// this leaves the out-of-process executor; no runtime handle is included.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerFrame {
+    pub tab_id: TabId,
+    pub document_generation: u64,
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub code_unit_ordinal: u32,
+    pub invocation_serial: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JavaScriptPageDebuggerNestedExecutionState {
+    Paused {
+        frame: JavaScriptPageDebuggerFrame,
+        bytecode_offset: u32,
+    },
+    Stepping {
+        frame: JavaScriptPageDebuggerFrame,
+    },
+}
+
 /// One source-free, exact breakpoint record retained for a live program. A
 /// configured record does not imply that the synchronous page runtime has
 /// paused or can resume at this location.

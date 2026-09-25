@@ -56,13 +56,13 @@ use blueice_ipc::page_host::{
     PageHostDebuggerBlueTsMetadataSymbolId, PageHostDebuggerBlueTsMetadataSymbolLocation,
     PageHostDebuggerBlueTsMetadataSymbolType, PageHostDebuggerBlueTsMetadataTypeDisplay,
     PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerBlueTsSafePointSpan,
-    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
-    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
-    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
-    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
-    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
-    PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
-    PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
+    PageHostDebuggerExecutionState, PageHostDebuggerFrame, PageHostDebuggerMetadataHandle,
+    PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot,
+    PageHostErrorCode, PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest,
+    PageHostScript, PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome,
+    PageHostScriptReport, PageHostSource, PageHostStaticResolution,
+    PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+    PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES, PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
 use blueice_ipc::script::{
     self, ScriptDocumentTarget, ScriptReply, ScriptRequest, SCRIPT_MAX_NAME_BYTES,
@@ -996,6 +996,15 @@ impl BlueJsChildHost {
                 document_generation,
                 safe_point,
             ),
+            PageHostRequest::ArmDebuggerNestedSafePointBreakpoint {
+                tab_id,
+                document_generation,
+                safe_point,
+            } => self.arm_debugger_nested_safe_point_breakpoint(
+                tab_id,
+                document_generation,
+                safe_point,
+            ),
             PageHostRequest::GetDebuggerExecutionState {
                 tab_id,
                 document_generation,
@@ -1011,6 +1020,9 @@ impl BlueJsChildHost {
                 document_generation,
                 program,
             } => self.step_debugger_root_instruction(tab_id, document_generation, program),
+            PageHostRequest::StepDebuggerNestedInstruction { frame } => {
+                self.step_debugger_nested_instruction(frame)
+            }
             PageHostRequest::StepDebuggerBlueTsSourceSpan {
                 tab_id,
                 document_generation,
@@ -3380,7 +3392,6 @@ impl BlueJsChildHost {
 
     /// Child-private until the versioned page-host active-frame route is
     /// complete. This never reuses the root-breakpoint request for a child.
-    #[allow(dead_code)]
     fn arm_debugger_nested_target(
         &mut self,
         tab_id: u64,
@@ -3432,8 +3443,23 @@ impl BlueJsChildHost {
         Ok(())
     }
 
+    fn arm_debugger_nested_safe_point_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> PageHostReply {
+        match self.arm_debugger_nested_target(tab_id, document_generation, safe_point) {
+            Ok(()) => PageHostReply::DebuggerNestedSafePointBreakpointArmed {
+                tab_id,
+                document_generation,
+                safe_point,
+            },
+            Err(reply) => reply,
+        }
+    }
+
     /// Schedules one step only for the exact paused child invocation.
-    #[allow(dead_code)]
     fn request_debugger_nested_step(
         &mut self,
         tab_id: u64,
@@ -3484,6 +3510,41 @@ impl BlueJsChildHost {
         Ok(())
     }
 
+    fn step_debugger_nested_instruction(&mut self, frame: PageHostDebuggerFrame) -> PageHostReply {
+        if !frame.is_well_formed() {
+            return invalid_request();
+        }
+        let document = match self.exact_document(frame.tab_id, frame.document_generation) {
+            Ok(document) => document,
+            Err(reply) => return reply,
+        };
+        let Some(ChildDebuggerExecutionStatus::NestedPaused {
+            frame: active,
+            safe_point,
+        }) = document
+            .debugger_execution_states
+            .get(&frame.program)
+            .copied()
+        else {
+            return invalid_debugger_state();
+        };
+        if frame
+            != child_debugger_frame(
+                frame.tab_id,
+                frame.document_generation,
+                frame.program,
+                active,
+            )
+            || !frame.matches_safe_point(safe_point)
+        {
+            return invalid_debugger_state();
+        }
+        match self.request_debugger_nested_step(frame.tab_id, frame.document_generation, active) {
+            Ok(()) => PageHostReply::DebuggerNestedStepRequested { frame },
+            Err(reply) => reply,
+        }
+    }
+
     fn debugger_execution_state(
         &self,
         tab_id: u64,
@@ -3500,19 +3561,11 @@ impl BlueJsChildHost {
         let Some(status) = document.debugger_execution_states.get(&program).copied() else {
             return invalid_debugger_state();
         };
-        if matches!(
-            status,
-            ChildDebuggerExecutionStatus::NestedPaused { .. }
-                | ChildDebuggerExecutionStatus::NestedStepRequested { .. }
-        ) {
-            // No page-host active-frame reply exists until C1.2.1.3.2.3.
-            return invalid_debugger_state();
-        }
         PageHostReply::DebuggerExecutionState {
             tab_id,
             document_generation,
             program,
-            state: child_debugger_execution_state(status),
+            state: child_debugger_execution_state(tab_id, document_generation, program, status),
         }
     }
 
@@ -5559,7 +5612,25 @@ fn script_report(
     }
 }
 
+fn child_debugger_frame(
+    tab_id: u64,
+    document_generation: u64,
+    program: PageHostDebuggerProgram,
+    frame: BlueJsPageDebuggerFrame,
+) -> PageHostDebuggerFrame {
+    PageHostDebuggerFrame {
+        tab_id,
+        document_generation,
+        program,
+        code_unit_ordinal: frame.code_unit_ordinal(),
+        invocation_serial: frame.invocation_serial(),
+    }
+}
+
 fn child_debugger_execution_state(
+    tab_id: u64,
+    document_generation: u64,
+    program: PageHostDebuggerProgram,
     status: ChildDebuggerExecutionStatus,
 ) -> PageHostDebuggerExecutionState {
     match status {
@@ -5567,9 +5638,16 @@ fn child_debugger_execution_state(
         ChildDebuggerExecutionStatus::Paused(safe_point) => {
             PageHostDebuggerExecutionState::Paused { safe_point }
         }
-        ChildDebuggerExecutionStatus::NestedPaused { .. }
-        | ChildDebuggerExecutionStatus::NestedStepRequested { .. } => {
-            unreachable!("nested frames have no page-host execution state yet")
+        ChildDebuggerExecutionStatus::NestedPaused { frame, safe_point } => {
+            PageHostDebuggerExecutionState::NestedPaused {
+                frame: child_debugger_frame(tab_id, document_generation, program, frame),
+                safe_point,
+            }
+        }
+        ChildDebuggerExecutionStatus::NestedStepRequested { frame, .. } => {
+            PageHostDebuggerExecutionState::NestedStepping {
+                frame: child_debugger_frame(tab_id, document_generation, program, frame),
+            }
         }
         ChildDebuggerExecutionStatus::StepRequested
         | ChildDebuggerExecutionStatus::BlueTsSourceStepRequested { .. } => {
@@ -7012,7 +7090,14 @@ mod tests {
                 document_generation: 1,
                 program,
             }),
-            PageHostReply::Error { .. }
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::NestedPaused {
+                    frame: wire_frame,
+                    safe_point,
+                },
+                ..
+            } if wire_frame == child_debugger_frame(7, 1, program, frame)
+                && safe_point == target
         ));
         assert!(host.request_debugger_nested_step(7, 2, frame).is_err());
         let mut returned = false;
@@ -7059,6 +7144,115 @@ mod tests {
             }),
             PageHostReply::DebuggerExecutionAdvanced { reports, .. }
                 if reports.len() == 1 && reports[0].outcome == PageHostScriptOutcome::Executed
+        ));
+    }
+
+    #[test]
+    fn child_nested_wire_requires_the_exact_live_frame_and_reports_step_state() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(
+                    1,
+                    vec![classic(0, "function inner() { return 4; } inner();")],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs[0],
+            reply => panic!("expected a child program: {reply:?}"),
+        };
+        let point = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+                .unwrap(),
+            reply => panic!("expected child points: {reply:?}"),
+        };
+        assert_eq!(
+            host.handle_request(PageHostRequest::ArmDebuggerNestedSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: point,
+            }),
+            PageHostReply::DebuggerNestedSafePointBreakpointArmed {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: point,
+            }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let frame = match host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::NestedPaused { frame, safe_point },
+                ..
+            } => {
+                assert_eq!(safe_point, point);
+                frame
+            }
+            reply => panic!("expected active frame state: {reply:?}"),
+        };
+        assert!(frame.is_well_formed());
+        for wrong in [
+            PageHostDebuggerFrame {
+                invocation_serial: frame.invocation_serial + 1,
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                code_unit_ordinal: frame.code_unit_ordinal + 1,
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                document_generation: frame.document_generation + 1,
+                ..frame
+            },
+            PageHostDebuggerFrame { tab_id: 8, ..frame },
+        ] {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::StepDebuggerNestedInstruction {
+                    frame: wrong,
+                }),
+                PageHostReply::Error { .. }
+            ));
+        }
+        assert_eq!(
+            host.handle_request(PageHostRequest::StepDebuggerNestedInstruction { frame }),
+            PageHostReply::DebuggerNestedStepRequested { frame }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::NestedStepping {
+                    frame: same_frame,
+                },
+                ..
+            } if same_frame == frame
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerNestedInstruction { frame }),
+            PageHostReply::Error { .. }
         ));
     }
 

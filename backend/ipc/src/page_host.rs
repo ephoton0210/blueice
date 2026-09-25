@@ -12,6 +12,10 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
+//! Version 35 adds exact active nested-frame arm, state, and single-instruction
+//! step controls for the private core/child route. The frame identity binds
+//! tab, document, program, code unit, and invocation; it grants no source or
+//! value inspection and is distinct from a static safe-point location.
 //! Version 31 adds an authenticated, source-free child-wide actual-usage
 //! snapshot for all live realms. It is private to the core/child connection,
 //! separate from the launcher's conservative reservations and from public
@@ -110,7 +114,7 @@ use std::io::{self, Read, Write};
 /// Independent version for the private launcher-to-BlueJS-host channel.
 /// V34 carries a document-bound script handle, not a raw core NodeId, in
 /// `DispatchClick` so its target matches child-owned listener identities.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 34;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 35;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -395,7 +399,14 @@ pub enum PageHostDebuggerExecutionState {
     Paused {
         safe_point: PageHostDebuggerSafePoint,
     },
+    NestedPaused {
+        frame: PageHostDebuggerFrame,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     Stepping,
+    NestedStepping {
+        frame: PageHostDebuggerFrame,
+    },
     /// The source-span step reached its fixed root-instruction budget before
     /// another bound span. The continuation remains paused at this exact
     /// verified root boundary and may be resumed or instruction-stepped.
@@ -851,6 +862,13 @@ pub enum PageHostRequest {
         document_generation: u64,
         safe_point: PageHostDebuggerSafePoint,
     },
+    /// Arms a verified child-code-unit target on one still-pending classic
+    /// or BlueTS entry-module declaration. It does not itself mint a frame.
+    ArmDebuggerNestedSafePointBreakpoint {
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     /// Reads only source-free lifecycle state for one exact child-private
     /// program generation in the opt-in root-classic continuation seam.
     GetDebuggerExecutionState {
@@ -872,6 +890,9 @@ pub enum PageHostRequest {
         document_generation: u64,
         program: PageHostDebuggerProgram,
     },
+    /// Steps only the exact currently paused nested invocation on a later
+    /// child advance turn; a static safe point is never sufficient.
+    StepDebuggerNestedInstruction { frame: PageHostDebuggerFrame },
     /// Requires an exact paused BlueTS classic safe point, live metadata,
     /// and its compiler-minted source ID. The child derives the current span
     /// from its retained map; no source text or caller-selected stop span is
@@ -1119,6 +1140,11 @@ pub enum PageHostReply {
         document_generation: u64,
         safe_point: PageHostDebuggerSafePoint,
     },
+    DebuggerNestedSafePointBreakpointArmed {
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     DebuggerExecutionState {
         tab_id: u64,
         document_generation: u64,
@@ -1134,6 +1160,9 @@ pub enum PageHostReply {
         tab_id: u64,
         document_generation: u64,
         program: PageHostDebuggerProgram,
+    },
+    DebuggerNestedStepRequested {
+        frame: PageHostDebuggerFrame,
     },
     DebuggerBlueTsSourceStepRequested {
         tab_id: u64,
@@ -1328,6 +1357,62 @@ mod tests {
         ] {
             assert!(different.is_well_formed());
             assert_ne!(different, frame);
+        }
+    }
+
+    #[test]
+    fn nested_frame_commands_and_states_round_trip_on_private_wire() {
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let safe_point = PageHostDebuggerSafePoint {
+            program,
+            code_unit_ordinal: 1,
+            bytecode_offset: 4,
+        };
+        let frame = PageHostDebuggerFrame {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            code_unit_ordinal: 1,
+            invocation_serial: 19,
+        };
+        for request in [
+            PageHostRequest::ArmDebuggerNestedSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 3,
+                safe_point,
+            },
+            PageHostRequest::StepDebuggerNestedInstruction { frame },
+        ] {
+            let (mut writer, mut reader) = UnixStream::pair().unwrap();
+            write_page_host_request(&mut writer, &request).unwrap();
+            assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+        }
+        for reply in [
+            PageHostReply::DebuggerNestedSafePointBreakpointArmed {
+                tab_id: 7,
+                document_generation: 3,
+                safe_point,
+            },
+            PageHostReply::DebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                state: PageHostDebuggerExecutionState::NestedPaused { frame, safe_point },
+            },
+            PageHostReply::DebuggerNestedStepRequested { frame },
+            PageHostReply::DebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                state: PageHostDebuggerExecutionState::NestedStepping { frame },
+            },
+        ] {
+            let (mut writer, mut reader) = UnixStream::pair().unwrap();
+            write_page_host_reply(&mut writer, &reply).unwrap();
+            assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
         }
     }
 

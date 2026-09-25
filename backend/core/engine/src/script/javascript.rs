@@ -36,7 +36,8 @@ use debugger_support::{
 };
 pub use debugger_support::{
     JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
-    JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerProgram,
+    JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
+    JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
     JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerStaticMetadata,
     JavaScriptPageDebuggerStaticMetadataContractDisplay,
     JavaScriptPageDebuggerStaticMetadataContractId,
@@ -533,6 +534,44 @@ pub trait PageJavaScriptDebuggerLocations {
     /// breakpoint configuration and is false by default.
     fn debugger_execution_control_available(&self) -> bool {
         false
+    }
+
+    /// Nested-frame control is a distinct default-deny capability. It never
+    /// follows automatically from root execution control or safe-point lists.
+    fn debugger_nested_frames_available(&self) -> bool {
+        false
+    }
+
+    fn arm_debugger_nested_safe_point_breakpoint(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _code_unit_ordinal: u32,
+        _bytecode_offset: u32,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// `None` means this live program is not currently in a nested frame;
+    /// ordinary root/pending/completed state remains separately queryable.
+    fn debugger_nested_execution_state(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+    ) -> Result<Option<JavaScriptPageDebuggerNestedExecutionState>, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    fn step_debugger_nested_instruction(
+        &mut self,
+        _frame: JavaScriptPageDebuggerFrame,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 
     /// Arms one pending classic program at an already validated root safe
