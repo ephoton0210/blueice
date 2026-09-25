@@ -229,6 +229,17 @@ bridge proves a heterogeneous indexed event write fails during BlueTS checking.
 This walk does not change ordinary expression inference or resolve opaque and
 unmodeled receiver forms; B4.2 remains open.
 
+**Readonly through inferred aliases (B4 partial):** A heterogeneous computed
+index now infers a conservative union instead of discarding its possible
+value types when stored in an unannotated local. Bounded union property lookup
+requires each concrete branch to own the property and merges its readonly
+qualifier, so `const selected = slots[key]; selected.type = ...` is rejected
+even when one branch declares a mutable `type`; common mutable fields remain
+writable. The verified event-v1 direct bridge checks the same alias boundary.
+Property lookup and index inference now live in separate MPL-licensed modules,
+keeping both `checker.rs` and `expressions.rs` under 1500 lines. Opaque or
+unmodeled expression shapes remain outside this proof, so B4.2 stays open.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

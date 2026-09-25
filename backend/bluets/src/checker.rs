@@ -15,6 +15,9 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 pub use crate::parser::Type;
 
+mod properties;
+use properties::{property_type, PropertyType, TypeExpansionBudget};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolKind {
     Import,
@@ -82,30 +85,6 @@ struct AmbientDeclarations {
     types: BTreeMap<String, TypeDefinition>,
     values: BTreeMap<String, Type>,
     functions: BTreeMap<String, Vec<FunctionSignature>>,
-}
-
-struct TypeExpansionBudget {
-    remaining: usize,
-    exhausted: bool,
-}
-
-impl TypeExpansionBudget {
-    fn new(limit: usize) -> Self {
-        Self {
-            remaining: limit,
-            exhausted: false,
-        }
-    }
-
-    fn consume(&mut self) -> bool {
-        if let Some(remaining) = self.remaining.checked_sub(1) {
-            self.remaining = remaining;
-            true
-        } else {
-            self.exhausted = true;
-            false
-        }
-    }
 }
 
 /// Rechecks the requested modules while retaining checker output for modules
@@ -712,76 +691,6 @@ fn infer_type_arguments(
             }
         }
         _ => {}
-    }
-}
-
-enum PropertyType {
-    Found {
-        value: Type,
-        readonly: bool,
-    },
-    Missing,
-    /// The initial checker has no property semantics for this expression, so
-    /// retain its conservative `unknown` behavior rather than rejecting a
-    /// potentially valid JavaScript property access.
-    Indeterminate,
-    Exhausted,
-}
-
-fn property_type(
-    value: &Type,
-    property: &str,
-    aliases: &BTreeMap<String, TypeDefinition>,
-    visited: &mut HashSet<String>,
-    budget: &mut TypeExpansionBudget,
-) -> PropertyType {
-    match value {
-        Type::Record(fields) => fields
-            .iter()
-            .find(|field| field.name == property)
-            .map(|field| PropertyType::Found {
-                value: if field.optional {
-                    Type::Union(vec![field.value.clone(), Type::Undefined])
-                } else {
-                    field.value.clone()
-                },
-                readonly: field.readonly,
-            })
-            .unwrap_or(PropertyType::Missing),
-        Type::Named { .. } => {
-            match instantiate_named(value, aliases, visited, budget, "property") {
-                Some(value) => property_type(&value, property, aliases, visited, budget),
-                None if budget.exhausted => PropertyType::Exhausted,
-                None => PropertyType::Indeterminate,
-            }
-        }
-        Type::Intersection(parts) => {
-            let mut indeterminate = false;
-            let mut found: Option<(Type, bool)> = None;
-            for part in parts {
-                match property_type(part, property, aliases, visited, budget) {
-                    PropertyType::Found { value, readonly } => {
-                        if let Some((_, found_readonly)) = &mut found {
-                            *found_readonly |= readonly;
-                        } else {
-                            found = Some((value, readonly));
-                        }
-                    }
-                    PropertyType::Missing => {}
-                    PropertyType::Indeterminate => indeterminate = true,
-                    PropertyType::Exhausted => return PropertyType::Exhausted,
-                }
-            }
-            if let Some((value, readonly)) = found {
-                PropertyType::Found { value, readonly }
-            } else if indeterminate {
-                PropertyType::Indeterminate
-            } else {
-                PropertyType::Missing
-            }
-        }
-        Type::Any | Type::Unknown => PropertyType::Indeterminate,
-        _ => PropertyType::Missing,
     }
 }
 

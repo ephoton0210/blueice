@@ -313,6 +313,39 @@ fn readonly_checks_follow_heterogeneous_dynamic_receivers() {
 }
 
 #[test]
+fn readonly_survives_an_inferred_heterogeneous_index_alias() {
+    let source = "interface Event { readonly type: 'click'; mutable: string; }\n\
+                  interface Other { type: 'click'; mutable: string; }\n\
+                  interface Slots { first: Event; second: Other; }\n\
+                  function write(slots: Slots, key: string): void {\n\
+                    const selected = slots[key];\n\
+                    selected.type = 'click';\n\
+                  }";
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+        CompilerOptions::default(),
+    );
+    assert!(
+        result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::TypeMismatch
+                && diagnostic.message.contains("readonly")
+        }),
+        "{:#?}",
+        result.diagnostics
+    );
+    let valid = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "interface First { mutable: string; readonly type: 'click'; } interface Second { mutable: string; type: 'click'; } interface Slots { first: First; second: Second; } function write(slots: Slots, key: string): void { const selected = slots[key]; selected.mutable = 'ok'; }",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(!valid.has_errors(), "{:#?}", valid.diagnostics);
+}
+
+#[test]
 fn readonly_mutations_inside_larger_expressions_are_not_skipped() {
     let ambient = ModuleSource::new(
         "memory:///events.d.ts",

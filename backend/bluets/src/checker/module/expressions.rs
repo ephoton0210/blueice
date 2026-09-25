@@ -6,7 +6,10 @@
 
 use super::*;
 
+mod indexing;
 mod readonly;
+
+use indexing::{canonical_index_key, indexed_value_type};
 
 impl<'a> ModuleChecker<'a> {
     pub(super) fn infer_expression(
@@ -1406,60 +1409,6 @@ fn unescaped_property_name(text: &str) -> Option<&str> {
                 .and_then(|value| value.strip_suffix('"'))
         })?;
     (!value.contains('\\')).then_some(value)
-}
-
-/// A computed read can preserve the value type when every possible indexed
-/// value agrees, or when a canonical index selects one tuple element.
-/// Heterogeneous dynamic containers still need separate fail-closed readonly
-/// handling; returning `Unknown` here does not establish write safety.
-fn indexed_value_type(
-    value: &Type,
-    index: Option<usize>,
-    aliases: &BTreeMap<String, TypeDefinition>,
-    visited: &mut HashSet<String>,
-    budget: &mut TypeExpansionBudget,
-) -> Type {
-    match value {
-        Type::Array(element) => (**element).clone(),
-        Type::Tuple(values) => index.map_or_else(
-            || uniform_type(values.iter()),
-            |index| values.get(index).cloned().unwrap_or(Type::Unknown),
-        ),
-        Type::Record(fields) if index.is_none() => {
-            uniform_type(fields.iter().map(|field| &field.value))
-        }
-        Type::Named { .. } => {
-            match instantiate_named(value, aliases, visited, budget, "computed receiver") {
-                Some(instantiated) => {
-                    indexed_value_type(&instantiated, index, aliases, visited, budget)
-                }
-                None => Type::Unknown,
-            }
-        }
-        _ => Type::Unknown,
-    }
-}
-
-fn canonical_index_key(tokens: &[Token]) -> Option<usize> {
-    let [key] = tokens else { return None };
-    let text = match key.kind {
-        TokenKind::Number => key.text.as_str(),
-        TokenKind::String => unescaped_property_name(&key.text)?,
-        _ => return None,
-    };
-    let index = text.parse::<u32>().ok()?;
-    (index != u32::MAX && index.to_string() == text).then_some(index as usize)
-}
-
-fn uniform_type<'a>(mut values: impl Iterator<Item = &'a Type>) -> Type {
-    let Some(first) = values.next() else {
-        return Type::Unknown;
-    };
-    if values.all(|value| value == first) {
-        first.clone()
-    } else {
-        Type::Unknown
-    }
 }
 
 fn contains_readonly_member(
