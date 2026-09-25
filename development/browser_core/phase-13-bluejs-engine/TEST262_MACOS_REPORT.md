@@ -122,7 +122,7 @@ Line coverage is a different measure from a Test262 pass rate and the two must n
 
 ## Later BlueJS per-file coverage (2026-09-25)
 
-This is a separate BlueJS coverage measurement at commit `2f0d9f9e` with uncommitted changes on Darwin 27.0 (`arm64`), rustc 1.95.0 (59807616e 2026-04-14) and `cargo-llvm-cov 0.9.1`. It measures the Rust test suite independently of the Test262 inventory and historical verification above. `python3 backend/bluejs/coverage_file.py --update-macos-report` cleaned prior LLVM artifacts, ran the complete default BlueJS Rust test suite, and exported fresh per-file JSON. The opt-in Node oracle and external full Test262 runner were not included. Workspace coverage was not remeasured at this revision.
+This is a separate BlueJS coverage measurement at commit `8244bac3` with uncommitted changes on Darwin 27.0 (`arm64`), rustc 1.95.0 (59807616e 2026-04-14) and `cargo-llvm-cov 0.9.1`. It measures the Rust test suite independently of the Test262 inventory and historical verification above. `python3 backend/bluejs/coverage_file.py --update-macos-report` cleaned prior LLVM artifacts, ran the complete default BlueJS Rust test suite, and exported fresh per-file JSON. The opt-in Node oracle and external full Test262 runner were not included. Workspace coverage was not remeasured at this revision.
 
 Each measured cell shows covered / instrumented and the coverage rate. All 171 Rust files under `backend/bluejs/src/` are listed: 158 have LLVM counters; 13 use `-` with an individual reason in `Note`. A `0%` result requires a positive instrumented denominator and zero covered units. `☑` means **lines, functions and regions all reach 100%**; `☐` means at least one is below 100%. The total aggregates only instrumented files. Region coverage is separate from branch coverage. To rerun any one file independently, use `python3 backend/bluejs/coverage_file.py ast.rs` (replace `ast.rs` with its source path). Each invocation reruns the entire test suite, since tests outside a file can still exercise it.
 
@@ -133,10 +133,10 @@ Each measured cell shows covered / instrumented and the coverage rate. All 171 R
 | [`bin/bluejs-test262.rs`](../../../backend/bluejs/src/bin/bluejs-test262.rs) | 631 / 631 (100.00%) | 56 / 56 (100.00%) | 1,211 / 1,211 (100.00%) | ☑ |  |
 | [`bytecode.rs`](../../../backend/bluejs/src/bytecode.rs) | 85 / 85 (100.00%) | 11 / 11 (100.00%) | 88 / 88 (100.00%) | ☑ |  |
 | [`compiler.rs`](../../../backend/bluejs/src/compiler.rs) | 1,480 / 1,480 (100.00%) | 143 / 143 (100.00%) | 2,086 / 2,086 (100.00%) | ☑ |  |
-| [`compiler/expressions.rs`](../../../backend/bluejs/src/compiler/expressions.rs) | 1,349 / 1,480 (91.15%) | 36 / 36 (100.00%) | 2,873 / 3,484 (82.46%) | ☐ |  |
-| [`compiler/functions.rs`](../../../backend/bluejs/src/compiler/functions.rs) | 965 / 983 (98.17%) | 51 / 51 (100.00%) | 1,664 / 1,821 (91.38%) | ☐ |  |
+| [`compiler/expressions.rs`](../../../backend/bluejs/src/compiler/expressions.rs) | 1,460 / 1,533 (95.24%) | 36 / 36 (100.00%) | 3,272 / 3,439 (95.14%) | ☐ |  |
+| [`compiler/functions.rs`](../../../backend/bluejs/src/compiler/functions.rs) | 971 / 983 (98.78%) | 51 / 51 (100.00%) | 1,703 / 1,821 (93.52%) | ☐ |  |
 | [`compiler/private_validation.rs`](../../../backend/bluejs/src/compiler/private_validation.rs) | 334 / 340 (98.24%) | 32 / 32 (100.00%) | 643 / 701 (91.73%) | ☐ |  |
-| [`compiler/statements.rs`](../../../backend/bluejs/src/compiler/statements.rs) | 1,294 / 1,351 (95.78%) | 68 / 70 (97.14%) | 2,354 / 2,612 (90.12%) | ☐ |  |
+| [`compiler/statements.rs`](../../../backend/bluejs/src/compiler/statements.rs) | 1,303 / 1,351 (96.45%) | 68 / 70 (97.14%) | 2,407 / 2,612 (92.15%) | ☐ |  |
 | [`heap.rs`](../../../backend/bluejs/src/heap.rs) | 698 / 746 (93.57%) | 77 / 78 (98.72%) | 1,113 / 1,193 (93.29%) | ☐ |  |
 | [`heap/binary_data.rs`](../../../backend/bluejs/src/heap/binary_data.rs) | 757 / 839 (90.23%) | 71 / 74 (95.95%) | 1,129 / 1,311 (86.12%) | ☐ |  |
 | [`heap/collection_iteration.rs`](../../../backend/bluejs/src/heap/collection_iteration.rs) | 82 / 83 (98.80%) | 4 / 4 (100.00%) | 103 / 110 (93.64%) | ☐ |  |
@@ -155,7 +155,7 @@ Each measured cell shows covered / instrumented and the coverage rate. All 171 R
 | [`parser/module.rs`](../../../backend/bluejs/src/parser/module.rs) | 139 / 143 (97.20%) | 7 / 8 (87.50%) | 235 / 243 (96.71%) | ☐ |  |
 | [`parser/module_items.rs`](../../../backend/bluejs/src/parser/module_items.rs) | 318 / 336 (94.64%) | 12 / 12 (100.00%) | 564 / 642 (87.85%) | ☐ |  |
 | [`parser/patterns.rs`](../../../backend/bluejs/src/parser/patterns.rs) | 174 / 178 (97.75%) | 10 / 10 (100.00%) | 273 / 292 (93.49%) | ☐ |  |
-| [`parser/statements.rs`](../../../backend/bluejs/src/parser/statements.rs) | 555 / 616 (90.10%) | 21 / 21 (100.00%) | 1,036 / 1,177 (88.02%) | ☐ |  |
+| [`parser/statements.rs`](../../../backend/bluejs/src/parser/statements.rs) | 558 / 616 (90.58%) | 21 / 21 (100.00%) | 1,041 / 1,177 (88.45%) | ☐ |  |
 | [`parser/tests.rs`](../../../backend/bluejs/src/parser/tests.rs) | - | - | - | - | Test source; not a coverage target |
 | [`primitive.rs`](../../../backend/bluejs/src/primitive.rs) | 277 / 281 (98.58%) | 26 / 27 (96.30%) | 516 / 524 (98.47%) | ☐ |  |
 | [`program_abi.rs`](../../../backend/bluejs/src/program_abi.rs) | 12 / 12 (100.00%) | 2 / 2 (100.00%) | 22 / 22 (100.00%) | ☑ |  |
@@ -299,7 +299,7 @@ Each measured cell shows covered / instrumented and the coverage rate. All 171 R
 | [`vm/test262/reverse.rs`](../../../backend/bluejs/src/vm/test262/reverse.rs) | 260 / 270 (96.30%) | 24 / 26 (92.31%) | 427 / 464 (92.03%) | ☐ |  |
 | [`vm/test262_agents.rs`](../../../backend/bluejs/src/vm/test262_agents.rs) | 421 / 462 (91.13%) | 42 / 49 (85.71%) | 593 / 664 (89.31%) | ☐ |  |
 | [`vm/tests.rs`](../../../backend/bluejs/src/vm/tests.rs) | - | - | - | - | Test source; not a coverage target |
-| **Total (158 instrumented files)** | **67,969 / 73,195 (92.86%)** | **4,980 / 5,332 (93.40%)** | **113,719 / 126,170 (90.13%)** | ☐ |  |
+| **Total (158 instrumented files)** | **68,098 / 73,248 (92.97%)** | **4,980 / 5,332 (93.40%)** | **114,215 / 126,125 (90.56%)** | ☐ |  |
 
 ## Historical differences from the other platforms (2026-09-21)
 

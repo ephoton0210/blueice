@@ -294,45 +294,109 @@ impl Compiler {
                     }
                     return Ok(());
                 }
-                if *op == UnaryOp::Typeof
-                    && self.with_depth != 0
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve_inside_innermost_with(name).is_none())
-                {
-                    // Inside `with`, the identifier resolves against the with
-                    // objects first; an unresolvable name is `undefined`.
-                    let Expr::Identifier(name) = &**arg else {
-                        unreachable!()
-                    };
-                    let index = self.metadata_index(self.bytecode.constants.len())?;
-                    self.bytecode
-                        .constants
-                        .push(Value::String(name.as_str().into()));
-                    self.emit(Opcode::WithGetOrUndefined, index)?;
-                    self.emit(opcode, 0)?;
-                } else if *op == UnaryOp::Typeof
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Date" | "Function" | "Proxy" | "Map" | "Set" | "WeakMap" | "WeakSet" | "WeakRef" | "FinalizationRegistry" | "DisposableStack" | "AsyncDisposableStack" | "SuppressedError" | "ShadowRealm" | "globalThis" | "ArrayBuffer" | "SharedArrayBuffer" | "DataView" | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float16Array" | "Float32Array" | "Float64Array" | "BigInt64Array" | "BigUint64Array" | "Atomics" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" | "escape" | "unescape" | "JSON"))
-                {
-                    let Expr::Identifier(name) = &**arg else {
-                        unreachable!()
-                    };
-                    let index = self.metadata_index(self.bytecode.constants.len())?;
-                    self.bytecode
-                        .constants
-                        .push(Value::String(name.as_str().into()));
-                    self.emit(Opcode::TypeofName, index)?;
-                } else if *op == UnaryOp::Typeof
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_some_and(|slot| self.bytecode.bindings[slot as usize].eval_var))
-                {
-                    // A sloppy direct eval's own `var` is deletable at
-                    // runtime even though it resolves to a static slot at
-                    // compile time: `typeof` on it must not throw once
-                    // `delete` has removed the binding and the name has
-                    // nothing to resolve outward to either.
-                    let Expr::Identifier(name) = &**arg else {
-                        unreachable!()
-                    };
-                    let slot = self.resolve(name).expect("just matched Some");
-                    self.emit(Opcode::TypeofBinding, slot)?;
+                if *op == UnaryOp::Typeof {
+                    match arg.as_ref() {
+                        // Inside `with`, an unresolvable name has type
+                        // "undefined" after consulting the object environment.
+                        Expr::Identifier(name)
+                            if self.with_depth != 0
+                                && self.resolve_inside_innermost_with(name).is_none() =>
+                        {
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
+                            self.bytecode
+                                .constants
+                                .push(Value::String(name.as_str().into()));
+                            self.emit(Opcode::WithGetOrUndefined, index)?;
+                            self.emit(opcode, 0)?;
+                        }
+                        Expr::Identifier(name)
+                            if self.resolve(name).is_none()
+                                && !matches!(
+                                    name.as_str(),
+                                    "undefined"
+                                        | "NaN"
+                                        | "Infinity"
+                                        | "String"
+                                        | "Symbol"
+                                        | "RegExp"
+                                        | "Object"
+                                        | "Reflect"
+                                        | "Math"
+                                        | "Number"
+                                        | "Boolean"
+                                        | "Array"
+                                        | "Date"
+                                        | "Function"
+                                        | "Proxy"
+                                        | "Map"
+                                        | "Set"
+                                        | "WeakMap"
+                                        | "WeakSet"
+                                        | "WeakRef"
+                                        | "FinalizationRegistry"
+                                        | "DisposableStack"
+                                        | "AsyncDisposableStack"
+                                        | "SuppressedError"
+                                        | "ShadowRealm"
+                                        | "globalThis"
+                                        | "ArrayBuffer"
+                                        | "SharedArrayBuffer"
+                                        | "DataView"
+                                        | "Int8Array"
+                                        | "Uint8Array"
+                                        | "Uint8ClampedArray"
+                                        | "Int16Array"
+                                        | "Uint16Array"
+                                        | "Int32Array"
+                                        | "Uint32Array"
+                                        | "Float16Array"
+                                        | "Float32Array"
+                                        | "Float64Array"
+                                        | "BigInt64Array"
+                                        | "BigUint64Array"
+                                        | "Atomics"
+                                        | "Intl"
+                                        | "Error"
+                                        | "TypeError"
+                                        | "RangeError"
+                                        | "SyntaxError"
+                                        | "ReferenceError"
+                                        | "EvalError"
+                                        | "URIError"
+                                        | "isNaN"
+                                        | "isFinite"
+                                        | "parseInt"
+                                        | "parseFloat"
+                                        | "encodeURI"
+                                        | "encodeURIComponent"
+                                        | "decodeURI"
+                                        | "decodeURIComponent"
+                                        | "escape"
+                                        | "unescape"
+                                        | "JSON"
+                                ) =>
+                        {
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
+                            self.bytecode
+                                .constants
+                                .push(Value::String(name.as_str().into()));
+                            self.emit(Opcode::TypeofName, index)?;
+                        }
+                        // A sloppy direct eval's own `var` is deletable at
+                        // runtime even though it resolves to a static slot.
+                        Expr::Identifier(name)
+                            if self.resolve(name).is_some_and(|slot| {
+                                self.bytecode.bindings[slot as usize].eval_var
+                            }) =>
+                        {
+                            let slot = self.resolve(name).expect("just matched Some");
+                            self.emit(Opcode::TypeofBinding, slot)?;
+                        }
+                        _ => {
+                            self.expression(arg)?;
+                            self.emit(opcode, 0)?;
+                        }
+                    }
                 } else {
                     self.expression(arg)?;
                     self.emit(opcode, 0)?;
@@ -416,8 +480,9 @@ impl Compiler {
                 self.emit(Opcode::NewArray, length)?;
                 for (index, element) in elements.iter().enumerate() {
                     let Some(element) = element else { continue };
-                    let ArrayElement::Normal(value) = element else {
-                        return Err(CompileError::Unsupported("array spread"));
+                    // A spread was handled by the ArrayPush path above.
+                    let value = match element {
+                        ArrayElement::Normal(value) | ArrayElement::Spread(value) => value,
                     };
                     self.emit(Opcode::Dup, 0)?;
                     self.constant(Value::String(index.to_string().into()))?;
@@ -679,8 +744,8 @@ impl Compiler {
                         self.emit(Opcode::SuperCallSpread, 0)?;
                     } else {
                         for arg in args {
-                            let Argument::Normal(expr) = arg else {
-                                unreachable!("super call spreads take the array path")
+                            let expr = match arg {
+                                Argument::Normal(expr) | Argument::Spread(expr) => expr,
                             };
                             self.expression(expr)?;
                         }
@@ -692,47 +757,48 @@ impl Compiler {
                     self.super_call_epilogue()?;
                     return Ok(());
                 }
-                if !construct
-                    && matches!(&**callee, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
-                {
-                    let Expr::Member {
-                        property, computed, ..
-                    } = callee.as_ref()
-                    else {
-                        unreachable!()
-                    };
-                    self.super_reference(property, *computed)?;
-                    self.emit_this()?;
-                    self.emit(Opcode::SuperGetMethod, 0)?;
-                } else if !construct
-                    && matches!(&**callee, Expr::Parenthesized(inner) if matches!(inner.as_ref(), Expr::Member { .. } | Expr::OptionalMember { .. }))
-                {
-                    let Expr::Parenthesized(inner) = callee.as_ref() else {
-                        unreachable!()
-                    };
-                    self.parenthesized_optional_member_method(inner)?;
-                } else if !construct && matches!(&**callee, Expr::Member { .. }) {
-                    if private_member_name(callee).is_some() {
-                        let owner = self.private_member_reference(callee)?;
-                        self.emit(Opcode::PrivateGetMethod, owner)?;
-                    } else {
-                        self.member_reference(callee)?;
-                        self.emit(Opcode::GetMethod, 0)?;
+                match (construct, callee.as_ref()) {
+                    (
+                        false,
+                        Expr::Member {
+                            object,
+                            property,
+                            computed,
+                        },
+                    ) if matches!(object.as_ref(), Expr::Super) => {
+                        self.super_reference(property, *computed)?;
+                        self.emit_this()?;
+                        self.emit(Opcode::SuperGetMethod, 0)?;
                     }
-                } else if !construct
-                    && self.with_depth != 0
-                    && matches!(&**callee, Expr::Identifier(name) if self.resolve_inside_innermost_with(name).is_none())
-                {
-                    // `f()` inside `with`: a function found on a with object
-                    // is called with that object as `this` (WithBaseObject).
-                    let Expr::Identifier(name) = &**callee else {
-                        unreachable!()
-                    };
-                    let index = self.name_constant(name)?;
-                    self.emit(Opcode::WithGetMethod, index)?;
-                } else {
-                    self.expression(callee)?;
-                    self.constant(Value::Undefined)?;
+                    (false, Expr::Parenthesized(inner))
+                        if matches!(
+                            inner.as_ref(),
+                            Expr::Member { .. } | Expr::OptionalMember { .. }
+                        ) =>
+                    {
+                        self.parenthesized_optional_member_method(inner)?;
+                    }
+                    (false, Expr::Member { .. }) => {
+                        if private_member_name(callee).is_some() {
+                            let owner = self.private_member_reference(callee)?;
+                            self.emit(Opcode::PrivateGetMethod, owner)?;
+                        } else {
+                            self.member_reference(callee)?;
+                            self.emit(Opcode::GetMethod, 0)?;
+                        }
+                    }
+                    (false, Expr::Identifier(name))
+                        if self.with_depth != 0
+                            && self.resolve_inside_innermost_with(name).is_none() =>
+                    {
+                        // A function found on a with object receives it as `this`.
+                        let index = self.name_constant(name)?;
+                        self.emit(Opcode::WithGetMethod, index)?;
+                    }
+                    _ => {
+                        self.expression(callee)?;
+                        self.constant(Value::Undefined)?;
+                    }
                 }
                 if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
                     self.emit(Opcode::NewArray, 0)?;
@@ -757,8 +823,8 @@ impl Compiler {
                     return Ok(());
                 }
                 for arg in args {
-                    let Argument::Normal(expr) = arg else {
-                        unreachable!("spread calls are emitted above")
+                    let expr = match arg {
+                        Argument::Normal(expr) | Argument::Spread(expr) => expr,
                     };
                     self.expression(expr)?;
                 }
@@ -940,40 +1006,42 @@ impl Compiler {
             }
             Expr::Call { callee, args } | Expr::OptionalCall { callee, args } => {
                 let optional_call = matches!(expr, Expr::OptionalCall { .. });
-                if matches!(&**callee, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
-                {
-                    let Expr::Member {
-                        property, computed, ..
-                    } = callee.as_ref()
-                    else {
-                        unreachable!()
-                    };
-                    self.super_reference(property, *computed)?;
-                    self.emit_this()?;
-                    self.emit(Opcode::SuperGetMethod, 0)?;
-                } else if private_member_name(callee).is_some() {
-                    let owner = self.private_member_chain_reference(callee, exits)?;
-                    self.emit(Opcode::PrivateGetMethod, owner)?;
-                } else if matches!(
-                    callee.as_ref(),
-                    Expr::Member { .. } | Expr::OptionalMember { .. }
-                ) {
-                    match self.optional_chain_member_reference(callee, exits)? {
-                        Some(owner) => self.emit(Opcode::PrivateGetMethod, owner)?,
-                        None => self.emit(Opcode::GetMethod, 0)?,
-                    };
-                } else if matches!(&**callee, Expr::Parenthesized(inner) if matches!(inner.as_ref(), Expr::Member { .. } | Expr::OptionalMember { .. }))
-                {
-                    let Expr::Parenthesized(inner) = callee.as_ref() else {
-                        unreachable!()
-                    };
-                    self.parenthesized_optional_member_method(inner)?;
-                } else if optional_chain_root(callee) {
-                    self.optional_chain_expression(callee, exits)?;
-                    self.constant(Value::Undefined)?;
-                } else {
-                    self.expression(callee)?;
-                    self.constant(Value::Undefined)?;
+                match callee.as_ref() {
+                    Expr::Member {
+                        object,
+                        property,
+                        computed,
+                    } if matches!(object.as_ref(), Expr::Super) => {
+                        self.super_reference(property, *computed)?;
+                        self.emit_this()?;
+                        self.emit(Opcode::SuperGetMethod, 0)?;
+                    }
+                    _ if private_member_name(callee).is_some() => {
+                        let owner = self.private_member_chain_reference(callee, exits)?;
+                        self.emit(Opcode::PrivateGetMethod, owner)?;
+                    }
+                    Expr::Member { .. } | Expr::OptionalMember { .. } => {
+                        match self.optional_chain_member_reference(callee, exits)? {
+                            Some(owner) => self.emit(Opcode::PrivateGetMethod, owner)?,
+                            None => self.emit(Opcode::GetMethod, 0)?,
+                        };
+                    }
+                    Expr::Parenthesized(inner)
+                        if matches!(
+                            inner.as_ref(),
+                            Expr::Member { .. } | Expr::OptionalMember { .. }
+                        ) =>
+                    {
+                        self.parenthesized_optional_member_method(inner)?;
+                    }
+                    _ if optional_chain_root(callee) => {
+                        self.optional_chain_expression(callee, exits)?;
+                        self.constant(Value::Undefined)?;
+                    }
+                    _ => {
+                        self.expression(callee)?;
+                        self.constant(Value::Undefined)?;
+                    }
                 }
                 if optional_call {
                     // GetMethod leaves [callee, receiver]. Test the callee
@@ -1002,8 +1070,8 @@ impl Compiler {
                     self.emit(Opcode::CallSpread, 0)?;
                 } else {
                     for arg in args {
-                        let Argument::Normal(value) = arg else {
-                            unreachable!("spread arguments use CallSpread")
+                        let value = match arg {
+                            Argument::Normal(value) | Argument::Spread(value) => value,
                         };
                         self.expression(value)?;
                     }
@@ -1286,14 +1354,13 @@ impl Compiler {
             )?;
         }
         let using_hint = match left {
-            ForHead::Decl(DeclKind::Using, _) => Some(false),
-            ForHead::Decl(DeclKind::AwaitUsing, _) => Some(true),
+            ForHead::Decl(DeclKind::Using, pattern) => Some((false, DeclKind::Using, pattern)),
+            ForHead::Decl(DeclKind::AwaitUsing, pattern) => {
+                Some((true, DeclKind::AwaitUsing, pattern))
+            }
             _ => None,
         };
-        if let Some(is_async) = using_hint {
-            let ForHead::Decl(kind, pattern) = left else {
-                unreachable!("using_hint is only set for ForHead::Decl")
-            };
+        if let Some((is_async, kind, pattern)) = using_hint {
             // `for (using x of iterable)`'s ForBinding disposes `x`'s bound
             // value at the end of *this* iteration (confirmed against
             // `initializer-Symbol.dispose-called-at-end-of-each-iteration-of-forofstatement.js`),
@@ -1303,7 +1370,7 @@ impl Compiler {
             // per-iteration scope already entered above.
             self.wrap_with_disposal(is_async, |this| {
                 this.emit(Opcode::Dup, 0)?;
-                this.bind_pattern(pattern, *kind)?;
+                this.bind_pattern(pattern, kind)?;
                 this.emit(Opcode::AddDisposableResource, u32::from(is_async))?;
                 this.statement(body, false)
             })?;
@@ -1496,18 +1563,11 @@ impl Compiler {
             }
         }
         let binding = if let Expr::Identifier(name) = target {
-            if let Some(slot) = self.resolve(name) {
-                Some(slot)
-            } else {
-                let index = self.metadata_index(self.bytecode.constants.len())?;
-                self.bytecode
-                    .constants
-                    .push(Value::String("globalThis".into()));
-                self.emit(Opcode::Global, index)?;
-                self.constant(Value::String(name.clone().into()))?;
-                self.emit(Opcode::ToPropertyKey, 0)?;
-                None
-            }
+            // The unbound-name path above returns before reaching this point.
+            Some(
+                self.resolve(name)
+                    .expect("unbound assignment was handled above"),
+            )
         } else {
             if op == AssignOp::Assign {
                 // A simple assignment evaluates the computed property
