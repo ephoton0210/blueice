@@ -87,6 +87,19 @@ pub enum VmDebuggerNestedExecutionState {
 /// limit but cannot raise these caps or use a zero-limit probe.
 pub const VM_DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const VM_DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
+pub const VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES: usize = 4_096;
+
+/// Lossless, handle-free data copied from one exact paused lexical slot.
+/// Containers are added only after the side-effect-free heap walk is installed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VmDebuggerValuePreview {
+    Undefined,
+    Null,
+    Bool(bool),
+    NumberBits(u64),
+    BigIntBytes(Vec<u8>),
+    StringUnits(Vec<u16>),
+}
 
 /// One active lexical binding slot. No identifier, value, object handle, or
 /// source location leaves the VM through this first inspection seam.
@@ -155,6 +168,98 @@ enum DebuggerRunOutcome {
 }
 
 impl Vm {
+    /// Reads one currently active lexical slot without resuming the VM,
+    /// looking up a name, or invoking an accessor. This first native seam
+    /// copies primitives only; objects and symbols are refused in full.
+    pub fn debugger_value_preview(
+        &self,
+        frame_serial: Option<u64>,
+        frame_index: u32,
+        expected_code_unit_ordinal: u32,
+        expected_bytecode_offset: u32,
+        entry: VmDebuggerScopeEntry,
+    ) -> Result<VmDebuggerValuePreview, RuntimeError> {
+        let stack = self.debugger_stack_snapshot(
+            frame_serial,
+            VM_DEBUGGER_MAX_STACK_FRAMES,
+            VM_DEBUGGER_MAX_SCOPE_ENTRIES,
+        )?;
+        let frame = stack
+            .frames
+            .get(frame_index as usize)
+            .ok_or(RuntimeError::Unsupported(
+                "debugger value target is not an active paused frame",
+            ))?;
+        if frame.code_unit_ordinal != expected_code_unit_ordinal
+            || frame.bytecode_offset != expected_bytecode_offset
+            || !frame.scope_entries.contains(&entry)
+        {
+            return Err(RuntimeError::Unsupported(
+                "debugger value target is not an active paused slot",
+            ));
+        }
+        let (bindings, cells) =
+            match frame.code_unit_ordinal {
+                0 => {
+                    if let Some(root) = &self.debugger_module_continuation {
+                        (&root.execution.bindings, &root.execution.cells)
+                    } else {
+                        (&self.bindings, &self.cells)
+                    }
+                }
+                _ => {
+                    let child = self.debugger_nested_continuation.as_ref().ok_or(
+                        RuntimeError::Unsupported("debugger nested value frame is unavailable"),
+                    )?;
+                    (&child.execution.bindings, &child.execution.cells)
+                }
+            };
+        let slot = entry.slot_ordinal as usize;
+        let value = if let Some(cell) = cells.get(&slot) {
+            self.heap.get_own(*cell, "value")?
+        } else {
+            bindings.get(slot).cloned().flatten()
+        }
+        .ok_or(RuntimeError::Unsupported(
+            "debugger value binding is uninitialized",
+        ))?;
+        match value {
+            Value::Undefined => Ok(VmDebuggerValuePreview::Undefined),
+            Value::Null => Ok(VmDebuggerValuePreview::Null),
+            Value::Bool(value) => Ok(VmDebuggerValuePreview::Bool(value)),
+            Value::Number(value) => Ok(VmDebuggerValuePreview::NumberBits(value.to_bits())),
+            Value::BigInt(value) => {
+                // At the boundary a positive sign byte may make the copy
+                // one byte too long; the post-check rejects it atomically.
+                if value.bits() > (VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES as u64) * 8 {
+                    return Err(RuntimeError::Unsupported(
+                        "debugger value exceeds the payload byte budget",
+                    ));
+                }
+                let bytes = value.to_signed_bytes_le();
+                if bytes.len() > VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES {
+                    return Err(RuntimeError::Unsupported(
+                        "debugger value exceeds the payload byte budget",
+                    ));
+                }
+                Ok(VmDebuggerValuePreview::BigIntBytes(bytes))
+            }
+            Value::String(value) => {
+                if value.byte_len() > VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES {
+                    return Err(RuntimeError::Unsupported(
+                        "debugger value exceeds the payload byte budget",
+                    ));
+                }
+                Ok(VmDebuggerValuePreview::StringUnits(
+                    value.as_code_units().to_vec(),
+                ))
+            }
+            Value::Symbol(_) | Value::Object(_) => Err(RuntimeError::Unsupported(
+                "debugger value is not a supported primitive",
+            )),
+        }
+    }
+
     /// Inspects only an exact paused root or nested invocation. No bytecode is
     /// executed, no heap getter is read, and no binding value is copied.
     pub fn debugger_stack_snapshot(
@@ -1198,6 +1303,209 @@ mod tests {
         );
         vm.resume_debugger_execution().unwrap();
         assert!(vm.debugger_stack_snapshot(None, 2, 256).is_err());
+    }
+
+    fn active_entry(
+        frame: &VmDebuggerStackFrame,
+        code: &Bytecode,
+        name: &str,
+    ) -> VmDebuggerScopeEntry {
+        let slot_ordinal = code
+            .bindings
+            .iter()
+            .position(|binding| binding.name == name)
+            .and_then(|slot| u32::try_from(slot).ok())
+            .expect("binding has a wire-sized slot");
+        *frame
+            .scope_entries
+            .iter()
+            .find(|entry| entry.slot_ordinal == slot_ordinal)
+            .expect("binding is active in the selected frame")
+    }
+
+    #[test]
+    fn paused_root_previews_lossless_primitives_and_rejects_wrong_targets() {
+        let program = installed_script(
+            "let flag = true; let empty = null; let missing; let minus = -0; let not_a_number = NaN; let count = 123456789012345678901234567890n; let text = '\\ud800'; let too_long = 'x'.repeat(2049); let too_big = 1n << 32768n; let object = { a: 1 };",
+        );
+        let halt = program.instructions().last().unwrap().offset as u32;
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_script_until_debugger_pause(&program, halt)
+                .unwrap(),
+            VmDebuggerExecutionState::Paused {
+                bytecode_offset: halt
+            }
+        );
+        let frame = &vm.debugger_stack_snapshot(None, 1, 256).unwrap().frames[0];
+        let read = |name| {
+            vm.debugger_value_preview(
+                None,
+                0,
+                frame.code_unit_ordinal,
+                frame.bytecode_offset,
+                active_entry(frame, &program, name),
+            )
+        };
+        assert_eq!(read("flag").unwrap(), VmDebuggerValuePreview::Bool(true));
+        assert_eq!(read("empty").unwrap(), VmDebuggerValuePreview::Null);
+        assert_eq!(read("missing").unwrap(), VmDebuggerValuePreview::Undefined);
+        assert_eq!(
+            read("minus").unwrap(),
+            VmDebuggerValuePreview::NumberBits((-0.0_f64).to_bits())
+        );
+        assert!(matches!(
+            read("not_a_number").unwrap(),
+            VmDebuggerValuePreview::NumberBits(bits) if f64::from_bits(bits).is_nan()
+        ));
+        assert_eq!(
+            read("count").unwrap(),
+            VmDebuggerValuePreview::BigIntBytes(
+                num_bigint::BigInt::parse_bytes(b"123456789012345678901234567890", 10)
+                    .unwrap()
+                    .to_signed_bytes_le()
+            )
+        );
+        assert_eq!(
+            read("text").unwrap(),
+            VmDebuggerValuePreview::StringUnits(vec![0xd800])
+        );
+        assert!(read("too_long").is_err());
+        assert!(read("too_big").is_err());
+        assert!(read("object").is_err());
+        let flag = active_entry(frame, &program, "flag");
+        for (serial, index, unit, offset, entry) in [
+            (Some(1), 0, 0, halt, flag),
+            (None, 1, 0, halt, flag),
+            (None, 0, 1, halt, flag),
+            (None, 0, 0, halt - 1, flag),
+            (
+                None,
+                0,
+                0,
+                halt,
+                VmDebuggerScopeEntry {
+                    slot_ordinal: u32::MAX,
+                    scope_depth: 0,
+                },
+            ),
+        ] {
+            assert!(vm
+                .debugger_value_preview(serial, index, unit, offset, entry)
+                .is_err());
+        }
+        vm.resume_debugger_execution().unwrap();
+        assert!(vm.debugger_value_preview(None, 0, 0, halt, flag).is_err());
+    }
+
+    #[test]
+    fn paused_nested_preview_reads_cell_backed_capture_without_running_child() {
+        let program = installed_script(
+            "function inner() { let captured = 17; const sink = () => captured; return captured; } inner();",
+        );
+        let child = program.child_code_units().next().unwrap();
+        let mut vm = Vm::default();
+        let VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = vm
+            .execute_script_until_nested_debugger_pause(&program, 1, 0)
+            .unwrap()
+        else {
+            panic!("inner closure must pause");
+        };
+        let mut preview = None;
+        for _ in 0..64 {
+            let frame = &vm
+                .debugger_stack_snapshot(Some(frame_serial), 2, 256)
+                .unwrap()
+                .frames[0];
+            if let Some(entry) = child
+                .bindings
+                .iter()
+                .position(|binding| binding.name == "captured")
+                .and_then(|slot| {
+                    if !vm
+                        .debugger_nested_continuation
+                        .as_ref()
+                        .unwrap()
+                        .execution
+                        .cells
+                        .contains_key(&slot)
+                    {
+                        return None;
+                    }
+                    frame
+                        .scope_entries
+                        .iter()
+                        .find(|entry| entry.slot_ordinal == slot as u32)
+                })
+            {
+                preview = Some(
+                    vm.debugger_value_preview(
+                        Some(frame_serial),
+                        0,
+                        frame.code_unit_ordinal,
+                        frame.bytecode_offset,
+                        *entry,
+                    )
+                    .unwrap(),
+                );
+                break;
+            }
+            vm.step_debugger_nested_instruction(frame_serial).unwrap();
+        }
+        assert_eq!(
+            preview,
+            Some(VmDebuggerValuePreview::NumberBits(17.0_f64.to_bits()))
+        );
+    }
+
+    #[test]
+    fn paused_module_root_preview_reads_retained_module_binding() {
+        let entry = "preview/main.mjs";
+        let mut registry = BlueJsProgramRegistry::default();
+        let handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(entry, "sha256:preview").unwrap(),
+                module_code("let answer = 41; export const result = answer + 1;"),
+            )
+            .unwrap();
+        let program = registry.get(handle).unwrap().bytecode().clone();
+        let graph = HashMap::from([(entry.to_string(), program.clone())]);
+        let mut vm = Vm::default();
+        vm.execute_module_graph_until_debugger_pause(entry, &graph, module_entry_offset(&program))
+            .unwrap();
+        let mut preview = None;
+        for _ in 0..64 {
+            let frame = &vm.debugger_stack_snapshot(None, 1, 256).unwrap().frames[0];
+            let slot = program
+                .bindings
+                .iter()
+                .position(|binding| binding.name == "answer")
+                .unwrap() as u32;
+            if let Some(entry) = frame
+                .scope_entries
+                .iter()
+                .find(|entry| entry.slot_ordinal == slot)
+            {
+                if let Ok(value) = vm.debugger_value_preview(
+                    None,
+                    0,
+                    frame.code_unit_ordinal,
+                    frame.bytecode_offset,
+                    *entry,
+                ) {
+                    preview = Some(value);
+                    break;
+                }
+            }
+            assert!(matches!(
+                vm.step_debugger_module_root_instruction().unwrap(),
+                VmDebuggerExecutionState::Paused { .. }
+            ));
+        }
+        assert_eq!(
+            preview,
+            Some(VmDebuggerValuePreview::NumberBits(41.0_f64.to_bits()))
+        );
     }
 
     #[test]

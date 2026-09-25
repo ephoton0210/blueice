@@ -101,6 +101,7 @@ pub use vm::{
     HostFunction, HostFunctionError, HostObject, HostObjectFactory, HostObjectFamily,
     HostObjectKey, HostObjectMethod, HostObjectPairMethod, HostValue, RuntimeError, Vm, VmConfig,
     VmDebuggerExecutionState, VmDebuggerNestedExecutionState, VmDebuggerScopeEntry,
-    VmDebuggerStackFrame, VmDebuggerStackSnapshot, VM_DEBUGGER_MAX_SCOPE_ENTRIES,
-    VM_DEBUGGER_MAX_STACK_FRAMES,
+    VmDebuggerStackFrame, VmDebuggerStackSnapshot, VmDebuggerValuePreview,
+    VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
+    VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
 };

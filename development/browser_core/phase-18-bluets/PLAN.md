@@ -934,6 +934,21 @@ and C2.2.1.5 introduces the public wire and owner receipt gate. Explicit
 typed refusals for forged handles, source requests, and cross-realm attempts
 remain C2.2.2; this design leaf does not change the v36 protocol.
 
+**Native paused primitive preview (C2.2.1.2):** BlueJS now re-reads its exact
+paused root or nested stack, verifies the caller's code unit, instruction,
+frame index and active slot/depth, then copies only an initialized primitive
+from that frame's binding or VM-owned capture cell. Classic root, retained
+module root, and direct nested invocation are distinct sources; the public
+page-host and debugger protocols are unchanged. Number bits preserve `-0` and
+`NaN`, BigInt uses bounded signed bytes, and strings preserve ill-formed UTF-16.
+Objects and symbols refuse for now. Native regressions cover all primitive
+tags, a root after resume, wrong frame/slot/offset/serial, oversize string and
+BigInt, a retained module binding, and a child-local binding after it becomes
+cell-backed by a closure capture. The three focused preview tests, BlueJS
+Clippy with warnings denied, formatting, and 529 of 530 BlueJS lib tests pass;
+the remaining pre-existing native-stack host-query test fails under this
+environment's 1 MiB reported thread stack (measured about 2 MiB).
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
