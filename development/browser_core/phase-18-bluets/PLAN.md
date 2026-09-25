@@ -447,6 +447,20 @@ Compiler IPC v5 supersedes the legacy v3/v4 wording below. A successful exact-ve
 
 Standalone `bluetsc build` now rejects `strict-runtime` before compilation or output staging because this branch has not yet emitted or imported the versioned runtime boundary helper that would make that policy executable. This prevents an artifact or manifest from naming strict runtime enforcement that it cannot provide; `check` remains a static operation, while direct-page contracts remain core-owned. Emitting the helper and proving equivalent direct-page/ESM malformed-boundary rejection remain open work.
 
+**Owner-exposed compiler project inventory (F1 second condition complete):**
+The current sealed catalog distinguishes registration from public compiler
+visibility. Wrapping a pre-populated core compiler service now leaves every
+existing project private by default while still counting it in the sealed
+catalog; only an explicit owner-exposed adapter registration enters any
+compiler stream inventory. Both direct adapter requests and accepted-stream
+requests reject a private project ID before reaching the compiler cache.
+Accepted streams additionally require their own prior inventory receipt. A
+real launcher/core/MCP regression connects two independent MCP clients to one
+owner catalog, proves each receives a distinct session receipt and only the
+public project ID, rejects the private project ID, and still checks the public
+project. This does not add per-client project subsets, project registration,
+build/output authority, or filesystem-root canonicalization.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

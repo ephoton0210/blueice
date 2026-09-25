@@ -14,6 +14,10 @@
 //! `frontend-reference`'s own GUI integration -- there is no reason
 //! this can't run in CI.
 
+use blueice_ipc::compiler_catalog::{
+    CompilerCatalogBootstrap, CompilerCatalogModule, CompilerCatalogOptions,
+    CompilerCatalogProject, COMPILER_CATALOG_BOOTSTRAP_VERSION,
+};
 use blueice_launcher::control::{
     read_control_reply, write_control_request, ControlReply, ControlRequest,
 };
@@ -189,6 +193,10 @@ struct LauncherManagedCore {
 
 impl LauncherManagedCore {
     fn spawn() -> Self {
+        Self::spawn_with_catalog(None)
+    }
+
+    fn spawn_with_catalog(catalog: Option<CompilerCatalogBootstrap>) -> Self {
         let rendezvous_socket = unique_socket_path("launcher-rendezvous");
         let control_socket = unique_socket_path("launcher-control");
         let compiler_socket = unique_socket_path("launcher-compiler");
@@ -198,14 +206,15 @@ impl LauncherManagedCore {
         let _ = std::fs::remove_file(&compiler_socket);
         let _ = std::fs::remove_dir_all(&frame_dir);
 
-        let core = SpawnedCore::spawn_with_options(
-            320.0,
-            200.0,
-            &frame_dir,
-            CoreLaunchOptions::default()
+        let options = match catalog {
+            Some(catalog) => CoreLaunchOptions::default()
+                .with_owner_compiler_catalog_mcp_endpoint(compiler_socket.clone(), catalog)
+                .expect("owner compiler catalog must be valid"),
+            None => CoreLaunchOptions::default()
                 .with_core_closed_compiler_mcp_endpoint(compiler_socket.clone()),
-        )
-        .expect("launcher must start a core with its fixed compiler profile");
+        };
+        let core = SpawnedCore::spawn_with_options(320.0, 200.0, &frame_dir, options)
+            .expect("launcher must start a core with its fixed compiler profile");
         assert!(
             wait_for_socket(&compiler_socket),
             "launcher-selected core compiler endpoint must be live"
@@ -1290,6 +1299,129 @@ async fn launcher_managed_core_keeps_mcp_browser_and_fixed_compiler_adapters_pai
         !launcher.compiler_socket.exists(),
         "launcher shutdown must clean the compiler endpoint after paired MCP disconnects"
     );
+}
+
+#[tokio::test]
+async fn owner_private_compiler_projects_never_enter_real_mcp_client_inventories() {
+    let project = |name: &str, exposed: bool| {
+        let root = format!("project:///{name}");
+        let entry = format!("{root}/main.ts");
+        CompilerCatalogProject {
+            canonical_project_root: root.clone(),
+            canonical_config_root: format!("{root}/blue-ts.json"),
+            canonical_output_root: format!("project:///{name}-dist"),
+            entry_module: entry.clone(),
+            modules: vec![CompilerCatalogModule {
+                canonical_id: entry,
+                text: "export const answer: number = 42;".to_string(),
+            }],
+            expose_to_compiler_ipc: exposed,
+            resolutions: Vec::new(),
+            options: CompilerCatalogOptions::default(),
+        }
+    };
+    let catalog = CompilerCatalogBootstrap {
+        version: COMPILER_CATALOG_BOOTSTRAP_VERSION,
+        projects: vec![project("public", true), project("private", false)],
+    };
+    let mut launcher = LauncherManagedCore::spawn_with_catalog(Some(catalog));
+
+    let mut previous_session = None;
+    for _ in 0..2 {
+        let server = BlueIceMcpServer::connect_with_core_and_compiler_sockets(
+            &launcher.rendezvous_socket,
+            &launcher.compiler_socket,
+        )
+        .expect("each MCP client must attach its own compiler stream");
+        let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
+        let server_task = tokio::spawn(async move {
+            server
+                .serve(server_transport)
+                .await
+                .expect("MCP server must bind its client transport")
+                .waiting()
+                .await
+                .expect("MCP service must finish after client cancellation");
+        });
+        let client = CompilerMcpClient
+            .serve(client_transport)
+            .await
+            .expect("MCP client must negotiate the transport");
+        let session = compiler_session_id(
+            &client
+                .call_tool(CallToolRequestParams::new("bluetsc_session_capabilities"))
+                .await
+                .expect("compiler session capability must round-trip"),
+        );
+        if let Some(previous) = &previous_session {
+            assert_ne!(session, *previous, "client streams need distinct receipts");
+        }
+
+        let request = |name: &str, project_id: u64| {
+            CallToolRequestParams::new(name.to_string()).with_arguments(
+                serde_json::json!({ "session_id": session, "project_id": project_id })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            )
+        };
+        let before_inventory = client
+            .call_tool(request("bluetsc_check", 1))
+            .await
+            .expect("unobserved project must receive a structured reply");
+        assert!(matches!(
+            compiler_tool_reply(&before_inventory),
+            blueice_ipc::compiler::CompilerReply::Error {
+                code: blueice_ipc::compiler::CompilerErrorCode::UnobservedProject,
+                ..
+            }
+        ));
+        let inventory_result = client
+            .call_tool(
+                CallToolRequestParams::new("bluetsc_list_projects").with_arguments(
+                    serde_json::json!({ "session_id": session })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .expect("project inventory must round-trip");
+        assert_source_free_compiler_tool_result(&inventory_result);
+        let blueice_ipc::compiler::CompilerReply::Projects(inventory) =
+            compiler_tool_reply(&inventory_result)
+        else {
+            panic!("MCP inventory must retain the core owner visibility policy")
+        };
+        assert_eq!(
+            inventory.projects,
+            vec![blueice_ipc::compiler::CompilerProject { id: 1 }]
+        );
+        let hidden = client
+            .call_tool(request("bluetsc_check", 2))
+            .await
+            .expect("private project guess must receive a structured reply");
+        assert_source_free_compiler_tool_result(&hidden);
+        assert!(matches!(
+            compiler_tool_reply(&hidden),
+            blueice_ipc::compiler::CompilerReply::Error {
+                code: blueice_ipc::compiler::CompilerErrorCode::UnobservedProject,
+                ..
+            }
+        ));
+        let visible = client
+            .call_tool(request("bluetsc_check", 1))
+            .await
+            .expect("owner-exposed project must check");
+        assert!(matches!(
+            compiler_tool_reply(&visible),
+            blueice_ipc::compiler::CompilerReply::Check(_)
+        ));
+        previous_session = Some(session);
+        client.cancel().await.unwrap();
+        server_task.await.unwrap();
+    }
+    launcher.shutdown();
 }
 
 #[tokio::test]

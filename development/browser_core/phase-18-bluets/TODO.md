@@ -292,8 +292,13 @@ Keep check read-only and owner registration sealed before listeners.
   config/entry/source identities outside the declared project root, and
   output roots colliding with any catalog input or another output. Physical
   filesystem canonicalization and output-write authority remain open.
-- [ ] Admit only owner-exposed projects to each client inventory; deny a
-  guessed or private project before reaching the compiler cache.
+- [x] Admit only owner-exposed projects to each client inventory; deny a
+  guessed or private project before reaching the compiler cache. Even a
+  pre-populated core service now defaults to a private inventory until the
+  owner explicitly exposes a registration. Direct adapter calls and accepted
+  streams both reject private IDs. A real launcher/core/MCP test connects two
+  distinct clients to one sealed catalog and verifies their separate receipts,
+  owner-only inventory, private-ID rejection, and public-project checks.
 
 #### F2. Produce bounded build artifacts.
 
