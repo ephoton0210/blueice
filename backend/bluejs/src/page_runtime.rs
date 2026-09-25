@@ -16,6 +16,7 @@ use crate::{
     BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, Bytecode, HeapError, HeapStats,
     HostFunction, HostObject, HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod,
     HostObjectPairMethod, RuntimeError, Value, Vm, VmConfig, VmDebuggerExecutionState,
+    VmDebuggerNestedExecutionState,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -89,6 +90,47 @@ pub enum BlueJsPageDebuggerExecutionState {
     Completed,
 }
 
+/// One actually paused nested invocation, rather than a static code-unit
+/// location. The embedding host must retain the entire identity for a step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlueJsPageDebuggerFrame {
+    tab_id: u64,
+    program: BlueJsProgramHandle,
+    code_unit_ordinal: u32,
+    invocation_serial: u64,
+}
+
+impl BlueJsPageDebuggerFrame {
+    pub fn tab_id(self) -> u64 {
+        self.tab_id
+    }
+
+    pub fn program(self) -> BlueJsProgramHandle {
+        self.program
+    }
+
+    pub fn code_unit_ordinal(self) -> u32 {
+        self.code_unit_ordinal
+    }
+
+    pub fn invocation_serial(self) -> u64 {
+        self.invocation_serial
+    }
+}
+
+/// Source-free result of starting or stepping one nested invocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlueJsPageDebuggerNestedExecutionState {
+    Paused {
+        frame: BlueJsPageDebuggerFrame,
+        bytecode_offset: u32,
+    },
+    FrameReturned {
+        root_bytecode_offset: u32,
+    },
+    Completed,
+}
+
 struct PageRealm {
     origin: BlueJsPageOrigin,
     vm: Vm,
@@ -96,6 +138,7 @@ struct PageRealm {
     module_programs: BTreeMap<String, BlueJsProgramHandle>,
     linked_module_ids: BTreeSet<String>,
     bytecode_bytes: usize,
+    debugger_nested_frame: Option<BlueJsPageDebuggerFrame>,
 }
 
 /// A restricted, temporary view for installing host callbacks into one live
@@ -275,6 +318,7 @@ impl BlueJsPageRuntime {
                 module_programs: BTreeMap::new(),
                 linked_module_ids: BTreeSet::new(),
                 bytecode_bytes: 0,
+                debugger_nested_frame: None,
             },
         );
         Ok(())
@@ -303,6 +347,7 @@ impl BlueJsPageRuntime {
                     module_programs: BTreeMap::new(),
                     linked_module_ids: BTreeSet::new(),
                     bytecode_bytes: 0,
+                    debugger_nested_frame: None,
                 },
             )
             .expect("the checked realm exists");
@@ -586,6 +631,70 @@ impl BlueJsPageRuntime {
         self.execute_program_until_debugger_pause(tab_id, handle, safe_point)
     }
 
+    /// Starts one classic script and pauses in its exact direct synchronous
+    /// child invocation. A safe point is validated before any script work;
+    /// the returned frame is minted only after the VM actually parks it.
+    pub fn execute_program_until_nested_debugger_pause(
+        &mut self,
+        tab_id: u64,
+        handle: BlueJsProgramHandle,
+        safe_point: BlueJsSafePoint,
+    ) -> Result<BlueJsPageDebuggerNestedExecutionState, BlueJsPageRuntimeError> {
+        self.validate_safe_point(tab_id, handle, safe_point)?;
+        if safe_point.code_unit.ordinal() == 0 {
+            return Err(BlueJsPageRuntimeError::DebuggerNestedCodeUnitOnly);
+        }
+        let compiled = self
+            .registry
+            .get(handle)
+            .map_err(BlueJsPageRuntimeError::ProgramRegistry)?;
+        if !matches!(
+            compiled.ast_nodes().first().map(|node| node.kind()),
+            Some(BlueJsAstNodeKind::Script)
+        ) {
+            return Err(BlueJsPageRuntimeError::DebuggerRootScriptOnly);
+        }
+        let code = compiled.bytecode().clone();
+        let realm = self.realms.get_mut(&tab_id).expect("validated live realm");
+        let state = realm.vm.execute_script_until_nested_debugger_pause(
+            &code,
+            safe_point.code_unit.ordinal(),
+            safe_point.bytecode_offset,
+        );
+        let state = state.map_err(BlueJsPageRuntimeError::Runtime)?;
+        Ok(page_debugger_nested_execution_state(
+            realm, tab_id, handle, state,
+        ))
+    }
+
+    /// Steps only the paused invocation named by the entire live page frame
+    /// identity. A code-unit safe point alone cannot authorize this action.
+    pub fn step_debugger_nested_instruction(
+        &mut self,
+        frame: BlueJsPageDebuggerFrame,
+    ) -> Result<BlueJsPageDebuggerNestedExecutionState, BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get_mut(&frame.tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(frame.tab_id))?;
+        if !realm.programs.contains(&frame.program) || realm.debugger_nested_frame != Some(frame) {
+            return Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable);
+        }
+        let state = realm
+            .vm
+            .step_debugger_nested_instruction(frame.invocation_serial);
+        if state.is_err() {
+            realm.debugger_nested_frame = None;
+        }
+        let state = state.map_err(BlueJsPageRuntimeError::Runtime)?;
+        Ok(page_debugger_nested_execution_state(
+            realm,
+            frame.tab_id,
+            frame.program,
+            state,
+        ))
+    }
+
     /// Resumes the single root-frame debugger continuation in a tab realm.
     /// The caller does not receive a result value, bytecode, source, or VM
     /// reference; terminal errors remain the page runtime's usual category.
@@ -767,6 +876,36 @@ impl BlueJsPageRuntime {
             )
             .map(page_debugger_execution_state)
             .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
+    /// Evaluates an admitted ESM graph until its entry module calls the
+    /// selected direct synchronous child. The graph remains VM-owned on pause.
+    pub fn execute_module_graph_until_nested_debugger_pause(
+        &mut self,
+        tab_id: u64,
+        entry: BlueJsProgramHandle,
+        modules: impl IntoIterator<Item = BlueJsProgramHandle>,
+        safe_point: BlueJsSafePoint,
+    ) -> Result<BlueJsPageDebuggerNestedExecutionState, BlueJsPageRuntimeError> {
+        self.validate_safe_point(tab_id, entry, safe_point)?;
+        if safe_point.code_unit.ordinal() == 0 {
+            return Err(BlueJsPageRuntimeError::DebuggerNestedCodeUnitOnly);
+        }
+        let (entry_module, module_bytecode) = self.module_graph_bytecode(tab_id, entry, modules)?;
+        let realm = self.realms.get_mut(&tab_id).expect("validated live realm");
+        realm
+            .linked_module_ids
+            .extend(module_bytecode.keys().cloned());
+        let state = realm.vm.execute_module_graph_until_nested_debugger_pause(
+            &entry_module,
+            &module_bytecode,
+            safe_point.code_unit.ordinal(),
+            safe_point.bytecode_offset,
+        );
+        let state = state.map_err(BlueJsPageRuntimeError::Runtime)?;
+        Ok(page_debugger_nested_execution_state(
+            realm, tab_id, entry, state,
+        ))
     }
 
     /// Resumes the retained ESM entry frame in one exact live page realm.
@@ -961,6 +1100,8 @@ pub enum BlueJsPageRuntimeError {
     /// root-frame continuation must reject their safe points exactly.
     DebuggerRootCodeUnitOnly,
     DebuggerModuleEntrySafePointOnly,
+    DebuggerNestedCodeUnitOnly,
+    DebuggerNestedFrameUnavailable,
     DuplicateModuleIdentity(String),
     VmInitialization(HeapError),
     HostBinding(RuntimeError),
@@ -1010,6 +1151,12 @@ impl fmt::Display for BlueJsPageRuntimeError {
             Self::DebuggerModuleEntrySafePointOnly => formatter.write_str(
                 "native debugger module pause requires its first evaluate-body safe point",
             ),
+            Self::DebuggerNestedCodeUnitOnly => {
+                formatter.write_str("native nested debugger pause requires a child code unit")
+            }
+            Self::DebuggerNestedFrameUnavailable => {
+                formatter.write_str("nested debugger frame is not active in this page realm")
+            }
             Self::DuplicateModuleIdentity(module) => {
                 write!(
                     formatter,
@@ -1054,6 +1201,46 @@ fn page_debugger_execution_state(
     }
 }
 
+fn page_debugger_nested_execution_state(
+    realm: &mut PageRealm,
+    tab_id: u64,
+    program: BlueJsProgramHandle,
+    state: VmDebuggerNestedExecutionState,
+) -> BlueJsPageDebuggerNestedExecutionState {
+    match state {
+        VmDebuggerNestedExecutionState::Paused {
+            frame_serial,
+            code_unit_ordinal,
+            bytecode_offset,
+        } => {
+            let frame = BlueJsPageDebuggerFrame {
+                tab_id,
+                program,
+                code_unit_ordinal,
+                invocation_serial: frame_serial,
+            };
+            debug_assert_ne!(frame_serial, 0);
+            realm.debugger_nested_frame = Some(frame);
+            BlueJsPageDebuggerNestedExecutionState::Paused {
+                frame,
+                bytecode_offset,
+            }
+        }
+        VmDebuggerNestedExecutionState::FrameReturned {
+            root_bytecode_offset,
+        } => {
+            realm.debugger_nested_frame = None;
+            BlueJsPageDebuggerNestedExecutionState::FrameReturned {
+                root_bytecode_offset,
+            }
+        }
+        VmDebuggerNestedExecutionState::Completed => {
+            realm.debugger_nested_frame = None;
+            BlueJsPageDebuggerNestedExecutionState::Completed
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1065,6 +1252,253 @@ mod tests {
 
     fn source(name: &str) -> BlueJsSourceIdentity {
         BlueJsSourceIdentity::new(name, format!("sha256:{name}")).unwrap()
+    }
+
+    fn first_nested_point(
+        runtime: &BlueJsPageRuntime,
+        tab_id: u64,
+        handle: BlueJsProgramHandle,
+    ) -> BlueJsSafePoint {
+        runtime
+            .safe_points(tab_id, handle, 1024)
+            .unwrap()
+            .into_iter()
+            .find(|point| point.code_unit.ordinal() == 1 && point.bytecode_offset == 0)
+            .expect("the direct child has a first verified instruction")
+    }
+
+    #[test]
+    fn nested_page_frame_is_exact_and_revoked_after_return_or_navigation() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        runtime.open_realm(8, origin()).unwrap();
+        let program = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///nested.js"),
+                &BlueJsProgramV1::Script(
+                    parse("var calls = 0; function inner() { calls++; return 4; } inner();")
+                        .unwrap(),
+                ),
+            )
+            .unwrap();
+        let point = first_nested_point(&runtime, 7, program);
+        let other_program = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///other.js"),
+                &BlueJsProgramV1::Script(parse("42").unwrap()),
+            )
+            .unwrap();
+        let root_point = runtime
+            .safe_points(7, program, 1024)
+            .unwrap()
+            .into_iter()
+            .find(|point| point.code_unit.ordinal() == 0)
+            .unwrap();
+        assert_eq!(
+            runtime.execute_program_until_nested_debugger_pause(7, program, root_point),
+            Err(BlueJsPageRuntimeError::DebuggerNestedCodeUnitOnly)
+        );
+        assert!(matches!(
+            runtime.execute_program_until_nested_debugger_pause(8, program, point),
+            Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { tab_id: 8, .. })
+        ));
+        let BlueJsPageDebuggerNestedExecutionState::Paused { frame, .. } = runtime
+            .execute_program_until_nested_debugger_pause(7, program, point)
+            .unwrap()
+        else {
+            panic!("the child must pause");
+        };
+        assert_eq!(frame.tab_id(), 7);
+        assert_eq!(frame.program(), program);
+        assert_eq!(frame.code_unit_ordinal(), 1);
+        assert_ne!(frame.invocation_serial(), 0);
+        let mut other_tab = frame;
+        other_tab.tab_id = 8;
+        assert_eq!(
+            runtime.step_debugger_nested_instruction(other_tab),
+            Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable)
+        );
+        let mut other_serial = frame;
+        other_serial.invocation_serial += 1;
+        assert_eq!(
+            runtime.step_debugger_nested_instruction(other_serial),
+            Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable)
+        );
+        let mut other_generation = frame;
+        other_generation.program = other_program;
+        assert_eq!(
+            runtime.step_debugger_nested_instruction(other_generation),
+            Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable)
+        );
+        let mut returned = false;
+        for _ in 0..64 {
+            match runtime.step_debugger_nested_instruction(frame).unwrap() {
+                BlueJsPageDebuggerNestedExecutionState::Paused {
+                    frame: same_frame,
+                    bytecode_offset,
+                } => {
+                    assert_eq!(same_frame, frame);
+                    assert!(runtime
+                        .safe_points(7, program, 1024)
+                        .unwrap()
+                        .iter()
+                        .any(|candidate| candidate.code_unit.ordinal() == 1
+                            && candidate.bytecode_offset == bytecode_offset));
+                }
+                BlueJsPageDebuggerNestedExecutionState::FrameReturned { .. } => {
+                    returned = true;
+                    break;
+                }
+                state => panic!("unexpected nested state: {state:?}"),
+            }
+        }
+        assert!(returned);
+        assert_eq!(
+            runtime.step_debugger_nested_instruction(frame),
+            Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable)
+        );
+        assert_eq!(
+            runtime.resume_debugger_execution(7),
+            Ok(BlueJsPageDebuggerExecutionState::Completed)
+        );
+        let BlueJsPageDebuggerNestedExecutionState::Paused {
+            frame: next_frame, ..
+        } = runtime
+            .execute_program_until_nested_debugger_pause(7, program, point)
+            .unwrap()
+        else {
+            panic!("the second invocation must pause");
+        };
+        assert_ne!(next_frame, frame);
+        assert_eq!(
+            runtime.step_debugger_nested_instruction(frame),
+            Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable)
+        );
+        runtime.navigate(7, origin()).unwrap();
+        assert_eq!(
+            runtime.step_debugger_nested_instruction(next_frame),
+            Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable)
+        );
+    }
+
+    #[test]
+    fn nested_page_module_frame_preserves_graph_and_rejoins_entry() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        let dependency = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///dep.mjs"),
+                &BlueJsProgramV1::Module(
+                    parse_module("globalThis.depRuns = (globalThis.depRuns || 0) + 1;").unwrap(),
+                ),
+            )
+            .unwrap();
+        let entry = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///entry.mjs"),
+                &BlueJsProgramV1::Module(
+                    parse_module(
+                        "import './dep.mjs'; function inner() { return 4; } globalThis.answer = inner() + 1;",
+                    )
+                    .unwrap(),
+                ),
+            )
+            .unwrap();
+        let point = first_nested_point(&runtime, 7, entry);
+        let BlueJsPageDebuggerNestedExecutionState::Paused { frame, .. } = runtime
+            .execute_module_graph_until_nested_debugger_pause(7, entry, [dependency, entry], point)
+            .unwrap()
+        else {
+            panic!("the module child must pause");
+        };
+        let mut returned = false;
+        for _ in 0..64 {
+            if matches!(
+                runtime.step_debugger_nested_instruction(frame).unwrap(),
+                BlueJsPageDebuggerNestedExecutionState::FrameReturned { .. }
+            ) {
+                returned = true;
+                break;
+            }
+        }
+        assert!(returned);
+        assert_eq!(
+            runtime.resume_debugger_module_execution(7),
+            Ok(BlueJsPageDebuggerExecutionState::Completed)
+        );
+        let dep_reader = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///dep-reader.js"),
+                &BlueJsProgramV1::Script(parse("globalThis.depRuns").unwrap()),
+            )
+            .unwrap();
+        assert_eq!(
+            runtime.execute_program(7, dep_reader),
+            Ok(Value::Number(1.0))
+        );
+        let answer_reader = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///answer-reader.js"),
+                &BlueJsProgramV1::Script(parse("globalThis.answer").unwrap()),
+            )
+            .unwrap();
+        assert_eq!(
+            runtime.execute_program(7, answer_reader),
+            Ok(Value::Number(5.0))
+        );
+    }
+
+    #[test]
+    fn failed_nested_page_step_revokes_the_frame_without_claiming_completion() {
+        let mut config = BlueJsPageRuntimeConfig::default();
+        config.vm.instruction_budget = 256;
+        let mut runtime = BlueJsPageRuntime::new(config).unwrap();
+        runtime.open_realm(7, origin()).unwrap();
+        let program = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///loop.js"),
+                &BlueJsProgramV1::Script(
+                    parse("function inner() { while (true) {} } inner();").unwrap(),
+                ),
+            )
+            .unwrap();
+        let point = first_nested_point(&runtime, 7, program);
+        let BlueJsPageDebuggerNestedExecutionState::Paused { frame, .. } = runtime
+            .execute_program_until_nested_debugger_pause(7, program, point)
+            .unwrap()
+        else {
+            panic!("the looping child must pause");
+        };
+        let mut exhausted = false;
+        for _ in 0..300 {
+            match runtime.step_debugger_nested_instruction(frame) {
+                Ok(BlueJsPageDebuggerNestedExecutionState::Paused { .. }) => {}
+                Err(BlueJsPageRuntimeError::Runtime(RuntimeError::InstructionLimit)) => {
+                    exhausted = true;
+                    break;
+                }
+                state => panic!("unexpected nested loop state: {state:?}"),
+            }
+        }
+        assert!(exhausted);
+        assert_eq!(
+            runtime.step_debugger_nested_instruction(frame),
+            Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable)
+        );
     }
 
     #[test]

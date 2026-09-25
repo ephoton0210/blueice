@@ -14,7 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.2.1.3.** Route opaque active-frame pause and step through
+**Current leaf: C1.2.1.3.2.** Carry the nested breakpoint and frame step
+through the child scheduler and page-host IPC.
 the page runtime, child, IPC, and public debugger socket.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -273,6 +274,9 @@ channel with explicit owner/client grants.
           - [x] **C1.2.1.2.4.3.2** Verify an asynchronous dependency and entry await still reach nested pause, step/rejoin, and graph completion exactly once. A tagged two-module native regression puts an await in the dependency before the nested entry pause and another in the entry after child return; it verifies all four dependency/entry/child/post-await effects occur once, both records evaluate, and all module continuations and Promise jobs drain.
           - [x] **C1.2.1.2.4.3.3** Exhaust a bounded nested step and prove child/root continuations are cleared, graph state is not falsely completed, and later realm execution remains possible. A 256-instruction native module loop reaches `InstructionLimit` under repeated same-frame steps; no debugger frame survives, the entry record is neither evaluated nor suspended, and a subsequent script executes normally.
     - [ ] **C1.2.1.3** Add an opaque, generation-bound active-frame debugger identity and route nested pause/step through the page runtime, child, page-host IPC, and public debugger protocol without conflating it with a static code unit.
+      - [x] **C1.2.1.3.1** Expose source-free nested pause/step through the page runtime with an active-frame identity bound to tab, installed program generation, code-unit ordinal, and nonzero invocation serial; revoke it on return, failure, or realm replacement. Classic and linked-module page-runtime seams now mint a frame only on an actual child pause, validate the full live identity on every step, preserve the graph and parent on return, and clear the identity after a returned frame, instruction-budget failure, or navigation. Three new page-runtime regressions pass; 522 non-environmental BlueJS library tests and workspace Clippy pass. The wire route remains unavailable until C1.2.1.3.2–3.
+      - [ ] **C1.2.1.3.2** Carry the nested breakpoint and active-frame step through the child scheduler and page-host IPC, preserving classic and linked-module ownership and rejecting stale or unsupported targets.
+      - [ ] **C1.2.1.3.3** Wire a distinct active-frame identity, capability, pause state, and step command through the public debugger protocol and core route; bump both protocol versions only when end-to-end behavior is available.
     - [ ] **C1.2.1.4** Prove the nested pause and same-frame instruction successor on a real BlueTS page through the public debugger socket; keep unsupported call shapes unavailable.
   - [ ] **C1.2.2** Resume that same frame; reject a stale frame identity after it returns.
   - [ ] **C1.2.3** Reject a cross-tab target and a target from a predecessor child.
