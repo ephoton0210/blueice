@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: B4.3.1.** Compile and run one supported click-handler page
-through the event-v1 profile and real child. Every item has an ID
+**Current leaf: B4.3.2.** Reject an unsupported event or document member at
+the checker boundary. Every item has an ID
 (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
 
@@ -220,7 +220,10 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
     expression list.
 - [ ] **B4.3** Execute a supported BlueTS page through B2/B3; unsupported members
   must fail both static checking and JavaScript runtime access.
-  - [ ] **B4.3.1** Compile one click-handler page (getElementById, textContent, createElement/appendChild, addEventListener) through the event-v1 profile and run it in the real child; assert the resulting DOM through a core DOM dump.
+  - [x] **B4.3.1** Compile one click-handler page (getElementById, textContent,
+    createElement/appendChild, addEventListener) through the event-v1 profile
+    and run it in the real child; its execution report succeeds, and a core
+    DOM dump contains the updated status and newly created text node.
   - [ ] **B4.3.2** Reference an unsupported member (for example `event.stopPropagation`, `document.querySelector`) and assert a checker diagnostic naming the member.
   - [ ] **B4.3.3** Reach the same unsupported member through an `any` escape and assert a catchable runtime failure, never a crash or a silent `undefined` success.
   - [ ] **B4.3.4** Pin both failures in one paired test so static and runtime rejection cannot diverge.

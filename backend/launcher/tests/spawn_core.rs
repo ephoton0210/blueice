@@ -569,7 +569,12 @@ fn supervised_child_click_event_profile_runs_js_and_bluets_before_navigation() {
             "});</script>",
             "<script type='application/x-blueice-typescript'>",
             "function onTypedClick(event: BlueIceClickEvent): void {",
-            "event.preventDefault(); document.getElementById('status')!.textContent = 'TS ran';",
+            "event.preventDefault();",
+            "const status = document.getElementById('status')!;",
+            "status.textContent = 'TS ran';",
+            "const badge = document.createElement('strong');",
+            "const label = document.createTextNode(' created on click');",
+            "badge.appendChild(label); status.appendChild(badge);",
             "}",
             "const typedLink = document.getElementById('ts')!;",
             "typedLink.addEventListener('click', onTypedClick);</script>"
@@ -618,6 +623,24 @@ fn supervised_child_click_event_profile_runs_js_and_bluets_before_navigation() {
         blueice_ipc::read_server_message(&mut stream).unwrap(),
         blueice_ipc::ServerMessage::FrameReady { .. }
     ));
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueTsScriptReports,
+    )
+    .unwrap();
+    let blueice_ipc::ServerMessage::BlueTsScriptReports(typed_reports) =
+        blueice_ipc::read_server_message(&mut stream).unwrap()
+    else {
+        panic!("expected the click page's BlueTS compilation report");
+    };
+    assert_eq!(typed_reports.len(), 1, "{typed_reports:?}");
+    assert!(
+        matches!(
+            typed_reports[0].outcome,
+            blueice_ipc::BlueTsScriptExecutionOutcome::Executed
+        ),
+        "{typed_reports:?}"
+    );
     blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::GetRepresentation)
         .unwrap();
     let blueice_ipc::ServerMessage::Representation(snapshot) =
@@ -674,6 +697,7 @@ fn supervised_child_click_event_profile_runs_js_and_bluets_before_navigation() {
         panic!("expected DOM after BlueTS click");
     };
     assert!(dom.contains("\"TS ran\""), "{dom}");
+    assert!(dom.contains("\" created on click\""), "{dom}");
     server.join().unwrap();
     drop(core);
     let _ = std::fs::remove_file(&gatekeeper_path);
