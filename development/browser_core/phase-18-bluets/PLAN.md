@@ -615,7 +615,8 @@ child rejection.
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
 runtime-code match even when two functions have identical instructions; the
-generation still belongs to the page program, not to the ordinal alone.
+registry generation is stamped alongside the ordinal and still belongs to the
+page program, not to the ordinal alone.
 Then capture a direct synchronous caller and child at the selected inner
 instruction without passing a pause marker through JavaScript exception
 handling (C1.2.1.2.2). Finally step only that retained invocation and rejoin
@@ -628,8 +629,22 @@ builds the immutable safe-point inventory. Bare compiler output has no such
 tag; both structured-program and precompiled BlueTS installations receive it.
 Equal bytecode bodies retain distinct ordinals, deeper closure descendants
 keep pre-order identity, and cloning preserves the tag. The ordinal does not
-contain a generation or identify an invocation by itself. The registry tests,
+identify an invocation by itself. The registry tests,
 BlueJS Clippy, and 507 non-environmental library tests pass.
+
+**Native nested-frame capture (C1.2.1.2.2):** The first native seam accepts a
+verified non-root instruction in an installed classic program and runs its
+root until a direct synchronous `Call` enters the matching program generation
+and code unit. Before that child instruction, the VM moves the child operand,
+binding, handler, iterator and execution-context state into a GC-visible
+continuation, then suspends the caller before consuming its call inputs. A
+fresh nonzero serial names this invocation; ordinary VM entry points cannot
+run while it is retained. Deeper interpreted calls and constructor entry fail
+explicitly before the target body executes. An older closure with the same
+ordinal but a different program generation runs normally and cannot trigger
+the new program's pause. Native regressions inspect the preserved call site,
+pre-instruction effects, child object roots, unsupported paths, and generation
+aliasing. Stepping/rejoin and the public route remain C1.2.1.2.3/C1.2.1.3.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

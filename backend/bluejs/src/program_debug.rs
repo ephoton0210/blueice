@@ -593,6 +593,7 @@ fn collect_code_units(
     let ordinal = u32::try_from(code_units.len())
         .map_err(|_| BlueJsProgramDebugError::CodeUnitLimitExceeded)?;
     bytecode.debugger_code_unit_ordinal = Some(ordinal);
+    bytecode.debugger_program_generation = Some(generation.0);
     let instruction_offsets = bytecode
         .instructions()
         .map(|instruction| {
@@ -682,6 +683,7 @@ mod tests {
             script("function first(){return 1;} function second(){return 1;} first() + second();");
         let bare = program.compile().unwrap();
         assert_eq!(bare.debugger_code_unit_ordinal, None);
+        assert_eq!(bare.debugger_program_generation, None);
         assert!(bare
             .child_code_units()
             .all(|child| child.debugger_code_unit_ordinal.is_none()));
@@ -702,9 +704,21 @@ mod tests {
             let children = code.child_code_units().collect::<Vec<_>>();
             assert_eq!(compiled.code_units().len(), 3);
             assert_eq!(code.debugger_code_unit_ordinal, Some(0));
+            assert_eq!(
+                code.debugger_program_generation,
+                Some(handle.generation().0)
+            );
             assert_eq!(children[0].bytes(), children[1].bytes());
             assert_eq!(children[0].debugger_code_unit_ordinal, Some(1));
             assert_eq!(children[1].debugger_code_unit_ordinal, Some(2));
+            assert_eq!(
+                children[0].debugger_program_generation,
+                Some(handle.generation().0)
+            );
+            assert_eq!(
+                children[1].debugger_program_generation,
+                Some(handle.generation().0)
+            );
             for (ordinal, unit) in compiled.code_units().iter().enumerate() {
                 assert_eq!(unit.id().generation(), handle.generation());
                 assert_eq!(unit.id().ordinal(), ordinal as u32);

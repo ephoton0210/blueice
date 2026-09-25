@@ -53,6 +53,34 @@ pub(super) struct ModuleDebuggerContinuation {
     pub(super) previous_module: Option<String>,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct NestedDebuggerPauseRequest {
+    pub(super) program_generation: u64,
+    pub(super) code_unit_ordinal: u32,
+    pub(super) bytecode_offset: usize,
+}
+
+#[allow(dead_code)] // Child code/handlers are restored by C1.2.1.2.3's step path.
+pub(super) struct NestedDebuggerContinuation {
+    pub(super) frame_serial: u64,
+    pub(super) code_unit_ordinal: u32,
+    pub(super) code: Bytecode,
+    pub(super) pc: usize,
+    pub(super) execution: SuspendedModuleExecution,
+    pub(super) iterators: Vec<Value>,
+    pub(super) handlers: Vec<HandlerFrame>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VmDebuggerNestedExecutionState {
+    Paused {
+        frame_serial: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    },
+    Completed,
+}
+
 enum DebuggerRunOutcome {
     Paused(Box<DebuggerContinuation>),
     Completed(Result<Value, RuntimeError>),
@@ -134,6 +162,78 @@ impl Vm {
         self.resume_debugger_module_inner(Some(InterpreterSuspensionPoint::AfterRootInstruction))
     }
 
+    /// Runs a classic root until one verified instruction of a directly
+    /// called synchronous closure. The parent call site and child invocation
+    /// remain VM-owned; this first native seam does not yet expose a public
+    /// child debugger route or resume operation.
+    pub fn execute_script_until_nested_debugger_pause(
+        &mut self,
+        code: &Bytecode,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
+        fn find_code_unit(code: &Bytecode, ordinal: u32) -> Option<&Bytecode> {
+            if code.debugger_code_unit_ordinal == Some(ordinal) {
+                return Some(code);
+            }
+            code.child_code_units()
+                .find_map(|child| find_code_unit(child, ordinal))
+        }
+        let target = find_code_unit(code, code_unit_ordinal).ok_or(RuntimeError::Unsupported(
+            "nested debugger code unit is not installed in this program",
+        ))?;
+        let generation = code
+            .debugger_program_generation
+            .ok_or(RuntimeError::Unsupported(
+                "nested debugger root has no installed program generation",
+            ))?;
+        if target.debugger_program_generation != Some(generation) {
+            return Err(RuntimeError::Unsupported(
+                "nested debugger code unit belongs to another program generation",
+            ));
+        }
+        if code_unit_ordinal == 0
+            || !target
+                .instructions()
+                .any(|instruction| instruction.offset == bytecode_offset as usize)
+        {
+            return Err(RuntimeError::Unsupported(
+                "nested debugger target is not an inner instruction boundary",
+            ));
+        }
+        self.prepare_root_execution(code, false)?;
+        if let Err(error) = self.prepare_global_declarations(code) {
+            return self.finish_root_execution(Err(error)).map(|_| {
+                unreachable!("an abrupt debugger setup cannot produce a completion value")
+            });
+        }
+        self.debugger_nested_pause_request = Some(NestedDebuggerPauseRequest {
+            program_generation: generation,
+            code_unit_ordinal,
+            bytecode_offset: bytecode_offset as usize,
+        });
+        let result = self.run_debugger_script(code, None);
+        self.debugger_nested_pause_request = None;
+        match result {
+            DebuggerRunOutcome::Paused(continuation) => {
+                self.debugger_continuation = Some(*continuation);
+                let child = self
+                    .debugger_nested_continuation
+                    .as_ref()
+                    .expect("a nested pause suspends its child before its caller");
+                Ok(VmDebuggerNestedExecutionState::Paused {
+                    frame_serial: child.frame_serial,
+                    code_unit_ordinal: child.code_unit_ordinal,
+                    bytecode_offset: u32::try_from(child.pc)
+                        .expect("verified bytecode offsets fit the debugger wire range"),
+                })
+            }
+            DebuggerRunOutcome::Completed(result) => self
+                .finish_root_execution(result)
+                .map(|_| VmDebuggerNestedExecutionState::Completed),
+        }
+    }
+
     /// Runs a classic script until the exact compiler-provided root code-unit
     /// instruction boundary. The only accepted locations are bytecode
     /// instruction starts in the root code unit; callers that want a page
@@ -170,7 +270,7 @@ impl Vm {
             });
         }
 
-        match self.run_until_debugger_pause(code, target) {
+        match self.run_debugger_script(code, Some(InterpreterSuspensionPoint::Offset(target))) {
             DebuggerRunOutcome::Paused(continuation) => {
                 debug_assert!(self.debugger_continuation.is_none());
                 self.debugger_continuation = Some(*continuation);
@@ -266,23 +366,24 @@ impl Vm {
             Err(RuntimeError::Unsupported(
                 "a debugger-paused root module must resume before another execution starts",
             ))
+        } else if self.debugger_nested_continuation.is_some() {
+            Err(RuntimeError::Unsupported(
+                "a debugger-paused nested frame must resume before another execution starts",
+            ))
         } else {
             Ok(())
         }
     }
 
-    fn run_until_debugger_pause(&mut self, code: &Bytecode, target: usize) -> DebuggerRunOutcome {
+    fn run_debugger_script(
+        &mut self,
+        code: &Bytecode,
+        suspension_point: Option<InterpreterSuspensionPoint>,
+    ) -> DebuggerRunOutcome {
         let pending_base = self.pending_completions.len();
         let save_base = self.completion_saves.len();
         let mut iterators = Vec::new();
-        match self.interpret(
-            code,
-            &mut iterators,
-            0,
-            None,
-            Some(InterpreterSuspensionPoint::Offset(target)),
-            None,
-        ) {
+        match self.interpret(code, &mut iterators, 0, None, suspension_point, None) {
             Ok(InterpreterExit::Suspend {
                 pc,
                 iterators,
@@ -371,6 +472,12 @@ impl Vm {
             ));
             references.extend(continuation.iterators.iter().filter_map(Value::object_id));
         }
+        if let Some(continuation) = &self.debugger_nested_continuation {
+            references.extend(Self::suspended_execution_references(
+                &continuation.execution,
+            ));
+            references.extend(continuation.iterators.iter().filter_map(Value::object_id));
+        }
         references
     }
 }
@@ -378,7 +485,10 @@ impl Vm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{compile, compile_module, parse, parse_module, Value};
+    use crate::{
+        compile, compile_module, parse, parse_module, BlueJsProgramRegistry, BlueJsProgramV1,
+        BlueJsSourceIdentity, Value,
+    };
     use std::collections::HashMap;
 
     fn code(source: &str) -> Bytecode {
@@ -402,6 +512,162 @@ mod tests {
             .map(|instruction| instruction.offset as u32)
             .find(|offset| *offset >= code.module_evaluate_entry.unwrap())
             .expect("test module has an evaluation instruction")
+    }
+
+    fn installed_script(source: &str) -> Bytecode {
+        let mut registry = BlueJsProgramRegistry::default();
+        let handle = registry
+            .install(
+                BlueJsSourceIdentity::new("page:///nested.js", "sha256:nested").unwrap(),
+                &BlueJsProgramV1::Script(parse(source).unwrap()),
+            )
+            .unwrap();
+        registry.get(handle).unwrap().bytecode().clone()
+    }
+
+    #[test]
+    fn pauses_a_direct_inner_call_without_consuming_its_parent_call_site() {
+        let code = installed_script(
+            "var before = 0; var kept = {value: 7}; function inner(arg) { before = before + 1; return arg.value; } inner(kept);",
+        );
+        let mut vm = Vm::default();
+        let state = vm
+            .execute_script_until_nested_debugger_pause(&code, 1, 0)
+            .unwrap();
+        assert_eq!(
+            state,
+            VmDebuggerNestedExecutionState::Paused {
+                frame_serial: 1,
+                code_unit_ordinal: 1,
+                bytecode_offset: 0,
+            }
+        );
+        assert_eq!(
+            vm.lookup_global_name("before").unwrap(),
+            Some(Value::Number(0.0))
+        );
+        let kept = vm
+            .lookup_global_name("kept")
+            .unwrap()
+            .unwrap()
+            .object_id()
+            .unwrap();
+        let child = vm.debugger_nested_continuation.as_ref().unwrap();
+        assert_eq!(child.execution.arguments[0].object_id(), Some(kept));
+        assert!(vm.debugger_continuation_references().contains(&kept));
+        let parent = vm.debugger_continuation.as_ref().unwrap();
+        assert_eq!(
+            parent.code.instruction(parent.pc).unwrap().opcode,
+            Opcode::Call
+        );
+        assert!(
+            vm.stack.len() >= 3,
+            "call inputs remain on the parent stack"
+        );
+        assert_eq!(
+            vm.execute_script(&code),
+            Err(RuntimeError::Unsupported(
+                "a debugger-paused root script must resume before another execution starts"
+            ))
+        );
+    }
+
+    #[test]
+    fn nested_pause_rejects_a_deeper_call_before_the_target_executes() {
+        let code = installed_script(
+            "var reached = 0; function inner() { reached = reached + 1; } function outer() { inner(); } outer();",
+        );
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_script_until_nested_debugger_pause(&code, 1, 0),
+            Err(RuntimeError::Unsupported(
+                "nested debugger pause requires a direct synchronous closure call"
+            ))
+        );
+        assert_eq!(
+            vm.lookup_global_name("reached").unwrap(),
+            Some(Value::Number(0.0))
+        );
+        assert!(vm.debugger_nested_continuation.is_none());
+        assert!(vm.debugger_continuation.is_none());
+        assert!(vm.debugger_nested_pause_request.is_none());
+    }
+
+    #[test]
+    fn nested_pause_rejects_constructor_entry_before_its_body() {
+        let code =
+            installed_script("var reached = 0; function Inner() { reached = 1; } new Inner();");
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_script_until_nested_debugger_pause(&code, 1, 0),
+            Err(RuntimeError::Unsupported(
+                "nested debugger pause requires a direct synchronous closure call"
+            ))
+        );
+        assert_eq!(
+            vm.lookup_global_name("reached").unwrap(),
+            Some(Value::Number(0.0))
+        );
+        assert!(vm.debugger_nested_continuation.is_none());
+        assert!(vm.debugger_continuation.is_none());
+        assert!(vm.debugger_nested_pause_request.is_none());
+    }
+
+    #[test]
+    fn nested_pause_does_not_capture_an_old_closure_with_the_same_ordinal() {
+        let mut registry = BlueJsProgramRegistry::default();
+        let first = registry
+            .install(
+                BlueJsSourceIdentity::new("page:///first.js", "sha256:first").unwrap(),
+                &BlueJsProgramV1::Script(
+                    parse("globalThis.foreignHit = 0; globalThis.foreign = function(){globalThis.foreignHit = 1;};")
+                        .unwrap(),
+                ),
+            )
+            .unwrap();
+        let second = registry
+            .install(
+                BlueJsSourceIdentity::new("page:///second.js", "sha256:second").unwrap(),
+                &BlueJsProgramV1::Script(
+                    parse("function target(){globalThis.foreignHit = 99;} globalThis.foreign();")
+                        .unwrap(),
+                ),
+            )
+            .unwrap();
+        let first_code = registry.get(first).unwrap().bytecode();
+        let second_code = registry.get(second).unwrap().bytecode();
+        assert_eq!(
+            first_code
+                .child_code_units()
+                .next()
+                .unwrap()
+                .debugger_code_unit_ordinal,
+            Some(1)
+        );
+        assert_eq!(
+            second_code
+                .child_code_units()
+                .next()
+                .unwrap()
+                .debugger_code_unit_ordinal,
+            Some(1)
+        );
+        assert_ne!(
+            first_code.debugger_program_generation,
+            second_code.debugger_program_generation
+        );
+        let mut vm = Vm::default();
+        vm.execute_script(first_code).unwrap();
+        assert_eq!(
+            vm.execute_script_until_nested_debugger_pause(second_code, 1, 0)
+                .unwrap(),
+            VmDebuggerNestedExecutionState::Completed
+        );
+        assert_eq!(
+            vm.lookup_global_name("foreignHit").unwrap(),
+            Some(Value::Number(1.0))
+        );
+        assert!(vm.debugger_nested_continuation.is_none());
     }
 
     #[test]

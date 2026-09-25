@@ -513,6 +513,10 @@ pub struct Bytecode {
     /// program enters the debugger registry. A bare compiled bytecode has no
     /// program identity, and this ordinal alone is never a frame handle.
     pub(crate) debugger_code_unit_ordinal: Option<u32>,
+    /// Exact debugger-registry program generation. A code-unit ordinal is
+    /// meaningful only inside this generation: a closure left on the realm
+    /// global by an earlier program must not match a newer program's target.
+    pub(crate) debugger_program_generation: Option<u64>,
     /// Compiler-recorded instruction starts for the root program's source
     /// order statements. `None` means the statement emits no root-code-unit
     /// instruction and therefore has no executable safe point.
@@ -629,6 +633,7 @@ impl Bytecode {
         Self {
             code: Vec::new(),
             debugger_code_unit_ordinal: None,
+            debugger_program_generation: None,
             root_statement_offsets: Vec::new(),
             constants: Vec::new(),
             bindings: Vec::new(),
