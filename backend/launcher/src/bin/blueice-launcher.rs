@@ -195,7 +195,7 @@ fn main() -> ExitCode {
                 sibling_assistant_binary(&std::env::current_exe().unwrap_or_default())
             });
             match AssistantSupervisor::start(&settings, binary, Arc::clone(&registry)) {
-                Ok(assistant) => assistant,
+                Ok(assistant) => Some(assistant),
                 Err(e) => {
                     eprintln!("blueice-launcher: could not supervise the assistant: {e}");
                     return ExitCode::FAILURE;

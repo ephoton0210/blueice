@@ -196,6 +196,18 @@ impl ProcessRegistry {
             .collect()
     }
 
+    /// Replaces `role`'s policy (for example a changed idle timeout). Returns
+    /// whether the role was registered; a resident process is left running.
+    pub fn set_policy(&mut self, role: &str, policy: ProcessPolicy) -> bool {
+        match self.entries.get_mut(role) {
+            Some(entry) => {
+                entry.policy = policy;
+                true
+            }
+            None => false,
+        }
+    }
+
     /// The OS pid of `role`'s resident process, if this registry holds one.
     pub fn resident_pid(&self, role: &str) -> Option<u32> {
         self.entries
@@ -253,6 +265,29 @@ mod tests {
     /// scale that still exercises a genuine OS process.
     fn spawn_dummy_child() -> Child {
         Command::new("sleep").arg("300").spawn().unwrap()
+    }
+
+    #[test]
+    fn a_policy_can_be_replaced_and_changes_when_a_role_becomes_eligible() {
+        let mut registry = ProcessRegistry::new();
+        let start = Instant::now();
+        let timeout = |secs| ProcessPolicy::OnDemand {
+            idle_timeout: Duration::from_secs(secs),
+        };
+        registry.register("ai-assistant", timeout(600), None, start);
+        assert!(registry
+            .set_resident("ai-assistant", spawn_dummy_child(), start)
+            .is_none());
+        let later = start + Duration::from_secs(100);
+        assert!(registry.idle_eligible_for_teardown(later).is_empty());
+        assert!(registry.set_policy("ai-assistant", timeout(30)));
+        assert_eq!(registry.idle_eligible_for_teardown(later), ["ai-assistant"]);
+        assert!(
+            registry.is_resident("ai-assistant"),
+            "the process keeps running"
+        );
+        assert!(!registry.set_policy("nobody", timeout(30)));
+        registry.teardown("ai-assistant");
     }
 
     #[test]

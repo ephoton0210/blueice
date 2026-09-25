@@ -115,14 +115,15 @@ fn apply_nice(pid: u32, nice: i32) -> io::Result<()> {
 type Spawner = Box<dyn Fn(&Path) -> io::Result<Child> + Send + Sync>;
 
 struct Inner {
-    spawner: Spawner,
+    /// Replaceable at runtime by [`AssistantSupervisor::reconfigure`].
+    spawner: Mutex<Spawner>,
     private_socket: PathBuf,
     registry: Arc<Mutex<ProcessRegistry>>,
     /// Serializes "is it running? if not, start it and wait until it listens"
     /// so many simultaneous first connections cause one spawn.
     spawn_lock: Mutex<()>,
     ready_timeout: Duration,
-    limits: Limits,
+    limits: Mutex<Limits>,
     stop: AtomicBool,
     spawns: AtomicU64,
     relays: AtomicUsize,
@@ -132,6 +133,8 @@ struct Inner {
 pub struct AssistantSupervisor {
     inner: Arc<Inner>,
     public_socket: PathBuf,
+    /// The assistant binary, when started from real settings.
+    assistant_bin: Option<PathBuf>,
 }
 
 impl Inner {
@@ -167,9 +170,10 @@ impl Inner {
         // A killed assistant leaves its socket file behind; a stale one would
         // make the readiness probe below succeed against nothing.
         let _ = std::fs::remove_file(&self.private_socket);
-        let child = (self.spawner)(&self.private_socket)?;
+        let child = (self.spawner.lock().unwrap_or_else(|e| e.into_inner()))(&self.private_socket)?;
         self.spawns.fetch_add(1, Ordering::Relaxed);
-        if let Some(nice) = self.limits.nice {
+        let nice = self.limits.lock().unwrap_or_else(|e| e.into_inner()).nice;
+        if let Some(nice) = nice {
             if let Err(error) = apply_nice(child.id(), nice) {
                 eprintln!("blueice-launcher: could not set the assistant's priority: {error}");
             }
@@ -209,11 +213,18 @@ impl Inner {
     }
 
     /// Stops the assistant when its resident memory passes the ceiling. Runs
-    /// until the supervisor stops; the next connection starts a fresh one.
-    fn watch_memory(self: Arc<Self>, ceiling: u64) {
+    /// until the supervisor stops, reading the limit afresh every tick so a
+    /// reconfiguration takes effect at once (and a ceiling can be added to an
+    /// assistant that started without one); the next connection starts a fresh
+    /// assistant.
+    fn watch_memory(self: Arc<Self>) {
         let mut system = sysinfo::System::new();
         while !self.stop.load(Ordering::Relaxed) {
-            thread::sleep(self.limits.watch_interval);
+            let limits = *self.limits.lock().unwrap_or_else(|e| e.into_inner());
+            thread::sleep(limits.watch_interval);
+            let Some(ceiling) = limits.max_resident_bytes else {
+                continue;
+            };
             let pid = self
                 .registry
                 .lock()
@@ -316,20 +327,18 @@ impl AssistantSupervisor {
             Instant::now(),
         );
         let inner = Arc::new(Inner {
-            spawner,
+            spawner: Mutex::new(spawner),
             private_socket,
             registry,
             spawn_lock: Mutex::new(()),
             ready_timeout,
-            limits,
+            limits: Mutex::new(limits),
             stop: AtomicBool::new(false),
             spawns: AtomicU64::new(0),
             relays: AtomicUsize::new(0),
         });
-        if let Some(ceiling) = limits.max_resident_bytes {
-            let watcher = Arc::clone(&inner);
-            thread::spawn(move || watcher.watch_memory(ceiling));
-        }
+        let watcher = Arc::clone(&inner);
+        thread::spawn(move || watcher.watch_memory());
         let accept_inner = Arc::clone(&inner);
         thread::spawn(move || {
             for incoming in listener.incoming() {
@@ -351,44 +360,69 @@ impl AssistantSupervisor {
         Ok(AssistantSupervisor {
             inner,
             public_socket,
+            assistant_bin: None,
         })
     }
 
+    /// Applies new settings at once: the spawn flags, the limits, and the idle
+    /// policy all change, and the assistant that is running (started under the
+    /// old ones) is torn down, so the next connection starts it as configured.
+    /// `spawner` is what starts the child from now on.
+    pub fn reconfigure(&self, spawner: Spawner, limits: Limits, idle_timeout: Duration) {
+        // Wait out a spawn in progress so its child is the one torn down below.
+        let _no_spawn_in_progress = self
+            .inner
+            .spawn_lock
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *self.inner.spawner.lock().unwrap_or_else(|e| e.into_inner()) = spawner;
+        *self.inner.limits.lock().unwrap_or_else(|e| e.into_inner()) = limits;
+        let mut registry = self
+            .inner
+            .registry
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        registry.set_policy(ROLE, ProcessPolicy::OnDemand { idle_timeout });
+        registry.teardown(ROLE);
+    }
+
+    /// [`Self::reconfigure`] for real settings, using the assistant binary this
+    /// supervisor was started with.
+    pub fn reconfigure_settings(&self, settings: &AssistantSettings) -> io::Result<()> {
+        settings.validate().map_err(io::Error::other)?;
+        let bin = self.assistant_bin.clone().ok_or_else(|| {
+            io::Error::other("this supervisor has no assistant binary to reconfigure")
+        })?;
+        self.reconfigure(
+            settings_spawner(settings, bin),
+            settings_limits(settings),
+            Duration::from_secs(settings.idle_timeout_secs),
+        );
+        Ok(())
+    }
+
     /// Supervises the real `blueice-ai-assistant` at `assistant_bin`, started
-    /// with the flags `settings` renders to. `None` when no assistant is
-    /// configured, so callers give `core` no assistant socket at all.
+    /// with the flags `settings` renders to. Unconfigured settings still get a
+    /// supervisor and a public socket -- every connection is simply refused --
+    /// so a later approved change can turn the assistant on.
     pub fn start(
         settings: &AssistantSettings,
         assistant_bin: PathBuf,
         registry: Arc<Mutex<ProcessRegistry>>,
-    ) -> io::Result<Option<Self>> {
+    ) -> io::Result<Self> {
         settings.validate().map_err(io::Error::other)?;
-        if !settings.is_configured() {
-            return Ok(None);
-        }
-        let args = settings.assistant_args();
-        let spawner: Spawner = Box::new(move |private_socket| {
-            Command::new(&assistant_bin)
-                .arg("--socket")
-                .arg(private_socket)
-                .args(&args)
-                .spawn()
-        });
         let (public_socket, private_socket) = unique_socket_paths();
-        Self::start_with_spawner(
+        let mut supervisor = Self::start_with_spawner(
             Duration::from_secs(settings.idle_timeout_secs),
-            spawner,
+            settings_spawner(settings, assistant_bin.clone()),
             registry,
             public_socket,
             private_socket,
             DEFAULT_READY_TIMEOUT,
-            Limits {
-                max_resident_bytes: settings.max_resident_mb.map(|mb| mb * 1024 * 1024),
-                nice: Some(settings.nice),
-                ..Limits::default()
-            },
-        )
-        .map(Some)
+            settings_limits(settings),
+        )?;
+        supervisor.assistant_bin = Some(assistant_bin);
+        Ok(supervisor)
     }
 
     /// The socket `core` is given as `--assistant-socket`.
@@ -420,6 +454,32 @@ impl Drop for AssistantSupervisor {
         }
         let _ = std::fs::remove_file(&self.public_socket);
         let _ = std::fs::remove_file(&self.inner.private_socket);
+    }
+}
+
+/// How to start the assistant for `settings`. Unconfigured settings produce a
+/// spawner that always fails, so connections are refused rather than served by
+/// something the person never configured.
+fn settings_spawner(settings: &AssistantSettings, assistant_bin: PathBuf) -> Spawner {
+    if !settings.is_configured() {
+        return Box::new(|_| Err(io::Error::other("no assistant is configured")));
+    }
+    let args = settings.assistant_args();
+    Box::new(move |private_socket| {
+        Command::new(&assistant_bin)
+            .arg("--socket")
+            .arg(private_socket)
+            .args(&args)
+            .spawn()
+    })
+}
+
+/// The limits `settings` asks the launcher to enforce.
+fn settings_limits(settings: &AssistantSettings) -> Limits {
+    Limits {
+        max_resident_bytes: settings.max_resident_mb.map(|mb| mb * 1024 * 1024),
+        nice: Some(settings.nice),
+        ..Limits::default()
     }
 }
 
@@ -1062,14 +1122,187 @@ while True:
     }
 
     #[test]
-    fn an_unconfigured_assistant_is_never_supervised() {
+    fn an_unconfigured_assistant_is_supervised_but_every_connection_is_refused() {
         let registry = Arc::new(Mutex::new(ProcessRegistry::new()));
-        let settings = AssistantSettings::default();
-        let supervisor =
-            AssistantSupervisor::start(&settings, PathBuf::from("/nonexistent"), registry.clone())
-                .unwrap();
-        assert!(supervisor.is_none());
+        let supervisor = AssistantSupervisor::start(
+            &AssistantSettings::default(),
+            PathBuf::from("/nonexistent"),
+            registry.clone(),
+        )
+        .unwrap();
+        assert!(is_unavailable(try_talk(supervisor.public_socket(), b"hi")));
         assert!(!registry.lock().unwrap().is_resident(ROLE));
+        assert_eq!(supervisor.spawn_count(), 0);
+    }
+
+    /// An echo spawner that counts how many children it has started.
+    fn counting_echo_spawner() -> (Spawner, Arc<AtomicUsize>) {
+        let started = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&started);
+        (
+            Box::new(move |socket| {
+                counter.fetch_add(1, Ordering::SeqCst);
+                Command::new("python3")
+                    .args(["-c", ECHO_SERVER])
+                    .arg(socket)
+                    .spawn()
+            }),
+            started,
+        )
+    }
+
+    #[test]
+    fn reconfiguring_tears_down_the_running_assistant_and_the_new_spawner_starts_the_next() {
+        let (first, first_count) = counting_echo_spawner();
+        let rig = rig(
+            "reconf",
+            first,
+            Duration::from_secs(600),
+            Duration::from_secs(10),
+        );
+        assert_eq!(talk(rig.supervisor.public_socket(), b"one"), b"one");
+        let old_pid = resident_pid(&rig).unwrap();
+
+        let (second, second_count) = counting_echo_spawner();
+        rig.supervisor
+            .reconfigure(second, Limits::default(), Duration::from_secs(600));
+        assert!(!resident(&rig), "the old assistant must be gone at once");
+        assert!(!alive(old_pid));
+
+        assert_eq!(talk(rig.supervisor.public_socket(), b"two"), b"two");
+        assert_eq!(first_count.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            second_count.load(Ordering::SeqCst),
+            1,
+            "the new spawner started the next one"
+        );
+    }
+
+    #[test]
+    fn reconfiguring_to_unconfigured_refuses_connections_from_then_on() {
+        let rig = rig(
+            "reconf-off",
+            echo_spawner(),
+            Duration::from_secs(600),
+            Duration::from_secs(10),
+        );
+        assert_eq!(talk(rig.supervisor.public_socket(), b"one"), b"one");
+        rig.supervisor.reconfigure(
+            settings_spawner(&AssistantSettings::default(), PathBuf::from("/x")),
+            Limits::default(),
+            Duration::from_secs(600),
+        );
+        assert!(is_unavailable(try_talk(
+            rig.supervisor.public_socket(),
+            b"two"
+        )));
+        assert!(!resident(&rig));
+    }
+
+    #[test]
+    fn a_ceiling_added_by_reconfiguration_is_enforced_on_the_next_assistant() {
+        // Started with no ceiling at all: the watchdog still runs and reads the
+        // limit each tick, so a later ceiling applies without restarting anything.
+        let limits = Limits {
+            watch_interval: FAST_WATCH,
+            ..Limits::default()
+        };
+        let rig = rig_with_limits(
+            "reconf-ceiling",
+            hungry_spawner(300),
+            Duration::from_secs(600),
+            Duration::from_secs(20),
+            limits,
+        );
+        assert_eq!(talk(rig.supervisor.public_socket(), b"hi"), b"hi");
+        let pid = resident_pid(&rig).unwrap();
+        thread::sleep(Duration::from_millis(300));
+        assert_eq!(
+            resident_pid(&rig),
+            Some(pid),
+            "no ceiling yet, so it is left alone"
+        );
+
+        rig.supervisor.reconfigure(
+            hungry_spawner(300),
+            Limits {
+                max_resident_bytes: Some(150 * 1024 * 1024),
+                watch_interval: FAST_WATCH,
+                ..Limits::default()
+            },
+            Duration::from_secs(600),
+        );
+        let _ = try_talk(rig.supervisor.public_socket(), b"again"); // starts the next one
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while resident_pid(&rig).is_some() {
+            assert!(
+                Instant::now() < deadline,
+                "the new ceiling was never enforced"
+            );
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    #[test]
+    fn reconfiguring_changes_when_the_assistant_becomes_idle_eligible() {
+        let rig = rig(
+            "reconf-idle",
+            echo_spawner(),
+            Duration::from_secs(600),
+            Duration::from_secs(10),
+        );
+        talk(rig.supervisor.public_socket(), b"hi");
+        let soon = Instant::now() + Duration::from_secs(100);
+        assert!(rig
+            .registry
+            .lock()
+            .unwrap()
+            .idle_eligible_for_teardown(soon)
+            .is_empty());
+        rig.supervisor
+            .reconfigure(echo_spawner(), Limits::default(), Duration::from_secs(30));
+        talk(rig.supervisor.public_socket(), b"hi"); // resident again, under the new policy
+        assert_eq!(
+            rig.registry
+                .lock()
+                .unwrap()
+                .idle_eligible_for_teardown(Instant::now() + Duration::from_secs(100)),
+            [ROLE]
+        );
+    }
+
+    #[test]
+    fn settings_reconfiguration_needs_a_supervisor_built_from_real_settings() {
+        let rig = rig(
+            "reconf-real",
+            echo_spawner(),
+            Duration::from_secs(600),
+            Duration::from_secs(10),
+        );
+        // A test rig has no assistant binary to rebuild the spawner from.
+        assert!(rig
+            .supervisor
+            .reconfigure_settings(&AssistantSettings::default())
+            .is_err());
+
+        let registry = Arc::new(Mutex::new(ProcessRegistry::new()));
+        let supervisor = AssistantSupervisor::start(
+            &AssistantSettings::default(),
+            PathBuf::from("/x"),
+            registry,
+        )
+        .unwrap();
+        assert!(supervisor
+            .reconfigure_settings(&AssistantSettings::default())
+            .is_ok());
+        let invalid = AssistantSettings {
+            nice: 99,
+            ..AssistantSettings::default()
+        };
+        assert!(
+            supervisor.reconfigure_settings(&invalid).is_err(),
+            "invalid settings are refused"
+        );
     }
 
     #[test]
