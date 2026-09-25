@@ -14,9 +14,10 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: B4.2.** Enforce the event object's `readonly` type, target,
-and currentTarget qualifiers for the delivered form list plus the fail-closed
-rule for everything else (see B4 below).
+**Current leaf: B4.2.2.** Verify the fail-closed readonly policy against the
+event-v1 bridge. Every item has an ID (`<section>.<item>[.<step>]`, e.g.
+`B4.2.2`); commit messages and PLAN.md cite these IDs, and a parent is checked
+only when all its steps are.
 
 ## Current boundary
 
@@ -36,13 +37,13 @@ client registration, build output, or write authority.
 
 #### A1. Authenticate and identify every DOM request.
 
-- [x] Require the exact document generation on every existing request;
+- [x] **A1.1** Require the exact document generation on every existing request;
   reject a stale create-node request before mutation.
   Script IPC v2 also rejects obsolete/repeated Hello messages, bounds frames
   and DOM name/text fields, and proves through a real core subprocess that a
   still-open socket cannot mutate a replacement document with its old target.
   This remains a proof-of-mechanism DOM channel, not yet a child VM binding.
-- [x] Require a launcher-issued, per-core child capability at the script
+- [x] **A1.2** Require a launcher-issued, per-core child capability at the script
   socket handshake; reject a foreign or predecessor child before dispatch.
   Script IPC v3 requires a fixed-shape 32-byte capability. The launcher also
   supplies its fresh per-core BlueJS child secret to that core's private script
@@ -52,7 +53,7 @@ client registration, build output, or write authority.
   capabilities, including after a successor core reuses the same path. The
   listener is owner-only (`0600`), preserves occupied files and live sockets,
   and drops an incomplete unauthenticated handshake after two seconds.
-- [x] Verify wrong-tab, stale-generation, and old-core denial through a
+- [x] **A1.3** Verify wrong-tab, stale-generation, and old-core denial through a
   real socket; denied requests must leave the DOM unchanged. A real core
   subprocess test loads two live documents, compares both tab DOM dumps
   before and after a cross-tab node write, replaces the first document and
@@ -62,14 +63,14 @@ client registration, build output, or write authority.
 
 #### A2. Serve DOM calls during script execution.
 
-- [x] Let the session thread answer bounded calls from the executing child
+- [x] **A2.1** Let the session thread answer bounded calls from the executing child
   while it waits for that child's result; keep TabManager on that thread.
   The page-host reply reader owns only a cloned socket. The session thread
   pumps at most 64 exact-tab/generation calls per poll during document
   synchronization or debugger resume; wrong-target calls fail without DOM
   mutation. Transport, executor, resume, and dispatcher regressions cover the
   wait boundary. The child VM does not yet issue these calls itself.
-- [x] Cap calls and wait time; never process unrelated frontend/debugger
+- [x] **A2.2** Cap calls and wait time; never process unrelated frontend/debugger
   work in the nested wait. Each document synchronization or debugger resume
   has a 1,024-request total allowance and a single 60-second deadline shared
   by request write and child reply. The first excess request receives a
@@ -78,7 +79,7 @@ client registration, build output, or write authority.
   only exact-document script requests and never enters the ordinary frontend,
   debugger, or compiler dispatch loop. Focused socket-pair tests cover prompt
   timeout/disconnect, and budget tests show excess calls leave DOM unchanged.
-- [x] Prove a child script completes one synchronous DOM lookup through a
+- [x] **A2.3** Prove a child script completes one synchronous DOM lookup through a
   real launcher/core/child HTTP fixture without deadlock. A trusted embedding
   owner selects the separate `blueiceTestHasElementById` proof profile; the
   launcher supplies its exact generation-private script socket and 64-hex
@@ -91,7 +92,7 @@ client registration, build output, or write authority.
 
 #### A3. Preserve the child-to-core realm boundary.
 
-- [x] Bind each child request/reply to the exact live tab and document;
+- [x] **A3.1** Bind each child request/reply to the exact live tab and document;
   provide no child fetch, resolver, or direct core-DOM reference. Script IPC
   v4 requires a monotonic per-connection call ID and an exact tab/generation
   target in every response; core rejects naked, nested, and out-of-order
@@ -99,7 +100,7 @@ client registration, build output, or write authority.
   stream. Real core-socket and supervised child HTTP tests exercise the
   route; the child profile exposes only a boolean lookup, with no fetch,
   resolver, direct document object, or raw node ID.
-- [x] Revoke that route on reload, tab close, and core cutover; test that
+- [x] **A3.2** Revoke that route on reload, tab close, and core cutover; test that
   an old reply cannot attach to a successor. Realm replacement and CloseRealm
   drop the VM-owned callback and its script socket. A child socket regression
   proves old streams reach EOF, a predecessor reply with the reused call ID
@@ -116,7 +117,7 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
 
 #### B1. Give JavaScript safe node identity.
 
-- [x] Keep node wrappers and their collector-visible roots in the child;
+- [x] **B1.1** Keep node wrappers and their collector-visible roots in the child;
   never expose raw numeric node IDs to page code. A VM-owned host-object
   family converts exact `(tab, generation, node)` private keys into stable
   JavaScript objects, roots every wrapper and its private prototype for the
@@ -127,7 +128,7 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   a numeric node ID. VM GC/identity tests and a real launcher/core/child HTTP
   fixture cover survival, repeat identity, an empty own-property surface,
   absence on miss, and lack of the probe in ordinary realms.
-- [x] Reject a wrapper after node removal, reload, or realm close. Script IPC
+- [x] **B1.2** Reject a wrapper after node removal, reload, or realm close. Script IPC
   v5 adds an exact-document, read-only `ValidateNode` operation; core accepts
   allocated detached nodes but rejects reclaimed subtrees and stale/closed
   documents. VM-owned prototype methods resolve only exact wrappers in their
@@ -140,7 +141,7 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
 
 #### B2. Read and change live DOM text.
 
-- [x] Implement document.getElementById and node.textContent get/set
+- [x] **B2.1** Implement document.getElementById and node.textContent get/set
   through A; a real page must render the changed text. The owner-selected
   profile installs receiver-checked `document` lookup and opaque VM-rooted
   node wrappers. Its `textContent` accessor makes generation-bound core
@@ -150,7 +151,7 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   snapshots. A real HTTP page executes checked BlueTS getter/setter work in
   document order, renders the changed text, rejects an invalid typed call,
   and rejects a removed wrapper.
-- [x] Implement createElement, createTextNode, and appendChild; a real
+- [x] **B2.2** Implement createElement, createTextNode, and appendChild; a real
   page must render the new subtree and reject a cross-document child. An
   owner-selected mutation profile installs the two factories and
   exact-wrapper append callback over generation-bound script IPC. Core
@@ -168,15 +169,15 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
 
 #### B3. Deliver a real click.
 
-- [x] Root and remove click listeners in the child VM; removed and
+- [x] **B3.1** Root and remove click listeners in the child VM; removed and
   old-document listeners must never run. The owner-selected event profile
   installs VM-rooted listeners, and child tests cover removal, GC, stale
   generation rejection, and successor-realm isolation.
-- [x] Dispatch a core click before default navigation; a real listener
+- [x] **B3.2** Dispatch a core click before default navigation; a real listener
   must run, and preventDefault must suppress link navigation. A real
   launcher/core/child test covers coordinate Click and ActOn, JavaScript and
   BlueTS callbacks, synchronous DOM writes, and navigation suppression.
-- [x] Complete the first event-loop semantics from the Phase 13 binding
+- [x] **B3.3** Complete the first event-loop semantics from the Phase 13 binding
   decision: a core-originated click enters a one-slot, generation-bound child
   task queue, and a 256-job microtask checkpoint finishes before the child
   returns its cancellation bit for core's default action. Ordinary listener
@@ -187,11 +188,11 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
 
 #### B4. Publish only implemented host typings.
 
-- [x] Generate the exact BlueTS declaration/capability profile only after
+- [x] **B4.1** Generate the exact BlueTS declaration/capability profile only after
   its runtime installer exists; do not add broad lib.dom declarations. The
   owner-selected event-v1 profile has the exact 10-binding installer inventory
   and the BlueTS checker verifies the click callback type and literal name.
-- [ ] Enforce the event object's `readonly` type, target, and currentTarget
+- [ ] **B4.2** Enforce the event object's `readonly` type, target, and currentTarget
   qualifiers in BlueTS checking. Acceptance is a finite list, not "every
   expression form". Delivered forms (each has a test under
   `backend/bluets/src/checker/tests/readonly*.rs`): direct, chained, and
@@ -201,19 +202,23 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   sequence, `=`, logical, and logical-assignment results. The child already
   exposes these properties as non-writable and non-configurable, so runtime is
   the backstop for anything below.
-  - [x] Fail-closed policy: a write whose receiver inference cannot model
+  - [x] **B4.2.1** Fail-closed policy: a write whose receiver inference cannot model
     (`Unknown`) is rejected with "cannot prove ... avoids readonly members"
     whenever a readonly-bearing binding is in scope; declared `any` is an
     explicit opt-out, and an unrelated opaque receiver stays allowed. Any
     form not on the delivered list is therefore rejected, not silently
     accepted.
-  - [ ] Verify the policy against the event-v1 bridge (public boundary): an
+  - [ ] **B4.2.2** Verify the policy against the event-v1 bridge (public boundary): an
     opaque-receiver write on a click event is rejected before execution.
-  - [ ] Record known limitations (arithmetic/bitwise compound results,
+  - [ ] **B4.2.3** Record known limitations (arithmetic/bitwise compound results,
     destructuring, closure capture) in PLAN.md instead of adding forms; do
     not add another expression form without a concrete failing page.
-- [ ] Execute a supported BlueTS page through B2/B3; unsupported members
+- [ ] **B4.3** Execute a supported BlueTS page through B2/B3; unsupported members
   must fail both static checking and JavaScript runtime access.
+  - [ ] **B4.3.1** Compile one click-handler page (getElementById, textContent, createElement/appendChild, addEventListener) through the event-v1 profile and run it in the real child; assert the resulting DOM through a core DOM dump.
+  - [ ] **B4.3.2** Reference an unsupported member (for example `event.stopPropagation`, `document.querySelector`) and assert a checker diagnostic naming the member.
+  - [ ] **B4.3.3** Reach the same unsupported member through an `any` escape and assert a catchable runtime failure, never a crash or a silent `undefined` success.
+  - [ ] **B4.3.4** Pin both failures in one paired test so static and runtime rejection cannot diverge.
 
 ### C. Complete source debugging and metadata lifetime (Phases 17/18).
 
@@ -223,43 +228,70 @@ channel with explicit owner/client grants.
 
 #### C1. Extend execution control.
 
-- [ ] Pause/resume and step a module root in a real page.
-- [ ] Pause/step a nested frame and resume that same frame; reject stale
+- [ ] **C1.1** Pause/resume and step a module root in a real page.
+  - [ ] **C1.1.1** Pause at the first module-root safe point and resume to completion.
+  - [ ] **C1.1.2** Instruction step and BlueTS source-span step inside the module root.
+  - [ ] **C1.1.3** Reject a pause/step request carrying a stale generation.
+- [ ] **C1.2** Pause/step a nested frame and resume that same frame; reject stale
   or cross-tab targets.
+  - [ ] **C1.2.1** Pause inside a nested call frame and step within that frame.
+  - [ ] **C1.2.2** Resume that same frame; reject a stale frame identity after it returns.
+  - [ ] **C1.2.3** Reject a cross-tab target and a target from a predecessor child.
 
 #### C2. Inspect execution within fixed budgets.
 
-- [ ] Return a bounded stack and scope for the paused frame.
-- [ ] Return authorized values without guessed handles, excess depth,
+- [ ] **C2.1** Return a bounded stack and scope for the paused frame.
+  - [ ] **C2.1.1** Cap frame count and per-frame scope entries; report truncation explicitly.
+  - [ ] **C2.1.2** Return stack frames with original BlueTS coordinates for nested and module frames.
+- [ ] **C2.2** Return authorized values without guessed handles, excess depth,
   source text, or cross-realm references.
-- [ ] Report an exception at its original BlueTS source position.
+  - [ ] **C2.2.1** Return primitives and bounded plain data only; cap depth, length, and string bytes.
+  - [ ] **C2.2.2** Refuse guessed handles, source text, and cross-realm references with a typed error.
+- [ ] **C2.3** Report an exception at its original BlueTS source position.
+  - [ ] **C2.3.1** Map a thrown error's position to the original BlueTS span for classic, module, and nested frames.
 
 #### C3. Preserve original static metadata.
 
-- [ ] Map nested/module locations, breakpoints, symbols, and type
+- [ ] **C3.1** Map nested/module locations, breakpoints, symbols, and type
   displays to the exact original source set; distinguish static types
   from runtime values. Partial: exact safe-point span replies now include
   bounded original UTF-16 coordinates for classic and module roots under the
   existing default-denied capability and same-stream source receipt; nested
   frame mapping and complete module execution control remain open.
-- [ ] On reload, close, cache eviction, or hibernation, invalidate or
+  - [ ] **C3.1.1** Map nested-frame locations to the exact original source set.
+  - [ ] **C3.1.2** Map breakpoints and symbols for module execution control.
+  - [ ] **C3.1.3** Show static types separately from runtime values in every reply.
+- [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
   restore the same checked generation; never attach old metadata to a
   successor.
+  - [ ] **C3.2.1** Invalidate metadata on reload and tab close.
+  - [ ] **C3.2.2** Invalidate or restore the same checked generation on cache eviction and hibernation.
+  - [ ] **C3.2.3** Assert a successor never receives the predecessor's metadata.
 
 #### C4. Verify the public debugger route.
 
-- [ ] Through launcher/core/child, test source pause, stepping, stack,
+- [ ] **C4.1** Through launcher/core/child, test source pause, stepping, stack,
   scope, values, exception, and stale/unauthorized/over-budget rejection.
+  - [ ] **C4.1.1** One real-process test per capability: pause, step, stack, scope, values, exception.
+  - [ ] **C4.1.2** One rejection test per class: stale, unauthorized, over-budget.
 
 ### D. Close direct-page acceptance.
 
-- [ ] A real classic and ESM BlueTS fixture covers type-only import
+- [ ] **D.1** A real classic and ESM BlueTS fixture covers type-only import
   elision, authorized resolver identity, and original source mapping.
-- [ ] A real page exercises a declared contract and shows its bounded
+  - [ ] **D.1.1** Classic fixture: type-only import elision and original source mapping.
+  - [ ] **D.1.2** ESM fixture: authorized resolver identity and original source mapping.
+- [ ] **D.2** A real page exercises a declared contract and shows its bounded
   failure without exposing protected content.
-- [ ] Public-boundary tests cover multiple tabs, reload, policy isolation,
+  - [ ] **D.2.1** Trigger a contract failure on a real page and show its bounded report.
+  - [ ] **D.2.2** Assert the report leaks no protected content.
+- [ ] **D.3** Public-boundary tests cover multiple tabs, reload, policy isolation,
   and tab/child resource attribution; no required result depends only on a
   host-neutral unit test.
+  - [ ] **D.3.1** Multiple tabs: separate results and attribution.
+  - [ ] **D.3.2** Reload: no state carried across generations.
+  - [ ] **D.3.3** Policy isolation between tabs and children.
+  - [ ] **D.3.4** Tab/child resource attribution.
 
 ## P1 — strict contracts and compiler service
 
@@ -267,28 +299,42 @@ channel with explicit owner/client grants.
 
 #### E1. Inventory only implemented boundaries.
 
-- [x] Name and validate the copied document-text and origin results.
-- [ ] For each new ingress/egress, record owner, source position when
+- [x] **E1.1** Name and validate the copied document-text and origin results.
+- [ ] **E1.2** For each new ingress/egress, record owner, source position when
   available, contract ID, limits, failure category, and capability.
-- [ ] Make strict-runtime reject a missing, unreifiable, or unchecked
+  - [ ] **E1.2.1** Define the inventory record shape (owner, source position, contract ID, limits, failure category, capability).
+  - [ ] **E1.2.2** Add a test that fails when a boundary lacks a record.
+- [ ] **E1.3** Make strict-runtime reject a missing, unreifiable, or unchecked
   boundary unless a reviewed contract is authorized.
+  - [ ] **E1.3.1** Reject a missing contract, an unreifiable type, and an unchecked boundary, each with its own diagnostic.
+  - [ ] **E1.3.2** Allow the boundary only with a reviewed, authorized contract.
 
 #### E2. Validate at the crossing.
 
-- [ ] Run the pure bounded validator before data enters the VM; invoke
+- [ ] **E2.1** Run the pure bounded validator before data enters the VM; invoke
   no getter, proxy, page callback, or fetch during validation.
-- [ ] Attribute validation/cache cost to the initiating tab and report
+  - [ ] **E2.1.1** Validate before the value enters the VM.
+  - [ ] **E2.1.2** Prove no getter, proxy trap, page callback, or fetch runs during validation.
+- [ ] **E2.2** Attribute validation/cache cost to the initiating tab and report
   policy plus source position without protected content.
-- [ ] Test valid, malformed, cyclic, deep, oversized, and exhausting
+  - [ ] **E2.2.1** Charge cost to the initiating tab.
+  - [ ] **E2.2.2** Report policy and source position without protected content.
+- [ ] **E2.3** Test valid, malformed, cyclic, deep, oversized, and exhausting
   values at a live boundary.
+  - [ ] **E2.3.1** One live-boundary test per value class: valid, malformed, cyclic, deep, oversized, exhausting.
 
 #### E3. Preserve strict policy in emitted output.
 
-- [x] Reject standalone strict-runtime build while its helper is absent.
-- [ ] Emit a versioned helper and bind its identity to the artifact
+- [x] **E3.1** Reject standalone strict-runtime build while its helper is absent.
+- [ ] **E3.2** Emit a versioned helper and bind its identity to the artifact
   manifest; reject any target that erases a required check.
-- [ ] Make direct-page and emitted ESM reject the same malformed value;
+  - [ ] **E3.2.1** Emit a versioned helper file.
+  - [ ] **E3.2.2** Bind the helper identity into the artifact manifest.
+  - [ ] **E3.2.3** Reject any target that erases a required check.
+- [ ] **E3.3** Make direct-page and emitted ESM reject the same malformed value;
   a weaker artifact must never claim strict-runtime.
+  - [ ] **E3.3.1** Run one malformed value through both paths and assert the same rejection.
+  - [ ] **E3.3.2** Assert a weaker artifact cannot claim strict-runtime.
 
 ### F. Finish registered-project compilation and MCP (Phase 12).
 
@@ -296,13 +342,16 @@ Keep check read-only and owner registration sealed before listeners.
 
 #### F1. Authorize projects independently of query receipts.
 
-- [ ] Pin canonical input/config/output roots and a closed source graph;
+- [ ] **F1.1** Pin canonical input/config/output roots and a closed source graph;
   client requests cannot add paths, resolver edges, options, or plugins.
   Partial: the owner-only startup catalog now rejects lexical path aliases,
   config/entry/source identities outside the declared project root, and
   output roots colliding with any catalog input or another output. Physical
   filesystem canonicalization and output-write authority remain open.
-- [x] Admit only owner-exposed projects to each client inventory; deny a
+  - [ ] **F1.1.1** Physical filesystem canonicalization of input, config, and output roots.
+  - [ ] **F1.1.2** Reject client-supplied paths, resolver edges, options, and plugins.
+  - [ ] **F1.1.3** Output-write authority as a separate owner grant.
+- [x] **F1.2** Admit only owner-exposed projects to each client inventory; deny a
   guessed or private project before reaching the compiler cache. Even a
   pre-populated core service now defaults to a private inventory until the
   owner explicitly exposes a registration. Direct adapter calls and accepted
@@ -312,61 +361,100 @@ Keep check read-only and owner registration sealed before listeners.
 
 #### F2. Produce bounded build artifacts.
 
-- [ ] Bind results to project generation and fingerprint; cap artifact,
+- [ ] **F2.1** Bind results to project generation and fingerprint; cap artifact,
   diagnostic, and incremental-work-set responses.
-- [ ] Stage output atomically and emit nothing on compiler error; reject
+  - [ ] **F2.1.1** Bind every result to project generation and fingerprint.
+  - [ ] **F2.1.2** Cap artifact size, diagnostic count, and incremental-work-set size.
+- [ ] **F2.2** Stage output atomically and emit nothing on compiler error; reject
   paths outside the authorized output root.
+  - [ ] **F2.2.1** Write to a staging path and rename atomically.
+  - [ ] **F2.2.2** Emit nothing on compiler error.
+  - [ ] **F2.2.3** Reject output paths outside the authorized root.
 
 #### F3. Complete the MCP adapter.
 
-- [ ] Negotiate exact session/project/generation capabilities; keep
+- [ ] **F3.1** Negotiate exact session/project/generation capabilities; keep
   pagination cursors one-shot and treat project strings as untrusted.
-- [ ] Expose build only with explicit output-write authority; a query
+  - [ ] **F3.1.1** Negotiate exact session/project/generation capabilities.
+  - [ ] **F3.1.2** Make pagination cursors one-shot.
+  - [ ] **F3.1.3** Treat project strings as untrusted data.
+- [ ] **F3.2** Expose build only with explicit output-write authority; a query
   receipt must never imply write access.
-- [ ] Through a real MCP client, inspect a diagnostic/type/contract
+  - [ ] **F3.2.1** Hide build unless the owner granted output-write authority.
+  - [ ] **F3.2.2** Assert a query receipt never authorizes a build.
+- [ ] **F3.3** Through a real MCP client, inspect a diagnostic/type/contract
   failure and check/build an authorized project; reject stale, guessed,
   oversized, private, and unauthorized requests.
+  - [ ] **F3.3.1** Inspect a diagnostic, a type, and a contract failure through a real MCP client.
+  - [ ] **F3.3.2** Check and build an authorized project.
+  - [ ] **F3.3.3** Reject stale, guessed, oversized, private, and unauthorized requests.
 
 ## Release gate
 
-- [x] Generated host typings, the direct BlueTS-to-BlueJS bridge, exact
+- [x] **R.1** Generated host typings, the direct BlueTS-to-BlueJS bridge, exact
   safe-point mapping, and the pinned TypeScript 5.9.3 CI oracle exist.
 
 ### G. Verify closure without exclusions.
 
-- [ ] Run workspace tests and applicable real-process suites.
-- [ ] Pass formatting and all-target Clippy with warnings as errors.
-- [ ] Pass the pinned oracle and workspace coverage gate in CI; no
+- [ ] **G.1** Run workspace tests and applicable real-process suites.
+  - [ ] **G.1.1** `cargo test --workspace` passes.
+  - [ ] **G.1.2** Real-process suites (launcher, core, MCP, debugger) pass.
+- [ ] **G.2** Pass formatting and all-target Clippy with warnings as errors.
+  - [ ] **G.2.1** `cargo fmt --check` passes.
+  - [ ] **G.2.2** `cargo clippy --workspace --all-targets -- -D warnings` passes.
+- [ ] **G.3** Pass the pinned oracle and workspace coverage gate in CI; no
   ignored required test or suppressed warning may substitute for evidence.
+  - [ ] **G.3.1** Pinned TypeScript oracle passes in CI.
+  - [ ] **G.3.2** Workspace coverage gate passes in CI.
+  - [ ] **G.3.3** No ignored required test or suppressed warning substitutes for evidence.
 
 ## P2 — compatibility after the page gate
 
 ### H. Grow control flow and function semantics.
 
-- [ ] Define one supported loop form, then test checker, direct execution,
+- [ ] **H.1** Define one supported loop form, then test checker, direct execution,
   safe points, and oracle before selecting another.
-- [ ] Define try/catch/finally with matching BlueJS execution and safe points.
-- [ ] Define control-flow narrowing and return paths through checker, emitter,
+  - [ ] **H.1.1** Pick one loop form and state its unsupported neighbors.
+  - [ ] **H.1.2** Test checker, direct execution, safe points, and oracle for it before choosing another.
+- [ ] **H.2** Define try/catch/finally with matching BlueJS execution and safe points.
+  - [ ] **H.2.1** Define supported catch-binding and finally semantics.
+  - [ ] **H.2.2** Test matching BlueJS execution and safe points.
+- [ ] **H.3** Define control-flow narrowing and return paths through checker, emitter,
   direct execution, and oracle.
-- [ ] Define callback/method overload resolution with the same four gates.
+  - [ ] **H.3.1** Define narrowing forms and return-path analysis.
+  - [ ] **H.3.2** Test checker, emitter, direct execution, and oracle.
+- [ ] **H.4** Define callback/method overload resolution with the same four gates.
+  - [ ] **H.4.1** Define resolution rules and the ambiguous-call diagnostic.
+  - [ ] **H.4.2** Test with the same four gates: checker, emitter, direct execution, oracle.
 
 ### I. Grow expressions one form at a time.
 
-- [ ] Choose the next single form from optional calls/chaining, templates,
+- [ ] **I.1** Choose the next single form from optional calls/chaining, templates,
   object methods/accessors, member constructors, iterable spread, or
   structural/union/any operands; state its unsupported behavior.
-- [ ] For that form, test parser/checker/emitter and direct runtime without
+  - [ ] **I.1.1** Record the chosen form and its unsupported behavior.
+- [ ] **I.2** For that form, test parser/checker/emitter and direct runtime without
   reparsing emitted JavaScript.
-- [ ] Verify its provenance, debugger behavior, contracts, and TypeScript
+  - [ ] **I.2.1** Parser test.
+  - [ ] **I.2.2** Checker test.
+  - [ ] **I.2.3** Emitter test.
+  - [ ] **I.2.4** Direct-runtime test without reparsing emitted JavaScript.
+- [ ] **I.3** Verify its provenance, debugger behavior, contracts, and TypeScript
   oracle evidence before choosing another form.
+  - [ ] **I.3.1** Provenance and debugger behavior verified.
+  - [ ] **I.3.2** Contract behavior and TypeScript oracle evidence verified.
 
 ### J. Decide large features only when requested.
 
-- [ ] For each proposed class/enum/decorator/namespace/JSX/CommonJS or
+- [ ] **J.1** For each proposed class/enum/decorator/namespace/JSX/CommonJS or
   package/remote-declaration feature, record its runtime lowering and
   host authority impact before adding it to the implementation backlog.
-- [ ] Require a debugger map, contract policy, and conformance plan for
+  - [ ] **J.1.1** Record runtime lowering per proposal.
+  - [ ] **J.1.2** Record host authority impact per proposal.
+- [ ] **J.2** Require a debugger map, contract policy, and conformance plan for
   each accepted proposal; defer features without that evidence.
+  - [ ] **J.2.1** Require a debugger map, a contract policy, and a conformance plan per accepted proposal.
+  - [ ] **J.2.2** Defer proposals lacking that evidence.
 
 Phase 18 does not close general Phase 13 ECMAScript conformance, all Phase 17
 automation/AJAX, or unrelated Phase 12 MCP families.
