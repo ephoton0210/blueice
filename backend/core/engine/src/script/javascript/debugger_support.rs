@@ -337,6 +337,9 @@ pub enum JavaScriptPageDebuggerNestedExecutionState {
     Stepping {
         frame: JavaScriptPageDebuggerFrame,
     },
+    Resuming {
+        frame: JavaScriptPageDebuggerFrame,
+    },
 }
 
 /// One source-free, exact breakpoint record retained for a live program. A

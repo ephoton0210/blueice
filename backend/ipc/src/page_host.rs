@@ -12,7 +12,8 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
-//! Version 35 adds exact active nested-frame arm, state, and single-instruction
+//! Version 36 adds exact active nested-frame resume without reusing root
+//! resume or single-instruction stepping. Version 35 adds nested-frame arm, state, and single-instruction
 //! step controls for the private core/child route. The frame identity binds
 //! tab, document, program, code unit, and invocation; it grants no source or
 //! value inspection and is distinct from a static safe-point location.
@@ -114,7 +115,7 @@ use std::io::{self, Read, Write};
 /// Independent version for the private launcher-to-BlueJS-host channel.
 /// V34 carries a document-bound script handle, not a raw core NodeId, in
 /// `DispatchClick` so its target matches child-owned listener identities.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 35;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 36;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -405,6 +406,9 @@ pub enum PageHostDebuggerExecutionState {
     },
     Stepping,
     NestedStepping {
+        frame: PageHostDebuggerFrame,
+    },
+    NestedResuming {
         frame: PageHostDebuggerFrame,
     },
     /// The source-span step reached its fixed root-instruction budget before
@@ -893,6 +897,9 @@ pub enum PageHostRequest {
     /// Steps only the exact currently paused nested invocation on a later
     /// child advance turn; a static safe point is never sufficient.
     StepDebuggerNestedInstruction { frame: PageHostDebuggerFrame },
+    /// Resumes only the exact retained nested invocation on a later child
+    /// advance turn; the waiting root remains separately paused on return.
+    ResumeDebuggerNestedExecution { frame: PageHostDebuggerFrame },
     /// Requires an exact paused BlueTS classic safe point, live metadata,
     /// and its compiler-minted source ID. The child derives the current span
     /// from its retained map; no source text or caller-selected stop span is
@@ -1164,6 +1171,9 @@ pub enum PageHostReply {
     DebuggerNestedStepRequested {
         frame: PageHostDebuggerFrame,
     },
+    DebuggerNestedResumeRequested {
+        frame: PageHostDebuggerFrame,
+    },
     DebuggerBlueTsSourceStepRequested {
         tab_id: u64,
         document_generation: u64,
@@ -1385,6 +1395,7 @@ mod tests {
                 safe_point,
             },
             PageHostRequest::StepDebuggerNestedInstruction { frame },
+            PageHostRequest::ResumeDebuggerNestedExecution { frame },
         ] {
             let (mut writer, mut reader) = UnixStream::pair().unwrap();
             write_page_host_request(&mut writer, &request).unwrap();
@@ -1403,11 +1414,18 @@ mod tests {
                 state: PageHostDebuggerExecutionState::NestedPaused { frame, safe_point },
             },
             PageHostReply::DebuggerNestedStepRequested { frame },
+            PageHostReply::DebuggerNestedResumeRequested { frame },
             PageHostReply::DebuggerExecutionState {
                 tab_id: 7,
                 document_generation: 3,
                 program,
                 state: PageHostDebuggerExecutionState::NestedStepping { frame },
+            },
+            PageHostReply::DebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                state: PageHostDebuggerExecutionState::NestedResuming { frame },
             },
         ] {
             let (mut writer, mut reader) = UnixStream::pair().unwrap();

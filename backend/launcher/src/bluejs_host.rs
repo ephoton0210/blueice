@@ -261,6 +261,10 @@ enum ChildDebuggerExecutionStatus {
         frame: BlueJsPageDebuggerFrame,
         safe_point: PageHostDebuggerSafePoint,
     },
+    NestedResumeRequested {
+        frame: BlueJsPageDebuggerFrame,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     StepRequested,
     BlueTsSourceStepRequested {
         origin: BlueTsSourceSpanKey,
@@ -1022,6 +1026,9 @@ impl BlueJsChildHost {
             } => self.step_debugger_root_instruction(tab_id, document_generation, program),
             PageHostRequest::StepDebuggerNestedInstruction { frame } => {
                 self.step_debugger_nested_instruction(frame)
+            }
+            PageHostRequest::ResumeDebuggerNestedExecution { frame } => {
+                self.resume_debugger_nested_execution(frame)
             }
             PageHostRequest::StepDebuggerBlueTsSourceSpan {
                 tab_id,
@@ -3460,11 +3467,12 @@ impl BlueJsChildHost {
     }
 
     /// Schedules one step only for the exact paused child invocation.
-    fn request_debugger_nested_step(
+    fn request_debugger_nested_advance(
         &mut self,
         tab_id: u64,
         document_generation: u64,
         frame: BlueJsPageDebuggerFrame,
+        resume: bool,
     ) -> Result<(), PageHostReply> {
         let document = self.exact_document(tab_id, document_generation)?;
         if frame.tab_id() != tab_id || !document.debugger_execution_control {
@@ -3499,18 +3507,32 @@ impl BlueJsChildHost {
         {
             return Err(invalid_debugger_state());
         }
+        let requested = if resume {
+            ChildDebuggerExecutionStatus::NestedResumeRequested { frame, safe_point }
+        } else {
+            ChildDebuggerExecutionStatus::NestedStepRequested { frame, safe_point }
+        };
         self.documents
             .get_mut(&tab_id)
             .expect("validated document")
             .debugger_execution_states
-            .insert(
-                program,
-                ChildDebuggerExecutionStatus::NestedStepRequested { frame, safe_point },
-            );
+            .insert(program, requested);
         Ok(())
     }
 
     fn step_debugger_nested_instruction(&mut self, frame: PageHostDebuggerFrame) -> PageHostReply {
+        self.continue_debugger_nested_execution(frame, false)
+    }
+
+    fn resume_debugger_nested_execution(&mut self, frame: PageHostDebuggerFrame) -> PageHostReply {
+        self.continue_debugger_nested_execution(frame, true)
+    }
+
+    fn continue_debugger_nested_execution(
+        &mut self,
+        frame: PageHostDebuggerFrame,
+        resume: bool,
+    ) -> PageHostReply {
         if !frame.is_well_formed() {
             return invalid_request();
         }
@@ -3539,7 +3561,13 @@ impl BlueJsChildHost {
         {
             return invalid_debugger_state();
         }
-        match self.request_debugger_nested_step(frame.tab_id, frame.document_generation, active) {
+        match self.request_debugger_nested_advance(
+            frame.tab_id,
+            frame.document_generation,
+            active,
+            resume,
+        ) {
+            Ok(()) if resume => PageHostReply::DebuggerNestedResumeRequested { frame },
             Ok(()) => PageHostReply::DebuggerNestedStepRequested { frame },
             Err(reply) => reply,
         }
@@ -3839,19 +3867,24 @@ impl BlueJsChildHost {
         )
     }
 
-    fn advance_nested_step(
+    fn advance_nested_frame(
         &mut self,
         tab_id: u64,
         document_generation: u64,
         program: PageHostDebuggerProgram,
         frame: BlueJsPageDebuggerFrame,
         safe_point: PageHostDebuggerSafePoint,
+        resume: bool,
     ) -> (
         bool,
         PageHostScriptOutcome,
         Option<PageHostDebuggerSafePoint>,
     ) {
-        let result = self.runtime.step_debugger_nested_instruction(frame);
+        let result = if resume {
+            self.runtime.resume_debugger_nested_execution(frame)
+        } else {
+            self.runtime.step_debugger_nested_instruction(frame)
+        };
         let (status, outcome, root_successor) = match result {
             Ok(BlueJsPageDebuggerNestedExecutionState::Paused {
                 frame: same_frame,
@@ -4177,6 +4210,23 @@ impl BlueJsChildHost {
                                 }
                             }
                         }
+                        ChildDebuggerExecutionStatus::NestedResumeRequested {
+                            frame,
+                            safe_point,
+                        } => {
+                            let (still_paused, outcome, root_successor) = self
+                                .advance_nested_frame(
+                                    tab_id,
+                                    document_generation,
+                                    program,
+                                    frame,
+                                    safe_point,
+                                    true,
+                                );
+                            *root_safe_point = root_successor;
+                            paused = still_paused;
+                            outcome
+                        }
                         ChildDebuggerExecutionStatus::StepRequested => {
                             match self.runtime.step_debugger_root_instruction(tab_id) {
                                 Ok(BlueJsPageDebuggerExecutionState::Paused {
@@ -4463,13 +4513,35 @@ impl BlueJsChildHost {
                             root_slot,
                             ChildDebuggerExecutionStatus::NestedStepRequested { frame, safe_point },
                         ) => {
-                            let (still_paused, outcome, root_successor) = self.advance_nested_step(
-                                tab_id,
-                                document_generation,
-                                program,
+                            let (still_paused, outcome, root_successor) = self
+                                .advance_nested_frame(
+                                    tab_id,
+                                    document_generation,
+                                    program,
+                                    frame,
+                                    safe_point,
+                                    false,
+                                );
+                            *root_slot = root_successor;
+                            paused = still_paused;
+                            outcome
+                        }
+                        (
+                            root_slot,
+                            ChildDebuggerExecutionStatus::NestedResumeRequested {
                                 frame,
                                 safe_point,
-                            );
+                            },
+                        ) => {
+                            let (still_paused, outcome, root_successor) = self
+                                .advance_nested_frame(
+                                    tab_id,
+                                    document_generation,
+                                    program,
+                                    frame,
+                                    safe_point,
+                                    true,
+                                );
                             *root_slot = root_successor;
                             paused = still_paused;
                             outcome
@@ -5646,6 +5718,11 @@ fn child_debugger_execution_state(
         }
         ChildDebuggerExecutionStatus::NestedStepRequested { frame, .. } => {
             PageHostDebuggerExecutionState::NestedStepping {
+                frame: child_debugger_frame(tab_id, document_generation, program, frame),
+            }
+        }
+        ChildDebuggerExecutionStatus::NestedResumeRequested { frame, .. } => {
+            PageHostDebuggerExecutionState::NestedResuming {
                 frame: child_debugger_frame(tab_id, document_generation, program, frame),
             }
         }
@@ -7099,10 +7176,13 @@ mod tests {
             } if wire_frame == child_debugger_frame(7, 1, program, frame)
                 && safe_point == target
         ));
-        assert!(host.request_debugger_nested_step(7, 2, frame).is_err());
+        assert!(host
+            .request_debugger_nested_advance(7, 2, frame, false)
+            .is_err());
         let mut returned = false;
         for _ in 0..96 {
-            host.request_debugger_nested_step(7, 1, frame).unwrap();
+            host.request_debugger_nested_advance(7, 1, frame, false)
+                .unwrap();
             assert!(matches!(
                 host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
                     tab_id: 7,
@@ -7128,7 +7208,9 @@ mod tests {
             }
         }
         assert!(returned);
-        assert!(host.request_debugger_nested_step(7, 1, frame).is_err());
+        assert!(host
+            .request_debugger_nested_advance(7, 1, frame, false)
+            .is_err());
         assert!(matches!(
             host.handle_request(PageHostRequest::ResumeDebuggerExecution {
                 tab_id: 7,
@@ -7254,6 +7336,70 @@ mod tests {
             host.handle_request(PageHostRequest::StepDebuggerNestedInstruction { frame }),
             PageHostReply::Error { .. }
         ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::NestedPaused { frame: same, .. },
+                ..
+            } if same == frame
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerNestedExecution {
+                frame: PageHostDebuggerFrame {
+                    invocation_serial: frame.invocation_serial + 1,
+                    ..frame
+                },
+            }),
+            PageHostReply::Error { .. }
+        ));
+        assert_eq!(
+            host.handle_request(PageHostRequest::ResumeDebuggerNestedExecution { frame }),
+            PageHostReply::DebuggerNestedResumeRequested { frame }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::NestedResuming { frame: same },
+                ..
+            } if same == frame
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::Paused { safe_point },
+                ..
+            } if safe_point.code_unit_ordinal == 0
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerNestedExecution { frame }),
+            PageHostReply::Error { .. }
+        ));
     }
 
     #[test]
@@ -7301,7 +7447,8 @@ mod tests {
             ChildDebuggerExecutionStatus::NestedPaused { frame, .. } => frame,
             status => panic!("BlueTS child must pause: {status:?}"),
         };
-        host.request_debugger_nested_step(7, 1, frame).unwrap();
+        host.request_debugger_nested_advance(7, 1, frame, false)
+            .unwrap();
         assert!(matches!(
             host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
                 tab_id: 7,
@@ -7438,35 +7585,46 @@ mod tests {
             }),
             PageHostReply::Error { .. }
         ));
-        let mut returned = false;
-        for _ in 0..128 {
-            host.request_debugger_nested_step(7, 1, frame).unwrap();
-            assert!(matches!(
-                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
-                    tab_id: 7,
-                    document_generation: 1,
-                }),
-                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
-            ));
-            match host.documents[&7].debugger_execution_states[&program] {
-                ChildDebuggerExecutionStatus::NestedPaused {
-                    frame: same_frame,
-                    safe_point,
-                } => {
-                    assert_eq!(same_frame, frame);
-                    host.exact_debugger_safe_point(7, 1, safe_point).unwrap();
-                }
-                ChildDebuggerExecutionStatus::Paused(root) => {
-                    assert_eq!(root.code_unit_ordinal, 0);
-                    host.exact_debugger_safe_point(7, 1, root).unwrap();
-                    returned = true;
-                    break;
-                }
-                status => panic!("unexpected module child step: {status:?}"),
-            }
-        }
-        assert!(returned);
-        assert!(host.request_debugger_nested_step(7, 1, frame).is_err());
+        host.request_debugger_nested_advance(7, 1, frame, false)
+            .unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        assert!(matches!(
+            host.documents[&7].debugger_execution_states[&program],
+            ChildDebuggerExecutionStatus::NestedPaused { frame: same, .. } if same == frame
+        ));
+        let child_frame = child_debugger_frame(7, 1, program, frame);
+        assert_eq!(
+            host.handle_request(PageHostRequest::ResumeDebuggerNestedExecution {
+                frame: child_frame,
+            }),
+            PageHostReply::DebuggerNestedResumeRequested { frame: child_frame }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let ChildDebuggerExecutionStatus::Paused(root) =
+            host.documents[&7].debugger_execution_states[&program]
+        else {
+            panic!("module child resume must park its original root");
+        };
+        assert_eq!(root.code_unit_ordinal, 0);
+        host.exact_debugger_safe_point(7, 1, root).unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerNestedExecution {
+                frame: child_frame,
+            }),
+            PageHostReply::Error { .. }
+        ));
         assert!(matches!(
             host.handle_request(PageHostRequest::ResumeDebuggerExecution {
                 tab_id: 7,

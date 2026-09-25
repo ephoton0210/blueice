@@ -2769,6 +2769,13 @@ fn child_execution_state(
                         },
                     )
                 }
+                JavaScriptPageDebuggerNestedExecutionState::Resuming { .. } => {
+                    return DebuggerReply::Error {
+                        code: DebuggerErrorCode::InvalidExecutionState,
+                        message: "nested frame is resuming through the private page-host route"
+                            .to_string(),
+                    };
+                }
             };
             if frame.tab_id != tab_id
                 || frame.document_generation != program.realm.realm_generation

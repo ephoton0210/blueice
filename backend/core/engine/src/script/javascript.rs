@@ -574,6 +574,13 @@ pub trait PageJavaScriptDebuggerLocations {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 
+    fn resume_debugger_nested_execution(
+        &mut self,
+        _frame: JavaScriptPageDebuggerFrame,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
     /// Arms one pending classic program at an already validated root safe
     /// point. No generic interruption or nested-function continuation exists.
     fn arm_debugger_root_safe_point_breakpoint(

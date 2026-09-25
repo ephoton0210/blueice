@@ -837,6 +837,16 @@ pub trait PageHostClient {
         ))
     }
 
+    fn resume_debugger_nested_execution(
+        &mut self,
+        _frame: PageHostDebuggerFrame,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement nested debugger resume",
+        ))
+    }
+
     fn arm_debugger_root_safe_point_breakpoint(
         &mut self,
         _tab_id: u64,
@@ -1456,6 +1466,13 @@ impl PageHostClient for PageHostConnection {
         frame: PageHostDebuggerFrame,
     ) -> io::Result<PageHostReply> {
         self.request(PageHostRequest::StepDebuggerNestedInstruction { frame })
+    }
+
+    fn resume_debugger_nested_execution(
+        &mut self,
+        frame: PageHostDebuggerFrame,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ResumeDebuggerNestedExecution { frame })
     }
 
     fn arm_debugger_root_safe_point_breakpoint(
@@ -4021,6 +4038,7 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                 }))
             }
             PageHostDebuggerExecutionState::NestedStepping { frame }
+            | PageHostDebuggerExecutionState::NestedResuming { frame }
                 if frame.is_well_formed()
                     && frame.tab_id == tab_id.as_u64()
                     && frame.document_generation == document_generation
@@ -4036,12 +4054,23 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                             && active.public.program_generation == program_generation
                     })
                     .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
-                Ok(Some(JavaScriptPageDebuggerNestedExecutionState::Stepping {
-                    frame: active.public,
+                Ok(Some(match state {
+                    PageHostDebuggerExecutionState::NestedStepping { .. } => {
+                        JavaScriptPageDebuggerNestedExecutionState::Stepping {
+                            frame: active.public,
+                        }
+                    }
+                    PageHostDebuggerExecutionState::NestedResuming { .. } => {
+                        JavaScriptPageDebuggerNestedExecutionState::Resuming {
+                            frame: active.public,
+                        }
+                    }
+                    _ => unreachable!("only nested advance states pass this guard"),
                 }))
             }
             PageHostDebuggerExecutionState::NestedPaused { .. }
-            | PageHostDebuggerExecutionState::NestedStepping { .. } => {
+            | PageHostDebuggerExecutionState::NestedStepping { .. }
+            | PageHostDebuggerExecutionState::NestedResuming { .. } => {
                 Err(JavaScriptPageDebuggerError::NoLiveRealm)
             }
             _ => {
@@ -4093,6 +4122,53 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
         match reply {
             PageHostReply::DebuggerNestedStepRequested { frame: reply_frame }
+                if reply_frame == child_frame =>
+            {
+                Ok(())
+            }
+            PageHostReply::Error { .. } => {
+                self.debugger_nested_frames.remove(&frame.tab_id);
+                Err(child_debugger_reply_error(&reply))
+            }
+            _ => {
+                self.debugger_nested_frames.remove(&frame.tab_id);
+                Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            }
+        }
+    }
+
+    fn resume_debugger_nested_execution(
+        &mut self,
+        frame: JavaScriptPageDebuggerFrame,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_nested_frames_available()
+            || frame.code_unit_ordinal == 0
+            || frame.frame_handle == 0
+        {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let active = self
+            .debugger_nested_frames
+            .get(&frame.tab_id)
+            .copied()
+            .filter(|active| active.public == frame)
+            .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
+        let program = self.child_program_for_core(
+            frame.tab_id,
+            frame.document_generation,
+            frame.program_handle,
+            frame.program_generation,
+        )?;
+        if active.child.program != program {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_frame = active.child;
+        let reply = self
+            .child
+            .resume_debugger_nested_execution(child_frame)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerNestedResumeRequested { frame: reply_frame }
                 if reply_frame == child_frame =>
             {
                 Ok(())
@@ -4238,9 +4314,9 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                 Err(JavaScriptPageDebuggerError::NoLiveRealm)
             }
             PageHostDebuggerExecutionState::NestedPaused { .. }
-            | PageHostDebuggerExecutionState::NestedStepping { .. } => {
-                // The public root state route remains disabled for nested
-                // frames until C1.2.1.3.3 mints its own frame identity.
+            | PageHostDebuggerExecutionState::NestedStepping { .. }
+            | PageHostDebuggerExecutionState::NestedResuming { .. } => {
+                // Root-only state cannot alias a live nested frame.
                 Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
             }
         }
@@ -8298,6 +8374,128 @@ mod tests {
         shutdown_child(&next_path, &next_token);
         next_child.join().unwrap();
         let _ = std::fs::remove_file(next_path);
+    }
+
+    #[test]
+    fn core_proxies_exact_nested_resume_to_real_bluets_child_and_revokes_handle() {
+        let (path, token, child) = spawn_child();
+        let (tabs, tab_id) = loaded_tabs(
+            "<script type=\"application/x-blueice-typescript\">function inner(): number { return 4; } globalThis.answer = inner() + 1;</script>",
+            "https://example.test/private-nested-resume.html",
+        );
+        let mut executor =
+            OutOfProcessJavaScriptPageExecutor::connect_with_debugger_execution_control(
+                &path, &token,
+            )
+            .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let program = executor.debugger_programs(tab_id, 1).unwrap()[0];
+        let target = executor
+            .debugger_safe_points(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+            )
+            .unwrap()
+            .into_iter()
+            .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+            .unwrap();
+        executor
+            .arm_debugger_nested_safe_point_breakpoint(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                target.code_unit_ordinal,
+                target.bytecode_offset,
+            )
+            .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let Some(JavaScriptPageDebuggerNestedExecutionState::Paused { frame, .. }) = executor
+            .debugger_nested_execution_state(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+            )
+            .unwrap()
+        else {
+            panic!("BlueTS child must pause under a core-owned handle");
+        };
+        assert_eq!(
+            executor.resume_debugger_nested_execution(JavaScriptPageDebuggerFrame {
+                frame_handle: frame.frame_handle + 1,
+                ..frame
+            }),
+            Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+        );
+        executor.resume_debugger_nested_execution(frame).unwrap();
+        assert_eq!(
+            executor
+                .debugger_nested_execution_state(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap(),
+            Some(JavaScriptPageDebuggerNestedExecutionState::Resuming { frame })
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor
+                .debugger_nested_execution_state(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            executor.resume_debugger_nested_execution(frame),
+            Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+        );
+        assert!(matches!(
+            executor
+                .debugger_execution_state(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap(),
+            JavaScriptPageDebuggerExecutionState::Paused {
+                code_unit_ordinal: 0,
+                ..
+            }
+        ));
+        executor
+            .resume_debugger_execution(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+            )
+            .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor
+                .debugger_execution_state(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap(),
+            JavaScriptPageDebuggerExecutionState::Completed
+        );
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

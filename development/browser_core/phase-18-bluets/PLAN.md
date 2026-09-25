@@ -657,6 +657,17 @@ and revokes it on child return. Classic effects occur once, a linked module
 dependency and entry complete once, and wrong or returned identities are
 refused. No child or public resume command is exposed by this checkpoint.
 
+**Private same-frame resume (C1.2.2.2):** Page-host v36 carries a separate
+frame-bound resume request, acknowledgement, and `NestedResuming` state. The
+child accepts it only for its exact paused tab/document/program/code-unit/
+invocation tuple; the next owner advance runs that retained child to return
+and parks the original root at its verified successor. The core translates
+only its live reminted frame handle to the child-private tuple, preserves the
+requested state distinctly from one-instruction stepping, and revokes the
+association when the child returns. Classic and linked-module scheduler tests
+and a real BlueTS child/core socket regression cover the route. Public socket
+authorization and its own protocol version remain for C1.2.2.3.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
