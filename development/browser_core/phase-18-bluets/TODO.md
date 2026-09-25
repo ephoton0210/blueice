@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.1.2.3.** Reuse bounded BlueTS source-span stepping for a
-paused module root under its exact metadata/source receipts.
+**Current leaf: C1.1.2.4.** Prove both module-root step modes and state
+transitions through the public real-process debugger route.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -254,7 +254,7 @@ channel with explicit owner/client grants.
   - [ ] **C1.1.2** Instruction step and BlueTS source-span step inside the module root.
     - [x] **C1.1.2.1** Step exactly one instruction in the retained module-root frame and return its actual verified successor or terminal state at the native VM boundary. BlueJS now re-parks the same entry frame after each root instruction and reports the real next offset, including backward loop hits; a native loop regression steps to terminal completion and proves the body result and continuation cleanup.
     - [x] **C1.1.2.2** Expose exact module-root instruction step through the page runtime and child scheduler without enabling dependency or nested-frame stepping. The page runtime forwards one native module step; the child accepts only its paused entry program, validates the returned successor as an exact live root safe point, and retains the queue head until resume. Boundary tests reject cross-tab, dependency and stale targets and prove a verified successor and unchanged pause on repeated advance.
-    - [ ] **C1.1.2.3** Reuse bounded BlueTS source-span stepping for a paused module root under its exact metadata/source receipts.
+    - [x] **C1.1.2.3** Reuse bounded BlueTS source-span stepping for a paused module root under its exact metadata/source receipts. The child now admits the armed BlueTS entry to the same 256-instruction source-span budget and metadata/source validation as classic scripts. A module regression rejects a wrong source ID, advances to the next bound source span, and resumes the same graph to completion; existing classic limit tests exercise the shared cap.
     - [ ] **C1.1.2.4** Prove both module-root step modes and state transitions through the public real-process debugger route.
   - [ ] **C1.1.3** Reject a pause/step request carrying a stale generation.
 - [ ] **C1.2** Pause/step a nested frame and resume that same frame; reject stale

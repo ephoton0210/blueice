@@ -3549,6 +3549,10 @@ impl BlueJsChildHost {
                             && matches!(
                                 pending.execution,
                                 DeferredChildExecution::BlueTsClassic { .. }
+                                    | DeferredChildExecution::BlueTsModule {
+                                        root_safe_point: Some(_),
+                                        ..
+                                    }
                             )
                     })
                 || !matches!(
@@ -3588,6 +3592,105 @@ impl BlueJsChildHost {
             metadata,
             source_id,
             safe_point,
+        }
+    }
+
+    fn advance_bluets_source_step(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        root_safe_point: PageHostDebuggerSafePoint,
+        source_step: (BlueTsSourceSpanKey, u16),
+        module_root: bool,
+    ) -> (bool, PageHostScriptOutcome) {
+        let (origin, remaining) = source_step;
+        if remaining == 0 {
+            self.documents
+                .get_mut(&tab_id)
+                .expect("the source-step document remains live")
+                .debugger_execution_states
+                .insert(program, ChildDebuggerExecutionStatus::Completed);
+            return (false, rejected("BlueTS source step state was inconsistent"));
+        }
+        let result = if module_root {
+            self.runtime.step_debugger_module_root_instruction(tab_id)
+        } else {
+            self.runtime.step_debugger_root_instruction(tab_id)
+        };
+        match result {
+            Ok(BlueJsPageDebuggerExecutionState::Paused { bytecode_offset }) => {
+                let successor = PageHostDebuggerSafePoint {
+                    bytecode_offset,
+                    ..root_safe_point
+                };
+                let metadata = self
+                    .documents
+                    .get(&tab_id)
+                    .and_then(|document| document.debugger_programs.get(&program.program_handle))
+                    .and_then(|record| record.metadata);
+                let next_span = if self
+                    .exact_debugger_safe_point(tab_id, document_generation, successor)
+                    .is_ok()
+                {
+                    metadata.ok_or_else(invalid_request).and_then(|metadata| {
+                        self.debugger_bluets_source_span_key(
+                            tab_id,
+                            document_generation,
+                            metadata,
+                            successor,
+                        )
+                    })
+                } else {
+                    Err(invalid_request())
+                };
+                if let Ok(next_span) = next_span {
+                    let next_status = match next_span {
+                        Some(span) if span != origin => {
+                            ChildDebuggerExecutionStatus::Paused(successor)
+                        }
+                        _ if remaining > 1 => {
+                            ChildDebuggerExecutionStatus::BlueTsSourceStepRequested {
+                                origin,
+                                remaining: remaining - 1,
+                            }
+                        }
+                        _ => ChildDebuggerExecutionStatus::SourceStepLimitReached(successor),
+                    };
+                    self.documents
+                        .get_mut(&tab_id)
+                        .expect("the source-step document remains live")
+                        .debugger_execution_states
+                        .insert(program, next_status);
+                    (true, PageHostScriptOutcome::Executed)
+                } else {
+                    self.documents
+                        .get_mut(&tab_id)
+                        .expect("the source-step document remains live")
+                        .debugger_execution_states
+                        .insert(program, ChildDebuggerExecutionStatus::Completed);
+                    (
+                        false,
+                        rejected("BlueTS source step lost its verified boundary"),
+                    )
+                }
+            }
+            Ok(BlueJsPageDebuggerExecutionState::Completed) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the source-step document remains live")
+                    .debugger_execution_states
+                    .insert(program, ChildDebuggerExecutionStatus::Completed);
+                (false, PageHostScriptOutcome::Executed)
+            }
+            Err(error) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the source-step document remains live")
+                    .debugger_execution_states
+                    .insert(program, ChildDebuggerExecutionStatus::Completed);
+                (false, rejected(page_runtime_category(error)))
+            }
         }
     }
 
@@ -3697,8 +3800,7 @@ impl BlueJsChildHost {
                             origin,
                             remaining,
                         } => {
-                            if pending.language != PageHostScriptLanguage::BlueTs || remaining == 0
-                            {
+                            if pending.language != PageHostScriptLanguage::BlueTs {
                                 self.documents
                                     .get_mut(&tab_id)
                                     .expect("the source-step document remains live")
@@ -3706,104 +3808,19 @@ impl BlueJsChildHost {
                                     .insert(program, ChildDebuggerExecutionStatus::Completed);
                                 rejected("BlueTS source step state was inconsistent")
                             } else {
-                                match self.runtime.step_debugger_root_instruction(tab_id) {
-                                    Ok(BlueJsPageDebuggerExecutionState::Paused {
-                                        bytecode_offset,
-                                    }) => {
-                                        let original = root_safe_point.expect(
-                                            "a BlueTS source step requires an armed root safe point",
-                                        );
-                                        let successor = PageHostDebuggerSafePoint {
-                                            bytecode_offset,
-                                            ..original
-                                        };
-                                        let metadata = self
-                                            .documents
-                                            .get(&tab_id)
-                                            .and_then(|document| {
-                                                document
-                                                    .debugger_programs
-                                                    .get(&program.program_handle)
-                                            })
-                                            .and_then(|record| record.metadata);
-                                        let next_span = if self
-                                            .exact_debugger_safe_point(
-                                                tab_id,
-                                                document_generation,
-                                                successor,
-                                            )
-                                            .is_ok()
-                                        {
-                                            metadata.ok_or_else(invalid_request).and_then(
-                                                |metadata| {
-                                                    self.debugger_bluets_source_span_key(
-                                                        tab_id,
-                                                        document_generation,
-                                                        metadata,
-                                                        successor,
-                                                    )
-                                                },
-                                            )
-                                        } else {
-                                            Err(invalid_request())
-                                        };
-                                        if let Ok(next_span) = next_span {
-                                            let next_status = match next_span {
-                                                Some(span) if span != origin => {
-                                                    ChildDebuggerExecutionStatus::Paused(successor)
-                                                }
-                                                _ if remaining > 1 => {
-                                                    ChildDebuggerExecutionStatus::BlueTsSourceStepRequested {
-                                                        origin,
-                                                        remaining: remaining - 1,
-                                                    }
-                                                }
-                                                _ => ChildDebuggerExecutionStatus::SourceStepLimitReached(successor),
-                                            };
-                                            self.documents
-                                                .get_mut(&tab_id)
-                                                .expect("the source-step document remains live")
-                                                .debugger_execution_states
-                                                .insert(program, next_status);
-                                            paused = true;
-                                            PageHostScriptOutcome::Executed
-                                        } else {
-                                            self.documents
-                                                .get_mut(&tab_id)
-                                                .expect("the source-step document remains live")
-                                                .debugger_execution_states
-                                                .insert(
-                                                    program,
-                                                    ChildDebuggerExecutionStatus::Completed,
-                                                );
-                                            rejected(
-                                                "BlueTS source step lost its verified boundary",
-                                            )
-                                        }
-                                    }
-                                    Ok(BlueJsPageDebuggerExecutionState::Completed) => {
-                                        self.documents
-                                            .get_mut(&tab_id)
-                                            .expect("the source-step document remains live")
-                                            .debugger_execution_states
-                                            .insert(
-                                                program,
-                                                ChildDebuggerExecutionStatus::Completed,
-                                            );
-                                        PageHostScriptOutcome::Executed
-                                    }
-                                    Err(error) => {
-                                        self.documents
-                                            .get_mut(&tab_id)
-                                            .expect("the source-step document remains live")
-                                            .debugger_execution_states
-                                            .insert(
-                                                program,
-                                                ChildDebuggerExecutionStatus::Completed,
-                                            );
-                                        rejected(page_runtime_category(error))
-                                    }
-                                }
+                                let original = root_safe_point.expect(
+                                    "a BlueTS source step requires an armed root safe point",
+                                );
+                                let (still_paused, outcome) = self.advance_bluets_source_step(
+                                    tab_id,
+                                    document_generation,
+                                    program,
+                                    original,
+                                    (origin, remaining),
+                                    false,
+                                );
+                                paused = still_paused;
+                                outcome
                             }
                         }
                         ChildDebuggerExecutionStatus::Pending
@@ -3893,7 +3910,11 @@ impl BlueJsChildHost {
                         .expect("every deferred BlueTS module has an entry debugger program");
                     let status = self.documents[&tab_id].debugger_execution_states[&program];
                     match (root_safe_point, status) {
-                        (_, ChildDebuggerExecutionStatus::Paused(_)) => {
+                        (
+                            _,
+                            ChildDebuggerExecutionStatus::Paused(_)
+                            | ChildDebuggerExecutionStatus::SourceStepLimitReached(_),
+                        ) => {
                             paused = true;
                             PageHostScriptOutcome::Executed
                         }
@@ -3955,6 +3976,24 @@ impl BlueJsChildHost {
                                     rejected(page_runtime_category(error))
                                 }
                             }
+                        }
+                        (
+                            Some(target),
+                            ChildDebuggerExecutionStatus::BlueTsSourceStepRequested {
+                                origin,
+                                remaining,
+                            },
+                        ) => {
+                            let (still_paused, outcome) = self.advance_bluets_source_step(
+                                tab_id,
+                                document_generation,
+                                program,
+                                *target,
+                                (origin, remaining),
+                                true,
+                            );
+                            paused = still_paused;
+                            outcome
                         }
                         (Some(target), ChildDebuggerExecutionStatus::Pending) => {
                             let result = self
@@ -8713,6 +8752,179 @@ mod tests {
                 code: PageHostErrorCode::StaleDocument,
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn bluets_module_source_span_step_stops_at_the_next_bound_statement() {
+        let entry = "blueice://page/module-source-step.ts";
+        let module = PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Module,
+            graph: graph(
+                entry,
+                vec![PageHostSource::new(
+                    entry,
+                    "let first: number = 1; let second: number = first + 1; export const answer: number = second + 1;",
+                )],
+            ),
+        };
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(1, vec![module]),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let pending = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap();
+        let program = pending.program.unwrap();
+        let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
+            panic!("the checked entry module must be pending");
+        };
+        let point = host
+            .runtime
+            .module_evaluate_entry_safe_point(7, attachment.entry.handle)
+            .unwrap();
+        let target = PageHostDebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: point.bytecode_offset,
+        };
+        let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+            reply => panic!("expected entry metadata, got {reply:?}"),
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: target,
+            }),
+            PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let mut current = target;
+        let origin = loop {
+            if let Some(span) = host
+                .debugger_bluets_source_span_key(7, 1, metadata, current)
+                .unwrap()
+            {
+                break span;
+            }
+            assert!(matches!(
+                host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                }),
+                PageHostReply::DebuggerExecutionStepRequested { .. }
+            ));
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+            current = match host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }) {
+                PageHostReply::DebuggerExecutionState {
+                    state: PageHostDebuggerExecutionState::Paused { safe_point },
+                    ..
+                } => safe_point,
+                reply => panic!("module must remain paused until a bound span: {reply:?}"),
+            };
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerBlueTsSourceSpan {
+                tab_id: 7,
+                document_generation: 1,
+                metadata,
+                source_id: origin.source_id + 1,
+                safe_point: current,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerBlueTsSourceSpan {
+                tab_id: 7,
+                document_generation: 1,
+                metadata,
+                source_id: origin.source_id,
+                safe_point: current,
+            }),
+            PageHostReply::DebuggerBlueTsSourceStepRequested { .. }
+        ));
+        let mut successor = None;
+        for _ in 0..MAX_BLUETS_SOURCE_STEP_ROOT_INSTRUCTIONS {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+            match host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }) {
+                PageHostReply::DebuggerExecutionState {
+                    state: PageHostDebuggerExecutionState::Stepping,
+                    ..
+                } => {}
+                PageHostReply::DebuggerExecutionState {
+                    state: PageHostDebuggerExecutionState::Paused { safe_point },
+                    ..
+                } => {
+                    successor = Some(safe_point);
+                    break;
+                }
+                reply => panic!("module source step did not find a new span: {reply:?}"),
+            }
+        }
+        let successor = successor.expect("bounded module step must find another statement");
+        assert_ne!(successor, current);
+        assert_ne!(
+            host.debugger_bluets_source_span_key(7, 1, metadata, successor)
+                .unwrap(),
+            Some(origin)
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionResumed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+                if reports.len() == 1 && reports[0].outcome == PageHostScriptOutcome::Executed
         ));
     }
 

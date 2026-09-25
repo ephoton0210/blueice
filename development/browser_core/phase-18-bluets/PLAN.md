@@ -544,6 +544,16 @@ advance while paused cannot execute another instruction. Page-runtime and
 child tests cover these identity and terminal boundaries without widening the
 debugger protocol or claiming nested/dependency frames.
 
+**Bounded module BlueTS source step (C1.1.2.3):** The child now accepts a
+source-span step for its exact paused BlueTS entry program as well as for a
+classic root. The same metadata/source-ID receipt check and 256-root-
+instruction budget apply before any step. The shared advancement path selects
+the module VM step when appropriate, validates every successor against the
+live program, and stops at a distinct bound span, terminal completion, or the
+existing explicit limit state. A child regression rejects a wrong source ID,
+reaches the next module statement's span, and resumes the retained graph; the
+classic limit regression still exercises the common bounded path.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
