@@ -698,6 +698,23 @@ child; the child invocation serial remains private. The real socket test now
 rejects both old step and resume without disturbing the successor's own
 paused invocation.
 
+**First bounded stack/scope contract (C2.1.1.1):** The first inspection is a
+snapshot only of an actually paused root or the one directly nested child and
+its waiting root. Frames are ordered current child first, then its parent;
+there is no synthetic deeper frame. A frame carries its verified code-unit
+ordinal and instruction offset. Scope entries name only active lexical
+binding-slot ordinals and their innermost-first scope depth. They carry no
+identifier text, binding value, heap/object handle, static type, or source
+position. The VM reads its retained interpreter state only; it never invokes
+JavaScript or a getter to create an inspection reply. Callers request positive
+frame and per-frame entry limits no greater than the fixed advertised caps
+(64 frames and 256 entries); the producer stops at those limits and reports
+`stack_truncated` and each frame's `scope_truncated` explicitly, including
+when a smaller caller limit cuts off data. A stale, stepping, resuming, or
+completed target cannot reuse an old snapshot. Child/core/public transport
+stays unavailable until the whole exact-identity route is installed; C2.1.2
+adds original BlueTS coordinates rather than implying them here.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
