@@ -180,6 +180,30 @@ pub struct JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
     pub bytecode_offset: u32,
 }
 
+/// Core-facing numeric identities for one terminal BlueTS exception query.
+/// The public stream independently authorizes and receipts the source; the
+/// out-of-process adapter translates these IDs to one live child attachment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerExceptionLocationTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub source_id: u32,
+}
+
+/// One exact, source-text-free child result under the target's core-minted
+/// identities. No child program, error, VM value, message, or stack escapes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerExceptionLocation {
+    pub source_id: u32,
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+    pub coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates,
+}
+
 /// One core-reminted program/metadata tuple and separately receipted source
 /// ID for a bounded original BlueTS byte-position binding. The resulting
 /// safe point is never a child handle on the public debugger channel.

@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.3.1.4.2.** Add the default-denied core API and exact
-out-of-process child-to-core remint without changing the public wire.
+**Current leaf: C2.3.1.4.3.** Add the complete public debugger v39
+exception-location command behind the independent grant and source receipt.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -356,7 +356,7 @@ channel with explicit owner/client grants.
       - [x] **C2.3.1.3.3** Add the complete page-host v39 private exception-location request/reply and core transport wrapper, with typed exact-identity/stale refusals and IPC plus real-child route tests; then check off C2.3.1.3. The route echoes document/program/metadata, returns only the exact source-free safe point and bounded original span, and refuses pending, wrong program/metadata, or stale documents without partial location. All 14 page-host IPC tests, a real Launcher-supervised child socket test, the core wrapper socket test, focused child tests, and workspace Clippy pass; no public debugger command changed.
     - [ ] **C2.3.1.4** Remint the exception location through core behind the existing independent safe-point-span owner/client grant and same-stream source receipt; add the complete public request/reply and protocol bump with typed denial tests.
       - [x] **C2.3.1.4.1** Decide the source-only public request/reply, core-private target/result, receipt/grant validation order, and typed no-location/refusal matrix before implementation; leave public debugger v38 unchanged in this design-only leaf. PLAN.md fixes the source-only request, distinct source/safe-point/span reply, independent `OpaqueSafePointSpan` grant before source-receipt validation, `CapabilityUnavailable` for absent grant, `InvalidTarget` for missing/forged receipts or mismatched locations, and `InvalidExecutionState` for pending/normal completion; no public wire changed.
-      - [ ] **C2.3.1.4.2** Add a default-denied core location API and an out-of-process adapter that revalidates the live child program/metadata/source/safe point and remints only a bounded source-free result; prove malformed, cross-program, stale, and normal-completion child replies without a public wire change.
+      - [x] **C2.3.1.4.2** Add a default-denied core location API and an out-of-process adapter that revalidates the live child program/metadata/source/safe point and remints only a bounded source-free result; prove malformed, cross-program, stale, and normal-completion child replies without a public wire change. The adapter rechecks the private exception tuple, exact safe point and compiler-bound span before returning numeric core identities; a focused malformed-reply/default-deny test and all 299 engine library tests pass. No public debugger wire changed.
       - [ ] **C2.3.1.4.3** Add the complete public debugger v39 `DescribeExceptionLocation { source }` request/reply behind the existing independent `OpaqueSafePointSpan` owner/client grant and same-stream source receipt, with IPC/core typed denial tests; then check off C2.3.1.4.
     - [ ] **C2.3.1.5** Prove original classic/module/nested UTF-8 and UTF-16 exception spans, missing grants/receipts, caught errors, and stale generations on real Launcher-supervised debugger sockets; then check off C2.3.1 and C2.3.
 

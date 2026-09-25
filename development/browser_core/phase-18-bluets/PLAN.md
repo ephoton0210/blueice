@@ -1360,6 +1360,20 @@ unbound instruction, mismatched source, or malformed child reply is an
 not `StaticMetadataSafePointSpan` or a breakpoint/step grant. The protocol
 stays public v38 until the complete route and tests land in C2.3.1.4.3.
 
+**Default-denied core exception adapter (C2.3.1.4.2):** The page-debugger
+executor trait now has a separate default-denied terminal-exception API. Its
+core-private target carries only the public program/metadata generations and
+the selected source ID; its result carries only that source ID, exact
+code-unit/instruction offset, and bounded original bytes/UTF-16 coordinates.
+The out-of-process adapter translates the live identities to child handles,
+requires a matching private v39 reply, validates its source and coordinate
+shape, then independently rechecks the child safe point and exact BlueTS
+safe-point span before reminting the source-free result. Wrong program/source,
+malformed point/span echoes, stale generations, normal completion, and
+unimplemented test-double routes yield typed errors without partial data.
+The focused adapter test and all 299 engine library tests pass, as does
+workspace Clippy; the public debugger remains v38 until C2.3.1.4.3.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

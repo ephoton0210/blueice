@@ -36,6 +36,7 @@ use debugger_support::{
 };
 pub use debugger_support::{
     JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
+    JavaScriptPageDebuggerExceptionLocation, JavaScriptPageDebuggerExceptionLocationTarget,
     JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
     JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
     JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerScopeEntry,
@@ -167,6 +168,12 @@ pub trait PageJavaScriptDebuggerLocations {
     /// separately receipted source ID under one opaque metadata attachment.
     /// This is not a public grant by itself.
     fn debugger_static_metadata_safe_point_span_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this executor can inspect only a terminal, exact BlueTS
+    /// exception location. Public owner/client authorization is separate.
+    fn debugger_exception_location_available(&self) -> bool {
         false
     }
 
@@ -427,6 +434,15 @@ pub trait PageJavaScriptDebuggerLocations {
         _target: JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
     ) -> Result<JavaScriptPageDebuggerStaticMetadataSafePointSpan, JavaScriptPageDebuggerError>
     {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    fn debugger_exception_location(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerExceptionLocationTarget,
+    ) -> Result<JavaScriptPageDebuggerExceptionLocation, JavaScriptPageDebuggerError> {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }
 

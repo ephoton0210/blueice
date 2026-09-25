@@ -26,11 +26,13 @@ use super::{
 };
 use crate::script::javascript::{
     AuthorizedJavaScriptModuleGraph, BlueTsPageExecutionReport, JavaScriptPageDebuggerBreakpoint,
-    JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
-    JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
-    JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerScopeEntry,
-    JavaScriptPageDebuggerStackFrame, JavaScriptPageDebuggerStackSnapshot,
-    JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataContractDisplay,
+    JavaScriptPageDebuggerError, JavaScriptPageDebuggerExceptionLocation,
+    JavaScriptPageDebuggerExceptionLocationTarget, JavaScriptPageDebuggerExecutionState,
+    JavaScriptPageDebuggerFrame, JavaScriptPageDebuggerNestedExecutionState,
+    JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
+    JavaScriptPageDebuggerScopeEntry, JavaScriptPageDebuggerStackFrame,
+    JavaScriptPageDebuggerStackSnapshot, JavaScriptPageDebuggerStaticMetadata,
+    JavaScriptPageDebuggerStaticMetadataContractDisplay,
     JavaScriptPageDebuggerStaticMetadataContractId,
     JavaScriptPageDebuggerStaticMetadataContractLocation,
     JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
@@ -2583,6 +2585,13 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             && self.child.debugger_bluets_safe_point_span_available()
     }
 
+    fn debugger_exception_location_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_sources_available()
+            && self.child.debugger_bluets_safe_point_span_available()
+            && self.child.debugger_bluets_exception_location_available()
+    }
+
     fn debugger_static_metadata_source_breakpoint_available(&self) -> bool {
         self.child.debugger_bluets_metadata_available()
             && self.child.debugger_bluets_metadata_sources_available()
@@ -3573,6 +3582,112 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             start_byte: span.start_byte,
             end_byte: span.end_byte,
             coordinates: span.coordinates,
+        })
+    }
+
+    fn debugger_exception_location(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerExceptionLocationTarget,
+    ) -> Result<JavaScriptPageDebuggerExceptionLocation, JavaScriptPageDebuggerError> {
+        if !self.debugger_exception_location_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_exception_location(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsExceptionLocation {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            location,
+        } = reply
+        else {
+            return Err(child_static_metadata_relation_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || !location.safe_point.is_well_formed()
+            || location.safe_point.program != child_program
+            || location.span.source_id != target.source_id
+            || !location
+                .span
+                .coordinates
+                .is_well_formed_for_range(location.span.start_byte, location.span.end_byte)
+        {
+            return Err(JavaScriptPageDebuggerError::UnknownProgram);
+        }
+        let point_reply = self
+            .child
+            .validate_debugger_safe_point(tab_id.as_u64(), document_generation, location.safe_point)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        if !matches!(
+            point_reply,
+            PageHostReply::DebuggerSafePointValidated {
+                tab_id: echoed_tab_id,
+                document_generation: echoed_generation,
+                safe_point,
+            } if echoed_tab_id == tab_id.as_u64()
+                && echoed_generation == document_generation
+                && safe_point == location.safe_point
+        ) {
+            return Err(JavaScriptPageDebuggerError::UnknownProgram);
+        }
+        let span_reply = self
+            .child
+            .debugger_bluets_safe_point_span(
+                tab_id.as_u64(),
+                document_generation,
+                child_metadata,
+                location.safe_point,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        if !matches!(
+            span_reply,
+            PageHostReply::DebuggerBlueTsSafePointSpan {
+                tab_id: echoed_tab_id,
+                document_generation: echoed_generation,
+                metadata: echoed_metadata,
+                safe_point,
+                span,
+            } if echoed_tab_id == tab_id.as_u64()
+                && echoed_generation == document_generation
+                && echoed_metadata == child_metadata
+                && safe_point == location.safe_point
+                && span == location.span
+        ) {
+            return Err(JavaScriptPageDebuggerError::UnknownProgram);
+        }
+        Ok(JavaScriptPageDebuggerExceptionLocation {
+            source_id: location.span.source_id,
+            code_unit_ordinal: location.safe_point.code_unit_ordinal,
+            bytecode_offset: location.safe_point.bytecode_offset,
+            start_byte: location.span.start_byte,
+            end_byte: location.span.end_byte,
+            coordinates: location.span.coordinates,
         })
     }
 
@@ -8541,6 +8656,268 @@ mod tests {
     struct MalformedSafePointSpanChild {
         lifecycle: RecordingChild,
         reply: PageHostReply,
+    }
+
+    struct ExceptionLocationChild {
+        lifecycle: RecordingChild,
+        exception_reply: PageHostReply,
+        point_reply: PageHostReply,
+        span_reply: PageHostReply,
+    }
+
+    impl PageHostClient for ExceptionLocationChild {
+        fn synchronize_document(
+            &mut self,
+            document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            self.lifecycle.synchronize_document(document)
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            self.lifecycle.close_realm(tab_id, document_generation)
+        }
+
+        fn debugger_realm_stats(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            self.lifecycle
+                .debugger_realm_stats(tab_id, document_generation)
+        }
+
+        fn debugger_bluets_metadata_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_bluets_metadata_sources_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_bluets_safe_point_span_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_bluets_exception_location_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_bluets_exception_location(
+            &mut self,
+            _tab_id: u64,
+            _document_generation: u64,
+            _program: PageHostDebuggerProgram,
+            _metadata: PageHostDebuggerMetadataHandle,
+        ) -> io::Result<PageHostReply> {
+            Ok(self.exception_reply.clone())
+        }
+
+        fn validate_debugger_safe_point(
+            &mut self,
+            _tab_id: u64,
+            _document_generation: u64,
+            _safe_point: PageHostDebuggerSafePoint,
+        ) -> io::Result<PageHostReply> {
+            Ok(self.point_reply.clone())
+        }
+
+        fn debugger_bluets_safe_point_span(
+            &mut self,
+            _tab_id: u64,
+            _document_generation: u64,
+            _metadata: PageHostDebuggerMetadataHandle,
+            _safe_point: PageHostDebuggerSafePoint,
+        ) -> io::Result<PageHostReply> {
+            Ok(self.span_reply.clone())
+        }
+    }
+
+    #[test]
+    fn core_exception_adapter_remints_only_a_revalidated_live_child_location() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script type=\"application/x-blueice-typescript\">const typed: number = 1;</script>",
+            "https://example.test/exception-adapter.html",
+        );
+        let child_program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let child_metadata = PageHostDebuggerMetadataHandle {
+            metadata_handle: 17,
+            metadata_generation: 19,
+        };
+        let child_point = PageHostDebuggerSafePoint {
+            program: child_program,
+            code_unit_ordinal: 1,
+            bytecode_offset: 4,
+        };
+        let span = page_host::PageHostDebuggerBlueTsSafePointSpan {
+            source_id: 3,
+            start_byte: 2,
+            end_byte: 8,
+            coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 2,
+                end_line: 0,
+                end_column_utf16: 8,
+            },
+        };
+        let exception_reply = PageHostReply::DebuggerBlueTsExceptionLocation {
+            tab_id: tab_id.as_u64(),
+            document_generation: 1,
+            program: child_program,
+            metadata: child_metadata,
+            location: page_host::PageHostDebuggerBlueTsExceptionLocation {
+                safe_point: child_point,
+                span,
+            },
+        };
+        let point_reply = PageHostReply::DebuggerSafePointValidated {
+            tab_id: tab_id.as_u64(),
+            document_generation: 1,
+            safe_point: child_point,
+        };
+        let span_reply = PageHostReply::DebuggerBlueTsSafePointSpan {
+            tab_id: tab_id.as_u64(),
+            document_generation: 1,
+            metadata: child_metadata,
+            safe_point: child_point,
+            span,
+        };
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new_with_debugger_execution_control(
+            ExceptionLocationChild {
+                lifecycle: RecordingChild::default(),
+                exception_reply: exception_reply.clone(),
+                point_reply: point_reply.clone(),
+                span_reply: span_reply.clone(),
+            },
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        executor.debugger_programs.insert(
+            tab_id,
+            BTreeMap::from([(
+                child_program,
+                CoreDebuggerProgram {
+                    program_handle: 101,
+                    program_generation: 103,
+                },
+            )]),
+        );
+        executor.debugger_static_metadata.insert(
+            tab_id,
+            BTreeMap::from([(
+                child_metadata,
+                CoreDebuggerStaticMetadata {
+                    program: child_program,
+                    metadata_handle: 107,
+                    metadata_generation: 109,
+                },
+            )]),
+        );
+        let target = JavaScriptPageDebuggerExceptionLocationTarget {
+            program_handle: 101,
+            program_generation: 103,
+            metadata_handle: 107,
+            metadata_generation: 109,
+            source_id: 3,
+        };
+        assert!(executor.debugger_exception_location_available());
+        assert_eq!(
+            executor.debugger_exception_location(tab_id, 1, target),
+            Ok(JavaScriptPageDebuggerExceptionLocation {
+                source_id: 3,
+                code_unit_ordinal: 1,
+                bytecode_offset: 4,
+                start_byte: 2,
+                end_byte: 8,
+                coordinates: span.coordinates,
+            })
+        );
+
+        executor.child.exception_reply = PageHostReply::DebuggerBlueTsExceptionLocation {
+            tab_id: tab_id.as_u64(),
+            document_generation: 1,
+            program: PageHostDebuggerProgram {
+                program_generation: child_program.program_generation + 1,
+                ..child_program
+            },
+            metadata: child_metadata,
+            location: page_host::PageHostDebuggerBlueTsExceptionLocation {
+                safe_point: child_point,
+                span,
+            },
+        };
+        assert_eq!(
+            executor.debugger_exception_location(tab_id, 1, target),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
+        executor.child.exception_reply = PageHostReply::DebuggerBlueTsExceptionLocation {
+            tab_id: tab_id.as_u64(),
+            document_generation: 1,
+            program: child_program,
+            metadata: child_metadata,
+            location: page_host::PageHostDebuggerBlueTsExceptionLocation {
+                span: page_host::PageHostDebuggerBlueTsSafePointSpan {
+                    source_id: 4,
+                    ..span
+                },
+                safe_point: child_point,
+            },
+        };
+        assert_eq!(
+            executor.debugger_exception_location(tab_id, 1, target),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
+        executor.child.exception_reply = exception_reply.clone();
+        executor.child.point_reply = PageHostReply::DebuggerSafePointValidated {
+            tab_id: tab_id.as_u64(),
+            document_generation: 1,
+            safe_point: PageHostDebuggerSafePoint {
+                bytecode_offset: 5,
+                ..child_point
+            },
+        };
+        assert_eq!(
+            executor.debugger_exception_location(tab_id, 1, target),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
+        executor.child.point_reply = point_reply;
+        executor.child.span_reply = PageHostReply::DebuggerBlueTsSafePointSpan {
+            tab_id: tab_id.as_u64(),
+            document_generation: 1,
+            metadata: child_metadata,
+            safe_point: child_point,
+            span: page_host::PageHostDebuggerBlueTsSafePointSpan {
+                end_byte: 9,
+                ..span
+            },
+        };
+        assert_eq!(
+            executor.debugger_exception_location(tab_id, 1, target),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
+        executor.child.exception_reply = PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            message: "not completed".to_string(),
+        };
+        assert_eq!(
+            executor.debugger_exception_location(tab_id, 1, target),
+            Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+        );
+        assert!(executor
+            .debugger_exception_location(tab_id, 2, target)
+            .is_err());
+
+        let mut denied = OutOfProcessJavaScriptPageExecutor::new(RecordingChild::default());
+        assert!(!denied.debugger_exception_location_available());
+        assert_eq!(
+            denied.debugger_exception_location(tab_id, 1, target),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
     }
 
     impl PageHostClient for MalformedSafePointSpanChild {
