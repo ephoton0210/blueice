@@ -431,9 +431,13 @@ impl Compiler {
                         }
                     }
                     if let Some(binding_name) = static_element_bindings.get(&index) {
+                        let computed_binding = match field_key {
+                            PropertyKey::Computed(_) => computed_key_bindings[&index].as_str(),
+                            _ => "",
+                        };
                         let field = class_field_definition(
                             field_key,
-                            computed_key_bindings.get(&index).filter(|_| !*accessor),
+                            computed_binding,
                             initializer.as_ref(),
                         );
                         let field = match decoration {
@@ -569,13 +573,13 @@ impl Compiler {
                 let storage_key =
                     PropertyKey::Identifier(format!("#{}", auto_accessor_storage_name(index)));
                 let field = if *accessor {
-                    class_field_definition(&storage_key, None, initializer.as_ref())
+                    class_field_definition(&storage_key, "", initializer.as_ref())
                 } else {
-                    class_field_definition(
-                        key,
-                        computed_key_bindings.get(&index),
-                        initializer.as_ref(),
-                    )
+                    let computed_binding = match key {
+                        PropertyKey::Computed(_) => computed_key_bindings[&index].as_str(),
+                        _ => "",
+                    };
+                    class_field_definition(key, computed_binding, initializer.as_ref())
                 };
                 instance_fields.push(match decorations.get(&index) {
                     Some(decoration) => Stmt::ClassDecoratedField {
@@ -981,7 +985,7 @@ impl Compiler {
         named_expression: bool,
         options: FunctionCompileOptions,
     ) -> Result<(), CompileError> {
-        let child_budget = self.max_bytecode_bytes.saturating_sub(self.offset()?);
+        let child_budget = self.max_bytecode_bytes.saturating_sub(self.offset());
         let mut child = Compiler {
             bytecode: Bytecode::empty(),
             names: vec![HashMap::new()],
@@ -991,6 +995,7 @@ impl Compiler {
             loops: Vec::new(),
             catch_var_slots: Vec::new(),
             max_bytecode_bytes: child_budget,
+            max_metadata_entries: self.max_metadata_entries,
             function: true,
             local_scope: 1,
             // A function created inside `with` resolves its free names
@@ -1062,7 +1067,7 @@ impl Compiler {
             if !arrow && (name == DERIVED_THIS_BINDING || name == DERIVED_CONSTRUCTOR_BINDING) {
                 continue;
             }
-            let index = child.bytecode.bindings.len() as u32;
+            let index = child.metadata_index(child.bytecode.bindings.len())?;
             child.names[0].insert(name, index);
             child
                 .bytecode
@@ -1076,8 +1081,7 @@ impl Compiler {
                 .as_ref()
                 .expect("named function expression has a name")
                 .clone();
-            let slot = u32::try_from(child.bytecode.bindings.len())
-                .map_err(|_| CompileError::ProgramTooLarge)?;
+            let slot = child.metadata_index(child.bytecode.bindings.len())?;
             child.names[0].insert(name.clone(), slot);
             child.bytecode.bindings.push(Binding {
                 name,
@@ -1093,8 +1097,7 @@ impl Compiler {
             // `super()` needs the active function; the frame initializes this
             // immutable binding to the callee, exactly like a named function
             // expression's own name.
-            let slot = u32::try_from(child.bytecode.bindings.len())
-                .map_err(|_| CompileError::ProgramTooLarge)?;
+            let slot = child.metadata_index(child.bytecode.bindings.len())?;
             child.names[0].insert(DERIVED_CONSTRUCTOR_BINDING.into(), slot);
             child.bytecode.bindings.push(Binding {
                 name: DERIVED_CONSTRUCTOR_BINDING.into(),
@@ -1106,13 +1109,13 @@ impl Compiler {
             });
             child.bytecode.self_slot = Some(slot);
         }
-        let mut vars = top_level_var_names(&function.body)?;
+        let mut vars = top_level_var_names(&function.body);
         let parameters: BTreeSet<_> = function
             .params
             .iter()
             .flat_map(|param| pattern_names(&param.pattern))
             .collect();
-        let lexical = lexical_names(&function.body)?;
+        let lexical = lexical_names(&function.body);
         if !child.bytecode.strict {
             // Annex B.3.2.1 exempts `parameterNames`. That list holds only the
             // formal parameters: the implicit `arguments` binding is added to
@@ -1249,7 +1252,7 @@ impl Compiler {
             child.emit(Opcode::EndParameterEvalScope, 0)?;
         }
         if child.bytecode.generator {
-            child.bytecode.generator_entry = child.offset()?;
+            child.bytecode.generator_entry = child.offset();
         }
         if options.default_derived_constructor {
             child.super_call_prologue()?;
@@ -1260,7 +1263,7 @@ impl Compiler {
         child.statements_with_disposal(&function.body)?;
         child.constant(Value::Undefined)?;
         child.emit(Opcode::Return, 0)?;
-        let child_bytes = child_budget - child.max_bytecode_bytes + child.offset()?;
+        let child_bytes = child_budget - child.max_bytecode_bytes + child.offset();
         self.max_bytecode_bytes = self
             .max_bytecode_bytes
             .checked_sub(child_bytes)

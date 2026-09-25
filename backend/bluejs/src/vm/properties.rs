@@ -160,6 +160,9 @@ impl Vm {
         if self.test262_foreign_reference(target).is_some() {
             return self.test262_foreign_get(target, receiver, key);
         }
+        if self.test262_reverse_reference(target).is_some() {
+            return self.test262_reverse_get(target, receiver, key);
+        }
         self.materialize_global_object_property(target, key)?;
         if let Some(cell) = self.global_property_cell(target, key) {
             return self
@@ -229,6 +232,11 @@ impl Vm {
                 && self.test262_foreign_reference(*object).is_some()
             {
                 return self.test262_foreign_set(*object, key, value);
+            }
+            if self.heap.proxy(*object)?.is_none()
+                && self.test262_reverse_reference(*object).is_some()
+            {
+                return self.test262_reverse_set(*object, key, value);
             }
             self.materialize_global_object_property(*object, key)?;
             if let Some(cell) = self.global_property_cell(*object, key) {

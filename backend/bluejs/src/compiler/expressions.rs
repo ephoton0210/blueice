@@ -9,7 +9,7 @@ impl Compiler {
         if optional_chain_root(expr) {
             let mut exits = Vec::new();
             self.optional_chain_expression(expr, &mut exits)?;
-            let end = self.offset()?;
+            let end = self.offset();
             for exit in exits {
                 self.patch(exit, end);
             }
@@ -89,8 +89,7 @@ impl Compiler {
                 if let Some(slot) = self.resolve_inside_innermost_with(name) {
                     self.emit(Opcode::GetBinding, slot)?;
                 } else if self.with_depth != 0 {
-                    let index = u32::try_from(self.bytecode.constants.len())
-                        .map_err(|_| CompileError::ProgramTooLarge)?;
+                    let index = self.metadata_index(self.bytecode.constants.len())?;
                     self.bytecode
                         .constants
                         .push(Value::String(name.clone().into()));
@@ -167,15 +166,14 @@ impl Compiler {
                         | "ReferenceError"
                         | "EvalError"
                         | "URIError" => {
-                            let index = self.bytecode.constants.len() as u32;
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
                             self.bytecode
                                 .constants
                                 .push(Value::String(name.as_str().into()));
                             self.emit(Opcode::Global, index)?;
                         }
                         _ => {
-                            let index = u32::try_from(self.bytecode.constants.len())
-                                .map_err(|_| CompileError::ProgramTooLarge)?;
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
                             self.bytecode
                                 .constants
                                 .push(Value::String(name.clone().into()));
@@ -216,13 +214,13 @@ impl Compiler {
                         self.optional_chain_member_reference(arg, &mut exits)?;
                         self.emit(opcode, 0)?;
                         let deleted = self.emit(Opcode::Jump, 0)?;
-                        let short_circuited = self.offset()?;
+                        let short_circuited = self.offset();
                         for exit in exits {
                             self.patch(exit, short_circuited);
                         }
                         self.emit(Opcode::Pop, 0)?;
                         self.constant(Value::Bool(true))?;
-                        self.patch(deleted, self.offset()?);
+                        self.patch(deleted, self.offset());
                     } else if matches!(&**arg, Expr::Member { .. }) {
                         if private_member_name(arg).is_some() {
                             return Err(CompileError::InvalidSyntax(
@@ -280,15 +278,14 @@ impl Compiler {
                                 self.constant(Value::Bool(false))?;
                             }
                         } else {
-                            let index = u32::try_from(self.bytecode.constants.len())
-                                .map_err(|_| CompileError::ProgramTooLarge)?;
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
                             self.bytecode
                                 .constants
                                 .push(Value::String(name.clone().into()));
                             self.emit(Opcode::DeleteUnboundName, index)?;
                         }
                         if let Some(found) = with_end {
-                            self.patch(found, self.offset()?);
+                            self.patch(found, self.offset());
                         }
                     } else {
                         self.expression(arg)?;
@@ -297,54 +294,116 @@ impl Compiler {
                     }
                     return Ok(());
                 }
-                if *op == UnaryOp::Typeof
-                    && self.with_depth != 0
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve_inside_innermost_with(name).is_none())
-                {
-                    // Inside `with`, the identifier resolves against the with
-                    // objects first; an unresolvable name is `undefined`.
-                    let Expr::Identifier(name) = &**arg else {
-                        unreachable!()
-                    };
-                    let index = u32::try_from(self.bytecode.constants.len())
-                        .map_err(|_| CompileError::ProgramTooLarge)?;
-                    self.bytecode
-                        .constants
-                        .push(Value::String(name.as_str().into()));
-                    self.emit(Opcode::WithGetOrUndefined, index)?;
-                    self.emit(opcode, 0)?;
-                } else if *op == UnaryOp::Typeof
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Date" | "Function" | "Proxy" | "Map" | "Set" | "WeakMap" | "WeakSet" | "WeakRef" | "FinalizationRegistry" | "DisposableStack" | "AsyncDisposableStack" | "SuppressedError" | "ShadowRealm" | "globalThis" | "ArrayBuffer" | "SharedArrayBuffer" | "DataView" | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float16Array" | "Float32Array" | "Float64Array" | "BigInt64Array" | "BigUint64Array" | "Atomics" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" | "escape" | "unescape" | "JSON"))
-                {
-                    let Expr::Identifier(name) = &**arg else {
-                        unreachable!()
-                    };
-                    let index = u32::try_from(self.bytecode.constants.len())
-                        .map_err(|_| CompileError::ProgramTooLarge)?;
-                    self.bytecode
-                        .constants
-                        .push(Value::String(name.as_str().into()));
-                    self.emit(Opcode::TypeofName, index)?;
-                } else if *op == UnaryOp::Typeof
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_some_and(|slot| self.bytecode.bindings[slot as usize].eval_var))
-                {
-                    // A sloppy direct eval's own `var` is deletable at
-                    // runtime even though it resolves to a static slot at
-                    // compile time: `typeof` on it must not throw once
-                    // `delete` has removed the binding and the name has
-                    // nothing to resolve outward to either.
-                    let Expr::Identifier(name) = &**arg else {
-                        unreachable!()
-                    };
-                    let slot = self.resolve(name).expect("just matched Some");
-                    self.emit(Opcode::TypeofBinding, slot)?;
+                if *op == UnaryOp::Typeof {
+                    match arg.as_ref() {
+                        // Inside `with`, an unresolvable name has type
+                        // "undefined" after consulting the object environment.
+                        Expr::Identifier(name)
+                            if self.with_depth != 0
+                                && self.resolve_inside_innermost_with(name).is_none() =>
+                        {
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
+                            self.bytecode
+                                .constants
+                                .push(Value::String(name.as_str().into()));
+                            self.emit(Opcode::WithGetOrUndefined, index)?;
+                            self.emit(opcode, 0)?;
+                        }
+                        Expr::Identifier(name)
+                            if self.resolve(name).is_none()
+                                && !matches!(
+                                    name.as_str(),
+                                    "undefined"
+                                        | "NaN"
+                                        | "Infinity"
+                                        | "String"
+                                        | "Symbol"
+                                        | "RegExp"
+                                        | "Object"
+                                        | "Reflect"
+                                        | "Math"
+                                        | "Number"
+                                        | "Boolean"
+                                        | "Array"
+                                        | "Date"
+                                        | "Function"
+                                        | "Proxy"
+                                        | "Map"
+                                        | "Set"
+                                        | "WeakMap"
+                                        | "WeakSet"
+                                        | "WeakRef"
+                                        | "FinalizationRegistry"
+                                        | "DisposableStack"
+                                        | "AsyncDisposableStack"
+                                        | "SuppressedError"
+                                        | "ShadowRealm"
+                                        | "globalThis"
+                                        | "ArrayBuffer"
+                                        | "SharedArrayBuffer"
+                                        | "DataView"
+                                        | "Int8Array"
+                                        | "Uint8Array"
+                                        | "Uint8ClampedArray"
+                                        | "Int16Array"
+                                        | "Uint16Array"
+                                        | "Int32Array"
+                                        | "Uint32Array"
+                                        | "Float16Array"
+                                        | "Float32Array"
+                                        | "Float64Array"
+                                        | "BigInt64Array"
+                                        | "BigUint64Array"
+                                        | "Atomics"
+                                        | "Intl"
+                                        | "Error"
+                                        | "TypeError"
+                                        | "RangeError"
+                                        | "SyntaxError"
+                                        | "ReferenceError"
+                                        | "EvalError"
+                                        | "URIError"
+                                        | "isNaN"
+                                        | "isFinite"
+                                        | "parseInt"
+                                        | "parseFloat"
+                                        | "encodeURI"
+                                        | "encodeURIComponent"
+                                        | "decodeURI"
+                                        | "decodeURIComponent"
+                                        | "escape"
+                                        | "unescape"
+                                        | "JSON"
+                                ) =>
+                        {
+                            let index = self.metadata_index(self.bytecode.constants.len())?;
+                            self.bytecode
+                                .constants
+                                .push(Value::String(name.as_str().into()));
+                            self.emit(Opcode::TypeofName, index)?;
+                        }
+                        // A sloppy direct eval's own `var` is deletable at
+                        // runtime even though it resolves to a static slot.
+                        Expr::Identifier(name)
+                            if self.resolve(name).is_some_and(|slot| {
+                                self.bytecode.bindings[slot as usize].eval_var
+                            }) =>
+                        {
+                            let slot = self.resolve(name).expect("just matched Some");
+                            self.emit(Opcode::TypeofBinding, slot)?;
+                        }
+                        _ => {
+                            self.expression(arg)?;
+                            self.emit(opcode, 0)?;
+                        }
+                    }
                 } else {
                     self.expression(arg)?;
                     self.emit(opcode, 0)?;
                 }
             }
             Expr::Binary { op, left, right } => {
-                let opcode = binary_opcode(*op)?;
+                let opcode = binary_opcode(*op);
                 self.expression(left)?;
                 self.expression(right)?;
                 self.emit(opcode, 0)?;
@@ -368,7 +427,7 @@ impl Compiler {
                 )?;
                 self.emit(Opcode::Pop, 0)?;
                 self.expression(right)?;
-                self.patch(jump, self.offset()?);
+                self.patch(jump, self.offset());
             }
             Expr::Sequence(expressions) => {
                 for (index, expression) in expressions.iter().enumerate() {
@@ -387,9 +446,9 @@ impl Compiler {
                 let no = self.emit(Opcode::JumpIfFalse, 0)?;
                 self.expression(consequent)?;
                 let end = self.emit(Opcode::Jump, 0)?;
-                self.patch(no, self.offset()?);
+                self.patch(no, self.offset());
                 self.expression(alternate)?;
-                self.patch(end, self.offset()?);
+                self.patch(end, self.offset());
             }
             Expr::Array(elements) => {
                 if elements
@@ -421,8 +480,9 @@ impl Compiler {
                 self.emit(Opcode::NewArray, length)?;
                 for (index, element) in elements.iter().enumerate() {
                     let Some(element) = element else { continue };
-                    let ArrayElement::Normal(value) = element else {
-                        return Err(CompileError::Unsupported("array spread"));
+                    // A spread was handled by the ArrayPush path above.
+                    let value = match element {
+                        ArrayElement::Normal(value) | ArrayElement::Spread(value) => value,
                     };
                     self.emit(Opcode::Dup, 0)?;
                     self.constant(Value::String(index.to_string().into()))?;
@@ -684,8 +744,8 @@ impl Compiler {
                         self.emit(Opcode::SuperCallSpread, 0)?;
                     } else {
                         for arg in args {
-                            let Argument::Normal(expr) = arg else {
-                                unreachable!("super call spreads take the array path")
+                            let expr = match arg {
+                                Argument::Normal(expr) | Argument::Spread(expr) => expr,
                             };
                             self.expression(expr)?;
                         }
@@ -697,47 +757,48 @@ impl Compiler {
                     self.super_call_epilogue()?;
                     return Ok(());
                 }
-                if !construct
-                    && matches!(&**callee, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
-                {
-                    let Expr::Member {
-                        property, computed, ..
-                    } = callee.as_ref()
-                    else {
-                        unreachable!()
-                    };
-                    self.super_reference(property, *computed)?;
-                    self.emit_this()?;
-                    self.emit(Opcode::SuperGetMethod, 0)?;
-                } else if !construct
-                    && matches!(&**callee, Expr::Parenthesized(inner) if matches!(inner.as_ref(), Expr::Member { .. } | Expr::OptionalMember { .. }))
-                {
-                    let Expr::Parenthesized(inner) = callee.as_ref() else {
-                        unreachable!()
-                    };
-                    self.parenthesized_optional_member_method(inner)?;
-                } else if !construct && matches!(&**callee, Expr::Member { .. }) {
-                    if private_member_name(callee).is_some() {
-                        let owner = self.private_member_reference(callee)?;
-                        self.emit(Opcode::PrivateGetMethod, owner)?;
-                    } else {
-                        self.member_reference(callee)?;
-                        self.emit(Opcode::GetMethod, 0)?;
+                match (construct, callee.as_ref()) {
+                    (
+                        false,
+                        Expr::Member {
+                            object,
+                            property,
+                            computed,
+                        },
+                    ) if matches!(object.as_ref(), Expr::Super) => {
+                        self.super_reference(property, *computed)?;
+                        self.emit_this()?;
+                        self.emit(Opcode::SuperGetMethod, 0)?;
                     }
-                } else if !construct
-                    && self.with_depth != 0
-                    && matches!(&**callee, Expr::Identifier(name) if self.resolve_inside_innermost_with(name).is_none())
-                {
-                    // `f()` inside `with`: a function found on a with object
-                    // is called with that object as `this` (WithBaseObject).
-                    let Expr::Identifier(name) = &**callee else {
-                        unreachable!()
-                    };
-                    let index = self.name_constant(name)?;
-                    self.emit(Opcode::WithGetMethod, index)?;
-                } else {
-                    self.expression(callee)?;
-                    self.constant(Value::Undefined)?;
+                    (false, Expr::Parenthesized(inner))
+                        if matches!(
+                            inner.as_ref(),
+                            Expr::Member { .. } | Expr::OptionalMember { .. }
+                        ) =>
+                    {
+                        self.parenthesized_optional_member_method(inner)?;
+                    }
+                    (false, Expr::Member { .. }) => {
+                        if private_member_name(callee).is_some() {
+                            let owner = self.private_member_reference(callee)?;
+                            self.emit(Opcode::PrivateGetMethod, owner)?;
+                        } else {
+                            self.member_reference(callee)?;
+                            self.emit(Opcode::GetMethod, 0)?;
+                        }
+                    }
+                    (false, Expr::Identifier(name))
+                        if self.with_depth != 0
+                            && self.resolve_inside_innermost_with(name).is_none() =>
+                    {
+                        // A function found on a with object receives it as `this`.
+                        let index = self.name_constant(name)?;
+                        self.emit(Opcode::WithGetMethod, index)?;
+                    }
+                    _ => {
+                        self.expression(callee)?;
+                        self.constant(Value::Undefined)?;
+                    }
                 }
                 if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
                     self.emit(Opcode::NewArray, 0)?;
@@ -762,8 +823,8 @@ impl Compiler {
                     return Ok(());
                 }
                 for arg in args {
-                    let Argument::Normal(expr) = arg else {
-                        unreachable!("spread calls are emitted above")
+                    let expr = match arg {
+                        Argument::Normal(expr) | Argument::Spread(expr) => expr,
                     };
                     self.expression(expr)?;
                 }
@@ -818,13 +879,13 @@ impl Compiler {
                         // forwards to the delegate on the following turn.
                         self.emit(Opcode::GetIterator, 0)?;
                         self.constant(Value::Undefined)?;
-                        let next = self.offset()?;
+                        let next = self.offset();
                         self.emit(Opcode::IteratorNext, 1)?;
                         let done = self.emit(Opcode::IteratorStepValue, 0)?;
                         self.emit(Opcode::Yield, 0)?;
-                        let resume = self.offset()?;
+                        let resume = self.offset();
                         self.emit(Opcode::Jump, next)?;
-                        let exit = self.offset()?;
+                        let exit = self.offset();
                         self.patch(done, exit);
                         self.bytecode.yield_delegates.push((resume, exit));
                         return Ok(());
@@ -835,14 +896,14 @@ impl Compiler {
                     // the delegate on the following loop turn.
                     self.emit(Opcode::GetAsyncIterator, 0)?;
                     self.constant(Value::Undefined)?;
-                    let next = self.offset()?;
+                    let next = self.offset();
                     self.emit(Opcode::AsyncIteratorNext, 1)?;
                     self.emit(Opcode::Await, 0)?;
                     let done = self.emit(Opcode::AsyncIteratorStepValue, 0)?;
                     self.emit(Opcode::Yield, 0)?;
-                    let resume = self.offset()?;
+                    let resume = self.offset();
                     self.emit(Opcode::Jump, next)?;
-                    let exit = self.offset()?;
+                    let exit = self.offset();
                     self.patch(done, exit);
                     self.bytecode.async_yield_delegates.push((resume, exit));
                     return Ok(());
@@ -924,15 +985,6 @@ impl Compiler {
         exits: &mut Vec<usize>,
     ) -> Result<(), CompileError> {
         match expr {
-            Expr::Member {
-                object,
-                property,
-                computed,
-            } if matches!(&**object, Expr::Super) => {
-                self.super_reference(property, *computed)?;
-                self.emit_this()?;
-                self.emit(Opcode::SuperGet, 0)?;
-            }
             Expr::Member { .. } if private_member_name(expr).is_some() => {
                 let owner = self.private_member_chain_reference(expr, exits)?;
                 self.emit(Opcode::PrivateGet, owner)?;
@@ -945,40 +997,42 @@ impl Compiler {
             }
             Expr::Call { callee, args } | Expr::OptionalCall { callee, args } => {
                 let optional_call = matches!(expr, Expr::OptionalCall { .. });
-                if matches!(&**callee, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
-                {
-                    let Expr::Member {
-                        property, computed, ..
-                    } = callee.as_ref()
-                    else {
-                        unreachable!()
-                    };
-                    self.super_reference(property, *computed)?;
-                    self.emit_this()?;
-                    self.emit(Opcode::SuperGetMethod, 0)?;
-                } else if private_member_name(callee).is_some() {
-                    let owner = self.private_member_chain_reference(callee, exits)?;
-                    self.emit(Opcode::PrivateGetMethod, owner)?;
-                } else if matches!(
-                    callee.as_ref(),
-                    Expr::Member { .. } | Expr::OptionalMember { .. }
-                ) {
-                    match self.optional_chain_member_reference(callee, exits)? {
-                        Some(owner) => self.emit(Opcode::PrivateGetMethod, owner)?,
-                        None => self.emit(Opcode::GetMethod, 0)?,
-                    };
-                } else if matches!(&**callee, Expr::Parenthesized(inner) if matches!(inner.as_ref(), Expr::Member { .. } | Expr::OptionalMember { .. }))
-                {
-                    let Expr::Parenthesized(inner) = callee.as_ref() else {
-                        unreachable!()
-                    };
-                    self.parenthesized_optional_member_method(inner)?;
-                } else if optional_chain_root(callee) {
-                    self.optional_chain_expression(callee, exits)?;
-                    self.constant(Value::Undefined)?;
-                } else {
-                    self.expression(callee)?;
-                    self.constant(Value::Undefined)?;
+                match callee.as_ref() {
+                    Expr::Member {
+                        object,
+                        property,
+                        computed,
+                    } if matches!(object.as_ref(), Expr::Super) => {
+                        self.super_reference(property, *computed)?;
+                        self.emit_this()?;
+                        self.emit(Opcode::SuperGetMethod, 0)?;
+                    }
+                    _ if private_member_name(callee).is_some() => {
+                        let owner = self.private_member_chain_reference(callee, exits)?;
+                        self.emit(Opcode::PrivateGetMethod, owner)?;
+                    }
+                    Expr::Member { .. } | Expr::OptionalMember { .. } => {
+                        match self.optional_chain_member_reference(callee, exits)? {
+                            Some(owner) => self.emit(Opcode::PrivateGetMethod, owner)?,
+                            None => self.emit(Opcode::GetMethod, 0)?,
+                        };
+                    }
+                    Expr::Parenthesized(inner)
+                        if matches!(
+                            inner.as_ref(),
+                            Expr::Member { .. } | Expr::OptionalMember { .. }
+                        ) =>
+                    {
+                        self.parenthesized_optional_member_method(inner)?;
+                    }
+                    _ if optional_chain_root(callee) => {
+                        self.optional_chain_expression(callee, exits)?;
+                        self.constant(Value::Undefined)?;
+                    }
+                    _ => {
+                        self.expression(callee)?;
+                        self.constant(Value::Undefined)?;
+                    }
                 }
                 if optional_call {
                     // GetMethod leaves [callee, receiver]. Test the callee
@@ -991,7 +1045,7 @@ impl Compiler {
                     self.emit(Opcode::Pop, 0)?;
                     self.constant(Value::Undefined)?;
                     exits.push(self.emit(Opcode::Jump, 0)?);
-                    self.patch(non_nullish, self.offset()?);
+                    self.patch(non_nullish, self.offset());
                     self.emit(Opcode::Swap, 0)?;
                 }
                 if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
@@ -1007,8 +1061,8 @@ impl Compiler {
                     self.emit(Opcode::CallSpread, 0)?;
                 } else {
                     for arg in args {
-                        let Argument::Normal(value) = arg else {
-                            unreachable!("spread arguments use CallSpread")
+                        let value = match arg {
+                            Argument::Normal(value) | Argument::Spread(value) => value,
                         };
                         self.expression(value)?;
                     }
@@ -1062,7 +1116,7 @@ impl Compiler {
             self.emit(Opcode::Pop, 0)?;
             self.constant(Value::Undefined)?;
             exits.push(self.emit(Opcode::Jump, 0)?);
-            self.patch(non_nullish, self.offset()?);
+            self.patch(non_nullish, self.offset());
         }
         if computed {
             self.expression(property)?;
@@ -1154,7 +1208,7 @@ impl Compiler {
         self.constant(Value::Undefined)?;
         self.constant(Value::Undefined)?;
         let end = self.emit(Opcode::Jump, 0)?;
-        self.patch(non_nullish, self.offset()?);
+        self.patch(non_nullish, self.offset());
         if *computed {
             self.expression(property)?;
         } else if let Expr::Identifier(name) = property.as_ref() {
@@ -1162,7 +1216,7 @@ impl Compiler {
                 let owner = self.resolve_private_name(private)?;
                 self.constant(Value::String(private.into()))?;
                 self.emit(Opcode::PrivateGetMethod, owner)?;
-                self.patch(end, self.offset()?);
+                self.patch(end, self.offset());
                 return Ok(());
             }
             self.constant(Value::String(name.clone().into()))?;
@@ -1173,7 +1227,7 @@ impl Compiler {
         }
         self.emit(Opcode::PreparePropertyReference, 0)?;
         self.emit(Opcode::GetMethod, 0)?;
-        self.patch(end, self.offset()?);
+        self.patch(end, self.offset());
         Ok(())
     }
 
@@ -1232,7 +1286,7 @@ impl Compiler {
         }
         // A lexical head name may not also be a `var` declared in the body
         // (BoundNames of ForDeclaration vs. VarDeclaredNames of Statement).
-        self.enter_scope(declarations, &var_names(std::slice::from_ref(body))?, false)?;
+        self.enter_scope(declarations, &var_names(std::slice::from_ref(body)), false)?;
         let iterator = self.resolve("*iterator*").unwrap();
         if let Some(initializer) = annex_b_initializer {
             // `for (var x = init in ...)` names an anonymous function or class
@@ -1263,7 +1317,7 @@ impl Compiler {
             )?;
         }
         self.emit(Opcode::InitializeBinding, iterator)?;
-        let start = self.offset()?;
+        let start = self.offset();
         self.emit(Opcode::GetBinding, iterator)?;
         let exit = if is_await {
             self.emit(Opcode::AsyncIteratorNext, 0)?;
@@ -1291,14 +1345,13 @@ impl Compiler {
             )?;
         }
         let using_hint = match left {
-            ForHead::Decl(DeclKind::Using, _) => Some(false),
-            ForHead::Decl(DeclKind::AwaitUsing, _) => Some(true),
+            ForHead::Decl(DeclKind::Using, pattern) => Some((false, DeclKind::Using, pattern)),
+            ForHead::Decl(DeclKind::AwaitUsing, pattern) => {
+                Some((true, DeclKind::AwaitUsing, pattern))
+            }
             _ => None,
         };
-        if let Some(is_async) = using_hint {
-            let ForHead::Decl(kind, pattern) = left else {
-                unreachable!("using_hint is only set for ForHead::Decl")
-            };
+        if let Some((is_async, kind, pattern)) = using_hint {
             // `for (using x of iterable)`'s ForBinding disposes `x`'s bound
             // value at the end of *this* iteration (confirmed against
             // `initializer-Symbol.dispose-called-at-end-of-each-iteration-of-forofstatement.js`),
@@ -1308,7 +1361,7 @@ impl Compiler {
             // per-iteration scope already entered above.
             self.wrap_with_disposal(is_async, |this| {
                 this.emit(Opcode::Dup, 0)?;
-                this.bind_pattern(pattern, *kind)?;
+                this.bind_pattern(pattern, kind)?;
                 this.emit(Opcode::AddDisposableResource, u32::from(is_async))?;
                 this.statement(body, false)
             })?;
@@ -1333,7 +1386,7 @@ impl Compiler {
             self.leave_scope()?;
         }
         self.emit(Opcode::Jump, start)?;
-        let end = self.offset()?;
+        let end = self.offset();
         self.patch(exit, end);
         let context = self.loops.pop().unwrap();
         for (jump, control) in context.breaks {
@@ -1354,15 +1407,13 @@ impl Compiler {
         target: &Expr,
         value: &Expr,
     ) -> Result<(), CompileError> {
-        let logical_assignment = is_logical_assignment(op);
+        let logical_assignment = logical_assignment_op(op);
         // AssignmentExpression gives an anonymous function definition the
         // syntactic IdentifierReference target's name. Member references and
         // compound assignments deliberately do not participate.
         let inferred_name = match (op, target) {
-            (AssignOp::Assign, Expr::Identifier(name)) if !logical_assignment => {
-                Some(name.as_str())
-            }
-            (_, Expr::Identifier(name)) if logical_assignment => Some(name.as_str()),
+            (AssignOp::Assign, Expr::Identifier(name)) => Some(name.as_str()),
+            (_, Expr::Identifier(name)) if logical_assignment.is_some() => Some(name.as_str()),
             _ => None,
         };
         // A CoverParenthesizedExpression can still evaluate to a reference,
@@ -1399,8 +1450,15 @@ impl Compiler {
                     self.emit_this()?;
                     self.emit(Opcode::SuperGet, 0)?;
                 }
-                if logical_assignment {
-                    self.logical_assignment(op, 2, value, inferred_name, Opcode::SuperSet, 0)?;
+                if let Some(logical_op) = logical_assignment {
+                    self.logical_assignment(
+                        logical_op,
+                        2,
+                        value,
+                        inferred_name,
+                        Opcode::SuperSet,
+                        0,
+                    )?;
                     return Ok(());
                 }
                 self.expression_with_name(value, inferred_name)?;
@@ -1414,10 +1472,17 @@ impl Compiler {
         }
         if private_member_name(target).is_some() {
             let owner = self.private_member_reference(target)?;
-            if logical_assignment {
+            if let Some(logical_op) = logical_assignment {
                 self.emit(Opcode::Dup2, 0)?;
                 self.emit(Opcode::PrivateGet, owner)?;
-                self.logical_assignment(op, 2, value, inferred_name, Opcode::PrivateSet, owner)?;
+                self.logical_assignment(
+                    logical_op,
+                    2,
+                    value,
+                    inferred_name,
+                    Opcode::PrivateSet,
+                    owner,
+                )?;
                 return Ok(());
             }
             if op != AssignOp::Assign {
@@ -1438,10 +1503,10 @@ impl Compiler {
                 // the RHS. A deletion or eval in that RHS must not redirect
                 // PutValue to a later binding lookup.
                 self.emit(Opcode::ResolveWithReference, index)?;
-                if logical_assignment {
+                if let Some(logical_op) = logical_assignment {
                     self.emit(Opcode::LoadWithReference, 0)?;
                     self.logical_assignment(
-                        op,
+                        logical_op,
                         2,
                         value,
                         inferred_name,
@@ -1464,10 +1529,10 @@ impl Compiler {
         if let Expr::Identifier(name) = target {
             if self.resolve(name).is_none() {
                 let index = self.name_constant(name)?;
-                if logical_assignment {
+                if let Some(logical_op) = logical_assignment {
                     self.emit(Opcode::UnboundName, index)?;
                     self.logical_assignment(
-                        op,
+                        logical_op,
                         0,
                         value,
                         inferred_name,
@@ -1501,19 +1566,11 @@ impl Compiler {
             }
         }
         let binding = if let Expr::Identifier(name) = target {
-            if let Some(slot) = self.resolve(name) {
-                Some(slot)
-            } else {
-                let index = u32::try_from(self.bytecode.constants.len())
-                    .map_err(|_| CompileError::ProgramTooLarge)?;
-                self.bytecode
-                    .constants
-                    .push(Value::String("globalThis".into()));
-                self.emit(Opcode::Global, index)?;
-                self.constant(Value::String(name.clone().into()))?;
-                self.emit(Opcode::ToPropertyKey, 0)?;
-                None
-            }
+            // The unbound-name path above returns before reaching this point.
+            Some(
+                self.resolve(name)
+                    .expect("unbound assignment was handled above"),
+            )
         } else {
             if op == AssignOp::Assign {
                 // A simple assignment evaluates the computed property
@@ -1533,11 +1590,11 @@ impl Compiler {
             // reference that was already resolved here.
             self.emit(Opcode::ResolveBindingReference, slot)?;
         }
-        if logical_assignment {
+        if let Some(logical_op) = logical_assignment {
             if binding.is_some() {
                 self.emit(Opcode::LoadBindingReference, 0)?;
                 self.logical_assignment(
-                    op,
+                    logical_op,
                     2,
                     value,
                     inferred_name,
@@ -1547,7 +1604,14 @@ impl Compiler {
             } else {
                 self.emit(Opcode::Dup2, 0)?;
                 self.emit(Opcode::GetProperty, 0)?;
-                self.logical_assignment(op, 2, value, inferred_name, Opcode::SetProperty, 0)?;
+                self.logical_assignment(
+                    logical_op,
+                    2,
+                    value,
+                    inferred_name,
+                    Opcode::SetProperty,
+                    0,
+                )?;
             }
             return Ok(());
         }
@@ -1577,7 +1641,7 @@ impl Compiler {
     /// consumes the retained reference with the supplied store opcode.
     pub(super) fn logical_assignment(
         &mut self,
-        op: AssignOp,
+        op: LogicalOp,
         reference_values: u32,
         value: &Expr,
         inferred_name: Option<&str>,
@@ -1587,10 +1651,9 @@ impl Compiler {
         self.emit(Opcode::Dup, 0)?;
         let bypass = self.emit(
             match op {
-                AssignOp::LogicalAndAssign => Opcode::JumpIfFalse,
-                AssignOp::LogicalOrAssign => Opcode::JumpIfTrue,
-                AssignOp::NullishAssign => Opcode::JumpIfNotNullish,
-                _ => unreachable!("logical assignment helper has a logical operator"),
+                LogicalOp::And => Opcode::JumpIfFalse,
+                LogicalOp::Or => Opcode::JumpIfTrue,
+                LogicalOp::Nullish => Opcode::JumpIfNotNullish,
             },
             0,
         )?;
@@ -1601,11 +1664,11 @@ impl Compiler {
         }
         self.emit(store, store_operand)?;
         let done = self.emit(Opcode::Jump, 0)?;
-        self.patch(bypass, self.offset()?);
+        self.patch(bypass, self.offset());
         if reference_values != 0 {
             self.emit(Opcode::DiscardReference, reference_values)?;
         }
-        self.patch(done, self.offset()?);
+        self.patch(done, self.offset());
         Ok(())
     }
 
@@ -1797,9 +1860,9 @@ impl Compiler {
     pub(super) fn array_pattern_reference_value(&mut self) -> Result<(), CompileError> {
         let exhausted = self.emit(Opcode::IteratorStepReference, 0)?;
         let joined = self.emit(Opcode::Jump, 0)?;
-        self.patch(exhausted, self.offset()?);
+        self.patch(exhausted, self.offset());
         self.constant(Value::Undefined)?;
-        self.patch(joined, self.offset()?);
+        self.patch(joined, self.offset());
         Ok(())
     }
 
@@ -1881,8 +1944,7 @@ impl Compiler {
     }
 
     pub(super) fn name_constant(&mut self, name: &str) -> Result<u32, CompileError> {
-        let index = u32::try_from(self.bytecode.constants.len())
-            .map_err(|_| CompileError::ProgramTooLarge)?;
+        let index = self.metadata_index(self.bytecode.constants.len())?;
         self.bytecode.constants.push(Value::String(name.into()));
         Ok(index)
     }
@@ -1947,9 +2009,7 @@ impl Compiler {
     pub(super) fn super_call_epilogue(&mut self) -> Result<(), CompileError> {
         let slot = self
             .resolve(DERIVED_THIS_BINDING)
-            .ok_or(CompileError::InvalidSyntax(
-                "super() is only valid in a derived constructor",
-            ))?;
+            .expect("derived constructor has a this binding after its super call");
         self.emit(Opcode::BindThisValue, slot)?;
         self.emit(Opcode::InitializeInstanceElements, 0)?;
         Ok(())

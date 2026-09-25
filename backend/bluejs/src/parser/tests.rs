@@ -1818,3 +1818,136 @@ fn eval_source_text_is_a_range_of_the_evaluated_text() {
     let program = crate::parse_eval(source, false).unwrap();
     assert_eq!(source_texts_of(&program, source), ["function () {}"]);
 }
+
+/// Parses `inner` as the sole statement of an `async function*` body (the
+/// same async-generator context Test262's
+/// `staging/sm/AsyncGenerators/for-await-bad-syntax.js` exercises via
+/// `async function*(){}.constructor`), returning that one statement.
+fn for_await_stmt(inner: &str) -> Stmt {
+    let src = format!("async function* f() {{ {inner} }}");
+    let program = program(&src);
+    assert_eq!(program.body.len(), 1, "{src}");
+    let Stmt::FunctionDecl(function) = program.body.into_iter().next().unwrap() else {
+        panic!("expected a function declaration for {src:?}");
+    };
+    assert_eq!(
+        function.body.len(),
+        1,
+        "expected exactly one statement in {src:?}, got {:?}",
+        function.body
+    );
+    function.body.into_iter().next().unwrap()
+}
+
+/// Parses `inner` as the sole statement of an `async function*` body and
+/// asserts that doing so is a syntax error, returning it for further
+/// inspection.
+fn for_await_syntax_error(inner: &str) -> ParseError {
+    let src = format!("async function* f() {{ {inner} }}");
+    parse(&src).expect_err(&src)
+}
+
+#[test]
+fn for_await_of_parses_with_is_await_true() {
+    assert_eq!(
+        for_await_stmt("for await (x of y) {}"),
+        Stmt::ForOf {
+            left: ForHead::Assignment(AssignmentPattern::Target(Box::new(Expr::Identifier(
+                "x".to_string()
+            )))),
+            right: Expr::Identifier("y".to_string()),
+            body: Box::new(Stmt::Block(vec![])),
+            is_await: true,
+        }
+    );
+    assert_eq!(
+        for_await_stmt("for await (let x of y) {}"),
+        Stmt::ForOf {
+            left: ForHead::Decl(DeclKind::Let, Pattern::Identifier("x".to_string())),
+            right: Expr::Identifier("y".to_string()),
+            body: Box::new(Stmt::Block(vec![])),
+            is_await: true,
+        }
+    );
+    assert_eq!(
+        for_await_stmt("for await (var [x] of y) {}"),
+        Stmt::ForOf {
+            left: ForHead::Decl(
+                DeclKind::Var,
+                Pattern::Array(vec![Some(ArrayPatternElement {
+                    pattern: Pattern::Identifier("x".to_string()),
+                    default: None,
+                    rest: false,
+                })])
+            ),
+            right: Expr::Identifier("y".to_string()),
+            body: Box::new(Stmt::Block(vec![])),
+            is_await: true,
+        }
+    );
+}
+
+#[test]
+fn for_await_of_also_parses_in_a_plain_async_function_not_only_an_async_generator() {
+    // `for await` is valid in any async function context, not only an
+    // async generator -- confirms the fix is about the for-loop grammar
+    // itself, not about async-generator-specific parser state.
+    assert_eq!(
+        only_stmt("async function f() { for await (x of y) {} }"),
+        Stmt::FunctionDecl(Function {
+            name: Some("f".to_string()),
+            params: vec![],
+            source_text: Default::default(),
+            body: vec![Stmt::ForOf {
+                left: ForHead::Assignment(AssignmentPattern::Target(Box::new(Expr::Identifier(
+                    "x".to_string()
+                )))),
+                right: Expr::Identifier("y".to_string()),
+                body: Box::new(Stmt::Block(vec![])),
+                is_await: true,
+            }],
+            generator: false,
+            is_async: true,
+        })
+    );
+    let error = parse("async function f() { for await (;;) ; }").unwrap_err();
+    assert!(error.known_syntax, "{error:?}");
+    assert!(
+        error.message.contains("for await requires an of clause"),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn bare_for_await_with_an_empty_c_style_head_is_a_syntax_error() {
+    // The very first, simplest shape `for-await-bad-syntax.js` asserts:
+    // `for await (;;) ;`. This is the C-style empty-head early return at
+    // the very top of `parse_for_stmt`, reached before any declaration or
+    // expression parsing -- it must still reject a bare `for await`.
+    let error = for_await_syntax_error("for await (;;) ;");
+    assert!(error.known_syntax, "{error:?}");
+    assert!(
+        error.message.contains("for await requires an of clause"),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn for_await_c_style_and_for_in_heads_are_syntax_errors_for_every_declaration_shape() {
+    // Mirrors every shape `staging/sm/AsyncGenerators/for-await-bad-syntax.js`
+    // generates: every combination of an optional `var`/`let`/`const`
+    // declaration and a binding head, closed off with either C-style
+    // `;;` or a `for-in` `in null` -- never a valid `of` clause, so every
+    // one of these must be a `for await` syntax error.
+    for decl in ["", "var", "let", "const"] {
+        for head in ["a", "a = 0", "a, b", "[a]", "[a] = 0", "{a}", "{a} = 0"] {
+            for inner in [
+                format!("for await ({decl} {head} ;;) ;"),
+                format!("for await ({decl} {head} in null) ;"),
+            ] {
+                let error = for_await_syntax_error(&inner);
+                assert!(error.known_syntax, "{inner:?}: {error:?}");
+            }
+        }
+    }
+}

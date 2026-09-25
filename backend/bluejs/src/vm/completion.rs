@@ -121,8 +121,171 @@ pub(super) enum InterpreterExit {
     },
 }
 
-// Ordinary calls still nest the Rust interpreter. The public 32-frame bound
-// makes recursive JavaScript report a catchable RangeError on the normal
-// process stack; an embedding that executes BlueJS on a deliberately smaller
-// worker stack must provision enough host stack for that documented bound.
-pub(super) const MAX_RECURSIVE_CALL_DEPTH: usize = 32;
+// Ordinary calls nest the Rust interpreter, so how deep JavaScript may recurse
+// is a question about the native stack, and running out of it is a process
+// abort rather than a catchable error. `enter_call` therefore refuses to nest
+// another call, with a catchable RangeError, once fewer than
+// `CALL_STACK_RED_ZONE` bytes remain on the current thread's own stack
+// (`native_stack::remaining_stack`, which asks the OS about the thread actually
+// running the VM: a normal process's main thread, a smaller worker, or a
+// deliberately tiny one all get the right budget without any per-platform
+// constant here). Cheap and expensive frames are not distinguished: an
+// interpreted call costs about the same native stack whatever the script
+// does, so depth follows the stack the host provisioned.
+//
+// The guard deliberately errors instead of growing the stack onto a freshly
+// allocated segment. The
+// stack is the runaway-recursion boundary: growing it would leave only
+// `instruction_budget` (time, not memory) between a hostile script and
+// hundreds of megabytes of native stack.
+//
+// Sizing, measured 2026-09-23 on a debug build (the profile the Test262
+// adapter and `cargo test` run): one interpreted call costs about 15.3 KB of
+// native stack, and across ~30 re-entrant host paths (plain, arrow,
+// `call`/`apply`/`bind`/`Reflect.*`, getters and coercions, Proxy traps,
+// `map`/`sort`/`replace` callbacks, generators, `super()` chains, direct
+// `eval`, ...) the most native stack between two consecutive `enter_call`
+// checks was about 25 KB (direct `eval`). The margin has to cover that one
+// segment, the leaf built-in that may then run at the deepest permitted level,
+// and unwinding the error, so it is 256 KiB: about ten times the worst
+// measured segment and well above the 100 KiB rustc itself reserves. The
+// margin is tested, not just reasoned: with `tests/call_stack_budget.rs`'s
+// runaway-recursion patterns, a margin of 24 KiB or less overflowed the real
+// stack and aborted the process, and 32 KiB was the smallest margin that
+// survived them all, so 256 KiB leaves eightfold headroom over the measured
+// minimum. On a normal 8 MiB stack it allows roughly 500 nested calls.
+pub(super) const CALL_STACK_RED_ZONE: usize = 256 * 1024;
+
+// Where the host cannot report the thread's stack (`native_stack` has no backend
+// for an unknown OS, and under `miri` it reports nothing), fall back to the
+// conservative frame count the guard used before it measured bytes: 32 calls
+// at the measured cost fit inside 512 KiB.
+pub(super) const UNMEASURED_STACK_MAX_CALL_DEPTH: usize = 32;
+
+/// Whether one more nested call must be refused. `remaining_stack` is the
+/// byte count `native_stack::remaining_stack` reported for the current thread.
+pub(super) fn call_stack_exhausted(remaining_stack: Option<usize>, call_depth: usize) -> bool {
+    match remaining_stack {
+        Some(remaining) => remaining < CALL_STACK_RED_ZONE,
+        None => call_depth >= UNMEASURED_STACK_MAX_CALL_DEPTH,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A comparable rendering of a completion, so a test can assert exactly
+    /// which variant (and payload) came back.
+    fn describe(completion: &Completion) -> String {
+        match completion {
+            Completion::Throw(error) => format!("throw {error:?}"),
+            Completion::Return(value) => format!("return {value:?}"),
+            Completion::TailRecur(values) => format!("tail-recur {values:?}"),
+            Completion::TailCall(values) => format!("tail-call {values:?}"),
+            Completion::Yield(value) => format!("yield {value:?}"),
+            Completion::Jump { cleanup, target } => format!("jump {cleanup} {target}"),
+            Completion::Resume(pc) => format!("resume {pc}"),
+            Completion::Halt(value) => format!("halt {value:?}"),
+        }
+    }
+
+    /// Every catchable completion survives being parked in a suspended
+    /// generator and taken back out unchanged.
+    #[test]
+    fn catchable_completions_round_trip_through_a_suspended_generator() {
+        let round_trip = |completion: Completion| {
+            let pending = completion.clone().into_generator_pending().ok().unwrap();
+            let restored = Completion::from_generator_pending(pending);
+            assert_eq!(describe(&restored), describe(&completion));
+            describe(&restored)
+        };
+        let throw = Completion::Throw;
+
+        assert_eq!(
+            round_trip(throw(RuntimeError::Thrown(Value::Number(1.0)))),
+            "throw Thrown(Number(1.0))"
+        );
+        assert_eq!(
+            round_trip(throw(RuntimeError::ReferenceError("r".into()))),
+            "throw ReferenceError(\"r\")"
+        );
+        assert_eq!(
+            round_trip(throw(RuntimeError::TypeError("t".into()))),
+            "throw TypeError(\"t\")"
+        );
+        assert_eq!(
+            round_trip(throw(RuntimeError::RangeError("g".into()))),
+            "throw RangeError(\"g\")"
+        );
+        assert_eq!(
+            round_trip(throw(RuntimeError::SyntaxError("s".into()))),
+            "throw SyntaxError(\"s\")"
+        );
+        assert_eq!(
+            round_trip(throw(RuntimeError::Test262("x".into()))),
+            "throw Test262(\"x\")"
+        );
+        assert_eq!(
+            round_trip(Completion::Return(Value::Number(2.0))),
+            "return Number(2.0)"
+        );
+        assert_eq!(
+            round_trip(Completion::TailRecur(vec![Value::Number(3.0)])),
+            "tail-recur [Number(3.0)]"
+        );
+        assert_eq!(
+            round_trip(Completion::Jump {
+                cleanup: 4,
+                target: 5
+            }),
+            "jump 4 5"
+        );
+    }
+
+    /// A host abort is not catchable, so it comes back as the error itself;
+    /// completions internal to the interpreter cannot be suspended at all.
+    #[test]
+    fn host_aborts_and_internal_completions_refuse_to_suspend() {
+        let refused = |completion: Completion| completion.into_generator_pending().err();
+        assert_eq!(
+            refused(Completion::Throw(RuntimeError::InstructionLimit)),
+            Some(RuntimeError::InstructionLimit)
+        );
+        let internal = [
+            Completion::TailCall(vec![Value::Undefined]),
+            Completion::Yield(Value::Undefined),
+            Completion::Resume(0),
+            Completion::Halt(Value::Undefined),
+        ];
+        let described: Vec<String> = internal.iter().map(describe).collect();
+        assert_eq!(
+            described,
+            [
+                "tail-call [Undefined]",
+                "yield Undefined",
+                "resume 0",
+                "halt Undefined"
+            ]
+        );
+        for completion in internal {
+            assert_eq!(
+                refused(completion),
+                Some(RuntimeError::Unsupported(
+                    "cannot suspend a generator with an internal completion"
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn call_stack_guard_follows_bytes_when_measured_and_depth_when_not() {
+        assert!(call_stack_exhausted(Some(CALL_STACK_RED_ZONE - 1), 0));
+        assert!(!call_stack_exhausted(Some(CALL_STACK_RED_ZONE), 1_000));
+        assert!(!call_stack_exhausted(
+            None,
+            UNMEASURED_STACK_MAX_CALL_DEPTH - 1
+        ));
+        assert!(call_stack_exhausted(None, UNMEASURED_STACK_MAX_CALL_DEPTH));
+    }
+}

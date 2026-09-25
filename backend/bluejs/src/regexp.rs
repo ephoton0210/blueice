@@ -184,7 +184,7 @@ impl LegacyStatics {
 }
 
 #[derive(Clone, Copy)]
-enum CharacterClassEscape {
+pub(crate) enum CharacterClassEscape {
     Digit,
     NonDigit,
     Whitespace,
@@ -206,7 +206,7 @@ impl CharacterClassEscape {
         })
     }
 
-    fn matches(self, point: u32) -> bool {
+    pub(crate) fn matches(self, point: u32) -> bool {
         let digit = (u32::from(b'0')..=u32::from(b'9')).contains(&point);
         let whitespace = matches!(
             point,

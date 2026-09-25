@@ -365,22 +365,50 @@ fn worker_error(error: impl std::fmt::Display) -> RuntimeError {
     RuntimeError::RegexWorker(error.to_string())
 }
 
+/// The worker's compiled pattern.
+struct Compiled {
+    source: Vec<u16>,
+    flags: String,
+    regex: regress::Regex,
+    /// A case-insensitive pattern without the `u` and `v` flags is compiled
+    /// case-sensitively from its canonical form and matched against the
+    /// canonicalized subject (see `regex_canonicalize`).
+    canonical: bool,
+}
+
 fn cache_pattern(
-    cached: &mut Option<(Vec<u16>, String, regress::Regex)>,
+    cached: &mut Option<Compiled>,
     source: Vec<u16>,
     flags: String,
 ) -> Result<(), String> {
     let same = cached
         .as_ref()
-        .is_some_and(|(old_source, old_flags, _)| *old_source == source && *old_flags == flags);
+        .is_some_and(|old| old.source == source && old.flags == flags);
     if same {
         return Ok(());
     }
-    let points = crate::regex_group_names::regress_points(&source, &flags);
-    let regex =
-        regress::Regex::from_unicode(points.into_iter(), regress::Flags::from(flags.as_str()))
-            .map_err(|error| error.to_string())?;
-    *cached = Some((source, flags, regex));
+    let pattern = crate::regex_group_names::regress_points(&source, &flags);
+    let mut regress_flags = if pattern.canonical {
+        flags.replace('i', "")
+    } else {
+        flags.clone()
+    };
+    // `v` includes everything `u` means, but `regress` only treats a pattern as
+    // Unicode (case folding, for one) when it is also given `u`.
+    if regress_flags.contains('v') && !regress_flags.contains('u') {
+        regress_flags.push('u');
+    }
+    let regex = regress::Regex::from_unicode(
+        pattern.points.into_iter(),
+        regress::Flags::from(regress_flags.as_str()),
+    )
+    .map_err(|error| error.to_string())?;
+    *cached = Some(Compiled {
+        source,
+        flags,
+        regex,
+        canonical: pattern.canonical,
+    });
     Ok(())
 }
 
@@ -462,12 +490,16 @@ pub(crate) fn validate(
 /// Entry point for the separately installed matcher executable.
 #[doc(hidden)]
 pub fn serve() -> io::Result<()> {
-    let (mut input, mut output) = (io::stdin().lock(), io::stdout().lock());
-    frame_write(&mut output, READY)?;
-    let mut cached: Option<(Vec<u16>, String, regress::Regex)> = None;
-    let mut cached_input = None;
+    serve_on(&mut io::stdin().lock(), &mut io::stdout().lock())
+}
+
+fn serve_on(stream_in: &mut dyn Read, stream_out: &mut dyn Write) -> io::Result<()> {
+    frame_write(stream_out, READY)?;
+    let mut cached: Option<Compiled> = None;
+    let mut cached_input: Option<Vec<u16>> = None;
+    let mut canonical_input: Option<Vec<u16>> = None;
     loop {
-        let bytes = match frame_read(&mut input) {
+        let bytes = match frame_read(stream_in) {
             Ok(bytes) => bytes,
             Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
             Err(error) => return Err(error),
@@ -511,7 +543,7 @@ pub fn serve() -> io::Result<()> {
                     })?;
                     if let Err(message) = cache_pattern(&mut cached, source, flags) {
                         frame_write(
-                            &mut output,
+                            stream_out,
                             &serde_json::to_vec(&Reply::SyntaxError(message))?,
                         )?;
                         continue;
@@ -524,19 +556,27 @@ pub fn serve() -> io::Result<()> {
                 }
                 if let Some(input) = input {
                     cached_input = Some(input);
+                    canonical_input = None;
                 }
                 let input = cached_input.as_ref().ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidData, "missing regex subject")
                 })?;
-                let (_, flags, regex) = cached.as_ref().ok_or_else(|| {
+                let compiled = cached.as_ref().ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidData, "missing regex pattern")
                 })?;
+                let subject: &[u16] = if compiled.canonical {
+                    canonical_input.get_or_insert_with(|| {
+                        crate::regex_canonicalize::canonicalize_subject(input)
+                    })
+                } else {
+                    input
+                };
                 let found = if start > input.len() {
                     None
-                } else if flags.contains(['u', 'v']) {
-                    regex.find_from_utf16(input, start).next()
+                } else if compiled.flags.contains(['u', 'v']) {
+                    compiled.regex.find_from_utf16(subject, start).next()
                 } else {
-                    regex.find_from_ucs2(input, start).next()
+                    compiled.regex.find_from_ucs2(subject, start).next()
                 };
                 Reply::Found(found.map(|m| {
                     Match {
@@ -555,7 +595,7 @@ pub fn serve() -> io::Result<()> {
                     .collect(),
             ),
         };
-        frame_write(&mut output, &serde_json::to_vec(&reply)?)?;
+        frame_write(stream_out, &serde_json::to_vec(&reply)?)?;
     }
 }
 

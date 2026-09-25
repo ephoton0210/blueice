@@ -622,6 +622,15 @@ fn harness_compares_arrays_and_propagates_resource_errors() {
         "assert.throws(ReferenceError,()=>missing)",
         "assert.throws(SyntaxError,()=>new RegExp('['))",
         "assert.throws(Test262Error,()=>assert(false))",
+        // `StringLimit` is a catchable `RangeError` (see
+        // `RuntimeError::is_catchable`'s doc comment: unlike
+        // InstructionLimit/Heap/RegexTimeout, a string that merely hits
+        // BlueJS's own configured byte ceiling is not a sign anything is
+        // actually out of resources, and real engines throw a catchable
+        // RangeError here too), so `assert.throws`'s own try/catch now
+        // correctly intercepts it instead of it propagating past the whole
+        // script as a host abort.
+        "assert.throws(RangeError,()=>''.padStart(10000000))",
     ] {
         assert_eq!(
             vm.execute(&compile(&parse(source).unwrap()).unwrap())
@@ -643,13 +652,6 @@ fn harness_compares_arrays_and_propagates_resource_errors() {
             "{source}"
         );
     }
-    assert!(matches!(
-        vm.execute(
-            &compile(&parse("assert.throws(RangeError,()=>''.padStart(10000000))").unwrap())
-                .unwrap()
-        ),
-        Err(RuntimeError::StringLimit { .. })
-    ));
     assert_eq!(
         vm.execute(&compile(&parse("typeof Test262Error").unwrap()).unwrap())
             .unwrap(),
@@ -682,6 +684,193 @@ fn immutable_array_buffers_stay_immutable_across_test262_realms() {
     let source = "let other=$262.createRealm().global;let parentBuffer=new ArrayBuffer(4).transferToImmutable();let childView=new other.Uint8Array(parentBuffer);let childBuffer=new other.ArrayBuffer(4).transferToImmutable();let parentView=new Uint8Array(childBuffer);let fills=0;for(const view of [childView,parentView]){try{view.fill(1)}catch(error){if(error.name===\"TypeError\")fills++}}childView[0]=9;parentView[0]=9;let detaches=0;for(const buffer of [parentBuffer,childBuffer]){try{$262.detachArrayBuffer(buffer)}catch(error){if(error.name===\"TypeError\")detaches++}}fills===2&&detaches===2&&childView.buffer.immutable&&parentView.buffer.immutable&&childView[0]===0&&parentView[0]===0&&Reflect.set(parentView,0,5)===false&&parentBuffer.byteLength===4&&childBuffer.byteLength===4";
     assert_eq!(
         vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn iterator_wrapper_next_and_return_forward_a_foreign_receiver_to_its_owning_realm() {
+    // `thisWrap.next`/`thisWrap.return` are LOCAL %WrapForValidIteratorPrototype%
+    // natives (`NativeFunction::IteratorWrapperNext`/`IteratorWrapperReturn`).
+    // `.call(otherWrap)` invokes them with `otherWrap`, a foreign facade for a
+    // *different* Realm's real wrapper object, as the receiver -- the exact
+    // shape `staging/sm/Iterator/from/wrap-functions-on-other-global.js`
+    // exercises. The wrapped iterator here is constructed entirely inside the
+    // other Realm (`g.eval(...)`), so this checks the dispatch/membrane fix
+    // itself, independent of the separate, already-tracked limitation that a
+    // Realm cannot yet call back into a *parent*-owned iterator callback.
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        var g = $262.createRealm().global;
+        var otherWrap = g.eval(
+            'Iterator.from({next(){return {done:false,value:1};},return(){return {done:true,value:9};}})'
+        );
+        var thisWrap = Iterator.from({next(){return {done:true,value:-1};}});
+        var direct = otherWrap.next();
+        var viaCall = thisWrap.next.call(otherWrap);
+        var viaBind = thisWrap.next.bind(otherWrap)();
+        var viaReturn = thisWrap.return.call(otherWrap);
+        direct.done === false && direct.value === 1 &&
+            viaCall.done === false && viaCall.value === 1 &&
+            viaBind.done === false && viaBind.value === 1 &&
+            viaReturn.done === true && viaReturn.value === 9
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn iterator_wrapper_next_rejects_a_non_wrapper_foreign_receiver() {
+    // The membrane dispatch only special-cases a receiver with a live Test262
+    // foreign-reference record. A foreign object that is not itself an
+    // iterator wrapper (e.g. a plain foreign object) must still surface the
+    // ordinary "not an iterator wrapper" rejection rather than panicking on
+    // an `expect()` inside the new dispatch path.
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "let g=$262.createRealm().global;let thisWrap=Iterator.from({next(){return{done:true,value:0};}});let caught=false;try{thisWrap.next.call(g)}catch(error){caught=error instanceof TypeError}caught";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn array_buffer_slice_family_forwards_a_foreign_receiver_to_its_owning_realm() {
+    // `ArrayBuffer.prototype.slice`/`SharedArrayBuffer.prototype.slice`/
+    // `ArrayBuffer.prototype.sliceToImmutable` are LOCAL natives; calling them
+    // with a foreign-Realm buffer as the receiver (`Fn.call(g.buffer, ...)`)
+    // must run the real method against the real target in its owning Realm so
+    // `SpeciesConstructor` observes that Realm's own `ArrayBuffer`/species --
+    // exactly `slice-species.js`'s `ArrayBuffer.prototype.slice.call(g.a, 8,
+    // 16)` case (`b.constructor === g.ArrayBuffer`).
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let g = $262.createRealm().global;
+        g.eval('var a = new ArrayBuffer(4); new Uint8Array(a).set([10,20,30,40]);');
+        g.eval('var s = new SharedArrayBuffer(4); new Uint8Array(s).set([1,2,3,4]);');
+        let sliced = ArrayBuffer.prototype.slice.call(g.a, 1, 3);
+        let sharedSliced = SharedArrayBuffer.prototype.slice.call(g.s, 1, 3);
+        let immutableSliced = ArrayBuffer.prototype.sliceToImmutable.call(g.a, 1, 3);
+        let bytes = new Uint8Array(sliced);
+        let sharedBytes = new Uint8Array(sharedSliced);
+        let immutableBytes = new Uint8Array(immutableSliced);
+        sliced.constructor === g.ArrayBuffer && bytes.length === 2 &&
+            bytes[0] === 20 && bytes[1] === 30 &&
+            sharedSliced.constructor === g.SharedArrayBuffer &&
+            sharedBytes[0] === 2 && sharedBytes[1] === 3 &&
+            immutableSliced.constructor === g.ArrayBuffer && immutableSliced.immutable &&
+            immutableBytes[0] === 20 && immutableBytes[1] === 30
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn array_buffer_slice_rejects_a_non_buffer_foreign_receiver() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "let g=$262.createRealm().global;g.eval('var notABuffer = {}');let caught=false;try{ArrayBuffer.prototype.slice.call(g.notABuffer,0,1)}catch(error){caught=error instanceof TypeError}caught";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn array_buffer_slice_syncs_a_foreign_buffers_local_mirror_before_reading() {
+    // A local TypedArray constructed over a foreign ArrayBuffer writes
+    // through a *local mirror* (`test262_foreign_buffer_clone`) rather than
+    // the real Realm-owned buffer directly. Slicing that same foreign buffer
+    // through the new dispatch branch must observe that just-written mirror
+    // data -- i.e. `test262_sync_foreign_buffer_mirrors` really does run
+    // before the real `slice` executes in the owning Realm, not just when a
+    // foreign TypedArray method happens to run.
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let g = $262.createRealm().global;
+        g.eval('var a = new ArrayBuffer(4);');
+        let mirror = new Uint8Array(g.a);
+        mirror[0] = 42;
+        mirror[1] = 43;
+        let sliced = ArrayBuffer.prototype.slice.call(g.a, 0, 2);
+        let bytes = new Uint8Array(sliced);
+        bytes[0] === 42 && bytes[1] === 43
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn array_buffer_slice_resolves_a_cross_realm_species_result_to_a_synced_local_mirror() {
+    // The opposite direction from the foreign-*receiver* dispatch branch
+    // above: here the *receiver* is local, but `@@species` is a foreign
+    // constructor (`{[Symbol.species]: g.MyArrayBuffer}`), so the species
+    // construction legitimately returns an object that belongs to that other
+    // Test262 Realm. `species_result_buffer` must resolve that facade to a
+    // local mirror, let the ordinary validations run against it, and sync
+    // the write back into the real Realm-owned buffer -- this is the second,
+    // narrower gap `slice-species.js`'s full fixture also depends on, beyond
+    // the foreign-receiver dispatch branch itself.
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let g = $262.createRealm().global;
+        g.eval('var MyArrayBuffer = class MyArrayBuffer extends ArrayBuffer {};');
+        let local = new ArrayBuffer(4);
+        new Uint8Array(local).set([5, 6, 7, 8]);
+        local.constructor = { [Symbol.species]: g.MyArrayBuffer };
+        let sliced = local.slice(1, 3);
+        let bytes = new Uint8Array(sliced);
+        sliced.constructor === g.MyArrayBuffer && bytes[0] === 6 && bytes[1] === 7
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn an_error_raised_by_a_callback_belongs_to_the_callbacks_realm_not_the_native_actings() {
+    // `other`'s `Array.prototype.forEach` runs here on this Realm's array and
+    // calls this Realm's callback. What the callback throws (each of the four
+    // language error kinds, raised by the interpreter itself) is created in
+    // the callback's own Realm, not in the acting native's.
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let other = $262.createRealm().global;
+        let forEach = other.Array.prototype.forEach;
+        let kinds = [
+            [TypeError, other.TypeError, function () { null.property; }],
+            [ReferenceError, other.ReferenceError, function () { undeclared; }],
+            [RangeError, other.RangeError, function () { [].length = -1; }],
+            [SyntaxError, other.SyntaxError, function () { eval('('); }],
+        ];
+        kinds.every(([own, foreign, callback]) => {
+            let caught;
+            try { forEach.call([1], callback); } catch (error) { caught = error; }
+            return caught instanceof own && !(caught instanceof foreign);
+        })
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
             .unwrap(),
         Value::Bool(true)
     );

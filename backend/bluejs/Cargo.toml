@@ -25,3 +25,12 @@ jiff = { version = "=0.2.35", default-features = false, features = ["std", "tzdb
 jiff-tzdb = "=0.1.8"
 num-bigint = "=0.4.6"
 num-traits = "=0.2.19"
+
+# `vm/native_stack.rs` asks the OS how much stack the running thread has left
+# (the byte-budget call-depth guard). Both are plain API bindings, no native
+# build step; the version is already in the workspace lockfile.
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+libc = "=0.2.189"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_System_Threading"] }

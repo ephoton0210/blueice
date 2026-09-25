@@ -218,9 +218,11 @@ STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET = 6_000_000
 #   log2-approx.js                         325,000  (2,097 assertNear checks)
 #   es5ish-defineGetter-defineSetter.js    110,156  (about 60 descriptor checks)
 # A fixture that is too slow for that deadline even with fuel is deliberately
-# not listed (staging/sm/Array/toSpliced-dense.js needs 19.6M dispatches and
-# about 7 s; each staging/sm/Date/dst-offset-caching-N-of-8.js part needs
-# 100M-130M dispatches and runs for more than half a minute).
+# not listed here: it needs a wall-deadline allowance too, which only
+# `LARGE_FIXTURE_RESOURCES` below can express (staging/sm/Array/toSpliced-dense.js
+# needs 19.6M dispatches and about 7 s; each
+# staging/sm/Date/dst-offset-caching-N-of-8.js part needs 100M-130M dispatches
+# and runs for more than half a minute).
 FINITE_FIXTURE_INSTRUCTION_BUDGETS = {
     "staging/sm/Array/with-dense.js": 750_000,
     "staging/sm/JSON/parse-reviver-array-delete.js": 750_000,
@@ -631,6 +633,47 @@ def canblock_exclusion(flags):
     return None
 
 
+# A fixture whose own assertions contradict the *current* ECMA-262 draft --
+# verified by reading the live spec text, not inferred from disagreeing with
+# BlueJS -- and which upstream Test262 has already independently identified
+# and drafted a fix for, is a different thing from an engine gap ("fail") or
+# a capability BlueJS lacks ("unsupported"): the corpus itself hasn't caught
+# up yet. "stale_corpus" says exactly that -- this host already matches the
+# current draft (like every other engine that implements it), and the test
+# will presumably start passing on its own once the upstream fix lands,
+# without any BlueJS change. Keyed by exact path only, each entry documents
+# the live spec citation and the upstream issue/PR, never "we disagree with
+# this test" alone.
+STALE_CORPUS_FIXTURES = {
+    # Verified 2026-09-23 against the live ECMA-262 draft's
+    # `FunctionDeclarationInstantiation` Annex B web-compat insertion point
+    # (https://tc39.es/ecma262/multipage/ordinary-and-exotic-objects-behaviours.html#step-functiondeclarationinstantiation-web-compat-insertion-point):
+    # the `funcName is not "arguments"` guard there gates only *creating a
+    # new* var binding; the sibling step that runs when the block function
+    # is evaluated (`funcEnv.SetMutableBinding(funcName, funcObj, false)`)
+    # has no such guard and still overwrites an existing `arguments`
+    # binding. This fixture (2017) was written against an older edition
+    # that appended `"arguments"` to `parameterNames` itself, a step the
+    # current algorithm no longer has -- V8 and SpiderMonkey both match the
+    # current text, as does BlueJS. tc39/test262#5113 documents this exact
+    # contradiction (it conflicts with
+    # staging/sm/lexical-environment/block-scoped-functions-annex-b-arguments.js,
+    # which is NOT in this table -- that fixture already matches the
+    # current draft); tc39/test262#5112 is the open, unmerged fix.
+    "annexB/language/function-code/block-decl-func-skip-arguments.js": (
+        "contradicts the current FunctionDeclarationInstantiation Annex B "
+        "web-compat insertion point (verified against the live spec text); "
+        "see tc39/test262#5113, fix pending in tc39/test262#5112"
+    ),
+}
+
+
+def stale_corpus_reason(relative):
+    """The reason `relative` is a known-stale corpus fixture (see
+    STALE_CORPUS_FIXTURES), or None for every other path."""
+    return STALE_CORPUS_FIXTURES.get(relative)
+
+
 def fetch(destination):
     if destination.exists():
         raise ValueError(f"refusing to replace existing corpus: {destination}")
@@ -982,6 +1025,10 @@ def classify(reply, negative):
         # A host-capability declaration disagreeing with a fixture's own
         # applicability (see HOST_CAN_BLOCK), never a negative-error match.
         return "excluded"
+    if kind == "stale_corpus":
+        # The fixture contradicts the current spec text (see
+        # STALE_CORPUS_FIXTURES); it is recorded without being dispatched.
+        return "stale_corpus"
     if kind in {"timeout", "resource_error"}:
         return "timeout" if kind == "timeout" else "fail"
     if kind in {"harness_error", "worker_error"}:
@@ -1040,6 +1087,80 @@ LARGE_FIXTURE_RESOURCES = {
         "heap_limit": 128 * 1024 * 1024,
         "instruction_budget": 100_000_000,
         "timeout": 90,
+    },
+    # 21 string doublings from "0," peak at a single 2**22 + 3 (4,194,307)
+    # char string, which as UTF-16 is 8,388,614 bytes -- just past both the
+    # default 1 MiB per-string ceiling and, measured, past 8 MiB too (8 MiB
+    # is 8,388,608 bytes, 6 short); 16 MiB clears it with headroom. Parsing
+    # the resulting 2**21+1-element JSON array is what actually drives the
+    # heap requirement, not the peak string: measured to fail at a 256 MiB
+    # ceiling and pass at 512 MiB, so 512 MiB is the fixture's real
+    # (approximate) minimum, not a comfortable multiple of it -- this one
+    # genuinely needs that much live/tenured data, unlike the other
+    # entries here which use 3-4x headroom over a smaller minimum.
+    "staging/sm/JSON/parse-mega-huge-array.js": {
+        "string_limit": 16 * 1024 * 1024,
+        "heap_limit": 512 * 1024 * 1024,
+        "instruction_budget": 50_000_000,
+        "timeout": 20,
+    },
+    # `puff("1", 1 << 20)` builds x by doubling up to exactly 2**20 (1,048,576)
+    # chars -- 2,097,152 bytes as UTF-16, already past the default 1 MiB
+    # (1,048,576 byte) string ceiling, *before* the fixture's own try/catch
+    # even starts. This is not a catchability gap by itself: only enough
+    # headroom to let x (and the much smaller rep) finish building is
+    # needed. The fixture's actual `x.replace(/(.+)/g, rep)` deliberately
+    # tries to build a ~2**36-char result (rep is "$1" repeated ~32,768
+    # times, each substituting the whole ~2**20-char match) -- about 2**37
+    # bytes, i.e. 128 GiB, which must and will still exceed any reasonable
+    # limit here and throw. That throw is the fixture's own "OOM also
+    # acceptable" catch path, which needs `StringLimit` to be catchable
+    # (see `RuntimeError::is_catchable`) but not a bigger ceiling.
+    "staging/sm/String/replace-math.js": {
+        "string_limit": 4 * 1024 * 1024,
+    },
+    # `runDSTOffsetCachingTestsFraction` sweeps the full representable Unix
+    # timestamp range (through 2037) in fixed steps, computing a DST offset
+    # at each one; each of the 8 parts independently needs 100-130 million
+    # dispatches and runs for more than half a minute in a debug-interpreter
+    # worker. Measured passing (both modes, all 8 parts) at a 200 million
+    # dispatch / 70 s envelope -- comfortable margin over the documented
+    # minimum, not a tight multiple of it, since the per-part cost already
+    # varies within that 100-130 million range.
+    **{
+        f"staging/sm/Date/dst-offset-caching-{part}-of-8.js": {
+            "instruction_budget": 200_000_000,
+            "timeout": 70,
+        }
+        for part in range(1, 9)
+    },
+    # 100 years x 12 months x 31 days of two/four-digit-year Date-parsing
+    # comparisons. Measured: fails at 5 million dispatches, passes at 8
+    # million (about 1.3 s); 30 million is roughly 4x that measured minimum.
+    "staging/sm/Date/two-digit-years.js": {
+        "instruction_budget": 30_000_000,
+        "timeout": 10,
+    },
+    # 13 start indices x 7 delete counts x 7 insert counts x several array
+    # shapes. Measured: 19.6 million dispatches, about 7 s; 80 million is
+    # roughly 4x that measured minimum.
+    "staging/sm/Array/toSpliced-dense.js": {
+        "instruction_budget": 80_000_000,
+        "timeout": 20,
+    },
+    # `TestGC2` chains 99,999 objects through a WeakMap (`m.set(key, new
+    # Object)` per link) before `$262.gc()`. The chain itself is cheap in
+    # dispatches but the live object count exceeds the default 16 MiB
+    # managed-heap ceiling well before instruction fuel is the limiting
+    # factor; 64 MiB (about 4x the default ceiling) gives headroom without
+    # granting an unbounded heap. Measured: fails at 5 million dispatches
+    # (two ~100,000-iteration loops, each iteration a native `WeakMap`
+    # `set`/`get` call plus loop bookkeeping), passes at 10 million (about
+    # 3.5 s); 30 million is roughly 4x that measured minimum.
+    "staging/sm/regress/regress-1507322-deep-weakmap.js": {
+        "instruction_budget": 30_000_000,
+        "heap_limit": 64 * 1024 * 1024,
+        "timeout": 15,
     },
 }
 
@@ -1421,6 +1542,15 @@ def main():
                     # declaration already answers the fixture, so running it
                     # would only ever produce the wrong outcome for it.
                     results.append({"path": relative, "mode": mode, "status": "excluded", "expected": negative, "actual": {"kind": "excluded", "reason": exclusion}, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
+                    continue
+                stale_reason = stale_corpus_reason(relative)
+                if stale_reason is not None:
+                    # Never dispatched: this fixture's own assertions
+                    # contradict the current spec text (verified directly,
+                    # not inferred), so running it would only ever fail --
+                    # not because of an engine gap, but because the fixture
+                    # itself is stale pending an upstream Test262 fix.
+                    results.append({"path": relative, "mode": mode, "status": "stale_corpus", "expected": negative, "actual": {"kind": "stale_corpus", "reason": stale_reason}, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
                     continue
                 request = {"source": source_for_execution, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget, relative, source_for_execution)}
                 if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):

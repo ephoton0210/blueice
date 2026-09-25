@@ -61,6 +61,8 @@ mod primitive;
 mod program_abi;
 mod program_debug;
 mod property;
+mod regex_backrefs;
+mod regex_canonicalize;
 mod regex_escapes;
 mod regex_group_names;
 #[doc(hidden)]
@@ -75,7 +77,8 @@ mod vm;
 pub use ast::*;
 pub use bytecode::{Bytecode, Instruction, Opcode, MAY_USE_INLINE_CACHE};
 pub use compiler::{
-    compile, compile_module, compile_module_with_limit, compile_with_limit, CompileError,
+    compile, compile_module, compile_module_with_limit, compile_module_with_limits,
+    compile_with_limit, compile_with_limits, CompileError, CompileLimits,
 };
 pub use heap::{Heap, HeapConfig, HeapError, HeapStats, RootId};
 pub use page_runtime::{

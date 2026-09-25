@@ -252,16 +252,19 @@ pub struct SourceText {
 
 impl SourceText {
     /// The range `start..end` (byte offsets on character boundaries) of
-    /// `text`. Text longer than `u32::MAX` bytes has no representable range:
-    /// it yields the default, textless value rather than a wrong range.
+    /// `text`. Offsets larger than `u32::MAX` have no representable range:
+    /// they yield the default, textless value before checking text boundaries.
     pub(crate) fn range(text: &Arc<str>, start: usize, end: usize) -> Self {
-        debug_assert!(start <= end && text.is_char_boundary(start) && text.is_char_boundary(end));
+        debug_assert!(start <= end);
         match (u32::try_from(start), u32::try_from(end)) {
-            (Ok(start), Ok(end)) => Self {
-                text: Some(Arc::clone(text)),
-                start,
-                end,
-            },
+            (Ok(start_u32), Ok(end_u32)) => {
+                debug_assert!(text.is_char_boundary(start) && text.is_char_boundary(end));
+                Self {
+                    text: Some(Arc::clone(text)),
+                    start: start_u32,
+                    end: end_u32,
+                }
+            }
             _ => Self::default(),
         }
     }
@@ -1329,6 +1332,18 @@ mod tests {
                 ..Function::default()
             },
             Function::default()
+        );
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn source_text_rejects_offsets_larger_than_u32_without_allocating_the_text() {
+        let too_large = (u32::MAX as usize) + 1;
+        let text: Arc<str> = Arc::from("");
+        assert_eq!(SourceText::range(&text, 0, too_large).as_str(), None);
+        assert_eq!(
+            SourceText::range(&text, too_large, too_large).as_str(),
+            None
         );
     }
 

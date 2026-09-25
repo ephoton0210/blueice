@@ -19,12 +19,14 @@ impl Vm {
         Ok(if let Value::Object(id) = value {
             if let Some((_, _, callable, _)) = self.test262_foreign_reference(*id) {
                 callable
-            } else if self.test262_imported_callables.contains(id) {
-                // `$262.createRealm()` transports an object owned by the
-                // caller as an opaque local stand-in.  Its owner retains the
-                // forwarding record, while this realm retains the callable
-                // bit so `ShadowRealm` can create its own wrapper around it.
-                true
+            } else if let Some((_, _, callable, _)) = self.test262_reverse_reference(*id) {
+                // `$262.createRealm()` transports an object owned by a
+                // parent Test262 realm as a reverse-membrane facade in this
+                // realm. Its owner retains the forwarding record, while this
+                // realm retains the callable/constructible bits (and now, a
+                // live dispatch path back to the original) so `ShadowRealm`
+                // and ordinary call dispatch alike can treat it correctly.
+                callable
             } else if let Some((callable, _)) = self.heap.proxy_capabilities(*id)? {
                 callable
             } else {

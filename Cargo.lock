@@ -153,12 +153,14 @@ dependencies = [
  "icu_properties",
  "jiff",
  "jiff-tzdb",
+ "libc",
  "num-bigint",
  "num-traits",
  "regress",
  "serde",
  "serde_json",
  "unicode-normalization",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

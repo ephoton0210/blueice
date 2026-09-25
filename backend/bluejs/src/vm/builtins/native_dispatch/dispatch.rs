@@ -16,14 +16,24 @@ impl Vm {
         if receiver
             .object_id()
             .is_some_and(|id| self.test262_foreign_reference(id).is_some())
-            && matches!(
-                function,
-                NativeFunction::ArrayIteratorNext
-                    | NativeFunction::IteratorNext
-                    | NativeFunction::RegExpIteratorNext
-            )
         {
-            return self.test262_foreign_next(&receiver, &args);
+            // `next`/`return` are the only property names these foreign-
+            // receiver natives ever re-fetch: %WrapForValidIteratorPrototype%
+            // methods resolve to the same shared prototype method in every
+            // Realm, so re-fetching by name and calling it on the real
+            // (owning-Realm) receiver reproduces the internal-slot-based
+            // local behavior without needing a second membrane mechanism.
+            let property = match function {
+                NativeFunction::ArrayIteratorNext
+                | NativeFunction::IteratorNext
+                | NativeFunction::RegExpIteratorNext
+                | NativeFunction::IteratorWrapperNext => Some("next"),
+                NativeFunction::IteratorWrapperReturn => Some("return"),
+                _ => None,
+            };
+            if let Some(property) = property {
+                return self.test262_foreign_next(&receiver, property, &args);
+            }
         }
         if receiver
             .object_id()
@@ -46,6 +56,19 @@ impl Vm {
         {
             return self
                 .test262_foreign_typed_array_native_call(function, receiver, args, construct);
+        }
+        if receiver
+            .object_id()
+            .is_some_and(|id| self.test262_foreign_reference(id).is_some())
+            && matches!(
+                function,
+                NativeFunction::ArrayBufferSlice
+                    | NativeFunction::SharedArrayBufferSlice
+                    | NativeFunction::ArrayBufferSliceToImmutable
+            )
+        {
+            return self
+                .test262_foreign_array_buffer_native_call(function, receiver, args, construct);
         }
         if matches!(
             function,

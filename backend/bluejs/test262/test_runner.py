@@ -46,6 +46,8 @@ from run import (
     module_source_requests,
     module_sources,
     selected_files,
+    stale_corpus_reason,
+    STALE_CORPUS_FIXTURES,
 )
 
 
@@ -235,8 +237,53 @@ class RunnerTests(unittest.TestCase):
                     "instruction_budget": 100_000_000,
                     "timeout": 90,
                 },
+                "staging/sm/JSON/parse-mega-huge-array.js": {
+                    "string_limit": 16 * mib,
+                    "heap_limit": 512 * mib,
+                    "instruction_budget": 50_000_000,
+                    "timeout": 20,
+                },
+                "staging/sm/String/replace-math.js": {"string_limit": 4 * mib},
+                **{
+                    f"staging/sm/Date/dst-offset-caching-{part}-of-8.js": {
+                        "instruction_budget": 200_000_000,
+                        "timeout": 70,
+                    }
+                    for part in range(1, 9)
+                },
+                "staging/sm/Date/two-digit-years.js": {
+                    "instruction_budget": 30_000_000,
+                    "timeout": 10,
+                },
+                "staging/sm/Array/toSpliced-dense.js": {
+                    "instruction_budget": 80_000_000,
+                    "timeout": 20,
+                },
+                "staging/sm/regress/regress-1507322-deep-weakmap.js": {
+                    "instruction_budget": 30_000_000,
+                    "heap_limit": 64 * mib,
+                    "timeout": 15,
+                },
             },
         )
+        # The heavy-fuel/wall-clock staging fixtures each get their own exact
+        # dispatch budget and wall deadline; only the deep-WeakMap fixture
+        # also needs a bigger managed heap.
+        for part in range(1, 9):
+            dst = f"staging/sm/Date/dst-offset-caching-{part}-of-8.js"
+            self.assertEqual(instruction_budget({}, 100_000, dst), 200_000_000, dst)
+            self.assertEqual(case_timeout({}, 2, dst), 70, dst)
+            self.assertEqual(large_fixture_limits(dst), {}, dst)
+        two_digit_years = "staging/sm/Date/two-digit-years.js"
+        self.assertEqual(instruction_budget({}, 100_000, two_digit_years), 30_000_000)
+        self.assertEqual(case_timeout({}, 2, two_digit_years), 10)
+        to_spliced = "staging/sm/Array/toSpliced-dense.js"
+        self.assertEqual(instruction_budget({}, 100_000, to_spliced), 80_000_000)
+        self.assertEqual(case_timeout({}, 2, to_spliced), 20)
+        deep_weakmap = "staging/sm/regress/regress-1507322-deep-weakmap.js"
+        self.assertEqual(instruction_budget({}, 100_000, deep_weakmap), 30_000_000)
+        self.assertEqual(case_timeout({}, 2, deep_weakmap), 15)
+        self.assertEqual(large_fixture_limits(deep_weakmap), {"heap_limit": 64 * mib})
         # Dispatch budget and wall deadline follow the table, and only for
         # the entries that name them.
         long_running = "staging/sm/regress/regress-610026.js"
@@ -255,6 +302,17 @@ class RunnerTests(unittest.TestCase):
             {"string_limit": 64 * mib, "heap_limit": 128 * mib},
         )
         self.assertEqual(large_fixture_limits("staging/sm/regress/regress-610025.js"), {})
+        huge_array = "staging/sm/JSON/parse-mega-huge-array.js"
+        self.assertEqual(
+            large_fixture_limits(huge_array),
+            {"string_limit": 16 * mib, "heap_limit": 512 * mib},
+        )
+        self.assertEqual(instruction_budget({}, 100_000, huge_array), 50_000_000)
+        self.assertEqual(case_timeout({}, 2, huge_array), 20)
+        replace_math = "staging/sm/String/replace-math.js"
+        self.assertEqual(large_fixture_limits(replace_math), {"string_limit": 4 * mib})
+        self.assertEqual(instruction_budget({}, 100_000, replace_math), 100_000)
+        self.assertEqual(case_timeout({}, 2, replace_math), 2)
         # A larger default is never reduced.
         self.assertEqual(instruction_budget({}, 200_000_000, long_running), 200_000_000)
         self.assertEqual(case_timeout({}, 120, long_running), 120)
@@ -277,7 +335,9 @@ class RunnerTests(unittest.TestCase):
         # (identical in sloppy and strict mode), applies to the exact path
         # only, and leaves the ordinary 2 s wall deadline untouched. Fixtures
         # that are too slow for that deadline even with fuel (the
-        # dst-offset-caching parts, toSpliced-dense) must NOT be listed.
+        # dst-offset-caching parts, toSpliced-dense) must NOT be listed here:
+        # they need a wall-deadline allowance too, which only
+        # `LARGE_FIXTURE_RESOURCES` can express.
         self.assertEqual(
             FINITE_FIXTURE_INSTRUCTION_BUDGETS,
             {
@@ -293,14 +353,18 @@ class RunnerTests(unittest.TestCase):
             # Raises the floor only: a larger default is never reduced.
             self.assertEqual(instruction_budget({}, budget * 10, relative), budget * 10)
         for other in (
-            "staging/sm/Array/toSpliced-dense.js",
             "staging/sm/Array/with-dense-2.js",
-            "staging/sm/Date/dst-offset-caching-1-of-8.js",
             "built-ins/Array/prototype/with/index-bigger-or-eq-than-length.js",
         ):
             self.assertNotIn(other, FINITE_FIXTURE_INSTRUCTION_BUDGETS)
             self.assertEqual(instruction_budget({}, 100_000, other), 100_000, other)
             self.assertEqual(case_timeout({}, 2, other), 2, other)
+        for heavy in (
+            "staging/sm/Array/toSpliced-dense.js",
+            "staging/sm/Date/dst-offset-caching-1-of-8.js",
+        ):
+            self.assertNotIn(heavy, FINITE_FIXTURE_INSTRUCTION_BUDGETS)
+            self.assertIn(heavy, LARGE_FIXTURE_RESOURCES)
 
     def test_a_fixture_that_needs_a_huge_string_gets_an_exact_path_string_limit(self):
         # staging/sm/String/unicode-braced.js evaluates a source string built
@@ -369,6 +433,41 @@ class RunnerTests(unittest.TestCase):
         # Never satisfies a negative-error expectation either.
         expected = {"phase": "runtime", "type": "TypeError"}
         self.assertEqual(classify({"kind": "excluded", "reason": "x"}, expected), "excluded")
+
+    def test_stale_corpus_kind_classifies_as_its_own_status(self):
+        # `analyze.py` re-derives every record's status with `classify` and
+        # rejects the run if it disagrees with the runner's own, so a
+        # `stale_corpus` record (which carries a `stale_corpus` reply kind and
+        # never reaches the adapter) must round-trip rather than becoming "fail".
+        self.assertEqual(
+            classify({"kind": "stale_corpus", "reason": "x"}, None), "stale_corpus"
+        )
+        expected = {"phase": "runtime", "type": "TypeError"}
+        self.assertEqual(
+            classify({"kind": "stale_corpus", "reason": "x"}, expected), "stale_corpus"
+        )
+
+    def test_stale_corpus_fixtures_are_a_distinct_status_from_fail_unsupported_and_excluded(self):
+        # A fixture whose own assertions contradict the *current* ECMA-262
+        # draft (verified directly against the live spec text, not merely
+        # inferred from disagreement), with an upstream Test262 issue/fix
+        # already open, is not a BlueJS engine gap ("fail"), a capability
+        # this host lacks ("unsupported"), or a host capability declaration
+        # ("excluded") -- it is the corpus itself that hasn't caught up.
+        stale_path = "annexB/language/function-code/block-decl-func-skip-arguments.js"
+        self.assertIn(stale_path, STALE_CORPUS_FIXTURES)
+        reason = stale_corpus_reason(stale_path)
+        self.assertIsNotNone(reason)
+        self.assertIn("tc39/test262#5113", reason)
+        self.assertIn("tc39/test262#5112", reason)
+        # Every entry documents both the spec section verified and the
+        # upstream issue/PR -- never a bare "we disagree" -- and every
+        # unrelated path is unaffected.
+        for path, entry_reason in STALE_CORPUS_FIXTURES.items():
+            self.assertRegex(entry_reason, r"tc39/test262#\d+")
+        self.assertIsNone(stale_corpus_reason("staging/sm/lexical-environment/block-scoped-functions-annex-b-arguments.js"))
+        self.assertIsNone(stale_corpus_reason("annexB/language/function-code/block-decl-func-skip-arguments2.js"))
+        self.assertIsNone(stale_corpus_reason(""))
 
     def test_typed_array_harness_receives_a_bounded_extended_wall_deadline(self):
         self.assertEqual(case_timeout({"includes": []}, 2), 2)
