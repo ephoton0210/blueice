@@ -240,6 +240,10 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   Record spreads now retain nested event references through known interfaces,
   aliases, member sources, and nested literals; new outer fields stay writable
   and later overrides win. The event-v1 bridge rejects a copied holder write.
+  Known union record spreads retain every reachable event value, mark absent
+  fields optional, and cannot let a later optional spread erase an earlier
+  readonly event; the event-v1 bridge rejects a union-spread alias. Exhausting
+  the union/alias expansion budget emits a resource diagnostic.
   Opaque/unmodeled expression forms still need a sound policy, so do not
   claim full qualifier enforcement yet.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members

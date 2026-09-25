@@ -325,8 +325,21 @@ spread makes the new outer properties writable, and later explicit fields
 override spread fields; neither operation erases a nested event's readonly
 qualifier. The verified event-v1 bridge rejects a copied holder's event
 write before runtime. Record-result inference moved to its own MPL-licensed
-module, leaving the parent checker below 1500 lines. Opaque or union spread
-sources still need a conservative qualifier policy, so B4.2 remains open.
+module, leaving the parent checker below 1500 lines. Opaque or non-record
+spread sources still need a conservative qualifier policy, so B4.2 remains
+open.
+
+**Readonly through union record spreads (B4 partial):** A record spread from
+a known union of record/interface branches now joins each shared field's
+possible value types and marks a field optional when some branches omit it.
+A later write through the copied event therefore sees any reachable readonly
+event branch. An optional later spread cannot erase a previously present
+readonly event; a definite explicit field or required spread still overrides
+it. Mutable-only union spreads remain writable. The verified event-v1 bridge
+rejects a readonly union-spread alias before runtime. Exhausting the
+type-expansion budget emits a resource diagnostic rather than allowing an
+`unknown` alias to pass. Unknown/non-record branches still need a sound
+qualifier policy, so B4.2 remains open.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

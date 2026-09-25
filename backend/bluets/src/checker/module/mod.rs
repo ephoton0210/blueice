@@ -5,6 +5,7 @@
 //! Per-module checker state shared by binding and expression checks.
 
 use super::*;
+use std::cell::Cell;
 
 pub(super) struct ModuleChecker<'a> {
     project: &'a Project,
@@ -21,6 +22,7 @@ pub(super) struct ModuleChecker<'a> {
     function_implementations: BTreeSet<String>,
     type_parameters: BTreeSet<String>,
     max_type_expansions: usize,
+    record_spread_inference_exhausted: Cell<Option<(usize, usize)>>,
 }
 
 mod binding;

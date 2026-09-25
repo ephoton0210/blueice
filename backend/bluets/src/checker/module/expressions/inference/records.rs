@@ -20,14 +20,20 @@ impl<'a> ModuleChecker<'a> {
                     return Type::Unknown;
                 }
                 let spread = self.infer_expression(&tokens[start..end], scope);
-                let Some(spread) = self.expanded_record_fields(spread) else {
+                let (spread, exhausted) = self.expanded_record_fields(spread);
+                if exhausted && self.record_spread_inference_exhausted.get().is_none() {
+                    self.record_spread_inference_exhausted.set(Some((
+                        tokens.first().expect("record has opening brace").start,
+                        tokens.last().expect("record has closing brace").end,
+                    )));
+                }
+                let Some(spread) = spread else {
                     return Type::Unknown;
                 };
-                for mut field in spread {
+                for field in spread {
                     // Object spread creates a fresh writable property; the
                     // referenced field value retains its own readonly type.
-                    field.readonly = false;
-                    insert_inferred_record_field(&mut fields, field);
+                    insert_inferred_spread_field(&mut fields, field);
                 }
                 index = end + usize::from(tokens[end].is(","));
                 continue;
@@ -72,23 +78,58 @@ impl<'a> ModuleChecker<'a> {
         Type::Record(fields)
     }
 
-    fn expanded_record_fields(&self, mut value: Type) -> Option<Vec<TypeField>> {
+    fn expanded_record_fields(&self, value: Type) -> (Option<Vec<TypeField>>, bool) {
         let mut visited = HashSet::new();
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-        loop {
-            match value {
-                Type::Record(fields) => return Some(fields),
-                Type::Named { .. } => {
-                    value = instantiate_named(
-                        &value,
-                        &self.types,
-                        &mut visited,
-                        &mut budget,
-                        "record spread",
-                    )?;
-                }
-                _ => return None,
+        let fields = self.expand_record_fields(value, &mut visited, &mut budget);
+        (fields, budget.exhausted)
+    }
+
+    fn expand_record_fields(
+        &self,
+        value: Type,
+        visited: &mut HashSet<String>,
+        budget: &mut TypeExpansionBudget,
+    ) -> Option<Vec<TypeField>> {
+        match value {
+            Type::Record(fields) => Some(fields),
+            Type::Named { .. } => {
+                let expanded =
+                    instantiate_named(&value, &self.types, visited, budget, "record spread")?;
+                self.expand_record_fields(expanded, visited, budget)
             }
+            Type::Union(branches) if !branches.is_empty() => {
+                let branch_count = branches.len();
+                let mut fields: Vec<(TypeField, usize)> = Vec::new();
+                for branch in branches {
+                    if !budget.consume() {
+                        return None;
+                    }
+                    for field in self.expand_record_fields(branch, &mut visited.clone(), budget)? {
+                        if let Some((existing, count)) = fields
+                            .iter_mut()
+                            .find(|(existing, _)| existing.name == field.name)
+                        {
+                            existing.value =
+                                merge_conditional_branch_types(existing.value.clone(), field.value);
+                            existing.optional |= field.optional;
+                            *count += 1;
+                        } else {
+                            fields.push((field, 1));
+                        }
+                    }
+                }
+                Some(
+                    fields
+                        .into_iter()
+                        .map(|(mut field, count)| {
+                            field.optional |= count < branch_count;
+                            field
+                        })
+                        .collect(),
+                )
+            }
+            _ => None,
         }
     }
 }
@@ -115,4 +156,18 @@ fn insert_inferred_record_field(fields: &mut Vec<TypeField>, field: TypeField) {
     } else {
         fields.push(field);
     }
+}
+
+fn insert_inferred_spread_field(fields: &mut Vec<TypeField>, mut field: TypeField) {
+    field.readonly = false;
+    if field.optional {
+        if let Some(existing) = fields
+            .iter_mut()
+            .find(|existing| existing.name == field.name)
+        {
+            existing.value = merge_conditional_branch_types(existing.value.clone(), field.value);
+            return;
+        }
+    }
+    insert_inferred_record_field(fields, field);
 }
