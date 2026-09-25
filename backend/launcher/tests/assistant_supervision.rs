@@ -452,3 +452,112 @@ fn a_settings_file_that_is_present_but_invalid_stops_the_launcher() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("assistant settings"), "{stderr}");
 }
+
+fn control(launcher: &Launcher, request: &ControlRequest) -> ControlReply {
+    let mut stream = UnixStream::connect(&launcher.control).unwrap();
+    write_control_request(&mut stream, request).unwrap();
+    read_control_reply(&mut stream).unwrap()
+}
+
+fn proposing(model: &str, nice: i32) -> AssistantSettings {
+    AssistantSettings {
+        backend: BackendKind::Loopback,
+        loopback: Some(LoopbackSettings {
+            provider: "llamacpp".into(),
+            base_url: model.into(),
+            model: "local".into(),
+        }),
+        nice,
+        ..AssistantSettings::default()
+    }
+}
+
+#[test]
+fn an_agent_can_only_propose_and_the_rule_base_screens_before_anyone_is_asked() {
+    let model = model_base_url();
+    let settings = settings_file(&model);
+    let launcher = Launcher::with_assistant(settings.path());
+
+    // Blocked outright: a higher priority than a proposal may ask for.
+    match control(
+        &launcher,
+        &ControlRequest::ProposeAssistantSettings {
+            settings: proposing(&model, 0),
+        },
+    ) {
+        ControlReply::AssistantProposalBlocked { violations } => {
+            assert!(
+                violations.iter().any(|v| v.contains("higher priority")),
+                "{violations:?}"
+            )
+        }
+        other => panic!("expected Blocked, got {other:?}"),
+    }
+
+    // Accepted: it waits for the person and changes nothing.
+    let (id, digest) = match control(
+        &launcher,
+        &ControlRequest::ProposeAssistantSettings {
+            settings: proposing(&model, 12),
+        },
+    ) {
+        ControlReply::AssistantProposalAccepted { id, digest, diff } => {
+            assert_eq!(diff, ["Priority (nice): 10 -> 12"]);
+            (id, digest)
+        }
+        other => panic!("expected Accepted, got {other:?}"),
+    };
+    assert_eq!(digest.len(), 64);
+    match control(&launcher, &ControlRequest::AssistantProposalStatus { id }) {
+        ControlReply::AssistantProposalStatus { status } => assert_eq!(status, "pending"),
+        other => panic!("expected a status, got {other:?}"),
+    }
+    let on_disk = blueice_assistant_settings::load(settings.path()).unwrap();
+    assert_eq!(
+        on_disk.nice, 10,
+        "a proposal alone must not change the file"
+    );
+
+    // Only one may wait at a time.
+    match control(
+        &launcher,
+        &ControlRequest::ProposeAssistantSettings {
+            settings: proposing(&model, 13),
+        },
+    ) {
+        ControlReply::AssistantProposalRefused { reason } => {
+            assert!(reason.contains("already waiting"), "{reason}")
+        }
+        other => panic!("expected Refused, got {other:?}"),
+    }
+    match control(
+        &launcher,
+        &ControlRequest::AssistantProposalStatus { id: id + 100 },
+    ) {
+        ControlReply::AssistantProposalStatus { status } => assert_eq!(status, "unknown"),
+        other => panic!("expected a status, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_launcher_without_an_assistant_refuses_proposals() {
+    let launcher = Launcher::spawn(&[]);
+    match control(
+        &launcher,
+        &ControlRequest::ProposeAssistantSettings {
+            settings: AssistantSettings::default(),
+        },
+    ) {
+        ControlReply::AssistantProposalRefused { reason } => {
+            assert!(reason.contains("no assistant"), "{reason}")
+        }
+        other => panic!("expected Refused, got {other:?}"),
+    }
+    match control(
+        &launcher,
+        &ControlRequest::AssistantProposalStatus { id: 1 },
+    ) {
+        ControlReply::AssistantProposalRefused { .. } => {}
+        other => panic!("expected Refused, got {other:?}"),
+    }
+}

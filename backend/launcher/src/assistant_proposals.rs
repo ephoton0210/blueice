@@ -47,6 +47,20 @@ pub enum Status {
     Unknown,
 }
 
+impl Status {
+    /// A stable lowercase word for the wire and for logs.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Status::Pending => "pending",
+            Status::Approved => "approved",
+            Status::Denied => "denied",
+            Status::Expired => "expired",
+            Status::Stale => "stale",
+            Status::Unknown => "unknown",
+        }
+    }
+}
+
 /// What the person is asked to decide.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingView {
@@ -507,6 +521,22 @@ mod tests {
             propose(&mut store, later, 12),
             ProposeOutcome::Accepted { .. }
         ));
+    }
+
+    #[test]
+    fn every_status_has_a_distinct_wire_word() {
+        let words: std::collections::HashSet<_> = [
+            Status::Pending,
+            Status::Approved,
+            Status::Denied,
+            Status::Expired,
+            Status::Stale,
+            Status::Unknown,
+        ]
+        .into_iter()
+        .map(Status::as_str)
+        .collect();
+        assert_eq!(words.len(), 6);
     }
 
     #[test]

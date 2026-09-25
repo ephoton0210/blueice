@@ -38,6 +38,7 @@
 
 pub mod assistant;
 pub mod assistant_proposals;
+pub mod assistant_settings_service;
 pub mod control;
 pub mod memory_pressure;
 pub mod supervisor;
@@ -344,6 +345,9 @@ struct Broker {
     /// core receives the same, so live translation and assistant tasks keep
     /// working across a cutover.
     assistant: Option<AssistantWiring>,
+    /// Owner of the assistant's settings and pending proposals, when the
+    /// launcher supervises an assistant.
+    assistant_settings: Option<Arc<assistant_settings_service::AssistantSettingsService>>,
     /// Signaled exactly once, by whichever generation-tagged broadcast
     /// thread's own death is NOT a deliberate cutover supersession --
     /// what [`run_broker`] blocks on to know when the whole launcher
@@ -1033,6 +1037,41 @@ fn handle_control_connection(mut conn: UnixStream, broker: &Arc<Broker>) -> io::
                 },
             }
         }
+        control::ControlRequest::ProposeAssistantSettings { settings } => {
+            match broker.assistant_settings.as_ref() {
+                None => control::ControlReply::AssistantProposalRefused {
+                    reason: "this launcher supervises no assistant".to_string(),
+                },
+                Some(service) => match service.propose(settings) {
+                    assistant_proposals::ProposeOutcome::Accepted { id, digest, diff } => {
+                        control::ControlReply::AssistantProposalAccepted { id, digest, diff }
+                    }
+                    assistant_proposals::ProposeOutcome::Blocked(violations) => {
+                        control::ControlReply::AssistantProposalBlocked { violations }
+                    }
+                    assistant_proposals::ProposeOutcome::PendingExists => {
+                        control::ControlReply::AssistantProposalRefused {
+                            reason: "a proposal is already waiting for the person's decision".to_string(),
+                        }
+                    }
+                    assistant_proposals::ProposeOutcome::RateLimited => {
+                        control::ControlReply::AssistantProposalRefused {
+                            reason: "too many proposals this hour".to_string(),
+                        }
+                    }
+                },
+            }
+        }
+        control::ControlRequest::AssistantProposalStatus { id } => {
+            match broker.assistant_settings.as_ref() {
+                None => control::ControlReply::AssistantProposalRefused {
+                    reason: "this launcher supervises no assistant".to_string(),
+                },
+                Some(service) => control::ControlReply::AssistantProposalStatus {
+                    status: service.proposal_status(id).as_str().to_string(),
+                },
+            }
+        }
     };
     control::write_control_reply(&mut conn, &reply)
 }
@@ -1101,6 +1140,7 @@ pub fn run_broker_with_trusted_window(
         BrokerOptions {
             trusted_window,
             auto_update_interval: None,
+            assistant_settings: None,
         },
     )
 }
@@ -1113,6 +1153,9 @@ pub struct BrokerOptions {
     /// When set, the launcher polls its `blueice-core` binary this often and
     /// cuts over to a newer one on its own (see [`update_watch`]).
     pub auto_update_interval: Option<Duration>,
+    /// The assistant's settings owner, when one is supervised. Agents reach it
+    /// only through the operator-control socket's propose-only requests.
+    pub assistant_settings: Option<Arc<assistant_settings_service::AssistantSettingsService>>,
 }
 
 /// The path of the `blueice-core` binary this launcher spawns, the one an
@@ -1134,6 +1177,7 @@ pub fn run_broker_with_options(
     let BrokerOptions {
         mut trusted_window,
         auto_update_interval,
+        assistant_settings,
     } = options;
     let frame_dir = core.frame_dir.clone();
     let extension_manifest = core.extension_manifest.clone();
@@ -1156,6 +1200,7 @@ pub fn run_broker_with_options(
         gatekeeper_socket,
         extension_manifest,
         assistant,
+        assistant_settings,
         done: done_tx.clone(),
     });
 
@@ -2300,7 +2345,7 @@ mod tests {
             active_core: Mutex::new(Some(core)),
             width: 320.0, height: 200.0,
             frame_dir: root.join("frames"), gatekeeper_socket: root.join("gate.sock"),
-            extension_manifest: None, assistant: None, done,
+            extension_manifest: None, assistant: None, assistant_settings: None, done,
         });
         let change = |generation, id: &str, capability: &str, action| {
             trusted_window::TrustedWindowRequest::Change {
@@ -2462,7 +2507,7 @@ mod tests {
             width: 320.0, height: 200.0,
             frame_dir: root.join("frames"),
             gatekeeper_socket: root.join("unused-gatekeeper.sock"),
-            extension_manifest: Some(manifest), assistant: None, done,
+            extension_manifest: Some(manifest), assistant: None, assistant_settings: None, done,
         });
         let mut requests = Vec::new();
         for request in [

@@ -14,6 +14,7 @@
 //! `UnixListener` to that already-tested logic.
 
 use blueice_launcher::assistant::{sibling_assistant_binary, AssistantSupervisor};
+use blueice_launcher::assistant_settings_service::AssistantSettingsService;
 use blueice_launcher::AssistantWiring;
 use blueice_launcher::memory_pressure::{self, SystemMemorySource};
 use blueice_launcher::supervisor::ProcessRegistry;
@@ -181,6 +182,9 @@ fn main() -> ExitCode {
     // no transfer is active or queued.
     let registry = Arc::new(Mutex::new(ProcessRegistry::default_fleet(Instant::now())));
 
+    // The supervisor and the service that owns its settings. (The service holds
+    // only a weak reference, so `drop(assistant)` below really stops the child.)
+    let mut assistant_settings_service = None;
     let assistant = match args.assistant_settings.as_deref() {
         None => None,
         Some(path) => {
@@ -195,7 +199,15 @@ fn main() -> ExitCode {
                 sibling_assistant_binary(&std::env::current_exe().unwrap_or_default())
             });
             match AssistantSupervisor::start(&settings, binary, Arc::clone(&registry)) {
-                Ok(assistant) => Some(assistant),
+                Ok(assistant) => {
+                    let assistant = Arc::new(assistant);
+                    assistant_settings_service = Some(Arc::new(AssistantSettingsService::new(
+                        path.to_path_buf(),
+                        settings.clone(),
+                        Arc::downgrade(&assistant),
+                    )));
+                    Some(assistant)
+                }
                 Err(e) => {
                     eprintln!("blueice-launcher: could not supervise the assistant: {e}");
                     return ExitCode::FAILURE;
@@ -299,6 +311,7 @@ fn main() -> ExitCode {
         BrokerOptions {
             trusted_window,
             auto_update_interval: args.auto_update,
+            assistant_settings: assistant_settings_service,
         },
     );
 

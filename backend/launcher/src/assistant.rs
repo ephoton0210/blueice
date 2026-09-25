@@ -425,6 +425,13 @@ impl AssistantSupervisor {
         Ok(supervisor)
     }
 
+    /// The private socket the child is started on (tests read files the fake
+    /// assistant leaves beside it).
+    #[cfg(test)]
+    pub(crate) fn private_socket_for_tests(&self) -> PathBuf {
+        self.inner.private_socket.clone()
+    }
+
     /// The socket `core` is given as `--assistant-socket`.
     pub fn public_socket(&self) -> &Path {
         &self.public_socket

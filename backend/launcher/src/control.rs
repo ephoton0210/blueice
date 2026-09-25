@@ -42,6 +42,13 @@ pub enum ControlRequest {
     /// This is never authority to grant or revoke a capability: the control
     /// socket can also be reached by non-window clients of the same user.
     InspectExtensionPermissions,
+    /// An agent's proposal to change the assistant's settings. It can only
+    /// *propose*: the deterministic rule-base screens it, and nothing changes
+    /// until the person approves it in the trusted window (which this socket
+    /// cannot reach). `phase-7-local-ai/PLAN.md`, R5c.
+    ProposeAssistantSettings { settings: blueice_assistant_settings::AssistantSettings },
+    /// Read-only: where a proposal stands.
+    AssistantProposalStatus { id: u64 },
 }
 
 /// The installed package and its currently effective optional grants, read
@@ -85,6 +92,17 @@ pub enum ControlReply {
     },
     /// Inspection failed or timed out; no permission mutation is attempted.
     ExtensionPermissionsUnavailable { reason: String },
+    /// The proposal passed the rule-base and now waits for the person's
+    /// approval. Nothing has changed. `digest` names exactly what they will see.
+    AssistantProposalAccepted { id: u64, digest: String, diff: Vec<String> },
+    /// The rule-base refused the proposal; each entry is one violated rule.
+    AssistantProposalBlocked { violations: Vec<String> },
+    /// The proposal could not be considered (one is already pending, too many
+    /// this hour, or the launcher supervises no assistant).
+    AssistantProposalRefused { reason: String },
+    /// Reply to [`ControlRequest::AssistantProposalStatus`]: `pending`,
+    /// `approved`, `denied`, `expired`, `stale`, or `unknown`.
+    AssistantProposalStatus { status: String },
 }
 
 /// The control socket path, mirroring
