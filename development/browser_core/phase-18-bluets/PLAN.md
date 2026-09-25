@@ -292,6 +292,17 @@ unchanged. The expression inference method moved to its own
 MPL-licensed module, leaving the parent expression checker below 1500 lines.
 Arithmetic/bitwise compound results and opaque expression forms remain open.
 
+**Readonly through logical expression results (B4 partial):** Non-boolean
+`&&` and `||` now conservatively merge their known operand types instead
+of erasing both to `unknown`; the existing two-boolean result stays boolean.
+This carries an event's readonly qualifier through aliases and direct
+receivers when either reachable result is that event, while mutable-only
+results remain writable. The verified event-v1 bridge rejects an `||` alias
+before runtime. General `&&`, `||`, and `??` inference has its own fixed
+128-operator resource boundary, separate from logical-assignment accounting.
+Unknown operands and other opaque expression forms still require a sound
+qualifier policy, so B4.2 remains open.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

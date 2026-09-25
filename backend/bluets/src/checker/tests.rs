@@ -10,6 +10,7 @@ mod readonly;
 mod readonly_assertions;
 mod readonly_assignment_results;
 mod readonly_logical_assignment_results;
+mod readonly_logical_results;
 mod readonly_sequence;
 
 #[test]
@@ -674,8 +675,8 @@ fn keeps_bounded_expression_inference_structural() {
     assert_eq!(alternate[0].text, "3");
 
     assert_eq!(
-        infer_boolean_logical_expression(Type::Number, Type::Boolean),
-        Type::Unknown
+        infer_logical_expression(Type::Number, Type::Boolean),
+        Type::Union(vec![Type::Number, Type::Boolean])
     );
     assert_eq!(
         merge_conditional_branch_types(Type::Number, Type::String),

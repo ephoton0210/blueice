@@ -911,6 +911,21 @@ impl<'a> ModuleChecker<'a> {
             );
             return;
         }
+        if tokens
+            .iter()
+            .filter(|token| INFERRED_LOGICAL_EXPRESSION_OPERATORS.contains(&token.text.as_str()))
+            .count()
+            > MAX_LOGICAL_EXPRESSION_INFERENCE_OPERATORS
+        {
+            self.type_error(
+                span,
+                format!(
+                    "expression exceeds its {MAX_LOGICAL_EXPRESSION_INFERENCE_OPERATORS}-logical expression inference limit"
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
+            return;
+        }
         if tokens.iter().filter(|token| token.is(".")).count() > self.max_type_expansions {
             self.type_error(
                 span,

@@ -230,6 +230,10 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   and `??=` now conservatively retain known readonly result branches,
   with a 128-logical-operator inference limit and a public event-v1 bridge
   rejection; arithmetic/bitwise compound results remain open.
+  Non-boolean `&&`/`||` now retain the union of known result branches rather
+  than dropping to `unknown`, preserving readonly through aliases and direct
+  receivers; the event-v1 bridge rejects an `||` alias. General logical
+  inference has a separate 128-operator resource diagnostic, including `??`.
   Opaque/unmodeled expression forms still need a sound policy, so do not
   claim full qualifier enforcement yet.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members

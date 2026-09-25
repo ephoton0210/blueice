@@ -21,6 +21,8 @@ use properties::{property_type, PropertyType, TypeExpansionBudget};
 const MAX_LITERAL_INFERENCE_CONTAINERS: usize = 128;
 const MAX_LOGICAL_ASSIGNMENT_INFERENCE_OPERATORS: usize = 128;
 const INFERRED_LOGICAL_ASSIGNMENT_OPERATORS: &[&str] = &["&&=", "||=", "??="];
+const MAX_LOGICAL_EXPRESSION_INFERENCE_OPERATORS: usize = 128;
+const INFERRED_LOGICAL_EXPRESSION_OPERATORS: &[&str] = &["&&", "||", "??"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolKind {
@@ -1128,11 +1130,11 @@ fn conditional_expression_parts(tokens: &[Token]) -> Option<(&[Token], &[Token],
     None
 }
 
-fn infer_boolean_logical_expression(left: Type, right: Type) -> Type {
+fn infer_logical_expression(left: Type, right: Type) -> Type {
     if left == Type::Boolean && right == Type::Boolean {
         Type::Boolean
     } else {
-        Type::Unknown
+        merge_conditional_branch_types(left, right)
     }
 }
 

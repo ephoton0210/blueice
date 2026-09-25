@@ -28,6 +28,14 @@ impl<'a> ModuleChecker<'a> {
         {
             return Type::Unknown;
         }
+        if tokens
+            .iter()
+            .filter(|token| INFERRED_LOGICAL_EXPRESSION_OPERATORS.contains(&token.text.as_str()))
+            .count()
+            > MAX_LOGICAL_EXPRESSION_INFERENCE_OPERATORS
+        {
+            return Type::Unknown;
+        }
         // Each chained member call recursively infers its receiver. Keep
         // that recursion under the compiler's existing expansion envelope.
         if tokens.iter().filter(|token| token.is(".")).count() > self.max_type_expansions {
@@ -134,7 +142,7 @@ impl<'a> ModuleChecker<'a> {
         if let Some((left, _, right)) = top_level_binary_parts(tokens, &["||"], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
-            return infer_boolean_logical_expression(
+            return infer_logical_expression(
                 self.infer_expression(left, scope),
                 self.infer_expression(right, scope),
             );
@@ -142,7 +150,7 @@ impl<'a> ModuleChecker<'a> {
         if let Some((left, _, right)) = top_level_binary_parts(tokens, &["&&"], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
-            return infer_boolean_logical_expression(
+            return infer_logical_expression(
                 self.infer_expression(left, scope),
                 self.infer_expression(right, scope),
             );
