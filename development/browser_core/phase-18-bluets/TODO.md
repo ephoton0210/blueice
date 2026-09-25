@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.1.2.3.2.** Install the complete receipt-gated public batch
-route and bump the debugger protocol with its focused tests.
+**Current leaf: C2.1.2.3.3.** Prove the v36 batch route and its failure cases
+on real Launcher-supervised BlueTS debugger sockets.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -313,7 +313,7 @@ channel with explicit owner/client grants.
     - [x] **C2.1.2.2** Verify that the retained direct-lowering map resolves actual nested classic and module child/root stack safe points through the child/core exact-span route; repair any code-unit or module mapping gaps. BlueJS now records compiler-owned root statement instruction ranges and direct function-child indices. The retained map binds exactly those root instructions and their corresponding child code-unit instructions to original BlueTS statement/declaration spans, leaving root Halt unbound. Direct classic/module and real child/core paused-stack tests verify root Call/child entry, UTF-8 bytes, and UTF-16 columns after a non-BMP prefix.
     - [ ] **C2.1.2.3** Add the receipt-gated public stack-coordinate request/reply, bump the debugger protocol only with the complete route, and prove nested/module frames, stale stack and source receipts, and bound/unbound behavior on real BlueTS debugger sockets; then check off C2.1.2 and C2.1.
       - [x] **C2.1.2.3.1** Define bounded target/reply value types with exact ordered frame and per-frame same-parent source identities; test malformed and mismatched values without adding wire variants or changing v35. The request carries the complete prior Stack snapshot and one source per frame; the reply carries that stack and ordered exact spans. Value validation enforces 1–64 frames, root/nested shape, same program/metadata parent, equal lengths, span order, and original coordinate well-formedness. IPC v35 remains unchanged.
-      - [ ] **C2.1.2.3.2** Install the complete receipt-gated core batch operation, add the request/reply wire and protocol bump together, and prove dispatch with focused core/IPC tests.
+      - [x] **C2.1.2.3.2** Install the complete receipt-gated core batch operation, add the request/reply wire and protocol bump together, and prove dispatch with focused core/IPC tests. Public debugger v36 adds GetStackCoordinates/StackCoordinates. Core checks the explicit span grant and each same-stream receipt, re-reads the entire paused Stack snapshot, and returns only all verified child spans; changed stacks or any unbound frame fail without partial coordinates. IPC round-trip, core mock dispatch, and workspace Clippy pass.
       - [ ] **C2.1.2.3.3** Prove nested classic/module frames, stale stack/source receipts, and bound/unbound batch behavior on real Launcher-supervised BlueTS debugger sockets; then check off C2.1.2.3, C2.1.2, and C2.1.
 - [ ] **C2.2** Return authorized values without guessed handles, excess depth,
   source text, or cross-realm references.

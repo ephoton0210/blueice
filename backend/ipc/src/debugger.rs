@@ -80,7 +80,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 35;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 36;
 
 pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -2549,6 +2549,12 @@ pub enum DebuggerRequest {
         frame: Option<DebuggerFrame>,
         max_frames: u32,
     },
+    /// Resolves original BlueTS coordinates for an exact previously returned
+    /// Stack snapshot. Requires same-stream metadata/source receipts and the
+    /// independent safe-point-span grant for every frame.
+    GetStackCoordinates {
+        target: DebuggerStackCoordinatesTarget,
+    },
     /// Reads one frame's active lexical slots only when its exact currently
     /// paused safe point still equals the caller's expected location.
     GetScopes {
@@ -2684,6 +2690,7 @@ pub enum DebuggerReply {
         frame: DebuggerFrame,
     },
     Stack(DebuggerStackSnapshot),
+    StackCoordinates(DebuggerStackCoordinates),
     Scopes(DebuggerScopeSnapshot),
     ExecutionSourceSpanStepRequested {
         safe_point: DebuggerSafePoint,
@@ -2781,6 +2788,7 @@ pub fn negotiate(
         | DebuggerRequest::StepNestedInstruction { .. }
         | DebuggerRequest::ResumeNestedExecution { .. }
         | DebuggerRequest::GetStack { .. }
+        | DebuggerRequest::GetStackCoordinates { .. }
         | DebuggerRequest::GetScopes { .. }
         | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
         | DebuggerRequest::Unknown => DebuggerReply::Error {
@@ -3023,6 +3031,16 @@ mod tests {
             .unwrap(),
             coordinates
         );
+        let request = DebuggerRequest::GetStackCoordinates {
+            target: target.clone(),
+        };
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_request(&mut sender, &request).unwrap();
+        assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
+        let reply = DebuggerReply::StackCoordinates(coordinates.clone());
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_reply(&mut sender, &reply).unwrap();
+        assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
         let mut malformed_reply = coordinates.clone();
         malformed_reply.spans.swap(0, 1);
         assert!(!malformed_reply.is_well_formed());

@@ -859,6 +859,21 @@ the future dispatcher must verify same-stream receipts, authorization, and
 the entire current stack before making any child span queries. No request or
 reply variant exists yet, and public debugger v35 is unchanged.
 
+**Public stack-coordinate batch route (C2.1.2.3.2):** Debugger protocol v36
+adds `GetStackCoordinates`/`StackCoordinates` only after the complete core
+route is installed. It is not part of the source-free base `GetStack` reply.
+The handler requires the existing explicit `OpaqueInventory`,
+`OpaqueSourceInventory`, and `OpaqueSafePointSpan` grants and same-stream
+metadata/source receipts for every ordered frame. It reuses the exact Stack
+target checks, reads the currently paused bounded stack, and compares the
+entire expected program/frame/safe-point/truncation snapshot before asking
+the private child for any original span. Each child response must match its
+requested source and be well formed; one failure returns only an error, never
+a partial vector. A moved stack returns an execution-state error before a
+span query. IPC round-trip and core dispatch tests cover the v36 contract,
+missing/cross-stream receipts, guessed IDs, moved frames, and an unbound
+later frame. Launcher-supervised socket acceptance remains C2.1.2.3.3.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

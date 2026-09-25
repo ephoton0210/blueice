@@ -34,7 +34,8 @@ use blueice_ipc::debugger::{
     DebuggerErrorCode, DebuggerExecutionState, DebuggerFrame, DebuggerMetadataCapability,
     DebuggerMetadataSessionAuthorization, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
     DebuggerRequest, DebuggerSafePoint, DebuggerScopeEntry, DebuggerScopeSnapshot,
-    DebuggerStackSnapshot, DebuggerStaticMetadataContractDisplay, DebuggerStaticMetadataContractId,
+    DebuggerStackCoordinates, DebuggerStackCoordinatesTarget, DebuggerStackSnapshot,
+    DebuggerStaticMetadataContractDisplay, DebuggerStaticMetadataContractId,
     DebuggerStaticMetadataContractLocation, DebuggerStaticMetadataContractLocationTarget,
     DebuggerStaticMetadataContractValidation, DebuggerStaticMetadataHandle,
     DebuggerStaticMetadataLoweringSummary, DebuggerStaticMetadataSafePointSpan,
@@ -375,6 +376,9 @@ pub fn handle_debugger_request_with_javascript_executor(
             unavailable_static_metadata_source_span_step()
         }
         DebuggerRequest::GetStack { .. } => unavailable_stack(),
+        DebuggerRequest::GetStackCoordinates { .. } => {
+            unavailable_static_metadata_safe_point_span()
+        }
         DebuggerRequest::GetScopes { .. } => unavailable_scopes(),
         DebuggerRequest::Hello { .. } => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
@@ -581,6 +585,9 @@ fn handle_debugger_request_with_child_locations(
             frame,
             max_frames,
         } => child_stack(tabs, locations, program, frame, max_frames),
+        DebuggerRequest::GetStackCoordinates { target } => {
+            child_stack_coordinates(tabs, locations, metadata_session, target)
+        }
         DebuggerRequest::GetScopes {
             program,
             frame,
@@ -3051,6 +3058,91 @@ fn child_stack(
             .collect(),
         stack_truncated: snapshot.stack_truncated,
     })
+}
+
+fn child_stack_coordinates(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    target: DebuggerStackCoordinatesTarget,
+) -> DebuggerReply {
+    if !target.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger stack-coordinate target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_safe_point_span();
+    };
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !metadata_session.permits(DebuggerMetadataCapability::OpaqueSourceInventory)
+        || !metadata_session.observed_metadata(target.sources[0].metadata)
+        || !target
+            .sources
+            .iter()
+            .all(|source| metadata_session.observed_source(*source))
+    {
+        return unavailable_static_metadata_safe_point_span();
+    }
+    let expected = target.expected_stack;
+    let realm = expected.program.realm;
+    let capabilities =
+        describe_child_location_capabilities(tabs, locations, Some(metadata_session), realm);
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueSafePointSpan,
+    ) else {
+        return unavailable_static_metadata_safe_point_span();
+    };
+    if !authorization.permits(realm, DebuggerMetadataCapability::OpaqueSafePointSpan) {
+        return unavailable_static_metadata_safe_point_span();
+    }
+    let current = match child_stack(
+        tabs,
+        locations,
+        expected.program,
+        expected.frame,
+        expected.safe_points.len() as u32,
+    ) {
+        DebuggerReply::Stack(snapshot) => snapshot,
+        other => return other,
+    };
+    if current != expected {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "debugger stack moved from the expected safe points".to_string(),
+        };
+    }
+    let mut spans = Vec::with_capacity(current.safe_points.len());
+    for (safe_point, source) in current.safe_points.iter().zip(target.sources) {
+        match describe_child_static_metadata_safe_point_span(
+            tabs,
+            locations,
+            Some(metadata_session),
+            DebuggerStaticMetadataSafePointSpanTarget {
+                safe_point: *safe_point,
+                source,
+            },
+        ) {
+            DebuggerReply::StaticMetadataSafePointSpan(span) => spans.push(span),
+            other => return other,
+        }
+    }
+    let result = DebuggerStackCoordinates {
+        stack: current,
+        spans,
+    };
+    if !result.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger stack-coordinate result".to_string(),
+        };
+    }
+    DebuggerReply::StackCoordinates(result)
 }
 
 fn child_scopes(
@@ -8012,5 +8104,359 @@ mod tests {
                 },
             }
         );
+    }
+
+    struct StackCoordinateLocations {
+        moved_root_offset: u32,
+        unbound_root: bool,
+        span_calls: usize,
+    }
+
+    impl PageJavaScriptDebuggerLocations for StackCoordinateLocations {
+        fn debugger_has_live_realm(&mut self, _tab_id: TabId, _generation: u64) -> bool {
+            true
+        }
+
+        fn max_debugger_safe_points_per_program(&self) -> usize {
+            2
+        }
+
+        fn debugger_programs(
+            &mut self,
+            _tab_id: TabId,
+            _generation: u64,
+        ) -> Result<Vec<JavaScriptPageDebuggerProgram>, JavaScriptPageDebuggerError> {
+            Ok(vec![JavaScriptPageDebuggerProgram {
+                program_handle: 7,
+                program_generation: 3,
+            }])
+        }
+
+        fn debugger_safe_points(
+            &mut self,
+            _tab_id: TabId,
+            _generation: u64,
+            _program_handle: u64,
+            _program_generation: u64,
+        ) -> Result<
+            Vec<crate::script::javascript::JavaScriptPageDebuggerSafePoint>,
+            JavaScriptPageDebuggerError,
+        > {
+            Ok(Vec::new())
+        }
+
+        fn validate_debugger_safe_point(
+            &mut self,
+            _tab_id: TabId,
+            _generation: u64,
+            _program_handle: u64,
+            _program_generation: u64,
+            _code_unit_ordinal: u32,
+            _bytecode_offset: u32,
+        ) -> Result<(), JavaScriptPageDebuggerError> {
+            Ok(())
+        }
+
+        fn debugger_execution_control_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_nested_frames_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_stack_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_inventory_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_source_inventory_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_safe_point_span_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata(
+            &mut self,
+            _tab_id: TabId,
+            _generation: u64,
+            _program_handle: u64,
+            _program_generation: u64,
+        ) -> Result<
+            Vec<crate::script::javascript::JavaScriptPageDebuggerStaticMetadata>,
+            JavaScriptPageDebuggerError,
+        > {
+            Ok(vec![
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadata {
+                    metadata_handle: 41,
+                    metadata_generation: 9,
+                },
+            ])
+        }
+
+        fn debugger_static_metadata_sources(
+            &mut self,
+            _tab_id: TabId,
+            _generation: u64,
+            _program_handle: u64,
+            _program_generation: u64,
+            metadata_handle: u64,
+            metadata_generation: u64,
+        ) -> Result<
+            Vec<crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSourceId>,
+            JavaScriptPageDebuggerError,
+        > {
+            if (metadata_handle, metadata_generation) != (41, 9) {
+                return Err(JavaScriptPageDebuggerError::UnknownProgram);
+            }
+            Ok(vec![
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSourceId {
+                    source_id: 0,
+                },
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSourceId {
+                    source_id: 1,
+                },
+            ])
+        }
+
+        fn debugger_stack_snapshot(
+            &mut self,
+            _tab_id: TabId,
+            _generation: u64,
+            _program: JavaScriptPageDebuggerProgram,
+            frame: Option<JavaScriptPageDebuggerFrame>,
+            max_frames: u32,
+            _max_scope_entries: u32,
+        ) -> Result<
+            crate::script::javascript::JavaScriptPageDebuggerStackSnapshot,
+            JavaScriptPageDebuggerError,
+        > {
+            if frame.is_none_or(|frame| frame.core_instance != [7; 16] || frame.frame_handle != 19)
+            {
+                return Err(JavaScriptPageDebuggerError::UnknownProgram);
+            }
+            let frames = [(1, 0), (0, self.moved_root_offset)]
+                .into_iter()
+                .take(max_frames as usize)
+                .map(|(code_unit_ordinal, bytecode_offset)| {
+                    crate::script::javascript::JavaScriptPageDebuggerStackFrame {
+                        code_unit_ordinal,
+                        bytecode_offset,
+                        scope_entries: vec![],
+                        scope_truncated: false,
+                    }
+                })
+                .collect();
+            Ok(
+                crate::script::javascript::JavaScriptPageDebuggerStackSnapshot {
+                    frames,
+                    stack_truncated: max_frames < 2,
+                },
+            )
+        }
+
+        fn debugger_static_metadata_safe_point_span(
+            &mut self,
+            _tab_id: TabId,
+            _generation: u64,
+            target: JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+        ) -> Result<
+            crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSafePointSpan,
+            JavaScriptPageDebuggerError,
+        > {
+            self.span_calls += 1;
+            let (start_byte, end_byte) = match (
+                target.code_unit_ordinal,
+                target.bytecode_offset,
+                target.source_id,
+            ) {
+                (1, 0, 0) => (8, 40),
+                (0, 41, 1) if !self.unbound_root => (42, 60),
+                _ => return Err(JavaScriptPageDebuggerError::UnknownProgram),
+            };
+            Ok(
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSafePointSpan {
+                    source_id: target.source_id,
+                    start_byte,
+                    end_byte,
+                    coordinates: DebuggerSourceCoordinates {
+                        start_line: 0,
+                        start_column_utf16: start_byte,
+                        end_line: 0,
+                        end_column_utf16: end_byte,
+                    },
+                },
+            )
+        }
+    }
+
+    #[test]
+    fn batched_stack_coordinates_recheck_receipts_and_the_entire_live_stack() {
+        let (tabs, realm) = loaded_tabs();
+        let program = DebuggerProgram {
+            realm,
+            program_handle: 7,
+            program_generation: 3,
+        };
+        let frame = DebuggerFrame {
+            program,
+            code_unit_ordinal: 1,
+            core_instance: [7; 16],
+            frame_handle: 19,
+        };
+        let child = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 1,
+            bytecode_offset: 0,
+        };
+        let root = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 41,
+        };
+        let metadata = DebuggerStaticMetadataHandle {
+            program,
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let sources = [0, 1].map(|source_id| DebuggerStaticMetadataSourceId {
+            metadata,
+            source_id,
+        });
+        let target = DebuggerStackCoordinatesTarget {
+            expected_stack: DebuggerStackSnapshot {
+                program,
+                frame: Some(frame),
+                safe_points: vec![child, root],
+                stack_truncated: false,
+            },
+            sources: sources.to_vec(),
+        };
+        let request = DebuggerRequest::GetStackCoordinates {
+            target: target.clone(),
+        };
+        let manifest =
+            blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
+        let hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities: manifest.clone(),
+        };
+        let reply = blueice_ipc::debugger::negotiate(&hello, &manifest);
+        let session =
+            blueice_ipc::debugger::metadata_session_authorization(&hello, &reply).unwrap();
+        let mut locations = StackCoordinateLocations {
+            moved_root_offset: 41,
+            unbound_root: false,
+            span_calls: 0,
+        };
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone()
+            ),
+            unavailable_static_metadata_safe_point_span()
+        );
+        assert_eq!(locations.span_calls, 0);
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadata { program }
+            ),
+            DebuggerReply::StaticMetadata(vec![metadata])
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone()
+            ),
+            unavailable_static_metadata_safe_point_span()
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadataSources { metadata }
+            ),
+            DebuggerReply::StaticMetadataSources(sources.to_vec())
+        );
+        let DebuggerReply::StackCoordinates(result) = handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&session),
+            request.clone(),
+        ) else {
+            panic!("a fully receipted exact stack must receive all coordinates");
+        };
+        assert_eq!(result.stack, target.expected_stack);
+        assert_eq!(
+            result
+                .spans
+                .iter()
+                .map(|span| span.source)
+                .collect::<Vec<_>>(),
+            sources
+        );
+        assert_eq!(locations.span_calls, 2);
+
+        let separate_session =
+            blueice_ipc::debugger::metadata_session_authorization(&hello, &reply).unwrap();
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&separate_session),
+                request.clone()
+            ),
+            unavailable_static_metadata_safe_point_span()
+        );
+        let mut guessed = target.clone();
+        guessed.sources[1].source_id = 2;
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::GetStackCoordinates { target: guessed }
+            ),
+            unavailable_static_metadata_safe_point_span()
+        );
+        locations.moved_root_offset = 42;
+        assert!(matches!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone()
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                ..
+            }
+        ));
+        assert_eq!(locations.span_calls, 2);
+        locations.moved_root_offset = 41;
+        locations.unbound_root = true;
+        assert!(!matches!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request
+            ),
+            DebuggerReply::StackCoordinates(_)
+        ));
+        assert_eq!(locations.span_calls, 4);
     }
 }
