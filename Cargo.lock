@@ -237,6 +237,7 @@ dependencies = [
  "blueice-loopback-model",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

@@ -18,6 +18,8 @@
 //! is present but invalid is an *error*, never silently treated as the
 //! default: quietly ignoring a person's settings is worse than saying so.
 
+pub mod proposal;
+
 use blueice_loopback_model::validate_config;
 use serde::{Deserialize, Serialize};
 use std::fs;
