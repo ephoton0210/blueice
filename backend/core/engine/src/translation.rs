@@ -24,7 +24,7 @@ use std::collections::BTreeMap;
 
 /// Elements whose text is never shown as page prose (or must not be
 /// rewritten: form text a person is editing).
-const SKIPPED_ANCESTORS: &[&str] = &[
+pub(crate) const SKIPPED_ANCESTORS: &[&str] = &[
     "head", "script", "style", "noscript", "template", "textarea",
 ];
 

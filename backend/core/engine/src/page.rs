@@ -339,6 +339,16 @@ impl Page {
         changed
     }
 
+    /// The page's shown prose as plain text, at most what the assistant
+    /// accepts in one request (`crate::page_text`).
+    pub fn visible_text(&self) -> String {
+        crate::page_text::visible_text(
+            &self.doc,
+            &self.styles,
+            blueice_ipc::assistant::MAX_REQUEST_TEXT_BYTES,
+        )
+    }
+
     /// The original text of a translated text node, for the AI representation.
     pub(crate) fn original_text(&self, node: NodeId) -> Option<&str> {
         self.translation.original_of(&self.doc, node)

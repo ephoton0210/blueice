@@ -15,6 +15,7 @@ pub mod gatekeeper_settings_page;
 pub mod assistant_client;
 mod gatekeeper_client;
 mod page;
+mod page_text;
 pub mod script;
 pub mod session;
 mod stylesheet;
