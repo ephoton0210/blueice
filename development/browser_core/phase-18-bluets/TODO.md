@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.1.2.** Return stack frames with original BlueTS coordinates
-for nested and module frames.
+**Current leaf: C2.1.2.2.** Verify exact BlueTS source-map coverage for
+actually paused nested classic and module stack frames.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -309,6 +309,9 @@ channel with explicit owner/client grants.
       - [x] **C2.1.1.4.1** Specify distinct public Stack and Scopes gates, exact paused-target and per-frame scope selection, source-free reply shapes, budgets, and protocol-bump condition; do not change the wire in this design leaf. PLAN.md defines separate Stack (frame locations and stack truncation) and Scopes (one exact currently paused frame's active slots/depths and scope truncation) operations, with hard 64/256 limits and an expected safe point for stale scope selection. Both are default-denied outside the owner-selected debugger route; source, value, and BlueTS coordinates remain out of scope. No wire or protocol version changes in this leaf.
       - [x] **C2.1.1.4.2** Implement both gated public requests/replies through the core proxy, bump the debugger protocol with the complete route, and prove limits, truncation, stale-target denial, and capability states on a real Launcher-supervised BlueTS debugger socket; then check off C2.1.1.4 and C2.1.1. Public debugger v35 has independent GetStack/Stack and GetScopes/Scopes operations: Stack returns only child-first/root-only exact safe points and stack truncation, while Scopes returns one exact active frame's opaque lexical slots/depths and scope truncation. Positive 64-frame/256-entry caps, expected-safe-point matching, and exact core-instance frame identity fail closed. Real BlueTS socket tests cover both flags, wrong limits, stale/moved frames, root return/completion, and predecessor-frame rejection after core cutover. No source, value, or original BlueTS coordinate crosses this seam.
   - [ ] **C2.1.2** Return stack frames with original BlueTS coordinates for nested and module frames.
+    - [x] **C2.1.2.1** Specify the separately authorized, exact-stack BlueTS coordinate result and per-frame source receipts, including unbound safe-point failure and no source text or guessed nearest mapping; keep the base Stack source-free. PLAN.md fixes a separate batched coordinate operation that re-reads the exact ordered paused stack, requires same-stream OpaqueSafePointSpan plus metadata/source receipts for each frame under one live BlueTS attachment, and returns only existing half-open original byte/UTF-16 spans. An unbound or mismatched frame fails the whole batch; v35 Stack remains source-free and the wire is unchanged in this design leaf.
+    - [ ] **C2.1.2.2** Verify that the retained direct-lowering map resolves actual nested classic and module child/root stack safe points through the child/core exact-span route; repair any code-unit or module mapping gaps.
+    - [ ] **C2.1.2.3** Add the receipt-gated public stack-coordinate request/reply, bump the debugger protocol only with the complete route, and prove nested/module frames, stale stack and source receipts, and bound/unbound behavior on real BlueTS debugger sockets; then check off C2.1.2 and C2.1.
 - [ ] **C2.2** Return authorized values without guessed handles, excess depth,
   source text, or cross-realm references.
   - [ ] **C2.2.1** Return primitives and bounded plain data only; cap depth, length, and string bytes.

@@ -812,6 +812,25 @@ supervised-core cutover regression rejects predecessor Stack and Scopes
 requests even when tab/program/frame numbers collide. No source text, runtime
 value, original BlueTS coordinate, or metadata authority is granted by v35.
 
+**Original BlueTS stack-coordinate contract (C2.1.2.1):** Keep v35's base
+`Stack` reply source-free. A separate owner-only debugger operation will take
+an exact paused program/nested-frame target, the ordered safe points returned
+by a prior bounded stack read, and one caller-supplied source ID per frame.
+The server re-reads the current stack, requires the entire ordered safe-point
+list to match, and accepts only positive counts within the fixed 64-frame
+budget. All source IDs must belong to the same live BlueTS metadata
+attachment for that program, must have been inventoried on this same debugger
+stream, and must pass the independently granted `OpaqueSafePointSpan`
+capability. Each result is the existing exact half-open original UTF-8 byte
+range with UTF-16 coordinates, attached to its frame and receipted source ID;
+the stack truncation flag is echoed. The operation has no authority to read
+source text, choose a nearest position, infer a module path, or inspect
+values. An unbound frame or wrong source receipt rejects the entire request
+without partial coordinates or a fallback. This is a batched use of the
+existing exact-span grant, not a new ambient coordinate permission. The
+public wire remains v35 in this design leaf; an implementation and real
+nested/module socket tests must be complete before its next version bump.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
