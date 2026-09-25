@@ -1335,6 +1335,31 @@ real Launcher-supervised child socket test, the core wrapper socket test,
 format checking, and workspace Clippy. No frontend report or public debugger
 protocol changed; C2.3.1.4 provides the separate public authorization.
 
+**Public exception-location route decision (C2.3.1.4.1):** The public request
+will be `DescribeExceptionLocation { source }`; the only caller-selected
+identity is a previously inventoried opaque BlueTS source ID under its
+metadata/program/realm parent. The distinct `ExceptionLocation` reply will
+echo that source, a newly core-reminted exact safe point under the same
+program, and the bounded original half-open UTF-8 bytes/UTF-16 coordinates.
+It will contain no error value, stack, message, source text, generated span,
+or child handle. The core-private target/result carry only numeric public
+program/metadata/source IDs and, on success, child-validated code-unit/offset
+and coordinates; default-denied executors cannot fabricate a location.
+
+Validation proceeds in a non-disclosing order: reject malformed source
+shape; require the existing independent owner/client `OpaqueSafePointSpan`
+grant for the live realm (missing grant is `CapabilityUnavailable` without a
+child location query); then require that this stream actually received both
+the metadata parent and this exact source ID (missing/forged receipt is
+`InvalidTarget`). Resolve the live realm and program and ask the child only
+for that parent's terminal site. Core must revalidate the returned exact
+safe point and same source binding before reminting. A pending/normal program
+has no location (`InvalidExecutionState`), while a stale document/program,
+unbound instruction, mismatched source, or malformed child reply is an
+`InvalidTarget`-class refusal with no partial position. This is a new reply,
+not `StaticMetadataSafePointSpan` or a breakpoint/step grant. The protocol
+stays public v38 until the complete route and tests land in C2.3.1.4.3.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.3.1.4.** Remint only the exact child exception span through
-core behind the independent safe-point-span grant and same-stream source receipt.
+**Current leaf: C2.3.1.4.2.** Add the default-denied core API and exact
+out-of-process child-to-core remint without changing the public wire.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -355,6 +355,9 @@ channel with explicit owner/client grants.
       - [x] **C2.3.1.3.2** In the supervised child, capture each terminal debugger-controlled execution before another program runs, match its exact live BlueTS attachment and safe-point map, retain only a bounded private location under its document/program identity, and prove classic/module/nested, no-native-site/unbound, and replacement expiry without adding a wire route. Terminal classic/module/dependency execution snapshots only exact verified entries; normal BlueTS/ordinary JS and unbound offsets retain no location, and navigation removes the record. Ten focused private-child tests and workspace Clippy pass; current BlueTS direct lowering does not accept a top-level `throw` or `try/catch`, so caught-throw socket proof remains C2.3.1.5 after a supported fixture is available.
       - [x] **C2.3.1.3.3** Add the complete page-host v39 private exception-location request/reply and core transport wrapper, with typed exact-identity/stale refusals and IPC plus real-child route tests; then check off C2.3.1.3. The route echoes document/program/metadata, returns only the exact source-free safe point and bounded original span, and refuses pending, wrong program/metadata, or stale documents without partial location. All 14 page-host IPC tests, a real Launcher-supervised child socket test, the core wrapper socket test, focused child tests, and workspace Clippy pass; no public debugger command changed.
     - [ ] **C2.3.1.4** Remint the exception location through core behind the existing independent safe-point-span owner/client grant and same-stream source receipt; add the complete public request/reply and protocol bump with typed denial tests.
+      - [x] **C2.3.1.4.1** Decide the source-only public request/reply, core-private target/result, receipt/grant validation order, and typed no-location/refusal matrix before implementation; leave public debugger v38 unchanged in this design-only leaf. PLAN.md fixes the source-only request, distinct source/safe-point/span reply, independent `OpaqueSafePointSpan` grant before source-receipt validation, `CapabilityUnavailable` for absent grant, `InvalidTarget` for missing/forged receipts or mismatched locations, and `InvalidExecutionState` for pending/normal completion; no public wire changed.
+      - [ ] **C2.3.1.4.2** Add a default-denied core location API and an out-of-process adapter that revalidates the live child program/metadata/source/safe point and remints only a bounded source-free result; prove malformed, cross-program, stale, and normal-completion child replies without a public wire change.
+      - [ ] **C2.3.1.4.3** Add the complete public debugger v39 `DescribeExceptionLocation { source }` request/reply behind the existing independent `OpaqueSafePointSpan` owner/client grant and same-stream source receipt, with IPC/core typed denial tests; then check off C2.3.1.4.
     - [ ] **C2.3.1.5** Prove original classic/module/nested UTF-8 and UTF-16 exception spans, missing grants/receipts, caught errors, and stale generations on real Launcher-supervised debugger sockets; then check off C2.3.1 and C2.3.
 
 #### C3. Preserve original static metadata.
