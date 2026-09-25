@@ -1300,6 +1300,26 @@ cross-realm refusal, and discard/navigation invalidation. The child still
 needs to snapshot the result before the next execution (C2.3.1.3.2); no
 wire or source-map route changed.
 
+**Child-only terminal location snapshot (C2.3.1.3.2):** A debugger-controlled
+BlueTS execution now snapshots the ephemeral native site before the scheduler
+advances another script. It checks only that pending classic program or the
+entry graph's exact installed module handles, allowing a throwing dependency
+to own its own private record. The site must pass live program/safe-point
+validation and an exact compiler-bound lowering entry with one matching
+source, bounded half-open bytes, and valid UTF-16 coordinates; a missing or
+unbound entry yields no record. The child retains only the private safe point
+and source-ID/span under its document/program record, not text, error value,
+stack, or message. Focused tests prove classic snapshot survival across later
+scripts, module nested and dependency attribution, normal BlueTS/ordinary JS
+absence, unbound-offset refusal, and navigation expiry; all ten focused
+private-child tests and workspace Clippy pass. The broader Launcher library
+run is not green: it includes socket/sandbox failures and a separately
+reproduced existing source-breakpoint expectation mismatch (offset 10 versus
+15) in an unchanged route. Current BlueTS direct lowering rejects top-level
+`throw` and `try/catch`; native caught-throw clearing was proven in
+C2.3.1.2, while real caught-BlueTS socket coverage remains for C2.3.1.5.
+No page-host wire or frontend report changed.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

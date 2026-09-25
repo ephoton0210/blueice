@@ -35,6 +35,7 @@ use blueice_bluets_bluejs::page_host_typings::{
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
     DirectModuleGraph, DirectPageModuleGraphAttachment, DirectSafePointBinding, DirectScript,
+    RetainedDirectDebugInfo,
 };
 use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
@@ -251,6 +252,15 @@ struct ChildDebuggerProgram {
     /// while the matching BlueTS registry attachment is still live. A plain
     /// JavaScript program never receives one.
     metadata: Option<PageHostDebuggerMetadataHandle>,
+    /// Snapshotted before another realm execution can replace the VM sidecar.
+    /// The entire record remains private to this document and child program.
+    exception_location: Option<ChildDebuggerExceptionLocation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ChildDebuggerExceptionLocation {
+    safe_point: PageHostDebuggerSafePoint,
+    span: PageHostDebuggerBlueTsSafePointSpan,
 }
 
 /// Child-private execution state for one retained classic or module root.
@@ -2482,46 +2492,10 @@ impl BlueJsChildHost {
             .debug_registry
             .get(self.runtime.program_registry(), runtime_handle)
         {
-            Ok(retained) => {
-                let Some(entry) = retained.safe_point_map().source_span_for_safe_point(
-                    safe_point.code_unit_ordinal,
-                    safe_point.bytecode_offset,
-                ) else {
-                    return invalid_request();
-                };
-                let mut matching_sources = retained
-                    .static_info()
-                    .sources
-                    .iter()
-                    .filter(|source| source.module == entry.source);
-                let Some(source) = matching_sources.next() else {
-                    return invalid_request();
-                };
-                if matching_sources.next().is_some()
-                    || entry.start_byte >= entry.end_byte
-                    || entry.end_byte
-                        > usize::try_from(DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES).unwrap()
-                {
-                    return invalid_request();
-                }
-                let (Ok(start_byte), Ok(end_byte)) = (
-                    u32::try_from(entry.start_byte),
-                    u32::try_from(entry.end_byte),
-                ) else {
-                    return invalid_request();
-                };
-                let Some(coordinates) =
-                    debugger_source_coordinates(entry.location, start_byte, end_byte)
-                else {
-                    return invalid_request();
-                };
-                PageHostDebuggerBlueTsSafePointSpan {
-                    source_id: source.id.0,
-                    start_byte,
-                    end_byte,
-                    coordinates,
-                }
-            }
+            Ok(retained) => match exact_bluets_span_for_site(retained, safe_point) {
+                Some(span) => span,
+                None => return invalid_request(),
+            },
             Err(_) => {
                 self.documents
                     .get_mut(&tab_id)
@@ -3695,6 +3669,73 @@ impl BlueJsChildHost {
                     .collect(),
                 stack_truncated: snapshot.stack_truncated,
             },
+        }
+    }
+
+    /// Saves one terminal VM throw under its exact live child program before
+    /// the scheduler runs another script in the same realm. A dependency may
+    /// own the throwing code unit, so inspect only handles in this pending
+    /// BlueTS execution rather than assuming the entry module threw.
+    fn snapshot_bluets_uncaught_location(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        handles: impl IntoIterator<Item = BlueJsProgramHandle>,
+    ) {
+        for runtime_handle in handles {
+            let Some(site) = self
+                .runtime
+                .debugger_uncaught_throw_site(tab_id, runtime_handle)
+                .ok()
+                .flatten()
+            else {
+                continue;
+            };
+            let Some(program) = self
+                .documents
+                .get(&tab_id)
+                .filter(|document| document.generation == document_generation)
+                .and_then(|document| {
+                    document
+                        .debugger_programs
+                        .iter()
+                        .find(|(_, record)| record.runtime_handle == runtime_handle)
+                        .map(|(program_handle, record)| PageHostDebuggerProgram {
+                            program_handle: *program_handle,
+                            program_generation: record.program_generation,
+                        })
+                })
+            else {
+                return;
+            };
+            let safe_point = PageHostDebuggerSafePoint {
+                program,
+                code_unit_ordinal: site.code_unit_ordinal,
+                bytecode_offset: site.bytecode_offset,
+            };
+            if self
+                .exact_debugger_safe_point(tab_id, document_generation, safe_point)
+                .is_err()
+            {
+                return;
+            }
+            let Some(span) = self
+                .debug_registry
+                .get(self.runtime.program_registry(), runtime_handle)
+                .ok()
+                .and_then(|retained| exact_bluets_span_for_site(retained, safe_point))
+            else {
+                return;
+            };
+            let Some(record) = self
+                .documents
+                .get_mut(&tab_id)
+                .and_then(|document| document.debugger_programs.get_mut(&program.program_handle))
+            else {
+                return;
+            };
+            record.exception_location = Some(ChildDebuggerExceptionLocation { safe_point, span });
+            return;
         }
     }
 
@@ -4967,6 +5008,20 @@ impl BlueJsChildHost {
                     .push_front(pending);
                 break;
             }
+            match &pending.execution {
+                DeferredChildExecution::BlueTsClassic { handle, .. } => {
+                    self.snapshot_bluets_uncaught_location(tab_id, document_generation, [*handle])
+                }
+                DeferredChildExecution::BlueTsModule { attachment, .. } => {
+                    self.snapshot_bluets_uncaught_location(
+                        tab_id,
+                        document_generation,
+                        attachment.modules.values().map(|module| module.handle),
+                    );
+                }
+                DeferredChildExecution::JavaScriptClassic { .. }
+                | DeferredChildExecution::JavaScriptModule { .. } => {}
+            }
             reports.push(script_report(
                 tab_id,
                 document_generation,
@@ -5050,6 +5105,7 @@ impl BlueJsChildHost {
                     program_generation,
                     runtime_handle,
                     metadata: None,
+                    exception_location: None,
                 },
             );
         Ok(PageHostDebuggerProgram {
@@ -5826,6 +5882,38 @@ fn parse_category(_: ParseError) -> &'static str {
 
 fn compile_category(_: CompileError) -> &'static str {
     "BlueJS compilation rejected the page script"
+}
+
+/// The only BlueTS throw-site mapping: one exact installed instruction in the
+/// compiler-verified attachment, never a nearest source or generated offset.
+fn exact_bluets_span_for_site(
+    retained: &RetainedDirectDebugInfo,
+    safe_point: PageHostDebuggerSafePoint,
+) -> Option<PageHostDebuggerBlueTsSafePointSpan> {
+    let entry = retained
+        .safe_point_map()
+        .source_span_for_safe_point(safe_point.code_unit_ordinal, safe_point.bytecode_offset)?;
+    let mut matching_sources = retained
+        .static_info()
+        .sources
+        .iter()
+        .filter(|source| source.module == entry.source);
+    let source = matching_sources.next()?;
+    if matching_sources.next().is_some()
+        || entry.start_byte >= entry.end_byte
+        || entry.end_byte > usize::try_from(DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES).ok()?
+    {
+        return None;
+    }
+    let start_byte = u32::try_from(entry.start_byte).ok()?;
+    let end_byte = u32::try_from(entry.end_byte).ok()?;
+    let coordinates = debugger_source_coordinates(entry.location, start_byte, end_byte)?;
+    Some(PageHostDebuggerBlueTsSafePointSpan {
+        source_id: source.id.0,
+        start_byte,
+        end_byte,
+        coordinates,
+    })
 }
 
 fn debugger_source_coordinates(
@@ -8005,6 +8093,196 @@ mod tests {
             kind: PageHostScriptKind::Classic,
             graph: graph(&id, vec![PageHostSource::new(id.clone(), source)]),
         }
+    }
+
+    #[test]
+    fn private_child_snapshots_only_terminal_uncaught_bluets_locations() {
+        let mut host = BlueJsChildHost::default();
+        let synchronized = host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(
+                1,
+                vec![
+                    blue_ts_classic(0, "function fail(): number { throw 7; } fail();"),
+                    classic(1, "globalThis.successor = 1;"),
+                    blue_ts_classic(
+                        2,
+                        "function unused(): number { throw 8; } const handled: number = 1;",
+                    ),
+                ],
+            ),
+        });
+        assert!(
+            matches!(&synchronized, PageHostReply::Synchronized { reports, .. } if reports.is_empty()),
+            "unexpected synchronization reply: {synchronized:?}"
+        );
+        let programs = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs,
+            reply => panic!("expected three private programs, got {reply:?}"),
+        };
+        assert_eq!(programs.len(), 3);
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.len() == 3
+        ));
+        let first = host.documents[&7].debugger_programs[&programs[0].program_handle]
+            .exception_location
+            .expect("first uncaught BlueTS throw must survive successor execution");
+        assert_eq!(first.safe_point.program, programs[0]);
+        assert_eq!(first.safe_point.code_unit_ordinal, 1);
+        assert!(first
+            .span
+            .coordinates
+            .is_well_formed_for_range(first.span.start_byte, first.span.end_byte));
+        assert_eq!(first.span.start_byte, 0);
+        assert!(first.span.end_byte > first.span.start_byte);
+        for program in &programs[1..] {
+            assert!(
+                host.documents[&7].debugger_programs[&program.program_handle]
+                    .exception_location
+                    .is_none()
+            );
+        }
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(2, vec![blue_ts_classic(0, "const next = 1;")]),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(!host.documents[&7]
+            .debugger_programs
+            .contains_key(&programs[0].program_handle));
+    }
+
+    #[test]
+    fn private_child_maps_exact_nested_module_throw_sites_without_guessing() {
+        for source in [
+            "function inner(): number { throw 9; } export const result: number = inner();",
+            "function inner(): number { throw 'x'; } export const result: number = inner();",
+        ] {
+            let entry = "blueice://page/throwing-module.ts";
+            let module = PageHostScript {
+                ordinal: 0,
+                language: PageHostScriptLanguage::BlueTs,
+                kind: PageHostScriptKind::Module,
+                graph: graph(entry, vec![PageHostSource::new(entry, source)]),
+            };
+            let mut host = BlueJsChildHost::default();
+            assert!(matches!(
+                host.handle_request(PageHostRequest::SynchronizeDocument {
+                    document: debugger_document(1, vec![module]),
+                }),
+                PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+            ));
+            let program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+                tab_id: 7,
+                document_generation: 1,
+            }) {
+                PageHostReply::DebuggerPrograms { programs, .. } => programs[0],
+                reply => panic!("expected private module program, got {reply:?}"),
+            };
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.len() == 1
+            ));
+            let location = host.documents[&7].debugger_programs[&program.program_handle]
+                .exception_location
+                .expect("exact module throw must retain a private location");
+            assert_eq!(location.safe_point.program, program);
+            assert_eq!(location.safe_point.code_unit_ordinal, 1);
+            assert!(location.span.start_byte < location.span.end_byte);
+            assert!(location
+                .span
+                .coordinates
+                .is_well_formed_for_range(location.span.start_byte, location.span.end_byte));
+            let runtime_handle =
+                host.documents[&7].debugger_programs[&program.program_handle].runtime_handle;
+            let retained = host
+                .debug_registry
+                .get(host.runtime.program_registry(), runtime_handle)
+                .unwrap();
+            assert!(exact_bluets_span_for_site(
+                retained,
+                PageHostDebuggerSafePoint {
+                    bytecode_offset: u32::MAX,
+                    ..location.safe_point
+                }
+            )
+            .is_none());
+        }
+    }
+
+    #[test]
+    fn private_child_attributes_dependency_throw_to_its_own_bluets_program() {
+        let entry = "blueice://page/entry-throw.ts";
+        let dependency = "blueice://page/dependency-throw.ts";
+        let mut module = PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Module,
+            graph: graph(
+                entry,
+                vec![
+                    PageHostSource::new(
+                        entry,
+                        "import { answer } from './dependency-throw.ts'; export const result: number = answer;",
+                    ),
+                    PageHostSource::new(
+                        dependency,
+                        "function fail(): number { throw 9; } export const answer: number = fail();",
+                    ),
+                ],
+            ),
+        };
+        module.graph.resolutions.push(PageHostStaticResolution {
+            from_module: entry.to_string(),
+            specifier: "./dependency-throw.ts".to_string(),
+            canonical_target: dependency.to_string(),
+        });
+        let mut host = BlueJsChildHost::default();
+        let synchronized = host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(1, vec![module]),
+        });
+        assert!(
+            matches!(&synchronized, PageHostReply::Synchronized { reports, .. } if reports.is_empty()),
+            "unexpected synchronization reply: {synchronized:?}"
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.len() == 1
+        ));
+        let locations = host.documents[&7]
+            .debugger_programs
+            .iter()
+            .filter_map(|(handle, record)| {
+                record.exception_location.map(|location| (handle, location))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(locations.len(), 1);
+        let (handle, location) = locations[0];
+        assert_eq!(location.safe_point.program.program_handle, *handle);
+        assert_eq!(location.safe_point.code_unit_ordinal, 1);
+        let runtime_handle = host.documents[&7].debugger_programs[handle].runtime_handle;
+        assert_eq!(
+            host.runtime
+                .program_registry()
+                .get(runtime_handle)
+                .unwrap()
+                .source()
+                .canonical_module_id(),
+            dependency
+        );
     }
 
     fn paused_value_targets(
