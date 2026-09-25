@@ -104,7 +104,17 @@ fn to_ai_node(page: &Page, doc: &Document, node: NodeId, parent: Option<u64>) ->
     };
     let role = infer_role(tag_name, attributes)?;
     let bounds = find_fragment_bounds(page.fragment(), node, 0.0, 0.0)?;
-    let (name, name_from) = compute_name(doc, node, tag_name, attributes);
+    let (name, name_from) = compute_name(doc, node, tag_name, attributes, None);
+    // Only a content-derived name can differ from the page's own words:
+    // attributes (`aria-label`, `alt`, `placeholder`, `title`) are never
+    // translated. The original is offered only while a translation is showing.
+    let original_name = if page.translation_shown() && name_from == Some(NameFrom::Contents) {
+        compute_name(doc, node, tag_name, attributes, Some(page))
+            .0
+            .filter(|original| Some(original) != name.as_ref())
+    } else {
+        None
+    };
     let opacity = page.styles().get(&node).map(|s| s.opacity()).unwrap_or(1.0);
     Some(AiNode {
         id: node.as_u64(),
@@ -113,6 +123,7 @@ fn to_ai_node(page: &Page, doc: &Document, node: NodeId, parent: Option<u64>) ->
         role,
         name,
         name_from,
+        original_name,
         state: compute_state(page, node, tag_name, attributes),
         bounds,
         opacity,
@@ -164,11 +175,14 @@ fn infer_role(tag: &str, attributes: &[(String, String)]) -> Option<Role> {
     }
 }
 
+/// `originals`, when given, makes text nodes that live translation replaced
+/// read as their original text instead of what is shown.
 fn compute_name(
     doc: &Document,
     node: NodeId,
     tag: &str,
     attributes: &[(String, String)],
+    originals: Option<&Page>,
 ) -> (Option<String>, Option<NameFrom>) {
     if let Some(label) = attr(attributes, "aria-label") {
         return (
@@ -187,7 +201,7 @@ fn compute_name(
     }
     if matches!(tag, "input" | "textarea" | "select") {
         if let Some(id_attr) = attr(attributes, "id") {
-            if let Some(label_text) = find_label_text_for(doc, id_attr) {
+            if let Some(label_text) = find_label_text_for(doc, id_attr, originals) {
                 return (Some(label_text), Some(NameFrom::Contents));
             }
         }
@@ -199,7 +213,7 @@ fn compute_name(
     if let Some(title) = attr(attributes, "title") {
         return (Some(title.to_string()), Some(NameFrom::Title));
     }
-    let text = text_content(doc, node);
+    let text = text_content(doc, node, originals);
     if text.is_empty() {
         (None, None)
     } else {
@@ -210,24 +224,33 @@ fn compute_name(
 /// Scans the whole document for a `<label for="id_attr">` -- one input
 /// at a time is fine at MVP page sizes; a document-wide index would
 /// only pay for itself on pages with many labeled inputs.
-fn find_label_text_for(doc: &Document, id_attr: &str) -> Option<String> {
-    fn walk(doc: &Document, node: NodeId, id_attr: &str) -> Option<String> {
+fn find_label_text_for(
+    doc: &Document,
+    id_attr: &str,
+    originals: Option<&Page>,
+) -> Option<String> {
+    fn walk(
+        doc: &Document,
+        node: NodeId,
+        id_attr: &str,
+        originals: Option<&Page>,
+    ) -> Option<String> {
         if let NodeData::Element {
             tag_name,
             attributes,
         } = doc.data(node)
         {
             if tag_name == "label" && attributes.iter().any(|(k, v)| k == "for" && v == id_attr) {
-                let text = text_content(doc, node);
+                let text = text_content(doc, node, originals);
                 if !text.is_empty() {
                     return Some(text);
                 }
             }
         }
         doc.children(node)
-            .find_map(|child| walk(doc, child, id_attr))
+            .find_map(|child| walk(doc, child, id_attr, originals))
     }
-    walk(doc, doc.root(), id_attr)
+    walk(doc, doc.root(), id_attr, originals)
 }
 
 /// `node`'s own text, for computing its name "from contents" -- stops
@@ -239,16 +262,26 @@ fn find_label_text_for(doc: &Document, id_attr: &str) -> Option<String> {
 /// real accessibility tree nor an agent reading this one wants --
 /// `<li>` correctly gets no name of its own here, since its entire
 /// content is delegated to the separately-represented `<p>`.
-fn text_content(doc: &Document, node: NodeId) -> String {
+fn text_content(doc: &Document, node: NodeId, originals: Option<&Page>) -> String {
     let mut raw = String::new();
-    collect_text(doc, node, &mut raw, true);
+    collect_text(doc, node, &mut raw, true, originals);
     raw.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn collect_text(doc: &Document, node: NodeId, out: &mut String, is_root: bool) {
+fn collect_text(
+    doc: &Document,
+    node: NodeId,
+    out: &mut String,
+    is_root: bool,
+    originals: Option<&Page>,
+) {
     match doc.data(node) {
         NodeData::Text { data } => {
-            out.push_str(data);
+            out.push_str(
+                originals
+                    .and_then(|page| page.original_text(node))
+                    .unwrap_or(data),
+            );
             out.push(' ');
             return;
         }
@@ -259,7 +292,7 @@ fn collect_text(doc: &Document, node: NodeId, out: &mut String, is_root: bool) {
         _ => {}
     }
     for child in doc.children(node) {
-        collect_text(doc, child, out, false);
+        collect_text(doc, child, out, false, originals);
     }
 }
 
@@ -279,7 +312,7 @@ fn compute_state(
             }) {
             attr(attributes, "value").map(str::to_string)
         } else if tag == "textarea" {
-            Some(text_content(page.doc(), node))
+            Some(text_content(page.doc(), node, None))
         } else {
             None
         },
@@ -619,5 +652,79 @@ mod tests {
         let page = page_with("<h1>One</h1><p>Two</p>");
         let snap = build(&page, 0, 1);
         assert!(snap.nodes.iter().all(|n| !n.occluded));
+    }
+
+    #[test]
+    fn a_translated_node_reports_the_shown_name_and_the_original() {
+        let mut page = Page::new(320.0, 400.0);
+        page.load_html_translated(
+            "<h1>Welcome</h1><p>Hello <a href=\"/x\">there</a></p>",
+            Some("https://example.com".to_string()),
+            &["歡迎".into(), "哈囉".into(), "這裡".into()],
+        );
+        let snap = build(&page, 1, 1);
+        let heading = find(&snap.nodes, "歡迎");
+        assert_eq!(heading.original_name.as_deref(), Some("Welcome"));
+        // The paragraph's own text excludes the separately represented link.
+        let paragraph = find(&snap.nodes, "哈囉");
+        assert_eq!(paragraph.original_name.as_deref(), Some("Hello"));
+        let link = find(&snap.nodes, "這裡");
+        assert_eq!(link.original_name.as_deref(), Some("there"));
+    }
+
+    #[test]
+    fn the_original_is_absent_when_the_original_is_showing_or_nothing_was_translated() {
+        let mut page = Page::new(320.0, 400.0);
+        page.load_html_translated("<p>Hello</p>", None, &["你好".into()]);
+        page.set_translation_shown(false);
+        let snap = build(&page, 1, 1);
+        let node = find(&snap.nodes, "Hello");
+        assert_eq!(node.original_name, None);
+
+        let plain = page_with("<p>Hello</p>");
+        let snap = build(&plain, 1, 1);
+        assert_eq!(find(&snap.nodes, "Hello").original_name, None);
+    }
+
+    #[test]
+    fn attribute_names_are_never_reported_as_translated_originals() {
+        let mut page = Page::new(320.0, 400.0);
+        page.load_html_translated(
+            "<p aria-label=\"Greeting\">Hello</p><p>Bye</p>",
+            None,
+            &["你好".into(), "再見".into()],
+        );
+        let snap = build(&page, 1, 1);
+        // An explicit attribute name is not page text and is never translated.
+        assert_eq!(find(&snap.nodes, "Greeting").original_name, None);
+        assert_eq!(find(&snap.nodes, "再見").original_name.as_deref(), Some("Bye"));
+    }
+
+    #[test]
+    fn a_label_translated_for_a_field_keeps_its_original_on_the_field() {
+        let mut page = Page::new(320.0, 400.0);
+        page.load_html_translated(
+            "<label for=\"n\">Name</label><input id=\"n\" type=\"text\">",
+            None,
+            &["姓名".into()],
+        );
+        let snap = build(&page, 1, 1);
+        let input = snap
+            .nodes
+            .iter()
+            .find(|n| matches!(n.role, Role::TextBox))
+            .unwrap();
+        assert_eq!(input.name.as_deref(), Some("姓名"));
+        assert_eq!(input.original_name.as_deref(), Some("Name"));
+    }
+
+    #[test]
+    fn a_translated_snapshot_serializes_the_original_and_an_untranslated_one_omits_it() {
+        let mut page = Page::new(320.0, 400.0);
+        page.load_html_translated("<p>Hello</p>", None, &["你好".into()]);
+        let json = serde_json::to_string(&build(&page, 1, 1)).unwrap();
+        assert!(json.contains("\"original_name\":\"Hello\""));
+        let plain = serde_json::to_string(&build(&page_with("<p>x</p>"), 1, 1)).unwrap();
+        assert!(!plain.contains("original_name"));
     }
 }

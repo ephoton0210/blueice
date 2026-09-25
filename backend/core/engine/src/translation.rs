@@ -92,8 +92,6 @@ impl TranslationState {
     /// The original text of `node` when it was substituted and is currently
     /// showing its translation. A node the page later rewrote itself is not
     /// reported: the original no longer describes what is on screen.
-    // Read through `Page::original_text` in step T2 of the live-translation checklist.
-    #[allow(dead_code)]
     pub fn original_of(&self, doc: &Document, node: NodeId) -> Option<&str> {
         if !self.shown || !doc.contains(node) {
             return None;

@@ -60,6 +60,12 @@ pub struct AiNode {
     pub role: Role,
     pub name: Option<String>,
     pub name_from: Option<NameFrom>,
+    /// While live translation is showing, the name this node would have from
+    /// the page's original text (`phase-7-local-ai/PLAN.md`): `name` is what
+    /// is on screen, this is what the page actually said. Present only when a
+    /// translation changed a content-derived name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_name: Option<String>,
     pub state: NodeState,
     /// Document-content coordinates (pre-scroll, the same space
     /// `blueice_layout::Fragment` already uses) -- combine with

@@ -1193,6 +1193,7 @@ mod tests {
                 role: Role::Link,
                 name: Some("go".to_string()),
                 name_from: Some(NameFrom::Contents),
+                original_name: None,
                 state: NodeState::default(),
                 bounds: Bounds {
                     x: 0.0,

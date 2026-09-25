@@ -348,8 +348,6 @@ impl Page {
     }
 
     /// The original text of a translated text node, for the AI representation.
-    // Read by `ai_snapshot` in step T2 of the live-translation checklist.
-    #[allow(dead_code)]
     pub(crate) fn original_text(&self, node: NodeId) -> Option<&str> {
         self.translation.original_of(&self.doc, node)
     }

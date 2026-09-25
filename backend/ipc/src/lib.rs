@@ -803,6 +803,7 @@ mod tests {
                     role: Role::Link,
                     name: Some("Example".to_string()),
                     name_from: Some(NameFrom::Contents),
+                    original_name: None,
                     state: NodeState {
                         hovered: true,
                         ..Default::default()
