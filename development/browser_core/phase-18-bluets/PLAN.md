@@ -436,6 +436,18 @@ rejection, never a fabricated completion or a detached continuation. This
 first entry-root control does not claim nested-frame or dependency-frame
 stepping; those require their own exact frame identity in C1.2.
 
+**Pending module inventory (C1.1.1.2):** Under debugger execution control,
+the child attaches a checked BlueTS ESM graph and retains each program's
+metadata during document synchronization. It registers the entry as a
+`Pending` debugger execution and queues the already attached graph in document
+order; advancing executes that exact attachment once and marks the entry
+`Completed`. An isolated child subprocess test inventories both programs and
+their metadata in a two-module graph before advance, then observes one
+successful report and completion. A launcher/core/child HTTP test observes the
+same pending entry and its verified safe points through the public debugger
+socket before a later browser request advances it. This step does not yet
+suspend the entry module; C1.1.1.3 adds the VM continuation.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

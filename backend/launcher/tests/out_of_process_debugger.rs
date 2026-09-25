@@ -663,6 +663,92 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
 }
 
 #[test]
+fn launcher_inventories_a_pending_bluets_module_before_execution() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("fixture must receive navigation");
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let body = format!(
+            "<main>pending-module</main><script type=\"application/x-blueice-typescript-module\">{MODULE_BLUETS_SOURCE}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .expect("fixture must reply with a module document");
+    });
+    let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
+    navigate(&mut browser, &url);
+
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let program = one_program(
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program }
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+        }
+    );
+    let points = safe_points(
+        debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+        program,
+    );
+    assert!(points.iter().any(|point| point.code_unit_ordinal == 0));
+
+    blueice_ipc::write_client_message(&mut browser, &blueice_ipc::ClientMessage::GetDom).unwrap();
+    assert!(matches!(
+        read_server_message(&mut browser).unwrap(),
+        ServerMessage::Dom(_)
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program }
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Completed,
+        }
+    );
+
+    fixture.join().unwrap();
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
 fn launcher_exposes_bluets_metadata_while_its_root_frame_is_pending_and_paused() {
     let gatekeeper_socket = clearing_gatekeeper();
     let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");

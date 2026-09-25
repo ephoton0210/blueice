@@ -30,7 +30,7 @@ use blueice_bluets_bluejs::page_host_typings::{
 };
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
-    DirectModuleGraph, DirectSafePointBinding, DirectScript,
+    DirectModuleGraph, DirectPageModuleGraphAttachment, DirectSafePointBinding, DirectScript,
 };
 use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
@@ -280,7 +280,7 @@ enum DeferredChildExecution {
         root_safe_point: Option<PageHostDebuggerSafePoint>,
     },
     BlueTsModule {
-        graph: Box<DirectModuleGraph>,
+        attachment: DirectPageModuleGraphAttachment,
     },
 }
 
@@ -1351,7 +1351,6 @@ impl BlueJsChildHost {
         prepared: Vec<PreparedScript>,
     ) -> PageHostReply {
         let mut reports = Vec::new();
-        let mut may_execute_bluets_immediately = true;
         for prepared in prepared {
             match prepared {
                 PreparedScript::Rejected {
@@ -1410,7 +1409,6 @@ impl BlueJsChildHost {
                     let Some(document) = self.documents.get_mut(&tab_id) else {
                         return self.fail_debugger_execution_document(tab_id);
                     };
-                    may_execute_bluets_immediately = false;
                     document
                         .debugger_execution_states
                         .insert(program, ChildDebuggerExecutionStatus::Pending);
@@ -1432,7 +1430,6 @@ impl BlueJsChildHost {
                     graph,
                     programs,
                 } => {
-                    may_execute_bluets_immediately = false;
                     self.enqueue_debugger_execution(
                         tab_id,
                         PendingDebuggerExecution {
@@ -1468,7 +1465,6 @@ impl BlueJsChildHost {
                         Ok(program) => program,
                         Err(()) => return self.fail_debugger_execution_document(tab_id),
                     };
-                    may_execute_bluets_immediately = false;
                     let Some(document) = self.documents.get_mut(&tab_id) else {
                         return self.fail_debugger_execution_document(tab_id);
                     };
@@ -1489,33 +1485,46 @@ impl BlueJsChildHost {
                         });
                 }
                 PreparedScript::BlueTsModule { ordinal, graph } => {
-                    if may_execute_bluets_immediately {
-                        reports.push(script_report(
-                            tab_id,
-                            document_generation,
-                            ordinal,
-                            PageHostScriptLanguage::BlueTs,
-                            PageHostScriptKind::Module,
-                            execute_bluets_module_graph(
-                                &mut self.runtime,
-                                &mut self.debug_registry,
+                    let attachment = match graph.attach_debug_in_page_realm(
+                        &mut self.runtime,
+                        tab_id,
+                        origin,
+                        &mut self.debug_registry,
+                    ) {
+                        Ok(attachment) => attachment,
+                        Err(error) => {
+                            reports.push(script_report(
                                 tab_id,
-                                origin,
-                                &graph,
-                            ),
-                        ));
-                    } else {
-                        self.enqueue_debugger_execution(
-                            tab_id,
-                            PendingDebuggerExecution {
+                                document_generation,
                                 ordinal,
-                                language: PageHostScriptLanguage::BlueTs,
-                                kind: PageHostScriptKind::Module,
-                                program: None,
-                                execution: DeferredChildExecution::BlueTsModule { graph },
-                            },
-                        );
-                    }
+                                PageHostScriptLanguage::BlueTs,
+                                PageHostScriptKind::Module,
+                                rejected(bluets_bridge_category(error)),
+                            ));
+                            continue;
+                        }
+                    };
+                    let program =
+                        match self.register_debugger_program(tab_id, attachment.entry.handle) {
+                            Ok(program) => program,
+                            Err(()) => return self.fail_debugger_execution_document(tab_id),
+                        };
+                    let document = self
+                        .documents
+                        .get_mut(&tab_id)
+                        .expect("the checked module graph's document remains live");
+                    document
+                        .debugger_execution_states
+                        .insert(program, ChildDebuggerExecutionStatus::Pending);
+                    document
+                        .pending_debugger_executions
+                        .push_back(PendingDebuggerExecution {
+                            ordinal,
+                            language: PageHostScriptLanguage::BlueTs,
+                            kind: PageHostScriptKind::Module,
+                            program: Some(program),
+                            execution: DeferredChildExecution::BlueTsModule { attachment },
+                        });
                 }
             }
         }
@@ -3850,13 +3859,22 @@ impl BlueJsChildHost {
                         programs.clone(),
                     )
                 }
-                DeferredChildExecution::BlueTsModule { graph } => execute_bluets_module_graph(
-                    &mut self.runtime,
-                    &mut self.debug_registry,
-                    tab_id,
-                    &origin,
-                    graph,
-                ),
+                DeferredChildExecution::BlueTsModule { attachment } => {
+                    let program = pending
+                        .program
+                        .expect("every deferred BlueTS module has an entry debugger program");
+                    let outcome = match attachment.execute_in_page_realm(&mut self.runtime, tab_id)
+                    {
+                        Ok(_) => PageHostScriptOutcome::Executed,
+                        Err(error) => rejected(bluets_bridge_category(error)),
+                    };
+                    self.documents
+                        .get_mut(&tab_id)
+                        .expect("the advancing module document remains live")
+                        .debugger_execution_states
+                        .insert(program, ChildDebuggerExecutionStatus::Completed);
+                    outcome
+                }
             };
             if paused {
                 self.documents

@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.1.1.2.** Admit a checked ESM graph before execution and
-expose its exact entry program as `Pending`. Every item has
+**Current leaf: C1.1.1.3.** Suspend BlueJS at the first entry module-root
+evaluate-body safe point and resume the retained graph. Every item has
 an ID
 (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -242,7 +242,7 @@ channel with explicit owner/client grants.
 - [ ] **C1.1** Pause/resume and step a module root in a real page.
   - [ ] **C1.1.1** Pause at the first module-root safe point and resume to completion.
     - [x] **C1.1.1.1** Specify the exact module-root safe point, graph and VM-state lifetime, and observable state transitions in PLAN.md. The entry evaluate-body boundary, pre-entry dependency effects, retained continuation, invalidation, source-free state sequence, and asynchronous/resource failure behavior are recorded there.
-    - [ ] **C1.1.1.2** Admit a checked ESM graph before execution and expose its exact entry program as `Pending` through the real debugger route.
+    - [x] **C1.1.1.2** Admit a checked ESM graph before execution and expose its exact entry program as `Pending` through the real debugger route. The child now attaches the graph and metadata at synchronization, registers the entry state, and advances the already attached graph once. An isolated-child two-module test inventories both programs and metadata before execution, while a real launcher/core/child debugger test observes the pending entry and later completion.
     - [ ] **C1.1.1.3** Suspend BlueJS at the entry module's first evaluate-body root safe point and resume its retained graph to completion; cover the native VM boundary.
     - [ ] **C1.1.1.4** Wire the child/core debugger route and prove `Pending` → `Paused` → `Resuming` → `Completed` on a real BlueTS ESM page.
   - [ ] **C1.1.2** Instruction step and BlueTS source-span step inside the module root.
