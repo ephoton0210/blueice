@@ -8,3 +8,11 @@ license.workspace = true
 blueice-ipc = { path = "../ipc" }
 blueice-loopback-model = { path = "../loopback-model" }
 serde_json = "1"
+candle-core = { version = "0.11", optional = true }
+candle-transformers = { version = "0.11", optional = true }
+tokenizers = { version = "0.22", default-features = false, features = ["onig"], optional = true }
+
+[features]
+# In-process inference (`phase-7-local-ai/PLAN.md`, step C2). Off by default so
+# builds that do not ask for it carry none of these dependencies.
+candle = ["dep:candle-core", "dep:candle-transformers", "dep:tokenizers"]

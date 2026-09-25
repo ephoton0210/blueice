@@ -7,6 +7,9 @@
 //! external loopback server) and, later, in-process `candle` can be selected
 //! or run side by side without touching task or protocol code.
 
+#[cfg(feature = "candle")]
+pub mod candle;
+pub mod in_process;
 pub mod loopback;
 pub mod race;
 

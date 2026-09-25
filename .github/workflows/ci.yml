@@ -36,6 +36,12 @@ jobs:
         run: python3 -m unittest discover -s development/browser_core/phase-6-ai-agent-integration-demo -p test_verify_human_evidence.py
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      # The in-process `candle` backend is behind a cargo feature that no
+      # default build enables, so it is built, linted, and tested explicitly.
+      - name: candle backend (feature build)
+        run: |
+          cargo clippy -p blueice-ai-assistant --features candle --all-targets -- -D warnings
+          cargo test -p blueice-ai-assistant --features candle
 
   coverage:
     name: Coverage
