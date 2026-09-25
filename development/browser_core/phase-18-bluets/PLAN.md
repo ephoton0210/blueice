@@ -626,7 +626,18 @@ process-unique nonzero frame handle after a verified child pause. Repeated
 observations of that invocation keep the same handle. Child return, realm
 replacement/close, and predecessor executor loss revoke it; even a replacement
 child that starts its program counters at the same numbers receives a different
-public-facing frame handle. The public wire type is still pending.
+public-facing frame handle.
+
+**Public active-frame route (C1.2.1.3.3.2):** Public debugger v32 now has a
+distinct `DebuggerFrame`, `NestedFrames` capability, and nested arm, state, and
+single-instruction step messages. The public frame handle is core-reminted and
+never carries the private child invocation serial. The core checks the exact
+live realm, program and static safe point before arming, and maps nested state
+only from a verified real child frame. A nested step must present that exact
+active handle; root controls cannot stand in for it. Hosts without the child
+continuation keep the nested capability unavailable. The real core/child route
+regression proves the public command semantics; C1.2.1.4 will exercise them
+over the actual public debugger socket with a BlueTS page.
 
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant

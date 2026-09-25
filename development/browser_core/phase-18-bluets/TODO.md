@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.2.1.3.3.2.** Add the public active-frame protocol and
-core route, with exact capability gating and a real-process BlueTS proof.
-the page runtime, child, IPC, and public debugger socket.
+**Current leaf: C1.2.1.4.** Prove a nested pause and same-frame instruction
+successor on a real BlueTS page through the public debugger socket; retain
+unsupported call-shape denial.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -28,8 +28,9 @@ and module graphs. Ordinary pages expose copied document text and origin,
 with no general live DOM or event API. Separate owner-only HTTP profiles
 expose boolean/opaque lookup probes or the exact typed `document` lookup and
 `textContent` slice; neither grants creation or events. Classic-root
-pause/resume and bounded BlueTS source-span stepping work; nested/module
-debugging, stack, scope, and values do not. The
+pause/resume and bounded BlueTS source-span stepping work; nested-frame
+pause/step now has a distinct public identity and capability. Nested resume,
+stack, scope, and values do not. The
 compiler/MCP route supports sealed projects and read-only queries, with no
 client registration, build output, or write authority.
 
@@ -281,9 +282,9 @@ channel with explicit owner/client grants.
         - [x] **C1.2.1.3.2.3** Add versioned page-host IPC and the core child proxy for nested arm/state/step, with exact document and program identity checks; leave the public socket disabled until C1.2.1.3.3. The source-free private frame identity and v35 commands/state are wired end-to-end; a real child/core regression passes.
           - [x] **C1.2.1.3.2.3.1** Define a child-private source-free frame wire identity bound to tab, document generation, child program generation, code-unit ordinal, and nonzero invocation serial; test exact tuple validation and serialization without adding commands or raising the protocol version yet. `PageHostDebuggerFrame` now keeps every identity component separate from a static safe point, rejects zero/root placeholders, and matches only its own program and code unit. Its source-free JSON round-trip and exact-tuple regression pass; all 98 IPC library tests and workspace Clippy pass. No page-host command or protocol version was added yet.
           - [x] **C1.2.1.3.2.3.2** Add page-host arm/state/step commands, child dispatch, and core child proxy under a dedicated nested-frame capability; raise the page-host version only once this private route is end-to-end. Page-host v35 now serializes a separately gated active-frame state and command; the child compares the whole tab/document/program/code-unit/invocation tuple before scheduling one step, and core remaps the child program identity and validates every reply. The real-process core-child test, 99 IPC tests, 101 launcher tests (one known `/private/tmp` test excluded), 32 JavaScript-child tests, workspace Clippy and formatting pass. The engine test socket helper now uses the system temporary directory so it runs on Linux.
-      - [ ] **C1.2.1.3.3** Wire a distinct active-frame identity, capability, pause state, and step command through the public debugger protocol and core route; bump the public protocol version only when end-to-end behavior is available (page-host v35 was already bumped with its complete private route).
+      - [x] **C1.2.1.3.3** Wire a distinct active-frame identity, capability, pause state, and step command through the public debugger protocol and core route; bump the public protocol version only when end-to-end behavior is available (page-host v35 was already bumped with its complete private route).
         - [x] **C1.2.1.3.3.1** Remint a core-owned, process-unique active-frame handle only from an actual child pause, keep the child serial private, and revoke the handle on return, realm replacement, or executor/child replacement; test same-frame stability and stale-handle rejection. The core proxy now keeps one exact child-frame association per live tab and issues a process-global nonzero handle only after a verified child pause. It retains that handle across same-frame pause/step observations, drops it on return or realm close/replacement, and refuses stale handles even when a successor executor remints the same numeric program ID. The real-child regression and all 32 JavaScript-child tests pass; workspace Clippy and formatting pass. No public protocol exposure yet.
-        - [ ] **C1.2.1.3.3.2** Add the distinct public frame type, capability, nested arm/state/step commands, core route, protocol-version bump, and real-process checks without aliasing root controls or exposing the child serial.
+        - [x] **C1.2.1.3.3.2** Add the distinct public frame type, capability, nested arm/state/step commands, core route, protocol-version bump, and real-process checks without aliasing root controls or exposing the child serial. Public debugger v32 carries a core-reminted frame handle, separate nested capability/requests/states, and exact per-program checks. A real child/core route test proves nested step and root-control separation; public-socket BlueTS acceptance follows in C1.2.1.4.
     - [ ] **C1.2.1.4** Prove the nested pause and same-frame instruction successor on a real BlueTS page through the public debugger socket; keep unsupported call shapes unavailable.
   - [ ] **C1.2.2** Resume that same frame; reject a stale frame identity after it returns.
   - [ ] **C1.2.3** Reject a cross-tab target and a target from a predecessor child.

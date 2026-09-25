@@ -9,7 +9,11 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version thirty adds an
+//! and an opt-in root-code-unit pause/resume seam. Version thirty-two adds a
+//! separately gated, core-reminted active nested-frame identity and exact
+//! nested arm/state/step commands. Its frame handle
+//! is not the child invocation serial, a static code-unit point, or a value.
+//! Version thirty adds an
 //! independently authorized BlueTS source-span step for one exact paused
 //! root safe point, with a distinct bounded-limit stop reason. Version twenty-nine adds
 //! an atomic source-position arm request: one session turn must first pass
@@ -70,7 +74,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 31;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 32;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -705,6 +709,28 @@ impl DebuggerSafePoint {
     }
 }
 
+/// A core-reminted identity for one actually paused nested invocation.
+/// Its handle is opaque and process-unique while this core lives; a static
+/// safe point may name the same code unit but can never stand in for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DebuggerFrame {
+    pub program: DebuggerProgram,
+    pub code_unit_ordinal: u32,
+    pub frame_handle: u64,
+}
+
+impl DebuggerFrame {
+    pub fn is_well_formed(self) -> bool {
+        self.program.is_well_formed() && self.code_unit_ordinal != 0 && self.frame_handle != 0
+    }
+
+    pub fn matches_safe_point(self, safe_point: DebuggerSafePoint) -> bool {
+        self.is_well_formed()
+            && self.program == safe_point.program
+            && self.code_unit_ordinal == safe_point.code_unit_ordinal
+    }
+}
+
 /// Native debugger features that a host may explicitly advertise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -722,6 +748,9 @@ pub enum DebuggerCapability {
     Breakpoints,
     PauseResume,
     Stepping,
+    /// Exact pause and single-instruction step for one live synchronous
+    /// nested invocation. Root-frame controls do not imply this capability.
+    NestedFrames,
     Stack,
     Scopes,
     ExceptionPolicy,
@@ -2148,12 +2177,19 @@ pub enum DebuggerExecutionState {
     Paused {
         safe_point: DebuggerSafePoint,
     },
+    NestedPaused {
+        frame: DebuggerFrame,
+        safe_point: DebuggerSafePoint,
+    },
     /// A source-span step stopped at its fixed instruction budget; the
     /// continuation remains paused at this verified root safe point.
     SourceStepLimitReached {
         safe_point: DebuggerSafePoint,
     },
     Stepping,
+    NestedStepping {
+        frame: DebuggerFrame,
+    },
     Resuming,
     Completed,
 }
@@ -2334,6 +2370,12 @@ pub enum DebuggerRequest {
     ArmRootSafePointBreakpoint {
         safe_point: DebuggerSafePoint,
     },
+    /// Arms one exact child-code-unit safe point on a still-pending classic
+    /// or BlueTS entry module. The eventual pause mints an active frame;
+    /// this static target alone never authorizes an instruction step.
+    ArmNestedSafePointBreakpoint {
+        safe_point: DebuggerSafePoint,
+    },
     /// Lists only exact breakpoint records currently retained by one live
     /// realm. The records carry no source, bytecode, VM object, or value.
     ListBreakpoints {
@@ -2359,6 +2401,10 @@ pub enum DebuggerRequest {
     /// point or completion; no stack, operand, source, or value is returned.
     StepRootInstruction {
         program: DebuggerProgram,
+    },
+    /// Steps only the exact core-reminted, still-active nested invocation.
+    StepNestedInstruction {
+        frame: DebuggerFrame,
     },
     /// Steps from one exact paused BlueTS root safe point to the next distinct
     /// compiler-bound source span, completion, or a bounded-limit stop.
@@ -2461,6 +2507,9 @@ pub enum DebuggerReply {
     RootSafePointBreakpointArmed {
         safe_point: DebuggerSafePoint,
     },
+    NestedSafePointBreakpointArmed {
+        safe_point: DebuggerSafePoint,
+    },
     Breakpoints(Vec<DebuggerSafePoint>),
     BreakpointCleared {
         safe_point: DebuggerSafePoint,
@@ -2475,6 +2524,9 @@ pub enum DebuggerReply {
     },
     ExecutionStepRequested {
         program: DebuggerProgram,
+    },
+    NestedStepRequested {
+        frame: DebuggerFrame,
     },
     ExecutionSourceSpanStepRequested {
         safe_point: DebuggerSafePoint,
@@ -2563,11 +2615,13 @@ pub fn negotiate(
         | DebuggerRequest::SetBreakpoint { .. }
         | DebuggerRequest::ArmEntryBreakpoint { .. }
         | DebuggerRequest::ArmRootSafePointBreakpoint { .. }
+        | DebuggerRequest::ArmNestedSafePointBreakpoint { .. }
         | DebuggerRequest::ListBreakpoints { .. }
         | DebuggerRequest::ClearBreakpoint { .. }
         | DebuggerRequest::GetExecutionState { .. }
         | DebuggerRequest::ResumeExecution { .. }
         | DebuggerRequest::StepRootInstruction { .. }
+        | DebuggerRequest::StepNestedInstruction { .. }
         | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
         | DebuggerRequest::Unknown => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
@@ -2607,6 +2661,63 @@ mod tests {
             browser_context_id: 1,
             tab_id: 7,
             realm_generation: 3,
+        }
+    }
+
+    #[test]
+    fn nested_frame_identity_commands_and_states_round_trip_source_free() {
+        let program = DebuggerProgram {
+            realm: realm(),
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let safe_point = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 1,
+            bytecode_offset: 4,
+        };
+        let frame = DebuggerFrame {
+            program,
+            code_unit_ordinal: 1,
+            frame_handle: 19,
+        };
+        assert!(frame.matches_safe_point(safe_point));
+        assert!(!DebuggerFrame {
+            frame_handle: 0,
+            ..frame
+        }
+        .is_well_formed());
+        assert!(!frame.matches_safe_point(DebuggerSafePoint {
+            code_unit_ordinal: 2,
+            ..safe_point
+        }));
+        for request in [
+            DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point },
+            DebuggerRequest::StepNestedInstruction { frame },
+        ] {
+            let (mut writer, mut reader) = UnixStream::pair().unwrap();
+            write_debugger_request(&mut writer, &request).unwrap();
+            assert_eq!(read_debugger_request(&mut reader).unwrap(), request);
+        }
+        for reply in [
+            DebuggerReply::NestedSafePointBreakpointArmed { safe_point },
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::NestedPaused { frame, safe_point },
+            },
+            DebuggerReply::NestedStepRequested { frame },
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::NestedStepping { frame },
+            },
+        ] {
+            let bytes = serde_json::to_vec(&reply).unwrap();
+            let json = String::from_utf8(bytes).unwrap();
+            assert!(!json.contains("invocation_serial"));
+            assert!(!json.contains("source_text"));
+            let (mut writer, mut reader) = UnixStream::pair().unwrap();
+            write_debugger_reply(&mut writer, &reply).unwrap();
+            assert_eq!(read_debugger_reply(&mut reader).unwrap(), reply);
         }
     }
 

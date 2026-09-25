@@ -8300,6 +8300,185 @@ mod tests {
         let _ = std::fs::remove_file(next_path);
     }
 
+    #[test]
+    fn public_core_route_steps_one_real_child_nested_frame_without_root_aliasing() {
+        use crate::debugger::handle_debugger_request_with_page_javascript_executor;
+        use blueice_ipc::debugger::{
+            DebuggerCapability, DebuggerCapabilityState, DebuggerExecutionState, DebuggerPageRealm,
+            DebuggerReply, DebuggerRequest,
+        };
+
+        let (path, token, child) = spawn_child();
+        let (tabs, tab_id) = loaded_tabs(
+            "<script>function inner() { return 4; } globalThis.answer = inner() + 1;</script>",
+            "https://example.test/public-nested.html",
+        );
+        let mut executor =
+            OutOfProcessJavaScriptPageExecutor::connect_with_debugger_execution_control(
+                &path, &token,
+            )
+            .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let realm = DebuggerPageRealm {
+            browser_context_id: crate::debugger::DEFAULT_BROWSER_CONTEXT_ID,
+            tab_id: tab_id.as_u64(),
+            realm_generation: 1,
+        };
+        let DebuggerReply::Capabilities(capabilities) =
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::DescribeCapabilities { realm },
+            )
+        else {
+            panic!("expected live debugger capabilities");
+        };
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::NestedFrames
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        let program = match handle_debugger_request_with_page_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::ListPrograms { realm },
+        ) {
+            DebuggerReply::Programs(programs) => programs[0],
+            reply => panic!("expected one program: {reply:?}"),
+        };
+        let target = match handle_debugger_request_with_page_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::ListSafePoints { program },
+        ) {
+            DebuggerReply::SafePoints(points) => points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+                .unwrap(),
+            reply => panic!("expected nested safe points: {reply:?}"),
+        };
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point: target },
+            ),
+            DebuggerReply::NestedSafePointBreakpointArmed { safe_point: target }
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let frame = match handle_debugger_request_with_page_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::GetExecutionState { program },
+        ) {
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::NestedPaused { frame, safe_point },
+                ..
+            } => {
+                assert_eq!(safe_point, target);
+                frame
+            }
+            reply => panic!("expected a public active frame: {reply:?}"),
+        };
+        assert_eq!(frame.program, program);
+        assert_ne!(frame.frame_handle, 0);
+        assert!(matches!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::StepRootInstruction { program },
+            ),
+            DebuggerReply::Error { .. }
+        ));
+        let mut wrong = frame;
+        wrong.frame_handle += 1;
+        assert!(matches!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::StepNestedInstruction { frame: wrong },
+            ),
+            DebuggerReply::Error { .. }
+        ));
+        let mut returned = false;
+        for _ in 0..96 {
+            assert_eq!(
+                handle_debugger_request_with_page_javascript_executor(
+                    &tabs,
+                    Some(&mut executor),
+                    DebuggerRequest::StepNestedInstruction { frame },
+                ),
+                DebuggerReply::NestedStepRequested { frame }
+            );
+            assert_eq!(
+                handle_debugger_request_with_page_javascript_executor(
+                    &tabs,
+                    Some(&mut executor),
+                    DebuggerRequest::GetExecutionState { program },
+                ),
+                DebuggerReply::ExecutionState {
+                    program,
+                    state: DebuggerExecutionState::NestedStepping { frame },
+                }
+            );
+            executor.synchronize_and_execute(&tabs).unwrap();
+            match handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetExecutionState { program },
+            ) {
+                DebuggerReply::ExecutionState {
+                    state:
+                        DebuggerExecutionState::NestedPaused {
+                            frame: same_frame, ..
+                        },
+                    ..
+                } => assert_eq!(same_frame, frame),
+                DebuggerReply::ExecutionState {
+                    state: DebuggerExecutionState::Paused { safe_point },
+                    ..
+                } => {
+                    assert_eq!(safe_point.code_unit_ordinal, 0);
+                    returned = true;
+                    break;
+                }
+                reply => panic!("unexpected nested successor: {reply:?}"),
+            }
+        }
+        assert!(returned);
+        assert!(matches!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::StepNestedInstruction { frame },
+            ),
+            DebuggerReply::Error { .. }
+        ));
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ResumeExecution { program },
+            ),
+            DebuggerReply::ExecutionResumed { program }
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetExecutionState { program },
+            ),
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::Completed,
+            }
+        );
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
     /// A hostile authenticated child still cannot acknowledge a different
     /// realm and make core treat the requested document as eligible for any
     /// debugger lifecycle record.

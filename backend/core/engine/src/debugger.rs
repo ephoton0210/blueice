@@ -13,6 +13,7 @@
 use crate::{
     script::javascript::{
         JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
+        JavaScriptPageDebuggerFrame, JavaScriptPageDebuggerNestedExecutionState,
         JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
         JavaScriptPageDebuggerStaticMetadataContractTarget,
         JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
@@ -30,7 +31,7 @@ use crate::{
 use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
     DebuggerCapabilities, DebuggerCapability, DebuggerCapabilityReport, DebuggerCapabilityState,
-    DebuggerErrorCode, DebuggerExecutionState, DebuggerMetadataCapability,
+    DebuggerErrorCode, DebuggerExecutionState, DebuggerFrame, DebuggerMetadataCapability,
     DebuggerMetadataSessionAuthorization, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
     DebuggerRequest, DebuggerSafePoint, DebuggerStaticMetadataContractDisplay,
     DebuggerStaticMetadataContractId, DebuggerStaticMetadataContractLocation,
@@ -171,9 +172,11 @@ impl DebuggerRequestReceiver {
                 &envelope.request,
                 DebuggerRequest::ArmEntryBreakpoint { .. }
                     | DebuggerRequest::ArmRootSafePointBreakpoint { .. }
+                    | DebuggerRequest::ArmNestedSafePointBreakpoint { .. }
                     | DebuggerRequest::ArmStaticMetadataSourceBreakpoint { .. }
                     | DebuggerRequest::ResumeExecution { .. }
                     | DebuggerRequest::StepRootInstruction { .. }
+                    | DebuggerRequest::StepNestedInstruction { .. }
                     | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
             );
             let reply = handle_debugger_request_with_page_javascript_executor_and_metadata_session(
@@ -191,8 +194,10 @@ impl DebuggerRequestReceiver {
                     &reply,
                     DebuggerReply::BreakpointArmed { .. }
                         | DebuggerReply::RootSafePointBreakpointArmed { .. }
+                        | DebuggerReply::NestedSafePointBreakpointArmed { .. }
                         | DebuggerReply::ExecutionResumed { .. }
                         | DebuggerReply::ExecutionStepRequested { .. }
+                        | DebuggerReply::NestedStepRequested { .. }
                         | DebuggerReply::ExecutionSourceSpanStepRequested { .. }
                 );
             // A state observation after the bounded lifecycle has already
@@ -205,8 +210,10 @@ impl DebuggerRequestReceiver {
                 &reply,
                 DebuggerReply::ExecutionState {
                     state: DebuggerExecutionState::Paused { .. }
+                        | DebuggerExecutionState::NestedPaused { .. }
                         | DebuggerExecutionState::SourceStepLimitReached { .. }
                         | DebuggerExecutionState::Stepping
+                        | DebuggerExecutionState::NestedStepping { .. }
                         | DebuggerExecutionState::Resuming
                         | DebuggerExecutionState::Completed,
                     ..
@@ -222,6 +229,7 @@ impl DebuggerRequestReceiver {
                 &reply,
                 DebuggerReply::ExecutionResumed { .. }
                     | DebuggerReply::ExecutionStepRequested { .. }
+                    | DebuggerReply::NestedStepRequested { .. }
                     | DebuggerReply::ExecutionSourceSpanStepRequested { .. }
             );
             let _ = envelope.reply.send(reply);
@@ -340,6 +348,8 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::ArmRootSafePointBreakpoint { safe_point } => {
             arm_root_safe_point_breakpoint(tabs, javascript_executor, safe_point)
         }
+        DebuggerRequest::ArmNestedSafePointBreakpoint { .. }
+        | DebuggerRequest::StepNestedInstruction { .. } => unavailable_nested_frames(),
         DebuggerRequest::ListBreakpoints { realm } => {
             list_breakpoints(tabs, javascript_executor.as_deref(), realm)
         }
@@ -540,6 +550,9 @@ fn handle_debugger_request_with_child_locations(
         DebuggerRequest::ArmRootSafePointBreakpoint { safe_point } => {
             arm_child_root_safe_point_breakpoint(tabs, locations, safe_point)
         }
+        DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point } => {
+            arm_child_nested_safe_point_breakpoint(tabs, locations, safe_point)
+        }
         DebuggerRequest::GetExecutionState { program } => {
             child_execution_state(tabs, locations, program)
         }
@@ -548,6 +561,9 @@ fn handle_debugger_request_with_child_locations(
         }
         DebuggerRequest::StepRootInstruction { program } => {
             step_child_root_instruction(tabs, locations, program)
+        }
+        DebuggerRequest::StepNestedInstruction { frame } => {
+            step_child_nested_instruction(tabs, locations, frame)
         }
         DebuggerRequest::StepStaticMetadataSourceSpan { target } => {
             step_child_static_metadata_source_span(tabs, locations, metadata_session, target)
@@ -723,6 +739,8 @@ fn describe_child_location_capabilities(
             entry_execution_control_available: execution_control_available,
             stepping_available: execution_control_available
                 && locations.debugger_stepping_available(),
+            nested_frames_available: execution_control_available
+                && locations.debugger_nested_frames_available(),
             static_metadata_inventory_available,
             static_metadata_summary_available,
             static_metadata_lowering_summary_available,
@@ -2628,6 +2646,46 @@ fn arm_child_root_safe_point_breakpoint(
     }
 }
 
+fn arm_child_nested_safe_point_breakpoint(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    safe_point: DebuggerSafePoint,
+) -> DebuggerReply {
+    if !safe_point.is_well_formed() || safe_point.code_unit_ordinal == 0 {
+        return invalid_safe_point_target();
+    }
+    let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, safe_point.program.realm.realm_generation)
+        || !locations.debugger_nested_frames_available()
+    {
+        return unavailable_nested_frames();
+    }
+    if let Err(error) = locations.validate_debugger_safe_point(
+        tab_id,
+        safe_point.program.realm.realm_generation,
+        safe_point.program.program_handle,
+        safe_point.program.program_generation,
+        safe_point.code_unit_ordinal,
+        safe_point.bytecode_offset,
+    ) {
+        return debugger_program_error(error);
+    }
+    match locations.arm_debugger_nested_safe_point_breakpoint(
+        tab_id,
+        safe_point.program.realm.realm_generation,
+        safe_point.program.program_handle,
+        safe_point.program.program_generation,
+        safe_point.code_unit_ordinal,
+        safe_point.bytecode_offset,
+    ) {
+        Ok(()) => DebuggerReply::NestedSafePointBreakpointArmed { safe_point },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
 fn child_execution_state(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,
@@ -2647,6 +2705,83 @@ fn child_execution_state(
         || !locations.debugger_execution_control_available()
     {
         return unavailable_execution_control();
+    }
+    if locations.debugger_nested_frames_available() {
+        let nested = match locations.debugger_nested_execution_state(
+            tab_id,
+            program.realm.realm_generation,
+            program.program_handle,
+            program.program_generation,
+        ) {
+            Ok(nested) => nested,
+            Err(error) => return debugger_program_error(error),
+        };
+        if let Some(nested) = nested {
+            let (frame, state) = match nested {
+                JavaScriptPageDebuggerNestedExecutionState::Paused {
+                    frame,
+                    bytecode_offset,
+                } => {
+                    let public_frame = DebuggerFrame {
+                        program,
+                        code_unit_ordinal: frame.code_unit_ordinal,
+                        frame_handle: frame.frame_handle,
+                    };
+                    let safe_point = DebuggerSafePoint {
+                        program,
+                        code_unit_ordinal: frame.code_unit_ordinal,
+                        bytecode_offset,
+                    };
+                    if !public_frame.matches_safe_point(safe_point) {
+                        return invalid_safe_point_target();
+                    }
+                    if let Err(error) = locations.validate_debugger_safe_point(
+                        tab_id,
+                        program.realm.realm_generation,
+                        program.program_handle,
+                        program.program_generation,
+                        safe_point.code_unit_ordinal,
+                        safe_point.bytecode_offset,
+                    ) {
+                        return debugger_program_error(error);
+                    }
+                    (
+                        frame,
+                        DebuggerExecutionState::NestedPaused {
+                            frame: public_frame,
+                            safe_point,
+                        },
+                    )
+                }
+                JavaScriptPageDebuggerNestedExecutionState::Stepping { frame } => {
+                    let public_frame = DebuggerFrame {
+                        program,
+                        code_unit_ordinal: frame.code_unit_ordinal,
+                        frame_handle: frame.frame_handle,
+                    };
+                    if !public_frame.is_well_formed() {
+                        return invalid_safe_point_target();
+                    }
+                    (
+                        frame,
+                        DebuggerExecutionState::NestedStepping {
+                            frame: public_frame,
+                        },
+                    )
+                }
+            };
+            if frame.tab_id != tab_id
+                || frame.document_generation != program.realm.realm_generation
+                || frame.program_handle != program.program_handle
+                || frame.program_generation != program.program_generation
+            {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    message: "active debugger frame does not belong to this program".to_string(),
+                };
+            }
+            return DebuggerReply::ExecutionState { program, state };
+        }
     }
     match locations.debugger_execution_state(
         tab_id,
@@ -2721,6 +2856,40 @@ fn step_child_root_instruction(
         program.program_generation,
     ) {
         Ok(()) => DebuggerReply::ExecutionStepRequested { program },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn step_child_nested_instruction(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    frame: DebuggerFrame,
+) -> DebuggerReply {
+    if !frame.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid active debugger frame".to_string(),
+        };
+    }
+    let realm = frame.program.realm;
+    let tab_id = match resolve_live_realm(tabs, realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, realm.realm_generation)
+        || !locations.debugger_nested_frames_available()
+    {
+        return unavailable_nested_frames();
+    }
+    match locations.step_debugger_nested_instruction(JavaScriptPageDebuggerFrame {
+        tab_id,
+        document_generation: realm.realm_generation,
+        program_handle: frame.program.program_handle,
+        program_generation: frame.program.program_generation,
+        code_unit_ordinal: frame.code_unit_ordinal,
+        frame_handle: frame.frame_handle,
+    }) {
+        Ok(()) => DebuggerReply::NestedStepRequested { frame },
         Err(error) => debugger_program_error(error),
     }
 }
@@ -2859,6 +3028,7 @@ fn describe_capabilities(
             breakpoint_configuration_available: program_locations_available,
             entry_execution_control_available,
             stepping_available: entry_execution_control_available,
+            nested_frames_available: false,
             static_metadata_inventory_available: false,
             static_metadata_summary_available: false,
             static_metadata_lowering_summary_available: false,
@@ -3478,6 +3648,14 @@ fn unavailable_stepping() -> DebuggerReply {
     }
 }
 
+fn unavailable_nested_frames() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "native debugger nested-frame control is not installed for this page-host route"
+            .to_string(),
+    }
+}
+
 fn debugger_program_error(error: JavaScriptPageDebuggerError) -> DebuggerReply {
     let (code, message) = match error {
         JavaScriptPageDebuggerError::NoLiveRealm => (
@@ -3563,6 +3741,7 @@ struct DebuggerCapabilityAvailability {
     breakpoint_configuration_available: bool,
     entry_execution_control_available: bool,
     stepping_available: bool,
+    nested_frames_available: bool,
     static_metadata_inventory_available: bool,
     static_metadata_summary_available: bool,
     static_metadata_lowering_summary_available: bool,
@@ -3590,6 +3769,7 @@ fn capability_reports(
         breakpoint_configuration_available,
         entry_execution_control_available,
         stepping_available,
+        nested_frames_available,
         static_metadata_inventory_available,
         static_metadata_summary_available,
         static_metadata_lowering_summary_available,
@@ -3659,7 +3839,7 @@ fn capability_reports(
                 DebuggerCapabilityState::Planned
             },
             if entry_execution_control_available {
-                "resume preserves one paused classic-script root frame; modules and child code units remain unavailable"
+                "resume preserves an exactly paused root frame; nested-frame resume is separately gated"
             } else {
                 "native pause and resume are not installed"
             },
@@ -3672,9 +3852,22 @@ fn capability_reports(
                 DebuggerCapabilityState::Planned
             },
             if stepping_available {
-                "one classic-root instruction step retains the same BlueJS continuation; nested frames and modules remain unavailable"
+                "one root instruction step retains the same BlueJS continuation; nested frames require their distinct capability"
             } else {
                 "native stepping is not installed for this page-host route"
+            },
+        ),
+        (
+            DebuggerCapability::NestedFrames,
+            if nested_frames_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if nested_frames_available {
+                "one exact synchronous nested invocation can pause and step under a core-owned frame handle"
+            } else {
+                "nested-frame pause and step are not installed for this page-host route"
             },
         ),
         (
