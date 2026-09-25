@@ -323,6 +323,7 @@ dependencies = [
  "blueice-i18n",
  "blueice-ipc",
  "blueice-launcher",
+ "png",
  "softbuffer",
  "winit",
 ]

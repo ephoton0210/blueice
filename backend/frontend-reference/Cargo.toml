@@ -15,3 +15,4 @@ blueice-launcher = { path = "../launcher" }
 blueice-assistant-settings = { path = "../assistant-settings" }
 winit = "0.30"
 softbuffer = "0.4"
+png = "0.17"

@@ -63,6 +63,7 @@ use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
 
 mod assistant_panel;
+mod debug_aids;
 mod permission_panel;
 use assistant_panel::{AssistantCommand, AssistantPanel};
 use permission_panel::{PanelCommand, PermissionPanel};
@@ -319,6 +320,8 @@ struct App {
     /// The native assistant-settings panel (F9): review an agent's proposal,
     /// edit the numeric settings. Its requests use the same private pipe.
     assistant_panel: AssistantPanel,
+    /// Snapshots of the window for debugging (`BLUEICE_FRONTEND_SNAPSHOT`).
+    snapshots: Option<debug_aids::Snapshots>,
     /// Whether the request now in flight was the assistant panel's, so its reply
     /// (including a rejection) is routed to that panel and not the permissions one.
     trusted_request_for_assistant: bool,
@@ -661,6 +664,9 @@ impl App {
         self.assistant_panel.draw(
             &mut pixels, size.width, size.height, self.trusted_request_pending,
         );
+        if let Some(snapshots) = self.snapshots.as_mut() {
+            snapshots.maybe_write(&pixels, size.width, size.height, std::time::Instant::now());
+        }
         let Some(surface) = &mut self.surface else {
             return;
         };
@@ -2164,6 +2170,7 @@ fn main() {
         trusted_frame_source: None,
         permission_panel: PermissionPanel::default(),
         assistant_panel: AssistantPanel::default(),
+        snapshots: debug_aids::Snapshots::from_env(),
         trusted_request_for_assistant: false,
         trusted_window_inspection_pending: trusted_window_stdio,
         show_generation,
@@ -2180,9 +2187,14 @@ fn main() {
     app.send_unscoped(&ClientMessage::GetExtensionPopup);
     app.send_selected(&ClientMessage::Navigate { url });
 
-    event_loop
-        .run_app(&mut app)
-        .expect("event loop exited with an error");
+    if let Err(error) = event_loop.run_app(&mut app) {
+        // A dropped display connection is otherwise reported as a bare panic.
+        eprintln!("{}", debug_aids::event_loop_failure_hint(&error));
+        if owns_socket {
+            let _ = std::fs::remove_file(&socket_path);
+        }
+        std::process::exit(3);
+    }
 
     if owns_socket {
         let _ = std::fs::remove_file(&socket_path);
