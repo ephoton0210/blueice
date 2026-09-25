@@ -197,6 +197,48 @@ fn readonly_checks_follow_parenthesized_chained_and_called_receivers() {
 }
 
 #[test]
+fn readonly_checks_follow_dynamic_array_receivers() {
+    let ambient = ModuleSource::new(
+        "memory:///events.d.ts",
+        "interface Event { readonly type: 'click'; readonly target: string; readonly currentTarget: string; mutable: string; }",
+    );
+    let check = |source| {
+        crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+            CompilerOptions {
+                ambient_declaration_modules: vec![ambient.clone()],
+                ..CompilerOptions::default()
+            },
+        )
+    };
+    for source in [
+        "function write(events: Event[], index: number): void { events[index].type = 'click'; }",
+        "function write(events: Event[], index: number): void { events[index].target = 'wrong'; }",
+        "function write(events: Event[], index: number): void { events[index].currentTarget++; }",
+        "function write(events: Event[]): void { events['0'].type = 'click'; }",
+        "function write(values: [Event, number]): void { values[0].type = 'click'; }",
+        "function write(events: Event[], index: number): void { consume(events[index].type = 'click'); } function consume(value: string): void {}",
+        "type Events = Event[]; function write(events: Events, index: number): void { events[index].type = 'click'; }",
+        "interface Slots { first: Event; second: Event; } function write(slots: Slots, key: string): void { slots[key].target = 'wrong'; }",
+    ] {
+        let invalid = check(source);
+        assert!(
+            invalid.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::TypeMismatch
+                    && diagnostic.message.contains("readonly")
+            }),
+            "{source}: {:#?}",
+            invalid.diagnostics
+        );
+    }
+    let valid = check(
+        "interface Slots { first: Event; second: Event; } function write(events: Event[], index: number, slots: Slots, key: string): void { events[index].mutable = 'ok'; slots[key].mutable = 'ok'; }",
+    );
+    assert!(!valid.has_errors(), "{:#?}", valid.diagnostics);
+}
+
+#[test]
 fn readonly_mutations_inside_larger_expressions_are_not_skipped() {
     let ambient = ModuleSource::new(
         "memory:///events.d.ts",

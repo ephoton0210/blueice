@@ -202,9 +202,13 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   receivers before testing the final field. A separately bounded scan catches
   readonly writes nested in calls, assignment chains, arithmetic/boolean
   expressions, and prefix/postfix updates or deletion without charging plain
-  assignments against generic-expansion fuel. Dynamically computed receiver
-  chains and opaque/unmodeled expression forms remain outside this static
-  check, so do not claim full qualifier enforcement yet.
+  assignments against generic-expansion fuel. Computed receiver chains now
+  retain the element type of typed arrays (including aliases) and uniform
+  tuples/records; literal canonical numeric indices select exact tuple
+  elements. Thus `events[index].type = ...` and `events['0'].type = ...` are
+  rejected even inside a larger expression. Heterogeneous dynamic containers
+  and opaque/unmodeled expression forms remain outside this static check, so
+  do not claim full qualifier enforcement yet.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members
   must fail both static checking and JavaScript runtime access.
 

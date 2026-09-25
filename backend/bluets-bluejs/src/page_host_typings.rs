@@ -656,6 +656,10 @@ mod tests {
             "function getClick(event: BlueIceClickEvent): BlueIceClickEvent { return event; } function onClick(event: BlueIceClickEvent): void { getClick(event).target = event.target; }",
             "function onClick(event: BlueIceClickEvent): void { let other = ''; other = event.type = 'click'; }",
             "function onClick(event: BlueIceClickEvent): void { let changed = event.type++ + 1; }",
+            "function write(events: BlueIceClickEvent[], index: number): void { events[index].type = 'click'; }",
+            "function write(events: BlueIceClickEvent[]): void { events['0'].type = 'click'; }",
+            "function write(events: BlueIceClickEvent[], index: number): void { events[index].currentTarget = events[index].target; }",
+            "function consume(value: string): void {} function write(events: BlueIceClickEvent[], index: number): void { consume(events[index].type = 'click'); }",
         ] {
             let error = compile(source).err().expect("readonly write must fail");
             let crate::BridgeError::BlueTs(diagnostics) = error else {

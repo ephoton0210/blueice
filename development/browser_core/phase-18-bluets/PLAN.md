@@ -207,6 +207,17 @@ nested forms. Tests also keep a method named `delete` from being mistaken for
 the delete operator. Dynamic receiver chains and opaque/unmodeled expression
 forms still prevent claiming full B4 qualifier enforcement.
 
+**Computed receiver element typing (B4 partial):** The checker now carries a
+typed array element through a dynamic bracket receiver before testing a later
+readonly event field, including arrays reached through a type alias and
+mutations nested inside calls. Uniform tuple and record fields use the same
+conservative inference; canonical numeric literal keys select the exact
+element of a heterogeneous tuple, and a mutable field remains writable. The
+verified event-v1 direct bridge rejects array-indexed writes to `type` and
+`currentTarget` as BlueTS diagnostics before BlueJS execution. Heterogeneous
+dynamic containers and opaque expressions still need a sound fail-closed
+policy before B4's qualifier leaf can be marked complete.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
