@@ -502,88 +502,85 @@ impl Compiler {
                 self.emit(Opcode::NewObject, 0)?;
                 let mut has_proto = false;
                 for property in properties {
-                    if let ObjectProp::Spread(value) = property {
-                        self.expression(value)?;
-                        self.emit(Opcode::CopyDataProperties, 0)?;
-                        continue;
-                    }
-                    if let ObjectProp::Method { key, function }
-                    | ObjectProp::Accessor { key, function, .. } = property
-                    {
-                        self.emit(Opcode::Dup, 0)?;
-                        self.property_key(key)?;
-                        self.function_named_with(
-                            function,
-                            false,
-                            None,
-                            false,
-                            FunctionCompileOptions::object_method(),
-                        )?;
-                        std::rc::Rc::get_mut(self.bytecode.functions.last_mut().unwrap())
-                            .unwrap()
-                            .constructible = false;
-                        if matches!(key, PropertyKey::Computed(_)) {
-                            // The parser could only name a literal key.
-                            let prefix = match property {
-                                ObjectProp::Accessor { getter: true, .. } => 1,
-                                ObjectProp::Accessor { .. } => 2,
-                                _ => 0,
+                    match property {
+                        ObjectProp::Spread(value) => {
+                            self.expression(value)?;
+                            self.emit(Opcode::CopyDataProperties, 0)?;
+                        }
+                        ObjectProp::Method { key, function }
+                        | ObjectProp::Accessor { key, function, .. } => {
+                            self.emit(Opcode::Dup, 0)?;
+                            self.property_key(key)?;
+                            self.function_named_with(
+                                function,
+                                false,
+                                None,
+                                false,
+                                FunctionCompileOptions::object_method(),
+                            )?;
+                            std::rc::Rc::get_mut(self.bytecode.functions.last_mut().unwrap())
+                                .unwrap()
+                                .constructible = false;
+                            if matches!(key, PropertyKey::Computed(_)) {
+                                // The parser could only name a literal key.
+                                let prefix = match property {
+                                    ObjectProp::Accessor { getter: true, .. } => 1,
+                                    ObjectProp::Accessor { .. } => 2,
+                                    _ => 0,
+                                };
+                                self.emit(Opcode::SetFunctionName, prefix)?;
+                            }
+                            if let ObjectProp::Accessor { getter, .. } = property {
+                                self.emit(Opcode::DefineAccessor, u32::from(!getter))?;
+                            } else {
+                                // The operand distinguishes object-literal
+                                // methods (enumerable) from class methods.
+                                self.emit(Opcode::DefineMethod, 1)?;
+                            }
+                            self.emit(Opcode::Pop, 0)?;
+                        }
+                        ObjectProp::KeyValue {
+                            key,
+                            value,
+                            shorthand,
+                        } => {
+                            self.emit(Opcode::Dup, 0)?;
+                            let prototype_key = match key {
+                                PropertyKey::Identifier(name) => name == "__proto__",
+                                PropertyKey::String(name) => name == "__proto__",
+                                _ => false,
                             };
-                            self.emit(Opcode::SetFunctionName, prefix)?;
-                        }
-                        if let ObjectProp::Accessor { getter, .. } = property {
-                            self.emit(Opcode::DefineAccessor, u32::from(!getter))?;
-                        } else {
-                            // The operand distinguishes object-literal
-                            // methods (enumerable) from class methods.
-                            self.emit(Opcode::DefineMethod, 1)?;
-                        }
-                        self.emit(Opcode::Pop, 0)?;
-                        continue;
-                    }
-                    let ObjectProp::KeyValue {
-                        key,
-                        value,
-                        shorthand,
-                    } = property
-                    else {
-                        unreachable!("spread is handled above")
-                    };
-                    self.emit(Opcode::Dup, 0)?;
-                    let prototype_key = match key {
-                        PropertyKey::Identifier(name) => name == "__proto__",
-                        PropertyKey::String(name) => name == "__proto__",
-                        _ => false,
-                    };
-                    if !shorthand && prototype_key {
-                        if has_proto {
-                            return Err(CompileError::InvalidSyntax(
-                                "duplicate literal __proto__ setter",
-                            ));
-                        }
-                        has_proto = true;
-                        self.expression(value)?;
-                        self.emit(Opcode::SetLiteralPrototype, 0)?;
-                    } else {
-                        self.property_key(key)?;
-                        match key {
-                            // PropertyDefinition : PropertyName : AssignmentExpression
-                            // names an anonymous function definition after
-                            // its key: statically for a literal key, at run
-                            // time for a computed one.
-                            PropertyKey::Computed(_) => {
-                                self.expression(value)?;
-                                if is_anonymous_function_definition(value) {
-                                    self.emit(Opcode::SetFunctionName, 0)?;
+                            if !shorthand && prototype_key {
+                                if has_proto {
+                                    return Err(CompileError::InvalidSyntax(
+                                        "duplicate literal __proto__ setter",
+                                    ));
                                 }
-                            }
-                            literal => {
-                                let name = literal_property_key_name(literal);
-                                self.expression_with_name(value, name.as_deref())?;
+                                has_proto = true;
+                                self.expression(value)?;
+                                self.emit(Opcode::SetLiteralPrototype, 0)?;
+                            } else {
+                                self.property_key(key)?;
+                                match key {
+                                    // PropertyDefinition : PropertyName : AssignmentExpression
+                                    // names an anonymous function definition after
+                                    // its key: statically for a literal key, at run
+                                    // time for a computed one.
+                                    PropertyKey::Computed(_) => {
+                                        self.expression(value)?;
+                                        if is_anonymous_function_definition(value) {
+                                            self.emit(Opcode::SetFunctionName, 0)?;
+                                        }
+                                    }
+                                    literal => {
+                                        let name = literal_property_key_name(literal);
+                                        self.expression_with_name(value, name.as_deref())?;
+                                    }
+                                }
+                                self.emit(Opcode::DefineData, 0)?;
+                                self.emit(Opcode::Pop, 0)?;
                             }
                         }
-                        self.emit(Opcode::DefineData, 0)?;
-                        self.emit(Opcode::Pop, 0)?;
                     }
                 }
             }
