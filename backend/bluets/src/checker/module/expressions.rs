@@ -779,7 +779,15 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
-        let Some(mutation) = member_mutation(strip_outer_parentheses(tokens)) else {
+        let tokens = strip_outer_parentheses(tokens);
+        let direct = member_mutation(tokens);
+        self.check_nested_readonly_mutations(
+            tokens,
+            scope,
+            span,
+            direct.as_ref().map(|mutation| mutation.operator.start),
+        );
+        let Some(mutation) = direct else {
             return;
         };
         let owner = self.infer_expression(mutation.receiver, scope);
@@ -857,6 +865,131 @@ impl<'a> ModuleChecker<'a> {
                 DiagnosticCode::ResourceLimit,
             ),
             PropertyType::Indeterminate => {}
+        }
+    }
+
+    fn check_nested_readonly_mutations(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+        direct_operator_start: Option<usize>,
+    ) {
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let mut inspected = 0usize;
+        let operator_limit = self.max_type_expansions.saturating_mul(16).max(256);
+        let scan_limit = self.max_type_expansions.saturating_mul(32).max(64);
+        for (index, operator) in tokens.iter().enumerate() {
+            let delete_prefix = operator.is("delete")
+                && (index == 0
+                    || is_mutation_target_boundary(&tokens[index - 1])
+                    || matches!(tokens[index - 1].text.as_str(), "(" | "[" | "{"));
+            let prefix = operator.is("++") || operator.is("--") || delete_prefix;
+            let assignment = MEMBER_ASSIGNMENT_OPERATORS.contains(&operator.text.as_str());
+            if !prefix && !assignment || direct_operator_start == Some(operator.start) {
+                continue;
+            }
+            inspected += 1;
+            if inspected > operator_limit {
+                self.type_error(
+                    span,
+                    format!("member mutation scan exceeds its {operator_limit}-operator limit"),
+                    DiagnosticCode::ResourceLimit,
+                );
+                return;
+            }
+            for forward in [false, true] {
+                if forward && !prefix || !forward && delete_prefix {
+                    continue;
+                }
+                let target = if forward {
+                    forward_mutation_target(tokens, index, scan_limit)
+                } else {
+                    backward_mutation_target(tokens, index, scan_limit)
+                };
+                let target = match target {
+                    Ok(target) => target,
+                    Err(()) => {
+                        self.type_error(
+                            span,
+                            "member mutation scan exceeds its bounded token window".into(),
+                            DiagnosticCode::ResourceLimit,
+                        );
+                        return;
+                    }
+                };
+                let Some((receiver, property)) = member_access_target(target) else {
+                    continue;
+                };
+                let owner = self.infer_expression(receiver, scope);
+                let readonly = if let Some(property) = property {
+                    match property_type(
+                        &owner,
+                        property,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ) {
+                        PropertyType::Found { readonly, .. } => readonly,
+                        PropertyType::Exhausted => {
+                            self.type_error(
+                                span,
+                                format!(
+                                    "property lookup exceeds the {} generic-expansion limit",
+                                    self.max_type_expansions
+                                ),
+                                DiagnosticCode::ResourceLimit,
+                            );
+                            return;
+                        }
+                        PropertyType::Missing | PropertyType::Indeterminate => false,
+                    }
+                } else {
+                    match contains_readonly_member(
+                        &owner,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ) {
+                        Ok(readonly) => readonly,
+                        Err(()) => {
+                            self.type_error(
+                                span,
+                                format!(
+                                    "property lookup exceeds the {} generic-expansion limit",
+                                    self.max_type_expansions
+                                ),
+                                DiagnosticCode::ResourceLimit,
+                            );
+                            return;
+                        }
+                    }
+                };
+                if readonly {
+                    let mutation_span = SourceSpan::new(
+                        &span.module,
+                        target
+                            .first()
+                            .expect("member target is nonempty")
+                            .start
+                            .min(operator.start),
+                        target
+                            .last()
+                            .expect("member target is nonempty")
+                            .end
+                            .max(operator.end),
+                    );
+                    self.type_error(
+                        &mutation_span,
+                        format!(
+                            "cannot mutate readonly property{} inside an expression",
+                            property.map_or(String::new(), |name| format!(" `{name}`"))
+                        ),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                    break;
+                }
+            }
         }
     }
 
@@ -1114,6 +1247,9 @@ fn member_mutation(tokens: &[Token]) -> Option<MemberMutation<'_>> {
         }
         _ => top_level_binary_parts(tokens, MEMBER_ASSIGNMENT_OPERATORS, |_| false)?,
     };
+    let target = top_level_binary_parts(target, MEMBER_ASSIGNMENT_OPERATORS, |_| false)
+        .map(|(_, _, last)| last)
+        .unwrap_or(target);
     let (receiver, property) = member_access_target(target)?;
     Some(MemberMutation {
         receiver,
@@ -1121,6 +1257,102 @@ fn member_mutation(tokens: &[Token]) -> Option<MemberMutation<'_>> {
         operator,
         value,
     })
+}
+
+fn is_mutation_target_boundary(token: &Token) -> bool {
+    MEMBER_ASSIGNMENT_OPERATORS.contains(&token.text.as_str())
+        || matches!(
+            token.text.as_str(),
+            "," | ";"
+                | ":"
+                | "?"
+                | "+"
+                | "-"
+                | "*"
+                | "/"
+                | "%"
+                | "**"
+                | "&&"
+                | "||"
+                | "??"
+                | "&"
+                | "|"
+                | "^"
+                | "=="
+                | "==="
+                | "!="
+                | "!=="
+                | "<"
+                | ">"
+                | "<="
+                | ">="
+                | "<<"
+                | ">>"
+                | ">>>"
+                | "in"
+                | "instanceof"
+                | "=>"
+                | "++"
+                | "--"
+        )
+}
+
+fn backward_mutation_target(
+    tokens: &[Token],
+    operator_index: usize,
+    scan_limit: usize,
+) -> Result<&[Token], ()> {
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    for (steps, index) in (0..operator_index).rev().enumerate() {
+        if steps >= scan_limit {
+            return Err(());
+        }
+        let token = &tokens[index];
+        match token.text.as_str() {
+            ")" | "]" | "}" => depth += 1,
+            "(" | "[" | "{" if depth > 0 => depth -= 1,
+            "(" | "[" | "{" => {
+                start = index + 1;
+                break;
+            }
+            _ if depth == 0 && is_mutation_target_boundary(token) => {
+                start = index + 1;
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(&tokens[start..operator_index])
+}
+
+fn forward_mutation_target(
+    tokens: &[Token],
+    operator_index: usize,
+    scan_limit: usize,
+) -> Result<&[Token], ()> {
+    let mut depth = 0usize;
+    let mut end = tokens.len();
+    for (steps, index) in (operator_index + 1..tokens.len()).enumerate() {
+        if steps >= scan_limit {
+            return Err(());
+        }
+        let token = &tokens[index];
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" if depth > 0 => depth -= 1,
+            ")" | "]" | "}" => {
+                end = index;
+                break;
+            }
+            _ if depth == 0 && is_mutation_target_boundary(token) => {
+                end = index;
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(&tokens[operator_index + 1..end])
 }
 
 fn unescaped_property_name(text: &str) -> Option<&str> {

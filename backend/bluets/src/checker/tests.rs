@@ -197,6 +197,111 @@ fn readonly_checks_follow_parenthesized_chained_and_called_receivers() {
 }
 
 #[test]
+fn readonly_mutations_inside_larger_expressions_are_not_skipped() {
+    let ambient = ModuleSource::new(
+        "memory:///events.d.ts",
+        "interface Event { readonly type: 'click'; mutable: string; }",
+    );
+    let check = |source| {
+        crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+            CompilerOptions {
+                ambient_declaration_modules: vec![ambient.clone()],
+                ..CompilerOptions::default()
+            },
+        )
+    };
+    let valid = check(
+        "function write(event: Event): void {\n\
+           let other = '';\n\
+           other = event.mutable = 'ok'; event.mutable = other = 'ok';\n\
+         }\n\
+         interface Counter { value: number; }\n\
+         function consume(value: number): void {}\n\
+         function update(counter: Counter): void { consume(++counter.value); }\n\
+         interface Helper { delete(value: string): void; }\n\
+         function read(helper: Helper, event: Event): void { helper.delete(event.type); }",
+    );
+    assert!(!valid.has_errors(), "{:#?}", valid.diagnostics);
+    for source in [
+        "function consume(value: string): void {} function write(event: Event): void { consume(event.type = 'click'); }",
+        "function write(event: Event): void { let other = ''; other = event.type = 'click'; }",
+        "function write(event: Event): void { let other = ''; event.type = other = 'click'; }",
+        "function write(event: Event): void { let changed = true && (event.type = 'click'); }",
+        "function write(event: Event): void { let changed = event.type++ + 1; }",
+        "function consume(value: number): void {} function write(event: Event): void { consume(++event.type); }",
+        "function write(event: Event): void { let gone = !!(delete event.type); }",
+        "function write(event: Event, key: string): void { let changed = (event[key] = 'click'); }",
+    ] {
+        let invalid = check(source);
+        assert!(
+            invalid.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::TypeMismatch
+                    && diagnostic.message.contains("readonly")
+            }),
+            "{source}: {:#?}",
+            invalid.diagnostics
+        );
+    }
+    let source = "function consume(value: string): void {} function write(event: Event): void { consume(event.type = 'click'); }";
+    let invalid = check(source);
+    let readonly = invalid
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("readonly property"))
+        .expect("nested readonly mutation has a diagnostic");
+    assert_eq!(readonly.span.start, source.find("event.type =").unwrap());
+    assert_eq!(
+        readonly.span.end,
+        source.find("event.type =").unwrap() + "event.type =".len()
+    );
+}
+
+#[test]
+fn nested_readonly_scan_does_not_spend_generic_budget_on_plain_assignment() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "let value: number = 0; value = 1;",
+        )]),
+        CompilerOptions {
+            limits: crate::compiler::CompilerLimits {
+                max_type_expansions: 0,
+                ..crate::compiler::CompilerLimits::default()
+            },
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+}
+
+#[test]
+fn nested_readonly_scan_bounds_a_long_assignment_chain() {
+    let source = format!("let value: number = 0; {}1;", "value = ".repeat(257));
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new("memory:///main.ts", &source)]),
+        CompilerOptions {
+            limits: crate::compiler::CompilerLimits {
+                max_type_expansions: 0,
+                ..crate::compiler::CompilerLimits::default()
+            },
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(
+        result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::ResourceLimit
+                && diagnostic.message.contains("member mutation scan")
+        }),
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn ambient_interface_methods_check_member_call_arguments_and_return_types() {
     let ambient = ModuleSource::new(
         "memory:///lib.blueice.d.ts",

@@ -193,9 +193,12 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   readonly member, including through generic inheritance. The child already
   exposes these properties as non-writable and non-configurable. The checker
   now infers parenthesized, chained dot/static-bracket, and direct-call result
-  receivers before testing the final field. Nested mutations inside a larger
-  expression and dynamically computed receiver chains remain outside this
-  bounded static check, so do not claim full qualifier enforcement yet.
+  receivers before testing the final field. A separately bounded scan catches
+  readonly writes nested in calls, assignment chains, arithmetic/boolean
+  expressions, and prefix/postfix updates or deletion without charging plain
+  assignments against generic-expansion fuel. Dynamically computed receiver
+  chains and opaque/unmodeled expression forms remain outside this static
+  check, so do not claim full qualifier enforcement yet.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members
   must fail both static checking and JavaScript runtime access.
 

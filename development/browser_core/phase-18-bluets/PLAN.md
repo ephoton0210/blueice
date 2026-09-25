@@ -177,8 +177,20 @@ chains, and direct-call results retain the event type through a write; the
 same resolver supplies nested read inference. Existing numeric update,
 arithmetic, and unary `typeof` inference remain intact. Event-v1 bridge
 regressions verify rejection as BlueTS diagnostics before lowering. Dynamic
-receiver keys and mutations nested in a larger expression still need their
-own bounded analysis before the qualifier leaf can be checked off.
+receiver keys and mutations nested in a larger expression still needed their
+own bounded analysis at this slice.
+
+**Nested event mutation preflight (B4 partial):** A separate bounded lexical
+scan now checks mutation operators inside call arguments, assignment chains,
+arithmetic and boolean expressions, and prefix/postfix update or delete forms.
+It resolves the adjacent member target against the same readonly property
+lookup and fails closed for dynamic keys on known readonly owners. Distinct
+operator and token-window limits bound scan work without consuming generic
+expansion fuel for plain assignments. The direct single-member path still
+checks writable-property value types; the scan adds readonly protection for
+nested forms. Tests also keep a method named `delete` from being mistaken for
+the delete operator. Dynamic receiver chains and opaque/unmodeled expression
+forms still prevent claiming full B4 qualifier enforcement.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
