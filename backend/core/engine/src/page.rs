@@ -70,6 +70,10 @@ pub struct Page {
     /// not need a process, in which case the page says it is unavailable.
     gatekeeper_settings: Option<Arc<GatekeeperSettingsSource>>,
     settings_notice: Option<SettingsNotice>,
+    /// Live-translation substitutions for the current document, with the
+    /// retained originals (`phase-7-local-ai/PLAN.md`). Empty when the page
+    /// was not translated.
+    translation: crate::translation::TranslationState,
 }
 
 impl Page {
@@ -107,10 +111,20 @@ impl Page {
             downloads: None,
             gatekeeper_settings: None,
             settings_notice: None,
+            translation: crate::translation::TranslationState::default(),
         }
     }
 
     fn load_html(&mut self, html: &str) {
+        self.load_html_translating(html, None);
+    }
+
+    /// Parses `html`, substitutes `translations` for its translatable text
+    /// (see [`crate::translation`]) when given and well-formed, then styles and
+    /// lays out. The substitution sits between parse and cascade so layout
+    /// measures the text that is actually shown; a wrong-length answer leaves
+    /// the original page (fail-open).
+    fn load_html_translating(&mut self, html: &str, translations: Option<&[String]>) {
         // `parse_continuing_from` (not `parse`) so this replacement
         // document's NodeIds never collide with -- or get numerically
         // confused with -- the document it's replacing. A client that
@@ -120,6 +134,11 @@ impl Page {
         // an unrelated node that happens to have been assigned the same
         // recycled ID (plan §1's stable-ID-across-mutations requirement).
         self.doc = blueice_html::parse_continuing_from(html, self.doc.next_node_id());
+        self.translation = translations
+            .and_then(|translations| {
+                crate::translation::apply_translation(&mut self.doc, translations)
+            })
+            .unwrap_or_default();
         self.network_response = None;
         self.network_trace = None;
         self.scroll_y = 0.0;
@@ -272,12 +291,67 @@ impl Page {
     /// runtime convention a differently-written caller could omit.
     pub(crate) fn apply_fetched(
         &mut self,
-        _clearance: crate::gatekeeper_client::GatekeeperClearance,
+        clearance: crate::gatekeeper_client::GatekeeperClearance,
         url: &str,
         html: &str,
     ) {
-        self.load_html(html);
+        self.apply_fetched_translated(clearance, url, html, None);
+    }
+
+    /// [`Self::apply_fetched`] plus the assistant's translation of the
+    /// page's translatable text, if any was obtained in time. The clearance
+    /// covers the *original* HTML; a translation can only be applied on top of
+    /// a cleared page, never instead of one.
+    pub(crate) fn apply_fetched_translated(
+        &mut self,
+        _clearance: crate::gatekeeper_client::GatekeeperClearance,
+        url: &str,
+        html: &str,
+        translations: Option<&[String]>,
+    ) {
+        self.load_html_translating(html, translations);
         self.url = Some(url.to_string());
+    }
+
+    /// Loads `html` with `translations` applied, like [`Self::load_html_str`]
+    /// plus a translation. Ungated exactly as `load_html_str` is (tests and
+    /// trusted built-in content).
+    pub fn load_html_translated(
+        &mut self,
+        html: &str,
+        url: Option<String>,
+        translations: &[String],
+    ) {
+        self.load_html_translating(html, Some(translations));
+        self.url = url;
+    }
+
+    /// Whether the current document has any substituted text to toggle.
+    pub fn has_translation(&self) -> bool {
+        self.translation.has_translation()
+    }
+
+    /// Whether the translation (rather than the original) is on screen.
+    pub fn translation_shown(&self) -> bool {
+        self.translation.is_shown()
+    }
+
+    /// Shows the translation (`true`) or the retained original (`false`) and
+    /// relayouts. Returns whether anything changed, so callers only publish a
+    /// new frame when there is one.
+    pub fn set_translation_shown(&mut self, shown: bool) -> bool {
+        let changed = crate::translation::set_shown(&mut self.doc, &mut self.translation, shown);
+        if changed {
+            self.restyle_and_relayout();
+        }
+        changed
+    }
+
+    /// The original text of a translated text node, for the AI representation.
+    // Read by `ai_snapshot` in step T2 of the live-translation checklist.
+    #[allow(dead_code)]
+    pub(crate) fn original_text(&self, node: NodeId) -> Option<&str> {
+        self.translation.original_of(&self.doc, node)
     }
 
     pub(crate) fn set_network_response(
@@ -1876,6 +1950,88 @@ mod tests {
         let page = Page::new(320.0, 200.0);
         assert_eq!(page.url(), None);
         assert!(page.render().commands.is_empty());
+    }
+
+    fn shown_text(page: &Page) -> Vec<String> {
+        page.render()
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                PaintCommand::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_translated_load_paints_the_translation_and_keeps_the_original() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_translated(
+            "<p>Hello</p><p>World</p>",
+            Some("https://a.example/".into()),
+            &["你好".into(), "世界".into()],
+        );
+        assert_eq!(page.url(), Some("https://a.example/"));
+        assert_eq!(shown_text(&page), ["你好", "世界"]);
+        assert!(page.has_translation());
+        assert!(page.translation_shown());
+        let node = crate::translation::translatable_texts(page.doc())[0].node;
+        assert_eq!(page.original_text(node), Some("Hello"));
+    }
+
+    #[test]
+    fn translation_lands_before_layout_so_a_longer_text_reflows() {
+        let mut short = Page::new(100.0, 200.0);
+        short.load_html_str("<p>hi</p>", None);
+        let mut long = Page::new(100.0, 200.0);
+        let translation = "supercalifragilistic expialidocious wonderful ".repeat(4);
+        long.load_html_translated("<p>hi</p>", None, &[translation]);
+        assert!(
+            shown_text(&long).len() > shown_text(&short).len(),
+            "the long translation must wrap onto more lines: laid out from the translated text, not the original"
+        );
+    }
+
+    #[test]
+    fn toggling_shows_the_original_and_back_and_relayouts() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_translated("<p>Hello</p>", None, &["你好".into()]);
+        assert!(page.set_translation_shown(false));
+        assert_eq!(shown_text(&page), ["Hello"]);
+        assert!(!page.translation_shown());
+        assert!(
+            !page.set_translation_shown(false),
+            "no change, no new frame"
+        );
+        assert!(page.set_translation_shown(true));
+        assert_eq!(shown_text(&page), ["你好"]);
+    }
+
+    #[test]
+    fn a_wrong_length_translation_leaves_the_original_page() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_translated("<p>a</p><p>b</p>", None, &["only one".into()]);
+        assert_eq!(shown_text(&page), ["a", "b"]);
+        assert!(!page.has_translation());
+        assert!(!page.set_translation_shown(false));
+    }
+
+    #[test]
+    fn a_new_document_discards_the_previous_translation() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_translated("<p>Hello</p>", None, &["你好".into()]);
+        page.load_html_str("<p>Fresh</p>", None);
+        assert!(!page.has_translation());
+        assert_eq!(shown_text(&page), ["Fresh"]);
+    }
+
+    #[test]
+    fn an_untranslated_page_has_no_originals() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str("<p>Hello</p>", None);
+        let node = crate::translation::translatable_texts(page.doc())[0].node;
+        assert_eq!(page.original_text(node), None);
+        assert!(!page.translation_shown());
     }
 
     #[test]

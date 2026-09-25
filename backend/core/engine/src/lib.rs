@@ -18,6 +18,7 @@ pub mod script;
 pub mod session;
 mod stylesheet;
 mod tabs;
+mod translation;
 
 use blueice_css::{Origin, cascade, ua_stylesheet};
 use blueice_paint::Frame;
