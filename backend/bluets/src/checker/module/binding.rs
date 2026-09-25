@@ -896,6 +896,21 @@ impl<'a> ModuleChecker<'a> {
             );
             return;
         }
+        if tokens
+            .iter()
+            .filter(|token| INFERRED_LOGICAL_ASSIGNMENT_OPERATORS.contains(&token.text.as_str()))
+            .count()
+            > MAX_LOGICAL_ASSIGNMENT_INFERENCE_OPERATORS
+        {
+            self.type_error(
+                span,
+                format!(
+                    "expression exceeds its {MAX_LOGICAL_ASSIGNMENT_INFERENCE_OPERATORS}-logical assignment inference limit"
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
+            return;
+        }
         if tokens.iter().filter(|token| token.is(".")).count() > self.max_type_expansions {
             self.type_error(
                 span,

@@ -226,8 +226,10 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   results; the event-v1 bridge rejects that readonly write before runtime.
   Simple `=` expressions now carry the right-hand runtime type through
   direct, alias, literal-held, and chained assignment results; the verified
-  event-v1 bridge rejects a readonly alias before execution. Compound and
-  logical assignment results still need separate qualifier treatment.
+  event-v1 bridge rejects a readonly alias before execution. `&&=`, `||=`,
+  and `??=` now conservatively retain known readonly result branches,
+  with a 128-logical-operator inference limit and a public event-v1 bridge
+  rejection; arithmetic/bitwise compound results remain open.
   Opaque/unmodeled expression forms still need a sound policy, so do not
   claim full qualifier enforcement yet.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members

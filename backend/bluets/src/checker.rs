@@ -19,6 +19,8 @@ mod properties;
 use properties::{property_type, PropertyType, TypeExpansionBudget};
 
 const MAX_LITERAL_INFERENCE_CONTAINERS: usize = 128;
+const MAX_LOGICAL_ASSIGNMENT_INFERENCE_OPERATORS: usize = 128;
+const INFERRED_LOGICAL_ASSIGNMENT_OPERATORS: &[&str] = &["&&=", "||=", "??="];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolKind {

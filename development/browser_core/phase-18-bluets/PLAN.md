@@ -280,6 +280,18 @@ right-hand result remains writable. The verified event-v1 bridge rejects an
 assignment-result alias before runtime. Compound and logical assignments,
 and other unmodeled expression shapes, remain outside this proof.
 
+**Readonly through logical assignment results (B4 partial):** `&&=` and
+`||=` now conservatively merge the known type before the write with the
+right-hand value, while `??=` uses the existing nullish-exclusion merge.
+When either reachable result is a readonly event, a later `type` write is
+rejected; a purely mutable result stays writable. The verified event-v1
+bridge rejects a logical-assignment alias before runtime. Assignment-result
+inference has a fixed 128-logical-operator resource boundary with a diagnostic
+on the first excess operator; existing simple-assignment scan limits remain
+unchanged. The expression inference method moved to its own
+MPL-licensed module, leaving the parent expression checker below 1500 lines.
+Arithmetic/bitwise compound results and opaque expression forms remain open.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
