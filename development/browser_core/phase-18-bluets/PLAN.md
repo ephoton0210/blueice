@@ -1013,6 +1013,51 @@ and successor-document denial. The real route leaves public BoundedValues
 Planned and debugger v36 unchanged; the owner receipt/public request is
 C2.2.1.5. The 292 engine library tests and workspace Clippy pass.
 
+**Public paused-value boundary decision (C2.2.1.5.1):** The public operation
+will have its own default-denied `BoundedValues` owner switch and a separate
+client opt-in in debugger `Hello`; neither Stack, Scopes, static-metadata
+grants, nor protocol version imply it. `HelloAck` grants only the intersection.
+The live realm must also advertise the native value route, and the request
+must find that exact available capability before reading a slot. These new
+handshake fields, the public request/reply, and the protocol bump arrive
+together only after the dispatcher is complete; v36 remains unchanged in the
+intermediate ledger leaf. The metadata manifest retains its static-metadata
+meaning and version.
+
+The public target carries only program, optional core-instance-bound nested
+frame, frame index, safe point, slot ordinal, and scope depth. After a
+successful `GetScopes`, core records each returned entry in a bounded,
+core-local receipt ledger owned by that socket stream. The ledger binds the
+complete tuple and the current pause incarnation; a guessed or other-stream
+tuple is not sufficient, even when its numeric fields happen to be valid.
+The pause incarnation is core-owned, never a client-selectable VM handle.
+Every successful command that arms, advances, or releases execution, including
+one issued on another debugger stream, and every scheduler transition away
+from the observed pause invalidates earlier receipts. A resumed frame that
+later stops at the same bytecode offset must therefore require new Scopes.
+The exact realm/program generations and nested core frame still guard
+replacement and return; core re-reads the current paused stack and active
+slot before the child call. Receipts are bounded to 4,096 distinct slots per
+stream and cleared on pause invalidation or socket close. A full ledger
+refuses the newly requested Scopes snapshot atomically rather than returning
+entries that could not be receipted. Scopes on a stream without the value
+grant remain unaffected.
+
+The public reply copies the validated core-owned tagged tree, with no child
+identifier or reusable heap handle. It preserves IEEE-754 bits, signed
+BigInt bytes, UTF-16 units, array holes, and ordered record keys under the
+same depth-4, length-32, node-256, aggregate-payload-4,096 limits as the
+private route. Core validates the complete public tree before reply; no
+truncated or partial value is a success. Missing owner/client/native grant
+returns `CapabilityUnavailable`; malformed or unreceipted selectors return
+`InvalidTarget`; a moved or no-longer-paused target returns
+`InvalidExecutionState` (or the existing more specific stale realm/program
+code); and any tree or receipt budget excess returns `ResourceLimit`.
+Unsupported VM shapes remain a typed refusal, not an implicit `undefined`.
+The wire has no expression, source-text, arbitrary object, or property-path
+selector. C2.2.1.5.2 installs the internal receipt boundary, C2.2.1.5.3
+installs the complete public route, and C2.2.1.5.4 proves it on real sockets.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

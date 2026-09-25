@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.2.1.5.** Add the owner-gated public same-stream scope-receipt
-value operation, then verify real Launcher-supervised BlueTS sockets.
+**Current leaf: C2.2.1.5.2.** Install the bounded core-local scope-receipt
+ledger and pause-incarnation invalidation without changing the public wire.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -326,6 +326,10 @@ channel with explicit owner/client grants.
       - [x] **C2.2.1.4.2** Expose the exact page-runtime slot read to the supervised child, add a complete versioned private request/reply, and test classic/module/nested dispatch and stale-target denial in the child. Private page-host v38 adds an exact GetDebuggerValueSnapshot/DebuggerValueSnapshot route; the child requires a live BlueTS attachment and retained queue-head pause, then remints only the validated bounded tree. Page-runtime, IPC socket, classic/module/nested child tests, all 103 IPC tests, 533 non-environmental BlueJS lib tests, and workspace Clippy pass. Launcher full lib has three independently reproducible failures in older source-breakpoint/source-step/socket tests; all five focused BlueTS child tests pass.
     - [x] **C2.2.1.4.3** Validate and remint the bounded child preview through the core proxy, with real Launcher-supervised classic/module root and nested regressions; then check off C2.2.1.4. Core re-reads the exact paused stack and active slot, binds the core frame to its child invocation, checks the entire echoed private target and preview budget, and returns a handle-free core-owned tree. A hostile child reply matrix rejects mismatched identity, excess bytes, and duplicate keys; Launcher-supervised classic/module tests read nested, caller-root, and resumed root bindings, reject forged/moved and successor-document targets, and keep public BoundedValues Planned. All 292 engine library tests and workspace Clippy pass.
     - [ ] **C2.2.1.5** Add the owner-gated public same-stream scope-receipt request/reply, bump the debugger protocol with the complete route, and prove limits and stale-target denial on real Launcher-supervised BlueTS sockets; then check off C2.2.1.
+      - [x] **C2.2.1.5.1** Specify the independent owner/client value grant, exact scope receipt and pause-incarnation invalidation, bounded public tree, and refusal mapping before changing the wire. The grant is separate from static metadata; a core-local, per-stream receipt is bound to the active pause incarnation and every exact Scopes entry. The public protocol stays v36.
+      - [ ] **C2.2.1.5.2** Add the bounded core-local scope-receipt ledger and global pause-incarnation invalidation with focused core/IPC tests; keep the public wire and BoundedValues advertisement unchanged.
+      - [ ] **C2.2.1.5.3** Add the independent owner/client value opt-in and complete public GetValue/Value route together with the debugger protocol bump; prove negotiation, policy, dispatch, malformed targets and complete preview limits at public boundaries.
+      - [ ] **C2.2.1.5.4** Prove classic/module root and nested value reads, cross-stream and stale-pause denial, forged slots, and all preview budgets on real Launcher-supervised BlueTS sockets; then check off C2.2.1.5 and C2.2.1.
   - [ ] **C2.2.2** Refuse guessed handles, source text, and cross-realm references with a typed error.
 - [ ] **C2.3** Report an exception at its original BlueTS source position.
   - [ ] **C2.3.1** Map a thrown error's position to the original BlueTS span for classic, module, and nested frames.
