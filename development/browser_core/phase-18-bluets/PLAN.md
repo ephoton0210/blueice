@@ -1390,6 +1390,26 @@ generated text, or child handle. The public debugger protocol is now v39.
 All 110 IPC and 300 engine library tests pass with local sockets, along with
 workspace Clippy; real Launcher-supervised public socket proof is C2.3.1.5.
 
+**Real exception-location proof split (C2.3.1.5):** First verify the positive
+classic/module nested path over the public Launcher/core/child sockets with
+an astral character before the throwing function, checking exact original
+UTF-8 byte and UTF-16 column positions and the returned child code-unit
+ordinal (C2.3.1.5.1). Then prove the negative owner/client grant, source
+receipt, caught/normal execution, and successor-document cases on real
+sockets (C2.3.1.5.2). Direct BlueTS lowering does not admit top-level
+`throw` or `try/catch`; a caught BlueTS function call can instead be exercised
+from a later JavaScript declaration's `try/catch` in the same page realm,
+while the BlueTS program itself retains no uncaught location.
+
+**C2.3.1.5.1 real-socket evidence:** The Launcher-supervised public debugger
+test exercises classic and module BlueTS nested throws through separate
+browser/core/child processes. After same-stream metadata and source inventory,
+each returns one originating source, the first nested code-unit safe point in
+the public inventory, and the original function declaration's exact UTF-8 byte
+span and UTF-16 columns. An astral prefix makes byte and UTF-16 columns
+different; the second module source ID receives `InvalidTarget` instead of a
+partial location. The focused real-socket test passes.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

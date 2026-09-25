@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.3.1.5.** Prove original classic/module/nested exception
-positions and typed refusals on real Launcher-supervised debugger sockets.
+**Current leaf: C2.3.1.5.2.** Prove real Launcher-supervised negative exception
+location cases through public debugger sockets.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -359,6 +359,8 @@ channel with explicit owner/client grants.
       - [x] **C2.3.1.4.2** Add a default-denied core location API and an out-of-process adapter that revalidates the live child program/metadata/source/safe point and remints only a bounded source-free result; prove malformed, cross-program, stale, and normal-completion child replies without a public wire change. The adapter rechecks the private exception tuple, exact safe point and compiler-bound span before returning numeric core identities; a focused malformed-reply/default-deny test and all 299 engine library tests pass. No public debugger wire changed.
       - [x] **C2.3.1.4.3** Add the complete public debugger v39 `DescribeExceptionLocation { source }` request/reply behind the existing independent `OpaqueSafePointSpan` owner/client grant and same-stream source receipt, with IPC/core typed denial tests; then check off C2.3.1.4. The public request chooses only a prior source ID; absent grant returns `CapabilityUnavailable`, missing/forged receipts or mismatched positions return `InvalidTarget`, and no terminal uncaught site returns `InvalidExecutionState`, never a partial position. All 110 IPC and 300 engine library tests plus workspace Clippy pass.
     - [ ] **C2.3.1.5** Prove original classic/module/nested UTF-8 and UTF-16 exception spans, missing grants/receipts, caught errors, and stale generations on real Launcher-supervised debugger sockets; then check off C2.3.1 and C2.3.
+      - [x] **C2.3.1.5.1** On real Launcher-supervised public debugger sockets, prove a receipted classic and module nested BlueTS throw returns only the original compiler-bound UTF-8 byte span and UTF-16 coordinates, with the exact code-unit safe point and no error/source text. A real Launcher/core/child socket test passes for classic and module nested throws: each returns the original function span, exact first child code unit in public inventory, and UTF-16 columns distinct from UTF-8 bytes across an astral prefix; the extra module source ID is refused without a partial location.
+      - [ ] **C2.3.1.5.2** On real public sockets, prove absent owner/client grant, missing/cross-stream source receipt, normal or caught throw, and replaced document/program generations return typed no-partial-location refusals; then check off C2.3.1.5, C2.3.1, and C2.3.
 
 #### C3. Preserve original static metadata.
 

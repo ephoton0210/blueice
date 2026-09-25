@@ -49,6 +49,9 @@ const MODULE_STEP_BLUETS_SOURCE: &str =
     "let first: number = 1; let second: number = first + 1; export const answer: number = second + 1;";
 const STACK_COORDINATE_BLUETS_SOURCE: &str = "/* 🚀 */ function inner(a: number): number { let value: number = a + 1; return value; } globalThis.answer = inner(3);";
 const BOUNDED_VALUE_BLUETS_SOURCE: &str = "let rootValue: number = 9; function inner(a: number): number { let childValue: number = a + 1; return childValue; } globalThis.answer = inner(3) + rootValue;";
+const CLASSIC_THROW_BLUETS_SOURCE: &str = "/* 🚀 */ function fail(): number { throw 7; } fail();";
+const MODULE_THROW_BLUETS_SOURCE: &str =
+    "/* 🚀 */ function fail(): number { throw 9; } export const answer: number = fail();";
 
 fn unique_path(label: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -3871,6 +3874,166 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
 
     launcher.shutdown();
     let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_reports_original_classic_and_module_nested_exception_positions() {
+    for (mime, source, slug) in [
+        (
+            "application/x-blueice-typescript",
+            CLASSIC_THROW_BLUETS_SOURCE,
+            "classic",
+        ),
+        (
+            "application/x-blueice-typescript-module",
+            MODULE_THROW_BLUETS_SOURCE,
+            "module",
+        ),
+    ] {
+        let gatekeeper_socket = clearing_gatekeeper();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let fixture = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let body = format!(
+                "<main>{slug}-exception-location</main><script type=\"{mime}\">{source}</script>"
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        });
+        let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+            &gatekeeper_socket,
+            StaticMetadataPolicy {
+                inventory: true,
+                source_inventory: true,
+                safe_point_span: true,
+                ..StaticMetadataPolicy::default()
+            },
+        );
+        let mut browser = launcher.connect_browser();
+        blueice_ipc::client_handshake(&mut browser).unwrap();
+        navigate(&mut browser, &url);
+        fixture.join().unwrap();
+
+        let manifest = DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
+        let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::Hello {
+                    protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    requested_bounded_values: false,
+                    requested_metadata_capabilities: manifest.clone(),
+                },
+            ),
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_bounded_values: false,
+                granted_metadata_capabilities: manifest,
+            }
+        );
+        let realm = one_realm(debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListPageRealms,
+        ));
+        let program = one_program(
+            debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+            realm,
+        );
+        let DebuggerReply::StaticMetadata(metadata) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadata { program },
+        ) else {
+            panic!("typed {slug} program must retain one metadata handle")
+        };
+        let DebuggerReply::StaticMetadataSources(sources) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadataSources {
+                metadata: metadata[0],
+            },
+        ) else {
+            panic!("typed {slug} program must retain source IDs")
+        };
+        assert!(!sources.is_empty());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            thread::sleep(Duration::from_millis(20));
+            match debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetExecutionState { program },
+            ) {
+                DebuggerReply::ExecutionState {
+                    state: DebuggerExecutionState::Completed,
+                    ..
+                } => break,
+                DebuggerReply::ExecutionState {
+                    state: DebuggerExecutionState::Pending,
+                    ..
+                } if Instant::now() < deadline => {}
+                reply => panic!("typed {slug} throw did not complete: {reply:?}"),
+            }
+        }
+        let mut locations = Vec::new();
+        for source_id in sources.iter().copied() {
+            match debugger_request(
+                &mut debugger,
+                DebuggerRequest::DescribeExceptionLocation { source: source_id },
+            ) {
+                DebuggerReply::ExceptionLocation(location) => locations.push(location),
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    ..
+                } => {}
+                reply => panic!("typed {slug} throw must return a location or refusal: {reply:?}"),
+            }
+        }
+        assert_eq!(
+            locations.len(),
+            1,
+            "{slug} must have exactly one originating source"
+        );
+        let location = locations[0];
+        assert!(sources.contains(&location.source));
+        assert_eq!(location.safe_point.program, program);
+        assert_eq!(location.safe_point.code_unit_ordinal, 1);
+        assert!(safe_points(
+            debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+            program,
+        )
+        .contains(&location.safe_point));
+        assert!(location.is_well_formed());
+        let function_start = source.find("function fail").unwrap();
+        let function_end = source.find("} ").unwrap() + 1;
+        assert_eq!(location.start_byte as usize, function_start);
+        assert_eq!(location.end_byte as usize, function_end);
+        assert_eq!(location.coordinates.start_line, 0);
+        assert_eq!(location.coordinates.end_line, 0);
+        assert_eq!(
+            location.coordinates.start_column_utf16 as usize,
+            source[..function_start].encode_utf16().count()
+        );
+        assert_eq!(
+            location.coordinates.end_column_utf16 as usize,
+            source[..function_end].encode_utf16().count()
+        );
+        assert_ne!(
+            location.start_byte as usize, location.coordinates.start_column_utf16 as usize,
+            "the astral prefix must distinguish UTF-8 bytes from UTF-16 columns"
+        );
+        assert!(!format!("{location:?}").contains("throw"));
+        drop(debugger);
+        launcher.shutdown();
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
 }
 
 #[test]
