@@ -19,6 +19,7 @@ use blueice_bluejs::{
     BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BlueJsProgramHandle, BlueJsProgramV1,
     BlueJsSourceIdentity, CompileError, HeapConfig, HostFunctionError, HostObjectFamily,
     HostObjectKey, HostValue, Module, ParseError, RuntimeError, Value, Vm, VmConfig,
+    VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
 };
 use blueice_bluets::{
     AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
@@ -57,11 +58,13 @@ use blueice_ipc::page_host::{
     PageHostDebuggerBlueTsMetadataSymbolType, PageHostDebuggerBlueTsMetadataTypeDisplay,
     PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerBlueTsSafePointSpan,
     PageHostDebuggerExecutionState, PageHostDebuggerFrame, PageHostDebuggerMetadataHandle,
-    PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot,
-    PageHostErrorCode, PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest,
-    PageHostScript, PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome,
-    PageHostScriptReport, PageHostSource, PageHostStaticResolution,
+    PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDebuggerScopeEntry,
+    PageHostDebuggerStackFrame, PageHostDebuggerStackSnapshot, PageHostDocument,
+    PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph, PageHostRealmStats,
+    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
+    PageHostScriptOutcome, PageHostScriptReport, PageHostSource, PageHostStaticResolution,
     PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+    PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES, PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES,
     PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES, PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
 use blueice_ipc::script::{
@@ -1030,6 +1033,21 @@ impl BlueJsChildHost {
             PageHostRequest::ResumeDebuggerNestedExecution { frame } => {
                 self.resume_debugger_nested_execution(frame)
             }
+            PageHostRequest::GetDebuggerStackSnapshot {
+                tab_id,
+                document_generation,
+                program,
+                frame,
+                max_frames,
+                max_scope_entries,
+            } => self.debugger_stack_snapshot(
+                tab_id,
+                document_generation,
+                program,
+                frame,
+                max_frames,
+                max_scope_entries,
+            ),
             PageHostRequest::StepDebuggerBlueTsSourceSpan {
                 tab_id,
                 document_generation,
@@ -3570,6 +3588,107 @@ impl BlueJsChildHost {
             Ok(()) if resume => PageHostReply::DebuggerNestedResumeRequested { frame },
             Ok(()) => PageHostReply::DebuggerNestedStepRequested { frame },
             Err(reply) => reply,
+        }
+    }
+
+    fn debugger_stack_snapshot(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        frame: Option<PageHostDebuggerFrame>,
+        max_frames: u32,
+        max_scope_entries: u32,
+    ) -> PageHostReply {
+        if max_frames == 0
+            || max_frames > PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES
+            || max_frames > VM_DEBUGGER_MAX_STACK_FRAMES
+            || max_scope_entries == 0
+            || max_scope_entries > PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES
+            || max_scope_entries > VM_DEBUGGER_MAX_SCOPE_ENTRIES
+            || !program.is_well_formed()
+            || frame.is_some_and(|frame| !frame.is_well_formed())
+        {
+            return invalid_request();
+        }
+        let document = match self.exact_document(tab_id, document_generation) {
+            Ok(document) => document,
+            Err(reply) => return reply,
+        };
+        if !document.debugger_execution_control
+            || document
+                .pending_debugger_executions
+                .front()
+                .and_then(|pending| pending.program)
+                != Some(program)
+        {
+            return invalid_debugger_state();
+        }
+        let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+            return invalid_debugger_state();
+        };
+        if record.program_generation != program.program_generation {
+            return invalid_debugger_state();
+        }
+        let runtime_frame = match (
+            frame,
+            document.debugger_execution_states.get(&program).copied(),
+        ) {
+            (
+                None,
+                Some(
+                    ChildDebuggerExecutionStatus::Paused(_)
+                    | ChildDebuggerExecutionStatus::SourceStepLimitReached(_),
+                ),
+            ) => None,
+            (
+                Some(frame),
+                Some(ChildDebuggerExecutionStatus::NestedPaused {
+                    frame: active,
+                    safe_point,
+                }),
+            ) if frame == child_debugger_frame(tab_id, document_generation, program, active)
+                && frame.matches_safe_point(safe_point) =>
+            {
+                Some(active)
+            }
+            _ => return invalid_debugger_state(),
+        };
+        let snapshot = match self.runtime.debugger_stack_snapshot(
+            tab_id,
+            record.runtime_handle,
+            runtime_frame,
+            max_frames,
+            max_scope_entries,
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(_) => return invalid_debugger_state(),
+        };
+        PageHostReply::DebuggerStackSnapshot {
+            tab_id,
+            document_generation,
+            program,
+            frame,
+            snapshot: PageHostDebuggerStackSnapshot {
+                frames: snapshot
+                    .frames
+                    .into_iter()
+                    .map(|frame| PageHostDebuggerStackFrame {
+                        code_unit_ordinal: frame.code_unit_ordinal,
+                        bytecode_offset: frame.bytecode_offset,
+                        scope_entries: frame
+                            .scope_entries
+                            .into_iter()
+                            .map(|entry| PageHostDebuggerScopeEntry {
+                                slot_ordinal: entry.slot_ordinal,
+                                scope_depth: entry.scope_depth,
+                            })
+                            .collect(),
+                        scope_truncated: frame.scope_truncated,
+                    })
+                    .collect(),
+                stack_truncated: snapshot.stack_truncated,
+            },
         }
     }
 
@@ -7293,6 +7412,71 @@ mod tests {
             reply => panic!("expected active frame state: {reply:?}"),
         };
         assert!(frame.is_well_formed());
+        let snapshot = |frame: Option<PageHostDebuggerFrame>, max_frames, max_scope_entries| {
+            PageHostRequest::GetDebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                frame,
+                max_frames,
+                max_scope_entries,
+            }
+        };
+        assert!(matches!(
+            host.handle_request(snapshot(Some(frame), 1, 1)),
+            PageHostReply::DebuggerStackSnapshot {
+                frame: Some(reply_frame),
+                snapshot: PageHostDebuggerStackSnapshot { frames, stack_truncated: true },
+                ..
+            } if reply_frame == frame && frames.len() == 1 && frames[0].code_unit_ordinal == 1
+        ));
+        assert!(matches!(
+            host.handle_request(snapshot(Some(frame), 2, 256)),
+            PageHostReply::DebuggerStackSnapshot {
+                snapshot: PageHostDebuggerStackSnapshot { frames, stack_truncated: false },
+                ..
+            } if frames.len() == 2 && frames[0].code_unit_ordinal == 1 && frames[1].code_unit_ordinal == 0
+        ));
+        assert!(matches!(
+            host.handle_request(snapshot(None, 2, 256)),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(snapshot(Some(frame), 0, 1)),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(snapshot(Some(frame), 2, 257)),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 1,
+                program: PageHostDebuggerProgram {
+                    program_generation: program.program_generation + 1,
+                    ..program
+                },
+                frame: Some(frame),
+                max_frames: 2,
+                max_scope_entries: 256,
+            }),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 2,
+                program,
+                frame: Some(frame),
+                max_frames: 2,
+                max_scope_entries: 256,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
         for wrong in [
             PageHostDebuggerFrame {
                 invocation_serial: frame.invocation_serial + 1,
@@ -7312,6 +7496,10 @@ mod tests {
                 host.handle_request(PageHostRequest::StepDebuggerNestedInstruction {
                     frame: wrong,
                 }),
+                PageHostReply::Error { .. }
+            ));
+            assert!(matches!(
+                host.handle_request(snapshot(Some(wrong), 2, 256)),
                 PageHostReply::Error { .. }
             ));
         }
@@ -7334,6 +7522,10 @@ mod tests {
         ));
         assert!(matches!(
             host.handle_request(PageHostRequest::StepDebuggerNestedInstruction { frame }),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(snapshot(Some(frame), 2, 256)),
             PageHostReply::Error { .. }
         ));
         assert!(matches!(
@@ -7379,6 +7571,10 @@ mod tests {
             } if same == frame
         ));
         assert!(matches!(
+            host.handle_request(snapshot(Some(frame), 2, 256)),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
             host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
                 tab_id: 7,
                 document_generation: 1,
@@ -7399,6 +7595,11 @@ mod tests {
         assert!(matches!(
             host.handle_request(PageHostRequest::ResumeDebuggerNestedExecution { frame }),
             PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(snapshot(None, 2, 256)),
+            PageHostReply::DebuggerStackSnapshot { frame: None, snapshot: PageHostDebuggerStackSnapshot { frames, stack_truncated: false }, .. }
+                if frames.len() == 1 && frames[0].code_unit_ordinal == 0
         ));
     }
 

@@ -12,7 +12,9 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
-//! Version 36 adds exact active nested-frame resume without reusing root
+//! Version 37 adds a bounded source-free stack/scope snapshot from an exact
+//! paused root or nested frame. It remains private and does not enable a
+//! public debugger capability. Version 36 adds exact active nested-frame resume without reusing root
 //! resume or single-instruction stepping. Version 35 adds nested-frame arm, state, and single-instruction
 //! step controls for the private core/child route. The frame identity binds
 //! tab, document, program, code unit, and invocation; it grants no source or
@@ -115,7 +117,10 @@ use std::io::{self, Read, Write};
 /// Independent version for the private launcher-to-BlueJS-host channel.
 /// V34 carries a document-bound script handle, not a raw core NodeId, in
 /// `DispatchClick` so its target matches child-owned listener identities.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 36;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 37;
+
+pub const PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
+pub const PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -389,6 +394,27 @@ impl PageHostDebuggerFrame {
             && self.program == safe_point.program
             && self.code_unit_ordinal == safe_point.code_unit_ordinal
     }
+}
+
+/// Source-free binding-slot inventory copied from an actually active scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerScopeEntry {
+    pub slot_ordinal: u32,
+    pub scope_depth: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerStackFrame {
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+    pub scope_entries: Vec<PageHostDebuggerScopeEntry>,
+    pub scope_truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerStackSnapshot {
+    pub frames: Vec<PageHostDebuggerStackFrame>,
+    pub stack_truncated: bool,
 }
 
 /// Source-free lifecycle state for the one-shot root-classic continuation
@@ -900,6 +926,16 @@ pub enum PageHostRequest {
     /// Resumes only the exact retained nested invocation on a later child
     /// advance turn; the waiting root remains separately paused on return.
     ResumeDebuggerNestedExecution { frame: PageHostDebuggerFrame },
+    /// Inspects only the exact paused root (`None`) or the currently active
+    /// nested invocation (`Some`). Zero or over-cap limits are invalid.
+    GetDebuggerStackSnapshot {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        frame: Option<PageHostDebuggerFrame>,
+        max_frames: u32,
+        max_scope_entries: u32,
+    },
     /// Requires an exact paused BlueTS classic safe point, live metadata,
     /// and its compiler-minted source ID. The child derives the current span
     /// from its retained map; no source text or caller-selected stop span is
@@ -1174,6 +1210,13 @@ pub enum PageHostReply {
     DebuggerNestedResumeRequested {
         frame: PageHostDebuggerFrame,
     },
+    DebuggerStackSnapshot {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        frame: Option<PageHostDebuggerFrame>,
+        snapshot: PageHostDebuggerStackSnapshot,
+    },
     DebuggerBlueTsSourceStepRequested {
         tab_id: u64,
         document_generation: u64,
@@ -1396,6 +1439,14 @@ mod tests {
             },
             PageHostRequest::StepDebuggerNestedInstruction { frame },
             PageHostRequest::ResumeDebuggerNestedExecution { frame },
+            PageHostRequest::GetDebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                frame: Some(frame),
+                max_frames: 1,
+                max_scope_entries: 2,
+            },
         ] {
             let (mut writer, mut reader) = UnixStream::pair().unwrap();
             write_page_host_request(&mut writer, &request).unwrap();
@@ -1415,6 +1466,24 @@ mod tests {
             },
             PageHostReply::DebuggerNestedStepRequested { frame },
             PageHostReply::DebuggerNestedResumeRequested { frame },
+            PageHostReply::DebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                frame: Some(frame),
+                snapshot: PageHostDebuggerStackSnapshot {
+                    frames: vec![PageHostDebuggerStackFrame {
+                        code_unit_ordinal: 1,
+                        bytecode_offset: 4,
+                        scope_entries: vec![PageHostDebuggerScopeEntry {
+                            slot_ordinal: 2,
+                            scope_depth: 0,
+                        }],
+                        scope_truncated: true,
+                    }],
+                    stack_truncated: true,
+                },
+            },
             PageHostReply::DebuggerExecutionState {
                 tab_id: 7,
                 document_generation: 3,

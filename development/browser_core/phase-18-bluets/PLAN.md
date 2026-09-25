@@ -728,6 +728,19 @@ bytecode nor invokes a getter. Native classic/module and page-runtime tests
 cover these conditions. No child IPC or public debugger capability is added
 at this seam; that remains C2.1.1.3–C2.1.1.4.
 
+**Private child snapshot seam (C2.1.1.3.1):** Page-host protocol v37 defines
+an exact document/program and optional active-frame snapshot request, with
+caller-selected positive limits no larger than 64 frames and 256 entries per
+frame. Its reply contains only verified code-unit/bytecode locations, active
+lexical slot ordinals and depths, and independent truncation flags. The child
+admits the request only for the queue-head continuation already paused under
+that exact document and installed program; nested requests must match the
+entire currently active invocation, and root requests cannot inspect behind
+an active child. Stepping, resuming, stale, wrong-program, and over-budget
+states fail closed. The v37 private wire and child scheduler are tested; the
+core-facing proxy and public capability remain disabled pending the next
+leaves.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
