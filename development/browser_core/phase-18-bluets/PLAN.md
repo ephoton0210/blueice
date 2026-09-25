@@ -695,6 +695,25 @@ path: both debugger frames are released, the linked entry record is marked
 failed and no ordinary execution entry remains blocked. Catch/finally and
 asynchronous graph behavior are still C1.2.1.2.4.3.
 
+**Module nested cleanup checkpoints (C1.2.1.2.4.3):** On a catchable child
+throw, temporarily restore the retained module-root execution and linked
+records, run its existing completion resolver with the saved handler/iterator
+stacks, and re-park a catch/finally successor rather than treating every
+throw as an unhandled module failure (C1.2.1.2.4.3.1). Then test an async
+dependency and entry await against the same pause/step/rejoin path
+(C1.2.1.2.4.3.2). Finally force the shared instruction budget to fail during
+a nested step and verify the graph has no falsely completed entry or detached
+frame while later execution still works (C1.2.1.2.4.3.3).
+
+**Module nested catch/finally rejoin (C1.2.1.2.4.3.1):** A catchable child
+throw restores the retained entry execution and parks the linked records as
+active module evaluation while BlueJS's ordinary completion resolver examines
+the saved handler and iterator stacks. A real catch/finally successor is
+saved back into the same module continuation; an unhandled throw instead
+flows to the explicit graph-error cleanup. A native module regression checks
+the original thrown value reaches `catch`, `finally` executes once, and the
+entry completes with no error. The unhandled-throw regression still passes.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

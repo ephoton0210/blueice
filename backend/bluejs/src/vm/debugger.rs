@@ -481,7 +481,7 @@ impl Vm {
                     }
                     Err(error) => {
                         if self.debugger_module_continuation.is_some() {
-                            return self.abort_nested_module_execution(error);
+                            return self.resume_nested_module_throw(error);
                         }
                         if !error.is_catchable() {
                             self.debugger_continuation = None;
@@ -523,6 +523,67 @@ impl Vm {
                     }
                 }
             }
+        }
+    }
+
+    fn resume_nested_module_throw(
+        &mut self,
+        error: RuntimeError,
+    ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
+        if !error.is_catchable() {
+            return self.abort_nested_module_execution(error);
+        }
+        let mut root = self
+            .debugger_module_continuation
+            .take()
+            .expect("nested module throw retains its entry root");
+        let mut graph = self
+            .module_graph
+            .take()
+            .expect("nested module throw retains its linked graph");
+        self.restore_module_execution(root.execution);
+        self.evaluating_linked = Some(std::mem::take(&mut graph.linked));
+        let action = self.resolve_completion(
+            &root.code,
+            &mut root.handlers,
+            &mut root.iterators,
+            Completion::Throw(error),
+        );
+        graph.linked = self
+            .evaluating_linked
+            .take()
+            .expect("module records return after resolving the nested throw");
+        root.execution = self.suspend_module_execution();
+        let record = graph
+            .linked
+            .get_mut(&root.module)
+            .expect("the paused entry remains in its linked graph");
+        record.cells = root.execution.cells.clone();
+        record.suspended = true;
+        self.active_module_name = root.previous_module.clone();
+        let outcome = match action {
+            Ok(CompletionAction::Jump(pc)) => {
+                root.pc = pc;
+                Ok(pc)
+            }
+            Ok(CompletionAction::Throw(error)) | Err(error) => Err(error),
+            Ok(
+                CompletionAction::Continue
+                | CompletionAction::Return(_)
+                | CompletionAction::TailRecur(_)
+                | CompletionAction::TailCall(_),
+            ) => Err(RuntimeError::Unsupported(
+                "nested module throw did not produce a handler successor",
+            )),
+        };
+        self.debugger_module_continuation = Some(root);
+        self.store_module_graph(graph, false);
+        match outcome {
+            Ok(pc) => Ok(VmDebuggerNestedExecutionState::FrameReturned {
+                root_bytecode_offset: u32::try_from(pc)
+                    .expect("verified module offsets fit the debugger wire range"),
+            }),
+            Err(error) => self.abort_nested_module_execution(error),
         }
     }
 
@@ -1318,6 +1379,58 @@ mod tests {
         assert_eq!(
             vm.execute_script(&code("1 + 1")).unwrap(),
             Value::Number(2.0)
+        );
+    }
+
+    #[test]
+    fn nested_module_throw_resumes_its_original_catch_and_finally() {
+        let entry = "pages/catching.mjs";
+        let mut registry = BlueJsProgramRegistry::default();
+        let handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(entry, "sha256:catching").unwrap(),
+                module_code("function inner(){throw 7;} globalThis.caught = 0; globalThis.finallyRuns = 0; try { inner(); } catch (error) { globalThis.caught = error; } finally { globalThis.finallyRuns++; } export const answer = globalThis.caught;"),
+            )
+            .unwrap();
+        let graph = HashMap::from([(
+            entry.to_string(),
+            registry.get(handle).unwrap().bytecode().clone(),
+        )]);
+        let mut vm = Vm::default();
+        let VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = vm
+            .execute_module_graph_until_nested_debugger_pause(entry, &graph, 1, 0)
+            .unwrap()
+        else {
+            panic!("the throwing module child must pause before execution");
+        };
+        let mut returned = false;
+        for _ in 0..32 {
+            match vm.step_debugger_nested_instruction(frame_serial).unwrap() {
+                VmDebuggerNestedExecutionState::Paused { .. } => {}
+                VmDebuggerNestedExecutionState::FrameReturned { .. } => {
+                    returned = true;
+                    break;
+                }
+                other => panic!("unexpected module handler state: {other:?}"),
+            }
+        }
+        assert!(returned, "the throw must rejoin the saved module handler");
+        assert!(vm.debugger_nested_continuation.is_none());
+        assert!(vm.debugger_module_continuation.is_some());
+        assert_eq!(
+            vm.resume_debugger_module_execution().unwrap(),
+            VmDebuggerExecutionState::Completed
+        );
+        let record = vm.linked_record(entry).unwrap();
+        assert!(record.evaluated);
+        assert!(record.error.is_none());
+        assert_eq!(
+            vm.lookup_global_name("caught").unwrap(),
+            Some(Value::Number(7.0))
+        );
+        assert_eq!(
+            vm.lookup_global_name("finallyRuns").unwrap(),
+            Some(Value::Number(1.0))
         );
     }
 
