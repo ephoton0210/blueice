@@ -351,6 +351,31 @@ pub struct JavaScriptPageDebuggerStackSnapshot {
     pub stack_truncated: bool,
 }
 
+/// Exact core-owned selection of one active binding in a paused stack. This
+/// carries no child program, frame, or heap-object handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerValueTarget {
+    pub program: JavaScriptPageDebuggerProgram,
+    pub frame: Option<JavaScriptPageDebuggerFrame>,
+    pub frame_index: u32,
+    pub safe_point: JavaScriptPageDebuggerSafePoint,
+    pub scope_entry: JavaScriptPageDebuggerScopeEntry,
+}
+
+/// A complete bounded value copied out of a paused VM, with no reusable
+/// object identity. UTF-16 units and IEEE-754 bits remain lossless.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JavaScriptPageDebuggerValuePreview {
+    Undefined,
+    Null,
+    Bool(bool),
+    NumberBits(u64),
+    BigIntBytes(Vec<u8>),
+    StringUnits(Vec<u16>),
+    Array(Vec<Option<Self>>),
+    Record(Vec<(Vec<u16>, Self)>),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JavaScriptPageDebuggerNestedExecutionState {
     Paused {

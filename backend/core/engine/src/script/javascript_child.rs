@@ -53,7 +53,8 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerStaticMetadataSymbolType,
     JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
     JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
-    JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageExecutionReport,
+    JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageDebuggerValuePreview,
+    JavaScriptPageDebuggerValueTarget, JavaScriptPageExecutionReport,
     PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
 };
 use crate::script::page_source_authorizer::AuthorizedPageScriptGraph;
@@ -75,7 +76,8 @@ use blueice_ipc::page_host::{
     self, PageHostChildStats, PageHostDebuggerBlueTsMetadataSymbolContract,
     PageHostDebuggerBlueTsMetadataSymbolLocation, PageHostDebuggerBlueTsMetadataSymbolType,
     PageHostDebuggerExecutionState, PageHostDebuggerFrame, PageHostDebuggerMetadataHandle,
-    PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDebuggerStackSnapshot,
+    PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDebuggerScopeEntry,
+    PageHostDebuggerStackSnapshot, PageHostDebuggerValuePreview, PageHostDebuggerValueTarget,
     PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
     PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
     PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
@@ -852,6 +854,20 @@ pub trait PageHostClient {
         ))
     }
 
+    fn debugger_value_snapshot_available(&self) -> bool {
+        false
+    }
+
+    fn debugger_value_snapshot(
+        &mut self,
+        _target: PageHostDebuggerValueTarget,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger value inspection",
+        ))
+    }
+
     fn arm_debugger_nested_safe_point_breakpoint(
         &mut self,
         _tab_id: u64,
@@ -1506,6 +1522,17 @@ impl PageHostClient for PageHostConnection {
             max_frames,
             max_scope_entries,
         })
+    }
+
+    fn debugger_value_snapshot_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_value_snapshot(
+        &mut self,
+        target: PageHostDebuggerValueTarget,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::GetDebuggerValueSnapshot { target })
     }
 
     fn arm_debugger_nested_safe_point_breakpoint(
@@ -4401,6 +4428,88 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         })
     }
 
+    fn debugger_value_snapshot(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerValueTarget,
+    ) -> Result<JavaScriptPageDebuggerValuePreview, JavaScriptPageDebuggerError> {
+        if !self.debugger_execution_control_available()
+            || !self.child.debugger_value_snapshot_available()
+        {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let frame_count = match (target.frame, target.frame_index) {
+            (None, 0) => 1,
+            (Some(_), 0 | 1) => 2,
+            _ => return Err(JavaScriptPageDebuggerError::InvalidExecutionState),
+        };
+        let stack = self.debugger_stack_snapshot(
+            tab_id,
+            document_generation,
+            target.program,
+            target.frame,
+            frame_count,
+            PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES,
+        )?;
+        if stack.stack_truncated || stack.frames.len() != frame_count as usize {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let selected = &stack.frames[target.frame_index as usize];
+        if selected.code_unit_ordinal != target.safe_point.code_unit_ordinal
+            || selected.bytecode_offset != target.safe_point.bytecode_offset
+            || !selected.scope_entries.contains(&target.scope_entry)
+        {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program.program_handle,
+            target.program.program_generation,
+        )?;
+        let frame = target
+            .frame
+            .map(|public| {
+                self.debugger_nested_frames
+                    .get(&tab_id)
+                    .filter(|active| active.public == public && active.child.program == program)
+                    .map(|active| active.child)
+                    .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)
+            })
+            .transpose()?;
+        let child_target = PageHostDebuggerValueTarget {
+            tab_id: tab_id.as_u64(),
+            document_generation,
+            program,
+            frame,
+            frame_index: target.frame_index,
+            safe_point: PageHostDebuggerSafePoint {
+                program,
+                code_unit_ordinal: target.safe_point.code_unit_ordinal,
+                bytecode_offset: target.safe_point.bytecode_offset,
+            },
+            scope_entry: PageHostDebuggerScopeEntry {
+                slot_ordinal: target.scope_entry.slot_ordinal,
+                scope_depth: target.scope_entry.scope_depth,
+            },
+        };
+        if !child_target.is_well_formed() {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let reply = self
+            .child
+            .debugger_value_snapshot(child_target)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerValueSnapshot(snapshot) = reply else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if snapshot.target != child_target || !snapshot.is_well_formed() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(remint_child_debugger_value(snapshot.preview))
+    }
+
     fn debugger_stack_available(&self) -> bool {
         self.debugger_execution_control_available()
             && self.child.debugger_stack_snapshot_available()
@@ -4909,6 +5018,41 @@ fn has_duplicate_child_static_metadata_contract_ids(
     contracts
         .iter()
         .any(|contract| !seen.insert(contract.contract_id))
+}
+
+fn remint_child_debugger_value(
+    preview: PageHostDebuggerValuePreview,
+) -> JavaScriptPageDebuggerValuePreview {
+    match preview {
+        PageHostDebuggerValuePreview::Undefined => JavaScriptPageDebuggerValuePreview::Undefined,
+        PageHostDebuggerValuePreview::Null => JavaScriptPageDebuggerValuePreview::Null,
+        PageHostDebuggerValuePreview::Bool(value) => {
+            JavaScriptPageDebuggerValuePreview::Bool(value)
+        }
+        PageHostDebuggerValuePreview::NumberBits(bits) => {
+            JavaScriptPageDebuggerValuePreview::NumberBits(bits)
+        }
+        PageHostDebuggerValuePreview::BigIntBytes(bytes) => {
+            JavaScriptPageDebuggerValuePreview::BigIntBytes(bytes)
+        }
+        PageHostDebuggerValuePreview::StringUnits(units) => {
+            JavaScriptPageDebuggerValuePreview::StringUnits(units)
+        }
+        PageHostDebuggerValuePreview::Array(elements) => JavaScriptPageDebuggerValuePreview::Array(
+            elements
+                .into_iter()
+                .map(|element| element.map(remint_child_debugger_value))
+                .collect(),
+        ),
+        PageHostDebuggerValuePreview::Record(entries) => {
+            JavaScriptPageDebuggerValuePreview::Record(
+                entries
+                    .into_iter()
+                    .map(|(key, value)| (key, remint_child_debugger_value(value)))
+                    .collect(),
+            )
+        }
+    }
 }
 
 fn valid_child_debugger_stack_snapshot(
@@ -5731,6 +5875,7 @@ mod tests {
 
     struct SnapshotReplyChild {
         reply: PageHostReply,
+        value_reply: Option<PageHostReply>,
     }
 
     impl PageHostClient for SnapshotReplyChild {
@@ -5748,6 +5893,17 @@ mod tests {
 
         fn debugger_stack_snapshot_available(&self) -> bool {
             true
+        }
+
+        fn debugger_value_snapshot_available(&self) -> bool {
+            self.value_reply.is_some()
+        }
+
+        fn debugger_value_snapshot(
+            &mut self,
+            _: PageHostDebuggerValueTarget,
+        ) -> io::Result<PageHostReply> {
+            Ok(self.value_reply.clone().unwrap())
         }
 
         fn debugger_execution_state(
@@ -5822,6 +5978,7 @@ mod tests {
         };
         let mut executor = OutOfProcessJavaScriptPageExecutor::new(SnapshotReplyChild {
             reply: reply.clone(),
+            value_reply: None,
         });
         executor.enable_debugger_execution_control();
         executor.live_documents.insert(
@@ -5901,6 +6058,162 @@ mod tests {
             executor.child.reply = malformed;
             assert_eq!(
                 request(&mut executor),
+                Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            );
+        }
+    }
+
+    #[test]
+    fn core_remints_only_exact_bounded_paused_child_values() {
+        let tab_id = TabId::from_u64(7);
+        let child_program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let core_program = JavaScriptPageDebuggerProgram {
+            program_handle: 101,
+            program_generation: 103,
+        };
+        let child_target = PageHostDebuggerValueTarget {
+            tab_id: 7,
+            document_generation: 1,
+            program: child_program,
+            frame: None,
+            frame_index: 0,
+            safe_point: PageHostDebuggerSafePoint {
+                program: child_program,
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            },
+            scope_entry: PageHostDebuggerScopeEntry {
+                slot_ordinal: 0,
+                scope_depth: 0,
+            },
+        };
+        let preview = PageHostDebuggerValuePreview::Record(vec![(
+            vec![0xd800],
+            PageHostDebuggerValuePreview::Array(vec![
+                None,
+                Some(PageHostDebuggerValuePreview::NumberBits(
+                    (-0.0_f64).to_bits(),
+                )),
+            ]),
+        )]);
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new(SnapshotReplyChild {
+            reply: PageHostReply::DebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 1,
+                program: child_program,
+                frame: None,
+                snapshot: PageHostDebuggerStackSnapshot {
+                    frames: vec![page_host::PageHostDebuggerStackFrame {
+                        code_unit_ordinal: 0,
+                        bytecode_offset: 4,
+                        scope_entries: vec![child_target.scope_entry],
+                        scope_truncated: false,
+                    }],
+                    stack_truncated: false,
+                },
+            },
+            value_reply: Some(PageHostReply::DebuggerValueSnapshot(Box::new(
+                page_host::PageHostDebuggerValueSnapshot {
+                    target: child_target,
+                    preview: preview.clone(),
+                },
+            ))),
+        });
+        executor.enable_debugger_execution_control();
+        executor.live_documents.insert(
+            tab_id,
+            LiveDocument {
+                document_generation: 1,
+                origin: "https://example.test".into(),
+            },
+        );
+        executor.debugger_programs.insert(
+            tab_id,
+            BTreeMap::from([(
+                child_program,
+                CoreDebuggerProgram {
+                    program_handle: core_program.program_handle,
+                    program_generation: core_program.program_generation,
+                },
+            )]),
+        );
+        let target = JavaScriptPageDebuggerValueTarget {
+            program: core_program,
+            frame: None,
+            frame_index: 0,
+            safe_point: JavaScriptPageDebuggerSafePoint {
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            },
+            scope_entry: JavaScriptPageDebuggerScopeEntry {
+                slot_ordinal: 0,
+                scope_depth: 0,
+            },
+        };
+        assert_eq!(
+            executor.debugger_value_snapshot(tab_id, 1, target),
+            Ok(JavaScriptPageDebuggerValuePreview::Record(vec![(
+                vec![0xd800],
+                JavaScriptPageDebuggerValuePreview::Array(vec![
+                    None,
+                    Some(JavaScriptPageDebuggerValuePreview::NumberBits(
+                        (-0.0_f64).to_bits()
+                    )),
+                ]),
+            )]))
+        );
+        for invalid in [
+            JavaScriptPageDebuggerValueTarget {
+                safe_point: JavaScriptPageDebuggerSafePoint {
+                    bytecode_offset: 5,
+                    ..target.safe_point
+                },
+                ..target
+            },
+            JavaScriptPageDebuggerValueTarget {
+                scope_entry: JavaScriptPageDebuggerScopeEntry {
+                    slot_ordinal: 1,
+                    ..target.scope_entry
+                },
+                ..target
+            },
+            JavaScriptPageDebuggerValueTarget {
+                frame_index: 1,
+                ..target
+            },
+        ] {
+            assert_eq!(
+                executor.debugger_value_snapshot(tab_id, 1, invalid),
+                Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+            );
+        }
+        for malformed in [
+            page_host::PageHostDebuggerValueSnapshot {
+                target: PageHostDebuggerValueTarget {
+                    document_generation: 2,
+                    ..child_target
+                },
+                preview: preview.clone(),
+            },
+            page_host::PageHostDebuggerValueSnapshot {
+                target: child_target,
+                preview: PageHostDebuggerValuePreview::StringUnits(vec![0; 2_049]),
+            },
+            page_host::PageHostDebuggerValueSnapshot {
+                target: child_target,
+                preview: PageHostDebuggerValuePreview::Record(vec![
+                    (vec![1], PageHostDebuggerValuePreview::Null),
+                    (vec![1], PageHostDebuggerValuePreview::Null),
+                ]),
+            },
+        ] {
+            executor.child.value_reply =
+                Some(PageHostReply::DebuggerValueSnapshot(Box::new(malformed)));
+            assert_eq!(
+                executor.debugger_value_snapshot(tab_id, 1, target),
                 Err(JavaScriptPageDebuggerError::NoLiveRealm)
             );
         }
@@ -9254,6 +9567,231 @@ mod tests {
         shutdown_child(&path, &token);
         child.join().unwrap();
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn launcher_supervised_bluets_classic_and_module_values_cross_the_private_core_proxy() {
+        use blueice_ipc::debugger::{
+            DebuggerCapability, DebuggerCapabilityState, DebuggerPageRealm, DebuggerReply,
+            DebuggerRequest,
+        };
+        use blueice_launcher::bluejs_host::SpawnedBlueJsHost;
+
+        let source = "let rootValue: number = 9; function inner(a: number): number { let childValue: number = a + 1; return childValue; } globalThis.answer = inner(3) + rootValue;";
+        for (mime, slug) in [
+            ("application/x-blueice-typescript", "classic"),
+            ("application/x-blueice-typescript-module", "module"),
+        ] {
+            let (host, config) = SpawnedBlueJsHost::spawn_for_core().unwrap();
+            let (mut tabs, tab_id) = loaded_tabs(
+                &format!("<script type=\"{mime}\">{source}</script>"),
+                &format!("https://example.test/{slug}-private-values.html"),
+            );
+            let mut executor =
+                OutOfProcessJavaScriptPageExecutor::connect_with_debugger_execution_control(
+                    config.socket_path(),
+                    config.session_token(),
+                )
+                .unwrap();
+            executor.synchronize_and_execute(&tabs).unwrap();
+            let realm = DebuggerPageRealm {
+                browser_context_id: crate::debugger::DEFAULT_BROWSER_CONTEXT_ID,
+                tab_id: tab_id.as_u64(),
+                realm_generation: 1,
+            };
+            let DebuggerReply::Capabilities(capabilities) =
+                crate::debugger::handle_debugger_request_with_page_javascript_executor(
+                    &tabs,
+                    Some(&mut executor),
+                    DebuggerRequest::DescribeCapabilities { realm },
+                )
+            else {
+                panic!("{slug} debugger must describe public capabilities");
+            };
+            assert!(capabilities.reports.iter().any(|report| {
+                report.capability == DebuggerCapability::BoundedValues
+                    && report.state == DebuggerCapabilityState::Planned
+            }));
+            let program = executor.debugger_programs(tab_id, 1).unwrap()[0];
+            assert!(program.program_handle >= CORE_CHILD_DEBUGGER_ID_NAMESPACE_START);
+            let nested_entry = executor
+                .debugger_safe_points(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap()
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+                .unwrap();
+            executor
+                .arm_debugger_nested_safe_point_breakpoint(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                    nested_entry.code_unit_ordinal,
+                    nested_entry.bytecode_offset,
+                )
+                .unwrap();
+            executor.synchronize_and_execute(&tabs).unwrap();
+            let Some(JavaScriptPageDebuggerNestedExecutionState::Paused { frame, .. }) = executor
+                .debugger_nested_execution_state(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap()
+            else {
+                panic!("{slug} nested BlueTS frame must pause");
+            };
+            let mut stack = executor
+                .debugger_stack_snapshot(tab_id, 1, program, Some(frame), 2, 256)
+                .unwrap();
+            assert_eq!(stack.frames.len(), 2);
+            let mut values_ready = false;
+            for _ in 0..96 {
+                values_ready = [(0, 3.0_f64), (1, 9.0_f64)]
+                    .into_iter()
+                    .all(|(index, expected)| {
+                        stack.frames[index]
+                            .scope_entries
+                            .iter()
+                            .copied()
+                            .any(|entry| {
+                                executor.debugger_value_snapshot(
+                                    tab_id,
+                                    1,
+                                    JavaScriptPageDebuggerValueTarget {
+                                        program,
+                                        frame: Some(frame),
+                                        frame_index: index as u32,
+                                        safe_point: JavaScriptPageDebuggerSafePoint {
+                                            code_unit_ordinal: stack.frames[index]
+                                                .code_unit_ordinal,
+                                            bytecode_offset: stack.frames[index].bytecode_offset,
+                                        },
+                                        scope_entry: entry,
+                                    },
+                                ) == Ok(JavaScriptPageDebuggerValuePreview::NumberBits(
+                                    expected.to_bits(),
+                                ))
+                            })
+                    });
+                if values_ready {
+                    break;
+                }
+                executor.step_debugger_nested_instruction(frame).unwrap();
+                executor.synchronize_and_execute(&tabs).unwrap();
+                stack = executor
+                    .debugger_stack_snapshot(tab_id, 1, program, Some(frame), 2, 256)
+                    .unwrap();
+            }
+            assert!(
+                values_ready,
+                "{slug} nested and root values must become readable"
+            );
+            let target_for = |index: usize, scope_entry| JavaScriptPageDebuggerValueTarget {
+                program,
+                frame: Some(frame),
+                frame_index: index as u32,
+                safe_point: JavaScriptPageDebuggerSafePoint {
+                    code_unit_ordinal: stack.frames[index].code_unit_ordinal,
+                    bytecode_offset: stack.frames[index].bytecode_offset,
+                },
+                scope_entry,
+            };
+            for (index, expected) in [(0, 3.0_f64), (1, 9.0_f64)] {
+                let reads: Vec<_> = stack.frames[index]
+                    .scope_entries
+                    .iter()
+                    .copied()
+                    .map(|entry| {
+                        (
+                            entry,
+                            executor.debugger_value_snapshot(tab_id, 1, target_for(index, entry)),
+                        )
+                    })
+                    .collect();
+                assert!(
+                    reads.iter().any(|(_, read)| *read
+                        == Ok(JavaScriptPageDebuggerValuePreview::NumberBits(
+                            expected.to_bits()
+                        ))),
+                    "{slug} frame {index} must expose its own exact active number: {reads:?}"
+                );
+            }
+            let selected = target_for(0, stack.frames[0].scope_entries[0]);
+            assert_eq!(
+                executor.debugger_value_snapshot(
+                    tab_id,
+                    1,
+                    JavaScriptPageDebuggerValueTarget {
+                        safe_point: JavaScriptPageDebuggerSafePoint {
+                            bytecode_offset: selected.safe_point.bytecode_offset + 1,
+                            ..selected.safe_point
+                        },
+                        ..selected
+                    },
+                ),
+                Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+            );
+            assert_eq!(
+                executor.debugger_value_snapshot(
+                    tab_id,
+                    1,
+                    JavaScriptPageDebuggerValueTarget {
+                        frame: Some(JavaScriptPageDebuggerFrame {
+                            frame_handle: frame.frame_handle + 1,
+                            ..frame
+                        }),
+                        ..selected
+                    },
+                ),
+                Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+            );
+            executor.resume_debugger_nested_execution(frame).unwrap();
+            executor.synchronize_and_execute(&tabs).unwrap();
+            let root = executor
+                .debugger_stack_snapshot(tab_id, 1, program, None, 1, 256)
+                .unwrap();
+            assert_eq!(root.frames.len(), 1);
+            let root_target = root.frames[0]
+                .scope_entries
+                .iter()
+                .copied()
+                .find_map(|entry| {
+                    let target = JavaScriptPageDebuggerValueTarget {
+                        program,
+                        frame: None,
+                        frame_index: 0,
+                        safe_point: JavaScriptPageDebuggerSafePoint {
+                            code_unit_ordinal: 0,
+                            bytecode_offset: root.frames[0].bytecode_offset,
+                        },
+                        scope_entry: entry,
+                    };
+                    (executor.debugger_value_snapshot(tab_id, 1, target)
+                        == Ok(JavaScriptPageDebuggerValuePreview::NumberBits(
+                            9.0_f64.to_bits(),
+                        )))
+                    .then_some(target)
+                })
+                .expect("resumed root must retain its own initialized binding");
+            tabs.get_mut(tab_id).unwrap().load_html_str(
+                "<p>successor</p>",
+                Some(format!("https://example.test/{slug}-successor.html")),
+            );
+            executor.synchronize_and_execute(&tabs).unwrap();
+            assert_eq!(
+                executor.debugger_value_snapshot(tab_id, 1, root_target),
+                Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            );
+            drop(executor);
+            drop(host);
+        }
     }
 
     #[test]

@@ -63,7 +63,8 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataSymbolType,
     JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
     JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
-    JavaScriptPageDebuggerStaticMetadataTypeTarget,
+    JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageDebuggerValuePreview,
+    JavaScriptPageDebuggerValueTarget,
 };
 
 /// Source-free debugger location operations owned by an explicitly selected
@@ -594,6 +595,17 @@ pub trait PageJavaScriptDebuggerLocations {
         _max_frames: u32,
         _max_scope_entries: u32,
     ) -> Result<JavaScriptPageDebuggerStackSnapshot, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Private core-facing exact active-slot read. A public owner receipt and
+    /// grant are separate work; this method advertises no public capability.
+    fn debugger_value_snapshot(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerValueTarget,
+    ) -> Result<JavaScriptPageDebuggerValuePreview, JavaScriptPageDebuggerError> {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 

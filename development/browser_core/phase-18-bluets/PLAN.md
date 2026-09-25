@@ -997,6 +997,22 @@ private-socket missing-path case also fail when run individually; all five
 focused BlueTS child tests pass. Core proxy and public value grants are not
 yet installed.
 
+**Core-reminted private paused values (C2.2.1.4.3):** The out-of-process
+executor now has a separate private value-read method. It first re-reads the
+exact paused stack at the full scope-entry budget and requires the selected
+frame, safe point, and active lexical slot to match. A nested core-instance
+frame is mapped only through its current child invocation association; a root
+read requires the root-only pause. The child must echo the entire private
+tab/document/program/frame/safe-point/slot tuple and a complete preview that
+passes the IPC depth, container, node, payload-byte, and duplicate-key checks.
+Only then does core remint the tree into a core-owned type with no child ID or
+reusable object handle. Mismatched and over-budget child replies fail closed.
+Launcher-supervised classic and module child processes prove nested binding,
+caller-root binding, and resumed root-only reads, plus forged frame/offset
+and successor-document denial. The real route leaves public BoundedValues
+Planned and debugger v36 unchanged; the owner receipt/public request is
+C2.2.1.5. The 292 engine library tests and workspace Clippy pass.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
