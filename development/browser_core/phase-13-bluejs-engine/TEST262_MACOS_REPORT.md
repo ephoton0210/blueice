@@ -122,7 +122,7 @@ Line coverage is a different measure from a Test262 pass rate and the two must n
 
 ## Later BlueJS per-file coverage (2026-09-25)
 
-This is a separate BlueJS coverage measurement at commit `8244bac3` with uncommitted changes on Darwin 27.0 (`arm64`), rustc 1.95.0 (59807616e 2026-04-14) and `cargo-llvm-cov 0.9.1`. It measures the Rust test suite independently of the Test262 inventory and historical verification above. `python3 backend/bluejs/coverage_file.py --update-macos-report` cleaned prior LLVM artifacts, ran the complete default BlueJS Rust test suite, and exported fresh per-file JSON. The opt-in Node oracle and external full Test262 runner were not included. Workspace coverage was not remeasured at this revision.
+This is a separate BlueJS coverage measurement at commit `03991981` with uncommitted changes on Darwin 27.0 (`arm64`), rustc 1.95.0 (59807616e 2026-04-14) and `cargo-llvm-cov 0.9.1`. It measures the Rust test suite independently of the Test262 inventory and historical verification above. `python3 backend/bluejs/coverage_file.py --update-macos-report` cleaned prior LLVM artifacts, ran the complete default BlueJS Rust test suite, and exported fresh per-file JSON. The opt-in Node oracle and external full Test262 runner were not included. Workspace coverage was not remeasured at this revision.
 
 Each measured cell shows covered / instrumented and the coverage rate. All 171 Rust files under `backend/bluejs/src/` are listed: 158 have LLVM counters; 13 use `-` with an individual reason in `Note`. A `0%` result requires a positive instrumented denominator and zero covered units. `☑` means **lines, functions and regions all reach 100%**; `☐` means at least one is below 100%. The total aggregates only instrumented files. Region coverage is separate from branch coverage. To rerun any one file independently, use `python3 backend/bluejs/coverage_file.py ast.rs` (replace `ast.rs` with its source path). Each invocation reruns the entire test suite, since tests outside a file can still exercise it.
 
@@ -132,8 +132,8 @@ Each measured cell shows covered / instrumented and the coverage rate. All 171 R
 | [`bin/bluejs-regexp-worker.rs`](../../../backend/bluejs/src/bin/bluejs-regexp-worker.rs) | 3 / 3 (100.00%) | 1 / 1 (100.00%) | 3 / 3 (100.00%) | ☑ |  |
 | [`bin/bluejs-test262.rs`](../../../backend/bluejs/src/bin/bluejs-test262.rs) | 631 / 631 (100.00%) | 56 / 56 (100.00%) | 1,211 / 1,211 (100.00%) | ☑ |  |
 | [`bytecode.rs`](../../../backend/bluejs/src/bytecode.rs) | 85 / 85 (100.00%) | 11 / 11 (100.00%) | 88 / 88 (100.00%) | ☑ |  |
-| [`compiler.rs`](../../../backend/bluejs/src/compiler.rs) | 1,480 / 1,480 (100.00%) | 143 / 143 (100.00%) | 2,086 / 2,086 (100.00%) | ☑ |  |
-| [`compiler/expressions.rs`](../../../backend/bluejs/src/compiler/expressions.rs) | 1,460 / 1,533 (95.24%) | 36 / 36 (100.00%) | 3,272 / 3,439 (95.14%) | ☐ |  |
+| [`compiler.rs`](../../../backend/bluejs/src/compiler.rs) | 1,483 / 1,483 (100.00%) | 143 / 143 (100.00%) | 2,087 / 2,087 (100.00%) | ☑ |  |
+| [`compiler/expressions.rs`](../../../backend/bluejs/src/compiler/expressions.rs) | 1,498 / 1,538 (97.40%) | 36 / 36 (100.00%) | 3,332 / 3,425 (97.28%) | ☐ |  |
 | [`compiler/functions.rs`](../../../backend/bluejs/src/compiler/functions.rs) | 971 / 983 (98.78%) | 51 / 51 (100.00%) | 1,703 / 1,821 (93.52%) | ☐ |  |
 | [`compiler/private_validation.rs`](../../../backend/bluejs/src/compiler/private_validation.rs) | 334 / 340 (98.24%) | 32 / 32 (100.00%) | 643 / 701 (91.73%) | ☐ |  |
 | [`compiler/statements.rs`](../../../backend/bluejs/src/compiler/statements.rs) | 1,303 / 1,351 (96.45%) | 68 / 70 (97.14%) | 2,407 / 2,612 (92.15%) | ☐ |  |
@@ -299,7 +299,7 @@ Each measured cell shows covered / instrumented and the coverage rate. All 171 R
 | [`vm/test262/reverse.rs`](../../../backend/bluejs/src/vm/test262/reverse.rs) | 260 / 270 (96.30%) | 24 / 26 (92.31%) | 427 / 464 (92.03%) | ☐ |  |
 | [`vm/test262_agents.rs`](../../../backend/bluejs/src/vm/test262_agents.rs) | 421 / 462 (91.13%) | 42 / 49 (85.71%) | 593 / 664 (89.31%) | ☐ |  |
 | [`vm/tests.rs`](../../../backend/bluejs/src/vm/tests.rs) | - | - | - | - | Test source; not a coverage target |
-| **Total (158 instrumented files)** | **68,098 / 73,248 (92.97%)** | **4,980 / 5,332 (93.40%)** | **114,215 / 126,125 (90.56%)** | ☐ |  |
+| **Total (158 instrumented files)** | **68,139 / 73,256 (93.01%)** | **4,980 / 5,332 (93.40%)** | **114,276 / 126,112 (90.61%)** | ☐ |  |
 
 ## Historical differences from the other platforms (2026-09-21)
 

@@ -1453,8 +1453,8 @@ fn class_field_definition(
     })))
 }
 
-fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {
-    Ok(match op {
+fn binary_opcode(op: BinaryOp) -> Opcode {
+    match op {
         BinaryOp::Add => Opcode::Add,
         BinaryOp::Sub => Opcode::Subtract,
         BinaryOp::Mul => Opcode::Multiply,
@@ -1477,12 +1477,11 @@ fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {
         BinaryOp::GtEq => Opcode::GreaterEqual,
         BinaryOp::Instanceof => Opcode::Instanceof,
         BinaryOp::In => Opcode::In,
-    })
+    }
 }
 
 fn compound_assignment_opcode(op: AssignOp) -> Option<Opcode> {
     match op {
-        AssignOp::Assign => None,
         AssignOp::AddAssign => Some(Opcode::Add),
         AssignOp::SubAssign => Some(Opcode::Subtract),
         AssignOp::MulAssign => Some(Opcode::Multiply),
@@ -1495,12 +1494,17 @@ fn compound_assignment_opcode(op: AssignOp) -> Option<Opcode> {
         AssignOp::BitAndAssign => Some(Opcode::BitAnd),
         AssignOp::BitXorAssign => Some(Opcode::BitXor),
         AssignOp::BitOrAssign => Some(Opcode::BitOr),
-        AssignOp::LogicalAndAssign | AssignOp::LogicalOrAssign | AssignOp::NullishAssign => None,
+        _ => None,
     }
 }
 
-fn is_logical_assignment(op: AssignOp) -> bool {
-    op != AssignOp::Assign && compound_assignment_opcode(op).is_none()
+fn logical_assignment_op(op: AssignOp) -> Option<LogicalOp> {
+    match op {
+        AssignOp::LogicalAndAssign => Some(LogicalOp::And),
+        AssignOp::LogicalOrAssign => Some(LogicalOp::Or),
+        AssignOp::NullishAssign => Some(LogicalOp::Nullish),
+        _ => None,
+    }
 }
 
 fn pattern_names(pattern: &Pattern) -> Vec<String> {

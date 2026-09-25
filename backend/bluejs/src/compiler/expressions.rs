@@ -403,7 +403,7 @@ impl Compiler {
                 }
             }
             Expr::Binary { op, left, right } => {
-                let opcode = binary_opcode(*op)?;
+                let opcode = binary_opcode(*op);
                 self.expression(left)?;
                 self.expression(right)?;
                 self.emit(opcode, 0)?;
@@ -985,15 +985,6 @@ impl Compiler {
         exits: &mut Vec<usize>,
     ) -> Result<(), CompileError> {
         match expr {
-            Expr::Member {
-                object,
-                property,
-                computed,
-            } if matches!(&**object, Expr::Super) => {
-                self.super_reference(property, *computed)?;
-                self.emit_this()?;
-                self.emit(Opcode::SuperGet, 0)?;
-            }
             Expr::Member { .. } if private_member_name(expr).is_some() => {
                 let owner = self.private_member_chain_reference(expr, exits)?;
                 self.emit(Opcode::PrivateGet, owner)?;
@@ -1416,15 +1407,13 @@ impl Compiler {
         target: &Expr,
         value: &Expr,
     ) -> Result<(), CompileError> {
-        let logical_assignment = is_logical_assignment(op);
+        let logical_assignment = logical_assignment_op(op);
         // AssignmentExpression gives an anonymous function definition the
         // syntactic IdentifierReference target's name. Member references and
         // compound assignments deliberately do not participate.
         let inferred_name = match (op, target) {
-            (AssignOp::Assign, Expr::Identifier(name)) if !logical_assignment => {
-                Some(name.as_str())
-            }
-            (_, Expr::Identifier(name)) if logical_assignment => Some(name.as_str()),
+            (AssignOp::Assign, Expr::Identifier(name)) => Some(name.as_str()),
+            (_, Expr::Identifier(name)) if logical_assignment.is_some() => Some(name.as_str()),
             _ => None,
         };
         // A CoverParenthesizedExpression can still evaluate to a reference,
@@ -1461,8 +1450,15 @@ impl Compiler {
                     self.emit_this()?;
                     self.emit(Opcode::SuperGet, 0)?;
                 }
-                if logical_assignment {
-                    self.logical_assignment(op, 2, value, inferred_name, Opcode::SuperSet, 0)?;
+                if let Some(logical_op) = logical_assignment {
+                    self.logical_assignment(
+                        logical_op,
+                        2,
+                        value,
+                        inferred_name,
+                        Opcode::SuperSet,
+                        0,
+                    )?;
                     return Ok(());
                 }
                 self.expression_with_name(value, inferred_name)?;
@@ -1476,10 +1472,17 @@ impl Compiler {
         }
         if private_member_name(target).is_some() {
             let owner = self.private_member_reference(target)?;
-            if logical_assignment {
+            if let Some(logical_op) = logical_assignment {
                 self.emit(Opcode::Dup2, 0)?;
                 self.emit(Opcode::PrivateGet, owner)?;
-                self.logical_assignment(op, 2, value, inferred_name, Opcode::PrivateSet, owner)?;
+                self.logical_assignment(
+                    logical_op,
+                    2,
+                    value,
+                    inferred_name,
+                    Opcode::PrivateSet,
+                    owner,
+                )?;
                 return Ok(());
             }
             if op != AssignOp::Assign {
@@ -1500,10 +1503,10 @@ impl Compiler {
                 // the RHS. A deletion or eval in that RHS must not redirect
                 // PutValue to a later binding lookup.
                 self.emit(Opcode::ResolveWithReference, index)?;
-                if logical_assignment {
+                if let Some(logical_op) = logical_assignment {
                     self.emit(Opcode::LoadWithReference, 0)?;
                     self.logical_assignment(
-                        op,
+                        logical_op,
                         2,
                         value,
                         inferred_name,
@@ -1526,10 +1529,10 @@ impl Compiler {
         if let Expr::Identifier(name) = target {
             if self.resolve(name).is_none() {
                 let index = self.name_constant(name)?;
-                if logical_assignment {
+                if let Some(logical_op) = logical_assignment {
                     self.emit(Opcode::UnboundName, index)?;
                     self.logical_assignment(
-                        op,
+                        logical_op,
                         0,
                         value,
                         inferred_name,
@@ -1587,11 +1590,11 @@ impl Compiler {
             // reference that was already resolved here.
             self.emit(Opcode::ResolveBindingReference, slot)?;
         }
-        if logical_assignment {
+        if let Some(logical_op) = logical_assignment {
             if binding.is_some() {
                 self.emit(Opcode::LoadBindingReference, 0)?;
                 self.logical_assignment(
-                    op,
+                    logical_op,
                     2,
                     value,
                     inferred_name,
@@ -1601,7 +1604,14 @@ impl Compiler {
             } else {
                 self.emit(Opcode::Dup2, 0)?;
                 self.emit(Opcode::GetProperty, 0)?;
-                self.logical_assignment(op, 2, value, inferred_name, Opcode::SetProperty, 0)?;
+                self.logical_assignment(
+                    logical_op,
+                    2,
+                    value,
+                    inferred_name,
+                    Opcode::SetProperty,
+                    0,
+                )?;
             }
             return Ok(());
         }
@@ -1631,7 +1641,7 @@ impl Compiler {
     /// consumes the retained reference with the supplied store opcode.
     pub(super) fn logical_assignment(
         &mut self,
-        op: AssignOp,
+        op: LogicalOp,
         reference_values: u32,
         value: &Expr,
         inferred_name: Option<&str>,
@@ -1641,10 +1651,9 @@ impl Compiler {
         self.emit(Opcode::Dup, 0)?;
         let bypass = self.emit(
             match op {
-                AssignOp::LogicalAndAssign => Opcode::JumpIfFalse,
-                AssignOp::LogicalOrAssign => Opcode::JumpIfTrue,
-                AssignOp::NullishAssign => Opcode::JumpIfNotNullish,
-                _ => unreachable!("logical assignment helper has a logical operator"),
+                LogicalOp::And => Opcode::JumpIfFalse,
+                LogicalOp::Or => Opcode::JumpIfTrue,
+                LogicalOp::Nullish => Opcode::JumpIfNotNullish,
             },
             0,
         )?;
@@ -2000,9 +2009,7 @@ impl Compiler {
     pub(super) fn super_call_epilogue(&mut self) -> Result<(), CompileError> {
         let slot = self
             .resolve(DERIVED_THIS_BINDING)
-            .ok_or(CompileError::InvalidSyntax(
-                "super() is only valid in a derived constructor",
-            ))?;
+            .expect("derived constructor has a this binding after its super call");
         self.emit(Opcode::BindThisValue, slot)?;
         self.emit(Opcode::InitializeInstanceElements, 0)?;
         Ok(())
