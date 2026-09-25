@@ -9256,6 +9256,146 @@ mod tests {
     }
 
     #[test]
+    fn paused_bluets_classic_and_module_stack_frames_have_exact_original_spans() {
+        let source = "/* 🚀 */ function inner(a: number): number { let value: number = a + 1; return value; } globalThis.answer = inner(3);";
+        let function_start = source.find("function inner").unwrap();
+        let function_end = source.find("} globalThis").unwrap() + 1;
+        let call_start = source.find("globalThis.answer").unwrap();
+        for (mime, slug) in [
+            ("application/x-blueice-typescript", "classic"),
+            ("application/x-blueice-typescript-module", "module"),
+        ] {
+            let (path, token, child) = spawn_child();
+            let (tabs, tab_id) = loaded_tabs(
+                &format!("<script type=\"{mime}\">{source}</script>"),
+                &format!("https://example.test/{slug}-stack-spans.html"),
+            );
+            let mut executor =
+                OutOfProcessJavaScriptPageExecutor::connect_with_debugger_execution_control(
+                    &path, &token,
+                )
+                .unwrap();
+            executor.synchronize_and_execute(&tabs).unwrap();
+            let program = executor.debugger_programs(tab_id, 1).unwrap()[0];
+            let metadata = executor
+                .debugger_static_metadata(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap()[0];
+            let source_ids = executor
+                .debugger_static_metadata_sources(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                    metadata.metadata_handle,
+                    metadata.metadata_generation,
+                )
+                .unwrap();
+            assert!(!source_ids.is_empty());
+            let target = executor
+                .debugger_safe_points(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap()
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+                .unwrap();
+            executor
+                .arm_debugger_nested_safe_point_breakpoint(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                    1,
+                    target.bytecode_offset,
+                )
+                .unwrap();
+            executor.synchronize_and_execute(&tabs).unwrap();
+            let Some(JavaScriptPageDebuggerNestedExecutionState::Paused { frame, .. }) = executor
+                .debugger_nested_execution_state(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap()
+            else {
+                panic!("{slug} child must pause");
+            };
+            let stack = executor
+                .debugger_stack_snapshot(tab_id, 1, program, Some(frame), 2, 1)
+                .unwrap();
+            assert_eq!(stack.frames.len(), 2);
+            for stack_frame in &stack.frames {
+                let spans = source_ids
+                    .iter()
+                    .filter_map(|source| {
+                        executor
+                            .debugger_static_metadata_safe_point_span(
+                                tab_id,
+                                1,
+                                JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+                                    program_handle: program.program_handle,
+                                    program_generation: program.program_generation,
+                                    metadata_handle: metadata.metadata_handle,
+                                    metadata_generation: metadata.metadata_generation,
+                                    source_id: source.source_id,
+                                    code_unit_ordinal: stack_frame.code_unit_ordinal,
+                                    bytecode_offset: stack_frame.bytecode_offset,
+                                },
+                            )
+                            .ok()
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    spans.len(),
+                    1,
+                    "{slug} frame {stack_frame:?} must have one exact source mapping"
+                );
+                let span = spans[0];
+                let (expected_start, expected_end) = if stack_frame.code_unit_ordinal == 1 {
+                    (function_start, function_end)
+                } else {
+                    assert_eq!(stack_frame.code_unit_ordinal, 0);
+                    (call_start, source.len())
+                };
+                assert_eq!(
+                    (span.start_byte as usize, span.end_byte as usize),
+                    (expected_start, expected_end),
+                    "{slug} frame must use its owning original BlueTS statement"
+                );
+                assert_eq!(span.coordinates.start_line, 0);
+                assert_eq!(
+                    span.coordinates.start_column_utf16,
+                    source[..expected_start].encode_utf16().count() as u32
+                );
+                assert_eq!(span.coordinates.end_line, 0);
+                assert_eq!(
+                    span.coordinates.end_column_utf16,
+                    source[..expected_end].encode_utf16().count() as u32
+                );
+                assert!(source_ids
+                    .iter()
+                    .any(|source| source.source_id == span.source_id));
+                assert!(span
+                    .coordinates
+                    .is_well_formed_for_range(span.start_byte, span.end_byte));
+            }
+            drop(executor);
+            shutdown_child(&path, &token);
+            child.join().unwrap();
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    #[test]
     fn public_core_route_steps_one_real_child_nested_frame_without_root_aliasing() {
         use crate::debugger::handle_debugger_request_with_page_javascript_executor;
         use blueice_ipc::debugger::{

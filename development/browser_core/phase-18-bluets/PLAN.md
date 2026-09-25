@@ -831,6 +831,21 @@ existing exact-span grant, not a new ambient coordinate permission. The
 public wire remains v35 in this design leaf; an implementation and real
 nested/module socket tests must be complete before its next version bump.
 
+**Retained nested/module source-map coverage (C2.1.2.2):** The v1 direct map
+previously bound only the first instruction of each top-level AST statement.
+At a real nested pause, the child entry and the suspended root `Call` were
+both unbound even though both belong to checked BlueTS lowering spans. BlueJS
+now records each root statement's exact emitted half-open instruction range
+and the direct child closure index created by a root function declaration.
+The bridge verifies those records against the installed program and attributes
+only instruction boundaries inside an owning range or that declaration's
+direct child code unit. Root `Halt` and other unowned instructions stay
+unbound. A child frame's v1 span is the original whole function declaration;
+the suspended root frame's span is its original top-level expression statement.
+The map preserves the compiler's original byte/UTF-16 locations, including
+non-BMP prefixes, and never infers a nearest statement from an offset. Both
+classic and module frames passed the exact private child/core span route.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

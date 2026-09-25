@@ -521,6 +521,12 @@ pub struct Bytecode {
     /// order statements. `None` means the statement emits no root-code-unit
     /// instruction and therefore has no executable safe point.
     pub(crate) root_statement_offsets: Vec<Option<u32>>,
+    /// Exact emitted instruction ranges for root statements, in source order.
+    /// The compiler records both ends; consumers must not infer ownership by
+    /// searching for a nearby statement start.
+    pub(crate) root_statement_ranges: Vec<Option<(u32, u32)>>,
+    /// Direct child closure created by each root function declaration.
+    pub(crate) root_function_child_indices: Vec<Option<u32>>,
     pub(crate) constants: Vec<Value>,
     pub(crate) bindings: Vec<Binding>,
     pub(crate) scopes: Vec<Vec<u32>>,
@@ -635,6 +641,8 @@ impl Bytecode {
             debugger_code_unit_ordinal: None,
             debugger_program_generation: None,
             root_statement_offsets: Vec::new(),
+            root_statement_ranges: Vec::new(),
+            root_function_child_indices: Vec::new(),
             constants: Vec::new(),
             bindings: Vec::new(),
             scopes: Vec::new(),
@@ -690,6 +698,16 @@ impl Bytecode {
     /// unbound result for a statement that contributes no root instruction.
     pub fn root_statement_offsets(&self) -> &[Option<u32>] {
         &self.root_statement_offsets
+    }
+
+    /// Compiler-recorded half-open instruction range for each root statement.
+    pub fn root_statement_ranges(&self) -> &[Option<(u32, u32)>] {
+        &self.root_statement_ranges
+    }
+
+    /// Direct child closure index for each root function declaration.
+    pub fn root_function_child_indices(&self) -> &[Option<u32>] {
+        &self.root_function_child_indices
     }
 
     pub fn constants(&self) -> &[Value] {

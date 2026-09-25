@@ -199,6 +199,9 @@ impl DirectDebugRegistry {
             compiler_options_fingerprint,
             sources,
             &attachment.provenance,
+            registry
+                .get(attachment.handle)
+                .map_err(DirectDebugAttachmentError::BlueJsProgram)?,
         )
         .map_err(|error| DirectDebugAttachmentError::SafePointMap(error.to_string()))?;
         if rebuilt_map != attachment.safe_point_map {
