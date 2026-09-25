@@ -66,7 +66,7 @@ jobs:
         run: |
           set -o pipefail
           cargo llvm-cov --workspace \
-            --ignore-filename-regex 'extension/src/main\.rs$|frontend-reference/src/main\.rs$' \
+            --ignore-filename-regex 'extension/src/main\.rs$|frontend-reference/src/main\.rs$|ai-assistant/src/bin/blueice-ai-assistant\.rs$' \
             --fail-under-lines 90 \
             --summary-only \
             | tee coverage-summary.txt

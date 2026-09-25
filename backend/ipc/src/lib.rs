@@ -35,6 +35,7 @@ use std::io::{self, Read, Write};
 pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
 pub mod ai;
+pub mod assistant;
 pub mod downloads;
 pub mod extension;
 pub mod gatekeeper;

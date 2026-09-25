@@ -185,6 +185,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "blueice-ai-assistant"
+version = "0.1.0"
+dependencies = [
+ "blueice-ipc",
+ "blueice-loopback-model",
+ "serde_json",
+]
+
+[[package]]
 name = "blueice-ai-gatekeeper"
 version = "0.1.0"
 dependencies = [

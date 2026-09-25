@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "backend/ai-assistant",
     "backend/ai-gatekeeper",
     "backend/bluejs",
     "backend/core/dom",
