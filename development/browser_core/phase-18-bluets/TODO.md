@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.1.3.** Reject a pause/step request carrying a stale
-generation.
+**Current leaf: C1.2.1.** Pause inside a nested call frame and step within
+that frame.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -239,7 +239,7 @@ channel with explicit owner/client grants.
 
 #### C1. Extend execution control.
 
-- [ ] **C1.1** Pause/resume and step a module root in a real page.
+- [x] **C1.1** Pause/resume and step a module root in a real page.
   - [x] **C1.1.1** Pause at the first module-root safe point and resume to completion.
     - [x] **C1.1.1.1** Specify the exact module-root safe point, graph and VM-state lifetime, and observable state transitions in PLAN.md. The entry evaluate-body boundary, pre-entry dependency effects, retained continuation, invalidation, source-free state sequence, and asynchronous/resource failure behavior are recorded there.
     - [x] **C1.1.1.2** Admit a checked ESM graph before execution and expose its exact entry program as `Pending` through the real debugger route. The child now attaches the graph and metadata at synchronization, registers the entry state, and advances the already attached graph once. An isolated-child two-module test inventories both programs and metadata before execution, while a real launcher/core/child debugger test observes the pending entry and later completion.
@@ -256,7 +256,7 @@ channel with explicit owner/client grants.
     - [x] **C1.1.2.2** Expose exact module-root instruction step through the page runtime and child scheduler without enabling dependency or nested-frame stepping. The page runtime forwards one native module step; the child accepts only its paused entry program, validates the returned successor as an exact live root safe point, and retains the queue head until resume. Boundary tests reject cross-tab, dependency and stale targets and prove a verified successor and unchanged pause on repeated advance.
     - [x] **C1.1.2.3** Reuse bounded BlueTS source-span stepping for a paused module root under its exact metadata/source receipts. The child now admits the armed BlueTS entry to the same 256-instruction source-span budget and metadata/source validation as classic scripts. A module regression rejects a wrong source ID, advances to the next bound source span, and resumes the same graph to completion; existing classic limit tests exercise the shared cap.
     - [x] **C1.1.2.4** Prove both module-root step modes and state transitions through the public real-process debugger route. A launcher/core/child integration test pauses an admitted BlueTS ESM entry, requests one root instruction through the public socket, checks its inventoried successor, then requests a metadata-receipted source-span step and checks the distinct bound span. It resumes to `Completed` and verifies the module execution report; the full real-process debugger suite passes.
-  - [ ] **C1.1.3** Reject a pause/step request carrying a stale generation.
+  - [x] **C1.1.3** Reject a pause/step request carrying a stale generation. After a real HTTP reload, the same debugger stream receives `StaleRealm` for its previous module's root-breakpoint arm, root-instruction step, and metadata-receipted BlueTS source-span step; the successor realm has a distinct generation and remains discoverable.
 - [ ] **C1.2** Pause/step a nested frame and resume that same frame; reject stale
   or cross-tab targets.
   - [ ] **C1.2.1** Pause inside a nested call frame and step within that frame.

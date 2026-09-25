@@ -902,28 +902,30 @@ fn launcher_pauses_and_resumes_a_real_bluets_module_entry() {
 }
 
 #[test]
-fn launcher_steps_a_real_bluets_module_instruction_and_source_span() {
+fn launcher_steps_a_real_bluets_module_then_rejects_stale_generation() {
     use blueice_ipc::debugger::DebuggerStaticMetadataSafePointSpanTarget;
 
     let gatekeeper_socket = clearing_gatekeeper();
     let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
     let url = format!("http://{}", listener.local_addr().unwrap());
     let fixture = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("fixture must receive navigation");
-        let mut request = [0_u8; 1024];
-        let _ = stream.read(&mut request);
-        let body = format!(
-            "<main>module-step-debugger</main><script type=\"application/x-blueice-typescript-module\">{MODULE_STEP_BLUETS_SOURCE}</script>"
-        );
-        stream
-            .write_all(
-                format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().expect("fixture must receive navigation");
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let body = format!(
+                "<main>module-step-debugger</main><script type=\"application/x-blueice-typescript-module\">{MODULE_STEP_BLUETS_SOURCE}</script>"
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
                 )
-                .as_bytes(),
-            )
-            .expect("fixture must reply with the module document");
+                .expect("fixture must reply with the module document");
+        }
     });
     let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
         &gatekeeper_socket,
@@ -1077,7 +1079,38 @@ fn launcher_steps_a_real_bluets_module_instruction_and_source_span() {
                 && reports[0].outcome == blueice_ipc::BlueTsScriptExecutionOutcome::Executed
     ));
 
+    navigate(&mut browser, &url);
     fixture.join().unwrap();
+    for request in [
+        DebuggerRequest::ArmRootSafePointBreakpoint { safe_point: target },
+        DebuggerRequest::StepRootInstruction { program },
+        DebuggerRequest::StepStaticMetadataSourceSpan {
+            target: source_target,
+        },
+    ] {
+        assert!(matches!(
+            debugger_request(&mut debugger, request),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::StaleRealm,
+                ..
+            }
+        ));
+    }
+    let successor_realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    assert_eq!(successor_realm.tab_id, realm.tab_id);
+    assert_ne!(successor_realm.realm_generation, realm.realm_generation);
+    let _ = one_program(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListPrograms {
+                realm: successor_realm,
+            },
+        ),
+        successor_realm,
+    );
     launcher.shutdown();
     let _ = std::fs::remove_file(gatekeeper_socket);
 }

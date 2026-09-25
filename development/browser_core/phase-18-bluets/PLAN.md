@@ -563,6 +563,13 @@ pauses at a different bound source span; resume completes the same module and
 the public browser connection reports successful module execution. The full
 out-of-process debugger suite passes with this test.
 
+**Stale module control (C1.1.3):** A real HTTP reload replaces that module's
+realm after completion. On the original debugger stream, a root-breakpoint
+arm, root-instruction step, and metadata-receipted source-span step using the
+old module handles each fail with `StaleRealm`. The new page is still
+discoverable under a different realm generation; no old request is retargeted
+to its program.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
