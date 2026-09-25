@@ -1725,6 +1725,23 @@ impl Vm {
                 Err(error) if error.is_catchable() => Some(Completion::Throw(error)),
                 Err(error) => return Err(error),
             };
+            if matches!(&completion, Some(Completion::Throw(error)) if error.is_catchable())
+                && self.pending_throw_site.is_none()
+            {
+                self.pending_throw_site = code
+                    .debugger_program_generation
+                    .zip(code.debugger_code_unit_ordinal)
+                    .zip(u32::try_from(instruction.offset).ok())
+                    .map(
+                        |((program_generation, code_unit_ordinal), bytecode_offset)| {
+                            VmDebuggerThrowSite {
+                                program_generation,
+                                code_unit_ordinal,
+                                bytecode_offset,
+                            }
+                        },
+                    );
+            }
             if self.debugger_nested_continuation.is_some() {
                 debug_assert_eq!(instruction.opcode, Opcode::Call);
                 for handler in &mut handlers {

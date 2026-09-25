@@ -1253,6 +1253,18 @@ program has no exception location. No exception-policy pause capability or
 source-text read is implied. The complete public route bumps debugger v38 to
 v39; C2.3.1.2–C2.3.1.5 implement and prove each boundary in order.
 
+**Classic native throw-site groundwork (C2.3.1.2.1):** BlueJS now exposes
+`VmDebuggerThrowSite`, containing only the installed debugger program
+generation, code-unit ordinal, and exact throwing instruction offset. The
+interpreter stamps a catchable throw at its instruction before unwinding, a
+catch entry clears the transient site, and outer script completion publishes
+the site only if the language exception escaped; a new execution or normal
+completion clears it. An unregistered bytecode throw has no site. Classic
+direct-throw, caught-throw, successor, and unregistered regressions pass,
+alongside all 31 native debugger VM tests and workspace Clippy. No IPC or
+source-map lookup changed. Nested/module propagation and replacement by a
+new throw remain C2.3.1.2.2.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

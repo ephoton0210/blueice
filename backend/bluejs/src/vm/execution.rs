@@ -118,6 +118,8 @@ impl Vm {
         module: bool,
     ) -> Result<(), RuntimeError> {
         self.ensure_no_debugger_continuation()?;
+        self.pending_throw_site = None;
+        self.uncaught_throw_site = None;
         if let Some(root) = self.result_root.take() {
             self.heap.unroot(root)?;
         }
@@ -194,6 +196,12 @@ impl Vm {
             Ok(())
         })?;
         self.enqueue_finalization_cleanup_jobs();
+        self.uncaught_throw_site = if result.as_ref().is_err_and(RuntimeError::is_catchable) {
+            self.pending_throw_site
+        } else {
+            None
+        };
+        self.pending_throw_site = None;
         result
     }
 
@@ -1258,6 +1266,7 @@ impl Vm {
             if state == HandlerState::Try {
                 if let (Some(target), Completion::Throw(error)) = (catch, &completion) {
                     let value = self.error_value(error.clone())?;
+                    self.pending_throw_site = None;
                     handlers
                         .last_mut()
                         .expect("handler was inspected above")

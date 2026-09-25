@@ -48,6 +48,8 @@ impl Vm {
             debugger_nested_parent_execution: None,
             debugger_nested_direct_call: false,
             next_debugger_frame_serial: 1,
+            pending_throw_site: None,
+            uncaught_throw_site: None,
             stack: Vec::new(),
             bindings: Vec::new(),
             binding_metadata: Vec::new(),

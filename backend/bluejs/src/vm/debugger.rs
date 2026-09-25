@@ -14,6 +14,24 @@
 
 use super::*;
 
+/// Exact source-free bytecode instruction that originated the last uncaught
+/// catchable exception. The embedding host must bind this to its own live
+/// BlueTS attachment before mapping it to an original source span.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VmDebuggerThrowSite {
+    pub program_generation: u64,
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+}
+
+impl Vm {
+    /// Available only after an outer execution finished with an uncaught
+    /// language exception. A new execution, catch, or success clears it.
+    pub fn debugger_uncaught_throw_site(&self) -> Option<VmDebuggerThrowSite> {
+        self.uncaught_throw_site
+    }
+}
+
 /// Source-free outcome of a root-code-unit debugger run.
 ///
 /// `Paused` means no instruction at `bytecode_offset` has executed yet. The
@@ -1169,6 +1187,46 @@ mod tests {
             )
             .unwrap();
         registry.get(handle).unwrap().bytecode().clone()
+    }
+
+    #[test]
+    fn uncaught_classic_throw_site_is_exact_and_caught_or_successor_sites_clear() {
+        let program = installed_script("let before = 1; throw 7;");
+        let throw_offset = program
+            .instructions()
+            .find(|instruction| instruction.opcode == Opcode::Throw)
+            .unwrap()
+            .offset as u32;
+        let expected = VmDebuggerThrowSite {
+            program_generation: program.debugger_program_generation.unwrap(),
+            code_unit_ordinal: 0,
+            bytecode_offset: throw_offset,
+        };
+        let mut vm = Vm::default();
+        assert_eq!(vm.debugger_uncaught_throw_site(), None);
+        assert_eq!(
+            vm.execute_script(&program),
+            Err(RuntimeError::Thrown(Value::Number(7.0)))
+        );
+        assert_eq!(vm.debugger_uncaught_throw_site(), Some(expected));
+
+        let caught =
+            installed_script("try { throw 8; } catch (error) { globalThis.caught = error; }");
+        vm.execute_script(&caught).unwrap();
+        assert_eq!(vm.debugger_uncaught_throw_site(), None);
+        assert_eq!(
+            vm.lookup_global_name("caught").unwrap(),
+            Some(Value::Number(8.0))
+        );
+
+        let successor = installed_script("globalThis.done = true;");
+        vm.execute_script(&successor).unwrap();
+        assert_eq!(vm.debugger_uncaught_throw_site(), None);
+        assert_eq!(
+            vm.execute_script(&code("throw 9;")),
+            Err(RuntimeError::Thrown(Value::Number(9.0)))
+        );
+        assert_eq!(vm.debugger_uncaught_throw_site(), None);
     }
 
     #[test]
