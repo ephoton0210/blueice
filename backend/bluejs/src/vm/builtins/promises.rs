@@ -893,6 +893,7 @@ impl Vm {
     }
 
     pub fn run_promise_jobs(&mut self) -> Result<(), RuntimeError> {
+        self.ensure_no_debugger_continuation()?;
         while !self.promise_jobs.is_empty() {
             // Each queued Promise reaction has its own execution context and
             // therefore its own instruction budget. A module continuation
@@ -908,6 +909,7 @@ impl Vm {
     /// may enqueue another job, so the caller's fixed bound limits total
     /// work rather than just the queue length at checkpoint entry.
     pub fn run_promise_jobs_bounded(&mut self, max_jobs: usize) -> Result<(), RuntimeError> {
+        self.ensure_no_debugger_continuation()?;
         for _ in 0..max_jobs {
             if !self.run_next_promise_job()? {
                 return Ok(());

@@ -469,6 +469,18 @@ major collection, resumes, and checks both side-effect counters remain one
 even after querying the same graph again. Error and asynchronous cleanup
 remain the explicit C1.1.1.3.3 gate; child/core routing remains C1.1.1.4.
 
+**Module-root terminal and async cleanup (C1.1.1.3.3):** A paused entry rejects
+other script, module-graph and Promise-job execution on the same VM. Resume
+records a catchable throw on the existing linked module, keeps its object
+reachable across the next graph query, and releases the debugger continuation.
+When the entry awaits, its frame transfers to the normal module-await job
+machinery; queued jobs settle its completion or rejection before debugger
+resume returns. An async dependency is advanced only until the entry reaches
+its requested first instruction, leaving all later jobs untouched during the
+pause. Native regressions cover these terminal, fulfilled-await, rejected-
+await and async-dependency cases. Child/core routing and page-visible state
+transitions remain C1.1.1.4.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

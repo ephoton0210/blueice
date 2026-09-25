@@ -575,11 +575,39 @@ impl Vm {
             .take()
             .expect("paused module records return after the entry body runs");
         self.active_module_name = previous_module;
+        let mut awaiting = false;
         let mut result = match outcome {
             Ok(InterpreterExit::Return(value)) => Ok(value),
-            Ok(InterpreterExit::Await { .. }) => Err(RuntimeError::Unsupported(
-                "root debugger continuation cannot suspend for module await",
-            )),
+            Ok(InterpreterExit::Await {
+                promise,
+                pc,
+                handlers,
+            }) => {
+                let execution = self.suspend_module_execution();
+                let record = graph
+                    .linked
+                    .get_mut(&module)
+                    .expect("the paused entry remains in its linked graph");
+                record.cells = execution.cells.clone();
+                record.suspended = true;
+                match self.suspend_module_await(
+                    ModuleContinuation {
+                        module: module.clone(),
+                        code,
+                        pc,
+                        execution,
+                        iterators: std::mem::take(&mut iterators),
+                        handlers,
+                    },
+                    promise,
+                ) {
+                    Ok(()) => {
+                        awaiting = true;
+                        Ok(Value::Undefined)
+                    }
+                    Err(error) => Err(error),
+                }
+            }
             Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
                 "yield requires a generator function".into(),
             )),
@@ -588,35 +616,37 @@ impl Vm {
             )),
             Err(error) => Err(error),
         };
-        result = self.finish_debugger_interpret_result(result, &mut iterators, 0, 0);
-        let record = graph
-            .linked
-            .get_mut(&module)
-            .expect("the paused entry remains in its linked graph");
-        record.cells = std::mem::take(&mut self.cells);
-        record.suspended = false;
-        record.evaluating = false;
-        match &result {
-            Ok(value) => {
-                record.evaluated = true;
-                record.completion = Some(value.clone());
-            }
-            Err(error) => {
-                if matches!(
-                    error,
-                    RuntimeError::Thrown(_)
-                        | RuntimeError::TypeError(_)
-                        | RuntimeError::ReferenceError(_)
-                        | RuntimeError::RangeError(_)
-                        | RuntimeError::SyntaxError(_)
-                ) {
-                    match self.error_value(error.clone()) {
-                        Ok(value) => {
-                            record.evaluated = true;
-                            record.error = Some(value.clone());
-                            result = Err(RuntimeError::Thrown(value));
+        if !awaiting {
+            result = self.finish_debugger_interpret_result(result, &mut iterators, 0, 0);
+            let record = graph
+                .linked
+                .get_mut(&module)
+                .expect("the paused entry remains in its linked graph");
+            record.cells = std::mem::take(&mut self.cells);
+            record.suspended = false;
+            record.evaluating = false;
+            match &result {
+                Ok(value) => {
+                    record.evaluated = true;
+                    record.completion = Some(value.clone());
+                }
+                Err(error) => {
+                    if matches!(
+                        error,
+                        RuntimeError::Thrown(_)
+                            | RuntimeError::TypeError(_)
+                            | RuntimeError::ReferenceError(_)
+                            | RuntimeError::RangeError(_)
+                            | RuntimeError::SyntaxError(_)
+                    ) {
+                        match self.error_value(error.clone()) {
+                            Ok(value) => {
+                                record.evaluated = true;
+                                record.error = Some(value.clone());
+                                result = Err(RuntimeError::Thrown(value));
+                            }
+                            Err(error) => result = Err(error),
                         }
-                        Err(error) => result = Err(error),
                     }
                 }
             }
@@ -640,13 +670,45 @@ impl Vm {
                 Err(error) => result = Err(error),
             }
         }
-        if let Ok(Value::Object(id)) = &result {
-            match self.heap.root(*id) {
-                Ok(root) => self.result_root = Some(root),
-                Err(error) => result = Err(error.into()),
-            }
+        let error_root = match &result {
+            Err(RuntimeError::Thrown(Value::Object(id))) => Some(self.heap.root(*id)),
+            _ => None,
+        };
+        if let Some(Ok(root)) = &error_root {
+            graph.roots.push(*root);
         }
         self.store_module_graph(graph, false);
+        if let Some(Err(error)) = error_root {
+            result = Err(error.into());
+        }
+        if awaiting && result.is_ok() && !self.promise_jobs.is_empty() {
+            self.remaining_instructions = self.config.instruction_budget;
+            if let Err(error) = self.run_promise_jobs() {
+                result = Err(error);
+            }
+        }
+        if result.is_ok() {
+            if let Some(error) = self
+                .linked_record(&module)
+                .and_then(|record| record.error.clone())
+            {
+                result = Err(RuntimeError::Thrown(error));
+            } else if let Some(value) = self
+                .linked_record(&module)
+                .and_then(|record| record.completion.clone())
+            {
+                result = Ok(value);
+            }
+        }
+        match &result {
+            Ok(Value::Object(id)) | Err(RuntimeError::Thrown(Value::Object(id))) => {
+                match self.heap.root(*id) {
+                    Ok(root) => self.result_root = Some(root),
+                    Err(error) => result = Err(error.into()),
+                }
+            }
+            _ => {}
+        }
         self.finish_module_graph_execution(result)
             .map(|_| VmDebuggerExecutionState::Completed)
     }
@@ -934,7 +996,7 @@ impl Vm {
 
     /// The record of `name` in whichever graph currently owns the module
     /// records: the installed one, or the one parked for running module code.
-    fn linked_record(&self, name: &str) -> Option<&LinkedModule> {
+    pub(super) fn linked_record(&self, name: &str) -> Option<&LinkedModule> {
         self.module_graph
             .as_ref()
             .map(|graph| &graph.linked)
@@ -1274,11 +1336,23 @@ impl Vm {
                 record.evaluated = true;
                 record.completion = None;
                 record.error = Some(error.clone());
-                self.reject_module_and_parents(module, error, &mut graph.linked)?;
+                self.reject_module_and_parents(module.clone(), error, &mut graph.linked)?;
                 Ok(Value::Undefined)
             }
         };
+        let error_root = graph
+            .linked
+            .get(&module)
+            .and_then(|record| record.error.as_ref())
+            .and_then(Value::object_id)
+            .map(|id| self.heap.root(id));
+        if let Some(Ok(root)) = &error_root {
+            graph.roots.push(*root);
+        }
         self.module_graph = Some(graph);
+        if let Some(Err(error)) = error_root {
+            return Err(error.into());
+        }
         result.map(|_| ())
     }
 

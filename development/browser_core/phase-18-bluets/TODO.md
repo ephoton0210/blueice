@@ -14,10 +14,10 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.1.1.3.3.** Verify native module pause/resume, error and
-asynchronous cleanup, and concurrent-execution exclusion. Every item has
-an ID
-(`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit messages and PLAN.md cite
+**Current leaf: C1.1.1.4.** Wire the child/core debugger route and prove the
+module entry's `Pending` → `Paused` → `Resuming` → `Completed` transitions.
+Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
+messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
 
 ## Current boundary
@@ -243,10 +243,10 @@ channel with explicit owner/client grants.
   - [ ] **C1.1.1** Pause at the first module-root safe point and resume to completion.
     - [x] **C1.1.1.1** Specify the exact module-root safe point, graph and VM-state lifetime, and observable state transitions in PLAN.md. The entry evaluate-body boundary, pre-entry dependency effects, retained continuation, invalidation, source-free state sequence, and asynchronous/resource failure behavior are recorded there.
     - [x] **C1.1.1.2** Admit a checked ESM graph before execution and expose its exact entry program as `Pending` through the real debugger route. The child now attaches the graph and metadata at synchronization, registers the entry state, and advances the already attached graph once. An isolated-child two-module test inventories both programs and metadata before execution, while a real launcher/core/child debugger test observes the pending entry and later completion.
-    - [ ] **C1.1.1.3** Suspend BlueJS at the entry module's first evaluate-body root safe point and resume its retained graph to completion; cover the native VM boundary.
+    - [x] **C1.1.1.3** Suspend BlueJS at the entry module's first evaluate-body root safe point and resume its retained graph to completion; cover the native VM boundary.
       - [x] **C1.1.1.3.1** Select the first verified root instruction at or after `module_evaluate_entry` for an exact live entry program; reject a classic or stale handle. BlueJS now selects the lowest root safe point in the evaluation body after checking exact realm ownership and module shape; a native regression checks its compiler entry offset and both rejection cases.
       - [x] **C1.1.1.3.2** Retain the linked graph and module context at that pre-instruction boundary; resume without replaying entry instructions or dependency effects. BlueJS now saves the entry frame and linked graph at its first evaluate-body instruction, roots the displaced frame through GC, and resumes the same module record. A two-module native regression checks the retained context and that both entry and dependency effects run exactly once.
-      - [ ] **C1.1.1.3.3** Verify native module pause/resume, error and asynchronous cleanup, and exclusion of concurrent realm execution.
+      - [x] **C1.1.1.3.3** Verify native module pause/resume, error and asynchronous cleanup, and exclusion of concurrent realm execution. Native regressions cover a thrown entry, top-level await fulfillment and rejection, an async dependency before entry, retained error identity, and rejection of script/module/job entry points while paused. The continuation drains only the needed dependency jobs before entry pause and uses ordinary module-await jobs after resume.
     - [ ] **C1.1.1.4** Wire the child/core debugger route and prove `Pending` → `Paused` → `Resuming` → `Completed` on a real BlueTS ESM page.
   - [ ] **C1.1.2** Instruction step and BlueTS source-span step inside the module root.
   - [ ] **C1.1.3** Reject a pause/step request carrying a stale generation.

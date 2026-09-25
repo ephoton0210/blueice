@@ -90,12 +90,26 @@ impl Vm {
             entry: entry.to_string(),
             target,
         });
-        let result =
-            self.execute_module_graph_inner(entry, modules, false, false, ImportPhase::Evaluation);
+        let result = (|| {
+            self.execute_module_graph_inner(entry, modules, false, false, ImportPhase::Evaluation)?;
+            // An async dependency can delay the entry body itself. Advance
+            // only the queued turns needed to reach its requested boundary;
+            // never run another job after the debugger owns that frame.
+            while self.debugger_module_continuation.is_none() && !self.promise_jobs.is_empty() {
+                self.remaining_instructions = self.config.instruction_budget;
+                self.run_next_promise_job()?;
+            }
+            Ok::<(), RuntimeError>(())
+        })();
         self.debugger_module_pause_request = None;
         result?;
         if self.debugger_module_continuation.is_some() {
             Ok(VmDebuggerExecutionState::Paused { bytecode_offset })
+        } else if let Some(error) = self
+            .linked_record(entry)
+            .and_then(|record| record.error.clone())
+        {
+            Err(RuntimeError::Thrown(error))
         } else {
             Err(RuntimeError::Unsupported(
                 "debugger module entry did not reach the requested safe point",
@@ -369,6 +383,18 @@ mod tests {
             .expect("test source has a non-entry root instruction")
     }
 
+    fn module_code(source: &str) -> Bytecode {
+        compile_module(&parse_module(source).expect("test module parses"))
+            .expect("test module compiles")
+    }
+
+    fn module_entry_offset(code: &Bytecode) -> u32 {
+        code.instructions()
+            .map(|instruction| instruction.offset as u32)
+            .find(|offset| *offset >= code.module_evaluate_entry.unwrap())
+            .expect("test module has an evaluation instruction")
+    }
+
     #[test]
     fn root_safe_point_preserves_operand_and_global_state_until_resume() {
         let program = code("globalThis.before = 1; globalThis.after = 2;");
@@ -599,6 +625,133 @@ mod tests {
             ))
             .unwrap(),
             Value::Number(11.0)
+        );
+    }
+
+    #[test]
+    fn paused_module_rejects_concurrent_entry_points_and_recovers_after_throw() {
+        let entry = "throwing/main.mjs";
+        let program = module_code(
+            "globalThis.runCount = (globalThis.runCount || 0) + 1; throw new TypeError('expected');",
+        );
+        let offset = module_entry_offset(&program);
+        let modules = HashMap::from([(entry.to_string(), program)]);
+        let mut vm = Vm::default();
+        vm.execute_module_graph_until_debugger_pause(entry, &modules, offset)
+            .unwrap();
+        let blocked = RuntimeError::Unsupported(
+            "a debugger-paused root module must resume before another execution starts",
+        );
+        assert_eq!(
+            vm.execute_module_graph(entry, &modules),
+            Err(blocked.clone())
+        );
+        assert_eq!(vm.execute(&code("1")), Err(blocked.clone()));
+        assert_eq!(vm.run_promise_jobs(), Err(blocked.clone()));
+        assert_eq!(vm.run_promise_jobs_bounded(1), Err(blocked));
+        let thrown = vm.resume_debugger_module_execution().unwrap_err();
+        assert!(matches!(thrown, RuntimeError::Thrown(Value::Object(_))));
+        assert!(vm.debugger_module_continuation.is_none());
+        let record = vm.module_graph.as_ref().unwrap().linked.get(entry).unwrap();
+        assert!(record.evaluated);
+        assert!(!record.evaluating && !record.suspended);
+        assert_eq!(
+            record.error,
+            Some(match &thrown {
+                RuntimeError::Thrown(value) => value.clone(),
+                _ => unreachable!("checked thrown completion"),
+            })
+        );
+        assert_eq!(vm.execute_module_graph(entry, &modules), Err(thrown));
+        assert_eq!(
+            vm.execute_script(&code("globalThis.runCount")).unwrap(),
+            Value::Number(1.0)
+        );
+    }
+
+    #[test]
+    fn paused_module_resumes_through_top_level_await_and_cleans_up() {
+        let entry = "awaiting/main.mjs";
+        let program = module_code("globalThis.beforeAwait = 1; await Promise.resolve(42); globalThis.afterAwait = 1; export const answer = 42;");
+        let offset = module_entry_offset(&program);
+        let modules = HashMap::from([(entry.to_string(), program)]);
+        let mut vm = Vm::default();
+        vm.execute_module_graph_until_debugger_pause(entry, &modules, offset)
+            .unwrap();
+        assert_eq!(
+            vm.resume_debugger_module_execution(),
+            Ok(VmDebuggerExecutionState::Completed)
+        );
+        let record = vm.module_graph.as_ref().unwrap().linked.get(entry).unwrap();
+        assert!(record.evaluated);
+        assert!(!record.evaluating && !record.suspended);
+        assert!(vm.module_continuations.is_empty());
+        assert!(vm.promise_jobs.is_empty());
+        assert_eq!(
+            vm.execute_script(&code("globalThis.beforeAwait + globalThis.afterAwait"))
+                .unwrap(),
+            Value::Number(2.0)
+        );
+    }
+
+    #[test]
+    fn paused_module_preserves_async_dependency_order_and_rejection() {
+        let entry = "async/entry.mjs";
+        let dependency = "async/dependency.mjs";
+        let entry_code = module_code("import { answer } from './dependency.mjs'; globalThis.entryRuns = (globalThis.entryRuns || 0) + 1; export const result = answer + 1;");
+        let offset = module_entry_offset(&entry_code);
+        let modules = HashMap::from([
+            (entry.to_string(), entry_code),
+            (dependency.to_string(), module_code("globalThis.dependencyRuns = (globalThis.dependencyRuns || 0) + 1; await Promise.resolve(); export const answer = 41;")),
+        ]);
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_module_graph_until_debugger_pause(entry, &modules, offset),
+            Ok(VmDebuggerExecutionState::Paused {
+                bytecode_offset: offset
+            })
+        );
+        assert_eq!(
+            vm.resume_debugger_module_execution(),
+            Ok(VmDebuggerExecutionState::Completed)
+        );
+        assert_eq!(
+            vm.execute_script(&code(
+                "globalThis.dependencyRuns * 10 + globalThis.entryRuns"
+            ))
+            .unwrap(),
+            Value::Number(11.0)
+        );
+
+        let rejection = "async/reject.mjs";
+        let rejected_code =
+            module_code("await Promise.resolve(); throw new TypeError('expected');");
+        let rejected_offset = module_entry_offset(&rejected_code);
+        let rejected_modules = HashMap::from([(rejection.to_string(), rejected_code)]);
+        let mut rejected_vm = Vm::default();
+        rejected_vm
+            .execute_module_graph_until_debugger_pause(
+                rejection,
+                &rejected_modules,
+                rejected_offset,
+            )
+            .unwrap();
+        let error = rejected_vm.resume_debugger_module_execution().unwrap_err();
+        assert!(matches!(error, RuntimeError::Thrown(Value::Object(_))));
+        let record = rejected_vm
+            .module_graph
+            .as_ref()
+            .unwrap()
+            .linked
+            .get(rejection)
+            .unwrap();
+        assert!(record.evaluated);
+        assert!(!record.evaluating && !record.suspended);
+        assert!(rejected_vm.module_continuations.is_empty());
+        assert!(rejected_vm.promise_jobs.is_empty());
+        assert_eq!(
+            rejected_vm.execute_module_graph(rejection, &rejected_modules),
+            Err(error)
         );
     }
 
