@@ -104,6 +104,28 @@ mod tests {
         // a few pages. The call-depth guard's red zone is far larger than that.
         const REPORTING_SLACK: usize = 64 * 1024;
 
+        #[cfg(target_os = "linux")]
+        fn allocated_stack_size() -> usize {
+            // pthread may reuse a cached stack larger than Builder's requested
+            // minimum after other unit tests have spawned threads.
+            unsafe {
+                let mut attr = std::mem::MaybeUninit::<libc::pthread_attr_t>::uninit();
+                assert_eq!(libc::pthread_attr_init(attr.as_mut_ptr()), 0);
+                assert_eq!(
+                    libc::pthread_getattr_np(libc::pthread_self(), attr.as_mut_ptr()),
+                    0
+                );
+                let mut address = std::ptr::null_mut();
+                let mut size = 0;
+                assert_eq!(
+                    libc::pthread_attr_getstack(attr.as_ptr(), &mut address, &mut size),
+                    0
+                );
+                assert_eq!(libc::pthread_attr_destroy(attr.as_mut_ptr()), 0);
+                size
+            }
+        }
+
         fn on_thread_with_stack<R: Send + 'static>(
             bytes: usize,
             work: impl FnOnce() -> R + Send + 'static,
@@ -132,10 +154,18 @@ mod tests {
         #[test]
         fn reports_about_the_stack_the_thread_was_given() {
             const STACK: usize = 1024 * 1024;
-            let remaining = on_thread_with_stack(STACK, || remaining_stack().expect("supported"));
+            let (remaining, allocated) = on_thread_with_stack(STACK, || {
+                let remaining = remaining_stack().expect("supported");
+                #[cfg(target_os = "linux")]
+                let allocated = allocated_stack_size();
+                #[cfg(not(target_os = "linux"))]
+                let allocated = STACK;
+                (remaining, allocated)
+            });
+            assert!(allocated >= STACK);
             assert!(
-                remaining <= STACK + REPORTING_SLACK,
-                "{remaining} bytes on a {STACK}-byte stack"
+                remaining <= allocated + REPORTING_SLACK,
+                "{remaining} bytes on a {allocated}-byte stack"
             );
             // Almost all of a freshly spawned thread's stack is still unused.
             assert!(

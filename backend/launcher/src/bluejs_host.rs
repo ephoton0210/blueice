@@ -8865,7 +8865,7 @@ mod tests {
 
     #[test]
     fn private_socket_is_owner_only() {
-        let path = PathBuf::from("/private/tmp").join(format!(
+        let path = PathBuf::from("/tmp").join(format!(
             "blueice-launcher-owner-only-test-{}.sock",
             std::process::id()
         ));

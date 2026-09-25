@@ -1831,3 +1831,6 @@ fn is_labelled_function(statement: &Stmt) -> bool {
     }
     matches!(item, Stmt::FunctionDecl(_))
 }
+
+#[cfg(test)]
+mod tests;

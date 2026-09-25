@@ -236,6 +236,21 @@ class CoverageFileTests(unittest.TestCase):
         update.assert_called_once_with(files, totals)
         self.assertTrue(any("Complete: yes" in str(call) for call in printed.call_args_list))
 
+    def test_linux_report_adds_the_same_table_before_platform_differences(self):
+        report = self.repo / "linux.md"
+        report.write_text("before\n## Differences from the other platforms\nafter\n")
+        self.patch(coverage_file, "LINUX_REPORT", report)
+        files, totals = coverage_file.checked_export(self.export())
+        with patch.object(coverage_file.platform, "system", return_value="Linux"), patch.object(
+            coverage_file, "provenance", return_value="Linux test host"
+        ):
+            coverage_file.update_linux_report(files, totals)
+        text = report.read_text()
+        self.assertTrue(text.startswith("before\n## Later BlueJS per-file coverage"))
+        self.assertIn("--update-linux-report", text)
+        self.assertIn("| Complete | Note |", text)
+        self.assertTrue(text.endswith("## Differences from the other platforms\nafter\n"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -29,6 +29,10 @@ MACOS_REPORT = (
     REPO_ROOT
     / "development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md"
 )
+LINUX_REPORT = (
+    REPO_ROOT
+    / "development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md"
+)
 METRICS = ("lines", "functions", "regions")
 
 # Files without executable coverage targets are audited here. An unexpected
@@ -37,6 +41,7 @@ NO_COUNTER_REASONS = {
     "compiler/expressions/tests.rs": "Test source; not a coverage target",
     "compiler/functions/tests.rs": "Test source; not a coverage target",
     "compiler/private_validation/tests.rs": "Test source; not a coverage target",
+    "compiler/statements/tests.rs": "Test source; not a coverage target",
     "heap/tests.rs": "Test source; not a coverage target",
     "lib.rs": "Declarations/re-exports only; no executable code",
     "parser/tests.rs": "Test source; not a coverage target",
@@ -259,7 +264,7 @@ def provenance() -> str:
     )
 
 
-def report_section(files: dict[Path, dict], totals: dict) -> str:
+def report_section(files: dict[Path, dict], totals: dict, update_option: str) -> str:
     sources = sorted(
         SOURCE_ROOT.rglob("*.rs"),
         key=lambda path: path.relative_to(SOURCE_ROOT).as_posix(),
@@ -275,7 +280,7 @@ def report_section(files: dict[Path, dict], totals: dict) -> str:
         f"This is a separate BlueJS coverage measurement at {provenance()}. "
         "It measures the Rust test suite independently of the Test262 "
         "inventory and historical verification above. "
-        "`python3 backend/bluejs/coverage_file.py --update-macos-report` "
+        f"`python3 backend/bluejs/coverage_file.py {update_option}` "
         "cleaned prior LLVM artifacts, ran the complete default BlueJS Rust "
         "test suite, and exported fresh per-file JSON and source-line text. "
         "The opt-in Node "
@@ -321,29 +326,48 @@ def report_section(files: dict[Path, dict], totals: dict) -> str:
     )
 
 
-def update_macos_report(files: dict[Path, dict], totals: dict) -> None:
-    if platform.system() != "Darwin":
-        raise ValueError("the macOS report can only be regenerated on macOS")
-    text = MACOS_REPORT.read_text()
-    start = text.index("## Later BlueJS per-file coverage (")
+def update_report(
+    report: Path, files: dict[Path, dict], totals: dict, update_option: str
+) -> None:
+    text = report.read_text()
+    start = text.find("## Later BlueJS per-file coverage (")
     end_markers = (
         "## Historical differences from the other platforms",
         "## Differences from the other platforms",
     )
+    after_start = max(start, 0)
     end = min(
-        (position for marker in end_markers if (position := text.find(marker, start)) >= 0),
+        (
+            position
+            for marker in end_markers
+            if (position := text.find(marker, after_start)) >= 0
+        ),
         default=-1,
     )
     if end < 0:
         raise ValueError("cannot find the section after BlueJS per-file coverage")
-    new_text = text[:start] + report_section(files, totals) + "\n" + text[end:]
+    if start < 0:
+        start = end
+    new_text = text[:start] + report_section(files, totals, update_option) + "\n" + text[end:]
     with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=MACOS_REPORT.parent, delete=False
+        mode="w", encoding="utf-8", dir=report.parent, delete=False
     ) as output:
         output.write(new_text)
         temporary = Path(output.name)
-    temporary.chmod(MACOS_REPORT.stat().st_mode & 0o777)
-    os.replace(temporary, MACOS_REPORT)
+    temporary.chmod(report.stat().st_mode & 0o777)
+    os.replace(temporary, report)
+
+
+def update_macos_report(files: dict[Path, dict], totals: dict) -> None:
+    if platform.system() != "Darwin":
+        raise ValueError("the macOS report can only be regenerated on macOS")
+    update_report(MACOS_REPORT, files, totals, "--update-macos-report")
+
+
+def update_linux_report(files: dict[Path, dict], totals: dict) -> None:
+    if platform.system() != "Linux":
+        raise ValueError("the Linux report can only be regenerated on Linux")
+    update_report(LINUX_REPORT, files, totals, "--update-linux-report")
 
 
 def run_coverage() -> tuple[dict[Path, dict], dict]:
@@ -395,15 +419,25 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="regenerate every row in the macOS report",
     )
+    parser.add_argument(
+        "--update-linux-report",
+        action="store_true",
+        help="regenerate every row in the Linux report",
+    )
     args = parser.parse_args(argv)
-    if not args.source_file and not args.update_macos_report:
-        parser.error("provide a source file or --update-macos-report")
+    if args.update_macos_report and args.update_linux_report:
+        parser.error("update only one platform report")
+    if not args.source_file and not (args.update_macos_report or args.update_linux_report):
+        parser.error("provide a source file or a platform report option")
     try:
         path = source_path(args.source_file) if args.source_file else None
         files, totals = run_coverage()
         if args.update_macos_report:
             update_macos_report(files, totals)
             print(f"Updated {MACOS_REPORT.relative_to(REPO_ROOT)}")
+        if args.update_linux_report:
+            update_linux_report(files, totals)
+            print(f"Updated {LINUX_REPORT.relative_to(REPO_ROOT)}")
         if path is not None:
             print(markdown_row(path, files.get(path)))
             print(f"Complete: {'yes' if is_complete(files.get(path)) else 'no'}")
