@@ -200,7 +200,7 @@ impl Vm {
     }
 
     /// Dispatches one host-authorized click to an exact minted wrapper. The
-    /// result says whether a synchronous listener called `preventDefault`;
+    /// result says whether a listener called `preventDefault`;
     /// the host, not script, uses that result before any default navigation.
     /// Missing wrappers have no listeners. A copied family from another realm
     /// is rejected even when its private key happens to match.
@@ -296,24 +296,39 @@ impl Vm {
                 object: event,
                 default_prevented: false,
             });
-            let result = (|| {
-                for callback in callbacks {
-                    if !self.host_click_listeners.iter().any(|listener| {
-                        listener.family_index == family_index
-                            && listener.key == key
-                            && listener.callback == *callback
-                    }) {
-                        continue;
-                    }
-                    self.call_native(
-                        Value::Object(*callback),
-                        Value::Object(wrapper),
-                        vec![Value::Object(event)],
-                        false,
-                    )?;
+            let mut result = Ok(());
+            for callback in callbacks {
+                if !self.host_click_listeners.iter().any(|listener| {
+                    listener.family_index == family_index
+                        && listener.key == key
+                        && listener.callback == *callback
+                }) {
+                    continue;
                 }
-                Ok(())
-            })();
+                if let Err(error) = self.call_native(
+                    Value::Object(*callback),
+                    Value::Object(wrapper),
+                    vec![Value::Object(event)],
+                    false,
+                ) {
+                    // An uncaught page exception ends this callback, not the
+                    // event task. The source-free child reply still carries
+                    // only the cancellation bit. Resource failures remain
+                    // fatal so the host does not apply a default action after
+                    // partially exhausted execution.
+                    if !matches!(
+                        error,
+                        RuntimeError::Thrown(_)
+                            | RuntimeError::ReferenceError(_)
+                            | RuntimeError::TypeError(_)
+                            | RuntimeError::RangeError(_)
+                            | RuntimeError::SyntaxError(_)
+                    ) {
+                        result = Err(error);
+                        break;
+                    }
+                }
+            }
             let prevented = self
                 .active_host_click_event
                 .take()

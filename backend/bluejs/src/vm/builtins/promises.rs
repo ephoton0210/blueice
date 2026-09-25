@@ -904,6 +904,22 @@ impl Vm {
         Ok(())
     }
 
+    /// Runs a finite microtask checkpoint for an embedding-host task. A job
+    /// may enqueue another job, so the caller's fixed bound limits total
+    /// work rather than just the queue length at checkpoint entry.
+    pub fn run_promise_jobs_bounded(&mut self, max_jobs: usize) -> Result<(), RuntimeError> {
+        for _ in 0..max_jobs {
+            if !self.run_next_promise_job()? {
+                return Ok(());
+            }
+        }
+        if self.promise_jobs.is_empty() {
+            Ok(())
+        } else {
+            Err(RuntimeError::InstructionLimit)
+        }
+    }
+
     /// Execute exactly one Promise job.  Async functions and top-level await
     /// resume from a queued continuation, rather than draining later turns
     /// in the same checkpoint, so callers that need an await boundary can

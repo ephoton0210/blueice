@@ -172,11 +172,14 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   must run, and preventDefault must suppress link navigation. A real
   launcher/core/child test covers coordinate Click and ActOn, JavaScript and
   BlueTS callbacks, synchronous DOM writes, and navigation suppression.
-- [ ] Complete the first event-loop semantics from the Phase 13 binding
-  decision: queue the click as a bounded child task, run its microtask
-  checkpoint before the default action, and retain the cancellation bit even
-  when a listener throws. The current delivery is synchronous and source-free
-  failures keep the core session alive, but it has no explicit task queue.
+- [x] Complete the first event-loop semantics from the Phase 13 binding
+  decision: a core-originated click enters a one-slot, generation-bound child
+  task queue, and a 256-job microtask checkpoint finishes before the child
+  returns its cancellation bit for core's default action. Ordinary listener
+  exceptions do not discard `preventDefault()` or skip later listeners;
+  resource failures still fail closed. VM, child, and real-process tests cover
+  the exception, checkpoint, queue bound, and DOM mutation ordering. This is
+  a synchronous one-task delivery boundary, not a general-purpose event loop.
 
 #### B4. Publish only implemented host typings.
 

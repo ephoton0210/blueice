@@ -197,6 +197,7 @@ struct LiveDocument {
     generation: u64,
     origin: BlueJsPageOrigin,
     click_event_family: Option<HostObjectFamily>,
+    pending_click_tasks: VecDeque<PendingClickTask>,
     debugger_execution_control: bool,
     debugger_programs: BTreeMap<u64, ChildDebuggerProgram>,
     /// Exact child-private breakpoint configuration records. These are not a
@@ -205,6 +206,20 @@ struct LiveDocument {
     pending_debugger_executions: VecDeque<PendingDebuggerExecution>,
     debugger_execution_states: BTreeMap<PageHostDebuggerProgram, ChildDebuggerExecutionStatus>,
 }
+
+/// A core-originated click is bound to its original document, never to a
+/// successor realm or a page-supplied target.
+#[derive(Clone, Copy)]
+struct PendingClickTask {
+    generation: u64,
+    node_id: u64,
+}
+
+// Page-host requests are sequential today: the child must complete the
+// current click task and its checkpoint before replying to core. Retain an
+// explicit, one-slot per-realm queue so future scheduling cannot silently
+// turn this into an unbounded collection of pending page work.
+const MAX_PENDING_CLICK_TASKS_PER_REALM: usize = 1;
 
 /// A source-span step can consume no more than this many root instructions
 /// before yielding the still-live continuation at an exact root boundary.
@@ -1107,6 +1122,7 @@ impl BlueJsChildHost {
                 generation: document.document_generation,
                 origin: origin.clone(),
                 click_event_family,
+                pending_click_tasks: VecDeque::new(),
                 debugger_execution_control: document.debugger_execution_control,
                 debugger_programs: BTreeMap::new(),
                 debugger_breakpoints: BTreeSet::new(),
@@ -1242,27 +1258,50 @@ impl BlueJsChildHost {
         document_generation: u64,
         node_id: u64,
     ) -> PageHostReply {
-        let Some(document) = self.documents.get(&tab_id) else {
+        let Some(document) = self.documents.get_mut(&tab_id) else {
             return stale_document();
         };
         if document.generation != document_generation {
             return stale_document();
         }
-        let default_prevented = if let Some(family) = document.click_event_family {
+        if document.pending_click_tasks.len() >= MAX_PENDING_CLICK_TASKS_PER_REALM {
+            return resource_limit();
+        }
+        document.pending_click_tasks.push_back(PendingClickTask {
+            generation: document_generation,
+            node_id,
+        });
+        self.run_next_click_task(tab_id)
+    }
+
+    fn run_next_click_task(&mut self, tab_id: u64) -> PageHostReply {
+        let Some(document) = self.documents.get_mut(&tab_id) else {
+            return stale_document();
+        };
+        let Some(task) = document.pending_click_tasks.pop_front() else {
+            return invalid_request();
+        };
+        if document.generation != task.generation {
+            return stale_document();
+        }
+        let family = document.click_event_family;
+        let default_prevented = if let Some(family) = family {
             match self.runtime.dispatch_host_click(
                 tab_id,
                 family,
-                HostObjectKey::new(tab_id, document_generation, node_id),
+                HostObjectKey::new(tab_id, task.generation, task.node_id),
             ) {
                 Ok(prevented) => prevented,
                 Err(_) => return host_failure(),
             }
+        } else if self.runtime.run_click_microtask_checkpoint(tab_id).is_err() {
+            return host_failure();
         } else {
             false
         };
         PageHostReply::ClickDispatched {
             tab_id,
-            document_generation,
+            document_generation: task.generation,
             default_prevented,
         }
     }
@@ -5738,8 +5777,15 @@ mod tests {
                     0,
                     "let live = document.getElementById('live'); \
                      let removed = document.getElementById('removed'); \
-                     function cancel(event) { event.preventDefault(); } \
+                     function cancel(event) { \
+                       event.preventDefault(); \
+                       Promise.resolve().then(function() { \
+                         if (globalThis.ranLater) live.removeEventListener('click', cancel); \
+                       }); \
+                       throw 'listener failure'; \
+                     } \
                      live.addEventListener('click', cancel); \
+                     live.addEventListener('click', function() { globalThis.ranLater = true; }); \
                      removed.addEventListener('click', cancel); \
                      removed.removeEventListener('click', cancel);",
                 )],
@@ -5750,6 +5796,27 @@ mod tests {
         };
         assert_eq!(reports.len(), 1);
         assert_eq!(reports[0].outcome, PageHostScriptOutcome::Executed);
+        host.documents
+            .get_mut(&7)
+            .unwrap()
+            .pending_click_tasks
+            .push_back(PendingClickTask {
+                generation: 1,
+                node_id: 11,
+            });
+        assert_eq!(
+            host.handle_request(PageHostRequest::DispatchClick {
+                tab_id: 7,
+                document_generation: 1,
+                node_id: 11,
+            }),
+            resource_limit()
+        );
+        host.documents
+            .get_mut(&7)
+            .unwrap()
+            .pending_click_tasks
+            .pop_front();
         assert_eq!(
             host.handle_request(PageHostRequest::DispatchClick {
                 tab_id: 7,
@@ -5760,6 +5827,21 @@ mod tests {
                 tab_id: 7,
                 document_generation: 1,
                 default_prevented: true,
+            }
+        );
+        // The first callback threw after canceling, but the next callback
+        // still ran. Its state is visible to the microtask checkpoint, which
+        // removes the canceler before core can apply a default action.
+        assert_eq!(
+            host.handle_request(PageHostRequest::DispatchClick {
+                tab_id: 7,
+                document_generation: 1,
+                node_id: 11,
+            }),
+            PageHostReply::ClickDispatched {
+                tab_id: 7,
+                document_generation: 1,
+                default_prevented: false,
             }
         );
         assert_eq!(
@@ -5774,12 +5856,26 @@ mod tests {
                 default_prevented: false,
             }
         );
+        host.documents
+            .get_mut(&7)
+            .unwrap()
+            .pending_click_tasks
+            .push_back(PendingClickTask {
+                generation: 1,
+                node_id: 11,
+            });
         assert!(matches!(
             host.handle_request(PageHostRequest::SynchronizeDocument {
                 document: document(2, vec![]),
             }),
             PageHostReply::Synchronized { .. }
         ));
+        assert!(host
+            .documents
+            .get(&7)
+            .unwrap()
+            .pending_click_tasks
+            .is_empty());
         assert_eq!(
             host.handle_request(PageHostRequest::DispatchClick {
                 tab_id: 7,

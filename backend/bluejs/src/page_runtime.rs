@@ -624,20 +624,42 @@ impl BlueJsPageRuntime {
     }
 
     /// Delivers a host-authorized click only to a wrapper minted in this
-    /// exact live tab realm. The VM returns a cancellation bit, not a callback
-    /// or script value; navigation remains the embedding host's decision.
+    /// exact live tab realm, then runs a bounded microtask checkpoint before
+    /// the host can apply its default action. Only the cancellation bit leaves
+    /// the realm; navigation remains the embedding host's decision.
     pub fn dispatch_host_click(
         &mut self,
         tab_id: u64,
         family: HostObjectFamily,
         key: HostObjectKey,
     ) -> Result<bool, BlueJsPageRuntimeError> {
+        let vm = &mut self
+            .realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm;
+        let default_prevented = vm
+            .dispatch_host_click(family, key)
+            .map_err(BlueJsPageRuntimeError::Runtime)?;
+        self.run_click_microtask_checkpoint(tab_id)?;
+        Ok(default_prevented)
+    }
+
+    /// Completes the same bounded checkpoint for a click in a realm with no
+    /// event bindings. Pending jobs from its preceding script turn cannot be
+    /// deferred past a core default action merely because it has no listener.
+    pub fn run_click_microtask_checkpoint(
+        &mut self,
+        tab_id: u64,
+    ) -> Result<(), BlueJsPageRuntimeError> {
+        const MAX_CLICK_MICROTASK_JOBS: usize = 256;
         self.realms
             .get_mut(&tab_id)
             .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
             .vm
-            .dispatch_host_click(family, key)
-            .map_err(BlueJsPageRuntimeError::Runtime)
+            .run_promise_jobs_bounded(MAX_CLICK_MICROTASK_JOBS)
+            .map_err(BlueJsPageRuntimeError::Runtime)?;
+        Ok(())
     }
 
     /// Executes an already-admitted ESM module graph in one tab realm. Every

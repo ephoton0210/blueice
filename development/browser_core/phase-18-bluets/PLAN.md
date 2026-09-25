@@ -141,21 +141,26 @@ open because ordinary realms cannot transfer wrappers. BlueTS now recursively
 infers chained call-result receivers and validates their method arguments;
 the real-page rejected script exercises this path before execution.
 
-**Click delivery and event profile (B3 partially complete):** The BlueJS
+**Click delivery and event profile (B3 complete for event-v1):** The BlueJS
 host-object family roots, deduplicates, caps, and removes exact-wrapper
 `click` callbacks without passing a function or callback handle through
 primitive host callbacks or IPC. The launcher now selects a separate event-v1
 profile, installs its exact 10-binding inventory, and keeps the node family
 with the exact child document. Page-host v33 accepts only a core-hit-tested
-node and returns a cancellation bit after the synchronous child dispatch.
-Core serves same-document DOM calls during that wait and applies link
-navigation only when `preventDefault()` did not run. A real process test
+node and returns a cancellation bit after a generation-bound, one-slot child
+task dispatch. The child runs at most 256 Promise jobs in the click's
+microtask checkpoint before replying; ordinary listener exceptions do not
+lose an earlier `preventDefault()` or skip later listeners. Resource failures
+fail closed. Core serves same-document DOM calls during that wait and applies
+link navigation only when `preventDefault()` did not run. A real process test
 exercises coordinate Click and ActOn with JavaScript and BlueTS listeners,
-visible DOM mutation, and canceled navigation. Child tests prove removed and
-old-document callbacks do not run. The BlueTS checker now parses bounded
-callback function types and distinguishes string literals for exact `click`
-typing; the older mutation-v1 artifact remains unchanged. The Phase 13
-task-queue and microtask-checkpoint semantics remain an explicit B3 gap.
+microtask DOM mutation before the default action, and canceled navigation.
+Child tests prove removed and old-document callbacks do not run, queued
+old-generation tasks are discarded, and the queue limit is enforced. The
+BlueTS checker parses bounded callback function types and distinguishes
+string literals for exact `click` typing; the older mutation-v1 artifact
+remains unchanged. This is a synchronous first-event task boundary, not a
+general-purpose browser event loop.
 
 **Event `readonly` static enforcement (B4 partial):** BlueTS now retains
 `readonly` on interface and record members through generic substitution and
