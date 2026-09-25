@@ -2595,7 +2595,7 @@ fn clear_child_breakpoint(
     }
 }
 
-/// Routes only the one-shot child root-classic continuation arm. The public
+/// Routes only the one-shot child root continuation arm. The public
 /// tuple is resolved by core before the child-private mapping can be used;
 /// child code units and every generic VM interruption path stay unavailable.
 fn arm_child_root_safe_point_breakpoint(

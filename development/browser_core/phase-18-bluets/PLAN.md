@@ -498,6 +498,15 @@ A page-runtime regression rejects a cross-tab handle and a different root
 instruction, verifies a paused graph excludes concurrent execution, checks
 resume does not replay its entry, and rejects the old handle after navigation.
 
+**Child module execution control (C1.1.1.4.2):** The deferred BlueTS graph now
+stores one optional exact entry-root arm. The child accepts only the pending
+entry program's first evaluate-body safe point, leaves the declaration at the
+queue head while paused, and dispatches resume to the page-runtime module
+continuation. Repeated scheduler advances cannot execute a paused body; module
+instruction/source-span step remains unavailable. A child test rejects another
+entry instruction and the dependency program, observes `Paused` and
+`Resuming` before `Completed`, and rejects the old document tuple after reload.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

@@ -246,7 +246,7 @@ struct ChildDebuggerProgram {
     metadata: Option<PageHostDebuggerMetadataHandle>,
 }
 
-/// Child-private execution state for the narrow root-classic continuation.
+/// Child-private execution state for one retained classic or module root.
 /// It has no serializable VM frame, source, bytecode, or completion value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ChildDebuggerExecutionStatus {
@@ -264,8 +264,9 @@ enum ChildDebuggerExecutionStatus {
 
 /// A document-order declaration retained by the child in an explicitly
 /// core-selected debugger-execution document. Classic programs are admitted
-/// before the first advance so core can discover an opaque identity; all
-/// source-bearing data remains in this child-only queue.
+/// before the first advance so core can discover an opaque identity; a BlueTS
+/// ESM entry is also admitted with its graph. All source-bearing data remains
+/// in this child-only queue.
 enum DeferredChildExecution {
     JavaScriptClassic {
         handle: BlueJsProgramHandle,
@@ -281,6 +282,7 @@ enum DeferredChildExecution {
     },
     BlueTsModule {
         attachment: DirectPageModuleGraphAttachment,
+        root_safe_point: Option<PageHostDebuggerSafePoint>,
     },
 }
 
@@ -1523,7 +1525,10 @@ impl BlueJsChildHost {
                             language: PageHostScriptLanguage::BlueTs,
                             kind: PageHostScriptKind::Module,
                             program: Some(program),
-                            execution: DeferredChildExecution::BlueTsModule { attachment },
+                            execution: DeferredChildExecution::BlueTsModule {
+                                attachment,
+                                root_safe_point: None,
+                            },
                         });
                 }
             }
@@ -3314,14 +3319,31 @@ impl BlueJsChildHost {
         else {
             return invalid_debugger_state();
         };
-        let (DeferredChildExecution::JavaScriptClassic {
-            root_safe_point, ..
-        }
-        | DeferredChildExecution::BlueTsClassic {
-            root_safe_point, ..
-        }) = &mut pending.execution
-        else {
-            return invalid_debugger_state();
+        let root_safe_point = match &mut pending.execution {
+            DeferredChildExecution::JavaScriptClassic {
+                root_safe_point, ..
+            }
+            | DeferredChildExecution::BlueTsClassic {
+                root_safe_point, ..
+            } => root_safe_point,
+            DeferredChildExecution::BlueTsModule {
+                attachment,
+                root_safe_point,
+            } => {
+                let Ok(expected) = self
+                    .runtime
+                    .module_evaluate_entry_safe_point(tab_id, attachment.entry.handle)
+                else {
+                    return invalid_debugger_state();
+                };
+                if expected.code_unit.ordinal() != safe_point.code_unit_ordinal
+                    || expected.bytecode_offset != safe_point.bytecode_offset
+                {
+                    return invalid_debugger_state();
+                }
+                root_safe_point
+            }
+            DeferredChildExecution::JavaScriptModule { .. } => return invalid_debugger_state(),
         };
         if root_safe_point.is_some() {
             return invalid_debugger_state();
@@ -3859,21 +3881,99 @@ impl BlueJsChildHost {
                         programs.clone(),
                     )
                 }
-                DeferredChildExecution::BlueTsModule { attachment } => {
+                DeferredChildExecution::BlueTsModule {
+                    attachment,
+                    root_safe_point,
+                } => {
                     let program = pending
                         .program
                         .expect("every deferred BlueTS module has an entry debugger program");
-                    let outcome = match attachment.execute_in_page_realm(&mut self.runtime, tab_id)
-                    {
-                        Ok(_) => PageHostScriptOutcome::Executed,
-                        Err(error) => rejected(bluets_bridge_category(error)),
-                    };
-                    self.documents
-                        .get_mut(&tab_id)
-                        .expect("the advancing module document remains live")
-                        .debugger_execution_states
-                        .insert(program, ChildDebuggerExecutionStatus::Completed);
-                    outcome
+                    let status = self.documents[&tab_id].debugger_execution_states[&program];
+                    match (root_safe_point, status) {
+                        (_, ChildDebuggerExecutionStatus::Paused(_)) => {
+                            paused = true;
+                            PageHostScriptOutcome::Executed
+                        }
+                        (Some(target), ChildDebuggerExecutionStatus::Pending) => {
+                            let result = self
+                                .runtime
+                                .module_evaluate_entry_safe_point(tab_id, attachment.entry.handle)
+                                .and_then(|point| {
+                                    if point.bytecode_offset != target.bytecode_offset {
+                                        return Err(
+                                            BlueJsPageRuntimeError::DebuggerModuleEntrySafePointOnly,
+                                        );
+                                    }
+                                    self.runtime.execute_module_graph_until_debugger_pause(
+                                        tab_id,
+                                        attachment.entry.handle,
+                                        attachment.modules.values().map(|module| module.handle),
+                                        point,
+                                    )
+                                });
+                            match result {
+                                Ok(BlueJsPageDebuggerExecutionState::Paused { .. }) => {
+                                    self.documents
+                                        .get_mut(&tab_id)
+                                        .expect("the advancing module document remains live")
+                                        .debugger_execution_states
+                                        .insert(
+                                            program,
+                                            ChildDebuggerExecutionStatus::Paused(*target),
+                                        );
+                                    paused = true;
+                                    PageHostScriptOutcome::Executed
+                                }
+                                Ok(BlueJsPageDebuggerExecutionState::Completed) => {
+                                    self.documents
+                                        .get_mut(&tab_id)
+                                        .expect("the advancing module document remains live")
+                                        .debugger_execution_states
+                                        .insert(program, ChildDebuggerExecutionStatus::Completed);
+                                    PageHostScriptOutcome::Executed
+                                }
+                                Err(error) => {
+                                    self.documents
+                                        .get_mut(&tab_id)
+                                        .expect("the advancing module document remains live")
+                                        .debugger_execution_states
+                                        .insert(program, ChildDebuggerExecutionStatus::Completed);
+                                    rejected(page_runtime_category(error))
+                                }
+                            }
+                        }
+                        (Some(_), ChildDebuggerExecutionStatus::ResumeRequested) => {
+                            let result = self.runtime.resume_debugger_module_execution(tab_id);
+                            self.documents
+                                .get_mut(&tab_id)
+                                .expect("the advancing module document remains live")
+                                .debugger_execution_states
+                                .insert(program, ChildDebuggerExecutionStatus::Completed);
+                            match result {
+                                Ok(BlueJsPageDebuggerExecutionState::Completed) => {
+                                    PageHostScriptOutcome::Executed
+                                }
+                                Ok(BlueJsPageDebuggerExecutionState::Paused { .. }) => {
+                                    rejected("BlueJS module debugger continuation did not complete")
+                                }
+                                Err(error) => rejected(page_runtime_category(error)),
+                            }
+                        }
+                        (None, ChildDebuggerExecutionStatus::Pending) => {
+                            let outcome =
+                                match attachment.execute_in_page_realm(&mut self.runtime, tab_id) {
+                                    Ok(_) => PageHostScriptOutcome::Executed,
+                                    Err(error) => rejected(bluets_bridge_category(error)),
+                                };
+                            self.documents
+                                .get_mut(&tab_id)
+                                .expect("the advancing module document remains live")
+                                .debugger_execution_states
+                                .insert(program, ChildDebuggerExecutionStatus::Completed);
+                            outcome
+                        }
+                        _ => rejected("child module debugger execution state was inconsistent"),
+                    }
                 }
             };
             if paused {
@@ -8290,6 +8390,209 @@ mod tests {
             retained_modules,
             vec![dependency.to_string(), entry.to_string()]
         );
+    }
+
+    #[test]
+    fn bluets_module_child_pauses_and_resumes_the_exact_pending_entry() {
+        let entry = "blueice://page/debug-entry.ts";
+        let dependency = "blueice://page/debug-dependency.ts";
+        let mut module = PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Module,
+            graph: graph(
+                entry,
+                vec![
+                    PageHostSource::new(
+                        entry,
+                        "import { answer } from './debug-dependency.ts'; export const result: number = answer + 1;",
+                    ),
+                    PageHostSource::new(dependency, "export const answer: number = 41;"),
+                ],
+            ),
+        };
+        module.graph.resolutions.push(PageHostStaticResolution {
+            from_module: entry.to_string(),
+            specifier: "./debug-dependency.ts".to_string(),
+            canonical_target: dependency.to_string(),
+        });
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(1, vec![module]),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let pending = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap();
+        let program = pending.program.unwrap();
+        let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
+            panic!("the attached module is pending");
+        };
+        let entry_handle = attachment.entry.handle;
+        let point = host
+            .runtime
+            .module_evaluate_entry_safe_point(7, entry_handle)
+            .unwrap();
+        let target = PageHostDebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: point.bytecode_offset,
+        };
+        let wrong_entry_point = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 0 && *point != target)
+                .unwrap(),
+            reply => panic!("expected entry safe points, got {reply:?}"),
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: wrong_entry_point,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidDebuggerState,
+                ..
+            }
+        ));
+        let dependency_program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => *programs
+                .iter()
+                .find(|candidate| **candidate != program)
+                .unwrap(),
+            reply => panic!("expected both module programs, got {reply:?}"),
+        };
+        let dependency_point = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program: dependency_program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 0)
+                .unwrap(),
+            reply => panic!("expected dependency safe points, got {reply:?}"),
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: dependency_point,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidDebuggerState,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: target,
+            }),
+            PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+        ));
+        for _ in 0..2 {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+            assert_eq!(
+                host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                }),
+                PageHostReply::DebuggerExecutionState {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                    state: PageHostDebuggerExecutionState::Paused { safe_point: target },
+                }
+            );
+        }
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidDebuggerState,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionResumed { .. }
+        ));
+        assert_eq!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                state: PageHostDebuggerExecutionState::Resuming,
+            }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+                if reports.len() == 1 && reports[0].outcome == PageHostScriptOutcome::Executed
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::Completed,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(2, Vec::new()),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: target,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
     }
 
     #[test]

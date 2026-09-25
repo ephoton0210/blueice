@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.1.1.4.2.** Route the BlueTS ESM child queue through the
-generation-bound module pause/resume pair.
+**Current leaf: C1.1.1.4.3.** Prove the public source-free state sequence and
+page effects on a real launcher/core/child BlueTS ESM document.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -249,7 +249,7 @@ channel with explicit owner/client grants.
       - [x] **C1.1.1.3.3** Verify native module pause/resume, error and asynchronous cleanup, and exclusion of concurrent realm execution. Native regressions cover a thrown entry, top-level await fulfillment and rejection, an async dependency before entry, retained error identity, and rejection of script/module/job entry points while paused. The continuation drains only the needed dependency jobs before entry pause and uses ordinary module-await jobs after resume.
     - [ ] **C1.1.1.4** Wire the child/core debugger route and prove `Pending` → `Paused` → `Resuming` → `Completed` on a real BlueTS ESM page.
       - [x] **C1.1.1.4.1** Expose a generation-bound BlueJS page-runtime module-graph pause/resume pair, accepting only the exact entry evaluate-body safe point and retaining the graph's program identities. The page runtime validates every graph handle and the live entry generation, reserves linked module IDs, and routes pause/resume to the VM; a public-boundary regression covers wrong realm, wrong root point, concurrent execution, single evaluation, and navigation invalidation.
-      - [ ] **C1.1.1.4.2** Route the BlueTS ESM child queue through that pair, preserving exact arm/resume state and rejecting unrelated module or stale targets.
+      - [x] **C1.1.1.4.2** Route the BlueTS ESM child queue through that pair, preserving exact arm/resume state and rejecting unrelated module or stale targets. The child now arms only the attached entry's first evaluate-body point, holds its queue head during `Paused`, resumes the retained graph on request, and still rejects module stepping. An isolated-child regression covers wrong entry and dependency targets, repeated advance, `Paused`/`Resuming`/`Completed`, and stale document rejection.
       - [ ] **C1.1.1.4.3** Prove the public source-free state sequence and page effects on a real launcher/core/child BlueTS ESM document.
   - [ ] **C1.1.2** Instruction step and BlueTS source-span step inside the module root.
   - [ ] **C1.1.3** Reject a pause/step request carrying a stale generation.
