@@ -85,6 +85,17 @@ pub struct TranslationOutcome {
     pub snapshot: AiSnapshot,
 }
 
+/// A finished assistant task: the model's text (derived from untrusted page
+/// text, so callers frame it as such), or why it could not be completed.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AssistantOutcome {
+    Done {
+        kind: blueice_ipc::AssistantTaskKind,
+        text: String,
+    },
+    Failed(String),
+}
+
 /// [`CoreConnection::open_tab`]'s result: either the new tab, or an
 /// error message if a requested navigation into it failed (`core`
 /// doesn't report the new tab's id in that case -- see
@@ -373,6 +384,54 @@ impl<S: Read + Write> CoreConnection<S> {
         tab_id: Option<u64>,
     ) -> io::Result<TranslationOutcome> {
         self.translation_action(tab_id, &ClientMessage::ShowTranslation { shown })
+    }
+
+    /// Asks the local assistant to summarize `tab_id`'s shown text and waits for
+    /// the result. `core` answers other clients meanwhile; this call waits only
+    /// for its own request-correlated reply, which arrives when the assistant
+    /// finishes (or fails, or times out on `core`'s own deadline).
+    pub fn summarize_page(&mut self, tab_id: Option<u64>) -> io::Result<AssistantOutcome> {
+        self.assistant_task(tab_id, &ClientMessage::SummarizePage)
+    }
+
+    /// Asks the local assistant to reorganize `tab_id`'s shown text per
+    /// `instruction` and waits for the result.
+    pub fn organize_page(
+        &mut self,
+        instruction: String,
+        tab_id: Option<u64>,
+    ) -> io::Result<AssistantOutcome> {
+        self.assistant_task(tab_id, &ClientMessage::OrganizePage { instruction })
+    }
+
+    fn assistant_task(
+        &mut self,
+        tab_id: Option<u64>,
+        msg: &ClientMessage,
+    ) -> io::Result<AssistantOutcome> {
+        let request_id = self.next_request_id();
+        blueice_ipc::write_client_message_with_ids(
+            &mut self.stream,
+            tab_id,
+            Some(request_id),
+            msg,
+        )?;
+        loop {
+            let (_, reply_id, message) = blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
+            // Skip every other reply, as the launcher's shared connection
+            // broadcasts other clients' traffic here too.
+            if reply_id != Some(request_id) {
+                continue;
+            }
+            match message {
+                ServerMessage::AssistantResult { kind, text } => {
+                    return Ok(AssistantOutcome::Done { kind, text })
+                }
+                ServerMessage::Error { message } => return Ok(AssistantOutcome::Failed(message)),
+                // Nothing else answers this request.
+                _ => {}
+            }
+        }
     }
 
     /// Sends a translation control, pipelines a `GetRepresentation` to the same
@@ -1485,6 +1544,69 @@ mod tests {
         assert_eq!(outcome.language, None);
         assert!(!outcome.available && !outcome.shown);
         assert_eq!(outcome.snapshot.generation, 1);
+    }
+
+    #[test]
+    fn a_summary_waits_for_its_own_reply_and_skips_other_traffic() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![Box::new(|msg, s| {
+                assert_eq!(msg, ClientMessage::SummarizePage);
+                // Another client's broadcast reply (a different request id),
+                // then this request's own.
+                blueice_ipc::write_server_message_with_id(
+                    s,
+                    Some(9_999),
+                    &ServerMessage::Error {
+                        message: "someone else's".to_string(),
+                    },
+                )
+                .unwrap();
+                reply(
+                    s,
+                    &ServerMessage::AssistantResult {
+                        kind: blueice_ipc::AssistantTaskKind::Summary,
+                        text: "short".to_string(),
+                    },
+                );
+            })],
+        );
+        let mut conn = CoreConnection::new(client);
+        assert_eq!(
+            conn.summarize_page(Some(3)).unwrap(),
+            AssistantOutcome::Done {
+                kind: blueice_ipc::AssistantTaskKind::Summary,
+                text: "short".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn organize_failure_is_reported_with_the_reason() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![Box::new(|msg, s| {
+                assert_eq!(
+                    msg,
+                    ClientMessage::OrganizePage {
+                        instruction: "make a table".to_string()
+                    }
+                );
+                reply(
+                    s,
+                    &ServerMessage::Error {
+                        message: "the assistant is not running".to_string(),
+                    },
+                );
+            })],
+        );
+        let mut conn = CoreConnection::new(client);
+        assert_eq!(
+            conn.organize_page("make a table".to_string(), None).unwrap(),
+            AssistantOutcome::Failed("the assistant is not running".to_string())
+        );
     }
 
     #[test]

@@ -73,7 +73,12 @@ async fn an_official_mcp_client_lists_tools_without_a_sibling_core_binary() {
         names.contains(&"download_file"),
         "missing download tools: {names:?}"
     );
-    for tool in ["set_translation_language", "show_translation"] {
+    for tool in [
+        "set_translation_language",
+        "show_translation",
+        "summarize_page",
+        "organize_page",
+    ] {
         assert!(
             names.contains(&tool),
             "missing Phase 7 translation tool {tool}: {names:?}"
@@ -188,6 +193,17 @@ async fn translation_tools_report_state_and_refuse_without_an_assistant() {
         .call_tool(CallToolRequestParams::new("set_translation_language").with_arguments(arguments))
         .await
         .expect("set_translation_language through rmcp");
+    assert_eq!(result.is_error, Some(true), "{result:?}");
+    let result = serde_json::to_value(result).unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("unavailable"), "{text}");
+
+    // Summaries need an assistant too, and an unavailable one is an error
+    // result naming the problem rather than an empty success.
+    let result = client
+        .call_tool(CallToolRequestParams::new("summarize_page"))
+        .await
+        .expect("summarize_page through rmcp");
     assert_eq!(result.is_error, Some(true), "{result:?}");
     let result = serde_json::to_value(result).unwrap();
     let text = result["content"][0]["text"].as_str().unwrap();

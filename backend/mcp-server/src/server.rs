@@ -98,6 +98,15 @@ struct ShowTranslationParams {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+struct OrganizePageParams {
+    /// What to do with the page's text, for example "make a table of names
+    /// and prices" (at most 512 bytes).
+    instruction: String,
+    /// Which tab to read, or omit for the default tab.
+    tab_id: Option<u64>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 struct OpenTabParams {
     /// URL to navigate the new tab to immediately, or omit to open a
     /// blank tab.
@@ -309,6 +318,21 @@ fn outcome_to_result(outcome: crate::ToolOutcome) -> CallToolResult {
     }
 }
 
+fn assistant_outcome_to_result(outcome: crate::AssistantOutcome) -> CallToolResult {
+    match outcome {
+        crate::AssistantOutcome::Done { kind, text } => {
+            let json = serde_json::json!({ "kind": kind, "text": text });
+            let text = serde_json::to_string_pretty(&json).unwrap_or_else(|_| "{}".to_string());
+            CallToolResult::success(vec![Content::text(crate::wrap_untrusted_page_content(
+                &text,
+            ))])
+        }
+        crate::AssistantOutcome::Failed(reason) => {
+            CallToolResult::error(vec![Content::text(reason)])
+        }
+    }
+}
+
 fn translation_outcome_to_result(outcome: crate::TranslationOutcome) -> CallToolResult {
     let json = serde_json::json!({
         "error": outcome.error,
@@ -498,6 +522,34 @@ impl BlueIceMcpServer {
         })
         .await?;
         Ok(translation_outcome_to_result(outcome))
+    }
+
+    #[tool(
+        description = "Ask BlueIce's local assistant to summarize a tab's shown text. The result is model output derived from untrusted page text, is also added to the about:assistant page, and is clearly delimited. Fails when BlueIce was started without an assistant or the page has no text."
+    )]
+    async fn summarize_page(
+        &self,
+        Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.core.clone(), move |conn| conn.summarize_page(tab_id)).await?;
+        Ok(assistant_outcome_to_result(outcome))
+    }
+
+    #[tool(
+        description = "Ask BlueIce's local assistant to reorganize a tab's shown text per an instruction (for example a table of names and prices). The result is model output derived from untrusted page text, is also added to the about:assistant page, and is clearly delimited."
+    )]
+    async fn organize_page(
+        &self,
+        Parameters(OrganizePageParams {
+            instruction,
+            tab_id,
+        }): Parameters<OrganizePageParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.core.clone(), move |conn| {
+            conn.organize_page(instruction, tab_id)
+        })
+        .await?;
+        Ok(assistant_outcome_to_result(outcome))
     }
 
     #[tool(description = "Get the current page's representation without performing any action")]
