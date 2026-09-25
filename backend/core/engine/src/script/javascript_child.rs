@@ -6262,7 +6262,7 @@ mod tests {
     fn unique_socket_path(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let count = COUNTER.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!(
+        PathBuf::from("/tmp").join(format!(
             "blueice-engine-child-host-{label}-{}-{count}.sock",
             std::process::id()
         ))

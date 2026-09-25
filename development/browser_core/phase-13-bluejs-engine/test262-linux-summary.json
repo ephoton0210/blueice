@@ -1,0 +1,673 @@
+{
+  "adapter_sha256": "b43a180b6fd9e8816b05bc4397febd1c9539bfbdb5ae1ec7d7db453fb047464e",
+  "complete_inventory": true,
+  "discovered_js": 53876,
+  "elapsed_seconds": 972.944,
+  "exclude": "",
+  "features": {
+    "AggregateError": {
+      "pass": 62
+    },
+    "Array.fromAsync": {
+      "pass": 186
+    },
+    "Array.prototype.at": {
+      "pass": 24
+    },
+    "Array.prototype.flat": {
+      "pass": 30
+    },
+    "Array.prototype.flatMap": {
+      "pass": 41
+    },
+    "Array.prototype.includes": {
+      "pass": 138
+    },
+    "Array.prototype.values": {
+      "pass": 8
+    },
+    "ArrayBuffer": {
+      "pass": 556
+    },
+    "Atomics": {
+      "excluded": 4,
+      "pass": 768
+    },
+    "Atomics.pause": {
+      "pass": 10
+    },
+    "Atomics.waitAsync": {
+      "pass": 202
+    },
+    "BigInt": {
+      "excluded": 2,
+      "pass": 2979
+    },
+    "DataView": {
+      "pass": 386
+    },
+    "DataView.prototype.getFloat32": {
+      "pass": 14
+    },
+    "DataView.prototype.getFloat64": {
+      "pass": 10
+    },
+    "DataView.prototype.getInt16": {
+      "pass": 14
+    },
+    "DataView.prototype.getInt32": {
+      "pass": 14
+    },
+    "DataView.prototype.getInt8": {
+      "pass": 10
+    },
+    "DataView.prototype.getUint16": {
+      "pass": 14
+    },
+    "DataView.prototype.getUint32": {
+      "pass": 14
+    },
+    "DataView.prototype.setUint8": {
+      "pass": 112
+    },
+    "Error.isError": {
+      "pass": 26
+    },
+    "FinalizationRegistry": {
+      "pass": 98
+    },
+    "Float16Array": {
+      "pass": 102
+    },
+    "Float32Array": {
+      "pass": 14
+    },
+    "Float64Array": {
+      "pass": 14
+    },
+    "Int16Array": {
+      "pass": 4
+    },
+    "Int32Array": {
+      "pass": 8
+    },
+    "Int8Array": {
+      "pass": 76
+    },
+    "Intl-enumeration": {
+      "pass": 70
+    },
+    "Intl.DateTimeFormat-datetimestyle": {
+      "pass": 32
+    },
+    "Intl.DateTimeFormat-dayPeriod": {
+      "pass": 24
+    },
+    "Intl.DateTimeFormat-extend-timezonename": {
+      "pass": 4
+    },
+    "Intl.DateTimeFormat-formatRange": {
+      "pass": 74
+    },
+    "Intl.DateTimeFormat-fractionalSecondDigits": {
+      "pass": 20
+    },
+    "Intl.DisplayNames": {
+      "pass": 94
+    },
+    "Intl.DisplayNames-v2": {
+      "pass": 24
+    },
+    "Intl.DurationFormat": {
+      "pass": 222
+    },
+    "Intl.Era-monthcode": {
+      "pass": 3132
+    },
+    "Intl.ListFormat": {
+      "pass": 162
+    },
+    "Intl.Locale": {
+      "pass": 344
+    },
+    "Intl.Locale-info": {
+      "pass": 120
+    },
+    "Intl.NumberFormat-unified": {
+      "pass": 136
+    },
+    "Intl.NumberFormat-v3": {
+      "pass": 198
+    },
+    "Intl.RelativeTimeFormat": {
+      "pass": 158
+    },
+    "Intl.Segmenter": {
+      "pass": 158
+    },
+    "IsHTMLDDA": {
+      "pass": 84
+    },
+    "Iterator.prototype.join": {
+      "pass": 36
+    },
+    "Map": {
+      "pass": 80
+    },
+    "Math.sumPrecise": {
+      "pass": 20
+    },
+    "Object.fromEntries": {
+      "pass": 50
+    },
+    "Object.hasOwn": {
+      "pass": 124
+    },
+    "Object.is": {
+      "pass": 4
+    },
+    "Promise": {
+      "pass": 8
+    },
+    "Promise.allSettled": {
+      "pass": 204
+    },
+    "Promise.any": {
+      "pass": 184
+    },
+    "Promise.prototype.finally": {
+      "pass": 58
+    },
+    "Proxy": {
+      "pass": 933
+    },
+    "Reflect": {
+      "pass": 933
+    },
+    "Reflect.construct": {
+      "pass": 1408
+    },
+    "Reflect.set": {
+      "pass": 92
+    },
+    "Reflect.setPrototypeOf": {
+      "pass": 46
+    },
+    "RegExp.escape": {
+      "pass": 42
+    },
+    "Set": {
+      "pass": 76
+    },
+    "ShadowRealm": {
+      "pass": 124
+    },
+    "SharedArrayBuffer": {
+      "excluded": 4,
+      "pass": 926
+    },
+    "String.fromCodePoint": {
+      "pass": 44
+    },
+    "String.prototype.at": {
+      "pass": 22
+    },
+    "String.prototype.endsWith": {
+      "pass": 54
+    },
+    "String.prototype.includes": {
+      "pass": 52
+    },
+    "String.prototype.isWellFormed": {
+      "pass": 16
+    },
+    "String.prototype.matchAll": {
+      "pass": 32
+    },
+    "String.prototype.replaceAll": {
+      "pass": 82
+    },
+    "String.prototype.toWellFormed": {
+      "pass": 16
+    },
+    "String.prototype.trimEnd": {
+      "pass": 48
+    },
+    "String.prototype.trimStart": {
+      "pass": 46
+    },
+    "Symbol": {
+      "pass": 2952
+    },
+    "Symbol.asyncIterator": {
+      "pass": 1076
+    },
+    "Symbol.hasInstance": {
+      "pass": 34
+    },
+    "Symbol.isConcatSpreadable": {
+      "pass": 67
+    },
+    "Symbol.iterator": {
+      "pass": 3720
+    },
+    "Symbol.match": {
+      "pass": 176
+    },
+    "Symbol.matchAll": {
+      "pass": 126
+    },
+    "Symbol.prototype.description": {
+      "pass": 16
+    },
+    "Symbol.replace": {
+      "pass": 194
+    },
+    "Symbol.search": {
+      "pass": 74
+    },
+    "Symbol.species": {
+      "pass": 568
+    },
+    "Symbol.split": {
+      "pass": 116
+    },
+    "Symbol.toPrimitive": {
+      "pass": 466
+    },
+    "Symbol.toStringTag": {
+      "pass": 245
+    },
+    "Symbol.unscopables": {
+      "pass": 54
+    },
+    "Temporal": {
+      "pass": 13432
+    },
+    "TypedArray": {
+      "excluded": 4,
+      "pass": 4996
+    },
+    "TypedArray.prototype.at": {
+      "pass": 26
+    },
+    "Uint16Array": {
+      "pass": 12
+    },
+    "Uint32Array": {
+      "pass": 4
+    },
+    "Uint8Array": {
+      "pass": 26
+    },
+    "Uint8ClampedArray": {
+      "pass": 12
+    },
+    "WeakMap": {
+      "pass": 157
+    },
+    "WeakRef": {
+      "pass": 74
+    },
+    "WeakSet": {
+      "pass": 68
+    },
+    "__getter__": {
+      "pass": 54
+    },
+    "__proto__": {
+      "pass": 40
+    },
+    "__setter__": {
+      "pass": 54
+    },
+    "align-detached-buffer-semantics-with-web-reality": {
+      "pass": 290
+    },
+    "arbitrary-module-namespace-names": {
+      "pass": 16
+    },
+    "array-find-from-last": {
+      "pass": 206
+    },
+    "array-grouping": {
+      "pass": 56
+    },
+    "arraybuffer-transfer": {
+      "pass": 118
+    },
+    "arrow-function": {
+      "pass": 1800
+    },
+    "async-functions": {
+      "pass": 1308
+    },
+    "async-iteration": {
+      "pass": 9795
+    },
+    "await-dictionary": {
+      "pass": 178
+    },
+    "caller": {
+      "pass": 23
+    },
+    "canonical-tz": {
+      "pass": 38
+    },
+    "change-array-by-copy": {
+      "pass": 264
+    },
+    "class": {
+      "pass": 9426
+    },
+    "class-fields-private": {
+      "pass": 2248
+    },
+    "class-fields-private-in": {
+      "pass": 38
+    },
+    "class-fields-public": {
+      "pass": 4099
+    },
+    "class-methods-private": {
+      "pass": 3401
+    },
+    "class-static-block": {
+      "pass": 130
+    },
+    "class-static-fields-private": {
+      "pass": 686
+    },
+    "class-static-fields-public": {
+      "pass": 421
+    },
+    "class-static-methods-private": {
+      "pass": 3009
+    },
+    "coalesce-expression": {
+      "pass": 50
+    },
+    "computed-property-names": {
+      "pass": 946
+    },
+    "const": {
+      "pass": 29
+    },
+    "cross-realm": {
+      "pass": 398
+    },
+    "decorators": {
+      "pass": 48
+    },
+    "default-parameters": {
+      "pass": 4516
+    },
+    "destructuring-assignment": {
+      "pass": 217
+    },
+    "destructuring-binding": {
+      "pass": 13137
+    },
+    "dynamic-import": {
+      "pass": 1907
+    },
+    "error-cause": {
+      "pass": 10
+    },
+    "error-stack-accessor": {
+      "pass": 70
+    },
+    "explicit-resource-management": {
+      "pass": 947
+    },
+    "exponentiation": {
+      "pass": 208
+    },
+    "export-star-as-namespace-from-module": {
+      "pass": 23
+    },
+    "for-in-order": {
+      "pass": 18
+    },
+    "for-of": {
+      "pass": 10
+    },
+    "generators": {
+      "pass": 8075
+    },
+    "globalThis": {
+      "pass": 165
+    },
+    "hashbang": {
+      "pass": 35
+    },
+    "host-gc-required": {
+      "pass": 28
+    },
+    "immutable-arraybuffer": {
+      "pass": 127
+    },
+    "import-attributes": {
+      "pass": 160
+    },
+    "import-bytes": {
+      "pass": 5
+    },
+    "import-defer": {
+      "pass": 388
+    },
+    "import-text": {
+      "pass": 7
+    },
+    "import.meta": {
+      "pass": 28
+    },
+    "intl-normative-optional": {
+      "pass": 16
+    },
+    "iterator-chunking": {
+      "pass": 156
+    },
+    "iterator-helpers": {
+      "pass": 1134
+    },
+    "iterator-includes": {
+      "pass": 88
+    },
+    "iterator-sequencing": {
+      "pass": 64
+    },
+    "joint-iteration": {
+      "pass": 164
+    },
+    "json-modules": {
+      "pass": 15
+    },
+    "json-parse-with-source": {
+      "pass": 44
+    },
+    "json-superset": {
+      "pass": 8
+    },
+    "legacy-regexp": {
+      "pass": 52
+    },
+    "let": {
+      "pass": 131
+    },
+    "logical-assignment-operators": {
+      "pass": 192
+    },
+    "new.target": {
+      "pass": 125
+    },
+    "nonextensible-applies-to-private": {
+      "pass": 4
+    },
+    "numeric-separator-literal": {
+      "pass": 318
+    },
+    "object-rest": {
+      "pass": 713
+    },
+    "object-spread": {
+      "pass": 238
+    },
+    "optional-catch-binding": {
+      "pass": 10
+    },
+    "optional-chaining": {
+      "pass": 112
+    },
+    "promise-try": {
+      "pass": 30
+    },
+    "promise-with-resolvers": {
+      "pass": 16
+    },
+    "proxy-missing-checks": {
+      "pass": 6
+    },
+    "regexp-dotall": {
+      "pass": 34
+    },
+    "regexp-duplicate-named-groups": {
+      "pass": 38
+    },
+    "regexp-lookbehind": {
+      "pass": 38
+    },
+    "regexp-match-indices": {
+      "pass": 62
+    },
+    "regexp-modifiers": {
+      "pass": 460
+    },
+    "regexp-named-groups": {
+      "pass": 200
+    },
+    "regexp-unicode-property-escapes": {
+      "pass": 1362
+    },
+    "regexp-v-flag": {
+      "pass": 374
+    },
+    "resizable-arraybuffer": {
+      "pass": 930
+    },
+    "rest-parameters": {
+      "pass": 192
+    },
+    "set-methods": {
+      "pass": 386
+    },
+    "source-phase-imports": {
+      "pass": 475
+    },
+    "source-phase-imports-module-source": {
+      "pass": 205
+    },
+    "stable-array-sort": {
+      "pass": 8
+    },
+    "stable-typedarray-sort": {
+      "pass": 2
+    },
+    "string-trimming": {
+      "pass": 108
+    },
+    "super": {
+      "pass": 38
+    },
+    "symbols-as-weakmap-keys": {
+      "pass": 57
+    },
+    "tail-call-optimization": {
+      "pass": 35
+    },
+    "template": {
+      "pass": 2
+    },
+    "top-level-await": {
+      "pass": 279
+    },
+    "u180e": {
+      "pass": 50
+    },
+    "uint8array-base64": {
+      "pass": 142
+    },
+    "upsert": {
+      "pass": 142
+    },
+    "well-formed-json-stringify": {
+      "pass": 2
+    }
+  },
+  "filter": "",
+  "fixture_resources": 294,
+  "groups": {
+    "annexB": {
+      "pass": 1376,
+      "stale_corpus": 1
+    },
+    "built-ins": {
+      "excluded": 4,
+      "pass": 47319
+    },
+    "harness": {
+      "pass": 232
+    },
+    "intl402": {
+      "pass": 6714
+    },
+    "language": {
+      "pass": 44497
+    },
+    "staging": {
+      "pass": 2783
+    }
+  },
+  "instruction_budget": 100000,
+  "iterator_zip_basic_matrix_instruction_budget": 10000000,
+  "iterator_zip_basic_matrix_timeout_seconds": 15,
+  "jobs": 4,
+  "limitations": [
+    "static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable",
+    "unclassified parser rejections never satisfy parse-SyntaxError negative tests",
+    "harness sources still require supported grammar and APIs",
+    "native overrides for sta.js and assert.js (propertyHelper.js and isConstructor.js run their upstream source), the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
+    "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, the two Temporal calendar matrices, and the six finite Iterator.zip/zipKeyed basic matrices receive their recorded budgets"
+  ],
+  "regex_worker_sha256": "151faa2fdf8c5686b7e87044f02cf0b8207fdb49e1f79d36c8fa4301b222e0ae",
+  "results": {
+    "excluded": 4,
+    "pass": 102921,
+    "stale_corpus": 1
+  },
+  "runner_sha256": "d56c75f03b0422f20fea1dcd8a10be3ea81905f4a79d7fead0abb1ca6986d0ba",
+  "scheduled_modes": 102926,
+  "sm_typed_array_harness_instruction_budget": 100000000,
+  "sm_typed_array_harness_timeout_seconds": 60,
+  "snapshot": {
+    "archive_sha256": "a5d51e56c81269314852f5c7de76d4837493086cc804a36603a459623449e9c2",
+    "committed_at": "2026-09-10T00:32:43Z",
+    "manifest_sha256": "8abd6392abcdde3aa17326391ed008a0336a253364c1676caa1af31b8a5bffd8",
+    "repository": "https://github.com/tc39/test262",
+    "revision": "72faf8ec1445c55149615e8b35187830783aba1a",
+    "selection": "Current Test262 main as of 2026-09-14; proposals and staging are included, not filtered to an ECMA edition."
+  },
+  "tail_call_instruction_budget": 3000000,
+  "tail_call_timeout_seconds": 30,
+  "temporal_calendar_matrix_instruction_budget": 10000000,
+  "temporal_calendar_matrix_timeout_seconds": 360,
+  "test_files": 53582,
+  "timeout_seconds": 2,
+  "typed_array_harness_instruction_budget": 10000000,
+  "typed_array_harness_timeout_seconds": 60,
+  "unicode_identifier_timeout_seconds": 30,
+  "uri_exhaustive_instruction_budget": 100000000,
+  "uri_exhaustive_timeout_seconds": 15,
+  "uri_global_instruction_budget": 10000000,
+  "uri_global_timeout_seconds": 30
+}

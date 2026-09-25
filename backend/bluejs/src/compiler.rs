@@ -76,6 +76,10 @@ pub struct CompileLimits {
     /// Maximum entries in each binding, constant, and scope table. Values
     /// above `u32::MAX + 1` are capped at that representable maximum.
     pub max_metadata_entries: u64,
+    /// Maximum array elements or call arguments in one expression. Values
+    /// above `u32::MAX / 2` are capped because tail calls pack the argument
+    /// count and a direct-eval bit into one 32-bit operand.
+    pub max_list_items: u32,
 }
 
 impl Default for CompileLimits {
@@ -83,6 +87,7 @@ impl Default for CompileLimits {
         Self {
             max_bytecode_bytes: u32::MAX,
             max_metadata_entries: u64::from(u32::MAX) + 1,
+            max_list_items: u32::MAX / 2,
         }
     }
 }
@@ -176,6 +181,7 @@ fn compile_with_limit_and_mode(
         catch_var_slots: Vec::new(),
         max_bytecode_bytes: limits.max_bytecode_bytes,
         max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
+        max_list_items: limits.max_list_items.min(u32::MAX / 2),
         function: false,
         local_scope: 0,
         with_depth: 0,
@@ -481,6 +487,7 @@ pub(crate) fn compile_eval(
         catch_var_slots: Vec::new(),
         max_bytecode_bytes: limits.max_bytecode_bytes,
         max_metadata_entries: limits.max_metadata_entries.min(u64::from(u32::MAX) + 1),
+        max_list_items: limits.max_list_items.min(u32::MAX / 2),
         function: false,
         local_scope: 1,
         with_depth,
@@ -614,6 +621,7 @@ struct Compiler {
     catch_var_slots: Vec<HashMap<String, u32>>,
     max_bytecode_bytes: u32,
     max_metadata_entries: u64,
+    max_list_items: u32,
     function: bool,
     local_scope: usize,
     with_depth: usize,
@@ -680,6 +688,14 @@ impl FunctionCompileOptions {
 }
 
 impl Compiler {
+    fn list_count(&self, len: usize) -> Result<u32, CompileError> {
+        if (len as u128) > u128::from(self.max_list_items) {
+            return Err(CompileError::ProgramTooLarge);
+        }
+        // The constructor caps max_list_items below u32::MAX.
+        Ok(len as u32)
+    }
+
     fn metadata_index(&self, len: usize) -> Result<u32, CompileError> {
         if (len as u64) >= self.max_metadata_entries {
             return Err(CompileError::ProgramTooLarge);
@@ -1398,7 +1414,12 @@ fn is_super_member(expr: &Expr) -> bool {
 }
 
 fn private_member_name(expr: &Expr) -> Option<&str> {
+    private_member_parts(expr).map(|(_, name)| name)
+}
+
+fn private_member_parts(expr: &Expr) -> Option<(&Expr, &str)> {
     let Expr::Member {
+        object,
         property,
         computed: false,
         ..
@@ -1409,7 +1430,7 @@ fn private_member_name(expr: &Expr) -> Option<&str> {
     let Expr::Identifier(name) = property.as_ref() else {
         return None;
     };
-    name.strip_prefix('#')
+    name.strip_prefix('#').map(|name| (object.as_ref(), name))
 }
 
 fn undefined_expression() -> Expr {

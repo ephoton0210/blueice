@@ -32,8 +32,8 @@ use std::time::{Duration, Instant};
 fn spawn_private_bluejs_host(label: &str) -> (PathBuf, String, thread::JoinHandle<()>) {
     // The default macOS temporary directory can exceed the Unix-domain socket
     // pathname limit once this test's descriptive filename is appended.
-    let path = PathBuf::from("/private/tmp")
-        .join(format!("blueice-oop-{label}-{}.sock", std::process::id()));
+    let path =
+        PathBuf::from("/tmp").join(format!("blueice-oop-{label}-{}.sock", std::process::id()));
     let token = "0123456789abcdef0123456789abcdef".to_string();
     let listener = blueice_launcher::bluejs_host::bind_bluejs_host_socket(&path)
         .expect("test child host must bind its private socket");

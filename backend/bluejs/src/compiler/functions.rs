@@ -707,8 +707,8 @@ impl Compiler {
     fn decorator_and_receiver(&mut self, decorator: &Expr) -> Result<(), CompileError> {
         match decorator {
             Expr::Member { .. } if !is_super_member(decorator) => {
-                if private_member_name(decorator).is_some() {
-                    let owner = self.private_member_reference(decorator)?;
+                if let Some((object, name)) = private_member_parts(decorator) {
+                    let owner = self.private_member_reference(object, name)?;
                     self.emit(Opcode::PrivateGetMethod, owner)?;
                 } else {
                     self.member_reference(decorator)?;
@@ -762,7 +762,9 @@ impl Compiler {
         | ClassElement::Accessor { key, .. }
         | ClassElement::Field { key, .. }) = element
         else {
-            unreachable!("only methods, accessors and fields are decorated");
+            return Err(CompileError::InvalidSyntax(
+                "a static block cannot have decorators",
+            ));
         };
         let private_name = private_class_name(key);
         let owner = private_name.map(|name| {
@@ -996,6 +998,7 @@ impl Compiler {
             catch_var_slots: Vec::new(),
             max_bytecode_bytes: child_budget,
             max_metadata_entries: self.max_metadata_entries,
+            max_list_items: self.max_list_items,
             function: true,
             local_scope: 1,
             // A function created inside `with` resolves its free names
@@ -1200,17 +1203,8 @@ impl Compiler {
             child.bytecode.arguments_slot = Some(slot);
             if !child.bytecode.strict && simple_parameter_list {
                 child.bytecode.arguments_mapped = true;
-                let mut mapped_names = BTreeSet::new();
-                let mut mapped_slots = vec![None; function.params.len()];
-                for (index, parameter) in function.params.iter().enumerate().rev() {
-                    let Pattern::Identifier(name) = &parameter.pattern else {
-                        unreachable!("simple parameter list contains only identifiers")
-                    };
-                    if mapped_names.insert(name.clone()) {
-                        mapped_slots[index] = child.resolve(name);
-                    }
-                }
-                child.bytecode.arguments_mapped_slots = mapped_slots;
+                child.bytecode.arguments_mapped_slots =
+                    child.mapped_argument_slots(&function.params);
             }
             child.emit(Opcode::ArgumentsObject, 0)?;
         }
@@ -1263,20 +1257,50 @@ impl Compiler {
         child.statements_with_disposal(&function.body)?;
         child.constant(Value::Undefined)?;
         child.emit(Opcode::Return, 0)?;
-        let child_bytes = child_budget - child.max_bytecode_bytes + child.offset();
+        let child_offset = child.offset();
+        self.finish_child_function(
+            child.bytecode,
+            child_budget,
+            child.max_bytecode_bytes,
+            child_offset,
+        )
+    }
+
+    fn mapped_argument_slots(&self, params: &[Param]) -> Vec<Option<u32>> {
+        let mut mapped_names = BTreeSet::new();
+        let mut mapped_slots = vec![None; params.len()];
+        for (index, parameter) in params.iter().enumerate().rev() {
+            if let Pattern::Identifier(name) = &parameter.pattern {
+                if mapped_names.insert(name.clone()) {
+                    mapped_slots[index] = self.resolve(name);
+                }
+            }
+        }
+        mapped_slots
+    }
+
+    fn finish_child_function(
+        &mut self,
+        child: Bytecode,
+        child_budget: u32,
+        child_remaining: u32,
+        child_offset: u32,
+    ) -> Result<(), CompileError> {
+        let child_bytes = child_budget
+            .checked_sub(child_remaining)
+            .and_then(|spent| spent.checked_add(child_offset))
+            .ok_or(CompileError::ProgramTooLarge)?;
         self.max_bytecode_bytes = self
             .max_bytecode_bytes
             .checked_sub(child_bytes)
             .ok_or(CompileError::ProgramTooLarge)?;
         let index = self.bytecode.functions.len() as u32;
-        self.bytecode
-            .functions
-            .push(std::rc::Rc::new(child.bytecode));
+        self.bytecode.functions.push(std::rc::Rc::new(child));
         self.emit(Opcode::Closure, index)?;
         Ok(())
     }
 
-    pub(super) fn self_tail_call_args<'a>(&self, value: &'a Expr) -> Option<&'a [Argument]> {
+    pub(super) fn self_tail_call_args<'a>(&self, value: &'a Expr) -> Option<Vec<&'a Expr>> {
         let Expr::Call { callee, args } = value else {
             return None;
         };
@@ -1284,17 +1308,22 @@ impl Compiler {
             return None;
         };
         let slot = self.bytecode.self_slot?;
-        (self.bytecode.strict
+        if !self.bytecode.strict
             // A recursive call made by a generator or async function creates
             // a distinct generator/promise execution. Reusing this frame
             // would eagerly run it and changes the observable result.
-            && !self.bytecode.generator
-            && !self.bytecode.async_function
-            && self.resolve(name) == Some(slot)
-            && args
-                .iter()
-                .all(|argument| matches!(argument, Argument::Normal(_))))
-        .then_some(args)
+            || self.bytecode.generator
+            || self.bytecode.async_function
+            || self.resolve(name) != Some(slot)
+        {
+            return None;
+        }
+        args.iter()
+            .map(|argument| match argument {
+                Argument::Normal(value) => Some(value),
+                Argument::Spread(_) => None,
+            })
+            .collect()
     }
 }
 
@@ -1378,3 +1407,6 @@ fn element_decorators(element: &ClassElement) -> &[Expr] {
         ClassElement::StaticBlock(_) => &[],
     }
 }
+
+#[cfg(test)]
+mod tests;

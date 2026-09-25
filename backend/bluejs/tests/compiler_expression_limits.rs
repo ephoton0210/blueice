@@ -36,6 +36,7 @@ const EXPRESSION_CASES: &[&str] = &[
         "let x = {}; delete x.a; delete x['a']; delete x?.a.b;",
         "let x = null; delete x?.a?.b; delete missing; delete (1 + 2);",
         "with ({ x: 1 }) { typeof x; typeof missing; delete x; x++; x += 2; }",
+        "with ({}) { let local = 1; local; }",
         "with ({ x: 1, f() {} }) { f(); missing; missing++; delete missing; }",
         "with ({ x: 1 }) { x &&= 2; x ||= 3; x ??= 4; missing &&= 5; }",
         "let x = [1, , ...[2], 3]; x;",
@@ -51,6 +52,7 @@ const EXPRESSION_CASES: &[&str] = &[
         "let x = { m() {} }; (x.m)?.(); (x?.m)?.();",
         "let x = {}; x.a++; ++x.a; x['b']--; --x['b'];",
         "let x = 1; x++; --x; x += 2; x &&= 3; x ||= 4; x ??= 5;",
+        "missing++;",
         "let x = {}; x.a = 1; x.a += 2; x.a &&= 3; x.a ||= 4; x.a ??= 5;",
         "let x = 1; x ? x : 0; x && 2; x || 3; x ?? 4; (x, 2);",
         "let x = `a${1}b`; x;",
@@ -69,11 +71,24 @@ const EXPRESSION_CASES: &[&str] = &[
         "class C { #m() {} run() { return this?.a.#m?.(); } }",
         "class C { #m() {} run() { return (this.#m)(); } }",
         "class C { #x = 1; #m() {} run() { this?.#x; this?.#m?.(); return (this.#m)?.(); } }",
+        "class C { static #value; }",
+        "function dec() {} @dec class C { @dec m() {} @dec static s() {} @dec get x() { return 1; } @dec set x(v) {} @dec accessor y = 1; @dec accessor [5] = 1; @dec [3] = 1; @dec f = 2; @dec static g = 3; static [4] = 2; static {} }",
+        "function dec() {} class C { @dec [1]() {} @dec get [2]() { return 1; } @dec #m() {} @dec get #x() { return 1; } @dec set #x(v) {} @dec accessor #a = 1; @dec #f = 2; }",
+        "let holder = { dec() {} }; class C { @holder.dec m() {} @(holder.dec) [1]() {} }",
+        "function dec() {} class C { @dec static m() {} @dec static [1]() {} static #dec() {} @C.#dec n() {} }",
+        "function f(a, a) { return arguments; } f(1, 2);",
+        "function f(a = 1) { var a; return arguments; } f();",
+        "function f(a = eval('1')) { return a; } f();",
+        "function f({ x } = { x: 1 }) { return x + arguments.length; } f();",
         "for (let x in { a: 1 }) { x; } for (var x of [1]) { x; }",
         "async function f() { for await (let x of [1]) { x; } }",
         "async function f() { for await (await using x of [null]) { x; } }",
         "for (var x = 1 in { a: 2 }) { x; }",
         "let x; for (x of [1]) { x; } for (x in { a: 1 }) { x; }",
+        "for (missing of [1]) {}",
+        "let target = {}; for (target.x of [1]) {} for (target.y in { a: 1 }) {}",
+        "class A { set x(value) {} } class B extends A { constructor() { super(); for (super.x of [1]) {} this.value = 2; } }",
+        "class C { #x; run() { for (this.#x of [1]) {} } }",
         "function f() {} for (f() in { a: 1 }) {}",
         "let a, b; [a, , b = 2] = [1]; ({ x: a = 3, ...b } = { x: 4 });",
         "let target = {}; [target.x, ...target.y] = [1, 2]; ({ x: target.z } = { x: 3 });",
@@ -188,4 +203,43 @@ fn import_meta_rejects_every_truncated_module_bytecode_budget() {
         }
     }
     assert!(first_success.is_some());
+}
+
+#[test]
+fn list_item_limits_reject_oversized_arrays_and_argument_lists() {
+    for source in [
+        "let x = [1, 2];",
+        "let x = [, 1];",
+        "let x = [...[], 1];",
+        "function f() {} f(1, 2);",
+        "function f() {} f(1, ...[2]);",
+        "function F() {} new F(1, 2);",
+        "let f = () => 0; f?.(1, 2);",
+        "class A {} class B extends A { constructor() { super(1, 2); } }",
+        "function tag() {} tag`a${1}b`;",
+    ] {
+        let program = parse(source).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+        let expected = all_code_bytes(&compile(&program).unwrap());
+        for limit in 0..=2 {
+            let result = compile_with_limits(
+                &program,
+                CompileLimits {
+                    max_list_items: limit,
+                    ..CompileLimits::default()
+                },
+            );
+            if limit < 2 {
+                assert!(
+                    matches!(result, Err(CompileError::ProgramTooLarge)),
+                    "{source} at {limit} items"
+                );
+            } else {
+                assert_eq!(
+                    all_code_bytes(&result.unwrap()),
+                    expected,
+                    "{source} at {limit} items"
+                );
+            }
+        }
+    }
 }

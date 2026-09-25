@@ -27,6 +27,7 @@ class CoverageFileTests(unittest.TestCase):
         self.source.mkdir(parents=True)
         for name in ("ast.rs", "module.rs", "tests.rs"):
             (self.source / name).write_text("// fixture\n")
+        (self.source / "ast.rs").write_text("// fixture\n// second\n")
         nested = self.source / "vm/temporal/dates.rs"
         nested.parent.mkdir(parents=True)
         nested.write_text("// fixture\n")
@@ -58,6 +59,17 @@ class CoverageFileTests(unittest.TestCase):
                 {
                     "files": [
                         {"filename": str(self.source / "ast.rs"), "summary": summary}
+                    ],
+                    "functions": [
+                        {
+                            "filenames": [str(self.source / "ast.rs")],
+                            "count": 1,
+                            "regions": [
+                                [1, 1, 1, 2, 1, 0, 0, 0],
+                                [2, 1, 2, 2, 1, 0, 0, 0],
+                                [2, 3, 2, 4, 1, 0, 0, 0],
+                            ],
+                        }
                     ],
                     "totals": summary,
                 }
@@ -132,7 +144,14 @@ class CoverageFileTests(unittest.TestCase):
             calls.append(argv)
             if "--output-path" in argv:
                 output = Path(argv[argv.index("--output-path") + 1])
-                output.write_text(json.dumps(self.export()))
+                if "--json" in argv:
+                    output.write_text(json.dumps(self.export()))
+                else:
+                    output.write_text(
+                        f"{self.source / 'ast.rs'}:\n"
+                        "    1|      1|fn f() {}\n"
+                        "    2|      1|fn g() {}\n"
+                    )
 
         with patch.object(coverage_file.subprocess, "run", side_effect=fake_run):
             files, _ = coverage_file.run_coverage()
@@ -141,6 +160,38 @@ class CoverageFileTests(unittest.TestCase):
         self.assertEqual(calls[1][:4], ["cargo", "llvm-cov", "-p", "blueice-bluejs"])
         self.assertNotIn("--test", calls[1])
         self.assertNotIn("--ignore-filename-regex", calls[1])
+        self.assertEqual(calls[2][:5], ["cargo", "llvm-cov", "report", "-p", "blueice-bluejs"])
+
+    def test_source_union_counts_duplicate_compilations_once(self):
+        payload = self.export()
+        summary = payload["data"][0]["files"][0]["summary"]
+        summary["lines"] = {"count": 3, "covered": 2}
+        summary["regions"] = {"count": 3, "covered": 2}
+        payload["data"][0]["totals"] = summary
+        first = payload["data"][0]["functions"][0]
+        first["regions"][2][4] = 0
+        second = json.loads(json.dumps(first))
+        second["regions"][2][4] = 1
+        payload["data"][0]["functions"].append(second)
+        show = (
+            f"{self.source / 'ast.rs'}:\n"
+            "    1|      1|fn f() {}\n"
+            "    2|      1|fn g() {}\n"
+        )
+        files, totals = coverage_file.source_union_export(payload, show)
+        ast = self.source / "ast.rs"
+        for metric, expected in {
+            "lines": 2,
+            "functions": 1,
+            "regions": 3,
+        }.items():
+            self.assertEqual(files[ast][metric], {"count": expected, "covered": expected})
+            self.assertEqual(totals[metric], files[ast][metric])
+        row = coverage_file.markdown_row(ast, files[ast])
+        self.assertIn("| ☑ |", row)
+        self.assertIn("raw LLVM summary: lines 2/3", row)
+        with self.assertRaisesRegex(ValueError, "incomplete source-line coverage view"):
+            coverage_file.source_union_export(payload, show.splitlines()[0] + "\n")
 
     def test_report_update_preserves_other_sections_and_adds_completion_column(self):
         report = self.repo / "macos.md"
@@ -184,6 +235,37 @@ class CoverageFileTests(unittest.TestCase):
             )
         update.assert_called_once_with(files, totals)
         self.assertTrue(any("Complete: yes" in str(call) for call in printed.call_args_list))
+
+    def test_file_only_measurement_does_not_update_either_report(self):
+        files, totals = coverage_file.checked_export(self.export())
+        with (
+            patch.object(coverage_file, "run_coverage", return_value=(files, totals)) as run,
+            patch.object(coverage_file, "update_macos_report") as macos,
+            patch.object(coverage_file, "update_linux_report") as linux,
+            patch("builtins.print") as printed,
+        ):
+            self.assertEqual(coverage_file.main(["ast.rs"]), 0)
+        run.assert_called_once_with()
+        macos.assert_not_called()
+        linux.assert_not_called()
+        output = [str(call) for call in printed.call_args_list]
+        self.assertTrue(any("ast.rs" in line for line in output))
+        self.assertTrue(any("Complete: yes" in line for line in output))
+
+    def test_linux_report_adds_the_same_table_before_platform_differences(self):
+        report = self.repo / "linux.md"
+        report.write_text("before\n## Differences from the other platforms\nafter\n")
+        self.patch(coverage_file, "LINUX_REPORT", report)
+        files, totals = coverage_file.checked_export(self.export())
+        with patch.object(coverage_file.platform, "system", return_value="Linux"), patch.object(
+            coverage_file, "provenance", return_value="Linux test host"
+        ):
+            coverage_file.update_linux_report(files, totals)
+        text = report.read_text()
+        self.assertTrue(text.startswith("before\n## Later BlueJS per-file coverage"))
+        self.assertIn("--update-linux-report", text)
+        self.assertIn("| Complete | Note |", text)
+        self.assertTrue(text.endswith("## Differences from the other platforms\nafter\n"))
 
 
 if __name__ == "__main__":
