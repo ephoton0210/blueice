@@ -668,6 +668,16 @@ association when the child returns. Classic and linked-module scheduler tests
 and a real BlueTS child/core socket regression cover the route. Public socket
 authorization and its own protocol version remain for C1.2.2.3.
 
+**Public same-frame resume (C1.2.2.3):** Public debugger v33 adds a distinct
+`ResumeNestedExecution` command, `NestedResumeRequested` acknowledgement, and
+`NestedResuming` state under the existing nested-frame capability. Core
+accepts only a well-formed, live, core-reminted frame handle for the exact
+realm/program, then asks the private child to finish that invocation. It does
+not alias the root resume or one-instruction step controls. A real
+launcher-supervised BlueTS page steps once, resumes the same child frame,
+observes the separate requested state, returns to the original root, and
+finishes after root resume. Wrong and returned frame handles are rejected.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -712,7 +712,7 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
 }
 
 #[test]
-fn public_socket_steps_one_real_bluets_nested_frame_and_rejects_root_aliasing() {
+fn public_socket_steps_and_resumes_one_real_bluets_nested_frame() {
     let gatekeeper_socket = clearing_gatekeeper();
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
@@ -810,66 +810,73 @@ fn public_socket_steps_one_real_bluets_nested_frame_and_rejects_root_aliasing() 
     assert_ne!(successor, first);
     assert_eq!(successor.code_unit_ordinal, first.code_unit_ordinal);
 
-    let mut current = successor;
-    let mut returned = false;
-    for _ in 0..96 {
-        assert_eq!(
-            debugger_request(
-                &mut debugger,
-                DebuggerRequest::StepNestedInstruction { frame },
-            ),
-            DebuggerReply::NestedStepRequested { frame }
-        );
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            match debugger_request(
-                &mut debugger,
-                DebuggerRequest::GetExecutionState { program },
-            ) {
-                DebuggerReply::ExecutionState {
-                    state:
-                        DebuggerExecutionState::NestedPaused {
-                            frame: same,
-                            safe_point,
-                        },
-                    ..
-                } => {
-                    assert_eq!(same, frame);
-                    assert_ne!(safe_point, current);
-                    current = safe_point;
-                    break;
-                }
-                DebuggerReply::ExecutionState {
-                    state: DebuggerExecutionState::Paused { safe_point },
-                    ..
-                } => {
-                    assert_eq!(safe_point.code_unit_ordinal, 0);
-                    returned = true;
-                    break;
-                }
-                DebuggerReply::ExecutionState {
-                    state: DebuggerExecutionState::NestedStepping { frame: same },
-                    ..
-                } if same == frame && Instant::now() < deadline => {
-                    thread::sleep(Duration::from_millis(10));
-                }
-                reply => panic!("unexpected nested successor: {reply:?}"),
-            }
+    assert!(matches!(
+        debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
         }
-        if returned {
-            break;
-        }
-    }
-    assert!(
-        returned,
-        "nested frame must return to its root continuation"
-    );
+    ));
+    let mut wrong_frame = frame;
+    wrong_frame.frame_handle += 1;
     assert!(matches!(
         debugger_request(
             &mut debugger,
-            DebuggerRequest::StepNestedInstruction { frame }
+            DebuggerRequest::ResumeNestedExecution { frame: wrong_frame },
         ),
-        DebuggerReply::Error { .. }
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResumeNestedExecution { frame },
+        ),
+        DebuggerReply::NestedResumeRequested { frame }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program },
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: DebuggerExecutionState::NestedResuming { frame },
+        }
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program },
+        ) {
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::Paused { safe_point },
+                ..
+            } => {
+                assert_eq!(safe_point.code_unit_ordinal, 0);
+                break;
+            }
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::NestedResuming { frame: same },
+                ..
+            } if same == frame && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            reply => panic!("nested resume must rejoin its root: {reply:?}"),
+        }
+    }
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResumeNestedExecution { frame }
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
     ));
     assert_eq!(
         debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),

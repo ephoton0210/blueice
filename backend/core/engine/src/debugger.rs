@@ -177,6 +177,7 @@ impl DebuggerRequestReceiver {
                     | DebuggerRequest::ResumeExecution { .. }
                     | DebuggerRequest::StepRootInstruction { .. }
                     | DebuggerRequest::StepNestedInstruction { .. }
+                    | DebuggerRequest::ResumeNestedExecution { .. }
                     | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
             );
             let reply = handle_debugger_request_with_page_javascript_executor_and_metadata_session(
@@ -198,6 +199,7 @@ impl DebuggerRequestReceiver {
                         | DebuggerReply::ExecutionResumed { .. }
                         | DebuggerReply::ExecutionStepRequested { .. }
                         | DebuggerReply::NestedStepRequested { .. }
+                        | DebuggerReply::NestedResumeRequested { .. }
                         | DebuggerReply::ExecutionSourceSpanStepRequested { .. }
                 );
             // A state observation after the bounded lifecycle has already
@@ -214,6 +216,7 @@ impl DebuggerRequestReceiver {
                         | DebuggerExecutionState::SourceStepLimitReached { .. }
                         | DebuggerExecutionState::Stepping
                         | DebuggerExecutionState::NestedStepping { .. }
+                        | DebuggerExecutionState::NestedResuming { .. }
                         | DebuggerExecutionState::Resuming
                         | DebuggerExecutionState::Completed,
                     ..
@@ -230,6 +233,7 @@ impl DebuggerRequestReceiver {
                 DebuggerReply::ExecutionResumed { .. }
                     | DebuggerReply::ExecutionStepRequested { .. }
                     | DebuggerReply::NestedStepRequested { .. }
+                    | DebuggerReply::NestedResumeRequested { .. }
                     | DebuggerReply::ExecutionSourceSpanStepRequested { .. }
             );
             let _ = envelope.reply.send(reply);
@@ -349,7 +353,8 @@ pub fn handle_debugger_request_with_javascript_executor(
             arm_root_safe_point_breakpoint(tabs, javascript_executor, safe_point)
         }
         DebuggerRequest::ArmNestedSafePointBreakpoint { .. }
-        | DebuggerRequest::StepNestedInstruction { .. } => unavailable_nested_frames(),
+        | DebuggerRequest::StepNestedInstruction { .. }
+        | DebuggerRequest::ResumeNestedExecution { .. } => unavailable_nested_frames(),
         DebuggerRequest::ListBreakpoints { realm } => {
             list_breakpoints(tabs, javascript_executor.as_deref(), realm)
         }
@@ -564,6 +569,9 @@ fn handle_debugger_request_with_child_locations(
         }
         DebuggerRequest::StepNestedInstruction { frame } => {
             step_child_nested_instruction(tabs, locations, frame)
+        }
+        DebuggerRequest::ResumeNestedExecution { frame } => {
+            resume_child_nested_execution(tabs, locations, frame)
         }
         DebuggerRequest::StepStaticMetadataSourceSpan { target } => {
             step_child_static_metadata_source_span(tabs, locations, metadata_session, target)
@@ -2769,12 +2777,21 @@ fn child_execution_state(
                         },
                     )
                 }
-                JavaScriptPageDebuggerNestedExecutionState::Resuming { .. } => {
-                    return DebuggerReply::Error {
-                        code: DebuggerErrorCode::InvalidExecutionState,
-                        message: "nested frame is resuming through the private page-host route"
-                            .to_string(),
+                JavaScriptPageDebuggerNestedExecutionState::Resuming { frame } => {
+                    let public_frame = DebuggerFrame {
+                        program,
+                        code_unit_ordinal: frame.code_unit_ordinal,
+                        frame_handle: frame.frame_handle,
                     };
+                    if !public_frame.is_well_formed() {
+                        return invalid_safe_point_target();
+                    }
+                    (
+                        frame,
+                        DebuggerExecutionState::NestedResuming {
+                            frame: public_frame,
+                        },
+                    )
                 }
             };
             if frame.tab_id != tab_id
@@ -2872,6 +2889,23 @@ fn step_child_nested_instruction(
     locations: &mut dyn PageJavaScriptDebuggerLocations,
     frame: DebuggerFrame,
 ) -> DebuggerReply {
+    continue_child_nested_execution(tabs, locations, frame, false)
+}
+
+fn resume_child_nested_execution(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    frame: DebuggerFrame,
+) -> DebuggerReply {
+    continue_child_nested_execution(tabs, locations, frame, true)
+}
+
+fn continue_child_nested_execution(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    frame: DebuggerFrame,
+    resume: bool,
+) -> DebuggerReply {
     if !frame.is_well_formed() {
         return DebuggerReply::Error {
             code: DebuggerErrorCode::InvalidTarget,
@@ -2888,14 +2922,21 @@ fn step_child_nested_instruction(
     {
         return unavailable_nested_frames();
     }
-    match locations.step_debugger_nested_instruction(JavaScriptPageDebuggerFrame {
+    let internal_frame = JavaScriptPageDebuggerFrame {
         tab_id,
         document_generation: realm.realm_generation,
         program_handle: frame.program.program_handle,
         program_generation: frame.program.program_generation,
         code_unit_ordinal: frame.code_unit_ordinal,
         frame_handle: frame.frame_handle,
-    }) {
+    };
+    let result = if resume {
+        locations.resume_debugger_nested_execution(internal_frame)
+    } else {
+        locations.step_debugger_nested_instruction(internal_frame)
+    };
+    match result {
+        Ok(()) if resume => DebuggerReply::NestedResumeRequested { frame },
         Ok(()) => DebuggerReply::NestedStepRequested { frame },
         Err(error) => debugger_program_error(error),
     }
@@ -3872,9 +3913,9 @@ fn capability_reports(
                 DebuggerCapabilityState::Planned
             },
             if nested_frames_available {
-                "one exact synchronous nested invocation can pause and step under a core-owned frame handle"
+                "one exact synchronous nested invocation can pause, step, and resume under a core-owned frame handle"
             } else {
-                "nested-frame pause and step are not installed for this page-host route"
+                "nested-frame pause, step, and resume are not installed for this page-host route"
             },
         ),
         (

@@ -9,7 +9,9 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version thirty-two adds a
+//! and an opt-in root-code-unit pause/resume seam. Version thirty-three adds
+//! an exact active-frame resume command and distinct resuming state. Version
+//! thirty-two adds a
 //! separately gated, core-reminted active nested-frame identity and exact
 //! nested arm/state/step commands. Its frame handle
 //! is not the child invocation serial, a static code-unit point, or a value.
@@ -74,7 +76,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 32;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 33;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -2190,6 +2192,9 @@ pub enum DebuggerExecutionState {
     NestedStepping {
         frame: DebuggerFrame,
     },
+    NestedResuming {
+        frame: DebuggerFrame,
+    },
     Resuming,
     Completed,
 }
@@ -2406,6 +2411,11 @@ pub enum DebuggerRequest {
     StepNestedInstruction {
         frame: DebuggerFrame,
     },
+    /// Runs only this exact paused nested invocation to its return. The
+    /// original root remains paused, with its own separate resume command.
+    ResumeNestedExecution {
+        frame: DebuggerFrame,
+    },
     /// Steps from one exact paused BlueTS root safe point to the next distinct
     /// compiler-bound source span, completion, or a bounded-limit stop.
     /// Requires a separate metadata grant and same-stream source receipt.
@@ -2528,6 +2538,9 @@ pub enum DebuggerReply {
     NestedStepRequested {
         frame: DebuggerFrame,
     },
+    NestedResumeRequested {
+        frame: DebuggerFrame,
+    },
     ExecutionSourceSpanStepRequested {
         safe_point: DebuggerSafePoint,
     },
@@ -2622,6 +2635,7 @@ pub fn negotiate(
         | DebuggerRequest::ResumeExecution { .. }
         | DebuggerRequest::StepRootInstruction { .. }
         | DebuggerRequest::StepNestedInstruction { .. }
+        | DebuggerRequest::ResumeNestedExecution { .. }
         | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
         | DebuggerRequest::Unknown => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
@@ -2694,6 +2708,7 @@ mod tests {
         for request in [
             DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point },
             DebuggerRequest::StepNestedInstruction { frame },
+            DebuggerRequest::ResumeNestedExecution { frame },
         ] {
             let (mut writer, mut reader) = UnixStream::pair().unwrap();
             write_debugger_request(&mut writer, &request).unwrap();
@@ -2706,9 +2721,14 @@ mod tests {
                 state: DebuggerExecutionState::NestedPaused { frame, safe_point },
             },
             DebuggerReply::NestedStepRequested { frame },
+            DebuggerReply::NestedResumeRequested { frame },
             DebuggerReply::ExecutionState {
                 program,
                 state: DebuggerExecutionState::NestedStepping { frame },
+            },
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::NestedResuming { frame },
             },
         ] {
             let bytes = serde_json::to_vec(&reply).unwrap();
