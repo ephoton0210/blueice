@@ -25,6 +25,11 @@ use blueice_layout::{layout, Constraints, Fragment};
 use blueice_paint::{paint, Color, Frame, PaintCommand, Rect};
 use blueice_raster::{rasterize, Pixmap};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+// A child-visible handle must never numerically alias a node in another
+// document, even when both DOM allocators assign the same internal NodeId.
+static NEXT_SCRIPT_NODE_HANDLE: AtomicU64 = AtomicU64::new(1);
 
 pub struct Page {
     doc: Document,
@@ -39,6 +44,9 @@ pub struct Page {
     /// replacement document. Page-script realms use it to distinguish a
     /// same-origin navigation from the document that preceded it.
     document_generation: u64,
+    /// Only handles minted for this exact document can resolve to its nodes.
+    script_nodes: HashMap<u64, NodeId>,
+    script_node_handles: HashMap<NodeId, u64>,
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     highlighted: Option<NodeId>,
@@ -56,6 +64,8 @@ impl Page {
             scroll_y: 0.0,
             url: None,
             document_generation: 0,
+            script_nodes: HashMap::new(),
+            script_node_handles: HashMap::new(),
             hovered: None,
             focused: None,
             highlighted: None,
@@ -73,6 +83,8 @@ impl Page {
         // recycled ID (plan §1's stable-ID-across-mutations requirement).
         self.doc = blueice_html::parse_continuing_from(html, self.doc.next_node_id());
         self.document_generation = self.document_generation.wrapping_add(1);
+        self.script_nodes.clear();
+        self.script_node_handles.clear();
         self.recascade();
         self.scroll_y = 0.0;
         // A fresh document invalidates every NodeId a prior interaction
@@ -292,6 +304,36 @@ impl Page {
         find_element_by_id(&self.doc, self.doc.root(), id)
     }
 
+    /// Mints one stable child-private handle for a node in this document.
+    /// Handles are process-unique, but resolve only in the page that minted
+    /// them; they are not DOM `NodeId`s or page JavaScript values.
+    pub(crate) fn script_handle_for_node(&mut self, node: NodeId) -> u64 {
+        assert!(
+            self.doc.contains(node),
+            "cannot mint a handle for a foreign DOM node"
+        );
+        if let Some(handle) = self.script_node_handles.get(&node) {
+            return *handle;
+        }
+        let handle = NEXT_SCRIPT_NODE_HANDLE
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+                next.checked_add(1)
+            })
+            .expect("script node handle space exhausted");
+        self.script_nodes.insert(handle, node);
+        self.script_node_handles.insert(node, handle);
+        handle
+    }
+
+    /// Converts a core hit-test NodeId into the same child-private handle
+    /// used by script IPC, if the hit still belongs to this live document.
+    pub(crate) fn script_handle_for_raw_node(&mut self, raw: u64) -> Option<u64> {
+        let node = NodeId::from_u64(raw);
+        self.doc
+            .contains(node)
+            .then(|| self.script_handle_for_node(node))
+    }
+
     /// Checks whether a child-private node handle still belongs to this
     /// document. Detached nodes remain valid until their subtree is removed.
     pub(crate) fn script_validate_node(&self, node: u64) -> Result<(), String> {
@@ -378,11 +420,11 @@ impl Page {
     }
 
     fn script_node(&self, raw: u64) -> Result<NodeId, String> {
-        let node = NodeId::from_u64(raw);
-        self.doc
-            .contains(node)
-            .then_some(node)
-            .ok_or_else(|| format!("unknown node {raw}"))
+        self.script_nodes
+            .get(&raw)
+            .copied()
+            .filter(|node| self.doc.contains(*node))
+            .ok_or_else(|| "unknown script node handle".to_string())
     }
 
     pub(crate) fn doc(&self) -> &Document {
@@ -883,8 +925,9 @@ mod tests {
         let baseline = page.render_visible();
         let parent = page.script_get_element_by_id("target").unwrap();
         let child = page.script_create_element("span".to_string()).unwrap();
-        page.script_append_child(parent.as_u64(), child.as_u64())
-            .unwrap();
+        let parent = page.script_handle_for_node(parent);
+        let child = page.script_handle_for_node(child);
+        page.script_append_child(parent, child).unwrap();
         let appended = page.render_visible();
         assert_ne!(baseline.get_pixel(0, 0), appended.get_pixel(0, 0));
         assert_eq!(appended.get_pixel(0, 0), [255, 0, 0, 255]);

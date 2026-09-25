@@ -123,7 +123,7 @@ the typed getter/setter path, an invalid call fails before execution, and the
 ordinary snapshot profile still rejects `document` calls. B2.2/B3 and the
 broader DOM/event typing publication remain separate later work.
 
-**DOM creation and append (B2.2 in progress):** BlueJS's private two-wrapper
+**DOM creation and append (B2.2 complete):** BlueJS's private two-wrapper
 method resolves an exact receiver and exact child in one realm-local family,
 then returns the original child object only after its host callback succeeds.
 The launcher-selected `core-script-dom-mutation-v1` profile now binds
@@ -136,10 +136,20 @@ HTTP launcher/core/child page executes JavaScript and checked BlueTS mutation,
 rejects a forged child and an invalid direct BlueTS append call, confirms the
 live subtree, and compares its RGBA frame against the same empty page to prove
 visible rasterization. VM regressions reject foreign-family and same-family
-foreign-generation wrappers. The real-page cross-document child case remains
-open because ordinary realms cannot transfer wrappers. BlueTS now recursively
-infers chained call-result receivers and validates their method arguments;
-the real-page rejected script exercises this path before execution.
+foreign-generation wrappers. Script IPC v6 also replaces raw per-document
+NodeIds with core-minted process-unique child handles that resolve only in the
+original document; the handle map is discarded on navigation. Two real HTTP
+pages in one core prove that equal internal node counters cannot cause a
+foreign detached child to attach in the other tab. The authenticated script
+route rejects the append, both live DOMs remain unchanged, and the local
+detached child remains valid. Ordinary page realms cannot transfer wrappers
+between their separate VMs, so the socket test exercises the lower boundary
+where such a foreign handle could otherwise alias. Page-host v34 converts a
+core hit-tested NodeId into the same document-bound handle before click
+dispatch, preserving exact listener identity; a real JavaScript/BlueTS click
+regression covers that handoff. BlueTS recursively infers
+chained call-result receivers and validates their method arguments; the
+real-page rejected script exercises this path before execution.
 
 **Click delivery and event profile (B3 complete for event-v1):** The BlueJS
 host-object family roots, deduplicates, caps, and removes exact-wrapper

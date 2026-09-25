@@ -14,9 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: B2.2.** Implement `createElement`, `createTextNode`, and
-`appendChild` through the authenticated route, then render the new subtree
-and reject a cross-document child in a real page.
+**Current leaf: B4.2.** Enforce the event object's `readonly` type, target,
+and currentTarget qualifiers across all supported BlueTS expression forms.
 
 ## Current boundary
 
@@ -150,17 +149,21 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   snapshots. A real HTTP page executes checked BlueTS getter/setter work in
   document order, renders the changed text, rejects an invalid typed call,
   and rejects a removed wrapper.
-- [ ] Implement createElement, createTextNode, and appendChild; a real
-  page must render the new subtree and reject a cross-document child. Partial:
-  an owner-selected mutation profile now installs the two factories and
+- [x] Implement createElement, createTextNode, and appendChild; a real
+  page must render the new subtree and reject a cross-document child. An
+  owner-selected mutation profile installs the two factories and
   exact-wrapper append callback over generation-bound script IPC. Core
   recomputes styles when a detached element joins the tree. A real HTTP page
   executes JavaScript and checked BlueTS creation/append, verifies the live
   subtree and a changed rasterized frame, and rejects a forged child; invalid
-  direct BlueTS calls fail checking. VM tests reject a same-family foreign
-  document generation, but a real-page cross-document child proof is still
-  open. BlueTS now checks chained call-result receivers and rejects invalid
-  arguments such as `document.getElementById('x')!.appendChild('wrong')`.
+  direct BlueTS calls fail checking. Script IPC v6 now mints process-unique,
+  document-bound child handles instead of reusing raw per-document NodeIds.
+  Two real HTTP pages in one core reproduce the former numeric collision,
+  reject the foreign child through the authenticated script socket, preserve
+  both DOMs, and leave the local detached child usable. VM tests also reject
+  a same-family foreign document generation. BlueTS checks chained
+  call-result receivers and rejects invalid arguments such as
+  `document.getElementById('x')!.appendChild('wrong')`.
 
 #### B3. Deliver a real click.
 

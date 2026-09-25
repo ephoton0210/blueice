@@ -108,7 +108,9 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 33;
+/// V34 carries a document-bound script handle, not a raw core NodeId, in
+/// `DispatchClick` so its target matches child-owned listener identities.
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 34;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -576,7 +578,9 @@ pub enum PageHostRequest {
     /// idempotent and never re-runs page code.
     SynchronizeDocument { document: PageHostDocument },
     /// Delivers one core-hit-tested node to the exact live child document.
-    /// The child returns only whether a listener canceled default navigation.
+    /// `node_id` is the child-private script handle for that hit, not its raw
+    /// core DOM NodeId. The child returns only whether a listener canceled
+    /// default navigation.
     DispatchClick {
         tab_id: u64,
         document_generation: u64,

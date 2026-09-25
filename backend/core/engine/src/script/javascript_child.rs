@@ -2202,6 +2202,15 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
         let Some(script_requests) = script_requests else {
             return Ok(None);
         };
+        // The hit tester uses core DOM NodeIds. The child listener registry
+        // uses document-bound script handles; convert before crossing the
+        // page-host channel so equal NodeIds in separate tabs cannot alias.
+        let Some(node_handle) = tabs
+            .get_mut(tab_id)
+            .and_then(|page| page.script_handle_for_raw_node(node_id))
+        else {
+            return Ok(None);
+        };
         let target = ScriptDocumentTarget {
             tab_id: tab_id.as_u64(),
             document_generation: identity.document_generation,
@@ -2213,7 +2222,7 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
         match self.child.dispatch_click_with_script_pump(
             target.tab_id,
             target.document_generation,
-            node_id,
+            node_handle,
             &mut pump,
         )? {
             PageHostReply::ClickDispatched {

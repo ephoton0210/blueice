@@ -167,7 +167,9 @@ pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> S
                 return script_error("script DOM name exceeds its fixed byte limit");
             }
             with_document(tabs, target, |page| ScriptReply::Node {
-                node: page.script_get_element_by_id(&id).map(|node| node.as_u64()),
+                node: page
+                    .script_get_element_by_id(&id)
+                    .map(|node| page.script_handle_for_node(node)),
             })
         }
         ScriptRequest::ValidateNode { target, node } => with_document(tabs, target, |page| {
@@ -184,7 +186,7 @@ pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> S
                 page.script_create_element(tag_name).map_or_else(
                     |message| ScriptReply::Error { message },
                     |node| ScriptReply::NodeCreated {
-                        node: node.as_u64(),
+                        node: page.script_handle_for_node(node),
                     },
                 )
             })
@@ -193,8 +195,11 @@ pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> S
             if data.len() > SCRIPT_MAX_TEXT_BYTES {
                 return script_error("script DOM text exceeds its fixed byte limit");
             }
-            with_document(tabs, target, |page| ScriptReply::NodeCreated {
-                node: page.script_create_text_node(data).as_u64(),
+            with_document(tabs, target, |page| {
+                let node = page.script_create_text_node(data);
+                ScriptReply::NodeCreated {
+                    node: page.script_handle_for_node(node),
+                }
             })
         }
         ScriptRequest::AppendChild {
@@ -370,6 +375,75 @@ mod tests {
             }
         );
         assert!(tabs.get(tab).unwrap().dom_dump().contains("\"new\""));
+    }
+
+    #[test]
+    fn child_handle_from_another_document_cannot_alias_a_local_node() {
+        let (mut tabs, first_tab) = loaded_tabs();
+        let second_tab = tabs.open_tab();
+        tabs.get_mut(second_tab).unwrap().load_html_str(
+            "<main id=\"app\"><span id=\"label\">old</span></main>",
+            Some("https://example.test/second".to_string()),
+        );
+        let first = target(
+            first_tab,
+            tabs.get(first_tab).unwrap().document_generation(),
+        );
+        let second = target(
+            second_tab,
+            tabs.get(second_tab).unwrap().document_generation(),
+        );
+        let ScriptReply::Node { node: Some(parent) } = handle_script_request(
+            &mut tabs,
+            ScriptRequest::GetElementById {
+                target: first,
+                id: "app".to_string(),
+            },
+        ) else {
+            panic!("the first document must contain its parent")
+        };
+        let create = |tabs: &mut TabManager, target| {
+            let ScriptReply::NodeCreated { node } = handle_script_request(
+                tabs,
+                ScriptRequest::CreateElement {
+                    target,
+                    tag_name: "em".to_string(),
+                },
+            ) else {
+                panic!("document must create a detached child")
+            };
+            node
+        };
+        let local_child = create(&mut tabs, first);
+        let foreign_child = create(&mut tabs, second);
+        let before = tabs.get(first_tab).unwrap().dom_dump();
+        assert_ne!(
+            local_child, foreign_child,
+            "IPC handles need document identity"
+        );
+        assert!(matches!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::AppendChild {
+                    target: first,
+                    parent,
+                    child: foreign_child,
+                },
+            ),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(first_tab).unwrap().dom_dump(), before);
+        assert_eq!(
+            handle_script_request(
+                &mut tabs,
+                ScriptRequest::AppendChild {
+                    target: first,
+                    parent,
+                    child: local_child,
+                },
+            ),
+            ScriptReply::Ack
+        );
     }
 
     #[test]

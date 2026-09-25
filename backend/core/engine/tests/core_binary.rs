@@ -637,6 +637,8 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     let gatekeeper_path = clearing_gatekeeper("sd-gk");
     let (first_addr, first_server) =
         serve_html_once("<main id=\"root\"><span id=\"label\">first</span></main>");
+    let (second_addr, second_server) =
+        serve_html_once("<main id=\"root\"><span id=\"label\">second</span></main>");
     let (replacement_addr, replacement_server) =
         serve_html_once("<main><span id=\"label\">replacement</span></main>");
     let (successor_addr, successor_server) =
@@ -710,7 +712,9 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
         &mut frontend,
         None,
         Some(20),
-        &blueice_ipc::ClientMessage::OpenTab { url: None },
+        &blueice_ipc::ClientMessage::OpenTab {
+            url: Some(format!("http://{second_addr}")),
+        },
     )
     .unwrap();
     let second_tab = loop {
@@ -729,6 +733,65 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     };
     assert_ne!(second_tab, 1);
     let second_dom = read_tab_dom(&mut frontend, second_tab, 2);
+    assert!(second_dom.contains("second"));
+    let second_target = ScriptDocumentTarget {
+        tab_id: second_tab,
+        document_generation: 1,
+    };
+    let first_parent = match script_exchange(
+        &mut script,
+        &mut script_call_id,
+        ScriptRequest::GetElementById {
+            target: first_target,
+            id: "root".to_string(),
+        },
+    ) {
+        ScriptReply::Node { node: Some(node) } => node,
+        reply => panic!("expected first page parent, got {reply:?}"),
+    };
+    let create_child = |script: &mut UnixStream, call_id: &mut u64, target| match script_exchange(
+        script,
+        call_id,
+        ScriptRequest::CreateElement {
+            target,
+            tag_name: "aside".to_string(),
+        },
+    ) {
+        ScriptReply::NodeCreated { node } => node,
+        reply => panic!("expected detached child, got {reply:?}"),
+    };
+    let first_child = create_child(&mut script, &mut script_call_id, first_target);
+    let second_child = create_child(&mut script, &mut script_call_id, second_target);
+    assert_ne!(
+        first_child, second_child,
+        "two real pages need distinct handles"
+    );
+    assert!(matches!(
+        script_exchange(
+            &mut script,
+            &mut script_call_id,
+            ScriptRequest::AppendChild {
+                target: first_target,
+                parent: first_parent,
+                child: second_child,
+            },
+        ),
+        ScriptReply::Error { .. }
+    ));
+    assert_eq!(read_tab_dom(&mut frontend, 1, 21), first_dom);
+    assert_eq!(read_tab_dom(&mut frontend, second_tab, 22), second_dom);
+    assert_eq!(
+        script_exchange(
+            &mut script,
+            &mut script_call_id,
+            ScriptRequest::ValidateNode {
+                target: first_target,
+                node: first_child,
+            },
+        ),
+        ScriptReply::Ack,
+        "a rejected foreign append must not consume a local detached child"
+    );
     assert!(matches!(
         script_exchange(
             &mut script,
@@ -999,6 +1062,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     assert!(successor.wait().unwrap().success());
     assert!(!script_path.exists());
     first_server.join().unwrap();
+    second_server.join().unwrap();
     replacement_server.join().unwrap();
     successor_server.join().unwrap();
 }
