@@ -188,10 +188,23 @@ mod tests {
 
         #[test]
         fn is_answered_per_thread() {
-            let small = on_thread_with_stack(256 * 1024, || remaining_stack().expect("supported"));
-            let large =
-                on_thread_with_stack(8 * 1024 * 1024, || remaining_stack().expect("supported"));
-            assert!(small <= 256 * 1024 + REPORTING_SLACK, "{small}");
+            let sample = |requested| {
+                on_thread_with_stack(requested, move || {
+                    let remaining = remaining_stack().expect("supported");
+                    #[cfg(target_os = "linux")]
+                    let allocated = allocated_stack_size();
+                    #[cfg(not(target_os = "linux"))]
+                    let allocated = requested;
+                    (remaining, allocated)
+                })
+            };
+            let (small, small_allocated) = sample(256 * 1024);
+            let (large, large_allocated) = sample(8 * 1024 * 1024);
+            assert!(small_allocated >= 256 * 1024);
+            assert!(large_allocated >= 8 * 1024 * 1024);
+            assert!(small <= small_allocated + REPORTING_SLACK, "{small}");
+            assert!(large <= large_allocated + REPORTING_SLACK, "{large}");
+            assert!(small > 128 * 1024, "{small}");
             assert!(large > 1024 * 1024, "{large}");
         }
 

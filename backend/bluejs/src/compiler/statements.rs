@@ -190,8 +190,7 @@ impl Compiler {
         is_async: bool,
         compile_body: impl FnOnce(&mut Self) -> Result<(), CompileError>,
     ) -> Result<(), CompileError> {
-        let handler_index = u32::try_from(self.bytecode.handlers.len())
-            .map_err(|_| CompileError::ProgramTooLarge)?;
+        let handler_index = self.metadata_index(self.bytecode.handlers.len())?;
         self.bytecode.handlers.push(Handler {
             try_start: 0,
             try_end: 0,
@@ -875,10 +874,7 @@ impl Compiler {
                 let args = self
                     .self_tail_call_args(call)
                     .expect("contains_tail_call found a self tail call");
-                for argument in args {
-                    let Argument::Normal(value) = argument else {
-                        unreachable!("self tail calls exclude spread arguments")
-                    };
+                for value in args.iter().copied() {
                     self.expression(value)?;
                 }
                 let iterators: Vec<_> = self
@@ -891,10 +887,8 @@ impl Compiler {
                     self.emit(Opcode::GetBinding, iterator)?;
                     self.emit(Opcode::IteratorClose, 0)?;
                 }
-                self.emit(
-                    Opcode::TailRecur,
-                    u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
-                )?;
+                let arg_count = self.list_count(args.len())?;
+                self.emit(Opcode::TailRecur, arg_count)?;
             }
         }
         Ok(true)
@@ -1117,7 +1111,7 @@ impl Compiler {
         // A direct jump would skip a surrounding `finally`. Route to a local
         // cleanup gateway first; handlers resume there only after finalizers.
         let control = self.bytecode.abrupt_jumps.len();
-        let control_operand = u32::try_from(control).map_err(|_| CompileError::ProgramTooLarge)?;
+        let control_operand = self.metadata_index(control)?;
         self.bytecode.abrupt_jumps.push(AbruptJump {
             cleanup: 0,
             target: 0,
@@ -1252,8 +1246,7 @@ impl Compiler {
         handler: Option<&CatchClause>,
         finalizer: Option<&[Stmt]>,
     ) -> Result<(), CompileError> {
-        let handler_index = u32::try_from(self.bytecode.handlers.len())
-            .map_err(|_| CompileError::ProgramTooLarge)?;
+        let handler_index = self.metadata_index(self.bytecode.handlers.len())?;
         self.bytecode.handlers.push(Handler {
             try_start: 0,
             try_end: 0,

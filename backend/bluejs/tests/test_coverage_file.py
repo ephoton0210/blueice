@@ -236,6 +236,22 @@ class CoverageFileTests(unittest.TestCase):
         update.assert_called_once_with(files, totals)
         self.assertTrue(any("Complete: yes" in str(call) for call in printed.call_args_list))
 
+    def test_file_only_measurement_does_not_update_either_report(self):
+        files, totals = coverage_file.checked_export(self.export())
+        with (
+            patch.object(coverage_file, "run_coverage", return_value=(files, totals)) as run,
+            patch.object(coverage_file, "update_macos_report") as macos,
+            patch.object(coverage_file, "update_linux_report") as linux,
+            patch("builtins.print") as printed,
+        ):
+            self.assertEqual(coverage_file.main(["ast.rs"]), 0)
+        run.assert_called_once_with()
+        macos.assert_not_called()
+        linux.assert_not_called()
+        output = [str(call) for call in printed.call_args_list]
+        self.assertTrue(any("ast.rs" in line for line in output))
+        self.assertTrue(any("Complete: yes" in line for line in output))
+
     def test_linux_report_adds_the_same_table_before_platform_differences(self):
         report = self.repo / "linux.md"
         report.write_text("before\n## Differences from the other platforms\nafter\n")

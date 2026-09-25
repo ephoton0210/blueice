@@ -1300,7 +1300,7 @@ impl Compiler {
         Ok(())
     }
 
-    pub(super) fn self_tail_call_args<'a>(&self, value: &'a Expr) -> Option<&'a [Argument]> {
+    pub(super) fn self_tail_call_args<'a>(&self, value: &'a Expr) -> Option<Vec<&'a Expr>> {
         let Expr::Call { callee, args } = value else {
             return None;
         };
@@ -1308,17 +1308,22 @@ impl Compiler {
             return None;
         };
         let slot = self.bytecode.self_slot?;
-        (self.bytecode.strict
+        if !self.bytecode.strict
             // A recursive call made by a generator or async function creates
             // a distinct generator/promise execution. Reusing this frame
             // would eagerly run it and changes the observable result.
-            && !self.bytecode.generator
-            && !self.bytecode.async_function
-            && self.resolve(name) == Some(slot)
-            && args
-                .iter()
-                .all(|argument| matches!(argument, Argument::Normal(_))))
-        .then_some(args)
+            || self.bytecode.generator
+            || self.bytecode.async_function
+            || self.resolve(name) != Some(slot)
+        {
+            return None;
+        }
+        args.iter()
+            .map(|argument| match argument {
+                Argument::Normal(value) => Some(value),
+                Argument::Spread(_) => None,
+            })
+            .collect()
     }
 }
 
