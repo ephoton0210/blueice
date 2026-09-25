@@ -405,8 +405,14 @@ the core-delivered click event into those functions. Calls to the uninstalled
 `querySelector` and `stopPropagation` members each throw a page-catchable
 `TypeError`; the page writes status text after both catches, and the click
 completes without navigation. The verified direct bridge also compiles both
-`any`-parameter functions, proving this route reaches runtime. B4.3.4 still
-needs one paired test tying these runtime results to the static diagnostics.
+`any`-parameter functions, proving this route reaches runtime.
+
+**Paired static/runtime rejection (B4.3.4):** The same real-process test now
+checks the named BlueTS diagnostics for both members against the verified
+event-v1 declaration before starting the page. It compiles the exact
+explicit-`any` source used by that page, with the same member-name constants,
+then verifies both runtime catches and subsequent live DOM writes. This pins
+the checker and child behavior together for the two unsupported operations.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

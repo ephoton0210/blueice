@@ -705,7 +705,57 @@ fn supervised_child_click_event_profile_runs_js_and_bluets_before_navigation() {
 }
 
 #[test]
-fn supervised_child_event_profile_catches_unsupported_bluets_any_calls() {
+fn supervised_child_event_profile_pairs_static_and_runtime_unsupported_members() {
+    use blueice_bluets::{CompilerOptions, MapLoader, ModuleSource, RuntimePolicy};
+    use blueice_bluets_bluejs::page_host_typings::{
+        page_host_dom_event_runtime_bindings_v1, PageHostDocumentTypingsV1,
+    };
+    use blueice_bluets_bluejs::{compile_direct_script, BridgeError};
+
+    const QUERY_MEMBER: &str = "querySelector";
+    const STOP_MEMBER: &str = "stopPropagation";
+    let ambient = PageHostDocumentTypingsV1::generate_dom_event()
+        .verified_dom_event_ambient_module(&page_host_dom_event_runtime_bindings_v1())
+        .unwrap();
+    let check = |source: &str| {
+        compile_direct_script(
+            "memory:///unsupported.ts",
+            &MapLoader::from([ModuleSource::new("memory:///unsupported.ts", source)]),
+            CompilerOptions {
+                runtime_policy: RuntimePolicy::Checked,
+                require_declared_global_calls: true,
+                ambient_declaration_modules: vec![ambient.clone()],
+                ..CompilerOptions::default()
+            },
+        )
+    };
+    for (source, member) in [
+        (format!("document.{QUERY_MEMBER}('#link');"), QUERY_MEMBER),
+        (
+            format!(
+                "function onClick(event: BlueIceClickEvent): void {{ event.{STOP_MEMBER}(); }} document.getElementById('link')!.addEventListener('click', onClick);"
+            ),
+            STOP_MEMBER,
+        ),
+    ] {
+        let error = check(&source)
+            .err()
+            .expect("the typed unsupported member must fail checking");
+        let BridgeError::BlueTs(diagnostics) = error else {
+            panic!("expected BlueTS diagnostics for {member}: {error:?}");
+        };
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains(member)),
+            "{member}: {diagnostics:#?}"
+        );
+    }
+    let escaped_source = format!(
+        "function tryQuery(value: any): void {{ value.{QUERY_MEMBER}('#link'); }} function tryStop(value: any): void {{ value.{STOP_MEMBER}(); }}"
+    );
+    check(&escaped_source).expect("the explicit-any page source must reach runtime");
+
     let gatekeeper_path = std::env::temp_dir().join(format!(
         "bi-dom-event-any-gatekeeper-{}.sock",
         std::process::id()
@@ -728,8 +778,7 @@ fn supervised_child_event_profile_catches_unsupported_bluets_any_calls() {
         let body = concat!(
             "<a id='link' href='/away'>Click</a><div id='status'>before</div>",
             "<script type='application/x-blueice-typescript'>",
-            "function tryQuery(value: any): void { value.querySelector('#link'); }",
-            "function tryStop(value: any): void { value.stopPropagation(); }",
+            "__ESCAPED_SOURCE__",
             "</script>",
             "<script>",
             "try { tryQuery(document); throw 'querySelector returned'; }",
@@ -742,7 +791,8 @@ fn supervised_child_event_profile_catches_unsupported_bluets_any_calls() {
             "document.getElementById('status').textContent = 'both caught';",
             "});",
             "</script>"
-        );
+        )
+        .replace("__ESCAPED_SOURCE__", &escaped_source);
         let (mut stream, _) = listener.accept().unwrap();
         let mut request = [0u8; 1024];
         let _ = stream.read(&mut request).unwrap();
