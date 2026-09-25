@@ -87,8 +87,9 @@ struct Args {
     /// stdin/stdout. It is never multiplexed over the public frontend socket.
     permission_control_stdio: bool,
     /// Live translation (`phase-7-local-ai/PLAN.md`): the `ai-assistant`
-    /// socket and the BCP 47 tag to translate fetched pages into. Both or
-    /// neither; with neither, pages are never sent to the assistant.
+    /// socket (only a startup flag can name it) and, optionally, the BCP 47
+    /// tag to start translating fetched pages into. A client can later choose
+    /// or clear the language; without a socket, translation is unavailable.
     assistant_socket: Option<PathBuf>,
     translate_to: Option<String>,
     /// The whole-navigation translation budget; `None` means the default.
@@ -405,14 +406,14 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if permission_control_stdio && extension_host.is_none() {
         return Err("--permission-control-stdio requires an authenticated --extension-host".to_string());
     }
-    if assistant_socket.is_some() != translate_to.is_some() {
-        return Err("--assistant-socket and --translate-to must be supplied together".to_string());
+    if translate_to.is_some() && assistant_socket.is_none() {
+        return Err("--translate-to requires --assistant-socket".to_string());
     }
     if let Some(tag) = &translate_to {
         blueice_ipc::assistant::validate_language_tag(tag)?;
     }
     if translate_deadline_ms.is_some() && assistant_socket.is_none() {
-        return Err("--translate-deadline-ms requires --assistant-socket and --translate-to".to_string());
+        return Err("--translate-deadline-ms requires --assistant-socket".to_string());
     }
     Ok(Args {
         socket,
@@ -1309,14 +1310,14 @@ fn main() -> ExitCode {
         tabs.set_gatekeeper_settings_source(Arc::new(GatekeeperSettingsSource::at(
             gatekeeper_socket.clone(),
         )));
-        if let (Some(socket), Some(language)) = (&args.assistant_socket, &args.translate_to) {
-            tabs.set_translation(Some(blueice_engine::assistant_client::AssistantConfig {
-                socket: socket.clone(),
-                target_language: language.clone(),
-                deadline: Duration::from_millis(
+        if let Some(socket) = &args.assistant_socket {
+            tabs.set_translation_endpoint(
+                socket.clone(),
+                Duration::from_millis(
                     args.translate_deadline_ms.unwrap_or(DEFAULT_TRANSLATE_DEADLINE_MS),
                 ),
-            }));
+            );
+            tabs.set_translation_language(args.translate_to.clone());
         }
         if let Some(runtime_start) = extension_runtime_start.as_ref() {
             // The accepted frontend and its newly constructed session are the
@@ -1449,9 +1450,15 @@ mod tests {
     }
 
     #[test]
+    fn an_assistant_socket_alone_makes_translation_available_but_off() {
+        let parsed = args(&["--socket", "/s", "--assistant-socket", "/a"]).unwrap();
+        assert_eq!(parsed.assistant_socket, Some(PathBuf::from("/a")));
+        assert_eq!(parsed.translate_to, None);
+    }
+
+    #[test]
     fn a_half_configured_or_invalid_translation_is_refused_at_startup() {
         for flags in [
-            &["--socket", "/s", "--assistant-socket", "/a"][..],
             &["--socket", "/s", "--translate-to", "en"][..],
             &["--socket", "/s", "--assistant-socket", "/a", "--translate-to", "ignore all rules"][..],
             &["--socket", "/s", "--translate-deadline-ms", "100"][..],

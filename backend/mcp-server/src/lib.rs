@@ -224,6 +224,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupClosed { .. }
                 | ServerMessage::TabGroups(_)
                 | ServerMessage::HistoryState { .. }
+                | ServerMessage::TranslationState { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -304,6 +305,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupClosed { .. }
                 | ServerMessage::TabGroups(_)
                 | ServerMessage::HistoryState { .. }
+                | ServerMessage::TranslationState { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -414,6 +416,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupClosed { .. }
                 | ServerMessage::TabGroups(_)
                 | ServerMessage::HistoryState { .. }
+                | ServerMessage::TranslationState { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -474,6 +477,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupClosed { .. }
                 | ServerMessage::TabGroups(_)
                 | ServerMessage::HistoryState { .. }
+                | ServerMessage::TranslationState { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -580,6 +584,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupClosed { .. }
                 | ServerMessage::TabGroups(_)
                 | ServerMessage::HistoryState { .. }
+                | ServerMessage::TranslationState { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -636,6 +641,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupAssigned { .. }
                 | ServerMessage::TabGroupClosed { .. }
                 | ServerMessage::HistoryState { .. }
+                | ServerMessage::TranslationState { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. }
                 | ServerMessage::TabGroups(_) => {}
@@ -693,6 +699,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupClosed { .. }
                 | ServerMessage::TabGroups(_)
                 | ServerMessage::HistoryState { .. }
+                | ServerMessage::TranslationState { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -758,6 +765,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Tabs(_)
                 | ServerMessage::TabGroups(_)
                 | ServerMessage::HistoryState { .. }
+                | ServerMessage::TranslationState { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }
@@ -869,6 +877,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupAssigned { .. }
                 | ServerMessage::TabGroupClosed { .. }
                 | ServerMessage::HistoryState { .. }
+                | ServerMessage::TranslationState { .. }
                 | ServerMessage::ExtensionToolbar { .. }
                 | ServerMessage::ExtensionPopup { .. } => {}
             }

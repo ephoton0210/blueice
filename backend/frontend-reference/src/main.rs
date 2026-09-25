@@ -1441,6 +1441,9 @@ impl ApplicationHandler<UserEvent> for App {
                         self.request_redraw();
                     }
                 }
+                // Reported by the `translate`/`original`/`translated` stdin
+                // commands in the frontend's own step (T5c).
+                ServerMessage::TranslationState { .. } => {}
                 ServerMessage::TabGroupCreated(group) | ServerMessage::TabGroupUpdated(group) => {
                     self.upsert_group(group);
                 }

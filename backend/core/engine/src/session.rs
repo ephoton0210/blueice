@@ -582,6 +582,48 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                             },
                         )?;
                     }
+                    ClientMessage::SetTranslationLanguage { target_language } => {
+                        if tabs.get(target).is_none() {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        }
+                        if let Some(tag) = &target_language {
+                            if let Err(reason) = blueice_ipc::assistant::validate_language_tag(tag) {
+                                write_error(stream, reply_tab, request_id, reason)?;
+                                continue;
+                            }
+                        }
+                        if !tabs.set_translation_language(target_language) {
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "translation is unavailable: blueice-core was started without an assistant"
+                                    .to_string(),
+                            )?;
+                            continue;
+                        }
+                        write_translation_state(tabs, stream, reply_tab, request_id, target)?;
+                    }
+                    ClientMessage::ShowTranslation { shown } => {
+                        let Some(page) = tabs.get_mut(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        let changed = page.set_translation_shown(shown);
+                        write_translation_state(tabs, stream, reply_tab, request_id, target)?;
+                        if changed {
+                            let page = tabs.get_mut(target).expect("checked immediately above");
+                            send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                        }
+                    }
+                    ClientMessage::GetTranslationState => {
+                        if tabs.get(target).is_none() {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        }
+                        write_translation_state(tabs, stream, reply_tab, request_id, target)?;
+                    }
                     ClientMessage::Resize { width, height } => {
                         if tabs.get(target).is_none() {
                             write_unknown_tab_error(stream, request_id, target)?;
@@ -2012,6 +2054,28 @@ struct Completion {
     /// The assistant's translation of a cleared page's text, obtained on the
     /// navigation thread; `None` keeps the page as fetched.
     translations: Option<Vec<String>>,
+}
+
+/// Replies with the core-wide translation language and the addressed tab's
+/// translation availability and shown/original state.
+fn write_translation_state<S: Write>(
+    tabs: &TabManager,
+    stream: &mut S,
+    reply_tab: Option<u64>,
+    request_id: Option<u64>,
+    target: TabId,
+) -> io::Result<()> {
+    let page = tabs.get(target).expect("the caller checked the tab exists");
+    blueice_ipc::write_server_message_with_ids(
+        stream,
+        reply_tab,
+        request_id,
+        &ServerMessage::TranslationState {
+            language: tabs.translation_language().map(str::to_string),
+            available: page.has_translation(),
+            shown: page.translation_shown(),
+        },
+    )
 }
 
 /// Translates a *cleared* page on the navigation thread, so the session loop

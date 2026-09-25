@@ -104,6 +104,20 @@ pub enum ClientMessage {
     /// separate from `ListTabs`: history availability can change without a
     /// tab being opened, closed, or selected.
     GetHistoryState,
+    /// Turns live translation of pages fetched *after* this message on (a
+    /// BCP 47 tag such as `zh-TW`) or off (`None`). The setting is core-wide;
+    /// which assistant serves it is fixed by `blueice-core`'s startup flags, so
+    /// a client can choose a language but never point `core` at a socket. An
+    /// error reply says translation is unavailable when core has no assistant.
+    /// Replied to with [`ServerMessage::TranslationState`].
+    SetTranslationLanguage { target_language: Option<String> },
+    /// Shows the addressed tab's translation (`true`) or the page's original
+    /// text (`false`), replied to with [`ServerMessage::TranslationState`]
+    /// and, when the page changed, a fresh frame.
+    ShowTranslation { shown: bool },
+    /// Requests the translation state, replied to with
+    /// [`ServerMessage::TranslationState`].
+    GetTranslationState,
     /// The viewport size changed; `core` re-lays-out at the new width.
     Resize {
         width: u32,
@@ -287,6 +301,17 @@ pub enum ServerMessage {
     HistoryState {
         can_go_back: bool,
         can_go_forward: bool,
+    },
+    /// Reply to [`ClientMessage::SetTranslationLanguage`],
+    /// [`ClientMessage::ShowTranslation`], and
+    /// [`ClientMessage::GetTranslationState`]. `language` is the core-wide
+    /// target for later navigations (`None` = off); `available` says the
+    /// addressed page has translated text to toggle; `shown` says the
+    /// translation (rather than the original) is on screen.
+    TranslationState {
+        language: Option<String>,
+        available: bool,
+        shown: bool,
     },
     /// Reply to [`ClientMessage::GetRepresentation`].
     Representation(AiSnapshot),
@@ -740,6 +765,14 @@ mod tests {
             ClientMessage::OpenTab { url: None },
             ClientMessage::CloseTab,
             ClientMessage::ListTabs,
+            ClientMessage::SetTranslationLanguage {
+                target_language: Some("zh-TW".to_string()),
+            },
+            ClientMessage::SetTranslationLanguage {
+                target_language: None,
+            },
+            ClientMessage::ShowTranslation { shown: false },
+            ClientMessage::GetTranslationState,
             ClientMessage::ActivateExtensionPopupAction { popup_id: 42 },
             ClientMessage::CreateTabGroup {
                 name: "Research".to_string(),
@@ -785,6 +818,11 @@ mod tests {
             },
             ServerMessage::Navigated {
                 url: "https://example.com/".to_string(),
+            },
+            ServerMessage::TranslationState {
+                language: Some("zh-TW".to_string()),
+                available: true,
+                shown: false,
             },
             ServerMessage::HistoryState {
                 can_go_back: true,

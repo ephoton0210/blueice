@@ -276,10 +276,14 @@ pub struct TabManager {
     /// Canonical HTTP(S) URL and ASCII host rules, keyed by an opaque
     /// core-allocated connection ID. Rules disappear on disconnect.
     extension_navigation_block_rules: HashMap<u64, (u64, HashSet<ExtensionNavigationBlockRule>)>,
-    /// Live translation of fetched pages (`phase-7-local-ai/PLAN.md`); `None`
-    /// leaves every page as the site wrote it. Read when a navigation starts,
-    /// so a later change never alters a navigation already in flight.
-    translation: Option<crate::assistant_client::AssistantConfig>,
+    /// The assistant live translation may use and its per-navigation budget
+    /// (`phase-7-local-ai/PLAN.md`). Fixed by `blueice-core`'s startup flags;
+    /// no client message can change it.
+    translation_endpoint: Option<(std::path::PathBuf, std::time::Duration)>,
+    /// The target language for pages fetched from now on; `None` leaves every
+    /// page as the site wrote it. Read when a navigation starts, so a later
+    /// change never alters a navigation already in flight.
+    translation_language: Option<String>,
     /// Install-time exact-origin restrictions for page-facing extension
     /// capabilities. The session checks these against the live tab at the
     /// same point it performs each read or write, avoiding a URL-check race.
@@ -333,7 +337,8 @@ impl TabManager {
             gatekeeper_settings: None,
             history_snapshot_mode,
             extension_navigation_block_rules: HashMap::new(),
-            translation: None,
+            translation_endpoint: None,
+            translation_language: None,
             extension_capability_origins: BTreeMap::new(),
             extension_permissions: None,
         }
@@ -738,15 +743,45 @@ impl TabManager {
         true
     }
 
-    /// Turns live translation of fetched pages on (with the assistant to use
-    /// and the target language) or off.
-    pub fn set_translation(&mut self, config: Option<crate::assistant_client::AssistantConfig>) {
-        self.translation = config;
+    /// Declares which assistant serves live translation. Called once at
+    /// startup from `blueice-core`'s own flags; without it translation is
+    /// unavailable and [`Self::set_translation_language`] has no effect.
+    pub fn set_translation_endpoint(
+        &mut self,
+        socket: std::path::PathBuf,
+        deadline: std::time::Duration,
+    ) {
+        self.translation_endpoint = Some((socket, deadline));
     }
 
-    /// The live-translation settings a navigation started now would use.
+    /// Whether core was started with an assistant for translation.
+    pub fn translation_available(&self) -> bool {
+        self.translation_endpoint.is_some()
+    }
+
+    /// Sets the target language for later navigations (`None` = off).
+    /// Returns `false`, changing nothing, when translation is unavailable.
+    pub fn set_translation_language(&mut self, language: Option<String>) -> bool {
+        if self.translation_endpoint.is_none() {
+            return false;
+        }
+        self.translation_language = language;
+        true
+    }
+
+    pub fn translation_language(&self) -> Option<&str> {
+        self.translation_language.as_deref()
+    }
+
+    /// The live-translation settings a navigation started now would use:
+    /// `None` unless an assistant is configured *and* a language is chosen.
     pub fn translation_config(&self) -> Option<crate::assistant_client::AssistantConfig> {
-        self.translation.clone()
+        let (socket, deadline) = self.translation_endpoint.as_ref()?;
+        Some(crate::assistant_client::AssistantConfig {
+            socket: socket.clone(),
+            target_language: self.translation_language.clone()?,
+            deadline: *deadline,
+        })
     }
 
     /// Applies a trusted built-in navigation as a new session-history entry.
