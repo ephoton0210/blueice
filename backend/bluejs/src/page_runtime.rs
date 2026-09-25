@@ -789,6 +789,43 @@ impl BlueJsPageRuntime {
         Ok(safe_points)
     }
 
+    /// Selects the first verified root instruction in a live module's
+    /// evaluation body. Declaration-instantiation instructions before the
+    /// compiler's `module_evaluate_entry` are not executable pause targets.
+    /// The returned point is still bound to this exact program generation.
+    pub fn module_evaluate_entry_safe_point(
+        &self,
+        tab_id: u64,
+        handle: BlueJsProgramHandle,
+    ) -> Result<BlueJsSafePoint, BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        if !realm.programs.contains(&handle) {
+            return Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { tab_id, handle });
+        }
+        let compiled = self
+            .registry
+            .get(handle)
+            .map_err(BlueJsPageRuntimeError::ProgramRegistry)?;
+        if !matches!(
+            compiled.ast_nodes().first().map(|node| node.kind()),
+            Some(BlueJsAstNodeKind::Module)
+        ) {
+            return Err(BlueJsPageRuntimeError::ProgramShape);
+        }
+        let entry = compiled
+            .bytecode()
+            .module_evaluate_entry
+            .ok_or(BlueJsPageRuntimeError::ProgramShape)?;
+        compiled
+            .safe_points()
+            .filter(|point| point.code_unit.ordinal() == 0 && point.bytecode_offset >= entry)
+            .min_by_key(|point| point.bytecode_offset)
+            .ok_or(BlueJsPageRuntimeError::ProgramShape)
+    }
+
     /// Validates a safe point only for the exact current program generation.
     pub fn validate_safe_point(
         &self,
@@ -1038,6 +1075,63 @@ mod tests {
         assert_eq!(
             runtime.execute_program(7, probe).unwrap(),
             Value::Number(3.0)
+        );
+    }
+
+    #[test]
+    fn selects_only_a_live_module_evaluate_body_root_safe_point() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        let module = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///entry.js"),
+                &BlueJsProgramV1::Module(parse_module("export const answer = 6 * 7;").unwrap()),
+            )
+            .unwrap();
+        let classic = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///classic.js"),
+                &BlueJsProgramV1::Script(parse("globalThis.answer = 42;").unwrap()),
+            )
+            .unwrap();
+        let point = runtime.module_evaluate_entry_safe_point(7, module).unwrap();
+        let entry = runtime
+            .program_registry()
+            .get(module)
+            .unwrap()
+            .bytecode()
+            .module_evaluate_entry
+            .unwrap();
+        assert_eq!(point.code_unit.ordinal(), 0);
+        assert!(point.bytecode_offset >= entry);
+        assert_eq!(
+            point.bytecode_offset,
+            runtime
+                .safe_points(7, module, 128)
+                .unwrap()
+                .into_iter()
+                .filter(|candidate| {
+                    candidate.code_unit.ordinal() == 0 && candidate.bytecode_offset >= entry
+                })
+                .map(|candidate| candidate.bytecode_offset)
+                .min()
+                .unwrap()
+        );
+        assert_eq!(
+            runtime.module_evaluate_entry_safe_point(7, classic),
+            Err(BlueJsPageRuntimeError::ProgramShape)
+        );
+        runtime.navigate(7, origin()).unwrap();
+        assert_eq!(
+            runtime.module_evaluate_entry_safe_point(7, module),
+            Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm {
+                tab_id: 7,
+                handle: module,
+            })
         );
     }
 

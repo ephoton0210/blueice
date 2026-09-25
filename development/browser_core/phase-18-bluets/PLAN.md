@@ -448,6 +448,14 @@ same pending entry and its verified safe points through the public debugger
 socket before a later browser request advances it. This step does not yet
 suspend the entry module; C1.1.1.3 adds the VM continuation.
 
+**Exact module entry point (C1.1.1.3.1):** `BlueJsPageRuntime` now selects
+the lowest compiler-verified root instruction at or after the retained
+module's `module_evaluate_entry`, after checking the exact live tab/program
+generation and module root shape. The selector refuses a classic handle and
+an invalidated predecessor; its native regression compares the result to the
+compiled entry offset and safe-point inventory. It is a location check only:
+the module continuation and retained graph are C1.1.1.3.2.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
