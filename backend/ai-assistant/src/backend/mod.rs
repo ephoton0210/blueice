@@ -14,6 +14,7 @@ pub mod loopback;
 pub mod race;
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 /// A cooperative cancellation flag. A backend that can stop early (a
 /// generation loop) checks it between steps; one that cannot (a blocking HTTP
@@ -61,6 +62,18 @@ pub trait InferenceBackend: Send + Sync {
     fn complete(&self, completion: Completion<'_>) -> Result<String, String>;
 }
 
+/// A shared backend is a backend, so a caller can pick one at runtime
+/// (`Arc<dyn InferenceBackend>`) and hand it to anything generic over the trait.
+impl<T: InferenceBackend + ?Sized> InferenceBackend for Arc<T> {
+    fn name(&self) -> &str {
+        (**self).name()
+    }
+
+    fn complete(&self, completion: Completion<'_>) -> Result<String, String> {
+        (**self).complete(completion)
+    }
+}
+
 /// Used when no local model is configured: every task fails with a clear
 /// reason instead of the process refusing to start.
 pub struct NoBackend;
@@ -90,6 +103,21 @@ mod tests {
         assert_eq!(NoBackend.name(), "none");
         assert_eq!(
             NoBackend.complete(completion),
+            Err("no local model is configured".to_string())
+        );
+    }
+
+    #[test]
+    fn a_shared_backend_delegates_name_and_completion() {
+        let shared: Arc<dyn InferenceBackend> = Arc::new(NoBackend);
+        assert_eq!(shared.name(), "none");
+        assert_eq!(
+            shared.complete(Completion {
+                system: "s",
+                user: "u",
+                max_tokens: 1,
+                cancel: None,
+            }),
             Err("no local model is configured".to_string())
         );
     }

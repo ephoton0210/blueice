@@ -179,3 +179,74 @@ fn a_non_loopback_model_endpoint_stops_the_process_at_startup() {
         .unwrap();
     assert!(!status.success());
 }
+
+/// Startup refusals report a reason on stderr and exit unsuccessfully; none of
+/// them may leave a listening assistant behind.
+fn refused_at_startup(args: &[&str]) -> String {
+    let output = Command::new(env!("CARGO_BIN_EXE_blueice-ai-assistant"))
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "{args:?} must not start");
+    String::from_utf8_lossy(&output.stderr).to_string()
+}
+
+#[test]
+fn both_model_kinds_without_a_named_backend_stop_startup() {
+    let stderr = refused_at_startup(&[
+        "--model-provider",
+        "llamacpp",
+        "--model-base-url",
+        "http://127.0.0.1:8080/v1/",
+        "--model-name",
+        "m",
+        "--candle-model",
+        "/nonexistent/m.gguf",
+        "--candle-tokenizer",
+        "/nonexistent/t.json",
+    ]);
+    assert!(stderr.contains("double the resources"), "{stderr}");
+}
+
+#[test]
+fn a_candle_model_that_cannot_be_loaded_stops_startup_in_every_build() {
+    // Without the `candle` feature the build says so; with it, the missing
+    // file is reported. Either way the process refuses rather than serving
+    // requests it can only fail.
+    let stderr = refused_at_startup(&[
+        "--backend",
+        "candle",
+        "--candle-model",
+        "/nonexistent/m.gguf",
+        "--candle-tokenizer",
+        "/nonexistent/t.json",
+    ]);
+    assert!(
+        stderr.contains("--features candle") || stderr.contains("cannot open the model file"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn simultaneous_mode_that_cannot_load_its_candle_half_stops_startup() {
+    // The loopback half alone would have started; the pair must not silently
+    // degrade to it.
+    let stderr = refused_at_startup(&[
+        "--backend",
+        "both",
+        "--model-provider",
+        "llamacpp",
+        "--model-base-url",
+        "http://127.0.0.1:8080/v1/",
+        "--model-name",
+        "m",
+        "--candle-model",
+        "/nonexistent/m.gguf",
+        "--candle-tokenizer",
+        "/nonexistent/t.json",
+    ]);
+    assert!(
+        stderr.contains("--features candle") || stderr.contains("cannot open the model file"),
+        "{stderr}"
+    );
+}
