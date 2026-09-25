@@ -534,6 +534,16 @@ hits, terminal completion, the final page-global result, and no remaining
 continuation after completion. Nested and dependency frames are still not
 separately addressable.
 
+**Page and child module instruction step (C1.1.2.2):** The page runtime maps
+the VM's one-instruction module result to the existing source-free state. The
+child accepts a step only for the armed, paused BlueTS entry at the queue head,
+rebinds its returned PC to that same opaque program, validates the resulting
+safe point against the exact live compiler inventory, and then reports the
+successor. Another module in the graph cannot step; a repeated scheduler
+advance while paused cannot execute another instruction. Page-runtime and
+child tests cover these identity and terminal boundaries without widening the
+debugger protocol or claiming nested/dependency frames.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

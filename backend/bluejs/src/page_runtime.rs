@@ -783,6 +783,21 @@ impl BlueJsPageRuntime {
             .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
+    /// Advances one instruction in the retained module-entry root frame and
+    /// returns only the actual next bytecode offset or terminal state.
+    pub fn step_debugger_module_root_instruction(
+        &mut self,
+        tab_id: u64,
+    ) -> Result<BlueJsPageDebuggerExecutionState, BlueJsPageRuntimeError> {
+        self.realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .step_debugger_module_root_instruction()
+            .map(page_debugger_execution_state)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
     /// Returns resource accounting for one live tab realm.
     pub fn realm_stats(&self, tab_id: u64) -> Result<BlueJsPageRealmStats, BlueJsPageRuntimeError> {
         let realm = self
@@ -1510,6 +1525,22 @@ mod tests {
                 _
             )))
         ));
+        assert!(matches!(
+            runtime.step_debugger_module_root_instruction(8),
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Unsupported(
+                "no debugger-paused root module is available"
+            )))
+        ));
+        let successor = runtime.step_debugger_module_root_instruction(7).unwrap();
+        let BlueJsPageDebuggerExecutionState::Paused { bytecode_offset } = successor else {
+            panic!("one module-root instruction must have a verified successor");
+        };
+        assert!(runtime
+            .safe_points(7, entry, 1024)
+            .unwrap()
+            .iter()
+            .any(|candidate| candidate.code_unit.ordinal() == 0
+                && candidate.bytecode_offset == bytecode_offset));
         assert_eq!(
             runtime.resume_debugger_module_execution(7),
             Ok(BlueJsPageDebuggerExecutionState::Completed)
@@ -1528,6 +1559,12 @@ mod tests {
         assert!(matches!(
             runtime.execute_module_graph_until_debugger_pause(7, entry, [entry], point),
             Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { tab_id: 7, .. })
+        ));
+        assert!(matches!(
+            runtime.step_debugger_module_root_instruction(7),
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Unsupported(
+                "no debugger-paused root module is available"
+            )))
         ));
     }
 
