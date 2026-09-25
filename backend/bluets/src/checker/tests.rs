@@ -63,8 +63,18 @@ fn rejects_assignments_to_readonly_event_fields() {
             },
         )
     };
-    let valid = check("function onClick(event: Event): void { event.mutable = 'ok'; }");
+    let valid = check(
+        "function onClick(event: Event): void { event.mutable = 'ok'; event['mutable'] = 'ok'; }",
+    );
     assert!(!valid.has_errors(), "{:#?}", valid.diagnostics);
+    let ordinary_computed = check(
+        "interface Mutable { value: string; } function write(value: Mutable, key: string): void { value[key] = 'ok'; }",
+    );
+    assert!(
+        !ordinary_computed.has_errors(),
+        "{:#?}",
+        ordinary_computed.diagnostics
+    );
     for source in [
         "function onClick(event: Event): void { event.type = 'click'; }",
         "function onClick(event: Event): void { event.type += 'click'; }",
@@ -73,6 +83,15 @@ fn rejects_assignments_to_readonly_event_fields() {
         "function onClick(event: Event): void { delete event.type; }",
         "function onClick(event: Event): void { event.target = event.target; }",
         "function onClick(event: Event): void { event.currentTarget = event.target; }",
+        "function onClick(event: Event): void { event['type'] = 'click'; }",
+        "function onClick(event: Event): void { event[\"target\"] = event.target; }",
+        "function onClick(event: Event): void { event['currentTarget'] += event.target; }",
+        "function onClick(event: Event): void { event['type']++; }",
+        "function onClick(event: Event): void { ++event['type']; }",
+        "function onClick(event: Event): void { delete event['type']; }",
+        "function onClick(event: Event, key: string): void { event[key] = 'click'; }",
+        "function onClick(event: Event, keys: string[]): void { event[keys[0]] = 'click'; }",
+        "function onClick(event: Event): void { event['typ\\u0065'] = 'click'; }",
     ] {
         let invalid = check(source);
         assert!(
@@ -108,6 +127,26 @@ fn readonly_survives_inherited_and_generic_property_lookup() {
         .collect::<Vec<_>>();
     assert_eq!(readonly.len(), 3, "{:#?}", result.diagnostics);
     assert_eq!(result.diagnostics.len(), 3, "{:#?}", result.diagnostics);
+}
+
+#[test]
+fn computed_write_fails_closed_after_generic_inheritance_expansion() {
+    let source = "interface Base<T> { readonly item: T; }\n\
+                  interface Derived extends Base<string> { mutable: string; }\n\
+                  function write(value: Derived, key: string): void { value[key] = 'x'; }";
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+        CompilerOptions::default(),
+    );
+    assert!(
+        result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::TypeMismatch
+                && diagnostic.message.contains("readonly")
+        }),
+        "{:#?}",
+        result.diagnostics
+    );
 }
 
 #[test]

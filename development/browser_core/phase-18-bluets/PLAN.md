@@ -161,10 +161,13 @@ task-queue and microtask-checkpoint semantics remain an explicit B3 gap.
 `readonly` on interface and record members through generic substitution and
 inherited-property lookup, and emitted declarations preserve it. The bounded
 checker rejects direct dot-property assignment, compound assignment, update,
-and deletion; the verified event-v1 ambient profile proves that writes to
-`type`, `target`, and `currentTarget` fail as BlueTS diagnostics before the
-direct BlueJS bridge runs. The child event object already has non-writable,
-non-configurable descriptors. Computed-property writes remain outside this
+and deletion. Exact unescaped string-key computed writes receive the same
+field check, while dynamic and escaped keys on a receiver with readonly
+members fail closed after bounded alias/inheritance expansion. The verified
+event-v1 ambient profile proves that writes to `type`, `target`, and
+`currentTarget` fail as BlueTS diagnostics before the direct BlueJS bridge
+runs. The child event object already has non-writable, non-configurable
+descriptors. Complex or chained receiver writes remain outside this bounded
 static check, so the B4 qualifier leaf is not yet complete.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one

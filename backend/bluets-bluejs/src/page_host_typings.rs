@@ -650,6 +650,8 @@ mod tests {
             "function onClick(event: BlueIceClickEvent): void { event.type = 'click'; }",
             "function onClick(event: BlueIceClickEvent): void { event.target = event.target; }",
             "function onClick(event: BlueIceClickEvent): void { event.currentTarget = event.target; }",
+            "function onClick(event: BlueIceClickEvent): void { event['type'] = 'click'; }",
+            "function onClick(event: BlueIceClickEvent, key: string): void { event[key] = 'click'; }",
         ] {
             let error = compile(source).err().expect("readonly write must fail");
             let crate::BridgeError::BlueTs(diagnostics) = error else {
@@ -658,7 +660,7 @@ mod tests {
             assert!(
                 diagnostics
                     .iter()
-                    .any(|diagnostic| diagnostic.message.contains("readonly property")),
+                    .any(|diagnostic| diagnostic.message.contains("readonly")),
                 "{source}: {diagnostics:#?}"
             );
         }

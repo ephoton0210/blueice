@@ -768,47 +768,36 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
-        let tokens = strip_outer_parentheses(tokens);
-        let (base, dot, property, operator, value) = match tokens {
-            [operator, base, dot, property]
-                if operator.is("++") || operator.is("--") || operator.is("delete") =>
-            {
-                (base, dot, property, operator, &[][..])
-            }
-            [base, dot, property, operator, value @ ..] => (base, dot, property, operator, value),
-            _ => return,
-        };
-        let assignment = matches!(
-            operator.text.as_str(),
-            "=" | "+="
-                | "-="
-                | "*="
-                | "/="
-                | "%="
-                | "**="
-                | "<<="
-                | ">>="
-                | ">>>="
-                | "&="
-                | "|="
-                | "^="
-                | "&&="
-                | "||="
-                | "??="
-        );
-        let update = operator.is("++") || operator.is("--") || operator.is("delete");
-        if base.kind != TokenKind::Identifier
-            || !dot.is(".")
-            || !matches!(property.kind, TokenKind::Identifier | TokenKind::Keyword)
-            || !((assignment && !value.is_empty()) || (update && value.is_empty()))
-        {
+        let Some(mutation) = member_mutation(strip_outer_parentheses(tokens)) else {
             return;
-        }
-        let owner = scope.get(&base.text).cloned().unwrap_or(Type::Unknown);
+        };
+        let owner = scope
+            .get(&mutation.base.text)
+            .cloned()
+            .unwrap_or(Type::Unknown);
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let Some(property) = mutation.property else {
+            match contains_readonly_member(&owner, &self.types, &mut HashSet::new(), &mut budget) {
+                Ok(true) => self.type_error(
+                    span,
+                    "cannot prove a computed property write avoids readonly members".into(),
+                    DiagnosticCode::TypeMismatch,
+                ),
+                Err(()) => self.type_error(
+                    span,
+                    format!(
+                        "property lookup exceeds the {} generic-expansion limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                ),
+                Ok(false) => {}
+            }
+            return;
+        };
         match property_type(
             &owner,
-            &property.text,
+            property,
             &self.types,
             &mut HashSet::new(),
             &mut budget,
@@ -820,22 +809,22 @@ impl<'a> ModuleChecker<'a> {
                 if readonly {
                     self.type_error(
                         span,
-                        format!("cannot mutate readonly property `{}`", property.text),
+                        format!("cannot mutate readonly property `{property}`"),
                         DiagnosticCode::TypeMismatch,
                     );
                     return;
                 }
-                if !operator.is("=") {
+                if !mutation.operator.is("=") {
                     return;
                 }
-                let actual = self.infer_expression(value, scope);
+                let actual = self.infer_expression(mutation.value, scope);
                 if !self.is_assignable_bounded(&actual, &expected, span) {
                     self.type_error(
                         span,
                         format!(
                             "assignment has type `{}`, which is not assignable to property `{}` of type `{}`",
                             type_label(&actual),
-                            property.text,
+                            property,
                             type_label(&expected)
                         ),
                         DiagnosticCode::TypeMismatch,
@@ -846,7 +835,7 @@ impl<'a> ModuleChecker<'a> {
                 span,
                 format!(
                     "property `{}` does not exist on type `{}`",
-                    property.text,
+                    property,
                     type_label(&owner)
                 ),
                 DiagnosticCode::TypeMismatch,
@@ -1049,5 +1038,137 @@ impl<'a> ModuleChecker<'a> {
                 DiagnosticCode::TypeMismatch,
             );
         }
+    }
+}
+
+struct MemberMutation<'a> {
+    base: &'a Token,
+    property: Option<&'a str>,
+    operator: &'a Token,
+    value: &'a [Token],
+}
+
+/// Recognizes only a direct receiver and one dot or computed member. A
+/// computed key is known only when its string spelling needs no JavaScript
+/// escape decoding; all other keys remain dynamic rather than guessed.
+fn member_mutation(tokens: &[Token]) -> Option<MemberMutation<'_>> {
+    let (prefix, tokens) = match tokens {
+        [operator, rest @ ..]
+            if operator.is("++") || operator.is("--") || operator.is("delete") =>
+        {
+            (Some(operator), rest)
+        }
+        _ => (None, tokens),
+    };
+    let [base, rest @ ..] = tokens else {
+        return None;
+    };
+    if base.kind != TokenKind::Identifier {
+        return None;
+    }
+    let (property, rest) = match rest {
+        [dot, field, tail @ ..]
+            if dot.is(".") && matches!(field.kind, TokenKind::Identifier | TokenKind::Keyword) =>
+        {
+            (Some(field.text.as_str()), tail)
+        }
+        [open, tail @ ..] if open.is("[") => {
+            let mut depth = 1usize;
+            let mut close = None;
+            for (index, token) in tail.iter().enumerate() {
+                if token.is("[") {
+                    depth += 1;
+                } else if token.is("]") {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(index);
+                        break;
+                    }
+                }
+            }
+            let close = close?;
+            let property = match &tail[..close] {
+                [literal] if literal.kind == TokenKind::String => {
+                    unescaped_property_name(&literal.text)
+                }
+                _ => None,
+            };
+            (property, &tail[close + 1..])
+        }
+        _ => return None,
+    };
+    let (operator, value) = if let Some(operator) = prefix {
+        if !rest.is_empty() {
+            return None;
+        }
+        (operator, &[][..])
+    } else {
+        let [operator, value @ ..] = rest else {
+            return None;
+        };
+        (operator, value)
+    };
+    let assignment = matches!(
+        operator.text.as_str(),
+        "=" | "+="
+            | "-="
+            | "*="
+            | "/="
+            | "%="
+            | "**="
+            | "<<="
+            | ">>="
+            | ">>>="
+            | "&="
+            | "|="
+            | "^="
+            | "&&="
+            | "||="
+            | "??="
+    );
+    let update = operator.is("++") || operator.is("--") || operator.is("delete");
+    ((assignment && !value.is_empty()) || (update && value.is_empty())).then_some(MemberMutation {
+        base,
+        property,
+        operator,
+        value,
+    })
+}
+
+fn unescaped_property_name(text: &str) -> Option<&str> {
+    let value = text
+        .strip_prefix('\'')
+        .and_then(|value| value.strip_suffix('\''))
+        .or_else(|| {
+            text.strip_prefix('"')
+                .and_then(|value| value.strip_suffix('"'))
+        })?;
+    (!value.contains('\\')).then_some(value)
+}
+
+fn contains_readonly_member(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> Result<bool, ()> {
+    match value {
+        Type::Record(fields) => Ok(fields.iter().any(|field| field.readonly)),
+        Type::Named { .. } => {
+            match instantiate_named(value, aliases, visited, budget, "readonly property") {
+                Some(value) => contains_readonly_member(&value, aliases, visited, budget),
+                None if budget.exhausted => Err(()),
+                None => Ok(false),
+            }
+        }
+        Type::Union(parts) | Type::Intersection(parts) => {
+            for part in parts {
+                if contains_readonly_member(part, aliases, visited, budget)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        _ => Ok(false),
     }
 }

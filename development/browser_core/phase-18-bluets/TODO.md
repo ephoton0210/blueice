@@ -188,9 +188,12 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   qualifiers in BlueTS checking. The parser now retains `readonly` for
   interface and record fields, including inherited/generic lookup, and the
   checker rejects direct dot-property assignment, compound assignment,
-  update, and deletion. The child already exposes these properties as
-  non-writable and non-configurable. Static checking of computed-property
-  writes remains open; do not claim full qualifier enforcement yet.
+  update, and deletion. Exact unescaped string-key computed writes share
+  that check; dynamic or escaped keys fail closed when the receiver has any
+  readonly member, including through generic inheritance. The child already
+  exposes these properties as non-writable and non-configurable. Complex or
+  chained receiver writes remain outside this bounded static check, so do
+  not claim full qualifier enforcement yet.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members
   must fail both static checking and JavaScript runtime access.
 
