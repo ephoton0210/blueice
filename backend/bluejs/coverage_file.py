@@ -36,6 +36,7 @@ METRICS = ("lines", "functions", "regions")
 NO_COUNTER_REASONS = {
     "compiler/expressions/tests.rs": "Test source; not a coverage target",
     "compiler/functions/tests.rs": "Test source; not a coverage target",
+    "compiler/private_validation/tests.rs": "Test source; not a coverage target",
     "heap/tests.rs": "Test source; not a coverage target",
     "lib.rs": "Declarations/re-exports only; no executable code",
     "parser/tests.rs": "Test source; not a coverage target",

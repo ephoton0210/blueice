@@ -445,3 +445,6 @@ fn validate_private_expression(expr: &Expr, names: &HashSet<String>) -> Result<(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
