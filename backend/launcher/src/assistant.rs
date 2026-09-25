@@ -71,6 +71,46 @@ pub fn sibling_assistant_binary(this_exe: &Path) -> PathBuf {
     dir.join(name)
 }
 
+/// What the launcher enforces on the assistant from outside
+/// (`phase-7-local-ai/PLAN.md`, step R3). The assistant is never trusted to
+/// limit itself: a runaway process is exactly the one that would not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// Kill the assistant if its resident memory exceeds this many bytes.
+    /// (A `cgroup` or Job Object limit would need privileges the launcher
+    /// cannot assume; watching resident memory is portable and testable.)
+    pub max_resident_bytes: Option<u64>,
+    /// Scheduling niceness applied to the child (0 to 19), so a busy model does
+    /// not starve `core` of CPU.
+    pub nice: Option<i32>,
+    /// How often resident memory is checked.
+    pub watch_interval: Duration,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Limits {
+            max_resident_bytes: None,
+            nice: None,
+            watch_interval: Duration::from_secs(1),
+        }
+    }
+}
+
+/// Lowers `pid`'s scheduling priority to `nice`. Failure is reported, not
+/// fatal: an assistant that could not be deprioritized still works, and the
+/// launcher should not refuse to run it over a scheduling nicety.
+fn apply_nice(pid: u32, nice: i32) -> io::Result<()> {
+    // SAFETY: `setpriority` only reads its integer arguments; an invalid pid
+    // is reported through the return value and `errno`, never as UB.
+    let result = unsafe { libc::setpriority(libc::PRIO_PROCESS, pid as libc::id_t, nice) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
 /// Starts the assistant child listening on the given private socket path.
 type Spawner = Box<dyn Fn(&Path) -> io::Result<Child> + Send + Sync>;
 
@@ -82,6 +122,7 @@ struct Inner {
     /// so many simultaneous first connections cause one spawn.
     spawn_lock: Mutex<()>,
     ready_timeout: Duration,
+    limits: Limits,
     stop: AtomicBool,
     spawns: AtomicU64,
     relays: AtomicUsize,
@@ -128,6 +169,11 @@ impl Inner {
         let _ = std::fs::remove_file(&self.private_socket);
         let child = (self.spawner)(&self.private_socket)?;
         self.spawns.fetch_add(1, Ordering::Relaxed);
+        if let Some(nice) = self.limits.nice {
+            if let Err(error) = apply_nice(child.id(), nice) {
+                eprintln!("blueice-launcher: could not set the assistant's priority: {error}");
+            }
+        }
         let leftover = {
             let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
             registry.set_resident(ROLE, child, Instant::now())
@@ -142,20 +188,54 @@ impl Inner {
             if UnixStream::connect(&self.private_socket).is_ok() {
                 return Ok(());
             }
+            // Gone for any reason: it exited on its own, or something else (the
+            // memory watchdog, a teardown) stopped it while it was still
+            // starting, in which case the registry no longer holds it at all.
             let exited = {
                 let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
-                registry.reap_exited(ROLE)
+                registry.reap_exited(ROLE) || registry.resident_pid(ROLE).is_none()
             };
             if exited || Instant::now() >= deadline {
                 let mut registry = self.registry.lock().unwrap_or_else(|e| e.into_inner());
                 registry.teardown(ROLE);
                 return Err(io::Error::other(if exited {
-                    "the assistant exited while starting"
+                    "the assistant stopped while starting"
                 } else {
                     "the assistant did not start listening in time"
                 }));
             }
             thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// Stops the assistant when its resident memory passes the ceiling. Runs
+    /// until the supervisor stops; the next connection starts a fresh one.
+    fn watch_memory(self: Arc<Self>, ceiling: u64) {
+        let mut system = sysinfo::System::new();
+        while !self.stop.load(Ordering::Relaxed) {
+            thread::sleep(self.limits.watch_interval);
+            let pid = self
+                .registry
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .resident_pid(ROLE);
+            let Some(pid) = pid else { continue };
+            let pid = sysinfo::Pid::from_u32(pid);
+            system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+            let Some(used) = system.process(pid).map(|process| process.memory()) else {
+                continue;
+            };
+            if used > ceiling {
+                eprintln!(
+                    "blueice-launcher: the assistant used {} MiB, over its {} MiB ceiling; stopping it",
+                    used / (1024 * 1024),
+                    ceiling / (1024 * 1024)
+                );
+                self.registry
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .teardown(ROLE);
+            }
         }
     }
 
@@ -222,6 +302,7 @@ impl AssistantSupervisor {
         public_socket: PathBuf,
         private_socket: PathBuf,
         ready_timeout: Duration,
+        limits: Limits,
     ) -> io::Result<Self> {
         if let Some(parent) = public_socket.parent() {
             blueice_ipc::local_socket::ensure_private_socket_dir(parent)?;
@@ -240,10 +321,15 @@ impl AssistantSupervisor {
             registry,
             spawn_lock: Mutex::new(()),
             ready_timeout,
+            limits,
             stop: AtomicBool::new(false),
             spawns: AtomicU64::new(0),
             relays: AtomicUsize::new(0),
         });
+        if let Some(ceiling) = limits.max_resident_bytes {
+            let watcher = Arc::clone(&inner);
+            thread::spawn(move || watcher.watch_memory(ceiling));
+        }
         let accept_inner = Arc::clone(&inner);
         thread::spawn(move || {
             for incoming in listener.incoming() {
@@ -296,6 +382,11 @@ impl AssistantSupervisor {
             public_socket,
             private_socket,
             DEFAULT_READY_TIMEOUT,
+            Limits {
+                max_resident_bytes: settings.max_resident_mb.map(|mb| mb * 1024 * 1024),
+                nice: Some(settings.nice),
+                ..Limits::default()
+            },
         )
         .map(Some)
     }
@@ -397,6 +488,16 @@ while True:
     }
 
     fn rig(tag: &str, spawner: Spawner, idle: Duration, ready: Duration) -> Rig {
+        rig_with_limits(tag, spawner, idle, ready, Limits::default())
+    }
+
+    fn rig_with_limits(
+        tag: &str,
+        spawner: Spawner,
+        idle: Duration,
+        ready: Duration,
+        limits: Limits,
+    ) -> Rig {
         let registry = Arc::new(Mutex::new(ProcessRegistry::new()));
         let (public, private) = socket_pair_paths(tag);
         let supervisor = AssistantSupervisor::start_with_spawner(
@@ -406,6 +507,7 @@ while True:
             public,
             private,
             ready,
+            limits,
         )
         .unwrap();
         Rig {
@@ -698,6 +800,233 @@ while True:
                 "round {round}: an assistant outlived its supervisor"
             );
         }
+    }
+
+    // ---- ceilings (step R3) ----
+
+    /// An echo server that first commits `megabytes` of resident memory, so the
+    /// watchdog has a real, measurable process to judge.
+    fn hungry_spawner(megabytes: usize) -> Spawner {
+        Box::new(move |socket| {
+            let script = format!("_hog = b'x' * ({megabytes} * 1024 * 1024)\n{ECHO_SERVER}");
+            Command::new("python3")
+                .args(["-c", &script])
+                .arg(socket)
+                .spawn()
+        })
+    }
+
+    /// An echo server that only balloons *after* it is serving, so it is judged
+    /// while a client is connected to it.
+    fn balloons_while_serving_spawner(megabytes: usize) -> Spawner {
+        Box::new(move |socket| {
+            let script = ECHO_SERVER.replace(
+                "while True:\n    conn, _ = server.accept()",
+                &format!(
+                    "hog = []\nthreading.Timer(0.3, lambda: hog.append(b'x' * ({megabytes} * 1024 * 1024))).start()\nwhile True:\n    conn, _ = server.accept()"
+                ),
+            );
+            Command::new("python3")
+                .args(["-c", &script])
+                .arg(socket)
+                .spawn()
+        })
+    }
+
+    fn resident_pid(rig: &Rig) -> Option<u32> {
+        rig.registry.lock().unwrap().resident_pid(ROLE)
+    }
+
+    fn alive(pid: u32) -> bool {
+        // Signal 0 checks existence without delivering anything. A zombie still
+        // counts as existing, but the registry reaps what it kills.
+        Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+
+    const FAST_WATCH: Duration = Duration::from_millis(50);
+
+    #[test]
+    fn an_assistant_over_its_memory_ceiling_is_stopped() {
+        let limits = Limits {
+            max_resident_bytes: Some(150 * 1024 * 1024),
+            watch_interval: FAST_WATCH,
+            ..Limits::default()
+        };
+        let rig = rig_with_limits(
+            "hungry",
+            hungry_spawner(300),
+            Duration::from_secs(60),
+            Duration::from_secs(20),
+            limits,
+        );
+        // The connection starts it; its allocation then exceeds the ceiling.
+        let _ = try_talk(rig.supervisor.public_socket(), b"hello");
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while resident_pid(&rig).is_some() {
+            assert!(
+                Instant::now() < deadline,
+                "the over-limit assistant was never stopped"
+            );
+            thread::sleep(Duration::from_millis(50));
+        }
+        assert!(!resident(&rig));
+        // And the supervisor still works: the next connection starts another.
+        let before = rig.supervisor.spawn_count();
+        let _ = try_talk(rig.supervisor.public_socket(), b"again");
+        assert!(
+            rig.supervisor.spawn_count() > before,
+            "it must respawn on demand"
+        );
+    }
+
+    #[test]
+    fn an_assistant_that_balloons_while_serving_is_stopped_and_its_client_is_released() {
+        let limits = Limits {
+            max_resident_bytes: Some(150 * 1024 * 1024),
+            watch_interval: FAST_WATCH,
+            ..Limits::default()
+        };
+        let rig = rig_with_limits(
+            "balloon",
+            balloons_while_serving_spawner(300),
+            Duration::from_secs(60),
+            Duration::from_secs(20),
+            limits,
+        );
+        // A connected client that is simply waiting for a reply.
+        let mut waiting = UnixStream::connect(rig.supervisor.public_socket()).unwrap();
+        waiting
+            .set_read_timeout(Some(Duration::from_secs(15)))
+            .unwrap();
+        let started = Instant::now();
+        let mut byte = [0u8; 1];
+        // The killed assistant's death must release this connection, not leave it
+        // hanging: EOF or a reset, well before the read timeout.
+        let outcome = waiting.read(&mut byte);
+        assert!(
+            matches!(outcome, Ok(0) | Err(_)),
+            "no data was ever sent, so anything but a close is wrong: {outcome:?}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(12),
+            "the client was left waiting for {:?}",
+            started.elapsed()
+        );
+        assert!(!resident(&rig), "the over-limit assistant must be gone");
+    }
+
+    #[test]
+    fn an_assistant_under_its_ceiling_is_left_alone() {
+        let limits = Limits {
+            max_resident_bytes: Some(4096 * 1024 * 1024),
+            watch_interval: FAST_WATCH,
+            ..Limits::default()
+        };
+        let rig = rig_with_limits(
+            "modest",
+            echo_spawner(),
+            Duration::from_secs(60),
+            Duration::from_secs(10),
+            limits,
+        );
+        assert_eq!(talk(rig.supervisor.public_socket(), b"hi"), b"hi");
+        let pid = resident_pid(&rig).expect("resident");
+        thread::sleep(Duration::from_millis(600)); // a dozen watchdog checks
+        assert_eq!(resident_pid(&rig), Some(pid));
+        assert!(alive(pid));
+    }
+
+    #[test]
+    fn without_a_ceiling_a_large_assistant_is_left_alone() {
+        let rig = rig(
+            "unlimited",
+            hungry_spawner(300),
+            Duration::from_secs(60),
+            Duration::from_secs(20),
+        );
+        assert_eq!(talk(rig.supervisor.public_socket(), b"hi"), b"hi");
+        let pid = resident_pid(&rig).expect("resident");
+        thread::sleep(Duration::from_millis(300));
+        assert_eq!(resident_pid(&rig), Some(pid));
+    }
+
+    #[test]
+    fn the_watchdog_ends_with_its_supervisor() {
+        let limits = Limits {
+            max_resident_bytes: Some(4096 * 1024 * 1024),
+            watch_interval: FAST_WATCH,
+            ..Limits::default()
+        };
+        let rig = rig_with_limits(
+            "watchend",
+            echo_spawner(),
+            Duration::from_secs(60),
+            Duration::from_secs(10),
+            limits,
+        );
+        let registry = Arc::clone(&rig.registry);
+        drop(rig);
+        // The watchdog held a share of the supervisor's state; once it has
+        // noticed the stop flag, only this test's handle remains.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Arc::strong_count(&registry) > 1 {
+            assert!(Instant::now() < deadline, "the watchdog thread never ended");
+            thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// The niceness of a live process, read the portable way.
+    fn niceness(pid: u32) -> i32 {
+        let output = Command::new("ps")
+            .args(["-o", "ni=", "-p", &pid.to_string()])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse()
+            .unwrap()
+    }
+
+    #[test]
+    fn the_assistants_priority_is_lowered_as_configured() {
+        let limits = Limits {
+            nice: Some(10),
+            ..Limits::default()
+        };
+        let rig = rig_with_limits(
+            "nice",
+            echo_spawner(),
+            Duration::from_secs(60),
+            Duration::from_secs(10),
+            limits,
+        );
+        assert_eq!(talk(rig.supervisor.public_socket(), b"hi"), b"hi");
+        let pid = resident_pid(&rig).expect("resident");
+        assert_eq!(niceness(pid), niceness(std::process::id()) + 10);
+    }
+
+    #[test]
+    fn no_priority_setting_leaves_the_priority_alone() {
+        let rig = rig(
+            "plain",
+            echo_spawner(),
+            Duration::from_secs(60),
+            Duration::from_secs(10),
+        );
+        assert_eq!(talk(rig.supervisor.public_socket(), b"hi"), b"hi");
+        let pid = resident_pid(&rig).expect("resident");
+        assert_eq!(niceness(pid), niceness(std::process::id()));
+    }
+
+    #[test]
+    fn setting_the_priority_of_a_process_that_does_not_exist_is_an_error_not_ub() {
+        // Pid 0x7fff_fff0 is far above any real pid_max.
+        assert!(apply_nice(0x7fff_fff0, 5).is_err());
     }
 
     #[test]

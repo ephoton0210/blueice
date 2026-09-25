@@ -301,6 +301,18 @@ fn names(snapshot: &AiSnapshot) -> Vec<String> {
         .collect()
 }
 
+/// A live process's niceness, read the portable way.
+fn niceness(pid: u32) -> i32 {
+    let output = Command::new("ps")
+        .args(["-o", "ni=", "-p", &pid.to_string()])
+        .output()
+        .expect("ps is needed for this test");
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse()
+        .expect("a niceness")
+}
+
 fn page_url() -> String {
     format!("http://{}", serve(PAGE, "text/html"))
 }
@@ -328,6 +340,9 @@ fn the_assistant_starts_on_first_use_translates_and_is_then_reused() {
     assert_eq!(names(&client.snapshot()), ["你好", "世界"]);
     let first = launcher.assistant_pids();
     assert_eq!(first.len(), 1, "exactly one assistant: {first:?}");
+    // The default setting lowers its priority (niceness 10) relative to the
+    // launcher that started it.
+    assert_eq!(niceness(first[0]), niceness(launcher.child.id()) + 10);
 
     client.navigate(&url);
     assert_eq!(names(&client.snapshot()), ["你好", "世界"]);

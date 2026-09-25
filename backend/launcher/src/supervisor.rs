@@ -193,6 +193,14 @@ impl ProcessRegistry {
             .collect()
     }
 
+    /// The OS pid of `role`'s resident process, if this registry holds one.
+    pub fn resident_pid(&self, role: &str) -> Option<u32> {
+        self.entries
+            .get(role)
+            .and_then(|entry| entry.resident.as_ref())
+            .map(Child::id)
+    }
+
     /// Notices a resident process that exited on its own (a crash, or a
     /// resource-limit kill) and forgets it, so the role reads as not resident
     /// and an on-demand caller respawns it instead of relaying to a dead
@@ -204,7 +212,10 @@ impl ProcessRegistry {
         let exited = match entry.resident.as_mut() {
             // `try_wait` failing means the child cannot be inspected any more;
             // treating it as gone is safer than relaying to it.
-            Some(child) => child.try_wait().map(|status| status.is_some()).unwrap_or(true),
+            Some(child) => child
+                .try_wait()
+                .map(|status| status.is_some())
+                .unwrap_or(true),
             None => false,
         };
         if exited {
@@ -242,6 +253,30 @@ mod tests {
     }
 
     #[test]
+    fn the_resident_pid_is_reported_only_while_a_process_is_held() {
+        let mut registry = ProcessRegistry::new();
+        let start = Instant::now();
+        registry.register(
+            "ai-assistant",
+            ProcessPolicy::OnDemand {
+                idle_timeout: Duration::from_secs(60),
+            },
+            None,
+            start,
+        );
+        assert_eq!(registry.resident_pid("ai-assistant"), None);
+        assert_eq!(registry.resident_pid("nobody"), None);
+        let child = spawn_dummy_child();
+        let pid = child.id();
+        assert!(registry
+            .set_resident("ai-assistant", child, start)
+            .is_none());
+        assert_eq!(registry.resident_pid("ai-assistant"), Some(pid));
+        registry.teardown("ai-assistant");
+        assert_eq!(registry.resident_pid("ai-assistant"), None);
+    }
+
+    #[test]
     fn a_process_that_exited_on_its_own_is_reaped_and_a_live_one_is_not() {
         let mut registry = ProcessRegistry::new();
         let start = Instant::now();
@@ -267,7 +302,9 @@ mod tests {
 
         // One that has already exited is noticed.
         let quick = Command::new("true").spawn().unwrap();
-        assert!(registry.set_resident("ai-assistant", quick, start).is_none());
+        assert!(registry
+            .set_resident("ai-assistant", quick, start)
+            .is_none());
         let deadline = Instant::now() + Duration::from_secs(5);
         while !registry.reap_exited("ai-assistant") {
             assert!(Instant::now() < deadline, "the exit was never noticed");
