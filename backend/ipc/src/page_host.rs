@@ -355,6 +355,37 @@ pub struct PageHostDebuggerSafePoint {
     pub bytecode_offset: u32,
 }
 
+/// One actually paused child invocation, not a configured code-unit point.
+/// These numbers are an exact-match identity, not a secret or a VM address.
+/// A child issues the tuple only after the page runtime retains the frame;
+/// a successor document or another invocation cannot inherit it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PageHostDebuggerFrame {
+    pub tab_id: u64,
+    pub document_generation: u64,
+    pub program: PageHostDebuggerProgram,
+    pub code_unit_ordinal: u32,
+    pub invocation_serial: u64,
+}
+
+impl PageHostDebuggerFrame {
+    /// Rejects absent identity components and root code units. Callers must
+    /// additionally compare the whole tuple with the current paused frame.
+    pub fn is_well_formed(self) -> bool {
+        self.tab_id != 0
+            && self.document_generation != 0
+            && self.program.is_well_formed()
+            && self.code_unit_ordinal != 0
+            && self.invocation_serial != 0
+    }
+
+    pub fn matches_safe_point(self, safe_point: PageHostDebuggerSafePoint) -> bool {
+        self.is_well_formed()
+            && self.program == safe_point.program
+            && self.code_unit_ordinal == safe_point.code_unit_ordinal
+    }
+}
+
 /// Source-free lifecycle state for the one-shot root-classic continuation
 /// seam. A `Paused` location is always an exact child-validated root safe
 /// point; no frame, scope, runtime value, source, or bytecode is serialized.
@@ -1209,6 +1240,96 @@ pub fn source_hash(source: &str) -> String {
 mod tests {
     use super::*;
     use std::os::unix::net::UnixStream;
+
+    #[test]
+    fn active_frame_wire_identity_is_exact_source_free_and_nonzero() {
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let frame = PageHostDebuggerFrame {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            code_unit_ordinal: 1,
+            invocation_serial: 19,
+        };
+        let point = PageHostDebuggerSafePoint {
+            program,
+            code_unit_ordinal: 1,
+            bytecode_offset: 4,
+        };
+        assert!(frame.is_well_formed());
+        assert!(frame.matches_safe_point(point));
+        let wire = serde_json::to_vec(&frame).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<PageHostDebuggerFrame>(&wire).unwrap(),
+            frame
+        );
+        assert!(!String::from_utf8(wire).unwrap().contains("source"));
+
+        for invalid in [
+            PageHostDebuggerFrame { tab_id: 0, ..frame },
+            PageHostDebuggerFrame {
+                document_generation: 0,
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                program: PageHostDebuggerProgram {
+                    program_generation: 0,
+                    ..program
+                },
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                code_unit_ordinal: 0,
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                invocation_serial: 0,
+                ..frame
+            },
+        ] {
+            assert!(!invalid.is_well_formed());
+            assert!(!invalid.matches_safe_point(point));
+        }
+        assert!(!frame.matches_safe_point(PageHostDebuggerSafePoint {
+            code_unit_ordinal: 2,
+            ..point
+        }));
+        assert!(!frame.matches_safe_point(PageHostDebuggerSafePoint {
+            program: PageHostDebuggerProgram {
+                program_handle: 12,
+                ..program
+            },
+            ..point
+        }));
+        for different in [
+            PageHostDebuggerFrame { tab_id: 8, ..frame },
+            PageHostDebuggerFrame {
+                document_generation: 4,
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                program: PageHostDebuggerProgram {
+                    program_generation: 14,
+                    ..program
+                },
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                code_unit_ordinal: 2,
+                ..frame
+            },
+            PageHostDebuggerFrame {
+                invocation_serial: 20,
+                ..frame
+            },
+        ] {
+            assert!(different.is_well_formed());
+            assert_ne!(different, frame);
+        }
+    }
 
     #[test]
     fn symbol_type_relation_round_trips_on_private_socket() {

@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.2.1.3.2.3.** Carry exact nested-frame controls across
-versioned page-host IPC and the core child proxy.
+**Current leaf: C1.2.1.3.2.3.2.** Wire page-host active-frame commands and
+core proxy methods end-to-end, then raise the private protocol version.
 the page runtime, child, IPC, and public debugger socket.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -279,6 +279,8 @@ channel with explicit owner/client grants.
         - [x] **C1.2.1.3.2.1** Retain a verified classic child-frame target in the child-only deferred scheduler, pause and step its exact invocation, and keep root-only controls unavailable while that child is active. The child now holds an exact static target only for a pending classic declaration, then records a separate live frame on actual pause. It validates each successor, re-joins the original root on return, and rejects root controls while the child is active; unsupported deeper targets fail as rejected script execution. JavaScript and BlueTS classic regressions pass. The route remains child-private until C1.2.1.3.2.3; 99 launcher library tests pass with the known `/private/tmp` environment-only socket test excluded, and workspace Clippy passes.
         - [x] **C1.2.1.3.2.2** Apply the same private child scheduling to a BlueTS entry-module graph, including frame return and preserved module-root continuation. The child now arms a verified inner point on a pending BlueTS ESM entry, retains its linked dependency graph on actual pause, steps under the same frame identity, and rejoins the original module-root continuation on return. A two-module regression observes exactly one dependency and entry effect after completion; 100 launcher library tests pass with the known `/private/tmp` environment-only test excluded, and workspace Clippy passes. The control remains child-private until C1.2.1.3.2.3.
         - [ ] **C1.2.1.3.2.3** Add versioned page-host IPC and the core child proxy for nested arm/state/step, with exact document and program identity checks; leave the public socket disabled until C1.2.1.3.3.
+          - [x] **C1.2.1.3.2.3.1** Define a child-private source-free frame wire identity bound to tab, document generation, child program generation, code-unit ordinal, and nonzero invocation serial; test exact tuple validation and serialization without adding commands or raising the protocol version yet. `PageHostDebuggerFrame` now keeps every identity component separate from a static safe point, rejects zero/root placeholders, and matches only its own program and code unit. Its source-free JSON round-trip and exact-tuple regression pass; all 98 IPC library tests and workspace Clippy pass. No page-host command or protocol version was added yet.
+          - [ ] **C1.2.1.3.2.3.2** Add page-host arm/state/step commands, child dispatch, and core child proxy under a dedicated nested-frame capability; raise the page-host version only once this private route is end-to-end.
       - [ ] **C1.2.1.3.3** Wire a distinct active-frame identity, capability, pause state, and step command through the public debugger protocol and core route; bump both protocol versions only when end-to-end behavior is available.
     - [ ] **C1.2.1.4** Prove the nested pause and same-frame instruction successor on a real BlueTS page through the public debugger socket; keep unsupported call shapes unavailable.
   - [ ] **C1.2.2** Resume that same frame; reject a stale frame identity after it returns.
