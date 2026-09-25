@@ -637,6 +637,7 @@ mod tests {
             )
         };
         compile("function onClick(event: BlueIceClickEvent): void { event.preventDefault(); } document.getElementById('link')!.addEventListener('click', onClick);").unwrap();
+        compile("function tryQuery(value: any): void { value.querySelector('#link'); } function tryStop(value: any): void { value.stopPropagation(); }").unwrap();
         assert!(
             compile("document.getElementById('link')!.addEventListener('change', () => {});")
                 .is_err()

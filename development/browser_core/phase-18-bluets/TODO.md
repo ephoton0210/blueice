@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: B4.3.3.** Verify a catchable runtime failure for an
-unsupported member reached through an explicit `any` escape. Every item has
+**Current leaf: B4.3.4.** Pin static and runtime unsupported-member rejection
+in one paired test. Every item has
 an ID
 (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -228,7 +228,7 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   - [x] **B4.3.2** Reference `event.stopPropagation` in a registered click
     callback and `document.querySelector` at page root through the verified
     event-v1 bridge; both return checker diagnostics naming the member.
-  - [ ] **B4.3.3** Reach the same unsupported member through an `any` escape and assert a catchable runtime failure, never a crash or a silent `undefined` success.
+  - [x] **B4.3.3** Reach the same unsupported member through an `any` escape and assert a catchable runtime failure, never a crash or a silent `undefined` success. A real event-v1 HTTP page passes `document` and a core click event into checked BlueTS functions with explicit `any` parameters. Calling the absent `querySelector` and `stopPropagation` members raises `TypeError` caught by the page; later DOM writes and the click complete.
   - [ ] **B4.3.4** Pin both failures in one paired test so static and runtime rejection cannot diverge.
 
 ### C. Complete source debugging and metadata lifetime (Phases 17/18).

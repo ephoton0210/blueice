@@ -396,8 +396,17 @@ member rejection is tracked separately in B4.3.2–B4.3.4.
 direct-script bridge rejects `event.stopPropagation()` inside a registered
 typed click callback and `document.querySelector(...)` at the page root.
 Both return BlueTS diagnostics that name the missing member. The generated
-profile has no declaration for either operation; B4.3.3 still must exercise
-the runtime boundary through an explicit `any` escape.
+profile has no declaration for either operation.
+
+**Catchable unsupported-member runtime calls (B4.3.3):** A real
+launcher/core/child event-v1 page executes checked BlueTS functions whose
+parameters are explicitly `any`. JavaScript passes the live `document` and
+the core-delivered click event into those functions. Calls to the uninstalled
+`querySelector` and `stopPropagation` members each throw a page-catchable
+`TypeError`; the page writes status text after both catches, and the click
+completes without navigation. The verified direct bridge also compiles both
+`any`-parameter functions, proving this route reaches runtime. B4.3.4 still
+needs one paired test tying these runtime results to the static diagnostics.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

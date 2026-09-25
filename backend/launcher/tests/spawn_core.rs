@@ -703,3 +703,164 @@ fn supervised_child_click_event_profile_runs_js_and_bluets_before_navigation() {
     let _ = std::fs::remove_file(&gatekeeper_path);
     let _ = std::fs::remove_dir_all(&frame_dir);
 }
+
+#[test]
+fn supervised_child_event_profile_catches_unsupported_bluets_any_calls() {
+    let gatekeeper_path = std::env::temp_dir().join(format!(
+        "bi-dom-event-any-gatekeeper-{}.sock",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&gatekeeper_path);
+    let gatekeeper = UnixListener::bind(&gatekeeper_path).unwrap();
+    thread::spawn(move || {
+        for incoming in gatekeeper.incoming() {
+            let Ok(mut stream) = incoming else { break };
+            let _ = blueice_ai_gatekeeper::handle_one_check(&mut stream);
+        }
+    });
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!(
+        "http://{}/unsupported-any.html",
+        listener.local_addr().unwrap()
+    );
+    let server = thread::spawn(move || {
+        let body = concat!(
+            "<a id='link' href='/away'>Click</a><div id='status'>before</div>",
+            "<script type='application/x-blueice-typescript'>",
+            "function tryQuery(value: any): void { value.querySelector('#link'); }",
+            "function tryStop(value: any): void { value.stopPropagation(); }",
+            "</script>",
+            "<script>",
+            "try { tryQuery(document); throw 'querySelector returned'; }",
+            "catch (error) { if (!(error instanceof TypeError)) throw error; }",
+            "document.getElementById('status').textContent = 'query caught';",
+            "document.getElementById('link').addEventListener('click', function(event) {",
+            "event.preventDefault();",
+            "try { tryStop(event); throw 'stopPropagation returned'; }",
+            "catch (error) { if (!(error instanceof TypeError)) throw error; }",
+            "document.getElementById('status').textContent = 'both caught';",
+            "});",
+            "</script>"
+        );
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0u8; 1024];
+        let _ = stream.read(&mut request).unwrap();
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-launcher-dom-event-any-frames-{}",
+        std::process::id()
+    ));
+    let core = SpawnedCore::spawn_with_options(
+        320.0,
+        200.0,
+        &frame_dir,
+        CoreLaunchOptions::default()
+            .with_gatekeeper_socket(gatekeeper_path.clone())
+            .supervise_out_of_process_bluejs_with_dom_event_fixture(),
+    )
+    .expect("launcher must supervise an event-capable child");
+    let mut stream = core.stream.try_clone().unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url }
+    );
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueTsScriptReports,
+    )
+    .unwrap();
+    let blueice_ipc::ServerMessage::BlueTsScriptReports(typed_reports) =
+        blueice_ipc::read_server_message(&mut stream).unwrap()
+    else {
+        panic!("expected the BlueTS execution report");
+    };
+    assert_eq!(typed_reports.len(), 1, "{typed_reports:?}");
+    assert!(
+        matches!(
+            typed_reports[0].outcome,
+            blueice_ipc::BlueTsScriptExecutionOutcome::Executed
+        ),
+        "{typed_reports:?}"
+    );
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueJsScriptReports,
+    )
+    .unwrap();
+    let blueice_ipc::ServerMessage::BlueJsScriptReports(js_reports) =
+        blueice_ipc::read_server_message(&mut stream).unwrap()
+    else {
+        panic!("expected the JavaScript execution report");
+    };
+    assert_eq!(js_reports.len(), 1, "{js_reports:?}");
+    assert!(matches!(
+        js_reports[0].outcome,
+        blueice_ipc::BlueJsScriptExecutionOutcome::Executed
+    ));
+    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::GetDom).unwrap();
+    let blueice_ipc::ServerMessage::Dom(dom) =
+        blueice_ipc::read_server_message(&mut stream).unwrap()
+    else {
+        panic!("expected DOM after the caught querySelector failure");
+    };
+    assert!(dom.contains("\"query caught\""), "{dom}");
+
+    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::GetRepresentation)
+        .unwrap();
+    let blueice_ipc::ServerMessage::Representation(snapshot) =
+        blueice_ipc::read_server_message(&mut stream).unwrap()
+    else {
+        panic!("expected the link representation");
+    };
+    let link = snapshot
+        .nodes
+        .iter()
+        .find(|node| node.name.as_deref() == Some("Click"))
+        .expect("the link must be visible");
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::ActOn {
+            id: link.id,
+            action: blueice_ipc::NodeAction::Click,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::GetDom).unwrap();
+    let blueice_ipc::ServerMessage::Dom(dom) =
+        blueice_ipc::read_server_message(&mut stream).unwrap()
+    else {
+        panic!("expected DOM after the caught stopPropagation failure");
+    };
+    assert!(dom.contains("\"both caught\""), "{dom}");
+    server.join().unwrap();
+    drop(core);
+    let _ = std::fs::remove_file(&gatekeeper_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+}
