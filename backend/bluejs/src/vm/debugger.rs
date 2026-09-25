@@ -38,12 +38,79 @@ pub(super) struct DebuggerContinuation {
     handlers: Vec<HandlerFrame>,
 }
 
+pub(super) struct ModuleDebuggerPauseRequest {
+    pub(super) entry: String,
+    pub(super) target: usize,
+}
+
+pub(super) struct ModuleDebuggerContinuation {
+    pub(super) module: String,
+    pub(super) code: Bytecode,
+    pub(super) pc: usize,
+    pub(super) execution: SuspendedModuleExecution,
+    pub(super) iterators: Vec<Value>,
+    pub(super) handlers: Vec<HandlerFrame>,
+    pub(super) previous_module: Option<String>,
+}
+
 enum DebuggerRunOutcome {
     Paused(Box<DebuggerContinuation>),
     Completed(Result<Value, RuntimeError>),
 }
 
 impl Vm {
+    /// Links an authorized module graph and pauses before a verified entry
+    /// evaluation-body instruction. Dependency effects occur once during the
+    /// linking/evaluation pass and are retained with the graph on pause.
+    pub fn execute_module_graph_until_debugger_pause(
+        &mut self,
+        entry: &str,
+        modules: &HashMap<String, Bytecode>,
+        bytecode_offset: u32,
+    ) -> Result<VmDebuggerExecutionState, RuntimeError> {
+        self.ensure_no_debugger_continuation()?;
+        let code = modules.get(entry).ok_or(RuntimeError::Unsupported(
+            "debugger module entry is absent from the graph",
+        ))?;
+        let target = usize::try_from(bytecode_offset)
+            .map_err(|_| RuntimeError::Unsupported("debugger safe-point offset is too large"))?;
+        let evaluate_entry = code.module_evaluate_entry.ok_or(RuntimeError::Unsupported(
+            "debugger module entry has no evaluation body",
+        ))? as usize;
+        let first_evaluate_instruction = code
+            .instructions()
+            .map(|instruction| instruction.offset)
+            .find(|offset| *offset >= evaluate_entry);
+        if first_evaluate_instruction != Some(target) {
+            return Err(RuntimeError::Unsupported(
+                "debugger safe point is not the first module evaluate-body instruction",
+            ));
+        }
+        self.debugger_module_pause_request = Some(ModuleDebuggerPauseRequest {
+            entry: entry.to_string(),
+            target,
+        });
+        let result =
+            self.execute_module_graph_inner(entry, modules, false, false, ImportPhase::Evaluation);
+        self.debugger_module_pause_request = None;
+        result?;
+        if self.debugger_module_continuation.is_some() {
+            Ok(VmDebuggerExecutionState::Paused { bytecode_offset })
+        } else {
+            Err(RuntimeError::Unsupported(
+                "debugger module entry did not reach the requested safe point",
+            ))
+        }
+    }
+
+    /// Resumes the linked entry module from its retained pre-instruction
+    /// continuation. The entry and its dependencies are not evaluated again.
+    pub fn resume_debugger_module_execution(
+        &mut self,
+    ) -> Result<VmDebuggerExecutionState, RuntimeError> {
+        self.resume_debugger_module_inner()
+    }
+
     /// Runs a classic script until the exact compiler-provided root code-unit
     /// instruction boundary. The only accepted locations are bytecode
     /// instruction starts in the root code unit; callers that want a page
@@ -172,6 +239,10 @@ impl Vm {
             Err(RuntimeError::Unsupported(
                 "a debugger-paused root script must resume before another execution starts",
             ))
+        } else if self.debugger_module_continuation.is_some() {
+            Err(RuntimeError::Unsupported(
+                "a debugger-paused root module must resume before another execution starts",
+            ))
         } else {
             Ok(())
         }
@@ -238,7 +309,7 @@ impl Vm {
 
     /// Mirrors `Vm::run`'s terminal cleanup. The paused path intentionally
     /// bypasses it because its root frame and iterator records remain live.
-    fn finish_debugger_interpret_result(
+    pub(super) fn finish_debugger_interpret_result(
         &mut self,
         result: Result<Value, RuntimeError>,
         iterators: &mut Vec<Value>,
@@ -265,11 +336,19 @@ impl Vm {
     /// All remaining root-frame state stays in the VM's ordinary fields and
     /// is already gathered by `Vm::with_roots` before any allocating action.
     pub(super) fn debugger_continuation_references(&self) -> Vec<ObjectId> {
-        self.debugger_continuation
+        let mut references: Vec<_> = self
+            .debugger_continuation
             .iter()
             .flat_map(|continuation| continuation.iterators.iter())
             .filter_map(Value::object_id)
-            .collect()
+            .collect();
+        if let Some(continuation) = &self.debugger_module_continuation {
+            references.extend(Self::suspended_execution_references(
+                &continuation.execution,
+            ));
+            references.extend(continuation.iterators.iter().filter_map(Value::object_id));
+        }
+        references
     }
 }
 
@@ -448,6 +527,78 @@ mod tests {
         assert_eq!(
             vm.execute_script(&code("globalThis.once")).unwrap(),
             Value::Number(1.0)
+        );
+    }
+
+    #[test]
+    fn paused_module_entry_resumes_a_linked_graph_without_replaying_dependencies() {
+        let entry = "pages/entry.mjs";
+        let dependency = "pages/dependency.mjs";
+        let entry_code = compile_module(
+            &parse_module("import { answer } from './dependency.mjs'; globalThis.entryRuns = (globalThis.entryRuns || 0) + 1; export const result = answer + 1;").unwrap(),
+        )
+        .unwrap();
+        let dependency_code = compile_module(
+            &parse_module("globalThis.dependencyRuns = (globalThis.dependencyRuns || 0) + 1; export const answer = 41;").unwrap(),
+        )
+        .unwrap();
+        let target = entry_code
+            .instructions()
+            .map(|instruction| instruction.offset as u32)
+            .find(|offset| *offset >= entry_code.module_evaluate_entry.unwrap())
+            .unwrap();
+        let modules = HashMap::from([
+            (entry.to_string(), entry_code),
+            (dependency.to_string(), dependency_code),
+        ]);
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_module_graph_until_debugger_pause(entry, &modules, target)
+                .unwrap(),
+            VmDebuggerExecutionState::Paused {
+                bytecode_offset: target
+            }
+        );
+        let continuation = vm.debugger_module_continuation.as_ref().unwrap();
+        assert_eq!(continuation.module, entry);
+        assert_eq!(continuation.pc, target as usize);
+        assert_eq!(
+            continuation.execution.active_module_name.as_deref(),
+            Some(entry)
+        );
+        let linked = &vm.module_graph.as_ref().unwrap().linked;
+        assert!(linked.get(dependency).unwrap().evaluated);
+        assert!(linked.get(entry).unwrap().suspended);
+        vm.with_roots(|heap| {
+            heap.collect_major();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            vm.execute_script(&code("globalThis.entryRuns")),
+            Err(RuntimeError::Unsupported(
+                "a debugger-paused root module must resume before another execution starts"
+            ))
+        );
+        assert_eq!(
+            vm.resume_debugger_module_execution().unwrap(),
+            VmDebuggerExecutionState::Completed
+        );
+        assert_eq!(
+            vm.execute_script(&code(
+                "globalThis.dependencyRuns * 10 + globalThis.entryRuns"
+            ))
+            .unwrap(),
+            Value::Number(11.0)
+        );
+        assert!(vm.last_module_namespace.is_some());
+        vm.execute_module_graph(entry, &modules).unwrap();
+        assert_eq!(
+            vm.execute_script(&code(
+                "globalThis.dependencyRuns * 10 + globalThis.entryRuns"
+            ))
+            .unwrap(),
+            Value::Number(11.0)
         );
     }
 

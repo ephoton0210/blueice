@@ -426,6 +426,9 @@ impl Vm {
                 (Value::Undefined, namespace)
             } else {
                 let value = self.evaluate_module_record(entry, modules, &mut linked)?;
+                if self.debugger_module_continuation.is_some() {
+                    return Ok(Value::Undefined);
+                }
                 let namespace =
                     self.module_namespace(entry, false, modules, &mut linked, &mut roots)?;
                 (value, namespace)
@@ -484,7 +487,12 @@ impl Vm {
                 code.instructions()
                     .any(|instruction| instruction.opcode == Opcode::Await)
             });
-        if result.is_ok() && drain_jobs && entry_is_async && !self.promise_jobs.is_empty() {
+        if result.is_ok()
+            && self.debugger_module_continuation.is_none()
+            && drain_jobs
+            && entry_is_async
+            && !self.promise_jobs.is_empty()
+        {
             self.remaining_instructions = self.config.instruction_budget;
             if let Err(error) = self.run_promise_jobs() {
                 result = Err(error);
@@ -506,6 +514,13 @@ impl Vm {
                 result = Ok(value);
             }
         }
+        self.finish_module_graph_execution(result)
+    }
+
+    pub(super) fn finish_module_graph_execution(
+        &mut self,
+        result: Result<Value, RuntimeError>,
+    ) -> Result<Value, RuntimeError> {
         self.stack.clear();
         self.bindings.clear();
         self.binding_metadata.clear();
@@ -528,6 +543,112 @@ impl Vm {
         })?;
         self.enqueue_finalization_cleanup_jobs();
         result
+    }
+
+    pub(super) fn resume_debugger_module_inner(
+        &mut self,
+    ) -> Result<VmDebuggerExecutionState, RuntimeError> {
+        let continuation =
+            self.debugger_module_continuation
+                .take()
+                .ok_or(RuntimeError::Unsupported(
+                    "no debugger-paused root module is available",
+                ))?;
+        let mut graph = self.module_graph.take().ok_or(RuntimeError::Unsupported(
+            "debugger-paused module graph is unavailable",
+        ))?;
+        let ModuleDebuggerContinuation {
+            module,
+            code,
+            pc,
+            execution,
+            mut iterators,
+            handlers,
+            previous_module,
+        } = continuation;
+        self.restore_module_execution(execution);
+        debug_assert!(self.evaluating_linked.is_none());
+        self.evaluating_linked = Some(std::mem::take(&mut graph.linked));
+        let outcome = self.interpret(&code, &mut iterators, pc, None, None, Some((handlers, 0)));
+        graph.linked = self
+            .evaluating_linked
+            .take()
+            .expect("paused module records return after the entry body runs");
+        self.active_module_name = previous_module;
+        let mut result = match outcome {
+            Ok(InterpreterExit::Return(value)) => Ok(value),
+            Ok(InterpreterExit::Await { .. }) => Err(RuntimeError::Unsupported(
+                "root debugger continuation cannot suspend for module await",
+            )),
+            Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
+                "yield requires a generator function".into(),
+            )),
+            Ok(InterpreterExit::Suspend { .. }) => Err(RuntimeError::Unsupported(
+                "module debugger resume unexpectedly suspended",
+            )),
+            Err(error) => Err(error),
+        };
+        result = self.finish_debugger_interpret_result(result, &mut iterators, 0, 0);
+        let record = graph
+            .linked
+            .get_mut(&module)
+            .expect("the paused entry remains in its linked graph");
+        record.cells = std::mem::take(&mut self.cells);
+        record.suspended = false;
+        record.evaluating = false;
+        match &result {
+            Ok(value) => {
+                record.evaluated = true;
+                record.completion = Some(value.clone());
+            }
+            Err(error) => {
+                if matches!(
+                    error,
+                    RuntimeError::Thrown(_)
+                        | RuntimeError::TypeError(_)
+                        | RuntimeError::ReferenceError(_)
+                        | RuntimeError::RangeError(_)
+                        | RuntimeError::SyntaxError(_)
+                ) {
+                    match self.error_value(error.clone()) {
+                        Ok(value) => {
+                            record.evaluated = true;
+                            record.error = Some(value.clone());
+                            result = Err(RuntimeError::Thrown(value));
+                        }
+                        Err(error) => result = Err(error),
+                    }
+                }
+            }
+        }
+        if result.is_ok() {
+            let modules = self.module_registry.clone();
+            match self.module_namespace(
+                &module,
+                false,
+                &modules,
+                &mut graph.linked,
+                &mut graph.roots,
+            ) {
+                Ok(namespace) => {
+                    self.last_module_namespace = Some(namespace);
+                    match self.heap.root(namespace) {
+                        Ok(root) => self.last_module_namespace_root = Some(root),
+                        Err(error) => result = Err(error.into()),
+                    }
+                }
+                Err(error) => result = Err(error),
+            }
+        }
+        if let Ok(Value::Object(id)) = &result {
+            match self.heap.root(*id) {
+                Ok(root) => self.result_root = Some(root),
+                Err(error) => result = Err(error.into()),
+            }
+        }
+        self.store_module_graph(graph, false);
+        self.finish_module_graph_execution(result)
+            .map(|_| VmDebuggerExecutionState::Completed)
     }
 
     /// Compiles a module reachable only through a dynamic import, on
@@ -1893,7 +2014,12 @@ impl Vm {
             // deferred namespace observed by this module (or a module it
             // triggers) evaluates other modules of the same graph.
             self.evaluating_linked = Some(std::mem::take(linked));
-            let outcome = self.interpret(code, &mut iterators, entry, None, None, None);
+            let suspension = self
+                .debugger_module_pause_request
+                .as_ref()
+                .filter(|request| request.entry == name)
+                .map(|request| InterpreterSuspensionPoint::Offset(request.target));
+            let outcome = self.interpret(code, &mut iterators, entry, None, suspension, None);
             *linked = self
                 .evaluating_linked
                 .take()
@@ -1936,8 +2062,26 @@ impl Vm {
                 Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
                     "yield requires a generator function".into(),
                 )),
-                Ok(InterpreterExit::Suspend { .. }) => {
-                    unreachable!("module evaluation does not suspend")
+                Ok(InterpreterExit::Suspend {
+                    pc,
+                    iterators,
+                    handlers,
+                }) => {
+                    let execution = self.suspend_module_execution();
+                    let record = linked.get_mut(name).expect("checked module record exists");
+                    record.cells = execution.cells.clone();
+                    record.suspended = true;
+                    self.active_module_name = previous_module.clone();
+                    self.debugger_module_continuation = Some(ModuleDebuggerContinuation {
+                        module: name.to_string(),
+                        code: code.clone(),
+                        pc,
+                        execution,
+                        iterators,
+                        handlers,
+                        previous_module,
+                    });
+                    Ok(Value::Undefined)
                 }
                 Err(error) => {
                     self.active_module_name = previous_module;

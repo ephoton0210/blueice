@@ -456,6 +456,19 @@ an invalidated predecessor; its native regression compares the result to the
 compiled entry offset and safe-point inventory. It is a location check only:
 the module continuation and retained graph are C1.1.1.3.2.
 
+**Retained module-root continuation (C1.1.1.3.2):** The native VM debugger
+now accepts only the first instruction in the entry module's evaluate body.
+Static graph linking and eager dependencies run before that boundary. At the
+entry suspension, the VM moves the complete module execution context,
+iterators, handler stack, code and program counter into a GC-visible
+continuation; the linked records and their roots stay with the realm. Resume
+restores that exact frame, completes the existing entry record, and creates
+its namespace without re-linking or re-evaluating dependencies. A native
+two-module regression inspects the paused entry/dependency state, forces a
+major collection, resumes, and checks both side-effect counters remain one
+even after querying the same graph again. Error and asynchronous cleanup
+remain the explicit C1.1.1.3.3 gate; child/core routing remains C1.1.1.4.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

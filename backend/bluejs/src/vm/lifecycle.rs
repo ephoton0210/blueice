@@ -41,6 +41,8 @@ impl Vm {
             regexp_legacy: crate::regexp::LegacyStatics::default(),
             result_root: None,
             debugger_continuation: None,
+            debugger_module_pause_request: None,
+            debugger_module_continuation: None,
             stack: Vec::new(),
             bindings: Vec::new(),
             binding_metadata: Vec::new(),

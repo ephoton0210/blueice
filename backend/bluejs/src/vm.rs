@@ -45,8 +45,8 @@ mod test262_agents;
 use completion::{
     call_stack_exhausted, Completion, CompletionAction, HandlerFrame, HandlerState, InterpreterExit,
 };
-use debugger::DebuggerContinuation;
 pub use debugger::VmDebuggerExecutionState;
+use debugger::{DebuggerContinuation, ModuleDebuggerContinuation, ModuleDebuggerPauseRequest};
 use host_objects::{
     ActiveHostClickEvent, HostClickListener, HostObjectFactoryRegistration, HostObjectFamilyState,
     HostObjectMethodRegistration, HostObjectPairMethodRegistration,
@@ -811,6 +811,8 @@ pub struct Vm {
     /// boundary and keeps the active frame out of every ordinary execution
     /// entry point until it is resumed or the VM is dropped.
     debugger_continuation: Option<DebuggerContinuation>,
+    debugger_module_pause_request: Option<ModuleDebuggerPauseRequest>,
+    debugger_module_continuation: Option<ModuleDebuggerContinuation>,
     stack: Vec<Value>,
     // None is a lexical binding's uninitialized state, never JS undefined.
     bindings: Vec<Option<Value>>,
