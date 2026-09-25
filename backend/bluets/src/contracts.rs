@@ -498,6 +498,7 @@ mod tests {
             "User",
             &Type::Record(vec![TypeField {
                 name: "id".to_string(),
+                readonly: false,
                 optional: false,
                 value: Type::String,
                 span: crate::diagnostic::SourceSpan::new("test", 0, 0),
@@ -522,6 +523,7 @@ mod tests {
     fn validates_an_inherited_record_as_a_reifiable_intersection() {
         let field = |name: &str, value: Type| TypeField {
             name: name.to_string(),
+            readonly: false,
             optional: false,
             value,
             span: crate::diagnostic::SourceSpan::new("test", 0, 0),

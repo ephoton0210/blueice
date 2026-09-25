@@ -577,7 +577,10 @@ impl<'a> ModuleChecker<'a> {
                 let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
                 property_type(parent, &field.name, &self.types, &mut visited, &mut budget)
             };
-            let PropertyType::Found(inherited) = inherited else {
+            let PropertyType::Found {
+                value: inherited, ..
+            } = inherited
+            else {
                 continue;
             };
             let declared = if field.optional {

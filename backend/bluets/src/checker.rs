@@ -716,7 +716,10 @@ fn infer_type_arguments(
 }
 
 enum PropertyType {
-    Found(Type),
+    Found {
+        value: Type,
+        readonly: bool,
+    },
     Missing,
     /// The initial checker has no property semantics for this expression, so
     /// retain its conservative `unknown` behavior rather than rejecting a
@@ -736,12 +739,13 @@ fn property_type(
         Type::Record(fields) => fields
             .iter()
             .find(|field| field.name == property)
-            .map(|field| {
-                if field.optional {
-                    PropertyType::Found(Type::Union(vec![field.value.clone(), Type::Undefined]))
+            .map(|field| PropertyType::Found {
+                value: if field.optional {
+                    Type::Union(vec![field.value.clone(), Type::Undefined])
                 } else {
-                    PropertyType::Found(field.value.clone())
-                }
+                    field.value.clone()
+                },
+                readonly: field.readonly,
             })
             .unwrap_or(PropertyType::Missing),
         Type::Named { .. } => {
@@ -753,15 +757,24 @@ fn property_type(
         }
         Type::Intersection(parts) => {
             let mut indeterminate = false;
+            let mut found: Option<(Type, bool)> = None;
             for part in parts {
                 match property_type(part, property, aliases, visited, budget) {
-                    PropertyType::Found(value) => return PropertyType::Found(value),
+                    PropertyType::Found { value, readonly } => {
+                        if let Some((_, found_readonly)) = &mut found {
+                            *found_readonly |= readonly;
+                        } else {
+                            found = Some((value, readonly));
+                        }
+                    }
                     PropertyType::Missing => {}
                     PropertyType::Indeterminate => indeterminate = true,
                     PropertyType::Exhausted => return PropertyType::Exhausted,
                 }
             }
-            if indeterminate {
+            if let Some((value, readonly)) = found {
+                PropertyType::Found { value, readonly }
+            } else if indeterminate {
                 PropertyType::Indeterminate
             } else {
                 PropertyType::Missing
@@ -917,6 +930,7 @@ fn infer_record(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
             &mut fields,
             TypeField {
                 name,
+                readonly: false,
                 optional: false,
                 value,
                 span: SourceSpan::new(
@@ -1300,7 +1314,7 @@ fn is_assignable(
     if let (Type::Intersection(_), Type::Record(expected_fields)) = (actual, expected) {
         return expected_fields.iter().all(|expected_field| {
             match property_type(actual, &expected_field.name, aliases, visited, budget) {
-                PropertyType::Found(actual) => is_assignable(
+                PropertyType::Found { value: actual, .. } => is_assignable(
                     &actual,
                     &expected_field.value,
                     aliases,
@@ -1451,6 +1465,7 @@ fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type
                 .iter()
                 .map(|field| TypeField {
                     name: field.name.clone(),
+                    readonly: field.readonly,
                     optional: field.optional,
                     value: substitute_type(&field.value, substitutions),
                     span: field.span.clone(),

@@ -150,7 +150,7 @@ impl Parser {
             let mut fields = Vec::new();
             while !self.at_eof() && !self.consume("}") {
                 let start = self.current().start;
-                self.consume("readonly");
+                let readonly = self.consume("readonly");
                 let name = self.require_property_name("expected a record field name");
                 let optional = self.consume("?");
                 let value = if self.peek("(") {
@@ -162,6 +162,7 @@ impl Parser {
                 let end = self.previous().end;
                 fields.push(TypeField {
                     name,
+                    readonly,
                     optional,
                     value,
                     span: SourceSpan::new(&self.id, start, end),

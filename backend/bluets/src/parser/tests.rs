@@ -61,6 +61,29 @@ fn parses_keyword_named_event_field_and_bounded_function_type() {
 }
 
 #[test]
+fn preserves_readonly_interface_and_record_fields() {
+    let module = parse_module(
+        "memory:///events.d.ts",
+        "interface Event { readonly type: 'click'; target: string; }\n\
+         type Detail = { readonly currentTarget: string; mutable?: string };",
+    )
+    .unwrap();
+    let Declaration::Interface(event) = &module.declarations[0] else {
+        panic!("expected event interface");
+    };
+    assert!(event.fields[0].readonly);
+    assert!(!event.fields[1].readonly);
+    let Declaration::TypeAlias(detail) = &module.declarations[1] else {
+        panic!("expected detail alias");
+    };
+    let Type::Record(fields) = &detail.value else {
+        panic!("expected record type");
+    };
+    assert!(fields[0].readonly);
+    assert!(!fields[1].readonly);
+}
+
+#[test]
 fn parses_typed_exports_and_marks_only_type_syntax_for_erasure() {
     let module = parse_module(
             "memory:///app.ts",

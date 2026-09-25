@@ -497,10 +497,7 @@ impl Parser {
                 closed = true;
                 break;
             }
-            if self.consume("readonly") {
-                // `readonly` is static-only and represented by the field
-                // itself in this first checker.
-            }
+            let readonly = self.consume("readonly");
             let field_start = self.current().start;
             let name = self.require_property_name("expected an interface field name");
             let optional = self.consume("?");
@@ -513,6 +510,7 @@ impl Parser {
             let end = self.previous().end;
             fields.push(TypeField {
                 name,
+                readonly,
                 optional,
                 value,
                 span: SourceSpan::new(&self.id, field_start, end),

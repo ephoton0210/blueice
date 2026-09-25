@@ -39,7 +39,10 @@ impl<'a> ModuleChecker<'a> {
         if let Some(call) = member_call_parts(tokens) {
             let base = self.infer_expression(call.receiver, scope);
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-            if let PropertyType::Found(Type::Function { result, .. }) = property_type(
+            if let PropertyType::Found {
+                value: Type::Function { result, .. },
+                ..
+            } = property_type(
                 &base,
                 &call.member.text,
                 &self.types,
@@ -204,9 +207,9 @@ impl<'a> ModuleChecker<'a> {
                     }
                 }
                 if tokens.get(1).is_some_and(|token| token.is("."))
-                    && tokens
-                        .get(2)
-                        .is_some_and(|token| token.kind == TokenKind::Identifier)
+                    && tokens.get(2).is_some_and(|token| {
+                        matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
+                    })
                 {
                     let base = scope.get(&first.text).cloned().unwrap_or(Type::Unknown);
                     let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
@@ -217,7 +220,7 @@ impl<'a> ModuleChecker<'a> {
                         &mut HashSet::new(),
                         &mut budget,
                     ) {
-                        PropertyType::Found(value) => value,
+                        PropertyType::Found { value, .. } => value,
                         PropertyType::Missing
                         | PropertyType::Indeterminate
                         | PropertyType::Exhausted => Type::Unknown,
@@ -471,8 +474,11 @@ impl<'a> ModuleChecker<'a> {
             &mut budget,
         );
         let (parameters, _) = match member_type {
-            PropertyType::Found(Type::Function { parameters, result }) => (parameters, result),
-            PropertyType::Found(_) => {
+            PropertyType::Found {
+                value: Type::Function { parameters, result },
+                ..
+            } => (parameters, result),
+            PropertyType::Found { .. } => {
                 self.type_error(
                     span,
                     format!("property `{}` is not callable", call.member.text),
@@ -722,7 +728,7 @@ impl<'a> ModuleChecker<'a> {
         };
         if base.kind != TokenKind::Identifier
             || !dot.is(".")
-            || property.kind != TokenKind::Identifier
+            || !matches!(property.kind, TokenKind::Identifier | TokenKind::Keyword)
         {
             return;
         }
@@ -735,7 +741,7 @@ impl<'a> ModuleChecker<'a> {
             &mut HashSet::new(),
             &mut budget,
         ) {
-            PropertyType::Found(_) | PropertyType::Indeterminate => {}
+            PropertyType::Found { .. } | PropertyType::Indeterminate => {}
             PropertyType::Missing => self.type_error(
                 span,
                 format!(
@@ -762,14 +768,39 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
-        let [base, dot, property, assign, value @ ..] = strip_outer_parentheses(tokens) else {
-            return;
+        let tokens = strip_outer_parentheses(tokens);
+        let (base, dot, property, operator, value) = match tokens {
+            [operator, base, dot, property]
+                if operator.is("++") || operator.is("--") || operator.is("delete") =>
+            {
+                (base, dot, property, operator, &[][..])
+            }
+            [base, dot, property, operator, value @ ..] => (base, dot, property, operator, value),
+            _ => return,
         };
+        let assignment = matches!(
+            operator.text.as_str(),
+            "=" | "+="
+                | "-="
+                | "*="
+                | "/="
+                | "%="
+                | "**="
+                | "<<="
+                | ">>="
+                | ">>>="
+                | "&="
+                | "|="
+                | "^="
+                | "&&="
+                | "||="
+                | "??="
+        );
+        let update = operator.is("++") || operator.is("--") || operator.is("delete");
         if base.kind != TokenKind::Identifier
             || !dot.is(".")
-            || property.kind != TokenKind::Identifier
-            || !assign.is("=")
-            || value.is_empty()
+            || !matches!(property.kind, TokenKind::Identifier | TokenKind::Keyword)
+            || !((assignment && !value.is_empty()) || (update && value.is_empty()))
         {
             return;
         }
@@ -782,7 +813,21 @@ impl<'a> ModuleChecker<'a> {
             &mut HashSet::new(),
             &mut budget,
         ) {
-            PropertyType::Found(expected) => {
+            PropertyType::Found {
+                value: expected,
+                readonly,
+            } => {
+                if readonly {
+                    self.type_error(
+                        span,
+                        format!("cannot mutate readonly property `{}`", property.text),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                    return;
+                }
+                if !operator.is("=") {
+                    return;
+                }
                 let actual = self.infer_expression(value, scope);
                 if !self.is_assignable_bounded(&actual, &expected, span) {
                     self.type_error(

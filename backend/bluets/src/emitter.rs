@@ -267,6 +267,9 @@ fn emit_declaration(module: &Module) -> String {
                 output.push_str(" {\n");
                 for field in &interface.fields {
                     output.push_str("  ");
+                    if field.readonly {
+                        output.push_str("readonly ");
+                    }
                     output.push_str(&field.name);
                     if field.optional {
                         output.push('?');
@@ -459,7 +462,12 @@ fn type_to_ts(value: &Type) -> String {
             fields
                 .iter()
                 .map(|field| {
-                    let name = format!("{}{}", field.name, if field.optional { "?" } else { "" });
+                    let name = format!(
+                        "{}{}{}",
+                        if field.readonly { "readonly " } else { "" },
+                        field.name,
+                        if field.optional { "?" } else { "" }
+                    );
                     if let Type::Function { parameters, result } = &field.value {
                         format!("{name}{}", method_signature_to_ts(parameters, result))
                     } else {
@@ -907,6 +915,35 @@ mod tests {
                  export declare function echo<T extends string = string>(value?: T): string;\n"
             )
         );
+    }
+
+    #[test]
+    fn retains_readonly_fields_in_declaration_output() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///event.ts",
+            "export interface Event { readonly type: 'click'; mutable: string; }\n\
+             export type Detail = { readonly currentTarget: string; mutable: string };",
+        )]);
+        let result = compile(
+            "memory:///event.ts",
+            &loader,
+            CompilerOptions {
+                declaration: true,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+        let artifact = &result.output.unwrap().artifacts["memory:///event.ts"];
+        let declaration = artifact.declaration.as_deref().unwrap();
+        assert!(
+            declaration.contains("readonly type: 'click';"),
+            "{declaration}"
+        );
+        assert!(
+            declaration.contains("{ readonly currentTarget: string; mutable: string }"),
+            "{declaration}"
+        );
+        assert!(!artifact.javascript.contains("readonly"));
     }
 
     #[test]

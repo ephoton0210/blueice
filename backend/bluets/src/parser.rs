@@ -156,6 +156,7 @@ pub struct InterfaceDeclaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeField {
     pub name: String,
+    pub readonly: bool,
     pub optional: bool,
     pub value: Type,
     pub span: SourceSpan,

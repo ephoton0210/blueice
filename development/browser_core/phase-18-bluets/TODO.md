@@ -185,8 +185,12 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   owner-selected event-v1 profile has the exact 10-binding installer inventory
   and the BlueTS checker verifies the click callback type and literal name.
 - [ ] Enforce the event object's `readonly` type, target, and currentTarget
-  qualifiers in BlueTS checking; the child already exposes these properties
-  as non-writable, but BlueTS currently erases the qualifier while parsing.
+  qualifiers in BlueTS checking. The parser now retains `readonly` for
+  interface and record fields, including inherited/generic lookup, and the
+  checker rejects direct dot-property assignment, compound assignment,
+  update, and deletion. The child already exposes these properties as
+  non-writable and non-configurable. Static checking of computed-property
+  writes remains open; do not claim full qualifier enforcement yet.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members
   must fail both static checking and JavaScript runtime access.
 

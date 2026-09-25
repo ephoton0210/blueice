@@ -47,6 +47,70 @@ fn checks_named_callbacks_against_function_type_and_literal_event_name() {
 }
 
 #[test]
+fn rejects_assignments_to_readonly_event_fields() {
+    let ambient = ModuleSource::new(
+        "memory:///events.d.ts",
+        "interface Node { id: string; }\n\
+         interface Event { readonly type: 'click'; readonly target: Node; readonly currentTarget: Node; mutable: string; }",
+    );
+    let check = |source| {
+        crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+            CompilerOptions {
+                ambient_declaration_modules: vec![ambient.clone()],
+                ..CompilerOptions::default()
+            },
+        )
+    };
+    let valid = check("function onClick(event: Event): void { event.mutable = 'ok'; }");
+    assert!(!valid.has_errors(), "{:#?}", valid.diagnostics);
+    for source in [
+        "function onClick(event: Event): void { event.type = 'click'; }",
+        "function onClick(event: Event): void { event.type += 'click'; }",
+        "function onClick(event: Event): void { event.type++; }",
+        "function onClick(event: Event): void { ++event.type; }",
+        "function onClick(event: Event): void { delete event.type; }",
+        "function onClick(event: Event): void { event.target = event.target; }",
+        "function onClick(event: Event): void { event.currentTarget = event.target; }",
+    ] {
+        let invalid = check(source);
+        assert!(
+            invalid.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::TypeMismatch
+                    && diagnostic.message.contains("readonly")
+            }),
+            "{source}: {:#?}",
+            invalid.diagnostics
+        );
+    }
+}
+
+#[test]
+fn readonly_survives_inherited_and_generic_property_lookup() {
+    let source = "interface Base { readonly value: string; }\n\
+                  interface Derived extends Base { mutable: string; }\n\
+                  interface Box<T> { readonly item: T; }\n\
+                  type Detail = { readonly currentTarget: string; mutable: string };\n\
+                  function update(derived: Derived, box: Box<string>, detail: Detail): void {\n\
+                    derived.value = 'x'; box.item = 'x'; detail.currentTarget = 'x';\n\
+                    derived.mutable = 'x'; detail.mutable = 'x';\n\
+                  }";
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+        CompilerOptions::default(),
+    );
+    let readonly = result
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.message.contains("readonly property"))
+        .collect::<Vec<_>>();
+    assert_eq!(readonly.len(), 3, "{:#?}", result.diagnostics);
+    assert_eq!(result.diagnostics.len(), 3, "{:#?}", result.diagnostics);
+}
+
+#[test]
 fn ambient_interface_methods_check_member_call_arguments_and_return_types() {
     let ambient = ModuleSource::new(
         "memory:///lib.blueice.d.ts",

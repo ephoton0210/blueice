@@ -646,5 +646,21 @@ mod tests {
                 .is_err()
         );
         assert!(compile("document.getElementById('link')!.dispatchEvent('click');").is_err());
+        for source in [
+            "function onClick(event: BlueIceClickEvent): void { event.type = 'click'; }",
+            "function onClick(event: BlueIceClickEvent): void { event.target = event.target; }",
+            "function onClick(event: BlueIceClickEvent): void { event.currentTarget = event.target; }",
+        ] {
+            let error = compile(source).err().expect("readonly write must fail");
+            let crate::BridgeError::BlueTs(diagnostics) = error else {
+                panic!("{source}: expected BlueTS diagnostics, got {error:?}");
+            };
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.message.contains("readonly property")),
+                "{source}: {diagnostics:#?}"
+            );
+        }
     }
 }

@@ -157,6 +157,16 @@ callback function types and distinguishes string literals for exact `click`
 typing; the older mutation-v1 artifact remains unchanged. The Phase 13
 task-queue and microtask-checkpoint semantics remain an explicit B3 gap.
 
+**Event `readonly` static enforcement (B4 partial):** BlueTS now retains
+`readonly` on interface and record members through generic substitution and
+inherited-property lookup, and emitted declarations preserve it. The bounded
+checker rejects direct dot-property assignment, compound assignment, update,
+and deletion; the verified event-v1 ambient profile proves that writes to
+`type`, `target`, and `currentTarget` fail as BlueTS diagnostics before the
+direct BlueJS bridge runs. The child event object already has non-writable,
+non-configurable descriptors. Computed-property writes remain outside this
+static check, so the B4 qualifier leaf is not yet complete.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

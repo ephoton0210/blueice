@@ -245,6 +245,8 @@ pub(super) fn starts_runtime_expression_statement(token: &Token) -> bool {
         "(" | "["
             | "+"
             | "-"
+            | "++"
+            | "--"
             | "!"
             | "~"
             | "true"
