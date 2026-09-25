@@ -36,6 +36,15 @@ impl<'a> ModuleChecker<'a> {
                 value => value,
             };
         }
+        if tokens
+            .first()
+            .is_some_and(|token| token.is("++") || token.is("--"))
+            || tokens
+                .last()
+                .is_some_and(|token| token.is("++") || token.is("--"))
+        {
+            return Type::Number;
+        }
         if let Some(call) = member_call_parts(tokens) {
             let base = self.infer_expression(call.receiver, scope);
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
@@ -187,6 +196,28 @@ impl<'a> ModuleChecker<'a> {
         if first.kind == TokenKind::Number {
             return Type::Number;
         }
+        if let Some((receiver, property)) = member_access_target(tokens) {
+            if tokens.iter().filter(|token| token.is("[")).count() > self.max_type_expansions {
+                return Type::Unknown;
+            }
+            let Some(property) = property else {
+                return Type::Unknown;
+            };
+            let owner = self.infer_expression(receiver, scope);
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            return match property_type(
+                &owner,
+                property,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            ) {
+                PropertyType::Found { value, .. } => value,
+                PropertyType::Missing | PropertyType::Indeterminate | PropertyType::Exhausted => {
+                    Type::Unknown
+                }
+            };
+        }
         match first.text.as_str() {
             "true" | "false" => Type::Boolean,
             "null" => Type::Null,
@@ -205,26 +236,6 @@ impl<'a> ModuleChecker<'a> {
                             };
                         }
                     }
-                }
-                if tokens.get(1).is_some_and(|token| token.is("."))
-                    && tokens.get(2).is_some_and(|token| {
-                        matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
-                    })
-                {
-                    let base = scope.get(&first.text).cloned().unwrap_or(Type::Unknown);
-                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-                    return match property_type(
-                        &base,
-                        &tokens[2].text,
-                        &self.types,
-                        &mut HashSet::new(),
-                        &mut budget,
-                    ) {
-                        PropertyType::Found { value, .. } => value,
-                        PropertyType::Missing
-                        | PropertyType::Indeterminate
-                        | PropertyType::Exhausted => Type::Unknown,
-                    };
                 }
                 scope.get(&first.text).cloned().unwrap_or(Type::Unknown)
             }
@@ -771,10 +782,7 @@ impl<'a> ModuleChecker<'a> {
         let Some(mutation) = member_mutation(strip_outer_parentheses(tokens)) else {
             return;
         };
-        let owner = scope
-            .get(&mutation.base.text)
-            .cloned()
-            .unwrap_or(Type::Unknown);
+        let owner = self.infer_expression(mutation.receiver, scope);
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         let Some(property) = mutation.property else {
             match contains_readonly_member(&owner, &self.types, &mut HashSet::new(), &mut budget) {
@@ -1042,93 +1050,73 @@ impl<'a> ModuleChecker<'a> {
 }
 
 struct MemberMutation<'a> {
-    base: &'a Token,
+    receiver: &'a [Token],
     property: Option<&'a str>,
     operator: &'a Token,
     value: &'a [Token],
 }
 
-/// Recognizes only a direct receiver and one dot or computed member. A
-/// computed key is known only when its string spelling needs no JavaScript
-/// escape decoding; all other keys remain dynamic rather than guessed.
-fn member_mutation(tokens: &[Token]) -> Option<MemberMutation<'_>> {
-    let (prefix, tokens) = match tokens {
-        [operator, rest @ ..]
-            if operator.is("++") || operator.is("--") || operator.is("delete") =>
-        {
-            (Some(operator), rest)
-        }
-        _ => (None, tokens),
-    };
-    let [base, rest @ ..] = tokens else {
-        return None;
-    };
-    if base.kind != TokenKind::Identifier {
+const MEMBER_ASSIGNMENT_OPERATORS: &[&str] = &[
+    "=", "+=", "-=", "*=", "/=", "%=", "**=", "<<=", ">>=", ">>>=", "&=", "|=", "^=", "&&=", "||=",
+    "??=",
+];
+
+/// Exposes only the final member in an expression. A computed key is known
+/// only when its string spelling needs no JavaScript escape decoding; all
+/// other keys remain dynamic rather than guessed.
+fn member_access_target(tokens: &[Token]) -> Option<(&[Token], Option<&str>)> {
+    let tokens = strip_outer_parentheses(tokens);
+    let len = tokens.len();
+    if len >= 3
+        && tokens[len - 2].is(".")
+        && matches!(
+            tokens[len - 1].kind,
+            TokenKind::Identifier | TokenKind::Keyword
+        )
+    {
+        return Some((&tokens[..len - 2], Some(&tokens[len - 1].text)));
+    }
+    if !tokens.last()?.is("]") {
         return None;
     }
-    let (property, rest) = match rest {
-        [dot, field, tail @ ..]
-            if dot.is(".") && matches!(field.kind, TokenKind::Identifier | TokenKind::Keyword) =>
-        {
-            (Some(field.text.as_str()), tail)
-        }
-        [open, tail @ ..] if open.is("[") => {
-            let mut depth = 1usize;
-            let mut close = None;
-            for (index, token) in tail.iter().enumerate() {
-                if token.is("[") {
-                    depth += 1;
-                } else if token.is("]") {
-                    depth -= 1;
-                    if depth == 0 {
-                        close = Some(index);
-                        break;
+    let mut depth = 0usize;
+    for index in (0..len).rev() {
+        if tokens[index].is("]") {
+            depth += 1;
+        } else if tokens[index].is("[") {
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                if index == 0 {
+                    return None;
+                }
+                let property = match &tokens[index + 1..len - 1] {
+                    [literal] if literal.kind == TokenKind::String => {
+                        unescaped_property_name(&literal.text)
                     }
-                }
+                    _ => None,
+                };
+                return Some((&tokens[..index], property));
             }
-            let close = close?;
-            let property = match &tail[..close] {
-                [literal] if literal.kind == TokenKind::String => {
-                    unescaped_property_name(&literal.text)
-                }
-                _ => None,
-            };
-            (property, &tail[close + 1..])
         }
-        _ => return None,
-    };
-    let (operator, value) = if let Some(operator) = prefix {
-        if !rest.is_empty() {
-            return None;
+    }
+    None
+}
+
+fn member_mutation(tokens: &[Token]) -> Option<MemberMutation<'_>> {
+    let (target, operator, value) = match tokens {
+        [operator, target @ ..]
+            if operator.is("++") || operator.is("--") || operator.is("delete") =>
+        {
+            (target, operator, &[][..])
         }
-        (operator, &[][..])
-    } else {
-        let [operator, value @ ..] = rest else {
-            return None;
-        };
-        (operator, value)
+        [target @ .., operator] if operator.is("++") || operator.is("--") => {
+            (target, operator, &[][..])
+        }
+        _ => top_level_binary_parts(tokens, MEMBER_ASSIGNMENT_OPERATORS, |_| false)?,
     };
-    let assignment = matches!(
-        operator.text.as_str(),
-        "=" | "+="
-            | "-="
-            | "*="
-            | "/="
-            | "%="
-            | "**="
-            | "<<="
-            | ">>="
-            | ">>>="
-            | "&="
-            | "|="
-            | "^="
-            | "&&="
-            | "||="
-            | "??="
-    );
-    let update = operator.is("++") || operator.is("--") || operator.is("delete");
-    ((assignment && !value.is_empty()) || (update && value.is_empty())).then_some(MemberMutation {
-        base,
+    let (receiver, property) = member_access_target(target)?;
+    Some(MemberMutation {
+        receiver,
         property,
         operator,
         value,

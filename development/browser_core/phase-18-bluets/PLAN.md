@@ -167,8 +167,18 @@ members fail closed after bounded alias/inheritance expansion. The verified
 event-v1 ambient profile proves that writes to `type`, `target`, and
 `currentTarget` fail as BlueTS diagnostics before the direct BlueJS bridge
 runs. The child event object already has non-writable, non-configurable
-descriptors. Complex or chained receiver writes remain outside this bounded
-static check, so the B4 qualifier leaf is not yet complete.
+descriptors. At this initial slice, complex or chained receiver writes still
+lay outside the bounded static check.
+
+**Chained event receiver checking (B4 partial):** The bounded checker now
+resolves the final property against the inferred receiver rather than only
+the first identifier. Parenthesized receivers, dot and exact static-bracket
+chains, and direct-call results retain the event type through a write; the
+same resolver supplies nested read inference. Existing numeric update,
+arithmetic, and unary `typeof` inference remain intact. Event-v1 bridge
+regressions verify rejection as BlueTS diagnostics before lowering. Dynamic
+receiver keys and mutations nested in a larger expression still need their
+own bounded analysis before the qualifier leaf can be checked off.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

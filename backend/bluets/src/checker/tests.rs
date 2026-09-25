@@ -150,6 +150,53 @@ fn computed_write_fails_closed_after_generic_inheritance_expansion() {
 }
 
 #[test]
+fn readonly_checks_follow_parenthesized_chained_and_called_receivers() {
+    let ambient = ModuleSource::new(
+        "memory:///events.d.ts",
+        "interface Event { readonly type: 'click'; readonly target: string; mutable: string; }\n\
+         interface Holder { event: Event; }",
+    );
+    let check = |source| {
+        crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+            CompilerOptions {
+                ambient_declaration_modules: vec![ambient.clone()],
+                ..CompilerOptions::default()
+            },
+        )
+    };
+    let valid = check(
+        "function write(holder: Holder, event: Event): void {\n\
+           (event).mutable = 'ok'; holder.event.mutable = 'ok'; holder['event'].mutable = 'ok';\n\
+         }\n\
+         interface Counter { value: number; }\n\
+         function read(counter: Counter): number { return 1 + counter.value; }\n\
+         function kind(event: Event): string { return typeof event.type; }",
+    );
+    assert!(!valid.has_errors(), "{:#?}", valid.diagnostics);
+    for source in [
+        "function write(event: Event): void { (event).type = 'click'; }",
+        "function write(holder: Holder): void { holder.event.type = 'click'; }",
+        "function write(holder: Holder): void { holder['event'].type = 'click'; }",
+        "function write(holder: Holder): void { holder.event['target'] = 'wrong'; }",
+        "function write(holder: Holder, key: string): void { holder.event[key] = 'wrong'; }",
+        "function getEvent(event: Event): Event { return event; }\n\
+         function write(event: Event): void { getEvent(event).type = 'click'; }",
+    ] {
+        let invalid = check(source);
+        assert!(
+            invalid.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::TypeMismatch
+                    && diagnostic.message.contains("readonly")
+            }),
+            "{source}: {:#?}",
+            invalid.diagnostics
+        );
+    }
+}
+
+#[test]
 fn ambient_interface_methods_check_member_call_arguments_and_return_types() {
     let ambient = ModuleSource::new(
         "memory:///lib.blueice.d.ts",
