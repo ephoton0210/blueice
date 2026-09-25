@@ -874,6 +874,23 @@ span query. IPC round-trip and core dispatch tests cover the v36 contract,
 missing/cross-stream receipts, guessed IDs, moved frames, and an unbound
 later frame. Launcher-supervised socket acceptance remains C2.1.2.3.3.
 
+**Real v36 stack-coordinate acceptance (C2.1.2.3.3):** A Launcher-supervised
+core and BlueJS child return exact original BlueTS byte/UTF-16 spans for
+both child and suspended root frames in classic and module scripts. The same
+socket tests prove that source IDs guessed before inventory, unknown IDs,
+wrong but receipted sources, a moved nested safe point, and a replayed
+predecessor-stream receipt never produce a coordinate batch. A classic root
+also pauses at its compiler-verified terminal `Halt` instruction, which has
+no direct lowering span: the single-span and batched routes both reject it
+without a partial result. The child already returned a generic private
+`InvalidRequest` for this unbound case; core now classifies it as public
+`InvalidTarget`, using the existing fail-closed static-target mapping rather
+than incorrectly reporting a lost realm. Base `Stack` remains source-free.
+The 16-case Launcher debugger suite passed 15 cases in one serial run; its
+pre-existing short pending-admission-window test for an unsupported deeper
+call shape returned `InvalidExecutionState` while arming, then passed when
+rerun alone. Both new coordinate tests passed in the serial run and alone.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

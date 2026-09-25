@@ -3488,7 +3488,7 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             span,
         } = reply
         else {
-            return Err(child_debugger_reply_error(&reply));
+            return Err(child_static_metadata_relation_reply_error(&reply));
         };
         if reply_tab_id != tab_id.as_u64()
             || reply_generation != document_generation
@@ -4982,9 +4982,10 @@ fn child_debugger_reply_error(reply: &PageHostReply) -> JavaScriptPageDebuggerEr
     }
 }
 
-/// An exact, already-receipted relation can be false without losing the live
-/// realm. The child intentionally uses a generic private InvalidRequest for
-/// either no relation or an unknown pair; expose only public InvalidTarget.
+/// An exact, already-receipted relation or safe-point source binding can be
+/// absent without losing the live realm. The child uses a generic private
+/// InvalidRequest for an unbound or mismatched target; expose only public
+/// InvalidTarget.
 fn child_static_metadata_relation_reply_error(
     reply: &PageHostReply,
 ) -> JavaScriptPageDebuggerError {
@@ -8090,7 +8091,7 @@ mod tests {
                     ..target
                 },
             ),
-            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
         );
 
         tabs.get_mut(tab_id).unwrap().load_html_str(
