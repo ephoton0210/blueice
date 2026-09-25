@@ -271,6 +271,15 @@ comma-separated arguments. A reversed sequence ending in a mutable receiver
 remains writable. The verified event-v1 bridge rejects the readonly alias
 before execution. Other unmodeled expression shapes remain open.
 
+**Readonly through simple assignment results (B4 partial):** A supported
+simple `=` expression now infers the right-hand value that the VM returns,
+not the type of a mutable object appearing at the start of its left-hand
+target. This retains an event's readonly `type` through direct, local,
+record, array, and chained assignment results. A genuinely mutable
+right-hand result remains writable. The verified event-v1 bridge rejects an
+assignment-result alias before runtime. Compound and logical assignments,
+and other unmodeled expression shapes, remain outside this proof.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

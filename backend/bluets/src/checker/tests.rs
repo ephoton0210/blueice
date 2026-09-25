@@ -8,6 +8,7 @@ use crate::compiler::{CompilerOptions, MapLoader, ModuleSource};
 mod member_calls;
 mod readonly;
 mod readonly_assertions;
+mod readonly_assignment_results;
 mod readonly_sequence;
 
 #[test]

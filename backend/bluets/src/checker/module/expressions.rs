@@ -37,6 +37,10 @@ impl<'a> ModuleChecker<'a> {
             // A sequence evaluates every operand but yields its final value.
             return self.infer_expression(result, scope);
         }
+        if let Some((_, _, assigned)) = top_level_binary_parts(tokens, &["="], |_| false) {
+            // Simple assignment yields the value written to its target.
+            return self.infer_expression(assigned, scope);
+        }
         if tokens.len() > 1 && tokens.last().is_some_and(|token| token.is("!")) {
             let inferred = self.infer_expression(&tokens[..tokens.len() - 1], scope);
             return match inferred {
