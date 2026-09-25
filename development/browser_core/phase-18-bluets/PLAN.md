@@ -1278,6 +1278,28 @@ module, catch/rethrow, finally replacement, and retained debugger-continuation
 regressions pass; all 34 native debugger VM tests, workspace Clippy, and
 format checking pass. No IPC or source-map lookup changed.
 
+**Private location route split (C2.3.1.3):** The VM sidecar is the most recent
+realm execution, not durable per-program debugger state. First, the page
+runtime will expose it only for an exact tab-owned, generation-matching
+program (C2.3.1.3.1). Next, the supervised child will snapshot each terminal
+debugger-controlled execution before another program can overwrite the realm
+sidecar and bind it through the live BlueTS attachment's exact instruction
+entry; absent or ambiguous bindings retain no location (C2.3.1.3.2). Only
+after that complete child operation exists will page-host v39 add the private
+request/reply and core transport wrapper (C2.3.1.3.3). This keeps the wire at
+v38 until the route is fully implemented and tested; no frontend report gains
+privileged position data.
+
+**Page-owned throw-site read (C2.3.1.3.1):** `BlueJsPageRuntime` now returns
+the VM's source-free uncaught site only if the requested program is still
+owned by the exact tab and its installed generation equals the VM site.
+This is explicitly an ephemeral last-execution read, not a durable program
+record. Focused tests cover classic nested and module root/nested throws,
+another program's nonmatching read, successor execution overwrite,
+cross-realm refusal, and discard/navigation invalidation. The child still
+needs to snapshot the result before the next execution (C2.3.1.3.2); no
+wire or source-map route changed.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

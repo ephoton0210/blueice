@@ -17,7 +17,7 @@ use crate::{
     HostFunction, HostObject, HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod,
     HostObjectPairMethod, RuntimeError, Value, Vm, VmConfig, VmDebuggerExecutionState,
     VmDebuggerNestedExecutionState, VmDebuggerScopeEntry, VmDebuggerStackSnapshot,
-    VmDebuggerValuePreview,
+    VmDebuggerThrowSite, VmDebuggerValuePreview,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -803,6 +803,31 @@ impl BlueJsPageRuntime {
             .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
+    /// Returns the most recent uncaught language throw only when its native
+    /// installed generation belongs to this exact tab-owned program. This is
+    /// an ephemeral source-free observation: a later realm execution can
+    /// replace it, so a debugger host must snapshot it at terminal execution.
+    pub fn debugger_uncaught_throw_site(
+        &self,
+        tab_id: u64,
+        program: BlueJsProgramHandle,
+    ) -> Result<Option<VmDebuggerThrowSite>, BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        if !realm.programs.contains(&program) {
+            return Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm {
+                tab_id,
+                handle: program,
+            });
+        }
+        Ok(realm
+            .vm
+            .debugger_uncaught_throw_site()
+            .filter(|site| site.program_generation == program.generation().as_u64()))
+    }
+
     /// Resumes the single root-frame debugger continuation in a tab realm.
     /// The caller does not receive a result value, bytecode, source, or VM
     /// reference; terminal errors remain the page runtime's usual category.
@@ -1352,7 +1377,7 @@ fn page_debugger_nested_execution_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{parse, parse_module, BlueJsProgramV1, BlueJsSafePoint};
+    use crate::{parse, parse_module, BlueJsProgramV1, BlueJsSafePoint, Opcode};
 
     fn origin() -> BlueJsPageOrigin {
         BlueJsPageOrigin::new("https://example.test").unwrap()
@@ -1373,6 +1398,115 @@ mod tests {
             .into_iter()
             .find(|point| point.code_unit.ordinal() == 1 && point.bytecode_offset == 0)
             .expect("the direct child has a first verified instruction")
+    }
+
+    fn expected_throw_site(
+        runtime: &BlueJsPageRuntime,
+        handle: BlueJsProgramHandle,
+        nested: bool,
+    ) -> VmDebuggerThrowSite {
+        let root = runtime.program_registry().get(handle).unwrap().bytecode();
+        let code = if nested {
+            root.child_code_units().next().unwrap()
+        } else {
+            root
+        };
+        VmDebuggerThrowSite {
+            program_generation: handle.generation().as_u64(),
+            code_unit_ordinal: code.debugger_code_unit_ordinal.unwrap(),
+            bytecode_offset: code
+                .instructions()
+                .find(|instruction| instruction.opcode == Opcode::Throw)
+                .unwrap()
+                .offset as u32,
+        }
+    }
+
+    #[test]
+    fn uncaught_site_read_requires_exact_page_owned_program_and_last_execution() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        runtime.open_realm(8, origin()).unwrap();
+        let throwing = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///throw.js"),
+                &BlueJsProgramV1::Script(parse("function inner() { throw 7; } inner();").unwrap()),
+            )
+            .unwrap();
+        let successor = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///successor.js"),
+                &BlueJsProgramV1::Script(parse("42;").unwrap()),
+            )
+            .unwrap();
+        assert!(matches!(
+            runtime.execute_program(7, throwing),
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Thrown(_)))
+        ));
+        assert_eq!(
+            runtime.debugger_uncaught_throw_site(7, throwing),
+            Ok(Some(expected_throw_site(&runtime, throwing, true)))
+        );
+        assert_eq!(runtime.debugger_uncaught_throw_site(7, successor), Ok(None));
+        assert!(matches!(
+            runtime.debugger_uncaught_throw_site(8, throwing),
+            Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { .. })
+        ));
+
+        runtime.execute_program(7, successor).unwrap();
+        assert_eq!(runtime.debugger_uncaught_throw_site(7, throwing), Ok(None));
+        assert!(runtime.execute_program(7, throwing).is_err());
+        runtime.discard_program(7, throwing).unwrap();
+        assert!(matches!(
+            runtime.debugger_uncaught_throw_site(7, throwing),
+            Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { .. })
+        ));
+        runtime.navigate(7, origin()).unwrap();
+        assert!(matches!(
+            runtime.debugger_uncaught_throw_site(7, successor),
+            Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { .. })
+        ));
+    }
+
+    #[test]
+    fn uncaught_module_root_and_child_sites_obey_the_same_page_boundary() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        let root = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///throw-root.mjs"),
+                &BlueJsProgramV1::Module(parse_module("throw 8;").unwrap()),
+            )
+            .unwrap();
+        assert!(runtime.execute_module_graph(7, root, [root]).is_err());
+        assert_eq!(
+            runtime.debugger_uncaught_throw_site(7, root),
+            Ok(Some(expected_throw_site(&runtime, root, false)))
+        );
+
+        let nested = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///throw-nested.mjs"),
+                &BlueJsProgramV1::Module(
+                    parse_module("function inner() { throw 9; } export const value = inner();")
+                        .unwrap(),
+                ),
+            )
+            .unwrap();
+        assert!(runtime.execute_module_graph(7, nested, [nested]).is_err());
+        assert_eq!(runtime.debugger_uncaught_throw_site(7, root), Ok(None));
+        assert_eq!(
+            runtime.debugger_uncaught_throw_site(7, nested),
+            Ok(Some(expected_throw_site(&runtime, nested, true)))
+        );
     }
 
     #[test]

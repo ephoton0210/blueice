@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.3.1.3.** Map the retained site through the exact live
-BlueTS safe-point attachment and carry it over a versioned private route.
+**Current leaf: C2.3.1.3.2.** Snapshot terminal child executions and bind
+only exact live BlueTS throw-site mappings under their document/program.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -351,6 +351,9 @@ channel with explicit owner/client grants.
       - [x] **C2.3.1.2.1** Add a source-free, generation-bound native throw-site record for exact classic root instructions; expose it only after uncaught catchable failure, clear it on catch/new execution/normal completion, and test direct throw plus caught and successor cases. `VmDebuggerThrowSite` records only program generation, code-unit ordinal, and instruction offset. Interpreter completion stamps an exact catchable throw; catch entry clears the transient site; outer completion publishes it only for an uncaught error and clears it on the next execution. The focused test, all 31 debugger VM tests, and workspace Clippy pass; no wire changed.
       - [x] **C2.3.1.2.2** Preserve the original child site through nested propagation and module evaluation, replace it for a new throw, and prove nested/classic/module/catch/finally cases; then check off C2.3.1.2. A per-execution throw epoch distinguishes fresh throws from caller propagation; module completion publishes only uncaught catchable sites. All 34 native debugger VM tests, workspace Clippy, and format checking pass; no wire changed.
     - [ ] **C2.3.1.3** Map the retained site only through its exact live BlueTS safe-point attachment in the supervised child, add a versioned private location route, and prove classic/module/nested mapping, unbound refusal, and replacement expiry.
+      - [x] **C2.3.1.3.1** Expose the VM's most recent source-free uncaught site at the page-runtime boundary only when its installed generation belongs to the exact tab-owned program; prove classic/module/nested results, later execution overwrite, and realm invalidation without changing IPC. The page-runtime getter checks tab ownership and installed generation before returning the source-free sidecar; focused classic nested/module root/module nested and overwrite/cross-realm/discard/navigation tests pass.
+      - [ ] **C2.3.1.3.2** In the supervised child, capture each terminal debugger-controlled execution before another program runs, match its exact live BlueTS attachment and safe-point map, retain only a bounded private location under its document/program identity, and prove classic/module/nested, caught/unbound, and replacement expiry without adding a wire route.
+      - [ ] **C2.3.1.3.3** Add the complete page-host v39 private exception-location request/reply and core transport wrapper, with typed exact-identity/stale refusals and IPC plus real-child route tests; then check off C2.3.1.3.
     - [ ] **C2.3.1.4** Remint the exception location through core behind the existing independent safe-point-span owner/client grant and same-stream source receipt; add the complete public request/reply and protocol bump with typed denial tests.
     - [ ] **C2.3.1.5** Prove original classic/module/nested UTF-8 and UTF-16 exception spans, missing grants/receipts, caught errors, and stale generations on real Launcher-supervised debugger sockets; then check off C2.3.1 and C2.3.
 
