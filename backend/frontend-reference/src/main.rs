@@ -1231,13 +1231,46 @@ fn glyph(character: char) -> [u8; 7] {
         ':' => [0, 0b01100, 0b01100, 0, 0b01100, 0b01100, 0],
         '+' => [0, 0b00100, 0b00100, 0b11111, 0b00100, 0b00100, 0],
         ' ' => [0; 7],
+        '(' => [0b00010, 0b00100, 0b01000, 0b01000, 0b01000, 0b00100, 0b00010],
+        ')' => [0b01000, 0b00100, 0b00010, 0b00010, 0b00010, 0b00100, 0b01000],
+        ',' => [0, 0, 0, 0, 0b01100, 0b00100, 0b01000],
+        '\'' => [0b00100, 0b00100, 0b01000, 0, 0, 0, 0],
+        '"' => [0b01010, 0b01010, 0, 0, 0, 0, 0],
+        '_' => [0, 0, 0, 0, 0, 0, 0b11111],
+        '=' => [0, 0, 0b11111, 0, 0b11111, 0, 0],
+        '>' => [0b10000, 0b01000, 0b00100, 0b00010, 0b00100, 0b01000, 0b10000],
+        '<' => [0b00001, 0b00010, 0b00100, 0b01000, 0b00100, 0b00010, 0b00001],
+        '!' => [0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0, 0b00100],
+        '?' => [0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0, 0b00100],
+        ';' => [0, 0b01100, 0b01100, 0, 0b01100, 0b00100, 0b01000],
+        '%' => [0b11001, 0b11010, 0b00010, 0b00100, 0b01000, 0b01011, 0b10011],
+        '&' => [0b01100, 0b10010, 0b10100, 0b01000, 0b10101, 0b10010, 0b01101],
+        '[' => [0b01110, 0b01000, 0b01000, 0b01000, 0b01000, 0b01000, 0b01110],
+        ']' => [0b01110, 0b00010, 0b00010, 0b00010, 0b00010, 0b00010, 0b01110],
+        '*' => [0, 0b10101, 0b01110, 0b11111, 0b01110, 0b10101, 0],
+        '#' => [0b01010, 0b01010, 0b11111, 0b01010, 0b11111, 0b01010, 0b01010],
+        // A hollow box: an honest "no glyph for this character", not one that
+        // looks like a real letter or digit.
         _ => [
-            0b11111, 0b10001, 0b00110, 0b00100, 0b00110, 0b10001, 0b11111,
+            0b11111, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11111,
         ],
     }
 }
 
 impl ApplicationHandler<UserEvent> for App {
+    /// Saves a held debug snapshot when it falls due, and wakes the loop for it.
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let Some(snapshots) = self.snapshots.as_mut() else {
+            return;
+        };
+        let now = std::time::Instant::now();
+        snapshots.flush_due(now);
+        event_loop.set_control_flow(match snapshots.next_due() {
+            Some(due) => winit::event_loop::ControlFlow::WaitUntil(due),
+            None => winit::event_loop::ControlFlow::Wait,
+        });
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -2203,6 +2236,22 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    use super::glyph;
+
+    #[test]
+    fn every_punctuation_mark_the_panels_use_has_its_own_glyph_rather_than_the_fallback() {
+        let fallback = glyph('\u{1F600}');
+        for character in "(),'\"_=><!?;%&[]*#-.:/+ ".chars() {
+            if character != ' ' {
+                assert_ne!(glyph(character), fallback, "{character:?} draws as the fallback");
+            }
+        }
+        let mut seen = std::collections::HashSet::new();
+        for character in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789(),'\"_=><!?;%&[]*#-.:/+".chars() {
+            assert!(seen.insert(glyph(character)), "{character:?} looks like another character");
+        }
+    }
+
     use super::*;
 
     fn args(values: &[&str]) -> Result<Args, String> {

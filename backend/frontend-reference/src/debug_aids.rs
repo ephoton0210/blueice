@@ -43,6 +43,11 @@ pub(super) struct Snapshots {
     dir: PathBuf,
     last_written: Option<Instant>,
     last_fingerprint: u64,
+    /// The newest picture that was skipped only because the last write was too
+    /// recent. Without it the *final* state of a burst of redraws (a request
+    /// sent, then its reply) would never be saved, and the file would show the
+    /// intermediate one.
+    held: Option<(Vec<u32>, u32, u32)>,
 }
 
 impl Snapshots {
@@ -54,6 +59,7 @@ impl Snapshots {
             dir,
             last_written: None,
             last_fingerprint: 0,
+            held: None,
         })
     }
 
@@ -63,6 +69,7 @@ impl Snapshots {
             dir: dir.to_path_buf(),
             last_written: None,
             last_fingerprint: 0,
+            held: None,
         }
     }
 
@@ -77,13 +84,18 @@ impl Snapshots {
         now: Instant,
     ) -> bool {
         let fingerprint = fingerprint(pixels, width, height);
-        if fingerprint == self.last_fingerprint
-            || self
-                .last_written
-                .is_some_and(|t| now.saturating_duration_since(t) < MIN_INTERVAL)
-        {
+        if fingerprint == self.last_fingerprint {
+            self.held = None;
             return false;
         }
+        if self
+            .last_written
+            .is_some_and(|t| now.saturating_duration_since(t) < MIN_INTERVAL)
+        {
+            self.held = Some((pixels.to_vec(), width, height));
+            return false;
+        }
+        self.held = None;
         let png = encode_png(pixels, width, height);
         let staged = self.dir.join("native-window.png.tmp");
         let done = std::fs::write(&staged, png)
@@ -94,6 +106,25 @@ impl Snapshots {
             self.last_fingerprint = fingerprint;
         }
         done
+    }
+
+    /// When a held picture becomes due to be written, if there is one.
+    pub(super) fn next_due(&self) -> Option<Instant> {
+        self.held
+            .as_ref()
+            .map(|_| self.last_written.map_or_else(Instant::now, |t| t + MIN_INTERVAL))
+    }
+
+    /// Writes the held picture once its time has come. Returns whether a file
+    /// was written.
+    pub(super) fn flush_due(&mut self, now: Instant) -> bool {
+        if self.next_due().is_none_or(|due| now < due) {
+            return false;
+        }
+        let Some((pixels, width, height)) = self.held.take() else {
+            return false;
+        };
+        self.maybe_write(&pixels, width, height, now)
     }
 }
 
@@ -165,6 +196,29 @@ mod tests {
         assert!(!snapshots.maybe_write(&two, 4, 4, start + Duration::from_millis(50)));
         // ...and is written once the interval has passed.
         assert!(snapshots.maybe_write(&two, 4, 4, start + MIN_INTERVAL));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_last_picture_of_a_burst_is_held_and_written_when_due() {
+        let dir = temp_dir("held");
+        let mut snapshots = Snapshots::in_dir(&dir);
+        let start = Instant::now();
+        assert!(snapshots.maybe_write(&vec![1u32; 16], 4, 4, start));
+        assert_eq!(snapshots.next_due(), None, "nothing is waiting yet");
+        // Two quick redraws (a request, then its reply): only the last is kept.
+        let soon = start + Duration::from_millis(10);
+        assert!(!snapshots.maybe_write(&vec![2u32; 16], 4, 4, soon));
+        assert!(!snapshots.maybe_write(&vec![3u32; 16], 4, 4, soon));
+        assert_eq!(snapshots.next_due(), Some(start + MIN_INTERVAL));
+        assert!(!snapshots.flush_due(start + Duration::from_millis(100)), "not yet");
+        assert!(snapshots.flush_due(start + MIN_INTERVAL));
+        assert_eq!(snapshots.next_due(), None);
+        let written = std::fs::read(dir.join("native-window.png")).unwrap();
+        assert_eq!(written, encode_png(&vec![3u32; 16], 4, 4), "the newest picture won");
+        // A picture identical to what is on disk needs no write.
+        assert!(!snapshots.maybe_write(&vec![3u32; 16], 4, 4, start + Duration::from_secs(9)));
+        assert_eq!(snapshots.next_due(), None);
         let _ = std::fs::remove_dir_all(dir);
     }
 
