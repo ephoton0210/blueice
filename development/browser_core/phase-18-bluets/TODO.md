@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.2.1.3.2.** Carry the nested breakpoint and frame step
-through the child scheduler and page-host IPC.
+**Current leaf: C1.2.1.3.2.2.** Apply private nested-frame scheduling to a
+BlueTS entry-module graph and its retained module-root continuation.
 the page runtime, child, IPC, and public debugger socket.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
@@ -276,6 +276,9 @@ channel with explicit owner/client grants.
     - [ ] **C1.2.1.3** Add an opaque, generation-bound active-frame debugger identity and route nested pause/step through the page runtime, child, page-host IPC, and public debugger protocol without conflating it with a static code unit.
       - [x] **C1.2.1.3.1** Expose source-free nested pause/step through the page runtime with an active-frame identity bound to tab, installed program generation, code-unit ordinal, and nonzero invocation serial; revoke it on return, failure, or realm replacement. Classic and linked-module page-runtime seams now mint a frame only on an actual child pause, validate the full live identity on every step, preserve the graph and parent on return, and clear the identity after a returned frame, instruction-budget failure, or navigation. Three new page-runtime regressions pass; 522 non-environmental BlueJS library tests and workspace Clippy pass. The wire route remains unavailable until C1.2.1.3.2–3.
       - [ ] **C1.2.1.3.2** Carry the nested breakpoint and active-frame step through the child scheduler and page-host IPC, preserving classic and linked-module ownership and rejecting stale or unsupported targets.
+        - [x] **C1.2.1.3.2.1** Retain a verified classic child-frame target in the child-only deferred scheduler, pause and step its exact invocation, and keep root-only controls unavailable while that child is active. The child now holds an exact static target only for a pending classic declaration, then records a separate live frame on actual pause. It validates each successor, re-joins the original root on return, and rejects root controls while the child is active; unsupported deeper targets fail as rejected script execution. JavaScript and BlueTS classic regressions pass. The route remains child-private until C1.2.1.3.2.3; 99 launcher library tests pass with the known `/private/tmp` environment-only socket test excluded, and workspace Clippy passes.
+        - [ ] **C1.2.1.3.2.2** Apply the same private child scheduling to a BlueTS entry-module graph, including frame return and preserved module-root continuation.
+        - [ ] **C1.2.1.3.2.3** Add versioned page-host IPC and the core child proxy for nested arm/state/step, with exact document and program identity checks; leave the public socket disabled until C1.2.1.3.3.
       - [ ] **C1.2.1.3.3** Wire a distinct active-frame identity, capability, pause state, and step command through the public debugger protocol and core route; bump both protocol versions only when end-to-end behavior is available.
     - [ ] **C1.2.1.4** Prove the nested pause and same-frame instruction successor on a real BlueTS page through the public debugger socket; keep unsupported call shapes unavailable.
   - [ ] **C1.2.2** Resume that same frame; reject a stale frame identity after it returns.
