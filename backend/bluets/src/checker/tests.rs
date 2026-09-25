@@ -239,6 +239,80 @@ fn readonly_checks_follow_dynamic_array_receivers() {
 }
 
 #[test]
+fn readonly_checks_follow_heterogeneous_dynamic_receivers() {
+    let source = "interface Event { readonly type: 'click'; mutable: string; }\n\
+                  interface Holder { event: Event; }\n\
+                  interface Other { count: number; }\n\
+                  interface Slots { first: Holder; second: Other; }\n\
+                  function consume(value: string): void {}\n\
+                  function write(slots: Slots, key: string): void {\n\
+                    slots[key].event.type = 'click';\n\
+                    consume(slots[key].event.type = 'click');\n\
+                  }";
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+        CompilerOptions::default(),
+    );
+    let readonly = result
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.message.contains("readonly"))
+        .count();
+    assert_eq!(readonly, 2, "{:#?}", result.diagnostics);
+
+    for source in [
+        "interface Event { readonly type: 'click'; } interface Other { count: number; } function write(values: Event[] | Other[], index: number): void { values[index].type = 'click'; }",
+        "interface Event { readonly type: 'click'; } interface Other { count: number; } type Possible = Event | Other; function write(values: Possible[], index: number): void { values[index].type = 'click'; }",
+        "interface Event { readonly type: 'click'; } interface Other { count: number; } function write(values: [Event, Other], index: number): void { values[index].type = 'click'; }",
+    ] {
+        let invalid = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+            CompilerOptions::default(),
+        );
+        assert!(
+            invalid
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("readonly")),
+            "{source}: {:#?}",
+            invalid.diagnostics
+        );
+    }
+
+    let valid = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "interface First { mutable: string; } interface Second { mutable: string; extra: number; } interface Slots { first: First; second: Second; } function write(slots: Slots, key: string): void { slots[key].mutable = 'ok'; }",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(!valid.has_errors(), "{:#?}", valid.diagnostics);
+
+    let bounded = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+        CompilerOptions {
+            limits: crate::compiler::CompilerLimits {
+                max_type_expansions: 4,
+                ..crate::compiler::CompilerLimits::default()
+            },
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(
+        bounded.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::ResourceLimit
+                && diagnostic.message.contains("computed readonly receiver")
+        }),
+        "{:#?}",
+        bounded.diagnostics
+    );
+}
+
+#[test]
 fn readonly_mutations_inside_larger_expressions_are_not_skipped() {
     let ambient = ModuleSource::new(
         "memory:///events.d.ts",

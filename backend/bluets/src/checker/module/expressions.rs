@@ -6,6 +6,8 @@
 
 use super::*;
 
+mod readonly;
+
 impl<'a> ModuleChecker<'a> {
     pub(super) fn infer_expression(
         &self,
@@ -813,6 +815,10 @@ impl<'a> ModuleChecker<'a> {
             return;
         };
         let owner = self.infer_expression(mutation.receiver, scope);
+        if self.reject_computed_readonly_mutation(mutation.receiver, mutation.property, scope, span)
+        {
+            return;
+        }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         let Some(property) = mutation.property else {
             match contains_readonly_member(&owner, &self.types, &mut HashSet::new(), &mut budget) {
@@ -944,49 +950,63 @@ impl<'a> ModuleChecker<'a> {
                     continue;
                 };
                 let owner = self.infer_expression(receiver, scope);
-                let readonly = if let Some(property) = property {
-                    match property_type(
-                        &owner,
-                        property,
-                        &self.types,
-                        &mut HashSet::new(),
-                        &mut budget,
-                    ) {
-                        PropertyType::Found { readonly, .. } => readonly,
-                        PropertyType::Exhausted => {
-                            self.type_error(
-                                span,
-                                format!(
-                                    "property lookup exceeds the {} generic-expansion limit",
-                                    self.max_type_expansions
-                                ),
-                                DiagnosticCode::ResourceLimit,
-                            );
-                            return;
-                        }
-                        PropertyType::Missing | PropertyType::Indeterminate => false,
-                    }
-                } else {
-                    match contains_readonly_member(
-                        &owner,
-                        &self.types,
-                        &mut HashSet::new(),
-                        &mut budget,
-                    ) {
-                        Ok(readonly) => readonly,
-                        Err(()) => {
-                            self.type_error(
-                                span,
-                                format!(
-                                    "property lookup exceeds the {} generic-expansion limit",
-                                    self.max_type_expansions
-                                ),
-                                DiagnosticCode::ResourceLimit,
-                            );
-                            return;
-                        }
+                let possible_readonly = match self
+                    .possible_readonly_computed_receiver(receiver, property, scope)
+                {
+                    Ok(readonly) => readonly,
+                    Err(()) => {
+                        self.type_error(
+                            span,
+                            "computed readonly receiver exceeds its type-expansion limit".into(),
+                            DiagnosticCode::ResourceLimit,
+                        );
+                        return;
                     }
                 };
+                let readonly = possible_readonly
+                    || if let Some(property) = property {
+                        match property_type(
+                            &owner,
+                            property,
+                            &self.types,
+                            &mut HashSet::new(),
+                            &mut budget,
+                        ) {
+                            PropertyType::Found { readonly, .. } => readonly,
+                            PropertyType::Exhausted => {
+                                self.type_error(
+                                    span,
+                                    format!(
+                                        "property lookup exceeds the {} generic-expansion limit",
+                                        self.max_type_expansions
+                                    ),
+                                    DiagnosticCode::ResourceLimit,
+                                );
+                                return;
+                            }
+                            PropertyType::Missing | PropertyType::Indeterminate => false,
+                        }
+                    } else {
+                        match contains_readonly_member(
+                            &owner,
+                            &self.types,
+                            &mut HashSet::new(),
+                            &mut budget,
+                        ) {
+                            Ok(readonly) => readonly,
+                            Err(()) => {
+                                self.type_error(
+                                    span,
+                                    format!(
+                                        "property lookup exceeds the {} generic-expansion limit",
+                                        self.max_type_expansions
+                                    ),
+                                    DiagnosticCode::ResourceLimit,
+                                );
+                                return;
+                            }
+                        }
+                    };
                 if readonly {
                     let mutation_span = SourceSpan::new(
                         &span.module,

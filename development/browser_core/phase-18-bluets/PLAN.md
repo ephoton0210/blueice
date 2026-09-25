@@ -214,9 +214,20 @@ mutations nested inside calls. Uniform tuple and record fields use the same
 conservative inference; canonical numeric literal keys select the exact
 element of a heterogeneous tuple, and a mutable field remains writable. The
 verified event-v1 direct bridge rejects array-indexed writes to `type` and
-`currentTarget` as BlueTS diagnostics before BlueJS execution. Heterogeneous
-dynamic containers and opaque expressions still need a sound fail-closed
-policy before B4's qualifier leaf can be marked complete.
+`currentTarget` as BlueTS diagnostics before BlueJS execution. At this slice,
+heterogeneous dynamic containers and opaque expressions still needed a sound
+fail-closed policy before B4's qualifier leaf could be marked complete.
+
+**Heterogeneous computed readonly receivers (B4 partial):** A separate
+readonly-only candidate walk now expands typed heterogeneous records, tuples,
+array unions, named aliases, and subsequent member chains under a fixed
+type-expansion budget. It rejects a mutation when any reachable branch has a
+readonly event property, including a mutation nested inside a call, while a
+mutable-only branch remains writable. Exhaustion emits a resource diagnostic
+instead of treating the receiver as safely writable. The event-v1 direct
+bridge proves a heterogeneous indexed event write fails during BlueTS checking.
+This walk does not change ordinary expression inference or resolve opaque and
+unmodeled receiver forms; B4.2 remains open.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

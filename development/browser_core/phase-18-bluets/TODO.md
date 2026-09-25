@@ -206,9 +206,12 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   retain the element type of typed arrays (including aliases) and uniform
   tuples/records; literal canonical numeric indices select exact tuple
   elements. Thus `events[index].type = ...` and `events['0'].type = ...` are
-  rejected even inside a larger expression. Heterogeneous dynamic containers
-  and opaque/unmodeled expression forms remain outside this static check, so
-  do not claim full qualifier enforcement yet.
+  rejected even inside a larger expression. A separate bounded readonly-only
+  candidate walk now follows typed heterogeneous record/tuple/array-union
+  branches through dynamic indices and later member chains, rejecting a write
+  if any reachable branch has a readonly field; exhausting its expansion
+  budget fails with a resource diagnostic. Opaque/unmodeled expression forms
+  still need a sound policy, so do not claim full qualifier enforcement yet.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members
   must fail both static checking and JavaScript runtime access.
 
