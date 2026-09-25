@@ -21,4 +21,5 @@ url = "2"
 [dev-dependencies]
 blueice-testing = { path = "../../testing" }
 blueice-ai-gatekeeper = { path = "../../ai-gatekeeper" }
+blueice-ai-assistant = { path = "../../ai-assistant" }
 blueice-bluejs = { path = "../../bluejs" }

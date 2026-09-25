@@ -289,19 +289,11 @@ impl Page {
     /// method from outside the crate, so skipping the gate for a real
     /// (non-built-in, non-test) navigation is a compile error, not a
     /// runtime convention a differently-written caller could omit.
-    pub(crate) fn apply_fetched(
-        &mut self,
-        clearance: crate::gatekeeper_client::GatekeeperClearance,
-        url: &str,
-        html: &str,
-    ) {
-        self.apply_fetched_translated(clearance, url, html, None);
-    }
-
-    /// [`Self::apply_fetched`] plus the assistant's translation of the
-    /// page's translatable text, if any was obtained in time. The clearance
-    /// covers the *original* HTML; a translation can only be applied on top of
-    /// a cleared page, never instead of one.
+    ///
+    /// Also substitutes the assistant's translation of the page's
+    /// translatable text, if any was obtained in time. The clearance covers the
+    /// *original* HTML; a translation can only be applied on top of a cleared
+    /// page, never instead of one.
     pub(crate) fn apply_fetched_translated(
         &mut self,
         _clearance: crate::gatekeeper_client::GatekeeperClearance,

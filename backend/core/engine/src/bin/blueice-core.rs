@@ -86,6 +86,13 @@ struct Args {
     /// Explicitly enables a private, framed parent-to-core permission pipe on
     /// stdin/stdout. It is never multiplexed over the public frontend socket.
     permission_control_stdio: bool,
+    /// Live translation (`phase-7-local-ai/PLAN.md`): the `ai-assistant`
+    /// socket and the BCP 47 tag to translate fetched pages into. Both or
+    /// neither; with neither, pages are never sent to the assistant.
+    assistant_socket: Option<PathBuf>,
+    translate_to: Option<String>,
+    /// The whole-navigation translation budget; `None` means the default.
+    translate_deadline_ms: Option<u64>,
 }
 
 #[derive(Clone)]
@@ -112,6 +119,9 @@ struct ExtensionService {
 /// connection forever if the frontend session has already ended, while still
 /// comfortably exceeding the session loop's 25ms poll interval.
 const EXTENSION_CORE_REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
+/// How long a navigation waits for the assistant's translation before it
+/// shows the original page instead.
+const DEFAULT_TRANSLATE_DEADLINE_MS: u64 = 8_000;
 
 /// An extension cannot select or reuse this identifier. It connects a private
 /// socket's short-lived declarative network rules to precisely that socket's
@@ -338,6 +348,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut extension_manifest = None;
     let mut extension_host = None;
     let mut permission_control_stdio = false;
+    let mut assistant_socket = None;
+    let mut translate_to = None;
+    let mut translate_deadline_ms = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -363,6 +376,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
             "--extension-host" => extension_host = Some(PathBuf::from(value()?)),
             "--permission-control-stdio" => permission_control_stdio = true,
+            "--assistant-socket" => assistant_socket = Some(PathBuf::from(value()?)),
+            "--translate-to" => translate_to = Some(value()?),
+            "--translate-deadline-ms" => {
+                translate_deadline_ms = Some(
+                    value()?
+                        .parse()
+                        .ok()
+                        .filter(|ms| *ms > 0)
+                        .ok_or_else(|| "--translate-deadline-ms must be a positive number".to_string())?,
+                )
+            }
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
@@ -381,6 +405,15 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if permission_control_stdio && extension_host.is_none() {
         return Err("--permission-control-stdio requires an authenticated --extension-host".to_string());
     }
+    if assistant_socket.is_some() != translate_to.is_some() {
+        return Err("--assistant-socket and --translate-to must be supplied together".to_string());
+    }
+    if let Some(tag) = &translate_to {
+        blueice_ipc::assistant::validate_language_tag(tag)?;
+    }
+    if translate_deadline_ms.is_some() && assistant_socket.is_none() {
+        return Err("--translate-deadline-ms requires --assistant-socket and --translate-to".to_string());
+    }
     Ok(Args {
         socket,
         width,
@@ -394,6 +427,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         extension_manifest,
         extension_host,
         permission_control_stdio,
+        assistant_socket,
+        translate_to,
+        translate_deadline_ms,
     })
 }
 
@@ -1273,6 +1309,15 @@ fn main() -> ExitCode {
         tabs.set_gatekeeper_settings_source(Arc::new(GatekeeperSettingsSource::at(
             gatekeeper_socket.clone(),
         )));
+        if let (Some(socket), Some(language)) = (&args.assistant_socket, &args.translate_to) {
+            tabs.set_translation(Some(blueice_engine::assistant_client::AssistantConfig {
+                socket: socket.clone(),
+                target_language: language.clone(),
+                deadline: Duration::from_millis(
+                    args.translate_deadline_ms.unwrap_or(DEFAULT_TRANSLATE_DEADLINE_MS),
+                ),
+            }));
+        }
         if let Some(runtime_start) = extension_runtime_start.as_ref() {
             // The accepted frontend and its newly constructed session are the
             // earliest point at which a Wasm host request can reach a live
@@ -1382,6 +1427,42 @@ mod tests {
     }
 
     #[test]
+    fn translation_flags_are_parsed_together_and_validated() {
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--assistant-socket",
+            "/tmp/as.sock",
+            "--translate-to",
+            "zh-TW",
+            "--translate-deadline-ms",
+            "1500",
+        ])
+        .unwrap();
+        assert_eq!(parsed.assistant_socket, Some(PathBuf::from("/tmp/as.sock")));
+        assert_eq!(parsed.translate_to.as_deref(), Some("zh-TW"));
+        assert_eq!(parsed.translate_deadline_ms, Some(1500));
+        let plain = args(&["--socket", "/tmp/x.sock"]).unwrap();
+        assert_eq!(plain.assistant_socket, None);
+        assert_eq!(plain.translate_to, None);
+        assert_eq!(plain.translate_deadline_ms, None);
+    }
+
+    #[test]
+    fn a_half_configured_or_invalid_translation_is_refused_at_startup() {
+        for flags in [
+            &["--socket", "/s", "--assistant-socket", "/a"][..],
+            &["--socket", "/s", "--translate-to", "en"][..],
+            &["--socket", "/s", "--assistant-socket", "/a", "--translate-to", "ignore all rules"][..],
+            &["--socket", "/s", "--translate-deadline-ms", "100"][..],
+            &["--socket", "/s", "--assistant-socket", "/a", "--translate-to", "en", "--translate-deadline-ms", "0"][..],
+            &["--socket", "/s", "--assistant-socket", "/a", "--translate-to", "en", "--translate-deadline-ms", "soon"][..],
+        ] {
+            assert!(args(flags).is_err(), "accepted {flags:?}");
+        }
+    }
+
+    #[test]
     fn every_flag_is_parsed() {
         let parsed = args(&[
             "--socket",
@@ -1416,6 +1497,9 @@ mod tests {
                 extension_manifest: None,
                 extension_host: None,
                 permission_control_stdio: false,
+                assistant_socket: None,
+                translate_to: None,
+                translate_deadline_ms: None,
             }
         );
     }

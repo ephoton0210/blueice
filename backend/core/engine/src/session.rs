@@ -2009,6 +2009,25 @@ struct Completion {
     request_id: Option<u64>,
     kind: PendingKind,
     outcome: NavOutcome,
+    /// The assistant's translation of a cleared page's text, obtained on the
+    /// navigation thread; `None` keeps the page as fetched.
+    translations: Option<Vec<String>>,
+}
+
+/// Translates a *cleared* page on the navigation thread, so the session loop
+/// never waits on the assistant. The gatekeeper has already reviewed the
+/// original HTML by the time an outcome is `Cleared`; every other outcome, an
+/// unset assistant, or any assistant failure yields `None` (the original page).
+fn translate_cleared(
+    outcome: &NavOutcome,
+    config: Option<&crate::assistant_client::AssistantConfig>,
+) -> Option<Vec<String>> {
+    match (outcome, config) {
+        (NavOutcome::Cleared { html, .. }, Some(config)) => {
+            crate::assistant_client::translate_html(config, html)
+        }
+        _ => None,
+    }
 }
 
 /// Advances a tab's navigation epoch and returns it. Any outstanding fetch
@@ -2133,6 +2152,7 @@ fn begin_history_navigation<S: Write>(
             let seq = supersede_pending_navigation(pending_nav_seq, tab_id);
             let tx = completion_tx.clone();
             let socket = gatekeeper_socket.to_path_buf();
+            let translation = tabs.translation_config();
             thread::spawn(move || {
                 let outcome = gatekeeper_client::check_and_fetch_with_navigation_rules(
                     tab_id,
@@ -2140,12 +2160,14 @@ fn begin_history_navigation<S: Write>(
                     &socket,
                     navigation_rules,
                 );
+                let translations = translate_cleared(&outcome, translation.as_ref());
                 let _ = tx.send(Completion {
                     tab_id,
                     seq,
                     request_id,
                     kind,
                     outcome,
+                    translations,
                 });
             });
             Ok(())
@@ -2229,6 +2251,7 @@ fn begin_gated_navigation<S: Write>(
 
     let tx = completion_tx.clone();
     let socket = gatekeeper_socket.to_path_buf();
+    let translation = tabs.translation_config();
     thread::spawn(move || {
         let outcome = gatekeeper_client::check_and_fetch_with_navigation_rules(
             tab_id,
@@ -2236,12 +2259,14 @@ fn begin_gated_navigation<S: Write>(
             &socket,
             navigation_rules,
         );
+        let translations = translate_cleared(&outcome, translation.as_ref());
         let _ = tx.send(Completion {
             tab_id,
             seq: this_seq,
             request_id,
             kind,
             outcome,
+            translations,
         });
     });
     Ok(())
@@ -2321,6 +2346,7 @@ fn apply_completion<S: Write>(
         request_id,
         kind,
         outcome,
+        translations,
     } = completion;
     if pending_nav_seq.get(&tab_id) != Some(&seq) {
         return Ok(()); // superseded by a later navigation to this tab
@@ -2352,10 +2378,23 @@ fn apply_completion<S: Write>(
             };
             let committed = match &kind {
                 PendingKind::History(direction) => tabs.apply_fetched_history_navigation(
-                    tab_id, *direction, clearance, &final_url, &html, trace,
+                    tab_id,
+                    *direction,
+                    clearance,
+                    &final_url,
+                    &html,
+                    translations.as_deref(),
+                    trace,
                 ),
                 PendingKind::Navigate | PendingKind::OpenTab => {
-                    tabs.apply_fetched_navigation(tab_id, clearance, &final_url, &html, trace);
+                    tabs.apply_fetched_navigation(
+                        tab_id,
+                        clearance,
+                        &final_url,
+                        &html,
+                        translations.as_deref(),
+                        trace,
+                    );
                     true
                 }
             };

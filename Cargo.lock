@@ -239,6 +239,7 @@ dependencies = [
 name = "blueice-engine"
 version = "0.1.0"
 dependencies = [
+ "blueice-ai-assistant",
  "blueice-ai-gatekeeper",
  "blueice-bluejs",
  "blueice-css",

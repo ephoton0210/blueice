@@ -165,10 +165,13 @@ fn validate_body(text: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Checks a target-language tag. Public so `core` can refuse a bad
+/// `--translate-to` at startup rather than at the first navigation.
+///
 /// A BCP 47-shaped tag: ASCII alphanumerics separated by single hyphens
 /// (`en`, `zh-TW`, `pt-BR`). Restricting the shape keeps a hostile value from
 /// carrying instructions into the model prompt.
-fn validate_language_tag(tag: &str) -> Result<(), String> {
+pub fn validate_language_tag(tag: &str) -> Result<(), String> {
     let valid = !tag.is_empty()
         && tag.len() <= MAX_LANGUAGE_TAG_BYTES
         && tag

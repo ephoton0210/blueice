@@ -276,6 +276,10 @@ pub struct TabManager {
     /// Canonical HTTP(S) URL and ASCII host rules, keyed by an opaque
     /// core-allocated connection ID. Rules disappear on disconnect.
     extension_navigation_block_rules: HashMap<u64, (u64, HashSet<ExtensionNavigationBlockRule>)>,
+    /// Live translation of fetched pages (`phase-7-local-ai/PLAN.md`); `None`
+    /// leaves every page as the site wrote it. Read when a navigation starts,
+    /// so a later change never alters a navigation already in flight.
+    translation: Option<crate::assistant_client::AssistantConfig>,
     /// Install-time exact-origin restrictions for page-facing extension
     /// capabilities. The session checks these against the live tab at the
     /// same point it performs each read or write, avoiding a URL-check race.
@@ -329,6 +333,7 @@ impl TabManager {
             gatekeeper_settings: None,
             history_snapshot_mode,
             extension_navigation_block_rules: HashMap::new(),
+            translation: None,
             extension_capability_origins: BTreeMap::new(),
             extension_permissions: None,
         }
@@ -733,6 +738,17 @@ impl TabManager {
         true
     }
 
+    /// Turns live translation of fetched pages on (with the assistant to use
+    /// and the target language) or off.
+    pub fn set_translation(&mut self, config: Option<crate::assistant_client::AssistantConfig>) {
+        self.translation = config;
+    }
+
+    /// The live-translation settings a navigation started now would use.
+    pub fn translation_config(&self) -> Option<crate::assistant_client::AssistantConfig> {
+        self.translation.clone()
+    }
+
     /// Applies a trusted built-in navigation as a new session-history entry.
     /// `false` means `url` was not one of BlueIce's built-in pages; callers
     /// must then validate/gate an ordinary network navigation instead.
@@ -754,10 +770,11 @@ impl TabManager {
         clearance: crate::gatekeeper_client::GatekeeperClearance,
         url: &str,
         html: &str,
+        translations: Option<&[String]>,
         trace: blueice_ipc::extension::NetworkTraceInfo,
     ) {
         let mut next = self.new_history_page(id);
-        next.apply_fetched(clearance, url, html);
+        next.apply_fetched_translated(clearance, url, html, translations);
         next.set_network_response(trace.response.clone());
         next.set_network_trace(trace);
         self.replace_current_as_new_navigation(id, next);
@@ -793,6 +810,7 @@ impl TabManager {
     /// Commits a cleared, fetched document into the entry selected before the
     /// asynchronous request started. Unlike [`Self::apply_fetched_navigation`]
     /// this moves the history cursor and does not clear the opposite branch.
+    #[allow(clippy::too_many_arguments)] // mirrors `apply_fetched_navigation` plus the history direction
     pub(crate) fn apply_fetched_history_navigation(
         &mut self,
         id: TabId,
@@ -800,10 +818,11 @@ impl TabManager {
         clearance: crate::gatekeeper_client::GatekeeperClearance,
         url: &str,
         html: &str,
+        translations: Option<&[String]>,
         trace: blueice_ipc::extension::NetworkTraceInfo,
     ) -> bool {
         let mut next = self.new_history_page(id);
-        next.apply_fetched(clearance, url, html);
+        next.apply_fetched_translated(clearance, url, html, translations);
         next.set_network_response(trace.response.clone());
         next.set_network_trace(trace);
         self.replace_current_from_history(id, direction, next)
