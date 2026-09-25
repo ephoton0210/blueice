@@ -107,6 +107,8 @@ impl PermissionPanel {
             TrustedWindowReply::Rejected { reason } => {
                 self.notice = Some(reason.chars().take(160).collect());
             }
+            // Belongs to the assistant settings panel, not to permissions.
+            TrustedWindowReply::AssistantSettingsState { .. } => {}
         }
     }
 
@@ -733,7 +735,7 @@ fn ephemeral_review_lines(
     lines
 }
 
-fn panel_rect(width: u32, height: u32) -> Option<Rect> {
+pub(super) fn panel_rect(width: u32, height: u32) -> Option<Rect> {
     (width >= PANEL_WIDTH + 20 && height >= PANEL_HEIGHT + TAB_STRIP_HEIGHT + 12).then(|| Rect {
         x: (width - PANEL_WIDTH) / 2,
         y: (height - PANEL_HEIGHT) / 2,
@@ -742,7 +744,7 @@ fn panel_rect(width: u32, height: u32) -> Option<Rect> {
     })
 }
 
-fn button(panel: Rect, x: u32, y: u32, width: u32) -> Rect {
+pub(super) fn button(panel: Rect, x: u32, y: u32, width: u32) -> Rect {
     Rect {
         x: panel.x + x,
         y: panel.y + y,
@@ -751,7 +753,14 @@ fn button(panel: Rect, x: u32, y: u32, width: u32) -> Rect {
     }
 }
 
-fn draw_button(pixels: &mut [u32], width: u32, height: u32, rect: Rect, label: &str, color: u32) {
+pub(super) fn draw_button(
+    pixels: &mut [u32],
+    width: u32,
+    height: u32,
+    rect: Rect,
+    label: &str,
+    color: u32,
+) {
     draw_rect(pixels, width, height, rect, color);
     draw_text_line(
         pixels,

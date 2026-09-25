@@ -62,7 +62,9 @@ use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
 
+mod assistant_panel;
 mod permission_panel;
+use assistant_panel::{AssistantCommand, AssistantPanel};
 use permission_panel::{PanelCommand, PermissionPanel};
 
 /// Repacks RGBA8 (as produced by `blueice_raster::Pixmap`) into
@@ -314,6 +316,12 @@ struct App {
     trusted_refresh_after_pending: bool,
     trusted_frame_source: Option<u64>,
     permission_panel: PermissionPanel,
+    /// The native assistant-settings panel (F9): review an agent's proposal,
+    /// edit the numeric settings. Its requests use the same private pipe.
+    assistant_panel: AssistantPanel,
+    /// Whether the request now in flight was the assistant panel's, so its reply
+    /// (including a rejection) is routed to that panel and not the permissions one.
+    trusted_request_for_assistant: bool,
     /// The launcher may consider the child ready only after the real native
     /// window has been created, not merely after the core socket connects.
     trusted_window_inspection_pending: bool,
@@ -336,8 +344,18 @@ impl App {
             self.trusted_permissions = None;
             self.permission_panel.begin_inspection();
         }
+        let for_assistant = matches!(
+            &request,
+            trusted_window::TrustedWindowRequest::InspectAssistantSettings
+                | trusted_window::TrustedWindowRequest::ApproveAssistantProposal { .. }
+                | trusted_window::TrustedWindowRequest::DenyAssistantProposal { .. }
+                | trusted_window::TrustedWindowRequest::EditAssistantSettings { .. }
+        );
         match trusted_window::write_request(&mut std::io::stdout(), &request) {
-            Ok(()) => self.trusted_request_pending = true,
+            Ok(()) => {
+                self.trusted_request_pending = true;
+                self.trusted_request_for_assistant = for_assistant;
+            }
             Err(error) => {
                 eprintln!("blueice-frontend: private launcher pipe failed: {error}");
                 // A late grant must never outlive this native authority if
@@ -345,6 +363,13 @@ impl App {
                 // closes our request pipe; the launcher then kills core.
                 std::process::exit(1);
             }
+        }
+        self.request_redraw();
+    }
+
+    fn handle_assistant_panel_command(&mut self, command: AssistantCommand) {
+        if let AssistantCommand::Send(request) = command {
+            self.send_trusted_request(request);
         }
         self.request_redraw();
     }
@@ -571,9 +596,15 @@ impl App {
             Some(trusted_window::TrustedWindowReply::Rejected { .. }) => {
                 " · Permission inspection unavailable".to_string()
             }
+            // Never stored here: assistant replies go to their own panel.
+            Some(trusted_window::TrustedWindowReply::AssistantSettingsState { .. }) => String::new(),
             None => String::new(),
         };
-        let permission_hint = if self.trusted_window_stdio { " · F8 Permissions" } else { "" };
+        let permission_hint = if self.trusted_window_stdio {
+            " · F8 Permissions · F9 Assistant"
+        } else {
+            ""
+        };
         window.set_title(&format!("BlueIce — {group_name}{page}{extension_status}{permission_hint}"));
     }
 
@@ -626,6 +657,9 @@ impl App {
         self.permission_panel.draw(
             &mut pixels, size.width, size.height,
             self.trusted_permissions.as_ref(), self.trusted_request_pending,
+        );
+        self.assistant_panel.draw(
+            &mut pixels, size.width, size.height, self.trusted_request_pending,
         );
         let Some(surface) = &mut self.surface else {
             return;
@@ -1251,7 +1285,7 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::RedrawRequested => self.redraw(),
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = (position.x, position.y);
-                if self.permission_panel.is_open() {
+                if self.permission_panel.is_open() || self.assistant_panel.is_open() {
                     return;
                 }
                 // Forwarded so `core` becomes the single source of
@@ -1271,6 +1305,13 @@ impl ApplicationHandler<UserEvent> for App {
                 ..
             } => {
                 let (x, y) = self.cursor;
+                if self.assistant_panel.is_open() {
+                    let command = self.assistant_panel.click(
+                        x, y, self.window_size.0, self.window_size.1, self.trusted_request_pending,
+                    );
+                    self.handle_assistant_panel_command(command);
+                    return;
+                }
                 if self.permission_panel.is_open() {
                     let command = self.permission_panel.click_with_tab(
                         x, y, self.window_size.0, self.window_size.1,
@@ -1354,6 +1395,27 @@ impl ApplicationHandler<UserEvent> for App {
                         self.send_trusted_request(trusted_window::TrustedWindowRequest::Inspect);
                     }
                     self.request_redraw();
+                    return;
+                }
+                if self.trusted_window_stdio
+                    && !event.repeat
+                    && event.logical_key == Key::Named(NamedKey::F9)
+                {
+                    if self.assistant_panel.toggle() {
+                        self.send_trusted_request(
+                            trusted_window::TrustedWindowRequest::InspectAssistantSettings,
+                        );
+                    }
+                    self.request_redraw();
+                    return;
+                }
+                if self.assistant_panel.is_open() {
+                    let command = self.assistant_panel.key(
+                        &event.logical_key,
+                        self.trusted_request_pending,
+                        event.repeat,
+                    );
+                    self.handle_assistant_panel_command(command);
                     return;
                 }
                 if self.permission_panel.is_open() {
@@ -1518,6 +1580,20 @@ impl ApplicationHandler<UserEvent> for App {
             }
             UserEvent::TrustedPermissions(reply) => {
                 self.trusted_request_pending = false;
+                // An assistant-settings reply (or a rejection of one of its
+                // requests) belongs to that panel and must not disturb the
+                // permission panel's state or its cutover re-inspection.
+                let for_assistant = std::mem::take(&mut self.trusted_request_for_assistant);
+                if for_assistant
+                    || matches!(
+                        &reply,
+                        trusted_window::TrustedWindowReply::AssistantSettingsState { .. }
+                    )
+                {
+                    self.assistant_panel.on_reply(&reply);
+                    self.request_redraw();
+                    return;
+                }
                 if self.trusted_refresh_after_pending {
                     self.trusted_refresh_after_pending = false;
                     self.send_trusted_request(trusted_window::TrustedWindowRequest::Inspect);
@@ -2087,6 +2163,8 @@ fn main() {
         trusted_refresh_after_pending: false,
         trusted_frame_source: None,
         permission_panel: PermissionPanel::default(),
+        assistant_panel: AssistantPanel::default(),
+        trusted_request_for_assistant: false,
         trusted_window_inspection_pending: trusted_window_stdio,
         show_generation,
         selected_tab: None,
