@@ -346,6 +346,62 @@ fn readonly_survives_an_inferred_heterogeneous_index_alias() {
 }
 
 #[test]
+fn readonly_survives_member_values_inside_array_and_record_literals() {
+    let source = "interface Event { readonly type: 'click'; }\n\
+                  interface Holder { event: Event; type: string; }\n\
+                  function identity(event: Event, ignored: number): Event { return event; }\n\
+                  function write(holder: Holder): void {\n\
+                    const fromArray = [holder.event][0];\n\
+                    fromArray.type = 'click';\n\
+                    const fromRecord = { picked: holder.event };\n\
+                    fromRecord.picked.type = 'click';\n\
+                    const fromCall = { picked: identity(holder.event, 1) };\n\
+                    fromCall.picked.type = 'click';\n\
+                    const nested = { outer: { picked: holder.event } };\n\
+                    nested.outer.picked.type = 'click';\n\
+                  }";
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+        CompilerOptions::default(),
+    );
+    let readonly = result
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.message.contains("readonly"))
+        .count();
+    assert_eq!(readonly, 4, "{:#?}", result.diagnostics);
+
+    let valid = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "interface Holder { type: string; } function write(holder: Holder): void { const fromArray = [holder][0]; fromArray.type = 'ok'; const fromRecord = { picked: holder }; fromRecord.picked.type = 'ok'; }",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(!valid.has_errors(), "{:#?}", valid.diagnostics);
+}
+
+#[test]
+fn nested_literal_inference_fails_with_a_bounded_resource_diagnostic() {
+    let source = format!("const value = {}1{};", "[".repeat(129), "]".repeat(129));
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new("memory:///main.ts", &source)]),
+        CompilerOptions::default(),
+    );
+    assert!(
+        result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::ResourceLimit
+                && diagnostic.message.contains("container inference limit")
+        }),
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn readonly_mutations_inside_larger_expressions_are_not_skipped() {
     let ambient = ModuleSource::new(
         "memory:///events.d.ts",

@@ -881,6 +881,21 @@ impl<'a> ModuleChecker<'a> {
         if tokens.is_empty() {
             return;
         }
+        if tokens
+            .iter()
+            .filter(|token| token.is("[") || token.is("{"))
+            .count()
+            > MAX_LITERAL_INFERENCE_CONTAINERS
+        {
+            self.type_error(
+                span,
+                format!(
+                    "expression exceeds its {MAX_LITERAL_INFERENCE_CONTAINERS}-container inference limit"
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
+            return;
+        }
         if tokens.iter().filter(|token| token.is(".")).count() > self.max_type_expansions {
             self.type_error(
                 span,

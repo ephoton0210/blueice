@@ -17,6 +17,14 @@ impl<'a> ModuleChecker<'a> {
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
     ) -> Type {
+        if tokens
+            .iter()
+            .filter(|token| token.is("[") || token.is("{"))
+            .count()
+            > MAX_LITERAL_INFERENCE_CONTAINERS
+        {
+            return Type::Unknown;
+        }
         // Each chained member call recursively infers its receiver. Keep
         // that recursion under the compiler's existing expansion envelope.
         if tokens.iter().filter(|token| token.is(".")).count() > self.max_type_expansions {
@@ -249,8 +257,8 @@ impl<'a> ModuleChecker<'a> {
             "true" | "false" => Type::Boolean,
             "null" => Type::Null,
             "undefined" => Type::Undefined,
-            "[" => infer_array(tokens, scope),
-            "{" => infer_record(tokens, scope),
+            "[" => infer_array(tokens, &|value| self.infer_expression(value, scope)),
+            "{" => infer_record(tokens, scope, &|value| self.infer_expression(value, scope)),
             _ if first.kind == TokenKind::Identifier => {
                 if tokens.len() == 1 {
                     if let Some(signature) =

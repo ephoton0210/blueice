@@ -18,6 +18,8 @@ pub use crate::parser::Type;
 mod properties;
 use properties::{property_type, PropertyType, TypeExpansionBudget};
 
+const MAX_LITERAL_INFERENCE_CONTAINERS: usize = 128;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolKind {
     Import,
@@ -694,7 +696,7 @@ fn infer_type_arguments(
     }
 }
 
-fn infer_array(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
+fn infer_array(tokens: &[Token], infer: &impl Fn(&[Token]) -> Type) -> Type {
     let mut values = Vec::new();
     let mut start = 1usize;
     let mut depth = 0usize;
@@ -704,7 +706,7 @@ fn infer_array(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
             "]" | ")" | "}" if depth > 0 => depth -= 1,
             "," if depth == 0 => {
                 if start < index {
-                    values.push(infer_array_element(&tokens[start..index], scope));
+                    values.push(infer_array_element(&tokens[start..index], infer));
                 }
                 start = index + 1;
             }
@@ -712,7 +714,7 @@ fn infer_array(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
         }
     }
     if start + 1 < tokens.len() {
-        values.push(infer_array_element(&tokens[start..tokens.len() - 1], scope));
+        values.push(infer_array_element(&tokens[start..tokens.len() - 1], infer));
     }
     let Some(first) = values.first().cloned() else {
         return Type::Array(Box::new(Type::Unknown));
@@ -770,22 +772,28 @@ fn push_contextual_tuple_element(
         };
         values.extend(spread);
     } else {
-        values.push(infer_array_element(tokens, scope));
+        values.push(infer_array_element(tokens, &|tokens| {
+            infer_simple(tokens, scope)
+        }));
     }
     Some(())
 }
 
-fn infer_array_element(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
+fn infer_array_element(tokens: &[Token], infer: &impl Fn(&[Token]) -> Type) -> Type {
     if tokens.first().is_some_and(|token| token.is("...")) {
-        return match infer_simple(&tokens[1..], scope) {
+        return match infer(&tokens[1..]) {
             Type::Array(element) => *element,
             _ => Type::Unknown,
         };
     }
-    infer_simple(tokens, scope)
+    infer(tokens)
 }
 
-fn infer_record(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
+fn infer_record(
+    tokens: &[Token],
+    scope: &BTreeMap<String, Type>,
+    infer: &impl Fn(&[Token]) -> Type,
+) -> Type {
     let mut fields = Vec::new();
     let mut index = 1usize;
     while index < tokens.len() && !tokens[index].is("}") {
@@ -814,16 +822,17 @@ fn infer_record(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
         let (value, value_end) = if tokens.get(index + 1).is_some_and(|token| token.is(":")) {
             let value_start = index + 2;
             let mut value_end = value_start;
-            while value_end < tokens.len()
-                && !tokens[value_end].is(",")
-                && !tokens[value_end].is("}")
-            {
+            let mut depth = 0usize;
+            while value_end < tokens.len() {
+                match tokens[value_end].text.as_str() {
+                    "(" | "[" | "{" => depth += 1,
+                    ")" | "]" | "}" if depth > 0 => depth -= 1,
+                    "," | "}" if depth == 0 => break,
+                    _ => {}
+                }
                 value_end += 1;
             }
-            (
-                infer_simple(&tokens[value_start..value_end], scope),
-                value_end,
-            )
+            (infer(&tokens[value_start..value_end]), value_end)
         } else if tokens
             .get(index + 1)
             .is_some_and(|token| token.is(",") || token.is("}"))

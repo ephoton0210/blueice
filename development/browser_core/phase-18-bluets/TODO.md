@@ -213,8 +213,12 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   budget fails with a resource diagnostic. Dynamic indexing also retains a
   conservative union when stored in an unannotated local, and union property
   lookup merges the readonly qualifier so a later alias write cannot bypass
-  it. Opaque/unmodeled expression forms still need a sound policy, so do not
-  claim full qualifier enforcement yet.
+  it. Array and record literal values now infer their full supported member
+  expression, including nested records and calls with comma-separated
+  arguments, so storing `holder.event` in a literal cannot turn it into the
+  mutable Holder type. Literal inference is capped at 128 containers with a
+  resource diagnostic. Opaque/unmodeled expression forms still need a sound
+  policy, so do not claim full qualifier enforcement yet.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members
   must fail both static checking and JavaScript runtime access.
 

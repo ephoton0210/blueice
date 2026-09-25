@@ -240,6 +240,16 @@ Property lookup and index inference now live in separate MPL-licensed modules,
 keeping both `checker.rs` and `expressions.rs` under 1500 lines. Opaque or
 unmodeled expression shapes remain outside this proof, so B4.2 stays open.
 
+**Readonly through literal-held values (B4 partial):** Array and record
+literal inference now uses the supported full member/call expression for each
+value rather than its first identifier. A depth-aware record value scanner
+retains nested objects and calls with comma-separated arguments. This keeps an
+Event's readonly `type` when it passes through `[holder.event][0]`,
+`{ picked: holder.event }`, a nested record, or a typed call result; the
+verified event-v1 bridge rejects the array and record cases before runtime.
+The new recursive inference stops at 128 bracket/record containers and emits
+a resource diagnostic on excess input. Opaque expression forms remain open.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
