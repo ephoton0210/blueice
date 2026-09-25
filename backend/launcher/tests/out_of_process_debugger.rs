@@ -806,6 +806,11 @@ fn public_socket_steps_and_resumes_one_real_bluets_nested_frame() {
         report.capability == DebuggerCapability::NestedFrames
             && report.state == DebuggerCapabilityState::Available
     }));
+    for capability in [DebuggerCapability::Stack, DebuggerCapability::Scopes] {
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == capability && report.state == DebuggerCapabilityState::Planned
+        }));
+    }
     let program = one_program(
         debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
         realm,

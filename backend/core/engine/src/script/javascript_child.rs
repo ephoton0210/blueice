@@ -9079,6 +9079,172 @@ mod tests {
     }
 
     #[test]
+    fn real_bluets_child_private_stack_is_bounded_and_publicly_disabled() {
+        use blueice_ipc::debugger::{
+            DebuggerCapability, DebuggerCapabilityState, DebuggerPageRealm, DebuggerReply,
+            DebuggerRequest,
+        };
+
+        let (path, token, child) = spawn_child();
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<script type=\"application/x-blueice-typescript\">function inner(a: number, b: number): number { let first: number = a; let second: number = b; return first + second; } globalThis.answer = inner(1, 2);</script>",
+            "https://example.test/private-stack.html",
+        );
+        let mut executor =
+            OutOfProcessJavaScriptPageExecutor::connect_with_debugger_execution_control(
+                &path, &token,
+            )
+            .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let realm = DebuggerPageRealm {
+            browser_context_id: crate::debugger::DEFAULT_BROWSER_CONTEXT_ID,
+            tab_id: tab_id.as_u64(),
+            realm_generation: 1,
+        };
+        let DebuggerReply::Capabilities(capabilities) =
+            crate::debugger::handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::DescribeCapabilities { realm },
+            )
+        else {
+            panic!("the debugger must describe its actual capability boundary");
+        };
+        for capability in [DebuggerCapability::Stack, DebuggerCapability::Scopes] {
+            assert!(capabilities.reports.iter().any(|report| {
+                report.capability == capability && report.state == DebuggerCapabilityState::Planned
+            }));
+        }
+        let program = executor.debugger_programs(tab_id, 1).unwrap()[0];
+        let target = executor
+            .debugger_safe_points(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+            )
+            .unwrap()
+            .into_iter()
+            .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+            .unwrap();
+        executor
+            .arm_debugger_nested_safe_point_breakpoint(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                1,
+                0,
+            )
+            .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let Some(JavaScriptPageDebuggerNestedExecutionState::Paused { frame, .. }) = executor
+            .debugger_nested_execution_state(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+            )
+            .unwrap()
+        else {
+            panic!("the BlueTS child must pause before its first instruction");
+        };
+        assert_eq!(frame.code_unit_ordinal, target.code_unit_ordinal);
+        let mut full = None;
+        for _ in 0..96 {
+            let snapshot = executor
+                .debugger_stack_snapshot(tab_id, 1, program, Some(frame), 2, 256)
+                .unwrap();
+            if snapshot.frames[0].scope_entries.len() >= 2 {
+                full = Some(snapshot);
+                break;
+            }
+            executor.step_debugger_nested_instruction(frame).unwrap();
+            executor.synchronize_and_execute(&tabs).unwrap();
+            assert!(matches!(
+                executor
+                    .debugger_nested_execution_state(
+                        tab_id,
+                        1,
+                        program.program_handle,
+                        program.program_generation,
+                    )
+                    .unwrap(),
+                Some(JavaScriptPageDebuggerNestedExecutionState::Paused { frame: same, .. })
+                    if same == frame
+            ));
+        }
+        let full = full.expect("the child must enter a scope with two active slots");
+        assert_eq!(full.frames.len(), 2);
+        assert_eq!(full.frames[0].code_unit_ordinal, 1);
+        assert_eq!(full.frames[1].code_unit_ordinal, 0);
+        assert!(!full.stack_truncated);
+        assert!(!full.frames[0].scope_truncated);
+        let limited = executor
+            .debugger_stack_snapshot(tab_id, 1, program, Some(frame), 1, 1)
+            .unwrap();
+        assert_eq!(limited.frames.len(), 1);
+        assert_eq!(limited.frames[0].scope_entries.len(), 1);
+        assert!(limited.stack_truncated);
+        assert!(limited.frames[0].scope_truncated);
+        assert_eq!(
+            executor
+                .debugger_stack_snapshot(tab_id, 1, program, Some(frame), 2, 256)
+                .unwrap(),
+            full
+        );
+        assert_eq!(
+            executor.debugger_stack_snapshot(tab_id, 1, program, Some(frame), 0, 1),
+            Err(JavaScriptPageDebuggerError::ResourceLimit)
+        );
+        assert_eq!(
+            executor.debugger_stack_snapshot(tab_id, 1, program, Some(frame), 2, 257),
+            Err(JavaScriptPageDebuggerError::ResourceLimit)
+        );
+        assert_eq!(
+            executor.debugger_stack_snapshot(
+                tab_id,
+                1,
+                program,
+                Some(JavaScriptPageDebuggerFrame {
+                    frame_handle: frame.frame_handle + 1,
+                    ..frame
+                }),
+                2,
+                256,
+            ),
+            Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+        );
+        assert_eq!(
+            executor.debugger_stack_snapshot(
+                tab_id,
+                1,
+                JavaScriptPageDebuggerProgram {
+                    program_generation: program.program_generation + 1,
+                    ..program
+                },
+                Some(frame),
+                2,
+                256,
+            ),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script>globalThis.successor = true;</script>",
+            Some("https://example.test/successor-stack.html".to_string()),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.debugger_stack_snapshot(tab_id, 1, program, Some(frame), 2, 256),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn public_core_route_steps_one_real_child_nested_frame_without_root_aliasing() {
         use crate::debugger::handle_debugger_request_with_page_javascript_executor;
         use blueice_ipc::debugger::{

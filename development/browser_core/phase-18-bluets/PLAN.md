@@ -753,6 +753,22 @@ caller. Tests include a real child, malformed shapes, and a transport double
 that forges the reply tab, document, program, or frame. No public debugger
 request or capability exists yet.
 
+**Private-route acceptance (C2.1.1.3.3):** A live BlueTS classic page, with
+the real child host behind its private socket, pauses in a nested function
+after two lexical slots become active. A two-frame/full-scope read returns the
+child then waiting root without truncation; a one-frame/one-entry read sets
+both truncation flags. Repeated reads leave the same paused continuation
+intact. Zero or oversized budgets, a wrong core frame handle, another program
+generation, and the prior document after navigation all fail closed. A
+Launcher-supervised real-process debugger socket still advertises Stack and
+Scopes only as Planned while nested control remains Available. The public
+protocol is intentionally unchanged until C2.1.1.4.
+The complete 14-case Launcher debugger suite remains timing-sensitive around
+its pre-existing short pending-admission window: two runs each passed 13/14
+with a different pending-state assertion failing; both affected cases passed
+when rerun alone. The focused new public-capability case and all 288 engine
+library tests pass.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
