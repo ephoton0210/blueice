@@ -608,6 +608,15 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
+        description = "Debugging aid: what the BlueIce launcher is doing right now -- its pid, the core's pid and generation (bumped by every hot-swap cutover), whether the local assistant is running and how often it was started, and any settings proposal waiting for the person. Read-only; carries no settings values or page data."
+    )]
+    async fn blueice_status(&self) -> Result<CallToolResult, ErrorData> {
+        let socket = self.control_socket.clone();
+        let text = control_call(move || assistant_settings::launcher_status(&socket)).await?;
+        Ok(CallToolResult::success(vec![Content::text(text)]))
+    }
+
+    #[tool(
         description = "Read the local assistant's settings in force (backend, model, memory ceiling, priority). Read-only."
     )]
     async fn get_assistant_settings(&self) -> Result<CallToolResult, ErrorData> {

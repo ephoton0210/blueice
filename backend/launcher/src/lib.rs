@@ -1047,6 +1047,26 @@ fn handle_control_connection(mut conn: UnixStream, broker: &Arc<Broker>) -> io::
                 },
             }
         }
+        control::ControlRequest::Status => {
+            let core_pid = broker
+                .active_core
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .as_ref()
+                .map(|core| core.child.id());
+            control::ControlReply::Status(Box::new(control::LauncherStatus {
+                launcher_pid: std::process::id(),
+                core_generation: broker.generation.load(Ordering::SeqCst),
+                core_pid,
+                assistant: broker.assistant_settings.as_ref().map(|s| s.assistant_status()),
+                pending_proposal: broker.assistant_settings.as_ref().and_then(|s| s.pending()).map(
+                    |view| control::PendingProposalStatus {
+                        id: view.id,
+                        seconds_left: view.expires_in.as_secs(),
+                    },
+                ),
+            }))
+        }
         control::ControlRequest::ProposeAssistantSettings { settings } => {
             match broker.assistant_settings.as_ref() {
                 None => control::ControlReply::AssistantProposalRefused {

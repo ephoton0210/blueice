@@ -52,6 +52,39 @@ pub enum ControlRequest {
     /// Read-only: the assistant's settings in force, so an agent can build a
     /// proposal against what is really there.
     InspectAssistantSettings,
+    /// Read-only: what the launcher and the processes it supervises are doing
+    /// right now (pids, generation, assistant state, a waiting proposal). Meant
+    /// for debugging; it carries no settings values, page data, or secrets.
+    Status,
+}
+
+/// Reply to [`ControlRequest::Status`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LauncherStatus {
+    pub launcher_pid: u32,
+    /// Bumped on every cutover; the first core is generation 0.
+    pub core_generation: u64,
+    pub core_pid: Option<u32>,
+    /// `None` when this launcher supervises no assistant.
+    pub assistant: Option<AssistantStatus>,
+    /// The proposal waiting for the person, if any.
+    pub pending_proposal: Option<PendingProposalStatus>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssistantStatus {
+    /// `none`, `loopback`, `candle`, or `both`.
+    pub backend: String,
+    /// The pid of the running assistant; `None` while it is not started.
+    pub resident_pid: Option<u32>,
+    /// How many times it has been started since the launcher began.
+    pub spawn_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingProposalStatus {
+    pub id: u64,
+    pub seconds_left: u64,
 }
 
 /// The installed package and its currently effective optional grants, read
@@ -108,6 +141,8 @@ pub enum ControlReply {
     /// Reply to [`ControlRequest::AssistantProposalStatus`]: `pending`,
     /// `approved`, `denied`, `expired`, `stale`, or `unknown`.
     AssistantProposalStatus { status: String },
+    /// Reply to [`ControlRequest::Status`].
+    Status(Box<LauncherStatus>),
 }
 
 /// The control socket path, mirroring

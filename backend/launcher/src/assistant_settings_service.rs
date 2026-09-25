@@ -221,6 +221,24 @@ impl AssistantSettingsService {
         Ok(())
     }
 
+    /// The assistant's part of a debugging status: the configured backend, and
+    /// whether and how often the supervisor has it running.
+    pub fn assistant_status(&self) -> crate::control::AssistantStatus {
+        use blueice_assistant_settings::BackendKind;
+        let backend = match self.current().backend {
+            BackendKind::None => "none",
+            BackendKind::Loopback => "loopback",
+            BackendKind::Candle => "candle",
+            BackendKind::Both => "both",
+        };
+        let supervisor = self.supervisor.upgrade();
+        crate::control::AssistantStatus {
+            backend: backend.to_string(),
+            resident_pid: supervisor.as_ref().and_then(|s| s.resident_pid()),
+            spawn_count: supervisor.as_ref().map_or(0, |s| s.spawn_count()),
+        }
+    }
+
     /// What the trusted window shows: the settings in force and the proposal
     /// waiting for a decision.
     pub fn trusted_state(&self) -> TrustedWindowReply {

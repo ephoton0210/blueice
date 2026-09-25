@@ -445,6 +445,15 @@ impl AssistantSupervisor {
         &self.public_socket
     }
 
+    /// The pid of the assistant if it is running now.
+    pub fn resident_pid(&self) -> Option<u32> {
+        self.inner
+            .registry
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .resident_pid(ROLE)
+    }
+
     /// How many times the assistant has been started (observable for tests and
     /// diagnostics).
     pub fn spawn_count(&self) -> u64 {

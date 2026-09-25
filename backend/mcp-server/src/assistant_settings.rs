@@ -98,6 +98,46 @@ pub fn status(control_socket: &Path, id: u64) -> io::Result<SettingsOutcome> {
     )?)
 }
 
+/// What the launcher and its supervised processes are doing right now, as plain
+/// lines. Read-only, and free of settings values, page data, and secrets.
+pub fn launcher_status(control_socket: &Path) -> io::Result<String> {
+    match ask(control_socket, &ControlRequest::Status)? {
+        ControlReply::Status(status) => Ok(format_status(&status)),
+        other => Err(io::Error::other(format!(
+            "the launcher sent an unexpected reply: {other:?}"
+        ))),
+    }
+}
+
+fn format_status(status: &blueice_launcher::control::LauncherStatus) -> String {
+    let pid = |pid: Option<u32>| pid.map_or("not running".to_string(), |pid| pid.to_string());
+    let mut lines = vec![
+        format!("launcher pid: {}", status.launcher_pid),
+        format!(
+            "core: pid {}, generation {}",
+            pid(status.core_pid),
+            status.core_generation
+        ),
+    ];
+    match &status.assistant {
+        None => lines.push("assistant: not supervised by this launcher".to_string()),
+        Some(assistant) => lines.push(format!(
+            "assistant: backend {}, pid {}, started {} time(s)",
+            assistant.backend,
+            pid(assistant.resident_pid),
+            assistant.spawn_count
+        )),
+    }
+    lines.push(match &status.pending_proposal {
+        None => "settings proposal: none waiting".to_string(),
+        Some(pending) => format!(
+            "settings proposal: #{} waiting for the person ({}s left)",
+            pending.id, pending.seconds_left
+        ),
+    });
+    lines.join("\n")
+}
+
 /// The proposal an agent writes, in plain fields a tool schema can describe.
 #[derive(Debug, Clone, serde::Deserialize, schemars::JsonSchema)]
 pub struct SettingsParams {

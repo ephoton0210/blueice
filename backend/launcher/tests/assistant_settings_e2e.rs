@@ -663,3 +663,36 @@ fn the_trace_file_tells_the_story_of_a_proposal_without_leaking_settings_or_dige
     assert!(!trace.contains(&model), "settings leaked into the trace");
     assert!(trace.lines().all(|line| line.starts_with("[+")), "{trace}");
 }
+
+#[test]
+fn status_reports_pids_generation_the_assistant_and_a_waiting_proposal_without_settings() {
+    let model = model_base_url();
+    let settings = settings_file(&model);
+    let stack = Stack::start(settings.path());
+    let mut client = stack.client();
+    let ControlReply::Status(idle) = stack.control(&ControlRequest::Status) else {
+        panic!("expected a status")
+    };
+    assert_eq!(idle.launcher_pid, stack.child.id());
+    assert_eq!(idle.core_generation, 0);
+    assert!(idle.core_pid.is_some());
+    let assistant = idle.assistant.expect("an assistant is supervised");
+    assert_eq!(assistant.backend, "loopback");
+    assert_eq!(assistant.resident_pid, None, "it starts on demand");
+    assert_eq!(assistant.spawn_count, 0);
+    assert!(idle.pending_proposal.is_none());
+
+    let running = use_the_assistant(&stack, &mut client, &page_url());
+    let (id, _) = accepted(stack.control(&ControlRequest::ProposeAssistantSettings {
+        settings: proposing(&model, 12),
+    }));
+    let ControlReply::Status(busy) = stack.control(&ControlRequest::Status) else {
+        panic!("expected a status")
+    };
+    let assistant = busy.assistant.clone().unwrap();
+    assert_eq!(assistant.resident_pid, Some(running));
+    assert_eq!(assistant.spawn_count, 1);
+    assert_eq!(busy.pending_proposal.as_ref().unwrap().id, id);
+    let text = format!("{busy:?}");
+    assert!(!text.contains(&model), "settings values must not appear: {text}");
+}

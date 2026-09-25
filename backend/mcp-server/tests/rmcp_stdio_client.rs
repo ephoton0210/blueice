@@ -81,6 +81,7 @@ async fn an_official_mcp_client_lists_tools_without_a_sibling_core_binary() {
         "get_assistant_settings",
         "propose_assistant_settings",
         "assistant_settings_proposal_status",
+        "blueice_status",
     ] {
         assert!(
             names.contains(&tool),
@@ -329,6 +330,57 @@ async fn settings_proposals_are_proposals_only_and_blocked_ones_say_why() {
         ControlRequest::AssistantProposalStatus { id: 7 }
     ));
     assert_eq!(seen.len(), 4, "the bad-backend proposal was never sent");
+    let _ = std::fs::remove_file(control);
+}
+
+#[tokio::test]
+async fn blueice_status_reports_the_launchers_state_in_plain_lines() {
+    use blueice_launcher::control::{
+        AssistantStatus, ControlReply, ControlRequest, LauncherStatus, PendingProposalStatus,
+    };
+    let (control, launcher) = fake_control_socket(vec![ControlReply::Status(Box::new(
+        LauncherStatus {
+            launcher_pid: 111,
+            core_generation: 2,
+            core_pid: Some(222),
+            assistant: Some(AssistantStatus {
+                backend: "loopback".into(),
+                resident_pid: None,
+                spawn_count: 3,
+            }),
+            pending_proposal: Some(PendingProposalStatus {
+                id: 9,
+                seconds_left: 41,
+            }),
+        },
+    ))]);
+    let runtime = TempDir::new();
+    let data = TempDir::new();
+    let downloads = TempDir::new();
+    let mut cmd = command(
+        Path::new(env!("CARGO_BIN_EXE_blueice-mcp-server")),
+        &runtime,
+        &data,
+        &downloads,
+    );
+    cmd.arg("--launcher-control-socket").arg(&control);
+    let client = ().serve(TokioChildProcess::new(cmd).expect("start")).await.expect("initialize");
+    let result = client
+        .call_tool(CallToolRequestParams::new("blueice_status"))
+        .await
+        .expect("blueice_status");
+    let value = serde_json::to_value(result).unwrap();
+    let text = value["content"][0]["text"].as_str().unwrap();
+    for expected in [
+        "launcher pid: 111",
+        "core: pid 222, generation 2",
+        "backend loopback, pid not running, started 3 time(s)",
+        "#9 waiting for the person (41s left)",
+    ] {
+        assert!(text.contains(expected), "missing {expected:?}: {text}");
+    }
+    client.cancel().await.expect("close");
+    assert_eq!(launcher.join().unwrap(), vec![ControlRequest::Status]);
     let _ = std::fs::remove_file(control);
 }
 
