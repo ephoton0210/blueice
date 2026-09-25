@@ -80,6 +80,24 @@ struct GetPageParams {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+struct SetTranslationLanguageParams {
+    /// A BCP 47 language tag such as `zh-TW` or `en`, or omit to turn live
+    /// translation off.
+    target_language: Option<String>,
+    /// Which tab to address, or omit for the default tab. The language itself
+    /// applies to every tab's later navigations.
+    tab_id: Option<u64>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct ShowTranslationParams {
+    /// `true` to show the page's translation, `false` to show its original text.
+    shown: bool,
+    /// Which tab to toggle, or omit for the default tab.
+    tab_id: Option<u64>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 struct OpenTabParams {
     /// URL to navigate the new tab to immediately, or omit to open a
     /// blank tab.
@@ -291,6 +309,25 @@ fn outcome_to_result(outcome: crate::ToolOutcome) -> CallToolResult {
     }
 }
 
+fn translation_outcome_to_result(outcome: crate::TranslationOutcome) -> CallToolResult {
+    let json = serde_json::json!({
+        "error": outcome.error,
+        "translation": {
+            "language": outcome.language,
+            "available": outcome.available,
+            "shown": outcome.shown,
+        },
+        "snapshot": outcome.snapshot,
+    });
+    let text = serde_json::to_string_pretty(&json).unwrap_or_else(|_| "{}".to_string());
+    let text = crate::wrap_untrusted_page_content(&text);
+    if outcome.error.is_some() {
+        CallToolResult::error(vec![Content::text(text)])
+    } else {
+        CallToolResult::success(vec![Content::text(text)])
+    }
+}
+
 fn tab_group_outcome_to_result(outcome: crate::TabGroupOutcome) -> CallToolResult {
     match outcome {
         crate::TabGroupOutcome::Group(group) => {
@@ -430,6 +467,37 @@ impl BlueIceMcpServer {
     ) -> Result<CallToolResult, ErrorData> {
         let outcome = blocking(self.core.clone(), move |conn| conn.go_forward(tab_id)).await?;
         Ok(outcome_to_result(outcome))
+    }
+
+    #[tool(
+        description = "Choose the language that pages fetched from now on are translated into by BlueIce's local assistant (a BCP 47 tag such as zh-TW), or omit target_language to turn translation off. Already-loaded pages change only through show_translation or a reload. Translated nodes keep the page's own words in original_name. Fails when BlueIce was started without an assistant."
+    )]
+    async fn set_translation_language(
+        &self,
+        Parameters(SetTranslationLanguageParams {
+            target_language,
+            tab_id,
+        }): Parameters<SetTranslationLanguageParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.core.clone(), move |conn| {
+            conn.set_translation_language(target_language, tab_id)
+        })
+        .await?;
+        Ok(translation_outcome_to_result(outcome))
+    }
+
+    #[tool(
+        description = "Show a tab's translated text (shown: true) or the page's original text (shown: false) and return the resulting page representation. Only a page that was translated when it loaded can be toggled; check translation.available."
+    )]
+    async fn show_translation(
+        &self,
+        Parameters(ShowTranslationParams { shown, tab_id }): Parameters<ShowTranslationParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.core.clone(), move |conn| {
+            conn.show_translation(shown, tab_id)
+        })
+        .await?;
+        Ok(translation_outcome_to_result(outcome))
     }
 
     #[tool(description = "Get the current page's representation without performing any action")]

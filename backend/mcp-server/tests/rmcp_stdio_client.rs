@@ -15,7 +15,7 @@
 mod common;
 
 use common::TempDir;
-use rmcp::{ServiceExt, model::CallToolRequestParams, transport::TokioChildProcess};
+use rmcp::{model::CallToolRequestParams, transport::TokioChildProcess, ServiceExt};
 use serde_json::json;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
@@ -73,6 +73,12 @@ async fn an_official_mcp_client_lists_tools_without_a_sibling_core_binary() {
         names.contains(&"download_file"),
         "missing download tools: {names:?}"
     );
+    for tool in ["set_translation_language", "show_translation"] {
+        assert!(
+            names.contains(&tool),
+            "missing Phase 7 translation tool {tool}: {names:?}"
+        );
+    }
     assert!(
         names.contains(&"remove_sftp_password"),
         "missing Phase 11 credential removal: {names:?}"
@@ -139,6 +145,53 @@ async fn an_official_mcp_client_drives_a_real_blueice_core() {
         .expect("navigate result begins with text");
     assert!(text.contains("UNTRUSTED PAGE CONTENT"), "{text}");
     assert!(text.contains("about:credits"), "{text}");
+
+    client.cancel().await.expect("close the stdio MCP session");
+}
+
+#[tokio::test]
+async fn translation_tools_report_state_and_refuse_without_an_assistant() {
+    let runtime = TempDir::new();
+    let data = TempDir::new();
+    let downloads = TempDir::new();
+    let transport = TokioChildProcess::new(command(
+        Path::new(env!("CARGO_BIN_EXE_blueice-mcp-server")),
+        &runtime,
+        &data,
+        &downloads,
+    ))
+    .expect("start the MCP server");
+    let client = ().serve(transport).await.expect("initialize through rmcp");
+
+    let arguments = serde_json::from_value(json!({ "url": "about:credits" })).unwrap();
+    client
+        .call_tool(CallToolRequestParams::new("navigate").with_arguments(arguments))
+        .await
+        .expect("navigate through rmcp");
+
+    // A page nobody translated has nothing to toggle, but the call is fine.
+    let arguments = serde_json::from_value(json!({ "shown": false })).unwrap();
+    let result = client
+        .call_tool(CallToolRequestParams::new("show_translation").with_arguments(arguments))
+        .await
+        .expect("show_translation through rmcp");
+    assert_ne!(result.is_error, Some(true), "{result:?}");
+    let result = serde_json::to_value(result).unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("UNTRUSTED PAGE CONTENT"), "{text}");
+    assert!(text.contains("\"available\": false"), "{text}");
+    assert!(text.contains("\"shown\": false"), "{text}");
+
+    // The MCP client's private core has no assistant, and says so.
+    let arguments = serde_json::from_value(json!({ "target_language": "zh-TW" })).unwrap();
+    let result = client
+        .call_tool(CallToolRequestParams::new("set_translation_language").with_arguments(arguments))
+        .await
+        .expect("set_translation_language through rmcp");
+    assert_eq!(result.is_error, Some(true), "{result:?}");
+    let result = serde_json::to_value(result).unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("unavailable"), "{text}");
 
     client.cancel().await.expect("close the stdio MCP session");
 }

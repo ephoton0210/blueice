@@ -69,6 +69,22 @@ pub struct ToolOutcome {
     pub snapshot: AiSnapshot,
 }
 
+/// The result of a live-translation control: `core`'s `TranslationState` reply
+/// plus the page representation that follows it (translated text is primary,
+/// with each node's `original_name` attached). `error` is set when `core`
+/// refused the request (translation unavailable, invalid tag, unknown tab).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TranslationOutcome {
+    pub error: Option<String>,
+    /// The core-wide target language for pages fetched from now on.
+    pub language: Option<String>,
+    /// Whether the addressed page has translated text to toggle.
+    pub available: bool,
+    /// Whether the translation (not the original) is on screen.
+    pub shown: bool,
+    pub snapshot: AiSnapshot,
+}
+
 /// [`CoreConnection::open_tab`]'s result: either the new tab, or an
 /// error message if a requested navigation into it failed (`core`
 /// doesn't report the new tab's id in that case -- see
@@ -335,6 +351,89 @@ impl<S: Read + Write> CoreConnection<S> {
     /// Restore the next session-history entry for `tab_id`.
     pub fn go_forward(&mut self, tab_id: Option<u64>) -> io::Result<ToolOutcome> {
         self.send_navigation_and_wait(tab_id, ClientMessage::GoForward)
+    }
+
+    /// Chooses the language pages fetched from now on are translated into
+    /// (`None` turns translation off). `core` fixes which assistant serves it
+    /// at startup, so this cannot redirect page text anywhere.
+    pub fn set_translation_language(
+        &mut self,
+        target_language: Option<String>,
+        tab_id: Option<u64>,
+    ) -> io::Result<TranslationOutcome> {
+        self.translation_action(tab_id, &ClientMessage::SetTranslationLanguage { target_language })
+    }
+
+    /// Shows the addressed tab's translation or the page's original text.
+    pub fn show_translation(
+        &mut self,
+        shown: bool,
+        tab_id: Option<u64>,
+    ) -> io::Result<TranslationOutcome> {
+        self.translation_action(tab_id, &ClientMessage::ShowTranslation { shown })
+    }
+
+    /// Sends a translation control, pipelines a `GetRepresentation` to the same
+    /// tab, and drains until it arrives, keeping the `TranslationState` reply.
+    /// Only replies to these two requests are consumed, as on the launcher's
+    /// shared broadcast connection every other reply must be skipped.
+    fn translation_action(
+        &mut self,
+        tab_id: Option<u64>,
+        msg: &ClientMessage,
+    ) -> io::Result<TranslationOutcome> {
+        let action_id = self.next_request_id();
+        let representation_id = self.next_request_id();
+        blueice_ipc::write_client_message_with_ids(&mut self.stream, tab_id, Some(action_id), msg)?;
+        blueice_ipc::write_client_message_with_ids(
+            &mut self.stream,
+            tab_id,
+            Some(representation_id),
+            &ClientMessage::GetRepresentation,
+        )?;
+        let mut error = None;
+        let mut state = (None, false, false);
+        loop {
+            let (frame_tab_id, request_id, message) =
+                blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
+            if request_id != Some(action_id) && request_id != Some(representation_id) {
+                continue;
+            }
+            match message {
+                ServerMessage::Representation(snapshot) => {
+                    return Ok(TranslationOutcome {
+                        error,
+                        language: state.0,
+                        available: state.1,
+                        shown: state.2,
+                        snapshot,
+                    })
+                }
+                ServerMessage::TranslationState {
+                    language,
+                    available,
+                    shown,
+                } => state = (language, available, shown),
+                ServerMessage::Error { message } => error = Some(message),
+                ServerMessage::FrameReady {
+                    shm_path,
+                    width,
+                    height,
+                    generation,
+                } => self.record_frame(
+                    frame_tab_id,
+                    FrameInfo {
+                        shm_path,
+                        width,
+                        height,
+                        generation,
+                    },
+                    true,
+                ),
+                // Nothing else can answer these two requests.
+                _ => {}
+            }
+        }
     }
 
     pub fn act(
@@ -1299,6 +1398,84 @@ mod tests {
         assert_eq!(outcome.error, None);
         assert_eq!(outcome.snapshot.generation, 1);
         assert_eq!(conn.last_frame(Some(1)).unwrap().generation, 1);
+    }
+
+    #[test]
+    fn show_translation_returns_the_state_and_the_representation() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![
+                Box::new(|msg, s| {
+                    assert_eq!(msg, ClientMessage::ShowTranslation { shown: false });
+                    reply(
+                        s,
+                        &ServerMessage::TranslationState {
+                            language: Some("zh-TW".to_string()),
+                            available: true,
+                            shown: false,
+                        },
+                    );
+                    reply_tab(
+                        s,
+                        7,
+                        &ServerMessage::FrameReady {
+                            shm_path: "/tmp/original".to_string(),
+                            width: 10,
+                            height: 10,
+                            generation: 5,
+                        },
+                    );
+                }),
+                Box::new(|msg, s| {
+                    assert!(matches!(msg, ClientMessage::GetRepresentation));
+                    reply(s, &ServerMessage::Representation(sample_snapshot(5)));
+                }),
+            ],
+        );
+        let mut conn = CoreConnection::new(client);
+        let outcome = conn.show_translation(false, Some(7)).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(outcome.language.as_deref(), Some("zh-TW"));
+        assert!(outcome.available);
+        assert!(!outcome.shown);
+        assert_eq!(outcome.snapshot.generation, 5);
+        assert_eq!(conn.last_frame(Some(7)).unwrap().generation, 5);
+    }
+
+    #[test]
+    fn a_refused_translation_language_is_an_error_with_the_current_page() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![
+                Box::new(|msg, s| {
+                    assert_eq!(
+                        msg,
+                        ClientMessage::SetTranslationLanguage {
+                            target_language: Some("zh-TW".to_string())
+                        }
+                    );
+                    reply(
+                        s,
+                        &ServerMessage::Error {
+                            message: "translation is unavailable".to_string(),
+                        },
+                    );
+                }),
+                Box::new(|_, s| {
+                    reply(s, &ServerMessage::Representation(sample_snapshot(1)));
+                }),
+            ],
+        );
+        let mut conn = CoreConnection::new(client);
+        let outcome = conn
+            .set_translation_language(Some("zh-TW".to_string()), None)
+            .unwrap();
+        assert_eq!(outcome.error.as_deref(), Some("translation is unavailable"));
+        assert_eq!(outcome.language, None);
+        assert!(!outcome.available && !outcome.shown);
+        assert_eq!(outcome.snapshot.generation, 1);
     }
 
     #[test]
