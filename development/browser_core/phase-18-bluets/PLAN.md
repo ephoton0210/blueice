@@ -507,6 +507,16 @@ instruction/source-span step remains unavailable. A child test rejects another
 entry instruction and the dependency program, observes `Paused` and
 `Resuming` before `Completed`, and rejects the old document tuple after reload.
 
+**Real module debugger route (C1.1.1.4.3):** A local-HTTP BlueTS ESM page now
+crosses the launcher, core and isolated child while a public debugger client
+with no metadata grants inventories its pending entry and compiler-verified
+root points. The client arms the first accepted evaluate-body point, observes
+`Pending` → `Paused` → `Resuming` → `Completed`, then reads the module's
+successful source-free execution report and loaded DOM through the separate
+public browser connection. The native and page-runtime tests separately pin
+single evaluation and retained-frame behavior; this process test proves the
+opaque protocol and scheduler route without exposing source or VM values.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
