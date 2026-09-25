@@ -18,7 +18,7 @@ use blueice_launcher::memory_pressure::{self, SystemMemorySource};
 use blueice_launcher::supervisor::ProcessRegistry;
 use blueice_launcher::{
     default_control_socket_path, default_rendezvous_socket_path,
-    run_broker_with_trusted_window, SpawnedCore, SpawnedGatekeeper, SpawnedTrustedWindow,
+    run_broker_with_options, BrokerOptions, SpawnedCore, SpawnedGatekeeper, SpawnedTrustedWindow,
 };
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
@@ -63,6 +63,10 @@ struct Args {
     /// Test/debug-only override of the assistant binary; by default it is the
     /// sibling of this launcher.
     assistant_bin: Option<PathBuf>,
+    /// Poll the `blueice-core` binary this often (in seconds) and cut over to a
+    /// newer one automatically (`phase-8-live-core-hotswap/PLAN.md`). Off by
+    /// default, so upgrading never changes a running deployment's behavior.
+    auto_update: Option<Duration>,
 }
 
 /// Takes an injectable argument iterator for the same reason
@@ -81,6 +85,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut memory_poll_interval = memory_pressure::DEFAULT_POLL_INTERVAL;
     let mut assistant_settings = None;
     let mut assistant_bin = None;
+    let mut auto_update = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -106,6 +111,14 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--assistant-settings" => assistant_settings = Some(PathBuf::from(value()?)),
             "--assistant-bin" => assistant_bin = Some(PathBuf::from(value()?)),
+            "--auto-update-secs" => {
+                let secs: u64 = value()?
+                    .parse()
+                    .ok()
+                    .filter(|secs| *secs > 0)
+                    .ok_or_else(|| "--auto-update-secs must be a positive number".to_string())?;
+                auto_update = Some(Duration::from_secs(secs));
+            }
             "--simulate-low-memory" => simulate_low_memory = true,
             "--memory-poll-interval-ms" => {
                 let ms: u64 = value()?
@@ -131,6 +144,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         memory_poll_interval,
         assistant_settings,
         assistant_bin,
+        auto_update,
     })
 }
 
@@ -268,14 +282,17 @@ fn main() -> ExitCode {
     // including spawning/health-checking/swapping in a fresh v2 on a
     // `Cutover` control request, and tearing down whichever `core` is
     // currently active before it returns.
-    let result = run_broker_with_trusted_window(
+    let result = run_broker_with_options(
         listener,
         control_listener,
         core,
         args.width,
         args.height,
         gatekeeper.socket_path().to_path_buf(),
-        trusted_window,
+        BrokerOptions {
+            trusted_window,
+            auto_update_interval: args.auto_update,
+        },
     );
 
     let _ = std::fs::remove_file(&args.rendezvous_socket);
@@ -352,6 +369,7 @@ mod tests {
                 memory_poll_interval: Duration::from_millis(50),
                 assistant_settings: None,
                 assistant_bin: None,
+                auto_update: None,
             }
         );
     }
@@ -387,6 +405,19 @@ mod tests {
             );
         }
         assert!(args(&["--assistant-settings"]).is_err());
+    }
+
+    #[test]
+    fn the_auto_update_interval_is_opt_in_and_must_be_positive() {
+        assert_eq!(args(&[]).unwrap().auto_update, None);
+        assert_eq!(
+            args(&["--auto-update-secs", "30"]).unwrap().auto_update,
+            Some(Duration::from_secs(30))
+        );
+        for bad in ["0", "soon", "-5"] {
+            assert!(args(&["--auto-update-secs", bad]).is_err(), "{bad}");
+        }
+        assert!(args(&["--auto-update-secs"]).is_err());
     }
 
     #[test]

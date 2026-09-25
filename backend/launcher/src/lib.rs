@@ -41,6 +41,7 @@ pub mod control;
 pub mod memory_pressure;
 pub mod supervisor;
 pub mod trusted_window;
+pub mod update_watch;
 
 pub use control::default_control_socket_path;
 
@@ -935,8 +936,52 @@ pub fn run_broker_with_trusted_window(
     width: f64,
     height: f64,
     gatekeeper_socket: PathBuf,
-    mut trusted_window: Option<SpawnedTrustedWindow>,
+    trusted_window: Option<SpawnedTrustedWindow>,
 ) -> io::Result<()> {
+    run_broker_with_options(
+        rendezvous_listener,
+        control_listener,
+        core,
+        width,
+        height,
+        gatekeeper_socket,
+        BrokerOptions {
+            trusted_window,
+            auto_update_interval: None,
+        },
+    )
+}
+
+/// Optional broker behavior beyond the required arguments.
+#[derive(Default)]
+pub struct BrokerOptions {
+    /// See [`run_broker_with_trusted_window`].
+    pub trusted_window: Option<SpawnedTrustedWindow>,
+    /// When set, the launcher polls its `blueice-core` binary this often and
+    /// cuts over to a newer one on its own (see [`update_watch`]).
+    pub auto_update_interval: Option<Duration>,
+}
+
+/// The path of the `blueice-core` binary this launcher spawns, the one an
+/// update replaces.
+pub fn core_binary_path() -> io::Result<PathBuf> {
+    Ok(sibling_core_binary(&std::env::current_exe()?))
+}
+
+/// [`run_broker_with_trusted_window`] with the full option set.
+pub fn run_broker_with_options(
+    rendezvous_listener: UnixListener,
+    control_listener: UnixListener,
+    core: SpawnedCore,
+    width: f64,
+    height: f64,
+    gatekeeper_socket: PathBuf,
+    options: BrokerOptions,
+) -> io::Result<()> {
+    let BrokerOptions {
+        mut trusted_window,
+        auto_update_interval,
+    } = options;
     let frame_dir = core.frame_dir.clone();
     let extension_manifest = core.extension_manifest.clone();
     let assistant_socket = core.assistant_socket.clone();
@@ -996,6 +1041,19 @@ pub fn run_broker_with_trusted_window(
         }
     });
 
+    let update_stop = Arc::new(AtomicBool::new(false));
+    if let Some(interval) = auto_update_interval {
+        match core_binary_path() {
+            Ok(binary) => update_watch::spawn_update_watcher(
+                Arc::clone(&broker),
+                binary,
+                interval,
+                Arc::clone(&update_stop),
+            ),
+            Err(error) => eprintln!("blueice-launcher: automatic updates are off: {error}"),
+        }
+    }
+
     let control_broker = Arc::clone(&broker);
     thread::spawn(move || {
         for incoming in control_listener.incoming() {
@@ -1021,6 +1079,7 @@ pub fn run_broker_with_trusted_window(
     }
 
     let _ = done_rx.recv();
+    update_stop.store(true, Ordering::Relaxed);
 
     if let Ok(mut active) = broker.active_core.lock() {
         active.take();
