@@ -90,6 +90,9 @@ impl ProcessRegistry {
     /// * `mcp-server` -- a typed, inert `IdleTeardown` slot with no
     ///   automatic spawn path yet (`phase-8-live-core-hotswap/PLAN.md`'s
     ///   follow-up).
+    /// * `ai-assistant` -- not in this default set: `AssistantSupervisor`
+    ///   registers it (`OnDemand`) at launcher start, only when an assistant
+    ///   is configured.
     /// * `downloads` -- intentionally absent. Its clients still use
     ///   connect-or-spawn, but this generic registry must not own or kill
     ///   it until it can ask the manager whether both active and queued
