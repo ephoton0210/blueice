@@ -769,6 +769,30 @@ with a different pending-state assertion failing; both affected cases passed
 when rerun alone. The focused new public-capability case and all 288 engine
 library tests pass.
 
+**Public stack/scope contract (C2.1.1.4.1):** The owner-only, opt-in debugger
+socket will expose two independent operations and capability reports. `Stack`
+reads the exact currently paused root program or an exact core-minted nested
+frame, with a caller-chosen positive frame limit up to 64. It returns only
+ordered code-unit ordinals and verified bytecode offsets plus
+`stack_truncated`; no lexical entries are included. `Scopes` names the same
+paused target, a zero-based frame index in that live stack, and the exact
+expected safe point of that frame. It requests a positive per-frame entry
+limit up to 256 and returns only active lexical slot ordinals/depths plus
+`scope_truncated`. The exact expected safe point makes a scope query fail if
+the frame moved between stack and scope reads; neither operation treats a
+configured breakpoint or static code unit as a paused frame. Both operations
+check the core-owned realm/program generation and, for nested targets, the
+whole core-instance-bound frame identity before using the private snapshot.
+The two capability states are independent and default-denied on ordinary or
+unsupported executor routes; source-free inspection needs no static-metadata
+receipt, source permission, or value/object authority. The existing
+owner-selected debugger socket is the access boundary, not a page/front-end
+API. A socket connection cannot promote itself by merely requesting metadata
+capabilities. The public wire and protocol version stay unchanged in this
+design leaf; bump them together only after both operations and their real
+BlueTS socket regressions are complete. Original BlueTS coordinates remain
+C2.1.2, and value inspection remains C2.2.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

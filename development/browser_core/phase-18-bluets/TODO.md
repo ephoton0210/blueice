@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.1.1.4.** Add separately gated public stack/scope requests
-and bounded replies, then verify them on a real BlueTS debugger socket.
+**Current leaf: C2.1.1.4.2.** Implement the separately gated public stack and
+scope route, then prove it on a real BlueTS debugger socket.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -305,6 +305,8 @@ channel with explicit owner/client grants.
       - [x] **C2.1.1.3.2** Route the private snapshot through the core child proxy, validating every echoed identity, active frame, limit, and source-free entry before returning a core-facing snapshot. The core checks the current paused state and its own core-to-child frame association before the request, then validates the full child echo, child-first/root-only shape, exact top offset, independent truncation and entry budgets, lexical depth order, and every returned safe point. The core-facing result has no private program/frame IDs. A real child route, malformed-payload matrix, and mismatched-reply identity test cover the proxy; no public request/capability is added.
       - [x] **C2.1.1.3.3** Prove the private route over a real child with stale document, wrong program/frame, both truncation flags, and no public capability; then check off C2.1.1.3. A real BlueTS child-host socket test reaches a paused function with at least two active lexical slots and confirms both truncation flags, exact child/root order, repeatable read-only capture, invalid budgets, wrong frame/program and successor-document denial. A real Launcher/core/host debugger socket test continues to report Stack and Scopes as Planned while nested control remains available; public protocol and commands are unchanged.
     - [ ] **C2.1.1.4** Expose separately gated public stack/scope requests and bounded replies, bump the public protocol only with the complete route, and prove limits/truncation on a real BlueTS debugger socket.
+      - [x] **C2.1.1.4.1** Specify distinct public Stack and Scopes gates, exact paused-target and per-frame scope selection, source-free reply shapes, budgets, and protocol-bump condition; do not change the wire in this design leaf. PLAN.md defines separate Stack (frame locations and stack truncation) and Scopes (one exact currently paused frame's active slots/depths and scope truncation) operations, with hard 64/256 limits and an expected safe point for stale scope selection. Both are default-denied outside the owner-selected debugger route; source, value, and BlueTS coordinates remain out of scope. No wire or protocol version changes in this leaf.
+      - [ ] **C2.1.1.4.2** Implement both gated public requests/replies through the core proxy, bump the debugger protocol with the complete route, and prove limits, truncation, stale-target denial, and capability states on a real Launcher-supervised BlueTS debugger socket; then check off C2.1.1.4 and C2.1.1.
   - [ ] **C2.1.2** Return stack frames with original BlueTS coordinates for nested and module frames.
 - [ ] **C2.2** Return authorized values without guessed handles, excess depth,
   source text, or cross-realm references.
