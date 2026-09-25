@@ -276,6 +276,7 @@ version = "0.1.0"
 dependencies = [
  "blueice-ai-assistant",
  "blueice-ai-gatekeeper",
+ "blueice-assistant-settings",
  "blueice-bluejs",
  "blueice-css",
  "blueice-dom",

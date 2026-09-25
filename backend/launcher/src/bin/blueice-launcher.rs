@@ -14,6 +14,7 @@
 //! `UnixListener` to that already-tested logic.
 
 use blueice_launcher::assistant::{sibling_assistant_binary, AssistantSupervisor};
+use blueice_launcher::AssistantWiring;
 use blueice_launcher::memory_pressure::{self, SystemMemorySource};
 use blueice_launcher::supervisor::ProcessRegistry;
 use blueice_launcher::{
@@ -203,13 +204,19 @@ fn main() -> ExitCode {
         }
     };
 
+    // What every core (v1 and each cutover's replacement) is told about it.
+    let assistant_wiring = assistant.as_ref().map(|supervisor| AssistantWiring {
+        socket: supervisor.public_socket().to_path_buf(),
+        settings_file: args.assistant_settings.clone(),
+    });
+
     let core = match SpawnedCore::spawn_with_assistant(
         args.width,
         args.height,
         &frame_dir,
         gatekeeper.socket_path(),
         args.extension_manifest.as_deref(),
-        assistant.as_ref().map(AssistantSupervisor::public_socket),
+        assistant_wiring.as_ref(),
     ) {
         Ok(core) => core,
         Err(e) => {

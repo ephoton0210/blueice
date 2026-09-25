@@ -14,6 +14,7 @@ blueice-raster = { path = "../raster" }
 blueice-net = { path = "../../net" }
 blueice-ipc = { path = "../../ipc" }
 blueice-i18n = { path = "../../i18n" }
+blueice-assistant-settings = { path = "../../assistant-settings" }
 blueice-extension-host = { path = "../../extension" }
 serde_json = "1"
 url = "2"

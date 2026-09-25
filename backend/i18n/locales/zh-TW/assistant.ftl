@@ -9,3 +9,25 @@ kind-organized = 整理後的資料
 label-source = 頁面:
 label-request = 請求:
 label-failed = 無法完成這項請求:
+
+# about:assistant 的設定區段:任何訊息都不帶參數(見 assistant.ftl 開頭的說明),
+# 由頁面自行組合標籤與數值。
+settings-heading = 設定
+settings-none = 未指定設定檔,助理只依啟動選項運作。
+settings-missing = 設定檔不存在,因此沒有設定任何助理。
+settings-invalid = 無法使用設定檔:
+settings-file = 檔案:
+settings-apply = 對此檔案的修改會在啟動器下次啟動時生效。
+settings-backend = 後端:
+backend-none = 無(未設定助理)
+backend-loopback = 本機伺服器
+backend-candle = 行程內(candle)
+backend-both = 兩者同時(資源加倍)
+settings-loopback = 本機模型:
+settings-candle-model = Candle 模型:
+settings-candle-tokenizer = Candle 分詞器:
+settings-candle-context = Candle 上下文(token 數):
+settings-idle = 閒置逾時(秒):
+settings-memory = 記憶體上限(MiB):
+settings-memory-none = 不限制
+settings-nice = 優先權(nice):

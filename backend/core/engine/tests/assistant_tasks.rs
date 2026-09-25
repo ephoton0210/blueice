@@ -264,3 +264,136 @@ fn a_pending_task_never_blocks_core() {
         ServerMessage::TranslationState { .. }
     ));
 }
+
+/// A path that only this test uses.
+fn settings_path(tag: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!(
+        "as-settings-page-{tag}-{}.json",
+        std::process::id()
+    ))
+}
+
+fn assistant_page_text(core: &mut Core) -> Vec<String> {
+    core.navigate("about:assistant");
+    names(&core.snapshot())
+}
+
+#[test]
+fn the_page_shows_the_effective_settings_from_the_file_core_was_given() {
+    use blueice_assistant_settings::{AssistantSettings, BackendKind, LoopbackSettings};
+    let (gatekeeper, _) = recording_gatekeeper();
+    let path = settings_path("valid");
+    blueice_assistant_settings::save(
+        &path,
+        &AssistantSettings {
+            backend: BackendKind::Loopback,
+            loopback: Some(LoopbackSettings {
+                provider: "llamacpp".into(),
+                base_url: "http://127.0.0.1:8080/v1/".into(),
+                model: "local".into(),
+            }),
+            max_resident_mb: Some(2048),
+            ..AssistantSettings::default()
+        },
+    )
+    .unwrap();
+    let mut core = Core::start(
+        &gatekeeper,
+        &["--assistant-settings", path.to_str().unwrap()],
+    );
+    let text = assistant_page_text(&mut core);
+    for expected in [
+        "Backend: Loopback server",
+        "Loopback model: llamacpp · http://127.0.0.1:8080/v1/ · local",
+        "Memory ceiling (MiB): 2048",
+        "Priority (nice): 10",
+    ] {
+        assert!(
+            text.iter().any(|n| n == expected),
+            "missing {expected:?} in {text:?}"
+        );
+    }
+    assert!(text.iter().any(|n| n.starts_with("File: ")));
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn a_missing_or_invalid_settings_file_is_said_plainly_and_never_rewritten() {
+    let (gatekeeper, _) = recording_gatekeeper();
+
+    let missing = settings_path("missing");
+    let _ = std::fs::remove_file(&missing);
+    let mut core = Core::start(
+        &gatekeeper,
+        &["--assistant-settings", missing.to_str().unwrap()],
+    );
+    let text = assistant_page_text(&mut core);
+    assert!(
+        text.iter().any(|n| n.contains("does not exist")),
+        "{text:?}"
+    );
+    assert!(
+        !missing.exists(),
+        "core must never create the settings file"
+    );
+    drop(core);
+
+    let invalid = settings_path("invalid");
+    std::fs::write(
+        &invalid,
+        r#"{"version":1,"backend":"loopback","idle_timeout_secs":600,"nice":10}"#,
+    )
+    .unwrap();
+    let before = std::fs::read(&invalid).unwrap();
+    let mut core = Core::start(
+        &gatekeeper,
+        &["--assistant-settings", invalid.to_str().unwrap()],
+    );
+    let text = assistant_page_text(&mut core);
+    assert!(
+        text.iter()
+            .any(|n| n.contains("could not be used") && n.contains("needs a loopback section")),
+        "{text:?}"
+    );
+    assert_eq!(
+        std::fs::read(&invalid).unwrap(),
+        before,
+        "and never rewrites it"
+    );
+    let _ = std::fs::remove_file(&invalid);
+}
+
+#[test]
+fn without_a_settings_file_the_page_says_so_and_an_edit_to_the_file_shows_on_the_next_visit() {
+    let (gatekeeper, _) = recording_gatekeeper();
+    let mut core = Core::start(&gatekeeper, &[]);
+    let text = assistant_page_text(&mut core);
+    assert!(
+        text.iter()
+            .any(|n| n.contains("No settings file was given")),
+        "{text:?}"
+    );
+    drop(core);
+
+    // A file edited while core runs is read again on the next render.
+    let path = settings_path("live");
+    let _ = std::fs::remove_file(&path);
+    let mut core = Core::start(
+        &gatekeeper,
+        &["--assistant-settings", path.to_str().unwrap()],
+    );
+    assert!(assistant_page_text(&mut core)
+        .iter()
+        .any(|n| n.contains("does not exist")));
+    blueice_assistant_settings::save(
+        &path,
+        &blueice_assistant_settings::AssistantSettings::default(),
+    )
+    .unwrap();
+    let text = assistant_page_text(&mut core);
+    assert!(
+        text.iter().any(|n| n == "Backend: None (no assistant)"),
+        "{text:?}"
+    );
+    let _ = std::fs::remove_file(&path);
+}

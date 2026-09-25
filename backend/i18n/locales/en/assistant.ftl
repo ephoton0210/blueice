@@ -10,3 +10,25 @@ kind-organized = Organized data
 label-source = Page:
 label-request = Request:
 label-failed = Could not complete this request:
+
+# The about:assistant settings section: no message takes an argument (see the
+# header of assistant.ftl), so the page composes labels and values itself.
+settings-heading = Settings
+settings-none = No settings file was given, so the assistant is configured only by its start-up options.
+settings-missing = The settings file does not exist, so no assistant is configured.
+settings-invalid = The settings file could not be used:
+settings-file = File:
+settings-apply = Changes to this file take effect when the launcher next starts.
+settings-backend = Backend:
+backend-none = None (no assistant)
+backend-loopback = Loopback server
+backend-candle = In-process (candle)
+backend-both = Both at once (double the resources)
+settings-loopback = Loopback model:
+settings-candle-model = Candle model:
+settings-candle-tokenizer = Candle tokenizer:
+settings-candle-context = Candle context (tokens):
+settings-idle = Idle timeout (seconds):
+settings-memory = Memory ceiling (MiB):
+settings-memory-none = No limit
+settings-nice = Priority (nice):

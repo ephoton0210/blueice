@@ -237,16 +237,18 @@ pub fn default_settings_path() -> PathBuf {
 /// Reads and validates the settings at `path`. A missing file is the default
 /// (no assistant); an unreadable, malformed, or invalid file is an error.
 pub fn load(path: &Path) -> Result<AssistantSettings, String> {
+    load_existing(path).map(Option::unwrap_or_default)
+}
+
+/// Like [`load`], but says whether there was a file at all: `Ok(None)` for a
+/// missing one, so a display can tell "not configured" from "configured with
+/// the defaults".
+pub fn load_existing(path: &Path) -> Result<Option<AssistantSettings>, String> {
     let raw = match fs::read_to_string(path) {
         Ok(raw) => raw,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(AssistantSettings::default())
-        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
-            return Err(format!(
-                "reading assistant settings {}: {error}",
-                path.display()
-            ))
+            return Err(format!("reading assistant settings {}: {error}", path.display()))
         }
     };
     let settings: AssistantSettings = serde_json::from_str(&raw)
@@ -254,7 +256,7 @@ pub fn load(path: &Path) -> Result<AssistantSettings, String> {
     settings
         .validate()
         .map_err(|error| format!("assistant settings {}: {error}", path.display()))?;
-    Ok(settings)
+    Ok(Some(settings))
 }
 
 /// Validates and atomically writes `settings` to `path` (a temporary file in
@@ -623,6 +625,15 @@ mod tests {
             let error = load(&path).unwrap_err();
             assert!(error.contains("assistant settings"), "{contents}: {error}");
         }
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_missing_file_is_distinguishable_from_one_holding_the_defaults() {
+        let path = temp_path("existing");
+        assert_eq!(load_existing(&path).unwrap(), None);
+        save(&path, &AssistantSettings::default()).unwrap();
+        assert_eq!(load_existing(&path).unwrap(), Some(AssistantSettings::default()));
         let _ = fs::remove_file(&path);
     }
 

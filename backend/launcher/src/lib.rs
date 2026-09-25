@@ -339,10 +339,10 @@ struct Broker {
     /// The installed package, if any, must be revalidated in each fresh core
     /// generation rather than silently disappearing after a cutover.
     extension_manifest: Option<PathBuf>,
-    /// The assistant's public socket, when the launcher supervises one. Every
-    /// replacement core receives the same path, so live translation and
-    /// assistant tasks keep working across a cutover.
-    assistant_socket: Option<PathBuf>,
+    /// The assistant wiring, when the launcher supervises one. Every replacement
+    /// core receives the same, so live translation and assistant tasks keep
+    /// working across a cutover.
+    assistant: Option<AssistantWiring>,
     /// Signaled exactly once, by whichever generation-tagged broadcast
     /// thread's own death is NOT a deliberate cutover supersession --
     /// what [`run_broker`] blocks on to know when the whole launcher
@@ -949,7 +949,7 @@ fn attempt_cutover(
         &frame_dir,
         &broker.gatekeeper_socket,
         broker.extension_manifest.as_deref(),
-        broker.assistant_socket.as_deref(),
+        broker.assistant.as_ref(),
     )
     .map_err(|e| AttemptFailure::Retry(format!("failed to spawn v2: {e}")))?;
 
@@ -1136,7 +1136,7 @@ pub fn run_broker_with_options(
     } = options;
     let frame_dir = core.frame_dir.clone();
     let extension_manifest = core.extension_manifest.clone();
-    let assistant_socket = core.assistant_socket.clone();
+    let assistant = core.assistant.clone();
     let core_writer = Arc::new(Mutex::new(core.stream.try_clone()?));
     let broadcast_stream = core.stream.try_clone()?;
     let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
@@ -1154,7 +1154,7 @@ pub fn run_broker_with_options(
         frame_dir,
         gatekeeper_socket,
         extension_manifest,
-        assistant_socket,
+        assistant,
         done: done_tx.clone(),
     });
 
@@ -1761,6 +1761,15 @@ impl PermissionControlChannel {
 /// and cleaned up (process, internal socket, and frame directory) on
 /// [`Drop`], the same lifetime discipline `mcp-server`'s `CoreProcess`
 /// already established for its own (today, unshared) spawned `core`.
+/// What the launcher tells every `core` it starts about the assistant it
+/// supervises: the public socket to reach it, and the settings file `core` may
+/// show (read-only) on `about:assistant`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssistantWiring {
+    pub socket: PathBuf,
+    pub settings_file: Option<PathBuf>,
+}
+
 pub struct SpawnedCore {
     child: Child,
     script_child: Child,
@@ -1768,9 +1777,9 @@ pub struct SpawnedCore {
     script_socket_path: PathBuf,
     extension_socket_path: Option<PathBuf>,
     extension_manifest: Option<PathBuf>,
-    /// The launcher-owned public assistant socket this core was given, so a
-    /// cutover's replacement core is given the same one.
-    assistant_socket: Option<PathBuf>,
+    /// The launcher-owned assistant wiring this core was given, so a cutover's
+    /// replacement core is given the same.
+    assistant: Option<AssistantWiring>,
     permission_control: Option<PermissionControlChannel>,
     frame_dir: PathBuf,
     pub stream: UnixStream,
@@ -1830,7 +1839,7 @@ impl SpawnedCore {
         frame_dir: &Path,
         gatekeeper_socket: &Path,
         extension_manifest: Option<&Path>,
-        assistant_socket: Option<&Path>,
+        assistant: Option<&AssistantWiring>,
     ) -> io::Result<Self> {
         let this_exe = std::env::current_exe()?;
         let core_bin = sibling_core_binary(&this_exe);
@@ -1857,8 +1866,11 @@ impl SpawnedCore {
             .arg(gatekeeper_socket)
             .arg("--script-socket")
             .arg(&script_socket_path);
-        if let Some(assistant) = assistant_socket {
-            command.arg("--assistant-socket").arg(assistant);
+        if let Some(assistant) = assistant {
+            command.arg("--assistant-socket").arg(&assistant.socket);
+            if let Some(settings) = &assistant.settings_file {
+                command.arg("--assistant-settings").arg(settings);
+            }
         }
         if let (Some(manifest), Some(socket)) = (extension_manifest, extension_socket_path.as_deref()) {
             command.arg("--extension-socket").arg(socket)
@@ -1958,7 +1970,7 @@ impl SpawnedCore {
             script_socket_path,
             extension_socket_path,
             extension_manifest: extension_manifest.map(Path::to_path_buf),
-            assistant_socket: assistant_socket.map(Path::to_path_buf),
+            assistant: assistant.cloned(),
             permission_control: None,
             frame_dir: frame_dir.to_path_buf(),
             stream,
@@ -2274,7 +2286,7 @@ mod tests {
             child: fake_child(), script_child: fake_child(),
             internal_socket_path: root.join("core.sock"),
             script_socket_path: root.join("script.sock"),
-            extension_socket_path: None, extension_manifest: None, assistant_socket: None,
+            extension_socket_path: None, extension_manifest: None, assistant: None,
             permission_control: Some(PermissionControlChannel { requests }),
             frame_dir: root.join("frames"), stream: core_stream,
         };
@@ -2287,7 +2299,7 @@ mod tests {
             active_core: Mutex::new(Some(core)),
             width: 320.0, height: 200.0,
             frame_dir: root.join("frames"), gatekeeper_socket: root.join("gate.sock"),
-            extension_manifest: None, assistant_socket: None, done,
+            extension_manifest: None, assistant: None, done,
         });
         let change = |generation, id: &str, capability: &str, action| {
             trusted_window::TrustedWindowRequest::Change {
@@ -2449,7 +2461,7 @@ mod tests {
             width: 320.0, height: 200.0,
             frame_dir: root.join("frames"),
             gatekeeper_socket: root.join("unused-gatekeeper.sock"),
-            extension_manifest: Some(manifest), assistant_socket: None, done,
+            extension_manifest: Some(manifest), assistant: None, done,
         });
         let mut requests = Vec::new();
         for request in [
@@ -2513,7 +2525,7 @@ mod tests {
             script_socket_path: root.join("script.sock"),
             extension_socket_path: None,
             extension_manifest: None,
-            assistant_socket: None,
+            assistant: None,
             permission_control: Some(PermissionControlChannel { requests }),
             frame_dir: root.join("frames"), stream,
         };

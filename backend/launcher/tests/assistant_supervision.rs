@@ -409,6 +409,12 @@ fn a_cutover_keeps_the_replacement_core_connected_to_the_same_assistant() {
     client.translate_to("zh-TW");
     client.navigate(&url);
     assert_eq!(names(&client.snapshot()), ["你好", "世界"]);
+
+    // The replacement core was given the same settings file.
+    client.navigate("about:assistant");
+    let page = names(&client.snapshot());
+    let file_line = format!("File: {}", settings.path().display());
+    assert!(page.contains(&file_line), "{page:?}");
 }
 
 #[test]

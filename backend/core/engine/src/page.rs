@@ -229,11 +229,20 @@ impl Page {
 
     /// `about:assistant`'s HTML for `url` from the shared panel's current state.
     fn assistant_panel_html(&self, url: &str) -> String {
-        let (entries, available) = match &self.assistant_panel {
-            Some(panel) => (panel.entries(), panel.is_available()),
-            None => (Vec::new(), false),
+        let (entries, available, settings_file) = match &self.assistant_panel {
+            Some(panel) => (panel.entries(), panel.is_available(), panel.settings_file()),
+            None => (Vec::new(), false, None),
         };
-        assistant_html(&entries, available, crate::credits::locale_from_url(url))
+        // Read on every render, so an edit to the file shows without a restart
+        // (it still takes effect only when the launcher next starts).
+        let settings = crate::assistant_page::read_settings_view(settings_file.as_deref());
+        assistant_html(
+            &entries,
+            available,
+            &settings,
+            settings_file.as_deref(),
+            crate::credits::locale_from_url(url),
+        )
     }
 
     /// Re-renders this page from the panel's current state, keeping the scroll

@@ -94,6 +94,9 @@ struct Args {
     translate_to: Option<String>,
     /// The whole-navigation translation budget; `None` means the default.
     translate_deadline_ms: Option<u64>,
+    /// The assistant settings file `about:assistant` shows, read-only (`core`
+    /// never writes it). The launcher passes the file it loaded.
+    assistant_settings: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -352,6 +355,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut assistant_socket = None;
     let mut translate_to = None;
     let mut translate_deadline_ms = None;
+    let mut assistant_settings = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -378,6 +382,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--extension-host" => extension_host = Some(PathBuf::from(value()?)),
             "--permission-control-stdio" => permission_control_stdio = true,
             "--assistant-socket" => assistant_socket = Some(PathBuf::from(value()?)),
+            "--assistant-settings" => assistant_settings = Some(PathBuf::from(value()?)),
             "--translate-to" => translate_to = Some(value()?),
             "--translate-deadline-ms" => {
                 translate_deadline_ms = Some(
@@ -431,6 +436,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         assistant_socket,
         translate_to,
         translate_deadline_ms,
+        assistant_settings,
     })
 }
 
@@ -1310,6 +1316,8 @@ fn main() -> ExitCode {
         tabs.set_gatekeeper_settings_source(Arc::new(GatekeeperSettingsSource::at(
             gatekeeper_socket.clone(),
         )));
+        tabs.assistant_panel()
+            .set_settings_file(args.assistant_settings.clone());
         if let Some(socket) = &args.assistant_socket {
             tabs.set_translation_endpoint(
                 socket.clone(),
@@ -1450,6 +1458,14 @@ mod tests {
     }
 
     #[test]
+    fn the_assistant_settings_file_is_parsed_and_optional() {
+        assert_eq!(args(&["--socket", "/s"]).unwrap().assistant_settings, None);
+        let parsed = args(&["--socket", "/s", "--assistant-settings", "/tmp/a.json"]).unwrap();
+        assert_eq!(parsed.assistant_settings, Some(PathBuf::from("/tmp/a.json")));
+        assert!(args(&["--socket", "/s", "--assistant-settings"]).is_err());
+    }
+
+    #[test]
     fn an_assistant_socket_alone_makes_translation_available_but_off() {
         let parsed = args(&["--socket", "/s", "--assistant-socket", "/a"]).unwrap();
         assert_eq!(parsed.assistant_socket, Some(PathBuf::from("/a")));
@@ -1507,6 +1523,7 @@ mod tests {
                 assistant_socket: None,
                 translate_to: None,
                 translate_deadline_ms: None,
+                assistant_settings: None,
             }
         );
     }
