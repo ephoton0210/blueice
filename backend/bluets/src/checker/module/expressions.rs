@@ -123,6 +123,12 @@ impl<'a> ModuleChecker<'a> {
                 self.infer_expression(right, scope),
             );
         }
+        if let Some(value) = erased_assertion_operand(tokens) {
+            // Both forms disappear from emitted JavaScript. Keep the known
+            // runtime receiver type, including readonly host qualifiers,
+            // rather than accidentally inferring its first identifier.
+            return self.infer_expression(value, scope);
+        }
         for operators in [&["|"][..], &["^"][..], &["&"][..]] {
             if let Some((left, _, right)) = top_level_binary_parts(tokens, operators, |start| {
                 self.module.generic_call_type_arguments.contains_key(&start)
@@ -1246,6 +1252,27 @@ const MEMBER_ASSIGNMENT_OPERATORS: &[&str] = &[
     "=", "+=", "-=", "*=", "/=", "%=", "**=", "<<=", ">>=", ">>>=", "&=", "|=", "^=", "&&=", "||=",
     "??=",
 ];
+
+fn erased_assertion_operand(tokens: &[Token]) -> Option<&[Token]> {
+    let mut depth = 0usize;
+    let mut assertion = None;
+    for (index, token) in tokens.iter().enumerate() {
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" if depth > 0 => depth -= 1,
+            "as" | "satisfies"
+                if depth == 0
+                    && index > 0
+                    && index + 1 < tokens.len()
+                    && !tokens[index - 1].is(".") =>
+            {
+                assertion = Some(index);
+            }
+            _ => {}
+        }
+    }
+    assertion.map(|index| &tokens[..index])
+}
 
 /// Exposes only the final member in an expression. A computed key is known
 /// only when its string spelling needs no JavaScript escape decoding; all

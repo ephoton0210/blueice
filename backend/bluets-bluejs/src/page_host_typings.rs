@@ -664,6 +664,7 @@ mod tests {
             "interface Other { type: 'click'; } interface Slots { event: BlueIceClickEvent; other: Other; } function write(slots: Slots, key: string): void { const selected = slots[key]; selected.type = 'click'; }",
             "interface Holder { event: BlueIceClickEvent; type: string; } function write(holder: Holder): void { const selected = [holder.event][0]; selected.type = 'click'; }",
             "interface Holder { event: BlueIceClickEvent; type: string; } function write(holder: Holder): void { const selected = { picked: holder.event }; selected.picked.type = 'click'; }",
+            "interface Holder { event: BlueIceClickEvent; type: string; } function write(holder: Holder): void { const selected = holder.event as BlueIceClickEvent; selected.type = 'click'; }",
         ] {
             let error = compile(source).err().expect("readonly write must fail");
             let crate::BridgeError::BlueTs(diagnostics) = error else {

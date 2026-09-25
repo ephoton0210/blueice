@@ -217,8 +217,12 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   expression, including nested records and calls with comma-separated
   arguments, so storing `holder.event` in a literal cannot turn it into the
   mutable Holder type. Literal inference is capped at 128 containers with a
-  resource diagnostic. Opaque/unmodeled expression forms still need a sound
-  policy, so do not claim full qualifier enforcement yet.
+  resource diagnostic. Supported erased `as` and `satisfies` expressions now
+  preserve the operand's known readonly receiver type, including through
+  aliases, literals, and an assertion naming a writable-looking type; an
+  assertion cannot silently turn a known event into a mutable receiver.
+  Opaque/unmodeled expression forms still need a sound policy, so do not
+  claim full qualifier enforcement yet.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members
   must fail both static checking and JavaScript runtime access.
 

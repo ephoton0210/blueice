@@ -250,6 +250,18 @@ verified event-v1 bridge rejects the array and record cases before runtime.
 The new recursive inference stops at 128 bracket/record containers and emits
 a resource diagnostic on excess input. Opaque expression forms remain open.
 
+**Readonly through erased assertions (B4 partial):** The checker now infers
+the operand of a supported `as` or `satisfies` expression before it reaches
+the generic identifier fallback. Because both forms erase from the emitted
+JavaScript, neither can turn a known event receiver into a mutable one for
+readonly checking, even when `as` names a writable-looking record type.
+Regression tests cover direct, alias, array, and record paths plus a mutable
+control; the verified event-v1 bridge rejects an asserted event alias before
+runtime. The checker tests were split into readonly and member-call modules
+to keep the parent test file below 1500 lines. This is a qualifier-preservation
+rule, not a claim of complete assertion compatibility or coverage of opaque
+expression forms.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
