@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.2.1.** Return authorized primitives and bounded plain data
-without exceeding depth, length, or string-byte limits.
+**Current leaf: C2.2.1.2.** Read exact active root/nested binding primitives
+through a side-effect-free native VM snapshot.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -318,6 +318,11 @@ channel with explicit owner/client grants.
 - [ ] **C2.2** Return authorized values without guessed handles, excess depth,
   source text, or cross-realm references.
   - [ ] **C2.2.1** Return primitives and bounded plain data only; cap depth, length, and string bytes.
+    - [x] **C2.2.1.1** Specify the exact paused-slot authority, lossless primitive and plain-data representation, side-effect exclusions, and hard resource budgets in PLAN.md; leave the wire unchanged. The selected active Scopes slot requires an owner value grant and same-stream receipt; previews are lossless tagged trees with 4/32/256/4,096 hard caps, no getter/proxy execution, and no reusable object handle. Public v36 remains unchanged.
+    - [ ] **C2.2.1.2** Read exact active root/nested binding primitives through a side-effect-free native VM snapshot, including cell-backed captures, with native regressions.
+    - [ ] **C2.2.1.3** Extend the native snapshot to bounded plain records and arrays without invoking accessors or proxy traps; reject unsupported shape, cycles, and every excess budget with native regressions.
+    - [ ] **C2.2.1.4** Carry the exact bounded native preview through a versioned private page-host/child route and the core proxy; prove classic/module root and nested reads at that boundary.
+    - [ ] **C2.2.1.5** Add the owner-gated public same-stream scope-receipt request/reply, bump the debugger protocol with the complete route, and prove limits and stale-target denial on real Launcher-supervised BlueTS sockets; then check off C2.2.1.
   - [ ] **C2.2.2** Refuse guessed handles, source text, and cross-realm references with a typed error.
 - [ ] **C2.3** Report an exception at its original BlueTS source position.
   - [ ] **C2.3.1** Map a thrown error's position to the original BlueTS span for classic, module, and nested frames.

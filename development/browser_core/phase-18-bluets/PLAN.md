@@ -891,6 +891,49 @@ pre-existing short pending-admission-window test for an unsupported deeper
 call shape returned `InvalidExecutionState` while arming, then passed when
 rerun alone. Both new coordinate tests passed in the serial run and alone.
 
+**Bounded paused-slot value contract (C2.2.1.1):** Value inspection is a
+separate owner/client `BoundedValues` grant, not implied by Stack, Scopes, or
+static metadata. Its only selector is a slot actually returned by `Scopes` on
+the same debugger stream, together with the exact program, optional
+core-instance-bound nested frame, frame index, safe point, slot ordinal, and
+scope depth. Core records a bounded receipt for returned entries and rechecks
+the live paused frame and active entry before asking the child. A guessed
+ordinal, stale/moved frame, replaced realm, or non-BlueTS attachment cannot
+dereference a value. There is no arbitrary object ID or expression evaluation
+input; a copied preview contains no reusable heap handle. A root slot is read
+from its retained classic or module execution, while a nested slot is read
+from its own retained invocation, including cell-backed captured bindings.
+An uninitialized binding is an explicit refusal, never `undefined`.
+
+The immutable preview is a tagged tree: `undefined`, `null`, boolean, exact
+IEEE-754 number bits (so negative zero and non-finite values survive), signed
+BigInt bytes, lossless UTF-16 code units (including lone surrogates), dense or
+sparse array elements with explicit holes, and ordered string-keyed record
+entries. Keys use the same lossless UTF-16 representation. Traversal reads
+only own stored data descriptors of VM-owned ordinary objects (null or this
+realm's intrinsic Object prototype) and arrays (this realm's intrinsic Array
+prototype); it never walks prototypes, calls JavaScript, invokes getters,
+runs proxy traps, or stringifies values. Accessors, symbols and symbol keys,
+functions, exotic/host objects, private-field instances, custom prototypes,
+cross-heap objects, and cycles refuse the *whole* preview, rather than
+returning a partial or misleading representation. Arrays may have holes but
+not extra named/symbol properties. Ordinary records use own property order.
+
+Hard caps are depth 4 (the selected value is depth 0), 32 elements/entries
+per container, 256 total tree nodes including holes, and 4,096 aggregate
+payload bytes across all UTF-16 strings/keys and signed BigInt bytes. Lengths
+and container shape are checked before cloning/enumeration; over-budget
+results refuse atomically, with no truncation that might look complete.
+These are output-payload limits, not claims about JSON framing overhead.
+Previewing is a read of the paused heap only: no allocation in that heap, no
+execution step, and no source-text or static-type disclosure. A runtime string
+is still a runtime value even if its contents happen to resemble source text;
+the debugger provides no source-text lookup through this operation. C2.2.1.2
+and C2.2.1.3 build the native snapshot, C2.2.1.4 transports it privately,
+and C2.2.1.5 introduces the public wire and owner receipt gate. Explicit
+typed refusals for forged handles, source requests, and cross-realm attempts
+remain C2.2.2; this design leaf does not change the v36 protocol.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
