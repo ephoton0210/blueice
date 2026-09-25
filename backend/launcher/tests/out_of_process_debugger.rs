@@ -879,6 +879,42 @@ fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
                 && report.state == DebuggerCapabilityState::Available
         }));
         let (program, frame) = arm_first_nested_frame(&mut debugger, realm);
+        let unavailable_source = DebuggerReply::Error {
+            code: DebuggerErrorCode::CapabilityUnavailable,
+            message: "debugger operation is unavailable".to_string(),
+        };
+        assert_eq!(
+            debugger_request(&mut debugger, DebuggerRequest::GetSourceText { program }),
+            unavailable_source
+        );
+        let foreign_program = DebuggerProgram {
+            realm: DebuggerPageRealm {
+                tab_id: realm.tab_id + 1,
+                ..realm
+            },
+            ..program
+        };
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetSourceText {
+                    program: foreign_program,
+                },
+            ),
+            unavailable_source
+        );
+        assert_eq!(
+            debugger_request(&mut debugger, DebuggerRequest::Unknown),
+            unavailable_source
+        );
+        assert_eq!(
+            one_realm(debugger_request(
+                &mut debugger,
+                DebuggerRequest::ListPageRealms,
+            )),
+            realm,
+            "denied source and unknown probes must preserve the public stream"
+        );
         let mut nested_target = None;
         for _ in 0..96 {
             let DebuggerReply::Stack(stack) = debugger_request(
@@ -923,6 +959,35 @@ fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
             assert_eq!(same_frame, frame);
         }
         let nested_target = nested_target.expect("nested and caller-root values must be readable");
+
+        for guessed_program in [
+            DebuggerProgram {
+                program_handle: program.program_handle + 1,
+                ..program
+            },
+            foreign_program,
+        ] {
+            let guessed = DebuggerValueTarget {
+                program: guessed_program,
+                frame: Some(blueice_ipc::debugger::DebuggerFrame {
+                    program: guessed_program,
+                    ..frame
+                }),
+                safe_point: DebuggerSafePoint {
+                    program: guessed_program,
+                    ..nested_target.safe_point
+                },
+                ..nested_target
+            };
+            assert!(guessed.is_well_formed());
+            assert!(matches!(
+                debugger_request(&mut debugger, DebuggerRequest::GetValue { target: guessed }),
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    ..
+                }
+            ));
+        }
 
         assert!(matches!(
             debugger_request(
@@ -1074,6 +1139,145 @@ fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
         launcher.shutdown();
         let _ = std::fs::remove_file(gatekeeper_socket);
     }
+}
+
+#[test]
+fn launcher_refuses_a_non_plain_bluets_value_without_a_partial_preview() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let source = "function inner(bad: any, good: number): number { return good; } globalThis.answer = inner(inner, 7);";
+        let body = format!(
+            "<main>non-plain-value</main><script type=\"application/x-blueice-typescript\">{source}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+    let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            bounded_values: true,
+            ..StaticMetadataPolicy::default()
+        },
+    );
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    navigate(&mut browser, &url);
+    fixture.join().unwrap();
+
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: true,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            granted_bounded_values: true,
+            ..
+        }
+    ));
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let (program, frame) = arm_first_nested_frame(&mut debugger, realm);
+    let mut checked = false;
+    for _ in 0..64 {
+        let DebuggerReply::Stack(stack) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStack {
+                program,
+                frame: Some(frame),
+                max_frames: 2,
+            },
+        ) else {
+            panic!("the non-plain fixture must expose its nested frame");
+        };
+        let safe_point = stack.safe_points[0];
+        let DebuggerReply::Scopes(scopes) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetScopes {
+                program,
+                frame: Some(frame),
+                frame_index: 0,
+                expected_safe_point: safe_point,
+                max_scope_entries: 256,
+            },
+        ) else {
+            panic!("the non-plain fixture must expose exact parameter slots");
+        };
+        let replies: Vec<_> = scopes
+            .entries
+            .iter()
+            .copied()
+            .map(|scope_entry| {
+                debugger_request(
+                    &mut debugger,
+                    DebuggerRequest::GetValue {
+                        target: DebuggerValueTarget {
+                            program,
+                            frame: Some(frame),
+                            frame_index: 0,
+                            safe_point,
+                            scope_entry,
+                        },
+                    },
+                )
+            })
+            .collect();
+        let good_is_ready = replies.iter().any(|reply| {
+            matches!(
+                reply,
+                DebuggerReply::Value(snapshot)
+                    if snapshot.preview == DebuggerValuePreview::NumberBits(7.0_f64.to_bits())
+            )
+        });
+        if good_is_ready {
+            assert!(
+                replies.iter().any(|reply| matches!(
+                    reply,
+                    DebuggerReply::Error {
+                        code: DebuggerErrorCode::InvalidExecutionState,
+                        ..
+                    }
+                )),
+                "the initialized function argument must refuse as a whole: {replies:?}"
+            );
+            checked = true;
+            break;
+        }
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::StepNestedInstruction { frame },
+            ),
+            DebuggerReply::NestedStepRequested { frame }
+        );
+        let (same_frame, _) = await_nested_paused_execution(&mut debugger, program);
+        assert_eq!(same_frame, frame);
+    }
+    assert!(
+        checked,
+        "the neighboring plain argument must become readable"
+    );
+    drop(debugger);
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
 }
 
 #[test]

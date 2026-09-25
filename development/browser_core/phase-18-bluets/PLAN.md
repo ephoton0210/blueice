@@ -1202,6 +1202,20 @@ private source-text operation or value grant was added. All 109 IPC and 297
 engine library tests, five focused private child tests, formatting, and
 workspace Clippy pass. Real public socket proof remains C2.2.2.3.
 
+**Real typed value refusals (C2.2.2.3):** The Launcher-supervised v38
+classic and module sockets return identical generic `CapabilityUnavailable`
+for local and foreign `GetSourceText` probes and a unit unknown command, then
+continue to answer the same stream. On each granted, actually paused BlueTS
+child, structurally valid guessed-program and foreign-realm `GetValue` targets
+return `InvalidTarget` before a child read. An independent short BlueTS
+fixture passes a function as one initialized nested argument beside a readable
+number; its exact receipted slot produces only `InvalidExecutionState`, never
+a partial preview. The existing four exact-cap/four over-cap real-value test
+still passes under v38, and workspace Clippy is clean. The classic/module
+test hit the previously observed pending-admission timing race once (program
+completed before breakpoint arming) and passed unchanged on rerun; no v38
+reply mismatch was observed.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
