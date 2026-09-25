@@ -30,6 +30,7 @@ use rmcp::model::{
     CallToolResult, ContentBlock as Content, Implementation, ServerCapabilities, ServerInfo,
 };
 use rmcp::schemars;
+use crate::assistant_settings::{self, SettingsParams};
 use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler};
 use serde::Deserialize;
 use std::io;
@@ -104,6 +105,18 @@ struct OrganizePageParams {
     instruction: String,
     /// Which tab to read, or omit for the default tab.
     tab_id: Option<u64>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct ProposalStatusParams {
+    /// The proposal id returned by `propose_assistant_settings`.
+    id: u64,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct ProposeAssistantSettingsParams {
+    /// The complete settings you want (start from `get_assistant_settings`).
+    settings: SettingsParams,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -333,6 +346,36 @@ fn assistant_outcome_to_result(outcome: crate::AssistantOutcome) -> CallToolResu
     }
 }
 
+/// Runs a blocking launcher control call off the async runtime.
+async fn control_call<T, F>(call: F) -> Result<T, ErrorData>
+where
+    T: Send + 'static,
+    F: FnOnce() -> std::io::Result<T> + Send + 'static,
+{
+    tokio::task::spawn_blocking(call)
+        .await
+        .map_err(|error| ErrorData::internal_error(error.to_string(), None))?
+        .map_err(|error| {
+            ErrorData::internal_error(
+                format!("could not reach the BlueIce launcher's control socket: {error}"),
+                None,
+            )
+        })
+}
+
+/// A settings outcome as a tool result. A blocked or refused proposal is an
+/// error result, since the requested change did not (and will not) happen.
+fn assistant_settings_result(outcome: assistant_settings::SettingsOutcome) -> CallToolResult {
+    use assistant_settings::SettingsOutcome;
+    let text = assistant_settings::describe(&outcome);
+    match outcome {
+        SettingsOutcome::Blocked(_) | SettingsOutcome::Refused(_) => {
+            CallToolResult::error(vec![Content::text(text)])
+        }
+        _ => CallToolResult::success(vec![Content::text(text)]),
+    }
+}
+
 fn translation_outcome_to_result(outcome: crate::TranslationOutcome) -> CallToolResult {
     let json = serde_json::json!({
         "error": outcome.error,
@@ -432,6 +475,9 @@ fn transfer_error_result(error: CallError) -> CallToolResult {
 /// is torn down with this adapter.
 pub struct BlueIceMcpServer {
     core: Arc<CoreHandle>,
+    /// The launcher's operator-control socket, the only door to assistant
+    /// settings proposals: it can propose and read, never approve.
+    control_socket: PathBuf,
     /// Connected (and, if need be, started) only when a download tool is
     /// first used -- see [`DownloadsHandle`].
     downloads: Arc<DownloadsHandle>,
@@ -443,6 +489,7 @@ impl BlueIceMcpServer {
     pub fn spawn(width: u32, height: u32) -> Self {
         BlueIceMcpServer {
             core: Arc::new(CoreHandle::new(width, height)),
+            control_socket: blueice_launcher::control::default_control_socket_path(),
             downloads: Arc::new(DownloadsHandle::new()),
         }
     }
@@ -453,8 +500,16 @@ impl BlueIceMcpServer {
     pub fn attach_to_launcher(rendezvous_socket: PathBuf, width: u32, height: u32) -> Self {
         BlueIceMcpServer {
             core: Arc::new(CoreHandle::attached_to(rendezvous_socket, width, height)),
+            control_socket: blueice_launcher::control::default_control_socket_path(),
             downloads: Arc::new(DownloadsHandle::new()),
         }
+    }
+
+    /// Uses this launcher control socket instead of the default (for a launcher
+    /// started with its own `--control-socket`).
+    pub fn with_control_socket(mut self, control_socket: PathBuf) -> Self {
+        self.control_socket = control_socket;
+        self
     }
 }
 
@@ -550,6 +605,43 @@ impl BlueIceMcpServer {
         })
         .await?;
         Ok(assistant_outcome_to_result(outcome))
+    }
+
+    #[tool(
+        description = "Read the local assistant's settings in force (backend, model, memory ceiling, priority). Read-only."
+    )]
+    async fn get_assistant_settings(&self) -> Result<CallToolResult, ErrorData> {
+        let socket = self.control_socket.clone();
+        let outcome = control_call(move || assistant_settings::current(&socket)).await?;
+        Ok(assistant_settings_result(outcome))
+    }
+
+    #[tool(
+        description = "PROPOSE a change to the local assistant's settings. You cannot apply it: deterministic safety rules screen it first (a blocked proposal is returned with the reasons and the person is not asked), and an accepted one only takes effect if the person approves it in BlueIce's own trusted window, which you cannot reach. Nothing changes until then. At most one proposal can wait at a time."
+    )]
+    async fn propose_assistant_settings(
+        &self,
+        Parameters(ProposeAssistantSettingsParams { settings }): Parameters<ProposeAssistantSettingsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let settings = match settings.into_settings() {
+            Ok(settings) => settings,
+            Err(reason) => return Ok(CallToolResult::error(vec![Content::text(reason)])),
+        };
+        let socket = self.control_socket.clone();
+        let outcome = control_call(move || assistant_settings::propose(&socket, settings)).await?;
+        Ok(assistant_settings_result(outcome))
+    }
+
+    #[tool(
+        description = "Check where a settings proposal stands: pending, approved, denied, expired, stale (the settings changed after it was made), or unknown. Read-only."
+    )]
+    async fn assistant_settings_proposal_status(
+        &self,
+        Parameters(ProposalStatusParams { id }): Parameters<ProposalStatusParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let socket = self.control_socket.clone();
+        let outcome = control_call(move || assistant_settings::status(&socket, id)).await?;
+        Ok(assistant_settings_result(outcome))
     }
 
     #[tool(description = "Get the current page's representation without performing any action")]

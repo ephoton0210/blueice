@@ -1062,6 +1062,14 @@ fn handle_control_connection(mut conn: UnixStream, broker: &Arc<Broker>) -> io::
                 },
             }
         }
+        control::ControlRequest::InspectAssistantSettings => match broker.assistant_settings.as_ref() {
+            None => control::ControlReply::AssistantProposalRefused {
+                reason: "this launcher supervises no assistant".to_string(),
+            },
+            Some(service) => control::ControlReply::AssistantSettingsInForce {
+                settings: Box::new(service.current()),
+            },
+        },
         control::ControlRequest::AssistantProposalStatus { id } => {
             match broker.assistant_settings.as_ref() {
                 None => control::ControlReply::AssistantProposalRefused {

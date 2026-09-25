@@ -1342,6 +1342,7 @@ impl Drop for CoreProcess {
     }
 }
 
+pub mod assistant_settings;
 pub mod downloads;
 pub mod server;
 pub use server::BlueIceMcpServer;

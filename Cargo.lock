@@ -390,6 +390,7 @@ name = "blueice-mcp-server"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
+ "blueice-assistant-settings",
  "blueice-bluejs",
  "blueice-ipc",
  "blueice-launcher",

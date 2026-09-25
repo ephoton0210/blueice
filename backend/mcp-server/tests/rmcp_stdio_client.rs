@@ -78,6 +78,9 @@ async fn an_official_mcp_client_lists_tools_without_a_sibling_core_binary() {
         "show_translation",
         "summarize_page",
         "organize_page",
+        "get_assistant_settings",
+        "propose_assistant_settings",
+        "assistant_settings_proposal_status",
     ] {
         assert!(
             names.contains(&tool),
@@ -210,4 +213,143 @@ async fn translation_tools_report_state_and_refuse_without_an_assistant() {
     assert!(text.contains("unavailable"), "{text}");
 
     client.cancel().await.expect("close the stdio MCP session");
+}
+
+/// A fake launcher control socket that answers each request in turn from
+/// `replies`, and reports every request it was asked.
+fn fake_control_socket(
+    replies: Vec<blueice_launcher::control::ControlReply>,
+) -> (
+    std::path::PathBuf,
+    std::thread::JoinHandle<Vec<blueice_launcher::control::ControlRequest>>,
+) {
+    use blueice_launcher::control::{read_control_request, write_control_reply};
+    let path = std::env::temp_dir().join(format!("mcp-rmcp-ctl-{}.sock", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+    let worker = std::thread::spawn(move || {
+        let mut seen = Vec::new();
+        for reply in replies {
+            let (mut stream, _) = listener.accept().unwrap();
+            seen.push(read_control_request(&mut stream).unwrap());
+            write_control_reply(&mut stream, &reply).unwrap();
+        }
+        seen
+    });
+    (path, worker)
+}
+
+#[tokio::test]
+async fn settings_proposals_are_proposals_only_and_blocked_ones_say_why() {
+    use blueice_assistant_settings::AssistantSettings;
+    use blueice_launcher::control::{ControlReply, ControlRequest};
+    let (control, launcher) = fake_control_socket(vec![
+        ControlReply::AssistantSettingsInForce {
+            settings: Box::new(AssistantSettings::default()),
+        },
+        ControlReply::AssistantProposalAccepted {
+            id: 7,
+            digest: "d".into(),
+            diff: vec!["Priority (nice): 10 -> 12".into()],
+        },
+        ControlReply::AssistantProposalBlocked {
+            violations: vec!["the proposal changes nothing".into()],
+        },
+        ControlReply::AssistantProposalStatus {
+            status: "pending".into(),
+        },
+    ]);
+    let runtime = TempDir::new();
+    let data = TempDir::new();
+    let downloads = TempDir::new();
+    let mut cmd = command(
+        Path::new(env!("CARGO_BIN_EXE_blueice-mcp-server")),
+        &runtime,
+        &data,
+        &downloads,
+    );
+    cmd.arg("--launcher-control-socket").arg(&control);
+    let client = ().serve(TokioChildProcess::new(cmd).expect("start")).await.expect("initialize");
+
+    let call = |name: &'static str, args: serde_json::Value| {
+        let client = &client;
+        async move {
+            let arguments = args.as_object().cloned();
+            let mut request = CallToolRequestParams::new(name);
+            if let Some(arguments) = arguments {
+                request = request.with_arguments(arguments);
+            }
+            let result = client.call_tool(request).await.expect(name);
+            let error = result.is_error == Some(true);
+            let value = serde_json::to_value(result).unwrap();
+            (
+                error,
+                value["content"][0]["text"].as_str().unwrap().to_string(),
+            )
+        }
+    };
+
+    let (error, text) = call("get_assistant_settings", json!({})).await;
+    assert!(!error);
+    assert!(text.contains("\"backend\": \"none\""), "{text}");
+
+    let proposal = json!({"settings": {"backend": "none", "idle_timeout_secs": 600, "nice": 12}});
+    let (error, text) = call("propose_assistant_settings", proposal.clone()).await;
+    assert!(!error, "{text}");
+    assert!(text.contains("NOTHING HAS CHANGED"), "{text}");
+    assert!(text.contains("cannot approve it yourself"), "{text}");
+
+    let (error, text) = call("propose_assistant_settings", proposal).await;
+    assert!(error, "a blocked proposal is an error result");
+    assert!(text.contains("person was not asked"), "{text}");
+    assert!(text.contains("changes nothing"), "{text}");
+
+    let (error, text) = call("assistant_settings_proposal_status", json!({"id": 7})).await;
+    assert!(!error);
+    assert!(text.contains("pending"), "{text}");
+
+    // An unknown backend word never reaches the launcher at all.
+    let (error, text) = call(
+        "propose_assistant_settings",
+        json!({"settings": {"backend": "quantum", "idle_timeout_secs": 600, "nice": 12}}),
+    )
+    .await;
+    assert!(error);
+    assert!(text.contains("quantum"), "{text}");
+
+    client.cancel().await.expect("close");
+    let seen = launcher.join().unwrap();
+    assert!(matches!(seen[0], ControlRequest::InspectAssistantSettings));
+    assert!(matches!(
+        seen[1],
+        ControlRequest::ProposeAssistantSettings { .. }
+    ));
+    assert!(matches!(
+        seen[3],
+        ControlRequest::AssistantProposalStatus { id: 7 }
+    ));
+    assert_eq!(seen.len(), 4, "the bad-backend proposal was never sent");
+    let _ = std::fs::remove_file(control);
+}
+
+#[tokio::test]
+async fn an_unreachable_launcher_is_a_clear_error() {
+    let runtime = TempDir::new();
+    let data = TempDir::new();
+    let downloads = TempDir::new();
+    let mut cmd = command(
+        Path::new(env!("CARGO_BIN_EXE_blueice-mcp-server")),
+        &runtime,
+        &data,
+        &downloads,
+    );
+    cmd.arg("--launcher-control-socket")
+        .arg("/nonexistent/control.sock");
+    let client = ().serve(TokioChildProcess::new(cmd).expect("start")).await.expect("initialize");
+    let outcome = client
+        .call_tool(CallToolRequestParams::new("get_assistant_settings"))
+        .await;
+    let message = format!("{outcome:?}");
+    assert!(message.contains("control socket"), "{message}");
+    client.cancel().await.expect("close");
 }

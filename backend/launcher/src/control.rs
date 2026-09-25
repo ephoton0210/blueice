@@ -49,6 +49,9 @@ pub enum ControlRequest {
     ProposeAssistantSettings { settings: blueice_assistant_settings::AssistantSettings },
     /// Read-only: where a proposal stands.
     AssistantProposalStatus { id: u64 },
+    /// Read-only: the assistant's settings in force, so an agent can build a
+    /// proposal against what is really there.
+    InspectAssistantSettings,
 }
 
 /// The installed package and its currently effective optional grants, read
@@ -100,6 +103,8 @@ pub enum ControlReply {
     /// The proposal could not be considered (one is already pending, too many
     /// this hour, or the launcher supervises no assistant).
     AssistantProposalRefused { reason: String },
+    /// Reply to [`ControlRequest::InspectAssistantSettings`].
+    AssistantSettingsInForce { settings: Box<blueice_assistant_settings::AssistantSettings> },
     /// Reply to [`ControlRequest::AssistantProposalStatus`]: `pending`,
     /// `approved`, `denied`, `expired`, `stale`, or `unknown`.
     AssistantProposalStatus { status: String },
