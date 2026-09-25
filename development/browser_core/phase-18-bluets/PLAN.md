@@ -722,6 +722,14 @@ module-await continuation. A native regression verifies the dependency,
 entry, child and post-await effects each run once, both linked records are
 evaluated, and the module-continuation and Promise-job queues are empty.
 
+**Nested module resource failure (C1.2.1.2.4.3.3):** A native entry module
+pauses before an inner infinite loop and repeatedly steps under a fixed
+256-instruction budget. Once BlueJS returns `InstructionLimit`, the child and
+module-root debugger continuations and the transient caller state are gone;
+the linked entry is neither evaluated nor suspended, and an unrelated later
+script can execute. This is an explicit failed graph, never a fabricated
+`Completed` state or an endlessly retained frame.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

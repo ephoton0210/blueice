@@ -1515,6 +1515,55 @@ mod tests {
     }
 
     #[test]
+    fn nested_module_step_budget_failure_clears_frames_without_completion() {
+        let entry = "budget/entry.mjs";
+        let mut registry = BlueJsProgramRegistry::default();
+        let handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(entry, "sha256:budget").unwrap(),
+                module_code("function inner(){while (true) {}} export const answer = inner();"),
+            )
+            .unwrap();
+        let graph = HashMap::from([(
+            entry.to_string(),
+            registry.get(handle).unwrap().bytecode().clone(),
+        )]);
+        let config = VmConfig {
+            instruction_budget: 256,
+            ..VmConfig::default()
+        };
+        let mut vm = Vm::new(config).unwrap();
+        let VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = vm
+            .execute_module_graph_until_nested_debugger_pause(entry, &graph, 1, 0)
+            .unwrap()
+        else {
+            panic!("the loop must pause before its first instruction");
+        };
+        let mut failure = None;
+        for _ in 0..512 {
+            match vm.step_debugger_nested_instruction(frame_serial) {
+                Ok(VmDebuggerNestedExecutionState::Paused { .. }) => {}
+                Err(error) => {
+                    failure = Some(error);
+                    break;
+                }
+                other => panic!("loop cannot complete its nested frame: {other:?}"),
+            }
+        }
+        assert_eq!(failure, Some(RuntimeError::InstructionLimit));
+        assert!(vm.debugger_nested_continuation.is_none());
+        assert!(vm.debugger_module_continuation.is_none());
+        assert!(vm.debugger_nested_parent_execution.is_none());
+        let record = vm.linked_record(entry).unwrap();
+        assert!(!record.evaluated && !record.suspended && !record.evaluating);
+        assert!(record.error.is_none());
+        assert_eq!(
+            vm.execute_script(&code("1 + 1")).unwrap(),
+            Value::Number(2.0)
+        );
+    }
+
+    #[test]
     fn root_safe_point_preserves_operand_and_global_state_until_resume() {
         let program = code("globalThis.before = 1; globalThis.after = 2;");
         let offset = non_entry_root_offset(&program);
