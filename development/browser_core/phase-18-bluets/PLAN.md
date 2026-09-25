@@ -715,6 +715,19 @@ completed target cannot reuse an old snapshot. Child/core/public transport
 stays unavailable until the whole exact-identity route is installed; C2.1.2
 adds original BlueTS coordinates rather than implying them here.
 
+**Native snapshot seam (C2.1.1.2):** BlueJS now copies only its parked classic
+or module root continuation, or the exact live nested child followed by that
+waiting root. Its source-free result records installed program generation,
+code-unit ordinal, verified bytecode offset, and active lexical binding-slot
+ordinal with innermost-first scope depth. A caller chooses positive limits up
+to 64 frames and 256 entries per frame; overflow is reported independently
+for the stack and each frame. The page runtime checks the tab, installed
+program generation, and exact nested frame before returning the snapshot.
+Inactive lexical blocks are excluded; repeated capture neither advances
+bytecode nor invokes a getter. Native classic/module and page-runtime tests
+cover these conditions. No child IPC or public debugger capability is added
+at this seam; that remains C2.1.1.3–C2.1.1.4.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

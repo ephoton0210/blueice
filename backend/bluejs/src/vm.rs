@@ -49,7 +49,11 @@ use debugger::{
     DebuggerContinuation, ModuleDebuggerContinuation, ModuleDebuggerPauseRequest,
     NestedDebuggerContinuation, NestedDebuggerPauseRequest,
 };
-pub use debugger::{VmDebuggerExecutionState, VmDebuggerNestedExecutionState};
+pub use debugger::{
+    VmDebuggerExecutionState, VmDebuggerNestedExecutionState, VmDebuggerScopeEntry,
+    VmDebuggerStackFrame, VmDebuggerStackSnapshot, VM_DEBUGGER_MAX_SCOPE_ENTRIES,
+    VM_DEBUGGER_MAX_STACK_FRAMES,
+};
 use host_objects::{
     ActiveHostClickEvent, HostClickListener, HostObjectFactoryRegistration, HostObjectFamilyState,
     HostObjectMethodRegistration, HostObjectPairMethodRegistration,

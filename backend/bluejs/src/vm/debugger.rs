@@ -19,8 +19,8 @@ use super::*;
 /// `Paused` means no instruction at `bytecode_offset` has executed yet. The
 /// VM owns the complete root interpreter frame until
 /// [`Vm::resume_debugger_execution`] finishes it. A root-instruction step may
-/// instead suspend the same continuation again; stack inspection remains
-/// outside this surface, and nested control uses a separate frame serial.
+/// instead suspend the same continuation again; bounded stack inspection is
+/// a separate snapshot API, and nested control uses a separate frame serial.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VmDebuggerExecutionState {
     Paused { bytecode_offset: u32 },
@@ -83,12 +83,150 @@ pub enum VmDebuggerNestedExecutionState {
     Completed,
 }
 
+/// Hard native inspection budgets; a caller may request a smaller positive
+/// limit but cannot raise these caps or use a zero-limit probe.
+pub const VM_DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
+pub const VM_DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
+
+/// One active lexical binding slot. No identifier, value, object handle, or
+/// source location leaves the VM through this first inspection seam.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VmDebuggerScopeEntry {
+    pub slot_ordinal: u32,
+    /// Zero is the innermost currently active lexical scope.
+    pub scope_depth: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VmDebuggerStackFrame {
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+    pub scope_entries: Vec<VmDebuggerScopeEntry>,
+    pub scope_truncated: bool,
+}
+
+/// A bounded snapshot of only the currently retained debugger continuation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VmDebuggerStackSnapshot {
+    pub program_generation: u64,
+    pub frames: Vec<VmDebuggerStackFrame>,
+    pub stack_truncated: bool,
+}
+
+fn debugger_scope_entries(
+    scopes: &[Vec<u32>],
+    max_entries: usize,
+) -> (Vec<VmDebuggerScopeEntry>, bool) {
+    let mut entries = Vec::new();
+    for (scope_depth, scope) in scopes.iter().rev().enumerate() {
+        for &slot_ordinal in scope {
+            if entries.len() == max_entries {
+                return (entries, true);
+            }
+            entries.push(VmDebuggerScopeEntry {
+                slot_ordinal,
+                scope_depth: u32::try_from(scope_depth)
+                    .expect("bounded interpreter scope depth fits the debugger wire"),
+            });
+        }
+    }
+    (entries, false)
+}
+
+fn debugger_stack_frame(
+    code_unit_ordinal: u32,
+    pc: usize,
+    scopes: &[Vec<u32>],
+    max_entries: usize,
+) -> VmDebuggerStackFrame {
+    let (scope_entries, scope_truncated) = debugger_scope_entries(scopes, max_entries);
+    VmDebuggerStackFrame {
+        code_unit_ordinal,
+        bytecode_offset: u32::try_from(pc)
+            .expect("verified bytecode offset fits the debugger wire"),
+        scope_entries,
+        scope_truncated,
+    }
+}
+
 enum DebuggerRunOutcome {
     Paused(Box<DebuggerContinuation>),
     Completed(Result<Value, RuntimeError>),
 }
 
 impl Vm {
+    /// Inspects only an exact paused root or nested invocation. No bytecode is
+    /// executed, no heap getter is read, and no binding value is copied.
+    pub fn debugger_stack_snapshot(
+        &self,
+        frame_serial: Option<u64>,
+        max_frames: u32,
+        max_scope_entries: u32,
+    ) -> Result<VmDebuggerStackSnapshot, RuntimeError> {
+        if !(1..=VM_DEBUGGER_MAX_STACK_FRAMES).contains(&max_frames)
+            || !(1..=VM_DEBUGGER_MAX_SCOPE_ENTRIES).contains(&max_scope_entries)
+        {
+            return Err(RuntimeError::Unsupported(
+                "debugger stack or scope limit exceeds its fixed positive budget",
+            ));
+        }
+        let (root_code, root_pc, root_scopes) = if let Some(root) = &self.debugger_continuation {
+            (&root.code, root.pc, self.active_scope_slots.as_slice())
+        } else if let Some(root) = &self.debugger_module_continuation {
+            (
+                &root.code,
+                root.pc,
+                root.execution.active_scope_slots.as_slice(),
+            )
+        } else {
+            return Err(RuntimeError::Unsupported(
+                "no debugger-paused root frame is available",
+            ));
+        };
+        let program_generation =
+            root_code
+                .debugger_program_generation
+                .ok_or(RuntimeError::Unsupported(
+                    "debugger-paused program has no installed generation",
+                ))?;
+        let max_entries = max_scope_entries as usize;
+        let mut frames = Vec::new();
+        match (frame_serial, &self.debugger_nested_continuation) {
+            (Some(serial), Some(child)) if child.frame_serial == serial => {
+                if child.code.debugger_program_generation != Some(program_generation) {
+                    return Err(RuntimeError::Unsupported(
+                        "nested debugger frame belongs to another program generation",
+                    ));
+                }
+                frames.push(debugger_stack_frame(
+                    child.code_unit_ordinal,
+                    child.pc,
+                    &child.execution.active_scope_slots,
+                    max_entries,
+                ));
+                if max_frames > 1 {
+                    frames.push(debugger_stack_frame(0, root_pc, root_scopes, max_entries));
+                }
+                Ok(VmDebuggerStackSnapshot {
+                    program_generation,
+                    frames,
+                    stack_truncated: max_frames == 1,
+                })
+            }
+            (None, None) => {
+                frames.push(debugger_stack_frame(0, root_pc, root_scopes, max_entries));
+                Ok(VmDebuggerStackSnapshot {
+                    program_generation,
+                    frames,
+                    stack_truncated: false,
+                })
+            }
+            _ => Err(RuntimeError::Unsupported(
+                "debugger stack target is not the exact paused frame",
+            )),
+        }
+    }
+
     /// Links an authorized module graph and pauses before a verified entry
     /// evaluation-body instruction. Dependency effects occur once during the
     /// linking/evaluation pass and are retained with the graph on pause.
@@ -955,6 +1093,111 @@ mod tests {
             )
             .unwrap();
         registry.get(handle).unwrap().bytecode().clone()
+    }
+
+    #[test]
+    fn stack_snapshot_excludes_inactive_scopes_and_never_evaluates_a_getter() {
+        let program = installed_script(
+            "var result = 0; function inner(a, b) { let first = a; let second = b; if (false) { let hidden = 9; } return first + second + watched.value; } result = inner(1, 2);",
+        );
+        let child_code = program.child_code_units().next().unwrap();
+        let slot = |name: &str| {
+            u32::try_from(
+                child_code
+                    .bindings
+                    .iter()
+                    .position(|binding| binding.name == name)
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        let (first, second, hidden) = (slot("first"), slot("second"), slot("hidden"));
+        let mut vm = Vm::default();
+        vm.execute_script(&code(
+            "var getterRuns = 0; var watched = { get value() { getterRuns++; return 7; } };",
+        ))
+        .unwrap();
+        let VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = vm
+            .execute_script_until_nested_debugger_pause(&program, 1, 0)
+            .unwrap()
+        else {
+            panic!("the direct child must pause");
+        };
+        for _ in 0..64 {
+            let active = &vm
+                .debugger_nested_continuation
+                .as_ref()
+                .unwrap()
+                .execution
+                .active_scope_slots;
+            if active.iter().flatten().any(|slot| *slot == first)
+                && active.iter().flatten().any(|slot| *slot == second)
+            {
+                break;
+            }
+            assert!(matches!(
+                vm.step_debugger_nested_instruction(frame_serial).unwrap(),
+                VmDebuggerNestedExecutionState::Paused { .. }
+            ));
+        }
+        let full = vm
+            .debugger_stack_snapshot(Some(frame_serial), 2, 256)
+            .unwrap();
+        assert_eq!(
+            full.program_generation,
+            program.debugger_program_generation.unwrap()
+        );
+        assert_eq!(full.frames.len(), 2);
+        assert_eq!(full.frames[0].code_unit_ordinal, 1);
+        assert_eq!(full.frames[1].code_unit_ordinal, 0);
+        assert!(!full.stack_truncated);
+        assert!(full.frames.iter().all(|frame| !frame.scope_truncated));
+        let slots = &full.frames[0].scope_entries;
+        assert!(slots.iter().any(|entry| entry.slot_ordinal == first));
+        assert!(slots.iter().any(|entry| entry.slot_ordinal == second));
+        assert!(!slots.iter().any(|entry| entry.slot_ordinal == hidden));
+        let limited = vm
+            .debugger_stack_snapshot(Some(frame_serial), 1, 1)
+            .unwrap();
+        assert_eq!(limited.frames.len(), 1);
+        assert!(limited.stack_truncated);
+        assert_eq!(limited.frames[0].scope_entries.len(), 1);
+        assert!(limited.frames[0].scope_truncated);
+        assert_eq!(
+            vm.debugger_stack_snapshot(Some(frame_serial), 2, 256)
+                .unwrap(),
+            full
+        );
+        assert_eq!(
+            vm.lookup_global_name("getterRuns").unwrap(),
+            Some(Value::Number(0.0))
+        );
+        assert!(vm.debugger_stack_snapshot(None, 2, 256).is_err());
+        assert!(vm
+            .debugger_stack_snapshot(Some(frame_serial + 1), 2, 256)
+            .is_err());
+        for limits in [(0, 1), (65, 1), (1, 0), (1, 257)] {
+            assert!(vm
+                .debugger_stack_snapshot(Some(frame_serial), limits.0, limits.1)
+                .is_err());
+        }
+        assert!(matches!(
+            vm.resume_debugger_nested_execution(frame_serial).unwrap(),
+            VmDebuggerNestedExecutionState::FrameReturned { .. }
+        ));
+        assert!(vm
+            .debugger_stack_snapshot(Some(frame_serial), 2, 256)
+            .is_err());
+        let root = vm.debugger_stack_snapshot(None, 2, 256).unwrap();
+        assert_eq!(root.frames.len(), 1);
+        assert_eq!(root.frames[0].code_unit_ordinal, 0);
+        assert!(!root.stack_truncated);
+        assert_eq!(
+            vm.lookup_global_name("getterRuns").unwrap(),
+            Some(Value::Number(1.0))
+        );
+        vm.resume_debugger_execution().unwrap();
+        assert!(vm.debugger_stack_snapshot(None, 2, 256).is_err());
     }
 
     #[test]

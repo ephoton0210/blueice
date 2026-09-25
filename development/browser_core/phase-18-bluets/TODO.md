@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.1.1.2.** Capture a bounded, source-free stack and active
-lexical slot inventory from an actually paused BlueJS frame.
+**Current leaf: C2.1.1.3.** Carry the exact paused stack/scope snapshot through
+the child and private page-host route; keep the public capability disabled.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -28,8 +28,9 @@ with no general live DOM or event API. Separate owner-only HTTP profiles
 expose boolean/opaque lookup probes or the exact typed `document` lookup and
 `textContent` slice; neither grants creation or events. Classic-root
 pause/resume and bounded BlueTS source-span stepping work; nested-frame
-pause/step now has a distinct public identity and capability. Nested resume,
-stack, scope, and values do not. The
+pause/step/resume now have distinct public identities and capabilities. Native
+stack/scope capture is available only inside BlueJS and its page runtime;
+public stack, scope, and values remain disabled. The
 compiler/MCP route supports sealed projects and read-only queries, with no
 client registration, build output, or write authority.
 
@@ -298,7 +299,7 @@ channel with explicit owner/client grants.
 - [ ] **C2.1** Return a bounded stack and scope for the paused frame.
   - [ ] **C2.1.1** Cap frame count and per-frame scope entries; report truncation explicitly.
     - [x] **C2.1.1.1** Specify the source-free first stack/scope snapshot, exact paused-frame target, frame/entry budgets, truncation semantics, and default-denied transport boundary. PLAN.md fixes child-to-parent frame order, opaque active lexical slot/depth entries without names or values, caller-requested limits no larger than hard caps, and explicit stack/per-frame truncation. No public capability is advertised until the full route exists.
-    - [ ] **C2.1.1.2** Capture that bounded stack/scope snapshot from the retained BlueJS classic and module continuations through the page runtime; test nested/root frame order, active-scope exclusion, both truncation flags, and no execution or getter effects.
+    - [x] **C2.1.1.2** Capture that bounded stack/scope snapshot from the retained BlueJS classic and module continuations through the page runtime; test nested/root frame order, active-scope exclusion, both truncation flags, and no execution or getter effects. The VM snapshots only its parked classic/module continuation and exact child serial into source-free code-unit offsets plus active lexical slot/depth entries, with hard 64-frame/256-entry caps and explicit truncation. Page runtime binds the request to a live tab, installed program generation, and exact nested frame. Tests cover child-first and root-only order in classic/module paths, inactive block exclusion, limit rejection, stale-frame denial, and a getter whose effects occur only on actual resume.
     - [ ] **C2.1.1.3** Carry the exact paused snapshot through child scheduling, page-host IPC, and the core child proxy with generation/active-frame validation; keep the public stack/scope capability disabled.
     - [ ] **C2.1.1.4** Expose separately gated public stack/scope requests and bounded replies, bump the public protocol only with the complete route, and prove limits/truncation on a real BlueTS debugger socket.
   - [ ] **C2.1.2** Return stack frames with original BlueTS coordinates for nested and module frames.

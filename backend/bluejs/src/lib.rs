@@ -100,5 +100,7 @@ pub use value::{ObjectId, Value};
 pub use vm::{
     HostFunction, HostFunctionError, HostObject, HostObjectFactory, HostObjectFamily,
     HostObjectKey, HostObjectMethod, HostObjectPairMethod, HostValue, RuntimeError, Vm, VmConfig,
-    VmDebuggerExecutionState, VmDebuggerNestedExecutionState,
+    VmDebuggerExecutionState, VmDebuggerNestedExecutionState, VmDebuggerScopeEntry,
+    VmDebuggerStackFrame, VmDebuggerStackSnapshot, VM_DEBUGGER_MAX_SCOPE_ENTRIES,
+    VM_DEBUGGER_MAX_STACK_FRAMES,
 };
