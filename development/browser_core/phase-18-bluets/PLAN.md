@@ -481,6 +481,23 @@ pause. Native regressions cover these terminal, fulfilled-await, rejected-
 await and async-dependency cases. Child/core routing and page-visible state
 transitions remain C1.1.1.4.
 
+**Module route checkpoints (C1.1.1.4):** Keep the generation-bound BlueJS
+page-runtime pause/resume API (C1.1.1.4.1), child document-order state machine
+(C1.1.1.4.2), and real launcher/core/child BlueTS ESM acceptance
+(C1.1.1.4.3) independently reviewable. No protocol widening is needed: the
+existing opaque program, safe-point and execution-state requests carry the
+entry identity through core to the child.
+
+**Generation-bound page-runtime module pause (C1.1.1.4.1):** The host-neutral
+BlueJS page runtime now accepts the same already-admitted module handles as
+ordinary graph evaluation, plus the exact current entry program's first
+evaluate-body safe point. It validates realm ownership, root location and
+unique canonical module IDs before reserving the graph identities and entering
+the VM. A separate resume operation advances only the retained module frame.
+A page-runtime regression rejects a cross-tab handle and a different root
+instruction, verifies a paused graph excludes concurrent execution, checks
+resume does not replay its entry, and rejects the old handle after navigation.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

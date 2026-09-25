@@ -13,8 +13,8 @@
 
 use crate::{
     BlueJsAstNodeKind, BlueJsProgramDebugError, BlueJsProgramHandle, BlueJsProgramRegistry,
-    BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, HeapError, HeapStats, HostFunction,
-    HostObject, HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod,
+    BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, Bytecode, HeapError, HeapStats,
+    HostFunction, HostObject, HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod,
     HostObjectPairMethod, RuntimeError, Value, Vm, VmConfig, VmDebuggerExecutionState,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -662,16 +662,12 @@ impl BlueJsPageRuntime {
         Ok(())
     }
 
-    /// Executes an already-admitted ESM module graph in one tab realm. Every
-    /// handle must belong to that realm, name a module root, and have a unique
-    /// canonical module identity; BlueJS never re-resolves an import specifier
-    /// at this boundary.
-    pub fn execute_module_graph(
-        &mut self,
+    fn module_graph_bytecode(
+        &self,
         tab_id: u64,
         entry: BlueJsProgramHandle,
         modules: impl IntoIterator<Item = BlueJsProgramHandle>,
-    ) -> Result<Value, BlueJsPageRuntimeError> {
+    ) -> Result<(String, HashMap<String, Bytecode>), BlueJsPageRuntimeError> {
         let mut module_bytecode = HashMap::new();
         let mut entry_module = None;
         for handle in modules {
@@ -709,6 +705,20 @@ impl BlueJsPageRuntime {
             tab_id,
             handle: entry,
         })?;
+        Ok((entry_module, module_bytecode))
+    }
+
+    /// Executes an already-admitted ESM module graph in one tab realm. Every
+    /// handle must belong to that realm, name a module root, and have a unique
+    /// canonical module identity; BlueJS never re-resolves an import specifier
+    /// at this boundary.
+    pub fn execute_module_graph(
+        &mut self,
+        tab_id: u64,
+        entry: BlueJsProgramHandle,
+        modules: impl IntoIterator<Item = BlueJsProgramHandle>,
+    ) -> Result<Value, BlueJsPageRuntimeError> {
+        let (entry_module, module_bytecode) = self.module_graph_bytecode(tab_id, entry, modules)?;
         let realm = self
             .realms
             .get_mut(&tab_id)
@@ -723,6 +733,53 @@ impl BlueJsPageRuntime {
         realm
             .vm
             .execute_module_graph(&entry_module, &module_bytecode)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
+    /// Starts one exact, already-admitted ESM graph and parks its entry module
+    /// before the first verified evaluate-body instruction. All graph handles
+    /// and the safe point must belong to this live realm generation.
+    pub fn execute_module_graph_until_debugger_pause(
+        &mut self,
+        tab_id: u64,
+        entry: BlueJsProgramHandle,
+        modules: impl IntoIterator<Item = BlueJsProgramHandle>,
+        safe_point: BlueJsSafePoint,
+    ) -> Result<BlueJsPageDebuggerExecutionState, BlueJsPageRuntimeError> {
+        self.validate_safe_point(tab_id, entry, safe_point)?;
+        if self.module_evaluate_entry_safe_point(tab_id, entry)? != safe_point {
+            return Err(BlueJsPageRuntimeError::DebuggerModuleEntrySafePointOnly);
+        }
+        let (entry_module, module_bytecode) = self.module_graph_bytecode(tab_id, entry, modules)?;
+        let realm = self
+            .realms
+            .get_mut(&tab_id)
+            .expect("the graph and its entry belong to this live realm");
+        realm
+            .linked_module_ids
+            .extend(module_bytecode.keys().cloned());
+        realm
+            .vm
+            .execute_module_graph_until_debugger_pause(
+                &entry_module,
+                &module_bytecode,
+                safe_point.bytecode_offset,
+            )
+            .map(page_debugger_execution_state)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
+    /// Resumes the retained ESM entry frame in one exact live page realm.
+    pub fn resume_debugger_module_execution(
+        &mut self,
+        tab_id: u64,
+    ) -> Result<BlueJsPageDebuggerExecutionState, BlueJsPageRuntimeError> {
+        self.realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .vm
+            .resume_debugger_module_execution()
+            .map(page_debugger_execution_state)
             .map_err(BlueJsPageRuntimeError::Runtime)
     }
 
@@ -882,12 +939,13 @@ pub enum BlueJsPageRuntimeError {
         handle: BlueJsProgramHandle,
     },
     ProgramShape,
-    /// The root-frame native debugger seam never runs module linking or
-    /// top-level await under a parked continuation.
+    /// The classic-script root-frame seam rejects module programs; ESM graphs
+    /// use the separate generation-bound module-entry pause operation.
     DebuggerRootScriptOnly,
     /// Nested bytecode functions still execute on the Rust call stack, so a
     /// root-frame continuation must reject their safe points exactly.
     DebuggerRootCodeUnitOnly,
+    DebuggerModuleEntrySafePointOnly,
     DuplicateModuleIdentity(String),
     VmInitialization(HeapError),
     HostBinding(RuntimeError),
@@ -934,6 +992,9 @@ impl fmt::Display for BlueJsPageRuntimeError {
             }
             Self::DebuggerRootCodeUnitOnly => formatter
                 .write_str("native debugger continuation supports root code-unit safe points only"),
+            Self::DebuggerModuleEntrySafePointOnly => formatter.write_str(
+                "native debugger module pause requires its first evaluate-body safe point",
+            ),
             Self::DuplicateModuleIdentity(module) => {
                 write!(
                     formatter,
@@ -1404,6 +1465,70 @@ mod tests {
         assert!(runtime
             .install_program(7, &origin(), source(module_id), &replacement)
             .is_ok());
+    }
+
+    #[test]
+    fn module_entry_pause_retains_exact_page_generation_until_resume() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        runtime.open_realm(8, origin()).unwrap();
+        let module_id = "page:///debug-entry.mjs";
+        let entry = runtime
+            .install_program(
+                7,
+                &origin(),
+                source(module_id),
+                &BlueJsProgramV1::Module(
+                    parse_module("globalThis.moduleRuns = (globalThis.moduleRuns || 0) + 1; export const answer = 42;").unwrap(),
+                ),
+            )
+            .unwrap();
+        let point = runtime.module_evaluate_entry_safe_point(7, entry).unwrap();
+        let later = runtime
+            .safe_points(7, entry, 1024)
+            .unwrap()
+            .into_iter()
+            .find(|candidate| candidate.code_unit.ordinal() == 0 && *candidate != point)
+            .unwrap();
+        assert_eq!(
+            runtime.execute_module_graph_until_debugger_pause(7, entry, [entry], later),
+            Err(BlueJsPageRuntimeError::DebuggerModuleEntrySafePointOnly)
+        );
+        assert!(matches!(
+            runtime.execute_module_graph_until_debugger_pause(8, entry, [entry], point),
+            Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { tab_id: 8, .. })
+        ));
+        assert_eq!(
+            runtime.execute_module_graph_until_debugger_pause(7, entry, [entry], point),
+            Ok(BlueJsPageDebuggerExecutionState::Paused {
+                bytecode_offset: point.bytecode_offset
+            })
+        );
+        assert!(matches!(
+            runtime.execute_module_graph(7, entry, [entry]),
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Unsupported(
+                _
+            )))
+        ));
+        assert_eq!(
+            runtime.resume_debugger_module_execution(7),
+            Ok(BlueJsPageDebuggerExecutionState::Completed)
+        );
+        runtime.execute_module_graph(7, entry, [entry]).unwrap();
+        let reader = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///debug-reader.js"),
+                &BlueJsProgramV1::Script(parse("globalThis.moduleRuns").unwrap()),
+            )
+            .unwrap();
+        assert_eq!(runtime.execute_program(7, reader), Ok(Value::Number(1.0)));
+        runtime.navigate(7, origin()).unwrap();
+        assert!(matches!(
+            runtime.execute_module_graph_until_debugger_pause(7, entry, [entry], point),
+            Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { tab_id: 7, .. })
+        ));
     }
 
     #[test]
