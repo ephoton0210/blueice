@@ -189,3 +189,42 @@ fn import_meta_rejects_every_truncated_module_bytecode_budget() {
     }
     assert!(first_success.is_some());
 }
+
+#[test]
+fn list_item_limits_reject_oversized_arrays_and_argument_lists() {
+    for source in [
+        "let x = [1, 2];",
+        "let x = [, 1];",
+        "let x = [...[], 1];",
+        "function f() {} f(1, 2);",
+        "function f() {} f(1, ...[2]);",
+        "function F() {} new F(1, 2);",
+        "let f = () => 0; f?.(1, 2);",
+        "class A {} class B extends A { constructor() { super(1, 2); } }",
+        "function tag() {} tag`a${1}b`;",
+    ] {
+        let program = parse(source).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+        let expected = all_code_bytes(&compile(&program).unwrap());
+        for limit in 0..=2 {
+            let result = compile_with_limits(
+                &program,
+                CompileLimits {
+                    max_list_items: limit,
+                    ..CompileLimits::default()
+                },
+            );
+            if limit < 2 {
+                assert!(
+                    matches!(result, Err(CompileError::ProgramTooLarge)),
+                    "{source} at {limit} items"
+                );
+            } else {
+                assert_eq!(
+                    all_code_bytes(&result.unwrap()),
+                    expected,
+                    "{source} at {limit} items"
+                );
+            }
+        }
+    }
+}

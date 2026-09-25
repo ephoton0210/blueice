@@ -996,6 +996,7 @@ impl Compiler {
             catch_var_slots: Vec::new(),
             max_bytecode_bytes: child_budget,
             max_metadata_entries: self.max_metadata_entries,
+            max_list_items: self.max_list_items,
             function: true,
             local_scope: 1,
             // A function created inside `with` resolves its free names

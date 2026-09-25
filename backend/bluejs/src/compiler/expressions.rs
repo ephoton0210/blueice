@@ -4,6 +4,18 @@
 
 use super::*;
 
+fn array_element_expr(element: &ArrayElement) -> &Expr {
+    match element {
+        ArrayElement::Normal(value) | ArrayElement::Spread(value) => value,
+    }
+}
+
+fn argument_expr(argument: &Argument) -> &Expr {
+    match argument {
+        Argument::Normal(value) | Argument::Spread(value) => value,
+    }
+}
+
 impl Compiler {
     pub(super) fn expression(&mut self, expr: &Expr) -> Result<(), CompileError> {
         if optional_chain_root(expr) {
@@ -32,6 +44,7 @@ impl Compiler {
                 cooked,
                 expressions,
             } => {
+                let argument_count = self.list_count(expressions.len().saturating_add(1))?;
                 let tail = std::mem::take(&mut self.tail_call_pending);
                 if matches!(&**tag, Expr::Member { .. }) {
                     if private_member_name(tag).is_some() {
@@ -68,7 +81,6 @@ impl Compiler {
                 for expression in expressions {
                     self.expression(expression)?;
                 }
-                let argument_count = expressions.len() as u32 + 1;
                 if tail {
                     self.emit(Opcode::TailCall, argument_count << 1)?;
                 } else {
@@ -451,6 +463,7 @@ impl Compiler {
                 self.patch(end, self.offset());
             }
             Expr::Array(elements) => {
+                let length = self.list_count(elements.len())?;
                 if elements
                     .iter()
                     .any(|element| matches!(element, Some(ArrayElement::Spread(_))))
@@ -462,31 +475,25 @@ impl Compiler {
                                 self.constant(Value::Undefined)?;
                                 1
                             }
-                            Some(ArrayElement::Normal(value)) => {
-                                self.expression(value)?;
-                                0
-                            }
-                            Some(ArrayElement::Spread(value)) => {
-                                self.expression(value)?;
-                                2
+                            Some(element) => {
+                                self.expression(array_element_expr(element))?;
+                                match element {
+                                    ArrayElement::Normal(_) => 0,
+                                    ArrayElement::Spread(_) => 2,
+                                }
                             }
                         };
                         self.emit(Opcode::ArrayPush, kind)?;
                     }
                     return Ok(());
                 }
-                let length =
-                    u32::try_from(elements.len()).map_err(|_| CompileError::ProgramTooLarge)?;
                 self.emit(Opcode::NewArray, length)?;
                 for (index, element) in elements.iter().enumerate() {
                     let Some(element) = element else { continue };
                     // A spread was handled by the ArrayPush path above.
-                    let value = match element {
-                        ArrayElement::Normal(value) | ArrayElement::Spread(value) => value,
-                    };
                     self.emit(Opcode::Dup, 0)?;
                     self.constant(Value::String(index.to_string().into()))?;
-                    self.expression(value)?;
+                    self.expression(array_element_expr(element))?;
                     self.emit(Opcode::DefineData, 0)?;
                     self.emit(Opcode::Pop, 0)?;
                 }
@@ -727,6 +734,7 @@ impl Compiler {
                 }
             }
             Expr::Call { callee, args } | Expr::New { callee, args } => {
+                let argument_count = self.list_count(args.len())?;
                 let construct = matches!(expr, Expr::New { .. });
                 let tail = std::mem::take(&mut self.tail_call_pending) && !construct;
                 if !construct && matches!(&**callee, Expr::Super) {
@@ -734,25 +742,19 @@ impl Compiler {
                     if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
                         self.emit(Opcode::NewArray, 0)?;
                         for arg in args {
-                            let (value, kind) = match arg {
-                                Argument::Normal(value) => (value, 0),
-                                Argument::Spread(value) => (value, 2),
+                            let kind = match arg {
+                                Argument::Normal(_) => 0,
+                                Argument::Spread(_) => 2,
                             };
-                            self.expression(value)?;
+                            self.expression(argument_expr(arg))?;
                             self.emit(Opcode::ArrayPush, kind)?;
                         }
                         self.emit(Opcode::SuperCallSpread, 0)?;
                     } else {
                         for arg in args {
-                            let expr = match arg {
-                                Argument::Normal(expr) | Argument::Spread(expr) => expr,
-                            };
-                            self.expression(expr)?;
+                            self.expression(argument_expr(arg))?;
                         }
-                        self.emit(
-                            Opcode::SuperCall,
-                            u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
-                        )?;
+                        self.emit(Opcode::SuperCall, argument_count)?;
                     }
                     self.super_call_epilogue()?;
                     return Ok(());
@@ -803,11 +805,11 @@ impl Compiler {
                 if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
                     self.emit(Opcode::NewArray, 0)?;
                     for arg in args {
-                        let (value, kind) = match arg {
-                            Argument::Normal(value) => (value, 0),
-                            Argument::Spread(value) => (value, 2),
+                        let kind = match arg {
+                            Argument::Normal(_) => 0,
+                            Argument::Spread(_) => 2,
                         };
-                        self.expression(value)?;
+                        self.expression(argument_expr(arg))?;
                         self.emit(Opcode::ArrayPush, kind)?;
                     }
                     self.emit(
@@ -823,13 +825,8 @@ impl Compiler {
                     return Ok(());
                 }
                 for arg in args {
-                    let expr = match arg {
-                        Argument::Normal(expr) | Argument::Spread(expr) => expr,
-                    };
-                    self.expression(expr)?;
+                    self.expression(argument_expr(arg))?;
                 }
-                let argument_count =
-                    u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?;
                 let eval_candidate = matches!(&**callee, Expr::Identifier(name) if name == "eval");
                 if tail {
                     self.emit(
@@ -996,6 +993,7 @@ impl Compiler {
                 };
             }
             Expr::Call { callee, args } | Expr::OptionalCall { callee, args } => {
+                let argument_count = self.list_count(args.len())?;
                 let optional_call = matches!(expr, Expr::OptionalCall { .. });
                 match callee.as_ref() {
                     Expr::Member {
@@ -1051,25 +1049,19 @@ impl Compiler {
                 if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
                     self.emit(Opcode::NewArray, 0)?;
                     for arg in args {
-                        let (value, kind) = match arg {
-                            Argument::Normal(value) => (value, 0),
-                            Argument::Spread(value) => (value, 2),
+                        let kind = match arg {
+                            Argument::Normal(_) => 0,
+                            Argument::Spread(_) => 2,
                         };
-                        self.expression(value)?;
+                        self.expression(argument_expr(arg))?;
                         self.emit(Opcode::ArrayPush, kind)?;
                     }
                     self.emit(Opcode::CallSpread, 0)?;
                 } else {
                     for arg in args {
-                        let value = match arg {
-                            Argument::Normal(value) | Argument::Spread(value) => value,
-                        };
-                        self.expression(value)?;
+                        self.expression(argument_expr(arg))?;
                     }
-                    self.emit(
-                        Opcode::Call,
-                        u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
-                    )?;
+                    self.emit(Opcode::Call, argument_count)?;
                 }
             }
             _ => self.expression_plain(expr)?,
