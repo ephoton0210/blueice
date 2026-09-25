@@ -75,7 +75,7 @@ fn lowers_checked_compound_property_assignments() {
 }
 
 #[test]
-fn expression_lowerer_rejects_array_holes() {
+fn expression_lowerer_preserves_array_holes() {
     let tokens = expression_tokens(&[
         ("[", TokenKind::Punct),
         ("1", TokenKind::Number),
@@ -83,11 +83,35 @@ fn expression_lowerer_rejects_array_holes() {
         (",", TokenKind::Punct),
         ("]", TokenKind::Punct),
     ]);
+    assert!(matches!(
+        ExpressionLowerer::new(ENTRY, &tokens).parse(),
+        Ok(bluejs::Expr::Array(elements))
+            if matches!(
+                elements.as_slice(),
+                [
+                    Some(bluejs::ArrayElement::Normal(bluejs::Expr::Number(1.0))),
+                    None,
+                ]
+            )
+    ));
+}
+
+#[test]
+fn expression_lowerer_rejects_array_holes_mixed_with_spread() {
+    let tokens = expression_tokens(&[
+        ("[", TokenKind::Punct),
+        ("1", TokenKind::Number),
+        (",", TokenKind::Punct),
+        (",", TokenKind::Punct),
+        ("...", TokenKind::Punct),
+        ("suffix", TokenKind::Identifier),
+        ("]", TokenKind::Punct),
+    ]);
     let error = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap_err();
     let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
-        panic!("the direct bridge must reject an array hole");
+        panic!("the direct bridge must reject a mixed hole/spread array");
     };
-    assert!(message.contains("array holes"));
+    assert!(message.contains("cannot combine holes and spread"));
 }
 
 #[test]
@@ -469,6 +493,43 @@ fn lowers_braced_else_if_statements_in_direct_functions() {
         bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
         bluejs::Value::String("many:one:none".into())
     );
+}
+
+#[test]
+fn rejects_declared_return_fallthrough_before_direct_lowering() {
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "function answer(value: number): number { if (value > 0) { return value; } } answer(0);",
+        )]),
+        CompilerOptions::default(),
+    );
+    let Err(BridgeError::BlueTs(diagnostics)) = result else {
+        panic!("the direct bridge must reject a checked function return fallthrough");
+    };
+    assert!(diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == blueice_bluets::DiagnosticCode::ReturnTypeMismatch
+            && diagnostic
+                .message
+                .contains("can complete without returning")
+    }));
+}
+
+#[test]
+fn preserves_an_opaque_braced_branch_for_direct_bridge_rejection() {
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "function answer(value: number): number { if (value > 0) { if (value > 1) return value; } else { return 0; } } answer(2);",
+        )]),
+        CompilerOptions::default(),
+    );
+    let Err(BridgeError::UnsupportedRuntimeTarget { message, .. }) = result else {
+        panic!("the direct bridge must reject an opaque braced branch");
+    };
+    assert!(message.contains("function body syntax"));
 }
 
 #[test]

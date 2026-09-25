@@ -106,7 +106,9 @@ impl Vm {
                 &mut iterators,
                 0,
                 None,
-                Some(code.generator_entry as usize),
+                Some(InterpreterSuspensionPoint::Offset(
+                    code.generator_entry as usize,
+                )),
                 None,
             )
         };

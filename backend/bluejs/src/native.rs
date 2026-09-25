@@ -186,6 +186,19 @@ pub(crate) enum DatePart {
 pub(crate) enum NativeFunction {
     /// A realm-private embedding callback stored in [`crate::Vm`].
     Host(u32),
+    /// A realm-private callback whose opaque key is materialized as a rooted
+    /// JavaScript object by the VM, never as a page-visible numeric value.
+    HostObjectFactory(u32),
+    /// A callback invoked only after the receiver resolves to this family's
+    /// VM-minted opaque wrapper.
+    HostObjectMethod(u32),
+    /// An exact two-wrapper operation returning its original child wrapper.
+    HostObjectPairMethod(u32),
+    /// VM-owned click-listener registration on one exact host-object family.
+    HostClickListenerAdd(u32),
+    HostClickListenerRemove(u32),
+    /// Can cancel only the currently dispatching VM-owned click event.
+    HostClickPreventDefault,
     Function,
     /// The intrinsic constructor reached through an async function's
     /// `constructor` property. It is deliberately not installed as a global.

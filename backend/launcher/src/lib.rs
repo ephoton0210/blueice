@@ -47,11 +47,16 @@ mod unix {
     //! tells "core genuinely died" apart from "we deliberately superseded
     //! it."
 
-    use super::bluejs_host::{BlueJsHostCoreConfig, SpawnedBlueJsHost};
+    use super::bluejs_host::{BlueJsHostCoreConfig, BlueJsHostRuntimeLimits, SpawnedBlueJsHost};
     use super::control;
 
     pub use super::control::default_control_socket_path;
 
+    use blueice_ipc::compiler_catalog::{write_compiler_catalog, CompilerCatalogBootstrap};
+    use blueice_ipc::owner_bootstrap::{
+        write_core_owner_bootstrap, CoreOwnerBootstrap, OwnerHttpPolicyBootstrap,
+        CORE_OWNER_BOOTSTRAP_VERSION,
+    };
     use blueice_ipc::{
         read_client_message_with_ids, read_server_message_with_id, read_server_message_with_ids,
         write_client_message_with_id, write_client_message_with_ids, write_server_message_with_ids,
@@ -63,7 +68,7 @@ mod unix {
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::{Path, PathBuf};
-    use std::process::{Child, Command};
+    use std::process::{Child, Command, Stdio};
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::mpsc::{self, Sender};
     use std::sync::{Arc, Mutex};
@@ -81,17 +86,113 @@ mod unix {
     pub struct CoreLaunchOptions {
         gatekeeper_socket: Option<PathBuf>,
         supervise_out_of_process_bluejs: bool,
+        /// Immutable launcher-owner resource envelope forwarded only through
+        /// trusted child bootstrap. The public launcher CLI, core, page, and
+        /// page-host IPC cannot inspect or change it.
+        bluejs_host_runtime_limits: BlueJsHostRuntimeLimits,
         /// Requests the one fixed, compiled-in HTTP page-script profile from
         /// the core while retaining the normal launcher-owned child setup.
         /// This is deliberately a boolean fixture selector rather than a
         /// resource-policy carrier: callers cannot supply URLs, manifests,
         /// resolvers, paths, sources, or fetch settings.
         core_http_page_script_fixture: bool,
-        /// A caller-selected Unix endpoint for the one fixed, core-owned
-        /// compiler project profile.  The profile is deliberately not an API
-        /// field: neither a launcher caller nor its CLI can choose a source,
-        /// resolver, compiler option, or alternate profile.
+        /// Separate owner-only proof profile for the child-to-core DOM
+        /// lookup route. It exposes only a boolean JavaScript test callback,
+        /// not node handles or the general DOM wrapper API.
+        core_dom_lookup_probe_fixture: bool,
+        /// Owner-selected first live DOM text profile; page and frontend
+        /// traffic cannot select it or supply its private script socket.
+        core_dom_text_fixture: bool,
+        /// Separate owner-selected live DOM creation/append profile. It does
+        /// not mutate the immutable text-v1 typing or callback inventory.
+        core_dom_mutation_fixture: bool,
+        /// Separate owner-selected click-event profile. It includes bounded
+        /// live DOM mutation and exact VM-owned listener registration.
+        core_dom_event_fixture: bool,
+        /// A caller-selected Unix endpoint for a sealed core compiler catalog.
+        /// The default builder selects the fixed compiled-in fixture; the
+        /// separate trusted-owner builder may supply a complete closed graph.
         compiler_mcp_socket: Option<PathBuf>,
+        /// Owner-supplied, bounded, closed graph for one core generation.
+        /// Source text goes only to the new core's inherited stdin pipe.
+        compiler_catalog: Option<CompilerCatalogBootstrap>,
+        /// Owner-selected canonical URL/integrity policy for HTTP(S) page
+        /// scripts. It crosses only the one-shot core startup pipe; the page
+        /// and isolated child receive closed graphs, never this manifest.
+        page_http_policy: Option<OwnerHttpPolicyBootstrap>,
+        /// A caller-selected Unix endpoint for the core's bounded debugger
+        /// protocol.  The endpoint is only a transport location: debugger
+        /// protocol versioning and every target-bound operation remain
+        /// enforced by the trusted core.
+        debugger_socket: Option<PathBuf>,
+        /// Owner-only policy for source-free opaque-handle inventory after a
+        /// client requests it in `Hello`; it never grants a metadata record
+        /// read.
+        debugger_static_metadata_inventory: bool,
+        /// Owner-only policy for the dependent bounded static-metadata
+        /// summary. It requires the inventory policy and never grants source
+        /// identity/text, spans, names, type displays, symbols, contracts,
+        /// bytecode, or runtime values.
+        debugger_static_metadata_summary: bool,
+        /// Owner-only policy for a metadata-handle-bound compiler-minted
+        /// source-record ID inventory. It requires the parent inventory and
+        /// does not expose source identity, hash, text, or record detail.
+        debugger_static_metadata_source_inventory: bool,
+        /// Owner-only policy for source-free compiler provenance of one
+        /// prior source ID. It requires source inventory and exposes only a
+        /// canonical module identity plus labeled SHA-256 digest.
+        debugger_static_metadata_source_provenance: bool,
+        /// Owner-only policy for compiler-minted type-record IDs bound to an
+        /// opaque metadata handle. Type displays remain default-denied.
+        debugger_static_metadata_type_inventory: bool,
+        /// Owner-only policy for one bounded compiler-produced type display
+        /// under a previously inventoried type ID. Displays can contain
+        /// project-authored names and therefore remain independently denied.
+        debugger_static_metadata_type_display: bool,
+        /// Owner-only policy for compiler-minted symbol-record IDs bound to
+        /// an opaque metadata handle. Symbol detail remains default-denied.
+        debugger_static_metadata_symbol_inventory: bool,
+        /// Owner-only policy for compiler-minted contract IDs bound to an
+        /// opaque metadata handle. Contract detail remains default-denied.
+        debugger_static_metadata_contract_inventory: bool,
+        /// Owner-only policy for compiler-produced contract displays bound to
+        /// a prior opaque contract receipt. Plans and validation stay denied.
+        debugger_static_metadata_contract_display: bool,
+        /// Owner-only policy for a data-only validation against a prior opaque
+        /// contract receipt. The public result is only a boolean; plan and
+        /// structural failure data remain denied.
+        debugger_static_metadata_contract_validation: bool,
+        /// Owner-only policy for aggregate evidence about a verified direct
+        /// BlueTS-to-BlueJS lowering map. Map entries and bytecode stay denied.
+        debugger_static_metadata_lowering_summary: bool,
+        /// Owner-only policy for compiler-produced symbol displays bound to a
+        /// prior opaque symbol receipt. Source/static records remain denied.
+        debugger_static_metadata_symbol_display: bool,
+        /// Owner-only policy for one source-text-free byte range bound to
+        /// separate opaque symbol and source receipts. Module identity,
+        /// source text, line/column, names, types, contracts, and bytecode
+        /// remain default-denied.
+        debugger_static_metadata_symbol_location: bool,
+        /// Owner-only policy for an exact BlueTS safe-point byte span under
+        /// separate opaque metadata and source-ID receipts. No source text,
+        /// module identity, or nearest-position map is granted.
+        debugger_static_metadata_safe_point_span: bool,
+        /// Separate owner-only policy for bounded original BlueTS source
+        /// positions under exact metadata/source receipts.
+        debugger_static_metadata_source_breakpoint: bool,
+        /// Independent owner grant for paused BlueTS source-span stepping.
+        debugger_static_metadata_source_span_step: bool,
+        /// Owner-only policy for a bounded contract declaration range under
+        /// separate contract and source receipts; no plan or source text.
+        debugger_static_metadata_contract_location: bool,
+        /// Owner-only policy for a compiler-verified symbol/type relation
+        /// under two separately inventoried opaque IDs. Displays and static
+        /// records remain independently denied.
+        debugger_static_metadata_symbol_type: bool,
+        /// Owner-only policy for a compiler-verified symbol/contract relation
+        /// under two separately inventoried opaque IDs. Plans and validation
+        /// remain independently denied.
+        debugger_static_metadata_symbol_contract: bool,
     }
 
     impl CoreLaunchOptions {
@@ -112,6 +213,20 @@ mod unix {
             self
         }
 
+        /// Starts an isolated page host with the embedding owner's fixed
+        /// per-realm runtime limits. They bound realm/program/root-bytecode
+        /// admission and VM managed heap, but are not a child-process RSS or
+        /// aggregate memory limit. The ordinary `blueice-launcher` CLI has no
+        /// equivalent flags, and neither core nor page traffic can widen them.
+        pub fn supervise_out_of_process_bluejs_with_runtime_limits(
+            mut self,
+            limits: BlueJsHostRuntimeLimits,
+        ) -> Self {
+            self.supervise_out_of_process_bluejs = true;
+            self.bluejs_host_runtime_limits = limits;
+            self
+        }
+
         /// Starts the launcher-supervised page host with core's sole fixed
         /// HTTP page-script integration fixture.
         ///
@@ -123,6 +238,38 @@ mod unix {
         pub fn supervise_out_of_process_bluejs_with_core_http_fixture(mut self) -> Self {
             self.supervise_out_of_process_bluejs = true;
             self.core_http_page_script_fixture = true;
+            self
+        }
+
+        /// Opts a supervised child into the narrow, untyped JavaScript DOM
+        /// lookup proof callback. This is a trusted embedding test profile,
+        /// unavailable to page markup, frontend IPC, and the launcher CLI.
+        pub fn supervise_out_of_process_bluejs_with_dom_lookup_probe_fixture(mut self) -> Self {
+            self.supervise_out_of_process_bluejs = true;
+            self.core_dom_lookup_probe_fixture = true;
+            self
+        }
+
+        /// Selects the bounded live-DOM text profile for this supervised
+        /// child. Its exact BlueTS method/accessor typings and runtime
+        /// inventory are owner-selected; pages cannot opt in themselves.
+        pub fn supervise_out_of_process_bluejs_with_dom_text_fixture(mut self) -> Self {
+            self.supervise_out_of_process_bluejs = true;
+            self.core_dom_text_fixture = true;
+            self
+        }
+
+        /// Selects the exact bounded DOM mutation profile for one supervised
+        /// child. Page, frontend, and public launcher traffic cannot enable it.
+        pub fn supervise_out_of_process_bluejs_with_dom_mutation_fixture(mut self) -> Self {
+            self.supervise_out_of_process_bluejs = true;
+            self.core_dom_mutation_fixture = true;
+            self
+        }
+
+        pub fn supervise_out_of_process_bluejs_with_dom_event_fixture(mut self) -> Self {
+            self.supervise_out_of_process_bluejs = true;
+            self.core_dom_event_fixture = true;
             self
         }
 
@@ -144,6 +291,235 @@ mod unix {
         /// ever retargeting an existing compiler/MCP connection.
         pub fn with_core_closed_compiler_mcp_endpoint(mut self, path: PathBuf) -> Self {
             self.compiler_mcp_socket = Some(path);
+            self.compiler_catalog = None;
+            self
+        }
+
+        /// Supplies a complete, owner-authorized sealed catalog for startup.
+        /// The compiler socket remains query-only; this never enables dynamic
+        /// registration, filesystem lookup, build, or write operations.
+        pub fn with_owner_compiler_catalog_mcp_endpoint(
+            mut self,
+            path: PathBuf,
+            catalog: CompilerCatalogBootstrap,
+        ) -> io::Result<Self> {
+            catalog.validate()?;
+            self.compiler_mcp_socket = Some(path);
+            self.compiler_catalog = Some(catalog);
+            Ok(self)
+        }
+
+        /// Installs a bounded owner-selected HTTP(S) resource policy for the
+        /// supervised page host. Core applies its existing canonical URL,
+        /// origin, integrity, MIME, graph, and fetch checks before the child
+        /// receives any source. The policy cannot be changed by page traffic.
+        pub fn supervise_out_of_process_bluejs_with_owner_http_policy(
+            mut self,
+            policy: OwnerHttpPolicyBootstrap,
+        ) -> io::Result<Self> {
+            policy.validate()?;
+            self.supervise_out_of_process_bluejs = true;
+            self.page_http_policy = Some(policy);
+            Ok(self)
+        }
+
+        /// Selects the launcher-owned stable endpoint for the core debugger
+        /// protocol.
+        ///
+        /// The launcher binds the supplied public path as owner-only (`0600`)
+        /// and relays each accepted stream to exactly one core generation's
+        /// private listener.  It does not add debugger operations, source,
+        /// bytecode, runtime values, or arbitrary child-host authority.
+        /// Replacement cores receive fresh private sockets; live streams are
+        /// never retargeted across a cutover.
+        pub fn with_debugger_endpoint(mut self, path: PathBuf) -> Self {
+            self.debugger_socket = Some(path);
+            self
+        }
+
+        /// Enables the bounded opaque static-metadata inventory for this
+        /// launch profile. A debugger endpoint must also be selected before
+        /// this policy can take effect. It never enables source, type, symbol,
+        /// span, contract, bytecode, or runtime-value access.
+        pub fn with_debugger_static_metadata_inventory(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self
+        }
+
+        /// Enables bounded source-free summaries for handles from the
+        /// explicitly selected static-metadata inventory. The method also
+        /// enables that prerequisite inventory, but a client must still
+        /// negotiate both distinct capabilities on its debugger stream.
+        pub fn with_debugger_static_metadata_summary(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_summary = true;
+            self
+        }
+
+        /// Enables only compiler-minted source-record IDs for an exact
+        /// static-metadata handle. The parent inventory remains the required
+        /// opaque authority; individual source/provenance detail is absent.
+        pub fn with_debugger_static_metadata_source_inventory(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_source_inventory = true;
+            self
+        }
+
+        /// Enables the distinct source-provenance disclosure policy together
+        /// with its required opaque parent and source-ID inventory. A debugger
+        /// peer must still negotiate all canonical capabilities on its stream.
+        pub fn with_debugger_static_metadata_source_provenance(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_source_inventory = true;
+            self.debugger_static_metadata_source_provenance = true;
+            self
+        }
+
+        /// Enables only compiler-minted type-record IDs for one exact static
+        /// metadata handle. The parent inventory remains the required opaque
+        /// authority; type displays and records are not exposed.
+        pub fn with_debugger_static_metadata_type_inventory(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_type_inventory = true;
+            self
+        }
+
+        /// Enables one bounded compiler-produced type display for a type ID
+        /// returned by the exact debugger stream's type inventory. This also
+        /// selects the necessary opaque parent and type-ID inventory policy;
+        /// a client must still negotiate all three capabilities.
+        pub fn with_debugger_static_metadata_type_display(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_type_inventory = true;
+            self.debugger_static_metadata_type_display = true;
+            self
+        }
+
+        /// Enables compiler-minted symbol-record IDs for one exact metadata
+        /// handle. This also selects the required opaque parent inventory,
+        /// while symbol names, spans, types, and record reads remain denied.
+        pub fn with_debugger_static_metadata_symbol_inventory(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_symbol_inventory = true;
+            self
+        }
+
+        /// Enables compiler-minted contract IDs for one exact metadata handle.
+        /// This also selects the required opaque parent inventory, while
+        /// contract names, spans, plans, and validation remain denied.
+        pub fn with_debugger_static_metadata_contract_inventory(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_contract_inventory = true;
+            self
+        }
+
+        /// Enables a bounded compiler-produced display for an already
+        /// inventoried contract ID. This also selects parent and contract
+        /// inventories, while source spans, plans, validation, and records stay denied.
+        pub fn with_debugger_static_metadata_contract_display(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_contract_inventory = true;
+            self.debugger_static_metadata_contract_display = true;
+            self
+        }
+
+        /// Enables a bounded data-only validation for an already inventoried
+        /// contract ID. This also selects parent and contract inventories, but
+        /// only exposes a boolean outcome—never the plan or failure detail.
+        pub fn with_debugger_static_metadata_contract_validation(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_contract_inventory = true;
+            self.debugger_static_metadata_contract_validation = true;
+            self
+        }
+
+        /// Enables an aggregate verified direct-lowering-map summary for a
+        /// prior opaque metadata handle. This selects only the parent
+        /// inventory; source spans, map entries, and bytecode stay denied.
+        pub fn with_debugger_static_metadata_lowering_summary(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_lowering_summary = true;
+            self
+        }
+
+        /// Enables a bounded compiler-produced display for an already
+        /// inventoried symbol ID. This also selects parent and symbol
+        /// inventories, while source spans, types, contracts, and records stay denied.
+        pub fn with_debugger_static_metadata_symbol_display(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_symbol_inventory = true;
+            self.debugger_static_metadata_symbol_display = true;
+            self
+        }
+
+        /// Enables one bounded half-open UTF-8 byte range for an exact
+        /// separately inventoried symbol/source pair. This selects parent,
+        /// source-ID, and symbol-ID inventories; it never enables source
+        /// text, module identity, line/column mappings, metadata records,
+        /// names, types, contracts, bytecode, or runtime values.
+        pub fn with_debugger_static_metadata_symbol_location(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_source_inventory = true;
+            self.debugger_static_metadata_symbol_inventory = true;
+            self.debugger_static_metadata_symbol_location = true;
+            self
+        }
+
+        /// Enables only exact original BlueTS safe-point spans and their
+        /// required opaque parent/source inventories. The debugger stream
+        /// must negotiate this distinct grant and receive the source ID.
+        pub fn with_debugger_static_metadata_safe_point_span(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_source_inventory = true;
+            self.debugger_static_metadata_safe_point_span = true;
+            self
+        }
+
+        pub fn with_debugger_static_metadata_source_breakpoint(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_source_inventory = true;
+            self.debugger_static_metadata_source_breakpoint = true;
+            self
+        }
+
+        pub fn with_debugger_static_metadata_source_span_step(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_source_inventory = true;
+            self.debugger_static_metadata_safe_point_span = true;
+            self.debugger_static_metadata_source_span_step = true;
+            self
+        }
+
+        /// Enables one bounded contract/source location under the existing
+        /// opaque parent and separate ID inventories. The debugger peer must
+        /// still negotiate each grant and receive both IDs on its stream.
+        pub fn with_debugger_static_metadata_contract_location(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_source_inventory = true;
+            self.debugger_static_metadata_contract_inventory = true;
+            self.debugger_static_metadata_contract_location = true;
+            self
+        }
+
+        /// Enables one verified symbol/type relation and its parent, symbol,
+        /// and type inventory policies. A debugger peer still must negotiate
+        /// each grant and obtain both exact ID receipts on its own stream.
+        pub fn with_debugger_static_metadata_symbol_type(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_type_inventory = true;
+            self.debugger_static_metadata_symbol_inventory = true;
+            self.debugger_static_metadata_symbol_type = true;
+            self
+        }
+
+        /// Enables one verified symbol/contract relation and its parent,
+        /// symbol, and contract inventory policies. A debugger peer still
+        /// must negotiate each grant and obtain both exact ID receipts.
+        pub fn with_debugger_static_metadata_symbol_contract(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_symbol_inventory = true;
+            self.debugger_static_metadata_contract_inventory = true;
+            self.debugger_static_metadata_symbol_contract = true;
             self
         }
     }
@@ -418,11 +794,15 @@ mod unix {
         /// per core generation, so no private child capability crosses a
         /// cutover boundary.
         core_options: CoreLaunchOptions,
-        /// The one public, launcher-owned compiler endpoint.  Its target is
-        /// switched only after a staged replacement core has its own sealed
-        /// private listener; per-connection relay streams remain pinned to
-        /// the target that was current when they were accepted.
-        compiler_mcp_relay: Option<Arc<CompilerMcpRelay>>,
+        /// The shared acceptance/handoff gate for every stable auxiliary
+        /// endpoint.  It makes browser, compiler, and debugger clients see
+        /// one generation boundary even when both protocol relays are
+        /// selected.
+        route_gate: Arc<Mutex<()>>,
+        /// The optional public launcher-owned compiler endpoint.
+        compiler_mcp_relay: Option<Arc<GenerationPinnedUnixRelay>>,
+        /// The optional public launcher-owned debugger endpoint.
+        debugger_relay: Option<Arc<GenerationPinnedUnixRelay>>,
         /// Signaled exactly once, by whichever generation-tagged broadcast
         /// thread's own death is NOT a deliberate cutover supersession --
         /// what [`run_broker`] blocks on to know when the whole launcher
@@ -691,17 +1071,14 @@ mod unix {
     /// and drop v1 itself (killing its process, cleaning up its socket and
     /// frame directory).
     fn perform_swap(broker: &Arc<Broker>, v2: SpawnedCore, target_generation: u64) {
-        // A compiler relay accept snapshots its target while holding this
-        // same short gate.  Hold it across the browser-writer swap and relay
-        // activation so a newly constructed paired MCP adapter cannot land
-        // on a v1 browser stream but a v2 compiler stream (or vice versa).
-        let route_gate = broker
-            .compiler_mcp_relay
-            .as_ref()
-            .map(|relay| relay.route_gate());
-        let _route_handoff = route_gate
-            .as_ref()
-            .map(|gate| gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner()));
+        // Every relay accept snapshots its target while holding this gate.
+        // Hold it across the browser-writer swap and both relay activations,
+        // so no newly accepted compiler or debugger connection can observe a
+        // different core generation from browser traffic.
+        let _route_handoff = broker
+            .route_gate
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         broker.generation.store(target_generation, Ordering::SeqCst);
 
         let v2_broadcast_stream = v2
@@ -725,11 +1102,10 @@ mod unix {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = v2_writer_stream;
 
-        // The replacement listener was created and catalog-sealed before
-        // replay/health checking.  Under the shared handoff gate, make it
-        // the target for only future compiler accepts after browser traffic
-        // has moved to the same core generation.
-        v2.activate_compiler_mcp_relay_after_handoff();
+        // The replacement private listeners are ready before replay/health
+        // checking. Under the shared handoff gate, make them targets only for
+        // future accepts after browser traffic has moved to the same core.
+        v2.activate_relays_after_handoff();
 
         let mut active = broker
             .active_core
@@ -766,12 +1142,16 @@ mod unix {
 
         let target_generation = broker.generation.load(Ordering::SeqCst) + 1;
         let frame_dir = v2_frame_dir(&broker.frame_dir, target_generation);
-        let mut v2 = match SpawnedCore::spawn_with_options_and_compiler_mcp_relay(
+        let mut v2 = match SpawnedCore::spawn_with_options_and_relays(
             broker.width,
             broker.height,
             &frame_dir,
             broker.core_options.clone(),
-            broker.compiler_mcp_relay.clone(),
+            RelaySet {
+                route_gate: Arc::clone(&broker.route_gate),
+                compiler_mcp_relay: broker.compiler_mcp_relay.clone(),
+                debugger_relay: broker.debugger_relay.clone(),
+            },
         ) {
             Ok(v2) => v2,
             Err(e) => {
@@ -840,7 +1220,9 @@ mod unix {
     ) -> io::Result<()> {
         let frame_dir = core.frame_dir.clone();
         let core_options = core.options.clone();
+        let route_gate = core.route_gate.clone();
         let compiler_mcp_relay = core.compiler_mcp_relay.clone();
+        let debugger_relay = core.debugger_relay.clone();
         let core_writer = Arc::new(Mutex::new(core.stream.try_clone()?));
         let broadcast_stream = core.stream.try_clone()?;
         let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
@@ -858,7 +1240,9 @@ mod unix {
             height,
             frame_dir,
             core_options,
+            route_gate,
             compiler_mcp_relay,
+            debugger_relay,
             done: done_tx.clone(),
         });
 
@@ -900,6 +1284,9 @@ mod unix {
             active.take();
         }
         if let Some(relay) = &broker.compiler_mcp_relay {
+            relay.close();
+        }
+        if let Some(relay) = &broker.debugger_relay {
             relay.close();
         }
 
@@ -960,6 +1347,29 @@ mod unix {
         ))
     }
 
+    /// A script-DOM listener unique to one supervised core/child pair. The
+    /// child capability, not knowledge of this pathname, grants access.
+    fn unique_internal_script_socket_path() -> PathBuf {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "blueice-launcher-script-{}-{n}.sock",
+            std::process::id()
+        ))
+    }
+
+    /// A generation-private debugger socket. Like the compiler socket, this
+    /// name is launcher-generated and cannot be supplied through the public
+    /// debugger transport.
+    fn unique_internal_debugger_socket_path() -> PathBuf {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "blueice-launcher-debugger-{}-{n}.sock",
+            std::process::id()
+        ))
+    }
+
     fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
@@ -980,12 +1390,12 @@ mod unix {
     /// common `sockaddr_un.sun_path` capacity.  The actual platform capacity
     /// varies, so a conservative launcher-side limit rejects a bad setup
     /// before a core (or an optional BlueJS host) is spawned.
-    const MAX_COMPILER_MCP_SOCKET_PATH_BYTES: usize = 100;
+    const MAX_STABLE_ENDPOINT_SOCKET_PATH_BYTES: usize = 100;
 
     /// Removes only a Unix-domain socket.  A caller-selected endpoint must
     /// never let cleanup unlink an ordinary file, directory, or symlink that
     /// happens to occupy the same path after a child exits.
-    fn remove_compiler_mcp_socket_if_owned(path: &Path) {
+    fn remove_owned_socket_if_owned(path: &Path) {
         let Ok(metadata) = std::fs::symlink_metadata(path) else {
             return;
         };
@@ -994,39 +1404,52 @@ mod unix {
         }
     }
 
+    fn remove_compiler_mcp_socket_if_owned(path: &Path) {
+        remove_owned_socket_if_owned(path);
+    }
+
     /// Validates the only public compiler configuration before any child is
     /// created.  A stale socket may be reclaimed; a live listener, a symlink,
     /// or any non-socket file is an explicit configuration error.  In
     /// particular, never blindly unlink a caller's arbitrary path merely
     /// because it was supplied as a compiler endpoint.
+    #[cfg(test)]
     fn prepare_compiler_mcp_endpoint(path: &Path) -> io::Result<()> {
+        prepare_stable_endpoint(path, "compiler MCP")
+    }
+
+    /// Validates a caller-selected stable relay endpoint before a child is
+    /// created. A stale socket may be reclaimed; a live listener, symlink,
+    /// or other filesystem object fails closed. The label is launcher-owned
+    /// diagnostic text, never a protocol or capability input.
+    fn prepare_stable_endpoint(path: &Path, label: &str) -> io::Result<()> {
         use std::os::unix::ffi::OsStrExt;
 
         if !path.is_absolute() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "compiler MCP socket path must be absolute",
+                format!("{label} socket path must be absolute"),
             ));
         }
-        if path.as_os_str().as_bytes().len() > MAX_COMPILER_MCP_SOCKET_PATH_BYTES {
+        if path.as_os_str().as_bytes().len() > MAX_STABLE_ENDPOINT_SOCKET_PATH_BYTES {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
-                    "compiler MCP socket path exceeds {MAX_COMPILER_MCP_SOCKET_PATH_BYTES} bytes"
+                    "{label} socket path exceeds {MAX_STABLE_ENDPOINT_SOCKET_PATH_BYTES} bytes"
                 ),
             ));
         }
         let parent = path.parent().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "compiler MCP socket path must have a parent directory",
+                format!("{label} socket path must have a parent directory"),
             )
         })?;
         if !parent.is_dir() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 format!(
-                    "compiler MCP socket parent does not exist or is not a directory: {}",
+                    "{label} socket parent does not exist or is not a directory: {}",
                     parent.display()
                 ),
             ));
@@ -1041,7 +1464,7 @@ mod unix {
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
                 format!(
-                    "compiler MCP endpoint is occupied by a non-socket path: {}",
+                    "{label} endpoint is occupied by a non-socket path: {}",
                     path.display()
                 ),
             ));
@@ -1052,10 +1475,7 @@ mod unix {
             // accidental second launcher and a cutover attempt fail closed.
             Ok(_) => Err(io::Error::new(
                 io::ErrorKind::AddrInUse,
-                format!(
-                    "compiler MCP endpoint is already active: {}",
-                    path.display()
-                ),
+                format!("{label} endpoint is already active: {}", path.display()),
             )),
             // A socket inode without a listener is recoverable state from a
             // previous crashed child.  It is safe to reclaim only after its
@@ -1066,23 +1486,22 @@ mod unix {
             Err(error) => Err(io::Error::new(
                 error.kind(),
                 format!(
-                    "could not determine whether compiler MCP endpoint is live at {}: {error}",
+                    "could not determine whether {label} endpoint is live at {}: {error}",
                     path.display()
                 ),
             )),
         }
     }
 
-    /// A launcher-owned stable compiler endpoint.  The listener is public
+    /// A launcher-owned stable auxiliary endpoint. The listener is public
     /// only to the launching Unix user (`0600`); each connection is bound
-    /// once, at accept time, to one generation-private core listener.
+    /// exactly once, at accept time, to one generation-private core listener.
     ///
-    /// The relay deliberately has no compiler protocol awareness.  It never
-    /// accepts a project, source, resolver, option, or update/build/write
-    /// input, and it cannot manufacture a compiler catalog.  It only copies
-    /// bytes between a caller-selected owner-only socket and a private socket
-    /// selected by the launcher after that core has sealed its fixed profile.
-    struct CompilerMcpRelay {
+    /// This relay is deliberately protocol-agnostic. It parses no compiler
+    /// or debugger request and cannot manufacture either service's authority:
+    /// it only copies bytes between a validated owner-only public socket and
+    /// the launcher-selected private listener for the accepted generation.
+    struct GenerationPinnedUnixRelay {
         public_socket_path: PathBuf,
         /// Serializes one relay accept's target snapshot with the broker's
         /// small browser/compiler-generation handoff.
@@ -1092,9 +1511,13 @@ mod unix {
         accept_thread: Mutex<Option<JoinHandle<()>>>,
     }
 
-    impl CompilerMcpRelay {
-        fn bind(path: &Path) -> io::Result<Self> {
-            prepare_compiler_mcp_endpoint(path)?;
+    impl GenerationPinnedUnixRelay {
+        fn bind(
+            path: &Path,
+            endpoint_label: &'static str,
+            route_gate: Arc<Mutex<()>>,
+        ) -> io::Result<Self> {
+            prepare_stable_endpoint(path, endpoint_label)?;
             let listener = UnixListener::bind(path)?;
             // Do not depend on the process umask for a public capability
             // boundary.  This also keeps the public stable endpoint at the
@@ -1102,16 +1525,15 @@ mod unix {
             if let Err(error) =
                 std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
             {
-                remove_compiler_mcp_socket_if_owned(path);
+                remove_owned_socket_if_owned(path);
                 return Err(error);
             }
             if let Err(error) = listener.set_nonblocking(true) {
-                remove_compiler_mcp_socket_if_owned(path);
+                remove_owned_socket_if_owned(path);
                 return Err(error);
             }
 
             let target = Arc::new(Mutex::new(None));
-            let route_gate = Arc::new(Mutex::new(()));
             let accepting = Arc::new(AtomicBool::new(true));
             let thread_target = Arc::clone(&target);
             let thread_route_gate = Arc::clone(&route_gate);
@@ -1145,7 +1567,9 @@ mod unix {
                                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                                 .clone();
                             if let Some(target) = target {
-                                thread::spawn(move || relay_compiler_connection(client, target));
+                                thread::spawn(move || {
+                                    relay_generation_pinned_connection(client, target)
+                                });
                             } else {
                                 // A core is staged but not committed, or the
                                 // launcher is stopping.  There is no safe
@@ -1169,10 +1593,6 @@ mod unix {
                 accepting,
                 accept_thread: Mutex::new(Some(accept_thread)),
             })
-        }
-
-        fn route_gate(&self) -> Arc<Mutex<()>> {
-            Arc::clone(&self.route_gate)
         }
 
         /// Makes subsequently accepted public connections target `socket`.
@@ -1212,21 +1632,21 @@ mod unix {
             {
                 let _ = thread.join();
             }
-            remove_compiler_mcp_socket_if_owned(&self.public_socket_path);
+            remove_owned_socket_if_owned(&self.public_socket_path);
         }
     }
 
-    impl Drop for CompilerMcpRelay {
+    impl Drop for GenerationPinnedUnixRelay {
         fn drop(&mut self) {
             self.close();
         }
     }
 
-    /// Copies a single public compiler connection to its one private core
-    /// peer.  If the staged/old core no longer owns that private endpoint,
-    /// the accepted public connection is closed; it is never retried against
-    /// a newer core generation.
-    fn relay_compiler_connection(mut client: UnixStream, target: PathBuf) {
+    /// Copies a single accepted public connection to its one private core
+    /// peer. If the staged/old core no longer owns that private endpoint, the
+    /// accepted connection is closed; it is never retried against a newer
+    /// generation.
+    fn relay_generation_pinned_connection(mut client: UnixStream, target: PathBuf) {
         let mut core = match UnixStream::connect(target) {
             Ok(core) => core,
             Err(_) => {
@@ -1252,6 +1672,48 @@ mod unix {
         let _ = client_to_core_thread.join();
     }
 
+    /// The launcher-owned stable endpoint set for one core generation. The
+    /// public listeners outlive individual generations; only these private
+    /// targets and the shared handoff gate travel with a staged core.
+    #[derive(Clone)]
+    struct RelaySet {
+        route_gate: Arc<Mutex<()>>,
+        compiler_mcp_relay: Option<Arc<GenerationPinnedUnixRelay>>,
+        debugger_relay: Option<Arc<GenerationPinnedUnixRelay>>,
+    }
+
+    /// One inseparable launcher-issued child/core script capability pair.
+    /// Keeping the supervisor, page-host handshake, and script socket together
+    /// prevents a staged core from accidentally receiving a mismatched path.
+    struct PrivatePageHostLaunch {
+        host: SpawnedBlueJsHost,
+        config: BlueJsHostCoreConfig,
+        script_socket: PathBuf,
+    }
+
+    impl PrivatePageHostLaunch {
+        fn spawn(options: &CoreLaunchOptions) -> io::Result<Option<Self>> {
+            if !options.supervise_out_of_process_bluejs {
+                return Ok(None);
+            }
+            let script_socket = unique_internal_script_socket_path();
+            let (host, config) =
+                SpawnedBlueJsHost::spawn_for_core_with_script_socket_and_runtime_limits(
+                    &script_socket,
+                    options.bluejs_host_runtime_limits,
+                    options.core_dom_lookup_probe_fixture,
+                    options.core_dom_text_fixture,
+                    options.core_dom_mutation_fixture,
+                    options.core_dom_event_fixture,
+                )?;
+            Ok(Some(Self {
+                host,
+                config,
+                script_socket,
+            }))
+        }
+    }
+
     /// A `core` process this launcher spawned and owns privately: killed
     /// and cleaned up (process, internal socket, and frame directory) on
     /// [`Drop`], the same lifetime discipline `mcp-server`'s `CoreProcess`
@@ -1259,10 +1721,14 @@ mod unix {
     pub struct SpawnedCore {
         child: Child,
         internal_socket_path: PathBuf,
-        /// A launcher-generated core-private listener.  The public compiler
-        /// endpoint is owned by [`CompilerMcpRelay`] instead, so this path
-        /// can be unique for every live/staged generation.
+        script_private_socket_path: Option<PathBuf>,
+        /// A launcher-generated core-private compiler listener. The public
+        /// endpoint is owned by [`GenerationPinnedUnixRelay`] instead, so
+        /// this path can be unique for every live/staged generation.
         compiler_private_socket_path: Option<PathBuf>,
+        /// A launcher-generated core-private debugger listener. The public
+        /// endpoint is likewise relay-owned and never directly exposed.
+        debugger_private_socket_path: Option<PathBuf>,
         frame_dir: PathBuf,
         /// Retained so a cutover can reproduce the selected launcher policy
         /// without preserving a generation-specific page-host capability.
@@ -1271,15 +1737,26 @@ mod unix {
         /// `Drop` implementation kills/reaps the isolated child after this
         /// core has been terminated, and removes the child-only socket.
         bluejs_host: Option<SpawnedBlueJsHost>,
+        /// Shared by the browser broker and every relay accept, so a cutover
+        /// changes all future protocol routes at one generation boundary.
+        route_gate: Arc<Mutex<()>>,
         /// Shared with the broker during a cutover so v1's Drop cannot close
-        /// the stable public endpoint while v2 is being staged.
-        compiler_mcp_relay: Option<Arc<CompilerMcpRelay>>,
+        /// stable public endpoints while v2 is being staged.
+        compiler_mcp_relay: Option<Arc<GenerationPinnedUnixRelay>>,
+        debugger_relay: Option<Arc<GenerationPinnedUnixRelay>>,
         pub stream: UnixStream,
     }
 
     impl SpawnedCore {
         pub fn spawn(width: f64, height: f64, frame_dir: &Path) -> io::Result<Self> {
             Self::spawn_with_options(width, height, frame_dir, CoreLaunchOptions::default())
+        }
+
+        /// Exposes only the generation-private script socket pathname for
+        /// lifecycle checks. The launcher-owned child capability is never
+        /// returned to a frontend or caller through this accessor.
+        pub fn script_socket_path(&self) -> Option<&Path> {
+            self.script_private_socket_path.as_deref()
         }
 
         /// Starts a core under launcher-owned operational policy.
@@ -1300,59 +1777,68 @@ mod unix {
             frame_dir: &Path,
             options: CoreLaunchOptions,
         ) -> io::Result<Self> {
-            // Do this before creating either child.  A malformed, partial,
-            // or occupied caller-selected compiler endpoint cannot briefly
-            // spawn a core or page host that would then need cleanup.
+            if options.page_http_policy.is_some() && options.core_http_page_script_fixture {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "fixed and owner-selected HTTP page policies are mutually exclusive",
+                ));
+            }
+            // Do this before creating either child. A malformed, partial, or
+            // occupied caller-selected endpoint cannot briefly spawn a core
+            // or page host that would then need cleanup.
+            let route_gate = Arc::new(Mutex::new(()));
             let compiler_mcp_relay = options
                 .compiler_mcp_socket
                 .as_deref()
-                .map(CompilerMcpRelay::bind)
+                .map(|path| {
+                    GenerationPinnedUnixRelay::bind(path, "compiler MCP", Arc::clone(&route_gate))
+                })
                 .transpose()?
                 .map(Arc::new);
-            let (bluejs_host, page_host_config) = if options.supervise_out_of_process_bluejs {
-                let (host, config) = SpawnedBlueJsHost::spawn_for_core()?;
-                (Some(host), Some(config))
-            } else {
-                (None, None)
-            };
+            let debugger_relay = options
+                .debugger_socket
+                .as_deref()
+                .map(|path| {
+                    GenerationPinnedUnixRelay::bind(path, "debugger", Arc::clone(&route_gate))
+                })
+                .transpose()?
+                .map(Arc::new);
+            let private_page_host = PrivatePageHostLaunch::spawn(&options)?;
             let core = Self::spawn_with_private_host(
                 width,
                 height,
                 frame_dir,
                 options,
-                bluejs_host,
-                page_host_config,
-                compiler_mcp_relay,
+                private_page_host,
+                RelaySet {
+                    route_gate,
+                    compiler_mcp_relay,
+                    debugger_relay,
+                },
             )?;
-            core.activate_compiler_mcp_relay();
+            core.activate_relays();
             Ok(core)
         }
 
-        /// Stages a core during a broker cutover.  `compiler_mcp_relay` is
-        /// the existing public listener, not a new caller-selected endpoint;
-        /// its target is intentionally left on v1 until replay and health
-        /// checking complete in [`cutover`].
-        fn spawn_with_options_and_compiler_mcp_relay(
+        /// Stages a core during a broker cutover. The relays are existing
+        /// public listeners, not new caller-selected endpoints; their
+        /// targets intentionally stay on v1 until replay and health checking
+        /// complete in [`cutover`].
+        fn spawn_with_options_and_relays(
             width: f64,
             height: f64,
             frame_dir: &Path,
             options: CoreLaunchOptions,
-            compiler_mcp_relay: Option<Arc<CompilerMcpRelay>>,
+            relays: RelaySet,
         ) -> io::Result<Self> {
-            let (bluejs_host, page_host_config) = if options.supervise_out_of_process_bluejs {
-                let (host, config) = SpawnedBlueJsHost::spawn_for_core()?;
-                (Some(host), Some(config))
-            } else {
-                (None, None)
-            };
+            let private_page_host = PrivatePageHostLaunch::spawn(&options)?;
             Self::spawn_with_private_host(
                 width,
                 height,
                 frame_dir,
                 options,
-                bluejs_host,
-                page_host_config,
-                compiler_mcp_relay,
+                private_page_host,
+                relays,
             )
         }
 
@@ -1361,18 +1847,37 @@ mod unix {
             height: f64,
             frame_dir: &Path,
             options: CoreLaunchOptions,
-            bluejs_host: Option<SpawnedBlueJsHost>,
-            page_host_config: Option<BlueJsHostCoreConfig>,
-            compiler_mcp_relay: Option<Arc<CompilerMcpRelay>>,
+            private_page_host: Option<PrivatePageHostLaunch>,
+            relays: RelaySet,
         ) -> io::Result<Self> {
+            let (bluejs_host, page_host_config, script_private_socket_path) =
+                match private_page_host {
+                    Some(private_page_host) => (
+                        Some(private_page_host.host),
+                        Some(private_page_host.config),
+                        Some(private_page_host.script_socket),
+                    ),
+                    None => (None, None, None),
+                };
             let this_exe = std::env::current_exe()?;
             let core_bin = sibling_core_binary(&this_exe);
             let internal_socket_path = unique_internal_socket_path();
             let _ = std::fs::remove_file(&internal_socket_path);
-            let compiler_private_socket_path = compiler_mcp_relay
+            if let Some(path) = &script_private_socket_path {
+                remove_owned_socket_if_owned(path);
+            }
+            let compiler_private_socket_path = relays
+                .compiler_mcp_relay
                 .as_ref()
                 .map(|_| unique_internal_compiler_socket_path());
             if let Some(path) = &compiler_private_socket_path {
+                let _ = std::fs::remove_file(path);
+            }
+            let debugger_private_socket_path = relays
+                .debugger_relay
+                .as_ref()
+                .map(|_| unique_internal_debugger_socket_path());
+            if let Some(path) = &debugger_private_socket_path {
                 let _ = std::fs::remove_file(path);
             }
 
@@ -1395,6 +1900,13 @@ mod unix {
                     .arg(config.socket_path())
                     .arg("--out-of-process-bluejs-token")
                     .arg(config.session_token());
+                if let Some(script_socket) = &script_private_socket_path {
+                    command
+                        .arg("--script-socket")
+                        .arg(script_socket)
+                        .arg("--script-session-token")
+                        .arg(config.session_token());
+                }
             }
             if options.core_http_page_script_fixture {
                 command
@@ -1402,25 +1914,159 @@ mod unix {
                     .arg("core-page-http-fixture-v1");
             }
             if let Some(compiler_socket) = &compiler_private_socket_path {
-                command
-                    .arg("--compiler-socket")
-                    .arg(compiler_socket)
-                    .arg("--compiler-project-profile")
-                    .arg(CORE_CLOSED_COMPILER_PROJECT_PROFILE);
+                command.arg("--compiler-socket").arg(compiler_socket);
+                if options.compiler_catalog.is_some() && options.page_http_policy.is_none() {
+                    command.arg("--compiler-catalog-stdin");
+                } else if options.compiler_catalog.is_none() {
+                    command
+                        .arg("--compiler-project-profile")
+                        .arg(CORE_CLOSED_COMPILER_PROJECT_PROFILE);
+                }
+            }
+            if options.page_http_policy.is_some() {
+                command.arg("--owner-bootstrap-stdin");
+            }
+            if options.page_http_policy.is_some() || options.compiler_catalog.is_some() {
+                command.stdin(Stdio::piped());
+            }
+            if let Some(debugger_socket) = &debugger_private_socket_path {
+                command.arg("--debugger-socket").arg(debugger_socket);
+                if options.debugger_static_metadata_inventory {
+                    command.arg("--debugger-static-metadata-inventory");
+                }
+                if options.debugger_static_metadata_summary {
+                    command.arg("--debugger-static-metadata-summary");
+                }
+                if options.debugger_static_metadata_source_inventory {
+                    command.arg("--debugger-static-metadata-source-inventory");
+                }
+                if options.debugger_static_metadata_source_provenance {
+                    command.arg("--debugger-static-metadata-source-provenance");
+                }
+                if options.debugger_static_metadata_type_inventory {
+                    command.arg("--debugger-static-metadata-type-inventory");
+                }
+                if options.debugger_static_metadata_type_display {
+                    command.arg("--debugger-static-metadata-type-display");
+                }
+                if options.debugger_static_metadata_symbol_inventory {
+                    command.arg("--debugger-static-metadata-symbol-inventory");
+                }
+                if options.debugger_static_metadata_contract_inventory {
+                    command.arg("--debugger-static-metadata-contract-inventory");
+                }
+                if options.debugger_static_metadata_contract_display {
+                    command.arg("--debugger-static-metadata-contract-display");
+                }
+                if options.debugger_static_metadata_contract_validation {
+                    command.arg("--debugger-static-metadata-contract-validation");
+                }
+                if options.debugger_static_metadata_lowering_summary {
+                    command.arg("--debugger-static-metadata-lowering-summary");
+                }
+                if options.debugger_static_metadata_symbol_display {
+                    command.arg("--debugger-static-metadata-symbol-display");
+                }
+                if options.debugger_static_metadata_symbol_location {
+                    command.arg("--debugger-static-metadata-symbol-location");
+                }
+                if options.debugger_static_metadata_safe_point_span {
+                    command.arg("--debugger-static-metadata-safe-point-span");
+                }
+                if options.debugger_static_metadata_source_breakpoint {
+                    command.arg("--debugger-static-metadata-source-breakpoint");
+                }
+                if options.debugger_static_metadata_source_span_step {
+                    command.arg("--debugger-static-metadata-source-span-step");
+                }
+                if options.debugger_static_metadata_contract_location {
+                    command.arg("--debugger-static-metadata-contract-location");
+                }
+                if options.debugger_static_metadata_symbol_type {
+                    command.arg("--debugger-static-metadata-symbol-type");
+                }
+                if options.debugger_static_metadata_symbol_contract {
+                    command.arg("--debugger-static-metadata-symbol-contract");
+                }
             }
             let mut child = command.spawn()?;
+            if options.page_http_policy.is_some() || options.compiler_catalog.is_some() {
+                let send_result = child
+                    .stdin
+                    .take()
+                    .ok_or_else(|| io::Error::other("core catalog bootstrap pipe is missing"))
+                    .and_then(|mut pipe| {
+                        if let Some(page_http_policy) = options.page_http_policy.as_ref() {
+                            write_core_owner_bootstrap(
+                                &mut pipe,
+                                &CoreOwnerBootstrap {
+                                    version: CORE_OWNER_BOOTSTRAP_VERSION,
+                                    compiler_catalog: options.compiler_catalog.clone(),
+                                    page_http_policy: Some(page_http_policy.clone()),
+                                },
+                            )
+                        } else {
+                            write_compiler_catalog(
+                                &mut pipe,
+                                options
+                                    .compiler_catalog
+                                    .as_ref()
+                                    .expect("compiler-only pipe requires a catalog"),
+                            )
+                        }
+                    });
+                if let Err(error) = send_result {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_file(&internal_socket_path);
+                    if let Some(script_socket) = &script_private_socket_path {
+                        remove_owned_socket_if_owned(script_socket);
+                    }
+                    if let Some(compiler_socket) = &compiler_private_socket_path {
+                        remove_compiler_mcp_socket_if_owned(compiler_socket);
+                    }
+                    if let Some(debugger_socket) = &debugger_private_socket_path {
+                        remove_owned_socket_if_owned(debugger_socket);
+                    }
+                    return Err(error);
+                }
+            }
 
             if !wait_for_socket(&internal_socket_path, Duration::from_secs(5)) {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&internal_socket_path);
+                if let Some(script_socket) = &script_private_socket_path {
+                    remove_owned_socket_if_owned(script_socket);
+                }
                 if let Some(compiler_socket) = &compiler_private_socket_path {
                     remove_compiler_mcp_socket_if_owned(compiler_socket);
+                }
+                if let Some(debugger_socket) = &debugger_private_socket_path {
+                    remove_owned_socket_if_owned(debugger_socket);
                 }
                 return Err(io::Error::other(format!(
                     "blueice-core never created its socket at {}",
                     internal_socket_path.display()
                 )));
+            }
+            if let Some(debugger_socket) = &debugger_private_socket_path {
+                if !wait_for_socket(debugger_socket, Duration::from_secs(5)) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_file(&internal_socket_path);
+                    if let Some(script_socket) = &script_private_socket_path {
+                        remove_owned_socket_if_owned(script_socket);
+                    }
+                    if let Some(compiler_socket) = &compiler_private_socket_path {
+                        remove_compiler_mcp_socket_if_owned(compiler_socket);
+                    }
+                    remove_owned_socket_if_owned(debugger_socket);
+                    return Err(io::Error::other(format!(
+                        "blueice-core never created its debugger socket at {}",
+                        debugger_socket.display()
+                    )));
+                }
             }
             let mut stream = match UnixStream::connect(&internal_socket_path) {
                 Ok(stream) => stream,
@@ -1428,8 +2074,14 @@ mod unix {
                     let _ = child.kill();
                     let _ = child.wait();
                     let _ = std::fs::remove_file(&internal_socket_path);
+                    if let Some(script_socket) = &script_private_socket_path {
+                        remove_owned_socket_if_owned(script_socket);
+                    }
                     if let Some(compiler_socket) = &compiler_private_socket_path {
                         remove_compiler_mcp_socket_if_owned(compiler_socket);
+                    }
+                    if let Some(debugger_socket) = &debugger_private_socket_path {
+                        remove_owned_socket_if_owned(debugger_socket);
                     }
                     return Err(error);
                 }
@@ -1447,38 +2099,60 @@ mod unix {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&internal_socket_path);
+                if let Some(script_socket) = &script_private_socket_path {
+                    remove_owned_socket_if_owned(script_socket);
+                }
                 if let Some(compiler_socket) = &compiler_private_socket_path {
                     remove_compiler_mcp_socket_if_owned(compiler_socket);
+                }
+                if let Some(debugger_socket) = &debugger_private_socket_path {
+                    remove_owned_socket_if_owned(debugger_socket);
                 }
                 return Err(error);
             }
             Ok(SpawnedCore {
                 child,
                 internal_socket_path,
+                script_private_socket_path,
                 compiler_private_socket_path,
+                debugger_private_socket_path,
                 frame_dir: frame_dir.to_path_buf(),
                 options,
                 bluejs_host,
-                compiler_mcp_relay,
+                route_gate: relays.route_gate,
+                compiler_mcp_relay: relays.compiler_mcp_relay,
+                debugger_relay: relays.debugger_relay,
                 stream,
             })
         }
 
-        fn activate_compiler_mcp_relay(&self) {
+        fn activate_relays(&self) {
             if let (Some(relay), Some(socket)) = (
                 self.compiler_mcp_relay.as_ref(),
                 self.compiler_private_socket_path.as_ref(),
             ) {
                 relay.activate_generation(socket);
             }
+            if let (Some(relay), Some(socket)) = (
+                self.debugger_relay.as_ref(),
+                self.debugger_private_socket_path.as_ref(),
+            ) {
+                relay.activate_generation(socket);
+            }
         }
 
-        /// Activates this staged core while [`CompilerMcpRelay::route_gate`]
-        /// is held by [`perform_swap`].
-        fn activate_compiler_mcp_relay_after_handoff(&self) {
+        /// Activates this staged core while the shared `route_gate` is held
+        /// by [`perform_swap`].
+        fn activate_relays_after_handoff(&self) {
             if let (Some(relay), Some(socket)) = (
                 self.compiler_mcp_relay.as_ref(),
                 self.compiler_private_socket_path.as_ref(),
+            ) {
+                relay.activate_generation_after_handoff(socket);
+            }
+            if let (Some(relay), Some(socket)) = (
+                self.debugger_relay.as_ref(),
+                self.debugger_private_socket_path.as_ref(),
             ) {
                 relay.activate_generation_after_handoff(socket);
             }
@@ -1495,8 +2169,14 @@ mod unix {
             // intended core generation.
             drop(self.bluejs_host.take());
             let _ = std::fs::remove_file(&self.internal_socket_path);
+            if let Some(script_socket) = &self.script_private_socket_path {
+                remove_owned_socket_if_owned(script_socket);
+            }
             if let Some(compiler_socket) = &self.compiler_private_socket_path {
                 remove_compiler_mcp_socket_if_owned(compiler_socket);
+            }
+            if let Some(debugger_socket) = &self.debugger_private_socket_path {
+                remove_owned_socket_if_owned(debugger_socket);
             }
             // `child.kill()` sends SIGKILL, which never lets `blueice-core`
             // run its own graceful-exit cleanup (which would otherwise
@@ -1839,6 +2519,7 @@ mod unix {
         #[test]
         fn unique_internal_socket_path_stays_short_enough_for_af_unix() {
             assert!(unique_internal_socket_path().to_string_lossy().len() < 100);
+            assert!(unique_internal_script_socket_path().to_string_lossy().len() < 100);
         }
 
         #[test]
@@ -1847,6 +2528,10 @@ mod unix {
             // same launcher process (v1 at startup, v2 during cutover) --
             // PID alone would collide, so this must also vary per call.
             assert_ne!(unique_internal_socket_path(), unique_internal_socket_path());
+            assert_ne!(
+                unique_internal_script_socket_path(),
+                unique_internal_script_socket_path()
+            );
         }
 
         fn unique_compiler_mcp_test_path(label: &str) -> PathBuf {

@@ -24,7 +24,17 @@
 //! Like [`crate::extension`] (and unlike [`crate::gatekeeper`]'s
 //! one-shot connections), a `bluejs` connection is long-lived and
 //! stateful, so it gets the same `Hello`-handshake-then-long-lived-
-//! connection shape.
+//! connection shape. The listener requires a launcher-owned per-core child
+//! capability before forwarding any DOM request to the session. A distinct
+//! owner-only test profile now proves a child VM can complete a synchronous
+//! lookup through the bounded reentrant session route; the raw protocol and
+//! numeric node IDs are still never exposed to page JavaScript.
+//!
+//! Each DOM request names the exact core-owned document generation as well as
+//! its tab. A request from a predecessor document fails before lookup or
+//! mutation, including operations that create new nodes and carry no old
+//! `NodeId`. The `Hello` capability authenticates the connection, not an
+//! individual document; each DOM call still requires its exact live target.
 //!
 //! **Scope of this minimal slice.** [`ScriptRequest`] covers only
 //! enough DOM operations to prove the mechanism end to end and to
@@ -45,6 +55,23 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
+/// V5 adds core-owned node-liveness validation for opaque child wrappers.
+/// Older versions cannot safely establish that a cached wrapper survived a
+/// subtree removal before invoking an operation on it.
+pub const SCRIPT_PROTOCOL_VERSION: u32 = 5;
+pub const SCRIPT_SESSION_TOKEN_HEX_BYTES: usize = 64;
+pub const SCRIPT_MAX_FRAME_BYTES: usize = 1_100_000;
+pub const SCRIPT_MAX_NAME_BYTES: usize = 4_096;
+pub const SCRIPT_MAX_TEXT_BYTES: usize = 1_048_576;
+
+/// Core-owned document identity. A child must carry the generation it was
+/// admitted under on every DOM call; a tab ID alone never names a document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScriptDocumentTarget {
+    pub tab_id: u64,
+    pub document_generation: u64,
+}
+
 /// One message the `bluejs` script host sends to `core` over a
 /// long-lived connection.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -53,40 +80,95 @@ pub enum ScriptRequest {
     /// `Hello`-handshake shape [`crate::extension::ExtensionRequest::Hello`]
     /// uses, layered onto `gatekeeper`'s framing style, per this
     /// module's own docs above.
-    Hello,
+    Hello {
+        protocol_version: u32,
+        /// Fresh launcher-issued, child-only capability for this core.
+        session_token: String,
+    },
+    /// Post-handshake transport envelope. The child chooses a fresh,
+    /// monotonically increasing ID for every synchronous DOM call. Core
+    /// accepts exactly one layer and replies with the same ID and the inner
+    /// request's document target; nested envelopes are invalid.
+    Call {
+        request_id: u64,
+        request: Box<ScriptRequest>,
+    },
     /// `document.getElementById(id)`, scoped to one tab.
-    GetElementById { tab_id: u64, id: String },
+    GetElementById {
+        target: ScriptDocumentTarget,
+        id: String,
+    },
+    /// Checks a child-private node identity against the exact live document.
+    /// A detached but allocated node remains valid; a reclaimed subtree does
+    /// not. This operation grants no node data to the caller.
+    ValidateNode {
+        target: ScriptDocumentTarget,
+        node: u64,
+    },
     /// `document.createElement(tag_name)`, scoped to one tab. Creates
     /// the node but does not attach it anywhere -- a script must still
     /// place it with [`ScriptRequest::AppendChild`] or the like.
-    CreateElement { tab_id: u64, tag_name: String },
+    CreateElement {
+        target: ScriptDocumentTarget,
+        tag_name: String,
+    },
     /// `document.createTextNode(data)`, scoped to one tab.
-    CreateTextNode { tab_id: u64, data: String },
+    CreateTextNode {
+        target: ScriptDocumentTarget,
+        data: String,
+    },
     /// `parent.appendChild(child)`, scoped to one tab. Node identity
     /// (`parent`/`child`) is `blueice_dom::NodeId`'s raw value, the
     /// same convention [`crate::ai::AiNode::id`] already uses for the
     /// same reason: this crate doesn't depend on `blueice-dom` for a
     /// plain numeric handle.
     AppendChild {
-        tab_id: u64,
+        target: ScriptDocumentTarget,
         parent: u64,
         child: u64,
     },
     /// `node.textContent` getter, scoped to one tab.
-    GetTextContent { tab_id: u64, node: u64 },
+    GetTextContent {
+        target: ScriptDocumentTarget,
+        node: u64,
+    },
     /// `node.textContent` setter, scoped to one tab.
     SetTextContent {
-        tab_id: u64,
+        target: ScriptDocumentTarget,
         node: u64,
         value: String,
     },
+}
+
+impl ScriptRequest {
+    /// The exact document named by one DOM operation. Hello and transport
+    /// envelopes are never directly dispatched to core's DOM owner.
+    pub fn document_target(&self) -> Option<ScriptDocumentTarget> {
+        match self {
+            Self::Hello { .. } | Self::Call { .. } => None,
+            Self::GetElementById { target, .. }
+            | Self::ValidateNode { target, .. }
+            | Self::CreateElement { target, .. }
+            | Self::CreateTextNode { target, .. }
+            | Self::AppendChild { target, .. }
+            | Self::GetTextContent { target, .. }
+            | Self::SetTextContent { target, .. } => Some(*target),
+        }
+    }
 }
 
 /// `core`'s reply to one [`ScriptRequest`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ScriptReply {
     /// Reply to [`ScriptRequest::Hello`].
-    HelloAck,
+    HelloAck { protocol_version: u32 },
+    /// Exact response to one post-handshake call. The child rejects an ID or
+    /// target mismatch before it can treat any inner result as page data.
+    CallResult {
+        request_id: u64,
+        target: ScriptDocumentTarget,
+        reply: Box<ScriptReply>,
+    },
     /// Reply to [`ScriptRequest::GetElementById`] -- `None` if no
     /// element with that ID exists in the addressed tab, matching
     /// `document.getElementById`'s own `null`-on-miss behavior rather
@@ -97,9 +179,9 @@ pub enum ScriptReply {
     /// given a valid tab, so this carries the new node's ID directly
     /// rather than an `Option`.
     NodeCreated { node: u64 },
-    /// Reply to [`ScriptRequest::AppendChild`]/
-    /// [`ScriptRequest::SetTextContent`] -- both are plain mutations
-    /// with no meaningful success payload.
+    /// Reply to [`ScriptRequest::ValidateNode`],
+    /// [`ScriptRequest::AppendChild`], or
+    /// [`ScriptRequest::SetTextContent`].
     Ack,
     /// Reply to [`ScriptRequest::GetTextContent`].
     Text { value: String },
@@ -111,32 +193,38 @@ pub enum ScriptReply {
 }
 
 pub fn write_script_request<W: Write>(w: &mut W, msg: &ScriptRequest) -> io::Result<()> {
-    crate::write_framed(w, msg)
+    crate::write_framed_with_limit(w, msg, SCRIPT_MAX_FRAME_BYTES)
 }
 
 pub fn read_script_request<R: Read>(r: &mut R) -> io::Result<ScriptRequest> {
-    let buf = crate::read_frame_bytes(r)?;
+    let buf = crate::read_frame_bytes_with_limit(r, SCRIPT_MAX_FRAME_BYTES)?;
     serde_json::from_slice(&buf).map_err(io::Error::other)
 }
 
 pub fn write_script_reply<W: Write>(w: &mut W, msg: &ScriptReply) -> io::Result<()> {
-    crate::write_framed(w, msg)
+    crate::write_framed_with_limit(w, msg, SCRIPT_MAX_FRAME_BYTES)
 }
 
 pub fn read_script_reply<R: Read>(r: &mut R) -> io::Result<ScriptReply> {
-    let buf = crate::read_frame_bytes(r)?;
+    let buf = crate::read_frame_bytes_with_limit(r, SCRIPT_MAX_FRAME_BYTES)?;
     serde_json::from_slice(&buf).map_err(io::Error::other)
 }
 
-/// Where `core` listens for a `bluejs` script host connection, and
-/// where `bluejs` connects by default in production. Mirrors
-/// [`crate::extension::default_extension_socket_path`]'s exact style
-/// (same per-user temp dir convention, so two different users -- or two
-/// independent BlueIce sessions -- never collide), but a distinct
-/// filename. Production code is the only caller that uses this default
-/// directly -- tests thread an explicit socket path through instead,
-/// for the same reason the other `default_*_socket_path` functions'
-/// docs give.
+/// Checks the fixed shape of a 32-byte cryptographic capability in lowercase
+/// hexadecimal. Core additionally compares it with its private expected
+/// value before dispatch; shape alone is never authorization.
+pub fn valid_script_session_token(token: &str) -> bool {
+    token.len() == SCRIPT_SESSION_TOKEN_HEX_BYTES
+        && token
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+/// Conventional path for standalone embedding experiments. The supervised
+/// launcher instead chooses a distinct private path per core generation and
+/// supplies the child capability separately; this pathname is never an
+/// authorization credential. Mirrors the other protocol defaults' per-user
+/// temporary-directory convention while keeping a distinct filename.
 pub fn default_script_socket_path() -> PathBuf {
     let dir = match std::env::var_os("XDG_RUNTIME_DIR") {
         Some(dir) => PathBuf::from(dir).join("blueice"),
@@ -170,31 +258,43 @@ mod tests {
 
     #[test]
     fn script_request_round_trips_over_a_real_socket() {
+        let target = ScriptDocumentTarget {
+            tab_id: 1,
+            document_generation: 2,
+        };
         for req in [
-            ScriptRequest::Hello,
+            ScriptRequest::Hello {
+                protocol_version: SCRIPT_PROTOCOL_VERSION,
+                session_token: "a".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES),
+            },
+            ScriptRequest::Call {
+                request_id: 1,
+                request: Box::new(ScriptRequest::GetElementById {
+                    target,
+                    id: "widget".to_string(),
+                }),
+            },
             ScriptRequest::GetElementById {
-                tab_id: 1,
+                target,
                 id: "widget".to_string(),
             },
+            ScriptRequest::ValidateNode { target, node: 10 },
             ScriptRequest::CreateElement {
-                tab_id: 1,
+                target,
                 tag_name: "li".to_string(),
             },
             ScriptRequest::CreateTextNode {
-                tab_id: 1,
+                target,
                 data: "hello".to_string(),
             },
             ScriptRequest::AppendChild {
-                tab_id: 1,
+                target,
                 parent: 10,
                 child: 11,
             },
-            ScriptRequest::GetTextContent {
-                tab_id: 1,
-                node: 10,
-            },
+            ScriptRequest::GetTextContent { target, node: 10 },
             ScriptRequest::SetTextContent {
-                tab_id: 1,
+                target,
                 node: 10,
                 value: "updated".to_string(),
             },
@@ -206,9 +306,65 @@ mod tests {
     }
 
     #[test]
+    fn only_dom_operations_have_a_direct_document_target() {
+        let target = ScriptDocumentTarget {
+            tab_id: 3,
+            document_generation: 4,
+        };
+        let request = ScriptRequest::GetElementById {
+            target,
+            id: "widget".to_string(),
+        };
+        assert_eq!(request.document_target(), Some(target));
+        assert_eq!(
+            ScriptRequest::Call {
+                request_id: 1,
+                request: Box::new(request),
+            }
+            .document_target(),
+            None
+        );
+        assert_eq!(
+            ScriptRequest::Hello {
+                protocol_version: SCRIPT_PROTOCOL_VERSION,
+                session_token: "a".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES),
+            }
+            .document_target(),
+            None
+        );
+    }
+
+    #[test]
+    fn script_capability_has_one_fixed_lowercase_hex_shape() {
+        assert!(valid_script_session_token(
+            &"a".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES)
+        ));
+        assert!(!valid_script_session_token(""));
+        assert!(!valid_script_session_token(
+            &"A".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES)
+        ));
+        assert!(!valid_script_session_token(
+            &"g".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES)
+        ));
+        assert!(!valid_script_session_token(
+            &"a".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES - 1)
+        ));
+    }
+
+    #[test]
     fn script_reply_round_trips_over_a_real_socket() {
         for reply in [
-            ScriptReply::HelloAck,
+            ScriptReply::HelloAck {
+                protocol_version: SCRIPT_PROTOCOL_VERSION,
+            },
+            ScriptReply::CallResult {
+                request_id: 1,
+                target: ScriptDocumentTarget {
+                    tab_id: 1,
+                    document_generation: 2,
+                },
+                reply: Box::new(ScriptReply::Node { node: Some(42) }),
+            },
             ScriptReply::Node { node: Some(42) },
             ScriptReply::Node { node: None },
             ScriptReply::NodeCreated { node: 43 },
@@ -228,11 +384,15 @@ mod tests {
 
     #[test]
     fn multiple_requests_can_be_written_and_read_in_sequence_on_one_stream() {
+        let target = ScriptDocumentTarget {
+            tab_id: 1,
+            document_generation: 2,
+        };
         let mut buf = Vec::new();
         write_script_request(
             &mut buf,
             &ScriptRequest::GetElementById {
-                tab_id: 1,
+                target,
                 id: "a".to_string(),
             },
         )
@@ -240,7 +400,7 @@ mod tests {
         write_script_request(
             &mut buf,
             &ScriptRequest::GetElementById {
-                tab_id: 1,
+                target,
                 id: "b".to_string(),
             },
         )
@@ -249,14 +409,14 @@ mod tests {
         assert_eq!(
             read_script_request(&mut cursor).unwrap(),
             ScriptRequest::GetElementById {
-                tab_id: 1,
+                target,
                 id: "a".to_string()
             }
         );
         assert_eq!(
             read_script_request(&mut cursor).unwrap(),
             ScriptRequest::GetElementById {
-                tab_id: 1,
+                target,
                 id: "b".to_string()
             }
         );
@@ -285,11 +445,74 @@ mod tests {
     }
 
     #[test]
+    fn legacy_dom_request_without_document_generation_is_rejected() {
+        let mut frame = Vec::new();
+        crate::write_framed(
+            &mut frame,
+            &serde_json::json!({
+                "CreateTextNode": { "tab_id": 1, "data": "stale" }
+            }),
+        )
+        .unwrap();
+        assert!(read_script_request(&mut std::io::Cursor::new(frame)).is_err());
+    }
+
+    #[test]
+    fn legacy_hello_without_a_capability_is_not_decoded() {
+        let mut frame = Vec::new();
+        crate::write_framed(
+            &mut frame,
+            &serde_json::json!({
+                "Hello": { "protocol_version": SCRIPT_PROTOCOL_VERSION }
+            }),
+        )
+        .unwrap();
+        assert!(read_script_request(&mut std::io::Cursor::new(frame)).is_err());
+    }
+
+    #[test]
     fn reading_a_truncated_frame_is_an_error_not_a_panic() {
         let mut buf = Vec::new();
-        write_script_reply(&mut buf, &ScriptReply::HelloAck).unwrap();
+        write_script_reply(
+            &mut buf,
+            &ScriptReply::HelloAck {
+                protocol_version: SCRIPT_PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
         buf.truncate(buf.len() - 1);
         let mut cursor = std::io::Cursor::new(buf);
         assert!(read_script_reply(&mut cursor).is_err());
+    }
+
+    #[test]
+    fn oversized_script_frame_is_rejected_before_payload_allocation() {
+        let mut frame = std::io::Cursor::new(
+            u32::try_from(SCRIPT_MAX_FRAME_BYTES + 1)
+                .unwrap()
+                .to_le_bytes()
+                .to_vec(),
+        );
+        assert_eq!(
+            read_script_request(&mut frame).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        let mut output = Vec::new();
+        assert_eq!(
+            write_script_request(
+                &mut output,
+                &ScriptRequest::CreateTextNode {
+                    target: ScriptDocumentTarget {
+                        tab_id: 1,
+                        document_generation: 1,
+                    },
+                    data: "x".repeat(SCRIPT_MAX_FRAME_BYTES),
+                },
+            )
+            .unwrap_err()
+            .kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert!(output.is_empty());
     }
 }

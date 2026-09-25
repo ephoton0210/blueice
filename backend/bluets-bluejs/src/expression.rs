@@ -564,12 +564,26 @@ impl<'a> ExpressionLowerer<'a> {
                 return Ok(bluejs::Expr::Array(elements));
             }
             if token.text == "," {
-                return Err(unsupported(
-                    self.token_span(token),
-                    "array holes are not in the v1 direct bridge subset",
-                ));
+                if elements
+                    .iter()
+                    .any(|element| matches!(element, Some(bluejs::ArrayElement::Spread(_))))
+                {
+                    return Err(unsupported(
+                        self.token_span(token),
+                        "array literals cannot combine holes and spread elements in the v1 direct bridge subset",
+                    ));
+                }
+                self.index += 1;
+                elements.push(None);
+                continue;
             }
             let element = if token.text == "..." {
+                if elements.iter().any(Option::is_none) {
+                    return Err(unsupported(
+                        self.token_span(token),
+                        "array literals cannot combine holes and spread elements in the v1 direct bridge subset",
+                    ));
+                }
                 self.index += 1;
                 bluejs::ArrayElement::Spread(self.parse_assignment()?)
             } else {
@@ -796,6 +810,13 @@ impl<'a> ExpressionLowerer<'a> {
             let Some(token) = self.tokens.get(self.index) else {
                 return Ok(expression);
             };
+            if token.text == "!" {
+                // TypeScript's postfix non-null assertion is erased. The
+                // checker narrows the static result; runtime null access
+                // still fails normally in BlueJS.
+                self.index += 1;
+                continue;
+            }
             if token.text == "." {
                 let dot_span = self.token_span(token);
                 self.index += 1;

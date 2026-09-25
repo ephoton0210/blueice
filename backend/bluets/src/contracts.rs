@@ -273,6 +273,9 @@ fn lower(
         Type::Any | Type::Unknown | Type::Never => Err(ContractError {
             message: "any, unknown, and never are not automatic runtime contracts".to_string(),
         }),
+        Type::Function { .. } => Err(ContractError {
+            message: "function members are not data-boundary runtime contracts".to_string(),
+        }),
         Type::Void => Err(ContractError {
             message: "void is not a data-boundary runtime contract".to_string(),
         }),
@@ -495,6 +498,7 @@ mod tests {
             "User",
             &Type::Record(vec![TypeField {
                 name: "id".to_string(),
+                readonly: false,
                 optional: false,
                 value: Type::String,
                 span: crate::diagnostic::SourceSpan::new("test", 0, 0),
@@ -519,6 +523,7 @@ mod tests {
     fn validates_an_inherited_record_as_a_reifiable_intersection() {
         let field = |name: &str, value: Type| TypeField {
             name: name.to_string(),
+            readonly: false,
             optional: false,
             value,
             span: crate::diagnostic::SourceSpan::new("test", 0, 0),

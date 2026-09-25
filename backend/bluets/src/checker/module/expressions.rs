@@ -12,7 +12,56 @@ impl<'a> ModuleChecker<'a> {
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
     ) -> Type {
+        // Each chained member call recursively infers its receiver. Keep
+        // that recursion under the compiler's existing expansion envelope.
+        if tokens.iter().filter(|token| token.is(".")).count() > self.max_type_expansions {
+            return Type::Unknown;
+        }
         let tokens = strip_outer_parentheses(tokens);
+        if tokens.len() > 1 && tokens.last().is_some_and(|token| token.is("!")) {
+            let inferred = self.infer_expression(&tokens[..tokens.len() - 1], scope);
+            return match inferred {
+                Type::Union(options) => {
+                    let mut retained = options
+                        .into_iter()
+                        .filter(|option| !matches!(option, Type::Null | Type::Undefined))
+                        .collect::<Vec<_>>();
+                    match retained.len() {
+                        0 => Type::Never,
+                        1 => retained.pop().expect("one retained non-null type"),
+                        _ => Type::Union(retained),
+                    }
+                }
+                Type::Null | Type::Undefined => Type::Never,
+                value => value,
+            };
+        }
+        if tokens
+            .first()
+            .is_some_and(|token| token.is("++") || token.is("--"))
+            || tokens
+                .last()
+                .is_some_and(|token| token.is("++") || token.is("--"))
+        {
+            return Type::Number;
+        }
+        if let Some(call) = member_call_parts(tokens) {
+            let base = self.infer_expression(call.receiver, scope);
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            if let PropertyType::Found {
+                value: Type::Function { result, .. },
+                ..
+            } = property_type(
+                &base,
+                &call.member.text,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            ) {
+                return *result;
+            }
+            return Type::Unknown;
+        }
         if let Some(call) =
             direct_call_parts(tokens).filter(|call| split_call_arguments(call.arguments).is_some())
         {
@@ -147,6 +196,28 @@ impl<'a> ModuleChecker<'a> {
         if first.kind == TokenKind::Number {
             return Type::Number;
         }
+        if let Some((receiver, property)) = member_access_target(tokens) {
+            if tokens.iter().filter(|token| token.is("[")).count() > self.max_type_expansions {
+                return Type::Unknown;
+            }
+            let Some(property) = property else {
+                return Type::Unknown;
+            };
+            let owner = self.infer_expression(receiver, scope);
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            return match property_type(
+                &owner,
+                property,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            ) {
+                PropertyType::Found { value, .. } => value,
+                PropertyType::Missing | PropertyType::Indeterminate | PropertyType::Exhausted => {
+                    Type::Unknown
+                }
+            };
+        }
         match first.text.as_str() {
             "true" | "false" => Type::Boolean,
             "null" => Type::Null,
@@ -154,25 +225,17 @@ impl<'a> ModuleChecker<'a> {
             "[" => infer_array(tokens, scope),
             "{" => infer_record(tokens, scope),
             _ if first.kind == TokenKind::Identifier => {
-                if tokens.get(1).is_some_and(|token| token.is("."))
-                    && tokens
-                        .get(2)
-                        .is_some_and(|token| token.kind == TokenKind::Identifier)
-                {
-                    let base = scope.get(&first.text).cloned().unwrap_or(Type::Unknown);
-                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-                    return match property_type(
-                        &base,
-                        &tokens[2].text,
-                        &self.types,
-                        &mut HashSet::new(),
-                        &mut budget,
-                    ) {
-                        PropertyType::Found(value) => value,
-                        PropertyType::Missing
-                        | PropertyType::Indeterminate
-                        | PropertyType::Exhausted => Type::Unknown,
-                    };
+                if tokens.len() == 1 {
+                    if let Some(signature) =
+                        self.functions.get(&first.text).and_then(|set| set.first())
+                    {
+                        if signature.type_parameters.is_empty() {
+                            return Type::Function {
+                                parameters: signature.parameters.clone(),
+                                result: Box::new(signature.return_type.clone()),
+                            };
+                        }
+                    }
                 }
                 scope.get(&first.text).cloned().unwrap_or(Type::Unknown)
             }
@@ -346,6 +409,185 @@ impl<'a> ModuleChecker<'a> {
         }
     }
 
+    pub(super) fn check_member_calls_in_expression(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let mut open = Vec::new();
+        let mut closes = vec![None; tokens.len()];
+        for (index, token) in tokens.iter().enumerate() {
+            if token.is("(") {
+                open.push(index);
+            } else if token.is(")") {
+                if let Some(start) = open.pop() {
+                    closes[start] = Some(index);
+                }
+            }
+        }
+        for start in 0..tokens.len().saturating_sub(3) {
+            if tokens[start].kind != TokenKind::Identifier
+                || !tokens[start + 1].is(".")
+                || tokens[start + 2].kind != TokenKind::Identifier
+                || !tokens[start + 3].is("(")
+            {
+                continue;
+            }
+            if let Some(end) = closes[start + 3] {
+                self.check_member_call(&tokens[start..=end], scope, span);
+            }
+        }
+        // A method on a call result has no identifier immediately before its
+        // final dot (for example `document.getElementById('x')!.appendChild(y)`).
+        // The direct-call scan above checks the inner call; check the complete
+        // chain once for the outer receiver and its arguments.
+        if member_call_parts(tokens).is_some_and(|call| call.receiver.len() > 1) {
+            self.check_member_call(tokens, scope, span);
+        }
+    }
+
+    fn check_member_call(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let tokens = strip_outer_parentheses(tokens);
+        let tokens = if tokens.len() > 1 && tokens.last().is_some_and(|token| token.is("!")) {
+            &tokens[..tokens.len() - 1]
+        } else {
+            tokens
+        };
+        let Some(call) = member_call_parts(tokens) else {
+            return;
+        };
+        if self.require_declared_global_calls
+            && call.receiver.first().is_some_and(|base| {
+                base.kind == TokenKind::Identifier && !scope.contains_key(&base.text)
+            })
+        {
+            let base = &call.receiver[0];
+            self.type_error(
+                span,
+                format!("object {} is not declared by this page profile", base.text),
+                DiagnosticCode::UnknownName,
+            );
+            return;
+        }
+        let base = self.infer_expression(call.receiver, scope);
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let member_type = property_type(
+            &base,
+            &call.member.text,
+            &self.types,
+            &mut HashSet::new(),
+            &mut budget,
+        );
+        let (parameters, _) = match member_type {
+            PropertyType::Found {
+                value: Type::Function { parameters, result },
+                ..
+            } => (parameters, result),
+            PropertyType::Found { .. } => {
+                self.type_error(
+                    span,
+                    format!("property `{}` is not callable", call.member.text),
+                    DiagnosticCode::TypeMismatch,
+                );
+                return;
+            }
+            PropertyType::Missing
+                if matches!(
+                    base,
+                    Type::String | Type::Number | Type::Boolean | Type::Array(_) | Type::Tuple(_)
+                ) =>
+            {
+                // BlueTS does not yet model the JavaScript built-in method
+                // catalogs. Preserve their runtime semantics while still
+                // rejecting missing members on declared host interfaces.
+                return;
+            }
+            PropertyType::Missing => {
+                self.type_error(
+                    span,
+                    format!(
+                        "property `{}` does not exist on type `{}`",
+                        call.member.text,
+                        type_label(&base)
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+                return;
+            }
+            PropertyType::Exhausted => {
+                self.type_error(
+                    span,
+                    format!(
+                        "property lookup exceeds the {} generic-expansion limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                );
+                return;
+            }
+            PropertyType::Indeterminate => return,
+        };
+        let Some(arguments) = split_call_arguments(call.arguments) else {
+            return;
+        };
+        for argument in &arguments {
+            self.check_function_call(argument, scope, span);
+        }
+        let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
+            self.type_error(
+                span,
+                format!(
+                    "a spread argument for method {} must have a fixed-length tuple type",
+                    call.member.text
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+            return;
+        };
+        let required = parameters
+            .iter()
+            .filter(|parameter| !parameter.optional)
+            .count();
+        if actuals.len() < required || actuals.len() > parameters.len() {
+            self.type_error(
+                span,
+                format!(
+                    "method {} expects {required} to {} argument(s), got {}",
+                    call.member.text,
+                    parameters.len(),
+                    actuals.len()
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+            return;
+        }
+        for (index, actual) in actuals.iter().enumerate() {
+            let expected = parameters[index]
+                .annotation
+                .as_ref()
+                .expect("method signature parameters have annotations");
+            if !self.is_assignable_bounded(actual, expected, span) {
+                self.type_error(
+                    span,
+                    format!(
+                        "argument {} has type `{}`, which is not assignable to method parameter `{}` of type `{}`",
+                        index + 1,
+                        type_label(actual),
+                        parameters[index].name,
+                        type_label(expected)
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+        }
+    }
+
     pub(super) fn expanded_call_argument_types(
         &self,
         arguments: &[&[Token]],
@@ -359,7 +601,12 @@ impl<'a> ModuleChecker<'a> {
                 };
                 actuals.extend(values);
             } else {
-                actuals.push(self.infer_expression(argument, scope));
+                actuals.push(match *argument {
+                    [literal] if literal.kind == TokenKind::String => {
+                        Type::Literal(literal.text.clone())
+                    }
+                    _ => self.infer_expression(argument, scope),
+                });
             }
         }
         Ok(actuals)
@@ -492,7 +739,7 @@ impl<'a> ModuleChecker<'a> {
         };
         if base.kind != TokenKind::Identifier
             || !dot.is(".")
-            || property.kind != TokenKind::Identifier
+            || !matches!(property.kind, TokenKind::Identifier | TokenKind::Keyword)
         {
             return;
         }
@@ -505,7 +752,7 @@ impl<'a> ModuleChecker<'a> {
             &mut HashSet::new(),
             &mut budget,
         ) {
-            PropertyType::Found(_) | PropertyType::Indeterminate => {}
+            PropertyType::Found { .. } | PropertyType::Indeterminate => {}
             PropertyType::Missing => self.type_error(
                 span,
                 format!(
@@ -523,6 +770,226 @@ impl<'a> ModuleChecker<'a> {
                 ),
                 DiagnosticCode::ResourceLimit,
             ),
+        }
+    }
+
+    pub(super) fn check_member_assignment(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let tokens = strip_outer_parentheses(tokens);
+        let direct = member_mutation(tokens);
+        self.check_nested_readonly_mutations(
+            tokens,
+            scope,
+            span,
+            direct.as_ref().map(|mutation| mutation.operator.start),
+        );
+        let Some(mutation) = direct else {
+            return;
+        };
+        let owner = self.infer_expression(mutation.receiver, scope);
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let Some(property) = mutation.property else {
+            match contains_readonly_member(&owner, &self.types, &mut HashSet::new(), &mut budget) {
+                Ok(true) => self.type_error(
+                    span,
+                    "cannot prove a computed property write avoids readonly members".into(),
+                    DiagnosticCode::TypeMismatch,
+                ),
+                Err(()) => self.type_error(
+                    span,
+                    format!(
+                        "property lookup exceeds the {} generic-expansion limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                ),
+                Ok(false) => {}
+            }
+            return;
+        };
+        match property_type(
+            &owner,
+            property,
+            &self.types,
+            &mut HashSet::new(),
+            &mut budget,
+        ) {
+            PropertyType::Found {
+                value: expected,
+                readonly,
+            } => {
+                if readonly {
+                    self.type_error(
+                        span,
+                        format!("cannot mutate readonly property `{property}`"),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                    return;
+                }
+                if !mutation.operator.is("=") {
+                    return;
+                }
+                let actual = self.infer_expression(mutation.value, scope);
+                if !self.is_assignable_bounded(&actual, &expected, span) {
+                    self.type_error(
+                        span,
+                        format!(
+                            "assignment has type `{}`, which is not assignable to property `{}` of type `{}`",
+                            type_label(&actual),
+                            property,
+                            type_label(&expected)
+                        ),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                }
+            }
+            PropertyType::Missing => self.type_error(
+                span,
+                format!(
+                    "property `{}` does not exist on type `{}`",
+                    property,
+                    type_label(&owner)
+                ),
+                DiagnosticCode::TypeMismatch,
+            ),
+            PropertyType::Exhausted => self.type_error(
+                span,
+                format!(
+                    "property lookup exceeds the {} generic-expansion limit",
+                    self.max_type_expansions
+                ),
+                DiagnosticCode::ResourceLimit,
+            ),
+            PropertyType::Indeterminate => {}
+        }
+    }
+
+    fn check_nested_readonly_mutations(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+        direct_operator_start: Option<usize>,
+    ) {
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let mut inspected = 0usize;
+        let operator_limit = self.max_type_expansions.saturating_mul(16).max(256);
+        let scan_limit = self.max_type_expansions.saturating_mul(32).max(64);
+        for (index, operator) in tokens.iter().enumerate() {
+            let delete_prefix = operator.is("delete")
+                && (index == 0
+                    || is_mutation_target_boundary(&tokens[index - 1])
+                    || matches!(tokens[index - 1].text.as_str(), "(" | "[" | "{"));
+            let prefix = operator.is("++") || operator.is("--") || delete_prefix;
+            let assignment = MEMBER_ASSIGNMENT_OPERATORS.contains(&operator.text.as_str());
+            if !prefix && !assignment || direct_operator_start == Some(operator.start) {
+                continue;
+            }
+            inspected += 1;
+            if inspected > operator_limit {
+                self.type_error(
+                    span,
+                    format!("member mutation scan exceeds its {operator_limit}-operator limit"),
+                    DiagnosticCode::ResourceLimit,
+                );
+                return;
+            }
+            for forward in [false, true] {
+                if forward && !prefix || !forward && delete_prefix {
+                    continue;
+                }
+                let target = if forward {
+                    forward_mutation_target(tokens, index, scan_limit)
+                } else {
+                    backward_mutation_target(tokens, index, scan_limit)
+                };
+                let target = match target {
+                    Ok(target) => target,
+                    Err(()) => {
+                        self.type_error(
+                            span,
+                            "member mutation scan exceeds its bounded token window".into(),
+                            DiagnosticCode::ResourceLimit,
+                        );
+                        return;
+                    }
+                };
+                let Some((receiver, property)) = member_access_target(target) else {
+                    continue;
+                };
+                let owner = self.infer_expression(receiver, scope);
+                let readonly = if let Some(property) = property {
+                    match property_type(
+                        &owner,
+                        property,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ) {
+                        PropertyType::Found { readonly, .. } => readonly,
+                        PropertyType::Exhausted => {
+                            self.type_error(
+                                span,
+                                format!(
+                                    "property lookup exceeds the {} generic-expansion limit",
+                                    self.max_type_expansions
+                                ),
+                                DiagnosticCode::ResourceLimit,
+                            );
+                            return;
+                        }
+                        PropertyType::Missing | PropertyType::Indeterminate => false,
+                    }
+                } else {
+                    match contains_readonly_member(
+                        &owner,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ) {
+                        Ok(readonly) => readonly,
+                        Err(()) => {
+                            self.type_error(
+                                span,
+                                format!(
+                                    "property lookup exceeds the {} generic-expansion limit",
+                                    self.max_type_expansions
+                                ),
+                                DiagnosticCode::ResourceLimit,
+                            );
+                            return;
+                        }
+                    }
+                };
+                if readonly {
+                    let mutation_span = SourceSpan::new(
+                        &span.module,
+                        target
+                            .first()
+                            .expect("member target is nonempty")
+                            .start
+                            .min(operator.start),
+                        target
+                            .last()
+                            .expect("member target is nonempty")
+                            .end
+                            .max(operator.end),
+                    );
+                    self.type_error(
+                        &mutation_span,
+                        format!(
+                            "cannot mutate readonly property{} inside an expression",
+                            property.map_or(String::new(), |name| format!(" `{name}`"))
+                        ),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                    break;
+                }
+            }
         }
     }
 
@@ -712,5 +1179,216 @@ impl<'a> ModuleChecker<'a> {
                 DiagnosticCode::TypeMismatch,
             );
         }
+    }
+}
+
+struct MemberMutation<'a> {
+    receiver: &'a [Token],
+    property: Option<&'a str>,
+    operator: &'a Token,
+    value: &'a [Token],
+}
+
+const MEMBER_ASSIGNMENT_OPERATORS: &[&str] = &[
+    "=", "+=", "-=", "*=", "/=", "%=", "**=", "<<=", ">>=", ">>>=", "&=", "|=", "^=", "&&=", "||=",
+    "??=",
+];
+
+/// Exposes only the final member in an expression. A computed key is known
+/// only when its string spelling needs no JavaScript escape decoding; all
+/// other keys remain dynamic rather than guessed.
+fn member_access_target(tokens: &[Token]) -> Option<(&[Token], Option<&str>)> {
+    let tokens = strip_outer_parentheses(tokens);
+    let len = tokens.len();
+    if len >= 3
+        && tokens[len - 2].is(".")
+        && matches!(
+            tokens[len - 1].kind,
+            TokenKind::Identifier | TokenKind::Keyword
+        )
+    {
+        return Some((&tokens[..len - 2], Some(&tokens[len - 1].text)));
+    }
+    if !tokens.last()?.is("]") {
+        return None;
+    }
+    let mut depth = 0usize;
+    for index in (0..len).rev() {
+        if tokens[index].is("]") {
+            depth += 1;
+        } else if tokens[index].is("[") {
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                if index == 0 {
+                    return None;
+                }
+                let property = match &tokens[index + 1..len - 1] {
+                    [literal] if literal.kind == TokenKind::String => {
+                        unescaped_property_name(&literal.text)
+                    }
+                    _ => None,
+                };
+                return Some((&tokens[..index], property));
+            }
+        }
+    }
+    None
+}
+
+fn member_mutation(tokens: &[Token]) -> Option<MemberMutation<'_>> {
+    let (target, operator, value) = match tokens {
+        [operator, target @ ..]
+            if operator.is("++") || operator.is("--") || operator.is("delete") =>
+        {
+            (target, operator, &[][..])
+        }
+        [target @ .., operator] if operator.is("++") || operator.is("--") => {
+            (target, operator, &[][..])
+        }
+        _ => top_level_binary_parts(tokens, MEMBER_ASSIGNMENT_OPERATORS, |_| false)?,
+    };
+    let target = top_level_binary_parts(target, MEMBER_ASSIGNMENT_OPERATORS, |_| false)
+        .map(|(_, _, last)| last)
+        .unwrap_or(target);
+    let (receiver, property) = member_access_target(target)?;
+    Some(MemberMutation {
+        receiver,
+        property,
+        operator,
+        value,
+    })
+}
+
+fn is_mutation_target_boundary(token: &Token) -> bool {
+    MEMBER_ASSIGNMENT_OPERATORS.contains(&token.text.as_str())
+        || matches!(
+            token.text.as_str(),
+            "," | ";"
+                | ":"
+                | "?"
+                | "+"
+                | "-"
+                | "*"
+                | "/"
+                | "%"
+                | "**"
+                | "&&"
+                | "||"
+                | "??"
+                | "&"
+                | "|"
+                | "^"
+                | "=="
+                | "==="
+                | "!="
+                | "!=="
+                | "<"
+                | ">"
+                | "<="
+                | ">="
+                | "<<"
+                | ">>"
+                | ">>>"
+                | "in"
+                | "instanceof"
+                | "=>"
+                | "++"
+                | "--"
+        )
+}
+
+fn backward_mutation_target(
+    tokens: &[Token],
+    operator_index: usize,
+    scan_limit: usize,
+) -> Result<&[Token], ()> {
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    for (steps, index) in (0..operator_index).rev().enumerate() {
+        if steps >= scan_limit {
+            return Err(());
+        }
+        let token = &tokens[index];
+        match token.text.as_str() {
+            ")" | "]" | "}" => depth += 1,
+            "(" | "[" | "{" if depth > 0 => depth -= 1,
+            "(" | "[" | "{" => {
+                start = index + 1;
+                break;
+            }
+            _ if depth == 0 && is_mutation_target_boundary(token) => {
+                start = index + 1;
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(&tokens[start..operator_index])
+}
+
+fn forward_mutation_target(
+    tokens: &[Token],
+    operator_index: usize,
+    scan_limit: usize,
+) -> Result<&[Token], ()> {
+    let mut depth = 0usize;
+    let mut end = tokens.len();
+    for (steps, index) in (operator_index + 1..tokens.len()).enumerate() {
+        if steps >= scan_limit {
+            return Err(());
+        }
+        let token = &tokens[index];
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" if depth > 0 => depth -= 1,
+            ")" | "]" | "}" => {
+                end = index;
+                break;
+            }
+            _ if depth == 0 && is_mutation_target_boundary(token) => {
+                end = index;
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(&tokens[operator_index + 1..end])
+}
+
+fn unescaped_property_name(text: &str) -> Option<&str> {
+    let value = text
+        .strip_prefix('\'')
+        .and_then(|value| value.strip_suffix('\''))
+        .or_else(|| {
+            text.strip_prefix('"')
+                .and_then(|value| value.strip_suffix('"'))
+        })?;
+    (!value.contains('\\')).then_some(value)
+}
+
+fn contains_readonly_member(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> Result<bool, ()> {
+    match value {
+        Type::Record(fields) => Ok(fields.iter().any(|field| field.readonly)),
+        Type::Named { .. } => {
+            match instantiate_named(value, aliases, visited, budget, "readonly property") {
+                Some(value) => contains_readonly_member(&value, aliases, visited, budget),
+                None if budget.exhausted => Err(()),
+                None => Ok(false),
+            }
+        }
+        Type::Union(parts) | Type::Intersection(parts) => {
+            for part in parts {
+                if contains_readonly_member(part, aliases, visited, budget)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        _ => Ok(false),
     }
 }

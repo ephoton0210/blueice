@@ -13,10 +13,11 @@
 //! selected at executor startup supplies its complete closed graph. Core copies
 //! that graph into the private protocol; neither this adapter nor the child
 //! fetches, resolves a URL/import map, reads a filesystem, or falls back to a
-//! second source loader. It installs only fixed copied JavaScript
-//! document-text/origin callbacks; it installs no document object, DOM/event
-//! object, IPC, storage, network, URL, resolver, or page-selected binding in
-//! the child realm.
+//! second source loader. Ordinary realms install only fixed copied JavaScript
+//! document-text/origin callbacks, with no document object, DOM/event object,
+//! storage, network, URL, resolver, or page-selected binding. A separate
+//! launcher-owner proof profile can install one boolean child-to-core DOM
+//! lookup callback; it exposes no core node ID or raw IPC to page code.
 
 use super::{
     contracts::{core_script_binding_contract, CoreScriptBindingContractLimits},
@@ -26,7 +27,31 @@ use super::{
 use crate::script::javascript::{
     AuthorizedJavaScriptModuleGraph, BlueTsPageExecutionReport, JavaScriptPageDebuggerBreakpoint,
     JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
-    JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint, JavaScriptPageExecutionReport,
+    JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
+    JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataContractDisplay,
+    JavaScriptPageDebuggerStaticMetadataContractId,
+    JavaScriptPageDebuggerStaticMetadataContractLocation,
+    JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
+    JavaScriptPageDebuggerStaticMetadataContractTarget,
+    JavaScriptPageDebuggerStaticMetadataContractValidation,
+    JavaScriptPageDebuggerStaticMetadataLoweringSummary,
+    JavaScriptPageDebuggerStaticMetadataSafePointSpan,
+    JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+    JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget,
+    JavaScriptPageDebuggerStaticMetadataSourceId,
+    JavaScriptPageDebuggerStaticMetadataSourceProvenance,
+    JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
+    JavaScriptPageDebuggerStaticMetadataSymbolContract,
+    JavaScriptPageDebuggerStaticMetadataSymbolContractTarget,
+    JavaScriptPageDebuggerStaticMetadataSymbolDisplay,
+    JavaScriptPageDebuggerStaticMetadataSymbolId,
+    JavaScriptPageDebuggerStaticMetadataSymbolLocation,
+    JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
+    JavaScriptPageDebuggerStaticMetadataSymbolTarget,
+    JavaScriptPageDebuggerStaticMetadataSymbolType,
+    JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
+    JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
+    JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageExecutionReport,
     PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
 };
 use crate::script::page_source_authorizer::AuthorizedPageScriptGraph;
@@ -34,23 +59,65 @@ pub use crate::script::page_source_authorizer::{
     AuthorizedOutOfProcessPageScriptGraph, OutOfProcessPageScriptSourceAuthorizationError,
     OutOfProcessPageScriptSourceAuthorizer, OutOfProcessPageScriptSourceRequest,
 };
+use crate::script::ScriptRequestReceiver;
 use crate::{Page, TabId, TabManager};
-use blueice_ipc::page_host::{
-    self, PageHostDebuggerExecutionState, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
-    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
-    PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
-    PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+use blueice_ipc::compiler::CompilerContractValue;
+use blueice_ipc::debugger::{
+    DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES, DEBUGGER_STATIC_METADATA_MAX_CONTRACTS,
+    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES,
+    DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
+    DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES,
+    DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
+use blueice_ipc::page_host::{
+    self, PageHostChildStats, PageHostDebuggerBlueTsMetadataSymbolContract,
+    PageHostDebuggerBlueTsMetadataSymbolLocation, PageHostDebuggerBlueTsMetadataSymbolType,
+    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
+    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
+    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
+    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource,
+    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+};
+use blueice_ipc::script::ScriptDocumentTarget;
 use blueice_net::canonical_http_origin;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::io;
+use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 /// The maximum number of source-free child-host results retained by core for
 /// the existing tab-addressed control-plane drain.
 const MAX_EXECUTION_REPORTS: usize = 128;
+/// One page-host execution receives a fixed total DOM-call allowance. The
+/// session still limits each polling turn independently in `script.rs`.
+const MAX_NESTED_SCRIPT_REQUESTS_PER_WAIT: usize = 1_024;
+/// The request write and reply read share this one deadline.
+const CHILD_DOCUMENT_REPLY_WAIT: Duration = Duration::from_secs(60);
+const CHILD_DOCUMENT_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+fn pump_script_requests_during_child_wait(
+    script_requests: &ScriptRequestReceiver,
+    tabs: &mut TabManager,
+    target: ScriptDocumentTarget,
+    remaining: &mut usize,
+) -> io::Result<()> {
+    if *remaining == 0 {
+        if script_requests.reject_one_pending_for_exhausted_wait() {
+            return Err(io::Error::other(
+                "page-host script DOM request budget exhausted",
+            ));
+        }
+        return Ok(());
+    }
+    let dispatched = script_requests.dispatch_pending_for_document(tabs, target, *remaining);
+    *remaining -= dispatched;
+    Ok(())
+}
 
 /// The fixed core-owned resolver identity for a one-source inline document
 /// graph. It is not a URL resolver and cannot be selected by page content.
@@ -60,6 +127,16 @@ const INLINE_CHILD_RESOLVER_FINGERPRINT: &str = "core-inline-page-host-v1";
 /// Keeping it disjoint from the child counter makes it mechanically apparent
 /// that a private child identifier cannot become a public protocol identity.
 const CORE_CHILD_DEBUGGER_ID_NAMESPACE_START: u64 = 1 << 63;
+
+/// Core-reminted public static-metadata identities remain numerically disjoint
+/// from public debugger program IDs and every child-private namespace. The
+/// distinct Rust types enforce the boundary; this range is defense in depth.
+const CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START: u64 = 1 << 62;
+
+/// A direct BlueTS program has at most one attached compiler debug record.
+/// Keep the public inventory bounded even if an untrusted child returns a
+/// malformed larger reply.
+const MAX_CHILD_DEBUGGER_STATIC_METADATA_PER_PROGRAM: usize = 1;
 
 /// A socket peer may need several session turns to discover a newly admitted
 /// program and arm its one root safe point, but it cannot turn that discovery
@@ -76,7 +153,7 @@ pub struct PageHostConnection {
 
 impl PageHostConnection {
     /// Connects to a launcher-created private child socket and completes the
-    /// v1 capability handshake. The caller must obtain both values from its
+    /// versioned capability handshake. The caller must obtain both values from its
     /// launcher owner; a page, frontend client, or script never receives this
     /// configuration.
     pub fn connect(socket_path: &Path, session_token: &str) -> io::Result<Self> {
@@ -103,6 +180,105 @@ impl PageHostConnection {
         page_host::write_page_host_request(&mut self.stream, &request)?;
         page_host::read_page_host_reply(&mut self.stream)
     }
+
+    /// Reads the child result on a transport-only worker while the calling
+    /// core session thread remains free to serve this document's DOM calls.
+    /// No page, VM, or `TabManager` reference crosses to the reader worker.
+    fn request_while_pumping_script(
+        &mut self,
+        request: PageHostRequest,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script_with_timeout(request, pump, CHILD_DOCUMENT_REPLY_WAIT)
+    }
+
+    fn request_while_pumping_script_with_timeout(
+        &mut self,
+        request: PageHostRequest,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+        wait: Duration,
+    ) -> io::Result<PageHostReply> {
+        if wait.is_zero() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "page-host wait must be nonzero",
+            ));
+        }
+        let deadline = Instant::now() + wait;
+        self.stream.set_write_timeout(Some(wait)).map_err(|error| {
+            io::Error::new(error.kind(), format!("page-host write timeout: {error}"))
+        })?;
+        if let Err(error) = page_host::write_page_host_request(&mut self.stream, &request) {
+            let _ = self.stream.shutdown(Shutdown::Both);
+            return Err(error);
+        }
+
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            let _ = self.stream.shutdown(Shutdown::Both);
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "page-host request write exceeded its fixed wait",
+            ));
+        }
+        let mut reader = match self.stream.try_clone() {
+            Ok(reader) => reader,
+            Err(error) => {
+                let _ = self.stream.shutdown(Shutdown::Both);
+                return Err(error);
+            }
+        };
+        if let Err(error) = reader.set_read_timeout(Some(remaining)) {
+            let _ = self.stream.shutdown(Shutdown::Both);
+            return Err(io::Error::new(
+                error.kind(),
+                format!("page-host read timeout: {error}"),
+            ));
+        }
+        let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+        let reader_task = thread::spawn(move || {
+            let _ = reply_sender.send(page_host::read_page_host_reply(&mut reader));
+        });
+        let result = loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "page-host reply exceeded its fixed wait",
+                ));
+            }
+            match reply_receiver.recv_timeout(remaining.min(CHILD_DOCUMENT_POLL_INTERVAL)) {
+                Ok(result) if Instant::now() <= deadline => break result,
+                Ok(_) => {
+                    break Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "page-host reply exceeded its fixed wait",
+                    ));
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    break Err(io::Error::new(
+                        io::ErrorKind::BrokenPipe,
+                        "page-host reply reader disconnected",
+                    ));
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+            }
+            if let Err(error) = pump() {
+                break Err(error);
+            }
+        };
+        if result.is_err() {
+            let _ = self.stream.shutdown(Shutdown::Both);
+        }
+        if reader_task.join().is_err() {
+            let _ = self.stream.shutdown(Shutdown::Both);
+            return Err(io::Error::other("page-host reply reader panicked"));
+        }
+        // The socket retains fixed read/write bounds for subsequent control
+        // operations. Some Unix platforms reject clearing SO_RCVTIMEO after
+        // the peer has closed immediately following a valid reply.
+        result
+    }
 }
 
 /// The small transport surface the lifecycle adapter needs. Keeping this
@@ -110,6 +286,27 @@ impl PageHostConnection {
 /// process boundary and lets focused tests use a recording child peer.
 pub trait PageHostClient {
     fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply>;
+    fn dispatch_click_with_script_pump(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _node_id: u64,
+        _pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement click dispatch",
+        ))
+    }
+    /// Test transports can keep a simple request/reply path. The real socket
+    /// transport overrides this to release the session thread for DOM calls.
+    fn synchronize_document_with_script_pump(
+        &mut self,
+        document: PageHostDocument,
+        _pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.synchronize_document(document)
+    }
     fn close_realm(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply>;
 
     /// Whether this transport peer implements the v5 exact breakpoint
@@ -134,6 +331,23 @@ pub trait PageHostClient {
         ))
     }
 
+    /// Returns one source-free aggregate accounting record for the exact
+    /// child-owned realm. The default reuses the legacy debugger liveness
+    /// query so focused transport doubles do not accidentally gain a new
+    /// capability; production's authenticated child always implements it.
+    fn realm_stats(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply> {
+        self.debugger_realm_stats(tab_id, document_generation)
+    }
+
+    /// An optional private child-wide actual-usage query. Test doubles deny
+    /// it by default; a page or debugger cannot invoke this transport.
+    fn child_stats(&mut self) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement child-wide accounting",
+        ))
+    }
+
     /// Lists private child program IDs for one exact realm.
     fn debugger_programs(
         &mut self,
@@ -143,6 +357,378 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement debugger locations",
+        ))
+    }
+
+    /// Whether this authenticated private peer implements the v7 BlueTS
+    /// static-metadata handle inventory. This says only that the child can
+    /// return source-free opaque handles; public debugger policy must still
+    /// separately authorize and re-mint any metadata-facing capability.
+    fn debugger_bluets_metadata_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this authenticated private peer supports a bounded summary for
+    /// an existing BlueTS metadata handle. It is deliberately separate from
+    /// the inventory signal so a transport double cannot gain a read surface
+    /// merely by implementing handle enumeration.
+    fn debugger_bluets_metadata_summary_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this peer supports the opaque-handle-bound aggregate summary
+    /// of a verified direct-lowering map. Per-entry source and bytecode data
+    /// remain private to the child.
+    fn debugger_bluets_metadata_lowering_summary_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this peer supports the metadata-handle-bound inventory of
+    /// compiler-minted source IDs. The inventory has no source detail.
+    fn debugger_bluets_metadata_sources_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this peer implements the separately authorized source-free
+    /// module-identity and SHA-256 provenance operation.
+    fn debugger_bluets_metadata_source_provenance_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this peer supports the metadata-handle-bound inventory of
+    /// compiler-minted type IDs. Type display remains a later operation.
+    fn debugger_bluets_metadata_types_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this peer implements a bounded display lookup for one exact
+    /// type ID. The core must still apply the independent public policy and
+    /// same-stream type-ID receipt before it may call this private operation.
+    fn debugger_bluets_metadata_type_display_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this peer supports the metadata-handle-bound inventory of
+    /// compiler-minted symbol IDs. Symbol record detail remains unavailable.
+    fn debugger_bluets_metadata_symbols_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this peer supports the metadata-handle-bound inventory of
+    /// compiler-minted contract IDs. Contract record detail remains unavailable.
+    fn debugger_bluets_metadata_contracts_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this peer implements a bounded display lookup for one exact
+    /// contract ID. The core must still apply independent public policy and
+    /// the same-stream contract-ID receipt before this private operation.
+    fn debugger_bluets_metadata_contract_display_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this peer implements a data-only validation against one exact
+    /// prior contract ID. The boolean result remains separately default-denied
+    /// by core and must not expose plans or structural failure detail.
+    fn debugger_bluets_metadata_contract_validation_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this peer implements a bounded display lookup for one exact
+    /// symbol ID. The core must still apply independent public policy and the
+    /// same-stream symbol-ID receipt before this private operation is called.
+    fn debugger_bluets_metadata_symbol_display_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this peer implements an exact source-text-free location lookup
+    /// for a prior symbol ID. The core separately requires parent, symbol, and
+    /// source receipts before it can call this private operation.
+    fn debugger_bluets_metadata_symbol_location_available(&self) -> bool {
+        false
+    }
+
+    fn debugger_bluets_metadata_contract_location_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this authenticated child can resolve one exact verified safe
+    /// point to a private BlueTS byte span. This does not advertise or grant a
+    /// public debugger source-map operation.
+    fn debugger_bluets_safe_point_span_available(&self) -> bool {
+        false
+    }
+
+    fn debugger_bluets_source_breakpoint_available(&self) -> bool {
+        false
+    }
+
+    fn debugger_bluets_source_span_step_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this private peer can verify an exact symbol/type pair.
+    fn debugger_bluets_metadata_symbol_type_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this private peer can verify an exact symbol/contract pair.
+    fn debugger_bluets_metadata_symbol_contract_available(&self) -> bool {
+        false
+    }
+
+    /// Lists newly child-minted opaque handles only for a live direct-BlueTS
+    /// attachment associated with one exact private program. The result has
+    /// no source/module/name/type/span/contract payload, and a transport
+    /// double must opt in rather than accidentally fabricating that inventory.
+    fn debugger_bluets_metadata(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger metadata inventory",
+        ))
+    }
+
+    /// Describes one already issued child-private metadata handle. The child
+    /// must bind it to the exact program supplied here and return no record
+    /// contents, source identity/text, span, symbol, type, contract, VM
+    /// object, or value.
+    fn debugger_bluets_metadata_summary(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger metadata summaries",
+        ))
+    }
+
+    fn debugger_bluets_metadata_lowering_summary(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger lowering summaries",
+        ))
+    }
+
+    fn debugger_bluets_metadata_sources(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger source inventories",
+        ))
+    }
+
+    fn debugger_bluets_metadata_source_provenance(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _source_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger source provenance",
+        ))
+    }
+
+    fn debugger_bluets_metadata_types(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger type inventories",
+        ))
+    }
+
+    fn debugger_bluets_metadata_type_display(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _type_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger type displays",
+        ))
+    }
+
+    fn debugger_bluets_metadata_symbols(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger symbol inventories",
+        ))
+    }
+
+    fn debugger_bluets_metadata_contracts(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger contract inventories",
+        ))
+    }
+
+    fn debugger_bluets_metadata_contract_display(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger contract displays",
+        ))
+    }
+
+    fn debugger_bluets_metadata_contract_validation(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _contract_id: u32,
+        _value: CompilerContractValue,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger contract validation",
+        ))
+    }
+
+    fn debugger_bluets_metadata_symbol_display(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _symbol_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger symbol displays",
+        ))
+    }
+
+    fn debugger_bluets_metadata_symbol_location(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _symbol_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger symbol locations",
+        ))
+    }
+
+    fn debugger_bluets_metadata_contract_location(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger contract locations",
+        ))
+    }
+
+    fn debugger_bluets_safe_point_span(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement exact BlueTS safe-point spans",
+        ))
+    }
+
+    fn debugger_bluets_source_breakpoint(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _source_id: u32,
+        _source_byte: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS source breakpoints",
+        ))
+    }
+
+    fn debugger_bluets_metadata_symbol_type(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _symbol_id: u32,
+        _type_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger symbol types",
+        ))
+    }
+
+    fn debugger_bluets_metadata_symbol_contract(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _symbol_id: u32,
+        _contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger symbol contracts",
         ))
     }
 
@@ -254,6 +840,36 @@ pub trait PageHostClient {
         ))
     }
 
+    fn debugger_stepping_available(&self) -> bool {
+        false
+    }
+
+    fn step_debugger_root_instruction(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger root stepping",
+        ))
+    }
+
+    fn step_debugger_bluets_source_span(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _source_id: u32,
+        _safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS source-span stepping",
+        ))
+    }
+
     fn advance_debugger_execution(
         &mut self,
         _tab_id: u64,
@@ -264,11 +880,45 @@ pub trait PageHostClient {
             "page-host child does not implement debugger execution control",
         ))
     }
+
+    fn advance_debugger_execution_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        _pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.advance_debugger_execution(tab_id, document_generation)
+    }
 }
 
 impl PageHostClient for PageHostConnection {
     fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply> {
         self.request(PageHostRequest::SynchronizeDocument { document })
+    }
+
+    fn synchronize_document_with_script_pump(
+        &mut self,
+        document: PageHostDocument,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script(PageHostRequest::SynchronizeDocument { document }, pump)
+    }
+
+    fn dispatch_click_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        node_id: u64,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script(
+            PageHostRequest::DispatchClick {
+                tab_id,
+                document_generation,
+                node_id,
+            },
+            pump,
+        )
     }
 
     fn close_realm(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply> {
@@ -279,6 +929,78 @@ impl PageHostClient for PageHostConnection {
     }
 
     fn debugger_breakpoint_configuration_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_summary_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_lowering_summary_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_sources_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_source_provenance_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_types_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_type_display_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_symbols_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_contracts_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_contract_display_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_contract_validation_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_symbol_display_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_symbol_location_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_contract_location_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_safe_point_span_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_source_breakpoint_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_symbol_type_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_symbol_contract_available(&self) -> bool {
         true
     }
 
@@ -293,6 +1015,10 @@ impl PageHostClient for PageHostConnection {
         })
     }
 
+    fn child_stats(&mut self) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::GetChildStats)
+    }
+
     fn debugger_programs(
         &mut self,
         tab_id: u64,
@@ -302,6 +1028,310 @@ impl PageHostClient for PageHostConnection {
             tab_id,
             document_generation,
         })
+    }
+
+    fn debugger_bluets_metadata(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id,
+            document_generation,
+            program,
+        })
+    }
+
+    fn debugger_bluets_metadata_summary(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsMetadata {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+        })
+    }
+
+    fn debugger_bluets_metadata_lowering_summary(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        self.request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataLoweringSummary {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+            },
+        )
+    }
+
+    fn debugger_bluets_metadata_sources(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ListDebuggerBlueTsMetadataSources {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+        })
+    }
+
+    fn debugger_bluets_metadata_source_provenance(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsMetadataSource {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            source_id,
+        })
+    }
+
+    fn debugger_bluets_metadata_types(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ListDebuggerBlueTsMetadataTypes {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+        })
+    }
+
+    fn debugger_bluets_metadata_type_display(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        type_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsMetadataType {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            type_id,
+        })
+    }
+
+    fn debugger_bluets_metadata_symbols(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ListDebuggerBlueTsMetadataSymbols {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+        })
+    }
+
+    fn debugger_bluets_metadata_contracts(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ListDebuggerBlueTsMetadataContracts {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+        })
+    }
+
+    fn debugger_bluets_metadata_contract_display(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsMetadataContract {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            contract_id,
+        })
+    }
+
+    fn debugger_bluets_metadata_contract_validation(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+        value: CompilerContractValue,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ValidateDebuggerBlueTsMetadataContract {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            contract_id,
+            value,
+        })
+    }
+
+    fn debugger_bluets_metadata_symbol_display(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbol {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            symbol_id,
+        })
+    }
+
+    fn debugger_bluets_metadata_symbol_location(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                symbol_id,
+            },
+        )
+    }
+
+    fn debugger_bluets_metadata_contract_location(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                contract_id,
+            },
+        )
+    }
+
+    fn debugger_bluets_safe_point_span(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+            tab_id,
+            document_generation,
+            metadata,
+            safe_point,
+        })
+    }
+
+    fn debugger_bluets_source_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        source_byte: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            source_id,
+            source_byte,
+        })
+    }
+
+    fn debugger_bluets_metadata_symbol_type(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+        type_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolType {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            symbol_id,
+            type_id,
+        })
+    }
+
+    fn debugger_bluets_metadata_symbol_contract(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+        contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                symbol_id,
+                contract_id,
+            },
+        )
     }
 
     fn debugger_safe_points(
@@ -410,6 +1440,44 @@ impl PageHostClient for PageHostConnection {
         })
     }
 
+    fn debugger_stepping_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_source_span_step_available(&self) -> bool {
+        true
+    }
+
+    fn step_debugger_root_instruction(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::StepDebuggerRootInstruction {
+            tab_id,
+            document_generation,
+            program,
+        })
+    }
+
+    fn step_debugger_bluets_source_span(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::StepDebuggerBlueTsSourceSpan {
+            tab_id,
+            document_generation,
+            metadata,
+            source_id,
+            safe_point,
+        })
+    }
+
     fn advance_debugger_execution(
         &mut self,
         tab_id: u64,
@@ -420,12 +1488,42 @@ impl PageHostClient for PageHostConnection {
             document_generation,
         })
     }
+
+    fn advance_debugger_execution_with_script_pump(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<PageHostReply> {
+        self.request_while_pumping_script(
+            PageHostRequest::AdvanceDebuggerExecution {
+                tab_id,
+                document_generation,
+            },
+            pump,
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LiveDocument {
     document_generation: u64,
     origin: String,
+}
+
+/// Everything derived from a borrowed `Page` before the core enters the
+/// reentrant child wait. Keeping this owned makes it possible to release the
+/// immutable page borrow while the session thread mutates that same document
+/// in response to an authenticated child DOM call.
+struct PreparedDocumentSync {
+    document: PageHostDocument,
+    outcome: PendingDocumentOutcome,
+}
+
+struct PendingDocumentOutcome {
+    local_reports: Vec<JavaScriptPageExecutionReport>,
+    local_blue_ts_reports: Vec<BlueTsPageExecutionReport>,
+    inline_scripts: Vec<(u32, PageHostScriptLanguage, PageHostScriptKind)>,
 }
 
 /// Explicit core-owned lifecycle owner for one authenticated child host.
@@ -448,12 +1546,23 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
     /// budget with every other OOP debugger lifetime record.
     debugger_execution_deferrals: BTreeMap<TabId, DebuggerExecutionDeferral>,
     live_documents: BTreeMap<TabId, LiveDocument>,
+    /// Source-free child accounting retained only by the core for the exact
+    /// live realm. A page, frontend, debugger, and MCP client receive neither
+    /// this record nor a handle that could request it.
+    realm_stats: BTreeMap<TabId, PageHostRealmStats>,
     /// Core-minted public debugger identities keyed by the child-private
     /// program IDs they represent. Child IDs are transport keys only and can
     /// never accidentally become public protocol IDs.
     debugger_programs: BTreeMap<TabId, BTreeMap<PageHostDebuggerProgram, CoreDebuggerProgram>>,
     next_debugger_program_handle: u64,
     next_debugger_program_generation: u64,
+    /// Public inventory identities keyed by child-private metadata handles.
+    /// The map is discarded with every document replacement or close and a
+    /// public debugger peer never receives the child key.
+    debugger_static_metadata:
+        BTreeMap<TabId, BTreeMap<PageHostDebuggerMetadataHandle, CoreDebuggerStaticMetadata>>,
+    next_debugger_metadata_handle: u64,
+    next_debugger_metadata_generation: u64,
     reports: VecDeque<JavaScriptPageExecutionReport>,
     blue_ts_reports: VecDeque<BlueTsPageExecutionReport>,
 }
@@ -462,6 +1571,13 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
 struct CoreDebuggerProgram {
     program_handle: u64,
     program_generation: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CoreDebuggerStaticMetadata {
+    program: PageHostDebuggerProgram,
+    metadata_handle: u64,
+    metadata_generation: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -521,9 +1637,13 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             hold_pending_debugger_execution_once: false,
             debugger_execution_deferrals: BTreeMap::new(),
             live_documents: BTreeMap::new(),
+            realm_stats: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             next_debugger_program_handle: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
             next_debugger_program_generation: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
+            debugger_static_metadata: BTreeMap::new(),
+            next_debugger_metadata_handle: CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
+            next_debugger_metadata_generation: CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
             reports: VecDeque::new(),
             blue_ts_reports: VecDeque::new(),
         }
@@ -564,9 +1684,13 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             hold_pending_debugger_execution_once: false,
             debugger_execution_deferrals: BTreeMap::new(),
             live_documents: BTreeMap::new(),
+            realm_stats: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             next_debugger_program_handle: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
             next_debugger_program_generation: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
+            debugger_static_metadata: BTreeMap::new(),
+            next_debugger_metadata_handle: CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
+            next_debugger_metadata_generation: CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
             reports: VecDeque::new(),
             blue_ts_reports: VecDeque::new(),
         }
@@ -614,9 +1738,43 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
     pub fn into_child(self) -> C {
         self.child
     }
+
+    /// Returns the aggregate accounting cached for this tab's exact current
+    /// child realm. The record is core-only and is discarded before a caller
+    /// can observe it after document replacement, tab close, or a malformed
+    /// child response.
+    pub fn realm_stats(&self, tab_id: TabId) -> Option<&PageHostRealmStats> {
+        let live_document = self.live_documents.get(&tab_id)?;
+        let stats = self.realm_stats.get(&tab_id)?;
+        (stats.document_generation == live_document.document_generation).then_some(stats)
+    }
 }
 
 impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
+    /// Reads the authenticated child's actual live-realm usage as one
+    /// core-only snapshot. Only realms with a validated per-realm accounting
+    /// receipt count as live: the document table also retains failed attempts
+    /// to prevent retries. This does not replace the owner's conservative
+    /// reservation policy or expose accounting through public IPC.
+    pub fn child_stats(&mut self) -> io::Result<PageHostChildStats> {
+        let reply = self.child.child_stats()?;
+        let PageHostReply::ChildStats(stats) = reply else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "page-host child returned the wrong accounting reply",
+            ));
+        };
+        if !stats.is_well_formed()
+            || usize::try_from(stats.realm_count).ok() != Some(self.realm_stats.len())
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "page-host child returned invalid aggregate accounting",
+            ));
+        }
+        Ok(stats)
+    }
+
     /// Synchronizes loaded tabs to the child. A page failure becomes only a
     /// bounded source-free execution record; a transport failure also leaves
     /// the core render/session loop alive and is reported without exposing a
@@ -629,7 +1787,9 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         if self.native_debugger_execution_control
             && !std::mem::take(&mut self.hold_pending_debugger_execution_once)
         {
-            self.advance_debugger_executions();
+            self.advance_debugger_executions(|child, tab_id, generation| {
+                child.advance_debugger_execution(tab_id.as_u64(), generation)
+            });
         }
         for tab_id in tabs.ids() {
             let Some(page) = tabs.get(tab_id) else {
@@ -643,6 +1803,76 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 continue;
             }
             self.synchronize_document(tab_id, page, identity);
+        }
+        Ok(())
+    }
+
+    /// Core-session variant for the supervised child. Prepare each immutable
+    /// source graph while borrowing the page, release that borrow, then keep
+    /// the same session thread available for exact-document DOM requests
+    /// until the child returns its page-host acknowledgement.
+    pub fn synchronize_and_execute_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        script_requests: &ScriptRequestReceiver,
+    ) -> io::Result<()> {
+        self.close_removed_tabs(tabs);
+        if self.native_debugger_execution_control
+            && !std::mem::take(&mut self.hold_pending_debugger_execution_once)
+        {
+            self.advance_debugger_executions(|child, tab_id, generation| {
+                let target = ScriptDocumentTarget {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: generation,
+                };
+                let mut remaining = MAX_NESTED_SCRIPT_REQUESTS_PER_WAIT;
+                let mut pump = || {
+                    pump_script_requests_during_child_wait(
+                        script_requests,
+                        tabs,
+                        target,
+                        &mut remaining,
+                    )
+                };
+                child.advance_debugger_execution_with_script_pump(
+                    tab_id.as_u64(),
+                    generation,
+                    &mut pump,
+                )
+            });
+        }
+        let tab_ids: Vec<_> = tabs.ids().collect();
+        for tab_id in tab_ids {
+            let Some(page) = tabs.get(tab_id) else {
+                continue;
+            };
+            let Some(identity) = live_page_identity(page) else {
+                self.close_page(tab_id);
+                continue;
+            };
+            if self.live_documents.get(&tab_id) == Some(&identity) {
+                continue;
+            }
+            let Some(prepared) = self.prepare_document(tab_id, page, &identity) else {
+                continue;
+            };
+            let target = ScriptDocumentTarget {
+                tab_id: tab_id.as_u64(),
+                document_generation: identity.document_generation,
+            };
+            let mut remaining = MAX_NESTED_SCRIPT_REQUESTS_PER_WAIT;
+            let mut pump = || {
+                pump_script_requests_during_child_wait(
+                    script_requests,
+                    tabs,
+                    target,
+                    &mut remaining,
+                )
+            };
+            let result = self
+                .child
+                .synchronize_document_with_script_pump(prepared.document, &mut pump);
+            self.finish_document(tab_id, identity, prepared.outcome, result);
         }
         Ok(())
     }
@@ -666,12 +1896,49 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 .close_realm(tab_id.as_u64(), document.document_generation);
         }
         self.debugger_execution_deferrals.remove(&tab_id);
+        self.realm_stats.remove(&tab_id);
         self.debugger_programs.remove(&tab_id);
+        self.debugger_static_metadata.remove(&tab_id);
+    }
+
+    /// A failed synchronization may still have installed the candidate realm
+    /// before the child sent a malformed acknowledgement. Close both the
+    /// previously trusted generation and the attempted successor: a child
+    /// with exact-generation close semantics will reject the stale request
+    /// and discard whichever generation is actually live.
+    fn close_failed_document(&mut self, tab_id: TabId, candidate_generation: u64) {
+        let predecessor_generation = self
+            .live_documents
+            .get(&tab_id)
+            .map(|document| document.document_generation);
+        self.close_page(tab_id);
+        if predecessor_generation != Some(candidate_generation) {
+            let _ = self
+                .child
+                .close_realm(tab_id.as_u64(), candidate_generation);
+        }
     }
 
     fn synchronize_document(&mut self, tab_id: TabId, page: &Page, identity: LiveDocument) {
+        let Some(prepared) = self.prepare_document(tab_id, page, &identity) else {
+            return;
+        };
+        let result = self.child.synchronize_document(prepared.document);
+        self.finish_document(tab_id, identity, prepared.outcome, result);
+    }
+
+    fn prepare_document(
+        &mut self,
+        tab_id: TabId,
+        page: &Page,
+        identity: &LiveDocument,
+    ) -> Option<PreparedDocumentSync> {
+        // A successor can never inherit accounting from its predecessor while
+        // its child acknowledgement is still in flight.
+        self.realm_stats.remove(&tab_id);
+        self.debugger_static_metadata.remove(&tab_id);
         let declarations = page.combined_page_script_declarations();
-        let snapshot = match core_document_snapshot(page, &identity) {
+        let snapshot = match core_document_snapshot(page, identity) {
             Ok(snapshot) => snapshot,
             Err(()) => {
                 // Do not leave the prior generation runnable after the core
@@ -688,16 +1955,17 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                     self.push_blue_ts_report(report);
                 }
                 self.debugger_programs.remove(&tab_id);
-                self.live_documents.insert(tab_id, identity);
-                return;
+                self.debugger_static_metadata.remove(&tab_id);
+                self.live_documents.insert(tab_id, identity.clone());
+                return None;
             }
         };
         let document_url = page
             .url()
             .expect("a page with a live child identity always has a URL");
-        let (document, mut local_reports, mut local_blue_ts_reports) = authorized_document(
+        let (document, local_reports, local_blue_ts_reports) = authorized_document(
             tab_id,
-            &identity,
+            identity,
             snapshot,
             document_url,
             declarations,
@@ -709,7 +1977,28 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             .iter()
             .map(|script| (script.ordinal, script.language, script.kind))
             .collect();
-        let result = self.child.synchronize_document(document);
+        Some(PreparedDocumentSync {
+            document,
+            outcome: PendingDocumentOutcome {
+                local_reports,
+                local_blue_ts_reports,
+                inline_scripts,
+            },
+        })
+    }
+
+    fn finish_document(
+        &mut self,
+        tab_id: TabId,
+        identity: LiveDocument,
+        outcome: PendingDocumentOutcome,
+        result: io::Result<PageHostReply>,
+    ) {
+        let PendingDocumentOutcome {
+            mut local_reports,
+            mut local_blue_ts_reports,
+            inline_scripts,
+        } = outcome;
         let mut child_synchronized = false;
         match result {
             Ok(PageHostReply::Synchronized {
@@ -730,10 +2019,10 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             }
             Ok(PageHostReply::Error { code, .. }) => {
                 // A child-side request rejection must not leave an old realm
-                // runnable under a replaced core document. Best-effort close
-                // uses the old generation, which the child rejects if a
-                // successor did in fact activate.
-                self.close_page(tab_id);
+                // runnable under a replaced core document. The child may
+                // also have activated the successor before returning an
+                // error, so both exact generations must be attempted.
+                self.close_failed_document(tab_id, identity.document_generation);
                 let category = child_error_category(code);
                 for (ordinal, language, kind) in inline_scripts {
                     push_child_failure_report(
@@ -752,7 +2041,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             // debugger deferral budget or retain a public/private program
             // mapping that could later be mistaken for this replacement.
             Ok(_) | Err(_) => {
-                self.close_page(tab_id);
+                self.close_failed_document(tab_id, identity.document_generation);
                 for (ordinal, language, kind) in inline_scripts {
                     push_child_failure_report(
                         (&mut local_reports, &mut local_blue_ts_reports),
@@ -765,6 +2054,15 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                     );
                 }
             }
+        }
+        if child_synchronized && !self.cache_realm_stats(tab_id, &identity) {
+            // A successful document acknowledgement without a matching
+            // aggregate record is not a core-owned live realm. Best-effort
+            // close names the newly acknowledged tuple, never its predecessor.
+            let _ = self
+                .child
+                .close_realm(tab_id.as_u64(), identity.document_generation);
+            child_synchronized = false;
         }
         local_reports.sort_by_key(report_ordinal);
         local_blue_ts_reports.sort_by_key(blue_ts_report_ordinal);
@@ -786,7 +2084,34 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             self.debugger_execution_deferrals.remove(&tab_id);
         }
         self.debugger_programs.remove(&tab_id);
+        self.debugger_static_metadata.remove(&tab_id);
         self.live_documents.insert(tab_id, identity);
+    }
+
+    /// Queries and validates only the aggregate record for the exact realm
+    /// just acknowledged by the child. A test transport that does not opt in
+    /// to stats remains usable, but any production reply/error other than that
+    /// explicit unsupported default clears the cache and causes the new realm
+    /// to be closed rather than retaining unverified accounting.
+    fn cache_realm_stats(&mut self, tab_id: TabId, identity: &LiveDocument) -> bool {
+        match self
+            .child
+            .realm_stats(tab_id.as_u64(), identity.document_generation)
+        {
+            Ok(PageHostReply::RealmStats(stats))
+                if stats.tab_id == tab_id.as_u64()
+                    && stats.document_generation == identity.document_generation
+                    && stats.is_well_formed() =>
+            {
+                self.realm_stats.insert(tab_id, stats);
+                true
+            }
+            Err(error) if error.kind() == io::ErrorKind::Unsupported => true,
+            Ok(_) | Err(_) => {
+                self.realm_stats.remove(&tab_id);
+                false
+            }
+        }
     }
 
     fn push_report(&mut self, report: JavaScriptPageExecutionReport) {
@@ -803,16 +2128,17 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         self.blue_ts_reports.push_back(report);
     }
 
-    fn advance_debugger_executions(&mut self) {
+    fn advance_debugger_executions(
+        &mut self,
+        mut advance: impl FnMut(&mut C, TabId, u64) -> io::Result<PageHostReply>,
+    ) {
         let documents: Vec<_> = self
             .live_documents
             .iter()
             .map(|(&tab_id, document)| (tab_id, document.document_generation))
             .collect();
         for (tab_id, document_generation) in documents {
-            let reply = self
-                .child
-                .advance_debugger_execution(tab_id.as_u64(), document_generation);
+            let reply = advance(&mut self.child, tab_id, document_generation);
             let Ok(PageHostReply::DebuggerExecutionAdvanced {
                 tab_id: reply_tab_id,
                 document_generation: reply_generation,
@@ -842,6 +2168,65 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
 impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExecutor<C> {
     fn synchronize_and_execute(&mut self, tabs: &TabManager) -> io::Result<()> {
         Self::synchronize_and_execute(self, tabs)
+    }
+
+    fn synchronize_and_execute_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<()> {
+        match script_requests {
+            Some(script_requests) => {
+                Self::synchronize_and_execute_serving_script(self, tabs, script_requests)
+            }
+            None => Self::synchronize_and_execute(self, tabs),
+        }
+    }
+
+    fn dispatch_click_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        tab_id: TabId,
+        node_id: u64,
+        script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<Option<bool>> {
+        let Some(page) = tabs.get(tab_id) else {
+            return Ok(None);
+        };
+        let Some(identity) = live_page_identity(page) else {
+            return Ok(None);
+        };
+        if self.live_documents.get(&tab_id) != Some(&identity) {
+            return Ok(None);
+        }
+        let Some(script_requests) = script_requests else {
+            return Ok(None);
+        };
+        let target = ScriptDocumentTarget {
+            tab_id: tab_id.as_u64(),
+            document_generation: identity.document_generation,
+        };
+        let mut remaining = MAX_NESTED_SCRIPT_REQUESTS_PER_WAIT;
+        let mut pump = || {
+            pump_script_requests_during_child_wait(script_requests, tabs, target, &mut remaining)
+        };
+        match self.child.dispatch_click_with_script_pump(
+            target.tab_id,
+            target.document_generation,
+            node_id,
+            &mut pump,
+        )? {
+            PageHostReply::ClickDispatched {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                default_prevented,
+            } if reply_tab_id == target.tab_id
+                && reply_generation == target.document_generation =>
+            {
+                Ok(Some(default_prevented))
+            }
+            _ => Err(io::Error::other("page-host click response invalid")),
+        }
     }
 
     fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport> {
@@ -885,13 +2270,22 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         if !self.has_core_live_document(tab_id, document_generation) {
             return false;
         }
-        matches!(
+        let child_has_live_realm = matches!(
             self.child
                 .debugger_realm_stats(tab_id.as_u64(), document_generation),
             Ok(PageHostReply::RealmStats(stats))
                 if stats.tab_id == tab_id.as_u64()
                     && stats.document_generation == document_generation
-        )
+                    && stats.is_well_formed()
+        );
+        if !child_has_live_realm {
+            // A later transport/error response is not proof that the cached
+            // accounting still names a child-owned realm. Drop it immediately;
+            // the ordinary lifecycle owner will close the realm if it gets a
+            // later synchronization or execution-control failure.
+            self.realm_stats.remove(&tab_id);
+        }
+        child_has_live_realm
     }
 
     fn max_debugger_safe_points_per_program(&self) -> usize {
@@ -906,6 +2300,126 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
     fn max_debugger_breakpoints_per_realm(&self) -> usize {
         usize::try_from(PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
             .expect("page-host debugger breakpoint cap fits usize")
+    }
+
+    fn debugger_static_metadata_inventory_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+    }
+
+    fn debugger_static_metadata_summary_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_summary_available()
+    }
+
+    fn debugger_static_metadata_lowering_summary_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self
+                .child
+                .debugger_bluets_metadata_lowering_summary_available()
+    }
+
+    fn debugger_static_metadata_source_inventory_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_sources_available()
+    }
+
+    fn debugger_static_metadata_source_provenance_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_sources_available()
+            && self
+                .child
+                .debugger_bluets_metadata_source_provenance_available()
+    }
+
+    fn debugger_static_metadata_type_inventory_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_types_available()
+    }
+
+    fn debugger_static_metadata_type_display_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_types_available()
+            && self.child.debugger_bluets_metadata_type_display_available()
+    }
+
+    fn debugger_static_metadata_symbol_inventory_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_symbols_available()
+    }
+
+    fn debugger_static_metadata_symbol_location_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_sources_available()
+            && self.child.debugger_bluets_metadata_symbols_available()
+            && self
+                .child
+                .debugger_bluets_metadata_symbol_location_available()
+    }
+
+    fn debugger_static_metadata_safe_point_span_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_sources_available()
+            && self.child.debugger_bluets_safe_point_span_available()
+    }
+
+    fn debugger_static_metadata_source_breakpoint_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_sources_available()
+            && self.child.debugger_bluets_source_breakpoint_available()
+    }
+
+    fn debugger_static_metadata_contract_location_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_sources_available()
+            && self.child.debugger_bluets_metadata_contracts_available()
+            && self
+                .child
+                .debugger_bluets_metadata_contract_location_available()
+    }
+
+    fn debugger_static_metadata_symbol_type_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_symbols_available()
+            && self.child.debugger_bluets_metadata_types_available()
+            && self.child.debugger_bluets_metadata_symbol_type_available()
+    }
+
+    fn debugger_static_metadata_symbol_contract_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_symbols_available()
+            && self.child.debugger_bluets_metadata_contracts_available()
+            && self
+                .child
+                .debugger_bluets_metadata_symbol_contract_available()
+    }
+
+    fn debugger_static_metadata_contract_inventory_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_contracts_available()
+    }
+
+    fn debugger_static_metadata_contract_display_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_contracts_available()
+            && self
+                .child
+                .debugger_bluets_metadata_contract_display_available()
+    }
+
+    fn debugger_static_metadata_contract_validation_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_contracts_available()
+            && self
+                .child
+                .debugger_bluets_metadata_contract_validation_available()
+    }
+
+    fn debugger_static_metadata_symbol_display_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_symbols_available()
+            && self
+                .child
+                .debugger_bluets_metadata_symbol_display_available()
     }
 
     fn debugger_programs(
@@ -937,6 +2451,11 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         }
 
         let previous = self.debugger_programs.remove(&tab_id).unwrap_or_default();
+        // Metadata identities are only valid together with the exact current
+        // child-to-core program mapping. A fresh program discovery invalidates
+        // all prior inventory IDs before a subsequent source-free lookup can
+        // remint them, even when the child happened to retain a numeric ID.
+        self.debugger_static_metadata.remove(&tab_id);
         let mut current = BTreeMap::new();
         for child_program in programs {
             let public = match previous.get(&child_program).copied() {
@@ -954,6 +2473,1130 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             .collect();
         self.debugger_programs.insert(tab_id, current);
         Ok(programs)
+    }
+
+    fn debugger_static_metadata(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadata>, JavaScriptPageDebuggerError> {
+        if !self.debugger_static_metadata_inventory_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata(tab_id.as_u64(), document_generation, child_program)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadata {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata.len() > MAX_CHILD_DEBUGGER_STATIC_METADATA_PER_PROGRAM
+            || metadata.iter().any(|metadata| !metadata.is_well_formed())
+            || has_duplicate_child_static_metadata(&metadata)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+
+        let previous = self
+            .debugger_static_metadata
+            .remove(&tab_id)
+            .unwrap_or_default();
+        let mut current = BTreeMap::new();
+        let mut public_metadata = Vec::with_capacity(metadata.len());
+        for child_metadata in metadata {
+            let public = match previous.get(&child_metadata).copied() {
+                Some(public) if public.program == child_program => public,
+                _ => self.mint_core_debugger_static_metadata(child_program)?,
+            };
+            current.insert(child_metadata, public);
+            public_metadata.push(JavaScriptPageDebuggerStaticMetadata {
+                metadata_handle: public.metadata_handle,
+                metadata_generation: public.metadata_generation,
+            });
+        }
+        self.debugger_static_metadata.insert(tab_id, current);
+        Ok(public_metadata)
+    }
+
+    fn debugger_static_metadata_summary(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        metadata_handle: u64,
+        metadata_generation: u64,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSummary, JavaScriptPageDebuggerError> {
+        if !self.debugger_static_metadata_summary_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            metadata_handle,
+            metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_summary(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataSummary {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            summary,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataSummary {
+            language_version: summary.language_version,
+            compiler_options_hash: summary.compiler_options_hash,
+            source_count: summary.source_count,
+            type_count: summary.type_count,
+            symbol_count: summary.symbol_count,
+            contract_count: summary.contract_count,
+        })
+    }
+
+    fn debugger_static_metadata_lowering_summary(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        metadata_handle: u64,
+        metadata_generation: u64,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataLoweringSummary, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_lowering_summary_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            metadata_handle,
+            metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_lowering_summary(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataLoweringSummary {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            summary,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || summary.safe_point_map_abi.is_empty()
+            || summary.program_abi.is_empty()
+            || summary.source_set_hash.is_empty()
+            || summary.safe_point_map_abi.len()
+                > blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_LOWERING_ABI_MAX_BYTES
+            || summary.program_abi.len()
+                > blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_LOWERING_ABI_MAX_BYTES
+            || summary.source_set_hash.len()
+                > blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_LOWERING_SOURCE_SET_HASH_MAX_BYTES
+            || summary.bound_safe_point_count
+                > blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_MAX_BOUND_SAFE_POINTS
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataLoweringSummary {
+            safe_point_map_abi: summary.safe_point_map_abi,
+            program_abi: summary.program_abi,
+            source_set_hash: summary.source_set_hash,
+            bound_safe_point_count: summary.bound_safe_point_count,
+        })
+    }
+
+    fn debugger_static_metadata_sources(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        metadata_handle: u64,
+        metadata_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataSourceId>, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_source_inventory_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            metadata_handle,
+            metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_sources(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataSources {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            sources,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || sources.len() > usize::try_from(DEBUGGER_STATIC_METADATA_MAX_SOURCES).unwrap()
+            || has_duplicate_child_static_metadata_source_ids(&sources)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(sources
+            .into_iter()
+            .map(|source| JavaScriptPageDebuggerStaticMetadataSourceId {
+                source_id: source.source_id,
+            })
+            .collect())
+    }
+
+    fn debugger_static_metadata_source_provenance(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSourceTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSourceProvenance, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_source_provenance_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_source_provenance(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.source_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataSourceProvenance {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            provenance,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || provenance.source_id != target.source_id
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataSourceProvenance {
+            source_id: provenance.source_id,
+            module: provenance.module,
+            content_hash: provenance.content_hash,
+        })
+    }
+
+    fn debugger_static_metadata_types(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        metadata_handle: u64,
+        metadata_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataTypeId>, JavaScriptPageDebuggerError> {
+        if !self.debugger_static_metadata_type_inventory_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            metadata_handle,
+            metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_types(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataTypes {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            types,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || types.len() > usize::try_from(DEBUGGER_STATIC_METADATA_MAX_TYPES).unwrap()
+            || has_duplicate_child_static_metadata_type_ids(&types)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(types
+            .into_iter()
+            .map(|static_type| JavaScriptPageDebuggerStaticMetadataTypeId {
+                type_id: static_type.type_id,
+            })
+            .collect())
+    }
+
+    fn debugger_static_metadata_type_display(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataTypeTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerError> {
+        if !self.debugger_static_metadata_type_display_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_type_display(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.type_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataType {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            static_type,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || static_type.type_id != target.type_id
+            || static_type.display.is_empty()
+            || static_type.display.len() > DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataTypeDisplay {
+            type_id: static_type.type_id,
+            display: static_type.display,
+        })
+    }
+
+    fn debugger_static_metadata_symbols(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        metadata_handle: u64,
+        metadata_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataSymbolId>, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_symbol_inventory_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            metadata_handle,
+            metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_symbols(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataSymbols {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            symbols,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || symbols.len() > usize::try_from(DEBUGGER_STATIC_METADATA_MAX_SYMBOLS).unwrap()
+            || has_duplicate_child_static_metadata_symbol_ids(&symbols)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(symbols
+            .into_iter()
+            .map(|symbol| JavaScriptPageDebuggerStaticMetadataSymbolId {
+                symbol_id: symbol.symbol_id,
+            })
+            .collect())
+    }
+
+    fn debugger_static_metadata_contracts(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        metadata_handle: u64,
+        metadata_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataContractId>, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_contract_inventory_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            metadata_handle,
+            metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_contracts(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataContracts {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            contracts,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || contracts.len() > usize::try_from(DEBUGGER_STATIC_METADATA_MAX_CONTRACTS).unwrap()
+            || has_duplicate_child_static_metadata_contract_ids(&contracts)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(contracts
+            .into_iter()
+            .map(|contract| JavaScriptPageDebuggerStaticMetadataContractId {
+                contract_id: contract.contract_id,
+            })
+            .collect())
+    }
+
+    fn debugger_static_metadata_contract_display(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataContractTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataContractDisplay, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_contract_display_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_contract_display(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.contract_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataContract {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            contract,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || contract.contract_id != target.contract_id
+            || contract.display.is_empty()
+            || contract.display.len() > DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataContractDisplay {
+            contract_id: contract.contract_id,
+            display: contract.display,
+            root_kind: contract.root_kind,
+        })
+    }
+
+    fn debugger_static_metadata_contract_validation(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataContractTarget,
+        value: CompilerContractValue,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataContractValidation, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_contract_validation_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_contract_validation(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.contract_id,
+                value,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataContractValidation {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            validation,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || validation.contract_id != target.contract_id
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataContractValidation {
+            contract_id: validation.contract_id,
+            valid: validation.valid,
+        })
+    }
+
+    fn debugger_static_metadata_symbol_display(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSymbolTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolDisplay, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_symbol_display_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_symbol_display(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.symbol_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataSymbol {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            symbol,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || symbol.symbol_id != target.symbol_id
+            || symbol.display.is_empty()
+            || symbol.display.len() > DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataSymbolDisplay {
+            symbol_id: symbol.symbol_id,
+            display: symbol.display,
+            kind: symbol.kind,
+            exported: symbol.exported,
+        })
+    }
+
+    fn debugger_static_metadata_symbol_location(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolLocation, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_symbol_location_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_symbol_location(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.symbol_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataSymbolLocation {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            location,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || !valid_child_static_metadata_symbol_location(
+                location,
+                target.symbol_id,
+                target.source_id,
+            )
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataSymbolLocation {
+            symbol_id: location.symbol_id,
+            source_id: location.source_id,
+            start_byte: location.start_byte,
+            end_byte: location.end_byte,
+            coordinates: location.coordinates,
+        })
+    }
+
+    fn debugger_static_metadata_safe_point_span(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSafePointSpan, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_safe_point_span_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let safe_point = PageHostDebuggerSafePoint {
+            program: child_program,
+            code_unit_ordinal: target.code_unit_ordinal,
+            bytecode_offset: target.bytecode_offset,
+        };
+        let reply = self
+            .child
+            .debugger_bluets_safe_point_span(
+                tab_id.as_u64(),
+                document_generation,
+                child_metadata,
+                safe_point,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsSafePointSpan {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            metadata,
+            safe_point: echoed_safe_point,
+            span,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || metadata != child_metadata
+            || echoed_safe_point != safe_point
+            || !span
+                .coordinates
+                .is_well_formed_for_range(span.start_byte, span.end_byte)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        if span.source_id != target.source_id {
+            return Err(JavaScriptPageDebuggerError::UnknownProgram);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataSafePointSpan {
+            source_id: span.source_id,
+            start_byte: span.start_byte,
+            end_byte: span.end_byte,
+            coordinates: span.coordinates,
+        })
+    }
+
+    fn debugger_static_metadata_source_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget,
+    ) -> Result<Option<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+        if !self.debugger_static_metadata_source_breakpoint_available()
+            || target.source_byte > DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_source_breakpoint(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.source_id,
+                target.source_byte,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsSourceBreakpoint {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            source_id,
+            source_byte,
+            safe_point,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || source_id != target.source_id
+            || source_byte != target.source_byte
+            || safe_point.is_some_and(|safe_point| {
+                !safe_point.is_well_formed() || safe_point.program != child_program
+            })
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(
+            safe_point.map(|safe_point| JavaScriptPageDebuggerSafePoint {
+                code_unit_ordinal: safe_point.code_unit_ordinal,
+                bytecode_offset: safe_point.bytecode_offset,
+            }),
+        )
+    }
+
+    fn debugger_static_metadata_contract_location(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataContractLocation, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_contract_location_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_contract_location(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.contract_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataContractLocation {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            location,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || location.start_byte >= location.end_byte
+            || location.end_byte > DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+            || !location
+                .coordinates
+                .is_well_formed_for_range(location.start_byte, location.end_byte)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        if location.contract_id != target.contract_id || location.source_id != target.source_id {
+            return Err(JavaScriptPageDebuggerError::UnknownProgram);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataContractLocation {
+            contract_id: location.contract_id,
+            source_id: location.source_id,
+            start_byte: location.start_byte,
+            end_byte: location.end_byte,
+            coordinates: location.coordinates,
+        })
+    }
+
+    fn debugger_static_metadata_symbol_type(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolType, JavaScriptPageDebuggerError> {
+        if !self.debugger_static_metadata_symbol_type_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_symbol_type(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.symbol_id,
+                target.type_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataSymbolType {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            symbol_type,
+        } = reply
+        else {
+            return Err(child_static_metadata_relation_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || !valid_child_static_metadata_symbol_type(
+                symbol_type,
+                target.symbol_id,
+                target.type_id,
+            )
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataSymbolType {
+            symbol_id: symbol_type.symbol_id,
+            type_id: symbol_type.type_id,
+        })
+    }
+
+    fn debugger_static_metadata_symbol_contract(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSymbolContractTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolContract, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_symbol_contract_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_symbol_contract(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.symbol_id,
+                target.contract_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataSymbolContract {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            symbol_contract,
+        } = reply
+        else {
+            return Err(child_static_metadata_relation_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || !valid_child_static_metadata_symbol_contract(
+                symbol_contract,
+                target.symbol_id,
+                target.contract_id,
+            )
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataSymbolContract {
+            symbol_id: symbol_contract.symbol_id,
+            contract_id: symbol_contract.contract_id,
+        })
     }
 
     fn debugger_safe_points(
@@ -1179,6 +3822,16 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         self.native_debugger_execution_control && self.child.debugger_execution_control_available()
     }
 
+    fn debugger_stepping_available(&self) -> bool {
+        self.debugger_execution_control_available() && self.child.debugger_stepping_available()
+    }
+
+    fn debugger_source_span_stepping_available(&self) -> bool {
+        self.debugger_stepping_available()
+            && self.debugger_static_metadata_safe_point_span_available()
+            && self.child.debugger_bluets_source_span_step_available()
+    }
+
     fn arm_debugger_root_safe_point_breakpoint(
         &mut self,
         tab_id: TabId,
@@ -1265,6 +3918,9 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             PageHostDebuggerExecutionState::Pending => {
                 Ok(JavaScriptPageDebuggerExecutionState::Pending)
             }
+            PageHostDebuggerExecutionState::Stepping => {
+                Ok(JavaScriptPageDebuggerExecutionState::Stepping)
+            }
             PageHostDebuggerExecutionState::Resuming => {
                 Ok(JavaScriptPageDebuggerExecutionState::Resuming)
             }
@@ -1280,7 +3936,19 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                     bytecode_offset: safe_point.bytecode_offset,
                 })
             }
-            PageHostDebuggerExecutionState::Paused { .. } => {
+            PageHostDebuggerExecutionState::SourceStepLimitReached { safe_point }
+                if safe_point.program == program && safe_point.code_unit_ordinal == 0 =>
+            {
+                validate_child_safe_point_reply(self, tab_id, document_generation, safe_point)?;
+                Ok(
+                    JavaScriptPageDebuggerExecutionState::SourceStepLimitReached {
+                        code_unit_ordinal: safe_point.code_unit_ordinal,
+                        bytecode_offset: safe_point.bytecode_offset,
+                    },
+                )
+            }
+            PageHostDebuggerExecutionState::Paused { .. }
+            | PageHostDebuggerExecutionState::SourceStepLimitReached { .. } => {
                 Err(JavaScriptPageDebuggerError::NoLiveRealm)
             }
         }
@@ -1321,6 +3989,101 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
         }
     }
+
+    fn step_debugger_root_instruction(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_stepping_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let reply = self
+            .child
+            .step_debugger_root_instruction(tab_id.as_u64(), document_generation, program)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerExecutionStepRequested {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                program: reply_program,
+            } if reply_tab_id == tab_id.as_u64()
+                && reply_generation == document_generation
+                && reply_program == program =>
+            {
+                Ok(())
+            }
+            PageHostReply::Error { .. } => Err(child_debugger_reply_error(&reply)),
+            _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
+        }
+    }
+
+    fn step_debugger_bluets_source_span(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        // Compiler-minted source IDs are zero-based. The stream receipt and
+        // child attachment, not a nonzero test, establish their authority.
+        if !self.debugger_source_span_stepping_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let safe_point = PageHostDebuggerSafePoint {
+            program: child_program,
+            code_unit_ordinal: target.code_unit_ordinal,
+            bytecode_offset: target.bytecode_offset,
+        };
+        let reply = self
+            .child
+            .step_debugger_bluets_source_span(
+                tab_id.as_u64(),
+                document_generation,
+                child_metadata,
+                target.source_id,
+                safe_point,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerBlueTsSourceStepRequested {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                metadata,
+                source_id,
+                safe_point: reply_safe_point,
+            } if reply_tab_id == tab_id.as_u64()
+                && reply_generation == document_generation
+                && metadata == child_metadata
+                && source_id == target.source_id
+                && reply_safe_point == safe_point =>
+            {
+                Ok(())
+            }
+            PageHostReply::Error { .. } => Err(child_debugger_reply_error(&reply)),
+            _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
+        }
+    }
 }
 
 impl<C> OutOfProcessJavaScriptPageExecutor<C> {
@@ -1347,6 +4110,33 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
         })
     }
 
+    fn mint_core_debugger_static_metadata(
+        &mut self,
+        program: PageHostDebuggerProgram,
+    ) -> Result<CoreDebuggerStaticMetadata, JavaScriptPageDebuggerError> {
+        let metadata_handle = self.next_debugger_metadata_handle;
+        let metadata_generation = self.next_debugger_metadata_generation;
+        // Never allow an exhausted metadata counter to cross into the public
+        // program namespace; a wrap must fail closed instead of aliasing an
+        // unrelated public identifier.
+        if metadata_handle >= CORE_CHILD_DEBUGGER_ID_NAMESPACE_START
+            || metadata_generation >= CORE_CHILD_DEBUGGER_ID_NAMESPACE_START
+        {
+            return Err(JavaScriptPageDebuggerError::ResourceLimit);
+        }
+        self.next_debugger_metadata_handle = metadata_handle
+            .checked_add(1)
+            .ok_or(JavaScriptPageDebuggerError::ResourceLimit)?;
+        self.next_debugger_metadata_generation = metadata_generation
+            .checked_add(1)
+            .ok_or(JavaScriptPageDebuggerError::ResourceLimit)?;
+        Ok(CoreDebuggerStaticMetadata {
+            program,
+            metadata_handle,
+            metadata_generation,
+        })
+    }
+
     fn child_program_for_core(
         &self,
         tab_id: TabId,
@@ -1364,6 +4154,30 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
                     (public.program_handle == program_handle
                         && public.program_generation == program_generation)
                         .then_some(*child)
+                })
+            })
+            .ok_or(JavaScriptPageDebuggerError::UnknownProgram)
+    }
+
+    fn child_static_metadata_for_core(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+        child_program: PageHostDebuggerProgram,
+        metadata_handle: u64,
+        metadata_generation: u64,
+    ) -> Result<PageHostDebuggerMetadataHandle, JavaScriptPageDebuggerError> {
+        if !self.has_core_live_document(tab_id, document_generation) {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        self.debugger_static_metadata
+            .get(&tab_id)
+            .and_then(|metadata| {
+                metadata.iter().find_map(|(child_metadata, public)| {
+                    (public.program == child_program
+                        && public.metadata_handle == metadata_handle
+                        && public.metadata_generation == metadata_generation)
+                        .then_some(*child_metadata)
                 })
             })
             .ok_or(JavaScriptPageDebuggerError::UnknownProgram)
@@ -1398,6 +4212,71 @@ fn has_duplicate_child_safe_points(safe_points: &[PageHostDebuggerSafePoint]) ->
     safe_points
         .iter()
         .any(|safe_point| !safe_point.is_well_formed() || !seen.insert(*safe_point))
+}
+
+fn has_duplicate_child_static_metadata(metadata: &[PageHostDebuggerMetadataHandle]) -> bool {
+    let mut seen = BTreeSet::new();
+    metadata.iter().any(|metadata| !seen.insert(*metadata))
+}
+
+fn has_duplicate_child_static_metadata_source_ids(
+    sources: &[blueice_ipc::page_host::PageHostDebuggerBlueTsMetadataSourceId],
+) -> bool {
+    let mut seen = BTreeSet::new();
+    sources.iter().any(|source| !seen.insert(source.source_id))
+}
+
+fn has_duplicate_child_static_metadata_type_ids(
+    types: &[blueice_ipc::page_host::PageHostDebuggerBlueTsMetadataTypeId],
+) -> bool {
+    let mut seen = BTreeSet::new();
+    types
+        .iter()
+        .any(|static_type| !seen.insert(static_type.type_id))
+}
+
+fn has_duplicate_child_static_metadata_symbol_ids(
+    symbols: &[blueice_ipc::page_host::PageHostDebuggerBlueTsMetadataSymbolId],
+) -> bool {
+    let mut seen = BTreeSet::new();
+    symbols.iter().any(|symbol| !seen.insert(symbol.symbol_id))
+}
+
+fn valid_child_static_metadata_symbol_location(
+    location: PageHostDebuggerBlueTsMetadataSymbolLocation,
+    symbol_id: u32,
+    source_id: u32,
+) -> bool {
+    location.symbol_id == symbol_id
+        && location.source_id == source_id
+        && location
+            .coordinates
+            .is_well_formed_for_range(location.start_byte, location.end_byte)
+}
+
+fn valid_child_static_metadata_symbol_type(
+    symbol_type: PageHostDebuggerBlueTsMetadataSymbolType,
+    symbol_id: u32,
+    type_id: u32,
+) -> bool {
+    symbol_type.symbol_id == symbol_id && symbol_type.type_id == type_id
+}
+
+fn valid_child_static_metadata_symbol_contract(
+    symbol_contract: PageHostDebuggerBlueTsMetadataSymbolContract,
+    symbol_id: u32,
+    contract_id: u32,
+) -> bool {
+    symbol_contract.symbol_id == symbol_id && symbol_contract.contract_id == contract_id
+}
+
+fn has_duplicate_child_static_metadata_contract_ids(
+    contracts: &[blueice_ipc::page_host::PageHostDebuggerBlueTsMetadataContractId],
+) -> bool {
+    let mut seen = BTreeSet::new();
+    contracts
+        .iter()
+        .any(|contract| !seen.insert(contract.contract_id))
 }
 
 fn validate_child_safe_point_reply<C: PageHostClient>(
@@ -1440,6 +4319,21 @@ fn child_debugger_reply_error(reply: &PageHostReply) -> JavaScriptPageDebuggerEr
         // realm. The public debugger must not infer a child registry state,
         // source identity, VM result, or a usable fallback target from it.
         _ => JavaScriptPageDebuggerError::NoLiveRealm,
+    }
+}
+
+/// An exact, already-receipted relation can be false without losing the live
+/// realm. The child intentionally uses a generic private InvalidRequest for
+/// either no relation or an unknown pair; expose only public InvalidTarget.
+fn child_static_metadata_relation_reply_error(
+    reply: &PageHostReply,
+) -> JavaScriptPageDebuggerError {
+    match reply {
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidRequest,
+            ..
+        } => JavaScriptPageDebuggerError::UnknownProgram,
+        _ => child_debugger_reply_error(reply),
     }
 }
 
@@ -2037,6 +4931,7 @@ mod tests {
     };
     use crate::script::javascript::{AuthorizedJavaScriptModule, AuthorizedJavaScriptResolution};
     use blueice_bluets::{AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution};
+    use blueice_ipc::script::ScriptReply;
     use blueice_launcher::bluejs_host::{
         bind_bluejs_host_socket, serve_bluejs_host_listener, BlueJsChildHost,
     };
@@ -2047,6 +4942,46 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread;
+
+    #[test]
+    fn child_symbol_location_rejects_malformed_original_coordinates() {
+        let location = PageHostDebuggerBlueTsMetadataSymbolLocation {
+            symbol_id: 3,
+            source_id: 5,
+            start_byte: 8,
+            end_byte: 31,
+            coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 8,
+                end_line: 1,
+                end_column_utf16: 9,
+            },
+        };
+        assert!(valid_child_static_metadata_symbol_location(location, 3, 5));
+        assert!(!valid_child_static_metadata_symbol_location(
+            PageHostDebuggerBlueTsMetadataSymbolLocation {
+                coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                    end_line: 0,
+                    end_column_utf16: 8,
+                    ..location.coordinates
+                },
+                ..location
+            },
+            3,
+            5,
+        ));
+        assert!(!valid_child_static_metadata_symbol_location(
+            PageHostDebuggerBlueTsMetadataSymbolLocation {
+                coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                    end_line: 32,
+                    ..location.coordinates
+                },
+                ..location
+            },
+            3,
+            5,
+        ));
+    }
 
     fn unique_socket_path(label: &str) -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -2076,6 +5011,312 @@ mod tests {
             .unwrap()
             .load_html_str(html, Some(url.to_string()));
         (tabs, tab_id)
+    }
+
+    #[test]
+    fn page_host_transport_pumps_before_the_child_replies() {
+        let (core, mut child) = UnixStream::pair().unwrap();
+        let (resume_sender, resume_receiver) = mpsc::sync_channel(1);
+        let child_task = thread::spawn(move || {
+            assert_eq!(
+                page_host::read_page_host_request(&mut child).unwrap(),
+                PageHostRequest::Shutdown
+            );
+            resume_receiver
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap();
+            page_host::write_page_host_reply(&mut child, &PageHostReply::ShutdownAck).unwrap();
+        });
+        let session_thread = thread::current().id();
+        let mut pump_calls = 0;
+        let reply = PageHostConnection { stream: core }
+            .request_while_pumping_script(PageHostRequest::Shutdown, &mut || {
+                assert_eq!(thread::current().id(), session_thread);
+                pump_calls += 1;
+                if pump_calls == 1 {
+                    resume_sender.send(()).unwrap();
+                }
+                Ok(())
+            })
+            .unwrap();
+        child_task.join().unwrap();
+        assert_eq!(reply, PageHostReply::ShutdownAck);
+        assert!(pump_calls > 0);
+    }
+
+    #[test]
+    fn page_host_transport_times_out_and_poison_closes_a_stalled_child() {
+        let (core, mut child) = UnixStream::pair().unwrap();
+        let (release_sender, release_receiver) = mpsc::sync_channel(1);
+        let child_task = thread::spawn(move || {
+            assert_eq!(
+                page_host::read_page_host_request(&mut child).unwrap(),
+                PageHostRequest::Shutdown
+            );
+            release_receiver
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+        });
+        let mut connection = PageHostConnection { stream: core };
+        let started = Instant::now();
+        let error = connection
+            .request_while_pumping_script_with_timeout(
+                PageHostRequest::Shutdown,
+                &mut || Ok(()),
+                Duration::from_millis(100),
+            )
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert!(connection.request(PageHostRequest::Shutdown).is_err());
+        release_sender.send(()).unwrap();
+        child_task.join().unwrap();
+    }
+
+    #[test]
+    fn page_host_transport_fails_promptly_when_the_child_disconnects() {
+        let (core, mut child) = UnixStream::pair().unwrap();
+        let child_task = thread::spawn(move || {
+            assert_eq!(
+                page_host::read_page_host_request(&mut child).unwrap(),
+                PageHostRequest::Shutdown
+            );
+        });
+        let started = Instant::now();
+        let error = PageHostConnection { stream: core }
+            .request_while_pumping_script_with_timeout(
+                PageHostRequest::Shutdown,
+                &mut || Ok(()),
+                Duration::from_secs(3),
+            )
+            .unwrap_err();
+        child_task.join().unwrap();
+        assert_ne!(error.kind(), io::ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn nested_child_wait_rejects_calls_after_its_total_budget() {
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<div id='target'>before</div>",
+            "https://example.test/nested-budget.html",
+        );
+        let target = ScriptDocumentTarget {
+            tab_id: tab_id.as_u64(),
+            document_generation: tabs.get(tab_id).unwrap().document_generation(),
+        };
+        let (sender, receiver) = crate::script::script_request_channel();
+        let first = thread::spawn({
+            let sender = sender.clone();
+            move || {
+                sender.request(blueice_ipc::script::ScriptRequest::GetElementById {
+                    target,
+                    id: "target".to_string(),
+                })
+            }
+        });
+        let mut remaining = 1;
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while remaining > 0 {
+            pump_script_requests_during_child_wait(&receiver, &mut tabs, target, &mut remaining)
+                .unwrap();
+            assert!(
+                Instant::now() < deadline,
+                "first nested request did not arrive"
+            );
+            thread::yield_now();
+        }
+        let ScriptReply::Node { node: Some(node) } = first.join().unwrap().unwrap() else {
+            panic!("the first request must resolve the target node");
+        };
+        pump_script_requests_during_child_wait(&receiver, &mut tabs, target, &mut remaining)
+            .unwrap();
+        let before = tabs.get(tab_id).unwrap().dom_dump();
+        let excess = thread::spawn(move || {
+            sender.request(blueice_ipc::script::ScriptRequest::SetTextContent {
+                target,
+                node,
+                value: "over budget".to_string(),
+            })
+        });
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            if pump_script_requests_during_child_wait(&receiver, &mut tabs, target, &mut remaining)
+                .is_err()
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "excess nested request did not arrive"
+            );
+            thread::yield_now();
+        }
+        assert!(matches!(
+            excess.join().unwrap().unwrap(),
+            ScriptReply::Error { .. }
+        ));
+        assert_eq!(tabs.get(tab_id).unwrap().dom_dump(), before);
+    }
+
+    struct ReentrantScriptChild {
+        script_sender: crate::script::ScriptRequestSender,
+    }
+
+    fn nested_dom_write(
+        sender: crate::script::ScriptRequestSender,
+        target: ScriptDocumentTarget,
+        value: &'static str,
+        pump: &mut dyn FnMut() -> io::Result<()>,
+    ) -> io::Result<()> {
+        let (done_sender, done_receiver) = mpsc::sync_channel(1);
+        let worker = thread::spawn(move || {
+            let result = (|| {
+                let ScriptReply::Node { node: Some(node) } =
+                    sender.request(blueice_ipc::script::ScriptRequest::GetElementById {
+                        target,
+                        id: "target".to_string(),
+                    })?
+                else {
+                    return Err(io::Error::other("target was not found"));
+                };
+                sender.request(blueice_ipc::script::ScriptRequest::SetTextContent {
+                    target,
+                    node,
+                    value: value.to_string(),
+                })
+            })();
+            done_sender.send(result).unwrap();
+        });
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let script_reply = loop {
+            pump()?;
+            match done_receiver.recv_timeout(Duration::from_millis(10)) {
+                Ok(result) => break result?,
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(io::Error::other("script worker disconnected"));
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) if Instant::now() < deadline => {}
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "nested DOM call stalled",
+                    ));
+                }
+            }
+        };
+        worker.join().unwrap();
+        assert_eq!(script_reply, ScriptReply::Ack);
+        Ok(())
+    }
+
+    impl PageHostClient for ReentrantScriptChild {
+        fn synchronize_document(
+            &mut self,
+            _document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            panic!("a session-owned child sync must use the nested script pump");
+        }
+
+        fn synchronize_document_with_script_pump(
+            &mut self,
+            document: PageHostDocument,
+            pump: &mut dyn FnMut() -> io::Result<()>,
+        ) -> io::Result<PageHostReply> {
+            let target = ScriptDocumentTarget {
+                tab_id: document.tab_id,
+                document_generation: document.document_generation,
+            };
+            nested_dom_write(
+                self.script_sender.clone(),
+                target,
+                "from nested script",
+                pump,
+            )?;
+            Ok(PageHostReply::Synchronized {
+                tab_id: document.tab_id,
+                document_generation: document.document_generation,
+                already_current: false,
+                reports: Vec::new(),
+            })
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::RealmClosed {
+                tab_id,
+                document_generation,
+            })
+        }
+
+        fn advance_debugger_execution_with_script_pump(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+            pump: &mut dyn FnMut() -> io::Result<()>,
+        ) -> io::Result<PageHostReply> {
+            nested_dom_write(
+                self.script_sender.clone(),
+                ScriptDocumentTarget {
+                    tab_id,
+                    document_generation,
+                },
+                "from resumed script",
+                pump,
+            )?;
+            Ok(PageHostReply::DebuggerExecutionAdvanced {
+                tab_id,
+                document_generation,
+                reports: Vec::new(),
+            })
+        }
+    }
+
+    #[test]
+    fn child_document_sync_serves_dom_calls_on_the_owning_session_thread() {
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<div id='target'>before</div><script>let page = 1;</script>",
+            "https://example.test/nested-dom.html",
+        );
+        let (script_sender, script_receiver) = crate::script::script_request_channel();
+        let mut executor =
+            OutOfProcessJavaScriptPageExecutor::new(ReentrantScriptChild { script_sender });
+        executor
+            .synchronize_and_execute_serving_script(&mut tabs, &script_receiver)
+            .unwrap();
+        assert!(tabs
+            .get(tab_id)
+            .unwrap()
+            .dom_dump()
+            .contains("from nested script"));
+        assert_eq!(executor.live_documents.len(), 1);
+    }
+
+    #[test]
+    fn debugger_resume_serves_dom_calls_on_the_owning_session_thread() {
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<div id='target'>before</div><script>let page = 1;</script>",
+            "https://example.test/nested-debugger-dom.html",
+        );
+        let (script_sender, script_receiver) = crate::script::script_request_channel();
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new_with_debugger_execution_control(
+            ReentrantScriptChild { script_sender },
+        );
+        executor
+            .synchronize_and_execute_serving_script(&mut tabs, &script_receiver)
+            .unwrap();
+        executor
+            .synchronize_and_execute_serving_script(&mut tabs, &script_receiver)
+            .unwrap();
+        assert!(tabs
+            .get(tab_id)
+            .unwrap()
+            .dom_dump()
+            .contains("from resumed script"));
+        assert_eq!(executor.live_documents.len(), 1);
     }
 
     fn shutdown_child(path: &Path, token: &str) {
@@ -2384,6 +5625,7 @@ mod tests {
     struct RecordingChild {
         documents: Vec<PageHostDocument>,
         closes: Vec<(u64, u64)>,
+        child_stats_reply: Option<PageHostReply>,
     }
 
     impl PageHostClient for RecordingChild {
@@ -2411,6 +5653,332 @@ mod tests {
                 tab_id,
                 document_generation,
             })
+        }
+
+        fn debugger_realm_stats(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::RealmStats(page_host::PageHostRealmStats {
+                tab_id,
+                document_generation,
+                program_count: 1,
+                bytecode_bytes: 64,
+                heap_bytes: 128,
+            }))
+        }
+
+        fn child_stats(&mut self) -> io::Result<PageHostReply> {
+            self.child_stats_reply.clone().ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "child-wide accounting unavailable",
+                )
+            })
+        }
+    }
+
+    #[test]
+    fn core_accepts_only_well_formed_child_wide_usage_for_its_live_realm_count() {
+        let (tabs, _tab_id) = loaded_tabs(
+            "<script>let accounting = 1;</script>",
+            "https://example.test/aggregate-accounting.html",
+        );
+        let valid = PageHostChildStats {
+            realm_count: 1,
+            program_count: 1,
+            bytecode_bytes: 64,
+            heap_bytes: 128,
+        };
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new(RecordingChild {
+            child_stats_reply: Some(PageHostReply::ChildStats(valid)),
+            ..RecordingChild::default()
+        });
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(executor.child_stats().unwrap(), valid);
+        executor.child.child_stats_reply = Some(PageHostReply::ChildStats(PageHostChildStats {
+            realm_count: 2,
+            ..valid
+        }));
+        assert_eq!(
+            executor.child_stats().unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        executor.child.child_stats_reply = Some(PageHostReply::ChildStats(PageHostChildStats {
+            program_count: u64::MAX,
+            ..valid
+        }));
+        assert_eq!(
+            executor.child_stats().unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        executor.child.child_stats_reply = Some(PageHostReply::RealmStats(PageHostRealmStats {
+            tab_id: 1,
+            document_generation: 1,
+            program_count: 1,
+            bytecode_bytes: 64,
+            heap_bytes: 128,
+        }));
+        assert_eq!(
+            executor.child_stats().unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+    }
+
+    #[test]
+    fn core_caches_child_realm_accounting_only_for_the_live_generation() {
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<script>let accounting = 1;</script>",
+            "https://example.test/accounting-first.html",
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new(RecordingChild::default());
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.realm_stats(tab_id),
+            Some(&PageHostRealmStats {
+                tab_id: tab_id.as_u64(),
+                document_generation: 1,
+                program_count: 1,
+                bytecode_bytes: 64,
+                heap_bytes: 128,
+            })
+        );
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script>let accounting = 2;</script>",
+            Some("https://example.test/accounting-successor.html".to_string()),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor
+                .realm_stats(tab_id)
+                .map(|stats| stats.document_generation),
+            Some(2),
+            "a replacement must not retain the predecessor accounting record"
+        );
+
+        assert!(tabs.close_tab(tab_id));
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(executor.realm_stats(tab_id), None);
+        assert_eq!(executor.into_child().closes, vec![(tab_id.as_u64(), 2)]);
+    }
+
+    #[derive(Clone, Copy, Default)]
+    enum InvalidRealmStats {
+        #[default]
+        MismatchedTuple,
+        ExcessPrograms,
+        SaturatedBytecode,
+        SaturatedHeap,
+    }
+
+    #[derive(Default)]
+    struct InvalidStatsChild {
+        closes: Vec<(u64, u64)>,
+        invalid_stats: InvalidRealmStats,
+    }
+
+    impl PageHostClient for InvalidStatsChild {
+        fn synchronize_document(
+            &mut self,
+            document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::Synchronized {
+                tab_id: document.tab_id,
+                document_generation: document.document_generation,
+                already_current: false,
+                reports: Vec::new(),
+            })
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            self.closes.push((tab_id, document_generation));
+            Ok(PageHostReply::RealmClosed {
+                tab_id,
+                document_generation,
+            })
+        }
+
+        fn debugger_realm_stats(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            let stats = match self.invalid_stats {
+                InvalidRealmStats::MismatchedTuple => page_host::PageHostRealmStats {
+                    tab_id: tab_id.saturating_add(1),
+                    document_generation,
+                    program_count: 1,
+                    bytecode_bytes: 64,
+                    heap_bytes: 128,
+                },
+                InvalidRealmStats::ExcessPrograms => page_host::PageHostRealmStats {
+                    tab_id,
+                    document_generation,
+                    program_count: page_host::PAGE_HOST_REALM_STATS_MAX_PROGRAMS + 1,
+                    bytecode_bytes: 64,
+                    heap_bytes: 128,
+                },
+                InvalidRealmStats::SaturatedBytecode => page_host::PageHostRealmStats {
+                    tab_id,
+                    document_generation,
+                    program_count: 1,
+                    bytecode_bytes: u64::MAX,
+                    heap_bytes: 128,
+                },
+                InvalidRealmStats::SaturatedHeap => page_host::PageHostRealmStats {
+                    tab_id,
+                    document_generation,
+                    program_count: 1,
+                    bytecode_bytes: 64,
+                    heap_bytes: u64::MAX,
+                },
+            };
+            Ok(PageHostReply::RealmStats(stats))
+        }
+    }
+
+    #[test]
+    fn malformed_child_realm_accounting_is_never_cached() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script>let untrustedAccounting = 1;</script>",
+            "https://example.test/mismatched-accounting.html",
+        );
+        for invalid_stats in [
+            InvalidRealmStats::MismatchedTuple,
+            InvalidRealmStats::ExcessPrograms,
+            InvalidRealmStats::SaturatedBytecode,
+            InvalidRealmStats::SaturatedHeap,
+        ] {
+            let mut executor = OutOfProcessJavaScriptPageExecutor::new(InvalidStatsChild {
+                invalid_stats,
+                ..InvalidStatsChild::default()
+            });
+            executor.synchronize_and_execute(&tabs).unwrap();
+
+            assert_eq!(executor.realm_stats(tab_id), None);
+            assert!(
+                !executor.debugger_has_live_realm(tab_id, 1),
+                "malformed accounting must not be accepted as debugger liveness"
+            );
+            assert_eq!(
+                executor.into_child().closes,
+                vec![(tab_id.as_u64(), 1)],
+                "an untrustworthy accounting record must close the newly acknowledged realm"
+            );
+        }
+    }
+
+    #[derive(Default)]
+    struct WrongSuccessorAckChild {
+        active_generation: Option<u64>,
+        closes: Vec<(u64, u64)>,
+        return_error: bool,
+    }
+
+    impl PageHostClient for WrongSuccessorAckChild {
+        fn synchronize_document(
+            &mut self,
+            document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            self.active_generation = Some(document.document_generation);
+            if document.document_generation == 2 && self.return_error {
+                return Ok(PageHostReply::Error {
+                    code: PageHostErrorCode::HostFailure,
+                    message: "child failed after admission".to_string(),
+                });
+            }
+            Ok(PageHostReply::Synchronized {
+                tab_id: document.tab_id + u64::from(document.document_generation == 2),
+                document_generation: document.document_generation,
+                already_current: false,
+                reports: Vec::new(),
+            })
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            self.closes.push((tab_id, document_generation));
+            if self.active_generation == Some(document_generation) {
+                self.active_generation = None;
+                Ok(PageHostReply::RealmClosed {
+                    tab_id,
+                    document_generation,
+                })
+            } else {
+                Ok(PageHostReply::Error {
+                    code: PageHostErrorCode::StaleDocument,
+                    message: "stale document".to_string(),
+                })
+            }
+        }
+
+        fn debugger_realm_stats(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            if self.active_generation != Some(document_generation) {
+                return Ok(PageHostReply::Error {
+                    code: PageHostErrorCode::StaleDocument,
+                    message: "stale document".to_string(),
+                });
+            }
+            Ok(PageHostReply::RealmStats(PageHostRealmStats {
+                tab_id,
+                document_generation,
+                program_count: 1,
+                bytecode_bytes: 64,
+                heap_bytes: 128,
+            }))
+        }
+
+        fn child_stats(&mut self) -> io::Result<PageHostReply> {
+            let has_realm = self.active_generation.is_some();
+            Ok(PageHostReply::ChildStats(PageHostChildStats {
+                realm_count: u32::from(has_realm),
+                program_count: u64::from(has_realm),
+                bytecode_bytes: if has_realm { 64 } else { 0 },
+                heap_bytes: if has_realm { 128 } else { 0 },
+            }))
+        }
+    }
+
+    #[test]
+    fn untrusted_successor_ack_closes_the_generation_the_child_may_have_admitted() {
+        for return_error in [false, true] {
+            let (mut tabs, tab_id) = loaded_tabs(
+                "<script>let previous = 1;</script>",
+                "https://example.test/previous.html",
+            );
+            let mut executor = OutOfProcessJavaScriptPageExecutor::new(WrongSuccessorAckChild {
+                return_error,
+                ..WrongSuccessorAckChild::default()
+            });
+            executor.synchronize_and_execute(&tabs).unwrap();
+            assert_eq!(executor.child.active_generation, Some(1));
+            assert_eq!(executor.child_stats().unwrap().realm_count, 1);
+
+            tabs.get_mut(tab_id).unwrap().load_html_str(
+                "<script>let successor = 2;</script>",
+                Some("https://example.test/successor.html".to_string()),
+            );
+            executor.synchronize_and_execute(&tabs).unwrap();
+            assert_eq!(executor.child_stats().unwrap().realm_count, 0);
+            let child = executor.into_child();
+            assert_eq!(child.active_generation, None);
+            assert_eq!(
+                child.closes,
+                vec![(tab_id.as_u64(), 1), (tab_id.as_u64(), 2)]
+            );
         }
     }
 
@@ -2957,6 +6525,16 @@ mod tests {
         );
         let mut executor = OutOfProcessJavaScriptPageExecutor::connect(&path, &token).unwrap();
         executor.synchronize_and_execute(&tabs).unwrap();
+        let stats = executor
+            .realm_stats(tab_id)
+            .expect("the real child must supply core-owned realm accounting");
+        assert_eq!(stats.tab_id, tab_id.as_u64());
+        assert_eq!(stats.document_generation, 1);
+        assert_eq!(stats.program_count, 2);
+        assert!(
+            stats.bytecode_bytes > 0,
+            "the aggregate record must charge the admitted classic and module programs"
+        );
         assert_eq!(
             executor.drain_reports_for_tab(tab_id),
             vec![
@@ -3215,6 +6793,850 @@ mod tests {
         shutdown_child(&path, &token);
         child.join().unwrap();
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn core_remints_real_child_bluets_metadata_handles_and_discards_them_on_navigation() {
+        let (path, token, child) = spawn_child();
+        let (mut tabs, tab_id) = loaded_tabs(
+            concat!(
+                "<script>globalThis.javaScriptOnly = true;</script>",
+                "<script type=\"application/x-blueice-typescript\">",
+                "const opaqueCompilerMetadata: number = 42;",
+                "</script>"
+            ),
+            "https://example.test/opaque-metadata.html",
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::connect(&path, &token).unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        let programs = executor.debugger_programs(tab_id, 1).unwrap();
+        assert_eq!(programs.len(), 2);
+        let mut metadata = None;
+        for program in programs {
+            let handles = executor
+                .debugger_static_metadata(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap();
+            if let [handle] = handles.as_slice() {
+                assert!(
+                    handle.metadata_handle >= CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START
+                        && handle.metadata_handle < CORE_CHILD_DEBUGGER_ID_NAMESPACE_START
+                        && handle.metadata_generation
+                            >= CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START
+                        && handle.metadata_generation < CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
+                    "core must remint metadata IDs outside both child and public program namespaces"
+                );
+                metadata = Some((program, *handle));
+            } else {
+                assert!(handles.is_empty(), "the JavaScript program is ineligible");
+            }
+        }
+        let (typed_program, metadata) = metadata.expect("direct BlueTS has one private attachment");
+        assert!(
+            !format!("{metadata:?}").contains("opaqueCompilerMetadata"),
+            "the core-facing handle must contain no compiler metadata payload"
+        );
+        let summary = executor
+            .debugger_static_metadata_summary(
+                tab_id,
+                1,
+                typed_program.program_handle,
+                typed_program.program_generation,
+                metadata.metadata_handle,
+                metadata.metadata_generation,
+            )
+            .expect("the exact core-reminted metadata identity resolves a bounded summary");
+        assert_eq!(summary.language_version, "blue-ts-0.1");
+        assert!(summary.source_count > 0);
+        assert!(summary.type_count > 0);
+        assert!(summary.symbol_count > 0);
+        assert!(
+            !format!("{summary:?}").contains("opaqueCompilerMetadata"),
+            "the core-facing summary must contain no compiler record payload"
+        );
+        let sources = executor
+            .debugger_static_metadata_sources(
+                tab_id,
+                1,
+                typed_program.program_handle,
+                typed_program.program_generation,
+                metadata.metadata_handle,
+                metadata.metadata_generation,
+            )
+            .expect("the exact core-reminted metadata identity resolves source-record IDs");
+        assert_eq!(
+            sources.len(),
+            usize::try_from(summary.source_count).unwrap()
+        );
+        assert_eq!(
+            sources
+                .iter()
+                .map(|source| source.source_id)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            sources.len(),
+            "the child must not repeat compiler source-record IDs"
+        );
+        assert!(
+            !format!("{sources:?}").contains("opaqueCompilerMetadata"),
+            "source-record identities must not carry compiler record payloads"
+        );
+        assert!(matches!(
+            executor.debugger_static_metadata_sources(
+                tab_id,
+                1,
+                typed_program.program_handle,
+                typed_program.program_generation,
+                metadata.metadata_handle,
+                metadata.metadata_generation + 1,
+            ),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        ));
+        assert!(matches!(
+            executor.debugger_static_metadata_summary(
+                tab_id,
+                1,
+                typed_program.program_handle,
+                typed_program.program_generation,
+                metadata.metadata_handle,
+                metadata.metadata_generation + 1,
+            ),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        ));
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script type=\"application/x-blueice-typescript\">const successor: number = 1;</script>",
+            Some("https://example.test/opaque-metadata-successor.html".to_string()),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert!(matches!(
+            executor.debugger_static_metadata(
+                tab_id,
+                1,
+                typed_program.program_handle,
+                typed_program.program_generation,
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        ));
+        assert!(matches!(
+            executor.debugger_static_metadata_summary(
+                tab_id,
+                1,
+                typed_program.program_handle,
+                typed_program.program_generation,
+                metadata.metadata_handle,
+                metadata.metadata_generation,
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        ));
+        assert!(matches!(
+            executor.debugger_static_metadata_sources(
+                tab_id,
+                1,
+                typed_program.program_handle,
+                typed_program.program_generation,
+                metadata.metadata_handle,
+                metadata.metadata_generation,
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        ));
+
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn core_child_transport_resolves_only_live_exact_bluets_safe_point_spans() {
+        let (path, token, child) = spawn_child();
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<script type=\"application/x-blueice-typescript\">const mapped: number = 42;</script>",
+            "https://example.test/mapped.html",
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::connect(&path, &token).unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let child_stats = executor.child_stats().unwrap();
+        assert_eq!(child_stats.realm_count, 1);
+        assert!(child_stats.is_well_formed());
+        assert!(executor.child.debugger_bluets_safe_point_span_available());
+
+        let PageHostReply::DebuggerPrograms { programs, .. } = executor
+            .child
+            .debugger_programs(tab_id.as_u64(), 1)
+            .unwrap()
+        else {
+            panic!("expected a child-private BlueTS program");
+        };
+        let program = programs[0];
+        let PageHostReply::DebuggerBlueTsMetadata { metadata, .. } = executor
+            .child
+            .debugger_bluets_metadata(tab_id.as_u64(), 1, program)
+            .unwrap()
+        else {
+            panic!("expected a child-private metadata attachment");
+        };
+        let metadata = metadata[0];
+        let PageHostReply::DebuggerSafePoints { safe_points, .. } = executor
+            .child
+            .debugger_safe_points(tab_id.as_u64(), 1, program)
+            .unwrap()
+        else {
+            panic!("expected child-private safe points");
+        };
+        let (safe_point, span) = safe_points
+            .into_iter()
+            .find_map(|safe_point| {
+                match executor
+                    .child
+                    .debugger_bluets_safe_point_span(tab_id.as_u64(), 1, metadata, safe_point)
+                    .unwrap()
+                {
+                    PageHostReply::DebuggerBlueTsSafePointSpan {
+                        safe_point: echoed,
+                        span,
+                        ..
+                    } if echoed == safe_point => Some((safe_point, span)),
+                    PageHostReply::Error {
+                        code: page_host::PageHostErrorCode::InvalidRequest,
+                        ..
+                    } => None,
+                    reply => panic!("unexpected exact-span reply: {reply:?}"),
+                }
+            })
+            .expect("one verified safe point must have a retained BlueTS span");
+        assert!(span.start_byte < span.end_byte);
+        assert!(!format!("{span:?}").contains("mapped"));
+
+        let public_program = executor.debugger_programs(tab_id, 1).unwrap()[0];
+        let public_metadata = executor
+            .debugger_static_metadata(
+                tab_id,
+                1,
+                public_program.program_handle,
+                public_program.program_generation,
+            )
+            .unwrap()[0];
+        let public_sources = executor
+            .debugger_static_metadata_sources(
+                tab_id,
+                1,
+                public_program.program_handle,
+                public_program.program_generation,
+                public_metadata.metadata_handle,
+                public_metadata.metadata_generation,
+            )
+            .unwrap();
+        assert!(public_sources
+            .iter()
+            .any(|source| source.source_id == span.source_id));
+        let target = JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+            program_handle: public_program.program_handle,
+            program_generation: public_program.program_generation,
+            metadata_handle: public_metadata.metadata_handle,
+            metadata_generation: public_metadata.metadata_generation,
+            source_id: span.source_id,
+            code_unit_ordinal: safe_point.code_unit_ordinal,
+            bytecode_offset: safe_point.bytecode_offset,
+        };
+        assert_eq!(
+            executor
+                .debugger_static_metadata_safe_point_span(tab_id, 1, target)
+                .unwrap(),
+            JavaScriptPageDebuggerStaticMetadataSafePointSpan {
+                source_id: span.source_id,
+                start_byte: span.start_byte,
+                end_byte: span.end_byte,
+                coordinates: span.coordinates,
+            }
+        );
+        assert!(executor.debugger_static_metadata_source_breakpoint_available());
+        let breakpoint_target = JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget {
+            program_handle: public_program.program_handle,
+            program_generation: public_program.program_generation,
+            metadata_handle: public_metadata.metadata_handle,
+            metadata_generation: public_metadata.metadata_generation,
+            source_id: span.source_id,
+            source_byte: span.start_byte,
+        };
+        assert_eq!(
+            executor
+                .debugger_static_metadata_source_breakpoint(tab_id, 1, breakpoint_target)
+                .unwrap(),
+            Some(JavaScriptPageDebuggerSafePoint {
+                code_unit_ordinal: safe_point.code_unit_ordinal,
+                bytecode_offset: safe_point.bytecode_offset,
+            })
+        );
+        assert_eq!(
+            executor
+                .debugger_static_metadata_source_breakpoint(
+                    tab_id,
+                    1,
+                    JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget {
+                        source_byte: span.end_byte,
+                        ..breakpoint_target
+                    },
+                )
+                .unwrap(),
+            None,
+        );
+        assert_eq!(
+            executor.debugger_static_metadata_source_breakpoint(
+                tab_id,
+                1,
+                JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget {
+                    metadata_generation: breakpoint_target.metadata_generation + 1,
+                    ..breakpoint_target
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
+        assert_eq!(
+            executor.debugger_static_metadata_safe_point_span(
+                tab_id,
+                1,
+                JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+                    source_id: u32::MAX,
+                    ..target
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
+        assert_eq!(
+            executor.debugger_static_metadata_safe_point_span(
+                tab_id,
+                1,
+                JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+                    metadata_generation: target.metadata_generation + 1,
+                    ..target
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
+        assert_eq!(
+            executor.debugger_static_metadata_safe_point_span(
+                tab_id,
+                1,
+                JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+                    bytecode_offset: u32::MAX,
+                    ..target
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script>const successor = true;</script>",
+            Some("https://example.test/successor.html".to_string()),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.debugger_static_metadata_safe_point_span(tab_id, 1, target),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            executor.debugger_static_metadata_source_breakpoint(tab_id, 1, breakpoint_target),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert!(matches!(
+            executor
+                .child
+                .debugger_bluets_safe_point_span(tab_id.as_u64(), 1, metadata, safe_point)
+                .unwrap(),
+            PageHostReply::Error {
+                code: page_host::PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    struct MalformedSafePointSpanChild {
+        lifecycle: RecordingChild,
+        reply: PageHostReply,
+    }
+
+    impl PageHostClient for MalformedSafePointSpanChild {
+        fn synchronize_document(
+            &mut self,
+            document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            self.lifecycle.synchronize_document(document)
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            self.lifecycle.close_realm(tab_id, document_generation)
+        }
+
+        fn debugger_realm_stats(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            self.lifecycle
+                .debugger_realm_stats(tab_id, document_generation)
+        }
+
+        fn debugger_bluets_metadata_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_bluets_metadata_sources_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_bluets_safe_point_span_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_bluets_source_breakpoint_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_execution_control_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_stepping_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_bluets_source_span_step_available(&self) -> bool {
+            true
+        }
+
+        fn step_debugger_bluets_source_span(
+            &mut self,
+            _tab_id: u64,
+            _document_generation: u64,
+            _metadata: PageHostDebuggerMetadataHandle,
+            _source_id: u32,
+            _safe_point: PageHostDebuggerSafePoint,
+        ) -> io::Result<PageHostReply> {
+            Ok(self.reply.clone())
+        }
+
+        fn debugger_bluets_safe_point_span(
+            &mut self,
+            _tab_id: u64,
+            _document_generation: u64,
+            _metadata: PageHostDebuggerMetadataHandle,
+            _safe_point: PageHostDebuggerSafePoint,
+        ) -> io::Result<PageHostReply> {
+            Ok(self.reply.clone())
+        }
+
+        fn debugger_bluets_source_breakpoint(
+            &mut self,
+            _tab_id: u64,
+            _document_generation: u64,
+            _program: PageHostDebuggerProgram,
+            _metadata: PageHostDebuggerMetadataHandle,
+            _source_id: u32,
+            _source_byte: u32,
+        ) -> io::Result<PageHostReply> {
+            Ok(self.reply.clone())
+        }
+    }
+
+    #[test]
+    fn core_forwards_zero_based_bluets_source_id_but_rejects_mismatched_step_echo() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script type=\"application/x-blueice-typescript\">const zero: number = 1;</script>",
+            "https://example.test/zero-source.html",
+        );
+        let child_program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let child_metadata = PageHostDebuggerMetadataHandle {
+            metadata_handle: 17,
+            metadata_generation: 19,
+        };
+        let child_safe_point = PageHostDebuggerSafePoint {
+            program: child_program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 4,
+        };
+        let reply = PageHostReply::DebuggerBlueTsSourceStepRequested {
+            tab_id: tab_id.as_u64(),
+            document_generation: 1,
+            metadata: child_metadata,
+            source_id: 0,
+            safe_point: child_safe_point,
+        };
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new_with_debugger_execution_control(
+            MalformedSafePointSpanChild {
+                lifecycle: RecordingChild::default(),
+                reply: reply.clone(),
+            },
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        executor.debugger_programs.insert(
+            tab_id,
+            BTreeMap::from([(
+                child_program,
+                CoreDebuggerProgram {
+                    program_handle: 101,
+                    program_generation: 103,
+                },
+            )]),
+        );
+        executor.debugger_static_metadata.insert(
+            tab_id,
+            BTreeMap::from([(
+                child_metadata,
+                CoreDebuggerStaticMetadata {
+                    program: child_program,
+                    metadata_handle: 107,
+                    metadata_generation: 109,
+                },
+            )]),
+        );
+        let target = JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+            program_handle: 101,
+            program_generation: 103,
+            metadata_handle: 107,
+            metadata_generation: 109,
+            source_id: 0,
+            code_unit_ordinal: 0,
+            bytecode_offset: 4,
+        };
+        assert!(executor.debugger_source_span_stepping_available());
+        assert_eq!(
+            executor.step_debugger_bluets_source_span(tab_id, 1, target),
+            Ok(())
+        );
+        executor.child.reply = PageHostReply::DebuggerBlueTsSourceStepRequested {
+            tab_id: tab_id.as_u64(),
+            document_generation: 1,
+            metadata: child_metadata,
+            source_id: 1,
+            safe_point: child_safe_point,
+        };
+        assert_eq!(
+            executor.step_debugger_bluets_source_span(tab_id, 1, target),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+    }
+
+    #[test]
+    fn core_rejects_mismatched_child_safe_point_span_envelopes() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script type=\"application/x-blueice-typescript\">const mapped: number = 42;</script>",
+            "https://example.test/forged-span.html",
+        );
+        let child_program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let child_metadata = PageHostDebuggerMetadataHandle {
+            metadata_handle: 17,
+            metadata_generation: 19,
+        };
+        let child_safe_point = PageHostDebuggerSafePoint {
+            program: child_program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 4,
+        };
+        let span = page_host::PageHostDebuggerBlueTsSafePointSpan {
+            source_id: 3,
+            start_byte: 0,
+            end_byte: 5,
+            coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 0,
+                end_line: 0,
+                end_column_utf16: 5,
+            },
+        };
+        let span_reply = |reply_tab_id, reply_generation, metadata, safe_point, span| {
+            PageHostReply::DebuggerBlueTsSafePointSpan {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                metadata,
+                safe_point,
+                span,
+            }
+        };
+        let reply = span_reply(tab_id.as_u64(), 1, child_metadata, child_safe_point, span);
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new(MalformedSafePointSpanChild {
+            lifecycle: RecordingChild::default(),
+            reply: reply.clone(),
+        });
+        executor.synchronize_and_execute(&tabs).unwrap();
+        executor.debugger_programs.insert(
+            tab_id,
+            BTreeMap::from([(
+                child_program,
+                CoreDebuggerProgram {
+                    program_handle: 101,
+                    program_generation: 103,
+                },
+            )]),
+        );
+        executor.debugger_static_metadata.insert(
+            tab_id,
+            BTreeMap::from([(
+                child_metadata,
+                CoreDebuggerStaticMetadata {
+                    program: child_program,
+                    metadata_handle: 107,
+                    metadata_generation: 109,
+                },
+            )]),
+        );
+        let target = JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+            program_handle: 101,
+            program_generation: 103,
+            metadata_handle: 107,
+            metadata_generation: 109,
+            source_id: 3,
+            code_unit_ordinal: 0,
+            bytecode_offset: 4,
+        };
+        assert_eq!(
+            executor
+                .debugger_static_metadata_safe_point_span(tab_id, 1, target)
+                .unwrap(),
+            JavaScriptPageDebuggerStaticMetadataSafePointSpan {
+                source_id: 3,
+                start_byte: 0,
+                end_byte: 5,
+                coordinates: span.coordinates,
+            }
+        );
+        for malformed in [
+            span_reply(
+                tab_id.as_u64() + 1,
+                1,
+                child_metadata,
+                child_safe_point,
+                span,
+            ),
+            span_reply(tab_id.as_u64(), 2, child_metadata, child_safe_point, span),
+            span_reply(
+                tab_id.as_u64(),
+                1,
+                PageHostDebuggerMetadataHandle {
+                    metadata_generation: 20,
+                    ..child_metadata
+                },
+                child_safe_point,
+                span,
+            ),
+            span_reply(
+                tab_id.as_u64(),
+                1,
+                child_metadata,
+                PageHostDebuggerSafePoint {
+                    bytecode_offset: 5,
+                    ..child_safe_point
+                },
+                span,
+            ),
+            span_reply(
+                tab_id.as_u64(),
+                1,
+                child_metadata,
+                child_safe_point,
+                page_host::PageHostDebuggerBlueTsSafePointSpan {
+                    end_byte: span.start_byte,
+                    ..span
+                },
+            ),
+            span_reply(
+                tab_id.as_u64(),
+                1,
+                child_metadata,
+                child_safe_point,
+                page_host::PageHostDebuggerBlueTsSafePointSpan {
+                    end_byte: DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES + 1,
+                    ..span
+                },
+            ),
+            span_reply(
+                tab_id.as_u64(),
+                1,
+                child_metadata,
+                child_safe_point,
+                page_host::PageHostDebuggerBlueTsSafePointSpan {
+                    coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                        start_column_utf16: span.end_byte + 1,
+                        ..span.coordinates
+                    },
+                    ..span
+                },
+            ),
+        ] {
+            executor.child.reply = malformed;
+            assert_eq!(
+                executor.debugger_static_metadata_safe_point_span(tab_id, 1, target),
+                Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            );
+        }
+        executor.child.reply = span_reply(
+            tab_id.as_u64(),
+            1,
+            child_metadata,
+            child_safe_point,
+            page_host::PageHostDebuggerBlueTsSafePointSpan {
+                source_id: 4,
+                ..span
+            },
+        );
+        assert_eq!(
+            executor.debugger_static_metadata_safe_point_span(tab_id, 1, target),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
+
+        let breakpoint_target = JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget {
+            program_handle: 101,
+            program_generation: 103,
+            metadata_handle: 107,
+            metadata_generation: 109,
+            source_id: 3,
+            source_byte: 2,
+        };
+        let breakpoint_reply = |reply_tab_id,
+                                reply_generation,
+                                program,
+                                metadata,
+                                source_id,
+                                source_byte,
+                                safe_point| {
+            PageHostReply::DebuggerBlueTsSourceBreakpoint {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                program,
+                metadata,
+                source_id,
+                source_byte,
+                safe_point,
+            }
+        };
+        executor.child.reply = breakpoint_reply(
+            tab_id.as_u64(),
+            1,
+            child_program,
+            child_metadata,
+            3,
+            2,
+            Some(child_safe_point),
+        );
+        assert_eq!(
+            executor
+                .debugger_static_metadata_source_breakpoint(tab_id, 1, breakpoint_target)
+                .unwrap(),
+            Some(JavaScriptPageDebuggerSafePoint {
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            })
+        );
+        executor.child.reply = breakpoint_reply(
+            tab_id.as_u64(),
+            1,
+            child_program,
+            child_metadata,
+            3,
+            2,
+            None,
+        );
+        assert_eq!(
+            executor
+                .debugger_static_metadata_source_breakpoint(tab_id, 1, breakpoint_target)
+                .unwrap(),
+            None
+        );
+        for malformed in [
+            breakpoint_reply(8, 1, child_program, child_metadata, 3, 2, None),
+            breakpoint_reply(
+                tab_id.as_u64(),
+                2,
+                child_program,
+                child_metadata,
+                3,
+                2,
+                None,
+            ),
+            breakpoint_reply(
+                tab_id.as_u64(),
+                1,
+                PageHostDebuggerProgram {
+                    program_generation: 14,
+                    ..child_program
+                },
+                child_metadata,
+                3,
+                2,
+                None,
+            ),
+            breakpoint_reply(
+                tab_id.as_u64(),
+                1,
+                child_program,
+                PageHostDebuggerMetadataHandle {
+                    metadata_generation: 20,
+                    ..child_metadata
+                },
+                3,
+                2,
+                None,
+            ),
+            breakpoint_reply(
+                tab_id.as_u64(),
+                1,
+                child_program,
+                child_metadata,
+                4,
+                2,
+                None,
+            ),
+            breakpoint_reply(
+                tab_id.as_u64(),
+                1,
+                child_program,
+                child_metadata,
+                3,
+                3,
+                None,
+            ),
+            breakpoint_reply(
+                tab_id.as_u64(),
+                1,
+                child_program,
+                child_metadata,
+                3,
+                2,
+                Some(PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_generation: 14,
+                        ..child_program
+                    },
+                    ..child_safe_point
+                }),
+            ),
+        ] {
+            executor.child.reply = malformed;
+            assert_eq!(
+                executor.debugger_static_metadata_source_breakpoint(tab_id, 1, breakpoint_target),
+                Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            );
+        }
     }
 
     #[test]

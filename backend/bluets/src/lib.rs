@@ -40,8 +40,8 @@ pub use contracts::{
     Contract, ContractError, ContractPlan, ContractValue, ValidationError, ValidationLimits,
 };
 pub use debug_info::{
-    BlueTsDebugInfo, ContractId, DebugContract, DebugSource, DebugSymbol, DebugType, SourceId,
-    SymbolId, TypeId,
+    source_locations_for_spans, BlueTsDebugInfo, ContractId, DebugContract, DebugSource,
+    DebugSourceLocation, DebugSourcePosition, DebugSymbol, DebugType, SourceId, SymbolId, TypeId,
 };
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
 pub use emitter::{BuildArtifact, BuildOutput, SourceMap};

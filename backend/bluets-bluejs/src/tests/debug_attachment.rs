@@ -65,6 +65,16 @@ fn retains_only_static_metadata_for_one_live_direct_generation() {
         .iter()
         .any(|static_type| static_type.display == "number"));
     assert_eq!(retained.safe_point_map(), &attachment.safe_point_map);
+    for source_byte in [0, 1, 7, 26, usize::MAX] {
+        assert_eq!(
+            retained.breakpoint_at_or_after(ENTRY, source_byte),
+            attachment.breakpoint_at_or_after(ENTRY, source_byte),
+        );
+    }
+    assert_eq!(
+        retained.breakpoint_at_or_after("page:///other.ts", 0),
+        DirectSafePointBinding::Unbound,
+    );
 
     assert!(programs.invalidate(attachment.handle));
     assert!(matches!(
@@ -114,4 +124,79 @@ fn retention_limits_reject_a_program_before_metadata_is_exposed() {
         })
     ));
     assert!(debug.is_empty());
+}
+
+#[test]
+fn lowering_span_retention_limit_rejects_before_source_breakpoints_are_available() {
+    let artifact = artifact();
+    let mut programs = bluejs::BlueJsProgramRegistry::default();
+    let mut debug = DirectDebugRegistry::new(DirectDebugRetentionLimits {
+        max_lowering_spans_per_program: 0,
+        ..DirectDebugRetentionLimits::default()
+    });
+
+    assert!(matches!(
+        artifact.attach_debug_in(&mut programs, &mut debug),
+        Err(BridgeError::DebugAttachment(
+            DirectDebugAttachmentError::RetentionLimit {
+                resource: "lowering spans",
+                limit: 0,
+            }
+        ))
+    ));
+    assert!(debug.is_empty());
+}
+
+#[test]
+fn retained_source_breakpoints_cannot_disagree_with_the_verified_safe_point_map() {
+    let artifact = artifact();
+    let mut programs = bluejs::BlueJsProgramRegistry::default();
+    let mut attachment = artifact.attach_in(&mut programs).unwrap();
+    let original_binding = attachment.provenance[0].safe_point;
+    assert!(matches!(original_binding, DirectSafePointBinding::Bound(_)));
+    attachment.provenance[0].safe_point = DirectSafePointBinding::Unbound;
+    let mut debug = DirectDebugRegistry::default();
+
+    assert!(matches!(
+        debug.retain(
+            &programs,
+            &attachment,
+            &artifact.language_version,
+            &artifact.compiler_options_fingerprint,
+            &artifact.sources,
+            &artifact.debug_info,
+        ),
+        Err(DirectDebugAttachmentError::SafePointMap(_))
+    ));
+    assert!(debug.is_empty());
+}
+
+#[test]
+fn retained_source_breakpoints_preserve_unbound_spans_before_later_bound_code() {
+    let mut artifact = artifact();
+    let bluejs::BlueJsProgramV1::Script(program) = &mut artifact.program else {
+        panic!("the fixture must compile as a classic script");
+    };
+    program.body[0] = bluejs::Stmt::Empty;
+    artifact.bytecode = artifact.program.compile().unwrap();
+    let mut programs = bluejs::BlueJsProgramRegistry::default();
+    let mut debug = DirectDebugRegistry::default();
+    let attachment = artifact.attach_debug_in(&mut programs, &mut debug).unwrap();
+    assert_eq!(
+        attachment.provenance[0].safe_point,
+        DirectSafePointBinding::Unbound
+    );
+    let DirectSafePointBinding::Bound(later) = attachment.provenance[1].safe_point else {
+        panic!("the later expression must still compile to an instruction");
+    };
+    let retained = debug.get(&programs, attachment.handle).unwrap();
+    assert_eq!(
+        retained.breakpoint_at_or_after(ENTRY, attachment.provenance[0].source.start),
+        DirectSafePointBinding::Unbound,
+        "an unbound span must not be skipped to the later instruction"
+    );
+    assert_eq!(
+        retained.breakpoint_at_or_after(ENTRY, attachment.provenance[0].source.end),
+        DirectSafePointBinding::Bound(later)
+    );
 }

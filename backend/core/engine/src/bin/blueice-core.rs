@@ -61,10 +61,76 @@ struct Args {
     /// or an integration test; omitting it preserves the reference binary's
     /// current frontend-only mode.
     script_socket: Option<PathBuf>,
+    /// Capability for this generation's child on the private script socket.
+    /// The socket is never bound without this fixed-shape owner secret.
+    script_session_token: Option<String>,
     /// Optional listener for the native debugger discovery channel. It remains
     /// separate from both frontend and DOM-script IPC; the session thread
     /// validates each requested tab/document generation before replying.
     debugger_socket: Option<PathBuf>,
+    /// Core-owner opt-in for a bounded opaque static-metadata inventory. It
+    /// never exposes a metadata record itself and still requires a client
+    /// request plus a live child-side capability.
+    debugger_static_metadata_inventory: bool,
+    /// Core-owner opt-in for bounded source-free summaries of handles from
+    /// the separately enabled metadata inventory. It exposes only compiler
+    /// fingerprints and aggregate counts, never source identity/text, spans,
+    /// names, types, symbols, contracts, bytecode, or runtime values.
+    debugger_static_metadata_summary: bool,
+    /// Core-owner opt-in for bounded metadata-handle-bound source-record IDs.
+    /// IDs disclose no module, hash, source text, span, or record detail.
+    debugger_static_metadata_source_inventory: bool,
+    /// Core-owner opt-in for source-free compiler provenance of an already
+    /// inventoried source ID. It requires metadata and source inventory and
+    /// reveals only canonical module identity plus a labeled SHA-256 digest.
+    debugger_static_metadata_source_provenance: bool,
+    /// Core-owner opt-in for opaque compiler-minted type-record IDs under an
+    /// already inventoried metadata handle. Type displays remain unavailable.
+    debugger_static_metadata_type_inventory: bool,
+    /// Core-owner opt-in for one bounded compiler-produced display under a
+    /// type ID previously emitted by the separate type inventory.
+    debugger_static_metadata_type_display: bool,
+    /// Core-owner opt-in for opaque compiler-minted symbol-record IDs under
+    /// an already inventoried metadata handle. Symbol detail remains denied.
+    debugger_static_metadata_symbol_inventory: bool,
+    /// Core-owner opt-in for opaque compiler-minted contract IDs under an
+    /// already inventoried metadata handle. Contract detail remains denied.
+    debugger_static_metadata_contract_inventory: bool,
+    /// Core-owner opt-in for one bounded compiler-produced display under a
+    /// contract ID previously emitted by the separate contract inventory.
+    debugger_static_metadata_contract_display: bool,
+    /// Core-owner opt-in for data-only validation against a contract ID
+    /// previously emitted by the separate contract inventory. The reply is
+    /// only a boolean; plans and structural failure detail stay private.
+    debugger_static_metadata_contract_validation: bool,
+    /// Core-owner opt-in for an aggregate direct-lowering-map summary under a
+    /// prior opaque metadata receipt. It contains no map entries, spans, or
+    /// bytecode locations.
+    debugger_static_metadata_lowering_summary: bool,
+    /// Core-owner opt-in for one bounded compiler-produced display under a
+    /// symbol ID previously emitted by the separate symbol inventory.
+    debugger_static_metadata_symbol_display: bool,
+    /// Core-owner opt-in for one source-text-free half-open byte range under
+    /// separately inventoried symbol and source IDs. It exposes no source,
+    /// module identity, line/column data, type, contract, or bytecode.
+    debugger_static_metadata_symbol_location: bool,
+    /// Core-owner opt-in for one exact original BlueTS safe-point byte span
+    /// under prior opaque metadata and source-ID receipts.
+    debugger_static_metadata_safe_point_span: bool,
+    /// Core-owner opt-in for bounded original BlueTS source-position binding.
+    /// This is a distinct source-map oracle from exact safe-point span reads.
+    debugger_static_metadata_source_breakpoint: bool,
+    /// Independent owner grant for paused BlueTS source-span stepping.
+    debugger_static_metadata_source_span_step: bool,
+    /// Core-owner opt-in for a bounded contract declaration range under
+    /// separately receipted contract and source IDs; no plan or source text.
+    debugger_static_metadata_contract_location: bool,
+    /// Core-owner opt-in for one compiler-verified symbol/type relation under
+    /// separately inventoried IDs. It exposes no display or static record.
+    debugger_static_metadata_symbol_type: bool,
+    /// Core-owner opt-in for one compiler-verified symbol/contract relation
+    /// under separately inventoried IDs. It exposes no plan or static record.
+    debugger_static_metadata_symbol_contract: bool,
     /// Optional listener for queries over projects a trusted core owner
     /// registered during startup. Its protocol does not accept registration,
     /// source, path, resolver, compiler-option, build, or write requests.
@@ -73,6 +139,12 @@ struct Args {
     /// owner. This is a startup-only test/integration seam, not a project
     /// file/path argument and never crosses compiler IPC.
     compiler_project_profile: Option<String>,
+    /// One bounded, owner-only catalog is read from inherited stdin before
+    /// listeners are created; no public request can supply another catalog.
+    compiler_catalog_stdin: bool,
+    /// One combined owner bootstrap carries an optional compiler catalog and
+    /// HTTP page-resource manifest over inherited stdin before listeners.
+    owner_bootstrap_stdin: bool,
     /// An explicitly selected, core-owned host typing profile for executing
     /// discovered inline BlueTS page declarations. Omission preserves the
     /// default no-inline-execution process mode; page content cannot select a
@@ -110,9 +182,31 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut frame_dir = None;
     let mut gatekeeper_socket = None;
     let mut script_socket = None;
+    let mut script_session_token = None;
     let mut debugger_socket = None;
+    let mut debugger_static_metadata_inventory = false;
+    let mut debugger_static_metadata_summary = false;
+    let mut debugger_static_metadata_source_inventory = false;
+    let mut debugger_static_metadata_source_provenance = false;
+    let mut debugger_static_metadata_type_inventory = false;
+    let mut debugger_static_metadata_type_display = false;
+    let mut debugger_static_metadata_symbol_inventory = false;
+    let mut debugger_static_metadata_contract_inventory = false;
+    let mut debugger_static_metadata_contract_display = false;
+    let mut debugger_static_metadata_contract_validation = false;
+    let mut debugger_static_metadata_lowering_summary = false;
+    let mut debugger_static_metadata_symbol_display = false;
+    let mut debugger_static_metadata_symbol_location = false;
+    let mut debugger_static_metadata_safe_point_span = false;
+    let mut debugger_static_metadata_source_breakpoint = false;
+    let mut debugger_static_metadata_source_span_step = false;
+    let mut debugger_static_metadata_contract_location = false;
+    let mut debugger_static_metadata_symbol_type = false;
+    let mut debugger_static_metadata_symbol_contract = false;
     let mut compiler_socket = None;
     let mut compiler_project_profile = None;
+    let mut compiler_catalog_stdin = false;
+    let mut owner_bootstrap_stdin = false;
     let mut inline_bluets_profile = None;
     let mut inline_bluejs = false;
     let mut out_of_process_bluejs_socket = None;
@@ -137,9 +231,63 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--script-socket" => script_socket = Some(PathBuf::from(value()?)),
+            "--script-session-token" => script_session_token = Some(value()?),
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
+            "--debugger-static-metadata-inventory" => debugger_static_metadata_inventory = true,
+            "--debugger-static-metadata-summary" => debugger_static_metadata_summary = true,
+            "--debugger-static-metadata-source-inventory" => {
+                debugger_static_metadata_source_inventory = true
+            }
+            "--debugger-static-metadata-source-provenance" => {
+                debugger_static_metadata_source_provenance = true
+            }
+            "--debugger-static-metadata-type-inventory" => {
+                debugger_static_metadata_type_inventory = true
+            }
+            "--debugger-static-metadata-type-display" => {
+                debugger_static_metadata_type_display = true
+            }
+            "--debugger-static-metadata-symbol-inventory" => {
+                debugger_static_metadata_symbol_inventory = true
+            }
+            "--debugger-static-metadata-contract-inventory" => {
+                debugger_static_metadata_contract_inventory = true
+            }
+            "--debugger-static-metadata-contract-display" => {
+                debugger_static_metadata_contract_display = true
+            }
+            "--debugger-static-metadata-contract-validation" => {
+                debugger_static_metadata_contract_validation = true
+            }
+            "--debugger-static-metadata-lowering-summary" => {
+                debugger_static_metadata_lowering_summary = true
+            }
+            "--debugger-static-metadata-symbol-display" => {
+                debugger_static_metadata_symbol_display = true
+            }
+            "--debugger-static-metadata-symbol-location" => {
+                debugger_static_metadata_symbol_location = true
+            }
+            "--debugger-static-metadata-safe-point-span" => {
+                debugger_static_metadata_safe_point_span = true
+            }
+            "--debugger-static-metadata-source-breakpoint" => {
+                debugger_static_metadata_source_breakpoint = true
+            }
+            "--debugger-static-metadata-source-span-step" => {
+                debugger_static_metadata_source_span_step = true
+            }
+            "--debugger-static-metadata-contract-location" => {
+                debugger_static_metadata_contract_location = true
+            }
+            "--debugger-static-metadata-symbol-type" => debugger_static_metadata_symbol_type = true,
+            "--debugger-static-metadata-symbol-contract" => {
+                debugger_static_metadata_symbol_contract = true
+            }
             "--compiler-socket" => compiler_socket = Some(PathBuf::from(value()?)),
             "--compiler-project-profile" => compiler_project_profile = Some(value()?),
+            "--compiler-catalog-stdin" => compiler_catalog_stdin = true,
+            "--owner-bootstrap-stdin" => owner_bootstrap_stdin = true,
             "--inline-bluets-profile" => inline_bluets_profile = Some(value()?),
             "--inline-bluejs" => inline_bluejs = true,
             "--out-of-process-bluejs-socket" => {
@@ -154,6 +302,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     }
 
     let socket = socket.ok_or_else(|| "--socket <path> is required".to_string())?;
+    if script_socket.is_some() != script_session_token.is_some() {
+        return Err(
+            "--script-socket and --script-session-token must be provided together".to_string(),
+        );
+    }
+    if script_session_token
+        .as_deref()
+        .is_some_and(|token| !blueice_ipc::script::valid_script_session_token(token))
+    {
+        return Err("--script-session-token must be 64 lowercase hexadecimal bytes".to_string());
+    }
     if inline_bluets_profile.is_some() && inline_bluejs {
         return Err("--inline-bluejs cannot be combined with --inline-bluets-profile".to_string());
     }
@@ -168,6 +327,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         .is_some_and(str::is_empty)
     {
         return Err("--out-of-process-bluejs-token must not be empty".to_string());
+    }
+    if let (Some(script_token), Some(page_host_token)) = (
+        script_session_token.as_deref(),
+        out_of_process_bluejs_token.as_deref(),
+    ) {
+        if script_token != page_host_token {
+            return Err(
+                "--script-session-token must match the supervised BlueJS child capability"
+                    .to_string(),
+            );
+        }
     }
     if out_of_process_bluejs_page_script_profile.is_some() && out_of_process_bluejs_socket.is_none()
     {
@@ -191,11 +361,242 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
-    if compiler_socket.is_some() != compiler_project_profile.is_some() {
+    if debugger_static_metadata_inventory && debugger_socket.is_none() {
+        return Err("--debugger-static-metadata-inventory requires --debugger-socket".to_string());
+    }
+    if debugger_static_metadata_summary && debugger_socket.is_none() {
+        return Err("--debugger-static-metadata-summary requires --debugger-socket".to_string());
+    }
+    if debugger_static_metadata_summary && !debugger_static_metadata_inventory {
         return Err(
-            "--compiler-socket and --compiler-project-profile must be provided together"
+            "--debugger-static-metadata-summary requires --debugger-static-metadata-inventory"
                 .to_string(),
         );
+    }
+    if debugger_static_metadata_source_inventory && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-source-inventory requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_source_inventory && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-source-inventory requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_source_provenance && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-source-provenance requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_source_provenance && !debugger_static_metadata_source_inventory {
+        return Err(
+            "--debugger-static-metadata-source-provenance requires --debugger-static-metadata-source-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_type_inventory && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-type-inventory requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_type_inventory && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-type-inventory requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_type_display && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-type-display requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_type_display && !debugger_static_metadata_type_inventory {
+        return Err(
+            "--debugger-static-metadata-type-display requires --debugger-static-metadata-type-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_symbol_inventory && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-symbol-inventory requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_symbol_inventory && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-symbol-inventory requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_contract_inventory && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-contract-inventory requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_contract_inventory && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-contract-inventory requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_contract_display && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-contract-display requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_contract_display && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-contract-display requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_contract_validation && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-contract-validation requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_contract_validation && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-contract-validation requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_lowering_summary && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-lowering-summary requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_lowering_summary && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-lowering-summary requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_symbol_display && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-symbol-display requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_symbol_display && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-symbol-display requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_symbol_location && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-symbol-location requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_symbol_location && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-symbol-location requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_symbol_location && !debugger_static_metadata_source_inventory {
+        return Err(
+            "--debugger-static-metadata-symbol-location requires --debugger-static-metadata-source-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_symbol_location && !debugger_static_metadata_symbol_inventory {
+        return Err(
+            "--debugger-static-metadata-symbol-location requires --debugger-static-metadata-symbol-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_safe_point_span && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-safe-point-span requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_safe_point_span && !debugger_static_metadata_inventory {
+        return Err("--debugger-static-metadata-safe-point-span requires --debugger-static-metadata-inventory".to_string());
+    }
+    if debugger_static_metadata_safe_point_span && !debugger_static_metadata_source_inventory {
+        return Err("--debugger-static-metadata-safe-point-span requires --debugger-static-metadata-source-inventory".to_string());
+    }
+    if debugger_static_metadata_source_breakpoint && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-source-breakpoint requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_source_breakpoint && !debugger_static_metadata_inventory {
+        return Err("--debugger-static-metadata-source-breakpoint requires --debugger-static-metadata-inventory".to_string());
+    }
+    if debugger_static_metadata_source_breakpoint && !debugger_static_metadata_source_inventory {
+        return Err("--debugger-static-metadata-source-breakpoint requires --debugger-static-metadata-source-inventory".to_string());
+    }
+    if debugger_static_metadata_source_span_step && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-source-span-step requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_source_span_step && !debugger_static_metadata_safe_point_span {
+        return Err("--debugger-static-metadata-source-span-step requires --debugger-static-metadata-safe-point-span".to_string());
+    }
+    if debugger_static_metadata_contract_location && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-contract-location requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_contract_location && !debugger_static_metadata_inventory {
+        return Err("--debugger-static-metadata-contract-location requires --debugger-static-metadata-inventory".to_string());
+    }
+    if debugger_static_metadata_contract_location && !debugger_static_metadata_source_inventory {
+        return Err("--debugger-static-metadata-contract-location requires --debugger-static-metadata-source-inventory".to_string());
+    }
+    if debugger_static_metadata_contract_location && !debugger_static_metadata_contract_inventory {
+        return Err("--debugger-static-metadata-contract-location requires --debugger-static-metadata-contract-inventory".to_string());
+    }
+    if debugger_static_metadata_symbol_type && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-symbol-type requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_symbol_type && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-symbol-type requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_metadata_symbol_type && !debugger_static_metadata_type_inventory {
+        return Err("--debugger-static-metadata-symbol-type requires --debugger-static-metadata-type-inventory".to_string());
+    }
+    if debugger_static_metadata_symbol_type && !debugger_static_metadata_symbol_inventory {
+        return Err("--debugger-static-metadata-symbol-type requires --debugger-static-metadata-symbol-inventory".to_string());
+    }
+    if debugger_static_metadata_symbol_contract && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-symbol-contract requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_symbol_contract && !debugger_static_metadata_inventory {
+        return Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-inventory".to_string());
+    }
+    if debugger_static_metadata_symbol_contract && !debugger_static_metadata_symbol_inventory {
+        return Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-symbol-inventory".to_string());
+    }
+    if debugger_static_metadata_symbol_contract && !debugger_static_metadata_contract_inventory {
+        return Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-contract-inventory".to_string());
+    }
+    if owner_bootstrap_stdin
+        && (compiler_catalog_stdin || out_of_process_bluejs_page_script_profile.is_some())
+    {
+        return Err(
+            "--owner-bootstrap-stdin cannot be combined with other compiler/page startup selectors"
+                .to_string(),
+        );
+    }
+    if (compiler_project_profile.is_some() || compiler_catalog_stdin) && compiler_socket.is_none()
+        || (compiler_project_profile.is_some() && compiler_catalog_stdin)
+        || (compiler_socket.is_some()
+            && !(compiler_project_profile.is_some()
+                || compiler_catalog_stdin
+                || owner_bootstrap_stdin))
+    {
+        return Err("--compiler-socket requires exactly one compiler startup selector".to_string());
     }
     Ok(Args {
         socket,
@@ -204,9 +605,31 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         frame_dir,
         gatekeeper_socket,
         script_socket,
+        script_session_token,
         debugger_socket,
+        debugger_static_metadata_inventory,
+        debugger_static_metadata_summary,
+        debugger_static_metadata_source_inventory,
+        debugger_static_metadata_source_provenance,
+        debugger_static_metadata_type_inventory,
+        debugger_static_metadata_type_display,
+        debugger_static_metadata_symbol_inventory,
+        debugger_static_metadata_contract_inventory,
+        debugger_static_metadata_contract_display,
+        debugger_static_metadata_contract_validation,
+        debugger_static_metadata_lowering_summary,
+        debugger_static_metadata_symbol_display,
+        debugger_static_metadata_symbol_location,
+        debugger_static_metadata_safe_point_span,
+        debugger_static_metadata_source_breakpoint,
+        debugger_static_metadata_source_span_step,
+        debugger_static_metadata_contract_location,
+        debugger_static_metadata_symbol_type,
+        debugger_static_metadata_symbol_contract,
         compiler_socket,
         compiler_project_profile,
+        compiler_catalog_stdin,
+        owner_bootstrap_stdin,
         inline_bluets_profile,
         inline_bluejs,
         out_of_process_bluejs_socket,
@@ -269,6 +692,110 @@ fn register_compiler_startup_profile(
     }
 }
 
+/// Consumes the trusted launcher's already-selected closed graph. This runs
+/// before any core, compiler, debugger, or script listener is bound. Loader
+/// construction and catalog registration reject invalid graphs atomically.
+#[cfg(unix)]
+fn register_owner_compiler_catalog(
+    catalog: &mut CoreCompilerProjectCatalog,
+    bootstrap: blueice_ipc::compiler_catalog::CompilerCatalogBootstrap,
+) -> Result<(), String> {
+    use blueice_bluets::{
+        AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
+        EcmaTarget, ModuleSource, RuntimePolicy,
+    };
+    use blueice_ipc::compiler_catalog::{CompilerCatalogRuntimePolicy, CompilerCatalogTarget};
+
+    bootstrap.validate().map_err(|error| error.to_string())?;
+    for project in bootstrap.projects {
+        let loader = AuthorizedModuleLoader::new(
+            project
+                .modules
+                .into_iter()
+                .map(|module| AuthorizedModule::new(module.canonical_id, module.text)),
+            project.resolutions.into_iter().map(|edge| {
+                AuthorizedModuleResolution::new(
+                    edge.from_module,
+                    edge.specifier,
+                    edge.target_module,
+                )
+            }),
+        )
+        .map_err(|error| format!("invalid owner compiler graph: {error}"))?;
+        let compiler_options = CompilerOptions {
+            target: match project.options.target {
+                CompilerCatalogTarget::Es2020 => EcmaTarget::Es2020,
+                CompilerCatalogTarget::Es2022 => EcmaTarget::Es2022,
+            },
+            runtime_policy: match project.options.runtime_policy {
+                CompilerCatalogRuntimePolicy::TranspileOnly => RuntimePolicy::TranspileOnly,
+                CompilerCatalogRuntimePolicy::Checked => RuntimePolicy::Checked,
+                CompilerCatalogRuntimePolicy::StrictRuntime => RuntimePolicy::StrictRuntime,
+            },
+            source_map: project.options.source_map,
+            declaration: project.options.declaration,
+            resolver_fingerprint: project.options.resolver_fingerprint,
+            ambient_declaration_modules: project
+                .options
+                .ambient_declaration_modules
+                .into_iter()
+                .map(|module| ModuleSource::new(module.canonical_id, module.text))
+                .collect(),
+            require_declared_global_calls: project.options.require_declared_global_calls,
+            ..CompilerOptions::default()
+        };
+        let registration = blueice_engine::compiler_service::RegisteredProjectRegistration {
+            canonical_project_root: project.canonical_project_root,
+            canonical_config_root: project.canonical_config_root,
+            canonical_output_root: project.canonical_output_root,
+            entry_module: project.entry_module,
+            loader,
+            compiler_options,
+        };
+        (if project.expose_to_compiler_ipc {
+            catalog.register_startup_project(registration)
+        } else {
+            catalog.register_startup_project_private(registration)
+        })
+        .map_err(|error| format!("failed to register owner compiler project: {error}"))?;
+    }
+    Ok(())
+}
+
+/// Reuses the core's one HTTP(S) source-authorizer implementation. This is
+/// deliberately constructed before any listener: malformed canonical URLs,
+/// origin rules, integrity entries, or limits cannot create a partly live
+/// browser or compiler endpoint.
+#[cfg(unix)]
+fn construct_owner_http_page_policy(
+    bootstrap: blueice_ipc::owner_bootstrap::OwnerHttpPolicyBootstrap,
+) -> Result<script::http_resource_authorizer::HttpScriptResourcePolicy, String> {
+    use blueice_ipc::owner_bootstrap::OwnerHttpOriginRule;
+    use script::http_resource_authorizer::{
+        HttpScriptIntegrityManifest, HttpScriptResourceLimits, HttpScriptResourceOriginRule,
+        HttpScriptResourcePolicy,
+    };
+
+    bootstrap.validate().map_err(|error| error.to_string())?;
+    let origin_rule = match bootstrap.origin_rule {
+        OwnerHttpOriginRule::SameDocumentOrigin => {
+            HttpScriptResourceOriginRule::same_document_origin()
+        }
+        OwnerHttpOriginRule::ExactOrigin(origin) => {
+            HttpScriptResourceOriginRule::exact_origin(origin).map_err(|error| error.to_string())?
+        }
+    };
+    let manifest = HttpScriptIntegrityManifest::new(
+        bootstrap
+            .resources
+            .into_iter()
+            .map(|resource| (resource.canonical_url, resource.integrity)),
+    )
+    .map_err(|error| error.to_string())?;
+    HttpScriptResourcePolicy::new(origin_rule, manifest, HttpScriptResourceLimits::default())
+        .map_err(|error| error.to_string())
+}
+
 /// Serves one long-lived BlueJS script connection. Frame parsing lives at the
 /// IPC boundary, but every request waits for the owning core session to apply
 /// it against its live tab manager. A bad initial handshake gets a structured
@@ -277,39 +804,114 @@ fn register_compiler_startup_profile(
 fn serve_script_connection(
     mut stream: UnixStream,
     sender: script::ScriptRequestSender,
+    expected_token: &str,
 ) -> io::Result<()> {
+    // An unauthenticated peer must not monopolize this serialized listener
+    // indefinitely by connecting without sending a complete Hello frame.
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
     let first = blueice_ipc::script::read_script_request(&mut stream)?;
-    if !matches!(first, blueice_ipc::script::ScriptRequest::Hello) {
+    if !matches!(
+        &first,
+        blueice_ipc::script::ScriptRequest::Hello { protocol_version, session_token }
+            if *protocol_version == blueice_ipc::script::SCRIPT_PROTOCOL_VERSION
+                && script_capability_matches(expected_token, session_token)
+    ) {
         blueice_ipc::script::write_script_reply(
             &mut stream,
             &blueice_ipc::script::ScriptReply::Error {
-                message: "script protocol requires Hello as its first request".to_string(),
+                message: "script handshake denied".to_string(),
             },
         )?;
         return Ok(());
     }
-    blueice_ipc::script::write_script_reply(&mut stream, &sender.request(first)?)?;
+    stream.set_read_timeout(None)?;
+    blueice_ipc::script::write_script_reply(
+        &mut stream,
+        &blueice_ipc::script::ScriptReply::HelloAck {
+            protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION,
+        },
+    )?;
 
+    let mut next_call_id = 1u64;
     loop {
         let request = match blueice_ipc::script::read_script_request(&mut stream) {
             Ok(request) => request,
             Err(error) if matches!(error.kind(), io::ErrorKind::UnexpectedEof) => return Ok(()),
             Err(error) => return Err(error),
         };
-        let reply = sender.request(request)?;
-        blueice_ipc::script::write_script_reply(&mut stream, &reply)?;
+        let blueice_ipc::script::ScriptRequest::Call {
+            request_id,
+            request,
+        } = request
+        else {
+            blueice_ipc::script::write_script_reply(
+                &mut stream,
+                &blueice_ipc::script::ScriptReply::Error {
+                    message: "script DOM calls require a post-handshake envelope".to_string(),
+                },
+            )?;
+            return Ok(());
+        };
+        let Some(target) = request.document_target() else {
+            blueice_ipc::script::write_script_reply(
+                &mut stream,
+                &blueice_ipc::script::ScriptReply::Error {
+                    message: "nested or target-free script call denied".to_string(),
+                },
+            )?;
+            return Ok(());
+        };
+        if request_id != next_call_id {
+            blueice_ipc::script::write_script_reply(
+                &mut stream,
+                &blueice_ipc::script::ScriptReply::Error {
+                    message: "script call ID is not the next connection ID".to_string(),
+                },
+            )?;
+            return Ok(());
+        }
+        next_call_id = next_call_id.checked_add(1).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "script call ID space exhausted")
+        })?;
+        let reply = sender.request(*request)?;
+        blueice_ipc::script::write_script_reply(
+            &mut stream,
+            &blueice_ipc::script::ScriptReply::CallResult {
+                request_id,
+                target,
+                reply: Box::new(reply),
+            },
+        )?;
     }
+}
+
+/// Avoid prefix matches and data-dependent early exits at the capability
+/// boundary. Both strings have the same validated fixed length in production.
+#[cfg(unix)]
+fn script_capability_matches(expected: &str, presented: &str) -> bool {
+    if !blueice_ipc::script::valid_script_session_token(presented) {
+        return false;
+    }
+    expected
+        .bytes()
+        .zip(presented.bytes())
+        .fold(0u8, |difference, (left, right)| difference | (left ^ right))
+        == 0
 }
 
 /// Accepts successive script-host connections. A malformed or disconnected
 /// host ends only its own connection; it never tears down the core session.
 #[cfg(unix)]
-fn serve_script_listener(listener: UnixListener, sender: script::ScriptRequestSender) {
+fn serve_script_listener(
+    listener: UnixListener,
+    sender: script::ScriptRequestSender,
+    expected_token: String,
+) {
     for stream in listener.incoming() {
         let Ok(stream) = stream else {
             break;
         };
-        let _ = serve_script_connection(stream, sender.clone());
+        let _ = serve_script_connection(stream, sender.clone(), &expected_token);
     }
 }
 
@@ -320,19 +922,16 @@ fn serve_script_listener(listener: UnixListener, sender: script::ScriptRequestSe
 fn serve_debugger_connection(
     mut stream: UnixStream,
     sender: blueice_engine::debugger::DebuggerRequestSender,
+    allowed_metadata_capabilities: &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest,
 ) -> io::Result<()> {
     let first = blueice_ipc::debugger::read_debugger_request(&mut stream)?;
-    let accepted = matches!(
-        first,
-        blueice_ipc::debugger::DebuggerRequest::Hello {
-            protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
-        }
-    );
-    let reply = blueice_ipc::debugger::negotiate(&first);
+    let reply = blueice_ipc::debugger::negotiate(&first, allowed_metadata_capabilities);
     blueice_ipc::debugger::write_debugger_reply(&mut stream, &reply)?;
-    if !accepted {
+    let Some(metadata_session) =
+        blueice_ipc::debugger::metadata_session_authorization(&first, &reply)
+    else {
         return Ok(());
-    }
+    };
 
     loop {
         let request = match blueice_ipc::debugger::read_debugger_request(&mut stream) {
@@ -340,7 +939,8 @@ fn serve_debugger_connection(
             Err(error) if matches!(error.kind(), io::ErrorKind::UnexpectedEof) => return Ok(()),
             Err(error) => return Err(error),
         };
-        let reply = sender.request(request)?;
+        let reply = sender
+            .request_with_metadata_session_authorization(request, metadata_session.clone())?;
         blueice_ipc::debugger::write_debugger_reply(&mut stream, &reply)?;
     }
 }
@@ -351,20 +951,22 @@ fn serve_debugger_connection(
 fn serve_debugger_listener(
     listener: UnixListener,
     sender: blueice_engine::debugger::DebuggerRequestSender,
+    allowed_metadata_capabilities: blueice_ipc::debugger::DebuggerMetadataCapabilityManifest,
 ) {
     for stream in listener.incoming() {
         let Ok(stream) = stream else {
             break;
         };
-        let _ = serve_debugger_connection(stream, sender.clone());
+        let _ = serve_debugger_connection(stream, sender.clone(), &allowed_metadata_capabilities);
     }
 }
 
 /// Serves one query-only registered-project compiler peer. Its `Hello`
 /// negotiation is intentionally completed on the listener side, while every
 /// later decoded request is synchronously handed to the sealed core catalog on
-/// the session thread. The worker owns no source, project registration, or
-/// incremental compiler cache.
+/// the session thread under its core-minted stream attestation. Abandoned
+/// pagination cursors are revoked when this stream closes. The worker owns no
+/// source, project registration, or incremental compiler cache.
 #[cfg(unix)]
 fn serve_compiler_connection(
     mut stream: UnixStream,
@@ -377,14 +979,19 @@ fn serve_compiler_connection(
             protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
         }
     );
-    let session_attestation = accepted
-        .then(mint_compiler_session_attestation)
+    let session_evidence = accepted
+        .then(mint_compiler_session_hello_evidence)
         .transpose()?;
-    let reply = blueice_ipc::compiler::negotiate(&first, session_attestation);
+    let session_sender = session_evidence
+        .as_ref()
+        .map(|evidence| sender.bind_session(evidence.session_attestation.clone()))
+        .transpose()?;
+    let reply = blueice_ipc::compiler::negotiate(&first, session_evidence);
     blueice_ipc::compiler::write_compiler_reply(&mut stream, &reply)?;
     if !accepted {
         return Ok(());
     }
+    let session_sender = session_sender.expect("an accepted Hello mints a bound compiler stream");
 
     loop {
         let request = match blueice_ipc::compiler::read_compiler_request(&mut stream) {
@@ -392,17 +999,18 @@ fn serve_compiler_connection(
             Err(error) if matches!(error.kind(), io::ErrorKind::UnexpectedEof) => return Ok(()),
             Err(error) => return Err(error),
         };
-        let reply = sender.request(request)?;
+        let reply = session_sender.request(request)?;
         blueice_ipc::compiler::write_compiler_reply(&mut stream, &reply)?;
     }
 }
 
-/// Mints opaque evidence for one accepted compiler stream. The value is
-/// generated only by the core listener after the exact v3 `Hello` and is not
-/// tied to a project, source graph, catalog, path, or any extra authority.
+/// Mints all handshake evidence for one accepted compiler stream. The core
+/// creates it only after the exact v6 `Hello`: an opaque per-stream
+/// attestation and the canonical fixed query-only manifest. Neither is tied
+/// to a project, source graph, catalog, path, or any extra authority.
 #[cfg(unix)]
-fn mint_compiler_session_attestation(
-) -> io::Result<blueice_ipc::compiler::CompilerSessionAttestation> {
+fn mint_compiler_session_hello_evidence(
+) -> io::Result<blueice_ipc::compiler::CompilerSessionHelloEvidence> {
     let mut bytes = [0u8; 32];
     std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
     let mut id = String::with_capacity(bytes.len() * 2);
@@ -412,7 +1020,13 @@ fn mint_compiler_session_attestation(
     }
     let session_attestation = blueice_ipc::compiler::CompilerSessionAttestation { id };
     debug_assert!(session_attestation.is_well_formed());
-    Ok(session_attestation)
+    let capability_manifest =
+        blueice_ipc::compiler::CompilerSessionCapabilityManifest::fixed_query_only();
+    debug_assert!(capability_manifest.is_well_formed());
+    Ok(blueice_ipc::compiler::CompilerSessionHelloEvidence {
+        session_attestation,
+        capability_manifest,
+    })
 }
 
 /// Accepts successive compiler query peers. Bad handshakes and disconnected
@@ -428,12 +1042,12 @@ fn serve_compiler_listener(listener: UnixListener, sender: CompilerServiceIpcReq
     }
 }
 
-/// Binds the compiler control socket with an explicit owner-only filesystem
-/// mode. Opaque project IDs are not an authorization replacement, and a
-/// process that chooses to expose static compiler metadata must not rely on a
-/// permissive ambient umask to keep arbitrary local users off the listener.
+/// Binds either private capability-bearing listener with an explicit
+/// owner-only filesystem mode. A bearer token or opaque project ID is not a
+/// reason to rely on a permissive ambient umask. Existing live or non-socket
+/// paths are preserved; only an abandoned socket inode can be reclaimed.
 #[cfg(unix)]
-fn bind_compiler_listener(path: &std::path::Path) -> io::Result<UnixListener> {
+fn bind_owner_only_listener(path: &std::path::Path, label: &str) -> io::Result<UnixListener> {
     match std::fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_socket() => match UnixStream::connect(path) {
             // Never unlink a working peer merely because a second core was
@@ -442,13 +1056,13 @@ fn bind_compiler_listener(path: &std::path::Path) -> io::Result<UnixListener> {
             Ok(_) => {
                 return Err(io::Error::new(
                     io::ErrorKind::AddrInUse,
-                    format!("compiler socket is already active: {}", path.display()),
+                    format!("{label} socket is already active: {}", path.display()),
                 ));
             }
             // This is the one recoverable startup residue: a dead core can
             // leave its socket inode behind after a forceful stop.
             Err(error) if error.kind() == io::ErrorKind::ConnectionRefused => {
-                remove_compiler_socket_if_owned(path);
+                remove_owned_socket_if_owned(path);
             }
             Err(error) => return Err(error),
         },
@@ -456,7 +1070,7 @@ fn bind_compiler_listener(path: &std::path::Path) -> io::Result<UnixListener> {
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
                 format!(
-                    "compiler socket is occupied by a non-socket path: {}",
+                    "{label} socket is occupied by a non-socket path: {}",
                     path.display()
                 ),
             ));
@@ -465,16 +1079,29 @@ fn bind_compiler_listener(path: &std::path::Path) -> io::Result<UnixListener> {
         Err(error) => return Err(error),
     }
     let listener = UnixListener::bind(path)?;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    if let Err(error) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
+        remove_owned_socket_if_owned(path);
+        return Err(error);
+    }
     Ok(listener)
 }
 
-/// Removes a compiler listener endpoint only if it is still a Unix socket.
+#[cfg(unix)]
+fn bind_compiler_listener(path: &std::path::Path) -> io::Result<UnixListener> {
+    bind_owner_only_listener(path, "compiler")
+}
+
+#[cfg(unix)]
+fn bind_script_listener(path: &std::path::Path) -> io::Result<UnixListener> {
+    bind_owner_only_listener(path, "script")
+}
+
+/// Removes a private listener endpoint only if it is still a Unix socket.
 /// The core may be force-killed by its supervisor, but lifecycle cleanup must
 /// never unlink a regular file, directory, or symlink that has appeared at a
 /// caller-selected path since the listener was created.
 #[cfg(unix)]
-fn remove_compiler_socket_if_owned(path: &std::path::Path) {
+fn remove_owned_socket_if_owned(path: &std::path::Path) {
     let Ok(metadata) = std::fs::symlink_metadata(path) else {
         return;
     };
@@ -500,7 +1127,34 @@ fn main() -> ExitCode {
         .gatekeeper_socket
         .unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
     let script_socket = args.script_socket.clone();
+    let script_session_token = args.script_session_token.clone();
     let debugger_socket = args.debugger_socket.clone();
+    let debugger_allowed_metadata_capabilities = if args.debugger_static_metadata_inventory {
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_selected(
+            blueice_ipc::debugger::DebuggerMetadataCapabilitySelection {
+                summary: args.debugger_static_metadata_summary,
+                source_inventory: args.debugger_static_metadata_source_inventory,
+                source_provenance: args.debugger_static_metadata_source_provenance,
+                type_inventory: args.debugger_static_metadata_type_inventory,
+                type_display: args.debugger_static_metadata_type_display,
+                symbol_inventory: args.debugger_static_metadata_symbol_inventory,
+                contract_inventory: args.debugger_static_metadata_contract_inventory,
+                symbol_display: args.debugger_static_metadata_symbol_display,
+                contract_display: args.debugger_static_metadata_contract_display,
+                contract_validation: args.debugger_static_metadata_contract_validation,
+                lowering_summary: args.debugger_static_metadata_lowering_summary,
+                symbol_location: args.debugger_static_metadata_symbol_location,
+                safe_point_span: args.debugger_static_metadata_safe_point_span,
+                source_breakpoint: args.debugger_static_metadata_source_breakpoint,
+                source_span_step: args.debugger_static_metadata_source_span_step,
+                contract_location: args.debugger_static_metadata_contract_location,
+                symbol_type: args.debugger_static_metadata_symbol_type,
+                symbol_contract: args.debugger_static_metadata_symbol_contract,
+            },
+        )
+    } else {
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty()
+    };
     let compiler_socket = args.compiler_socket.clone();
     let inline_bluets_profile = args.inline_bluets_profile.clone();
     let inline_bluejs = args.inline_bluejs;
@@ -524,22 +1178,74 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     }
+    if args.compiler_catalog_stdin {
+        let bootstrap =
+            match blueice_ipc::compiler_catalog::read_compiler_catalog(&mut io::stdin().lock()) {
+                Ok(bootstrap) => bootstrap,
+                Err(error) => {
+                    eprintln!("blueice-core: invalid owner compiler catalog: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+        let catalog = compiler_catalog
+            .as_mut()
+            .expect("argument validation requires a compiler socket for a catalog");
+        if let Err(error) = register_owner_compiler_catalog(catalog, bootstrap) {
+            eprintln!("blueice-core: {error}");
+            return ExitCode::FAILURE;
+        }
+    }
+    let mut owner_page_http_policy = None;
+    if args.owner_bootstrap_stdin {
+        let bootstrap = match blueice_ipc::owner_bootstrap::read_core_owner_bootstrap(
+            &mut io::stdin().lock(),
+        ) {
+            Ok(bootstrap) => bootstrap,
+            Err(error) => {
+                eprintln!("blueice-core: invalid owner bootstrap: {error}");
+                return ExitCode::FAILURE;
+            }
+        };
+        if compiler_socket.is_some()
+            != (bootstrap.compiler_catalog.is_some() || args.compiler_project_profile.is_some())
+            || (bootstrap.compiler_catalog.is_some() && args.compiler_project_profile.is_some())
+            || (bootstrap.page_http_policy.is_some() && out_of_process_bluejs_socket.is_none())
+        {
+            eprintln!("blueice-core: owner bootstrap does not match its private startup endpoints");
+            return ExitCode::FAILURE;
+        }
+        if let Some(page_policy) = bootstrap.page_http_policy {
+            owner_page_http_policy = match construct_owner_http_page_policy(page_policy) {
+                Ok(policy) => Some(policy),
+                Err(error) => {
+                    eprintln!("blueice-core: invalid owner HTTP page policy: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+        }
+        if let Some(projects) = bootstrap.compiler_catalog {
+            let catalog = compiler_catalog
+                .as_mut()
+                .expect("owner bootstrap compiler catalog requires a compiler socket");
+            if let Err(error) = register_owner_compiler_catalog(catalog, projects) {
+                eprintln!("blueice-core: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
     let mut compiler_service = compiler_catalog.map(CoreCompilerProjectCatalog::seal);
 
     let script_listener = match script_socket.as_ref() {
-        Some(path) => {
-            let _ = std::fs::remove_file(path);
-            match UnixListener::bind(path) {
-                Ok(listener) => Some(listener),
-                Err(error) => {
-                    eprintln!(
-                        "blueice-core: failed to bind script socket {}: {error}",
-                        path.display()
-                    );
-                    return ExitCode::FAILURE;
-                }
+        Some(path) => match bind_script_listener(path) {
+            Ok(listener) => Some(listener),
+            Err(error) => {
+                eprintln!(
+                    "blueice-core: failed to bind script socket {}: {error}",
+                    path.display()
+                );
+                return ExitCode::FAILURE;
             }
-        }
+        },
         None => None,
     };
     let debugger_listener = match debugger_socket.as_ref() {
@@ -549,7 +1255,7 @@ fn main() -> ExitCode {
                 Ok(listener) => Some(listener),
                 Err(error) => {
                     if let Some(path) = &script_socket {
-                        let _ = std::fs::remove_file(path);
+                        remove_owned_socket_if_owned(path);
                     }
                     eprintln!(
                         "blueice-core: failed to bind debugger socket {}: {error}",
@@ -566,7 +1272,7 @@ fn main() -> ExitCode {
             Ok(listener) => Some(listener),
             Err(error) => {
                 if let Some(path) = &script_socket {
-                    let _ = std::fs::remove_file(path);
+                    remove_owned_socket_if_owned(path);
                 }
                 if let Some(path) = &debugger_socket {
                     let _ = std::fs::remove_file(path);
@@ -590,13 +1296,13 @@ fn main() -> ExitCode {
         Ok(listener) => listener,
         Err(e) => {
             if let Some(path) = &script_socket {
-                let _ = std::fs::remove_file(path);
+                remove_owned_socket_if_owned(path);
             }
             if let Some(path) = &debugger_socket {
                 let _ = std::fs::remove_file(path);
             }
             if let Some(path) = &compiler_socket {
-                remove_compiler_socket_if_owned(path);
+                remove_owned_socket_if_owned(path);
             }
             eprintln!(
                 "blueice-core: failed to bind {}: {e}",
@@ -612,10 +1318,17 @@ fn main() -> ExitCode {
             blueice_engine::debugger::debugger_request_channel();
         let (compiler_sender, compiler_requests) = compiler_service_ipc_request_channel();
         if let Some(listener) = script_listener {
-            thread::spawn(move || serve_script_listener(listener, script_sender));
+            let token = script_session_token.expect("script listener requires its capability");
+            thread::spawn(move || serve_script_listener(listener, script_sender, token));
         }
         if let Some(listener) = debugger_listener {
-            thread::spawn(move || serve_debugger_listener(listener, debugger_sender));
+            thread::spawn(move || {
+                serve_debugger_listener(
+                    listener,
+                    debugger_sender,
+                    debugger_allowed_metadata_capabilities,
+                )
+            });
         }
         if let Some(listener) = compiler_listener {
             thread::spawn(move || serve_compiler_listener(listener, compiler_sender));
@@ -661,8 +1374,14 @@ fn main() -> ExitCode {
             out_of_process_bluejs_socket.as_deref(),
             out_of_process_bluejs_token.as_deref(),
         ) {
-            let mut javascript_executor = match out_of_process_bluejs_page_script_profile.as_deref()
-            {
+            let mut javascript_executor = if let Some(policy) = owner_page_http_policy.take() {
+                script::javascript_child::OutOfProcessJavaScriptPageExecutor::connect_with_external_source_authorizer(
+                    socket,
+                    token,
+                    script::http_resource_authorizer::HttpOutOfProcessPageScriptSourceAuthorizer::new(policy),
+                )
+            } else {
+                match out_of_process_bluejs_page_script_profile.as_deref() {
                 None => script::javascript_child::OutOfProcessJavaScriptPageExecutor::connect(
                     socket, token,
                 ),
@@ -675,6 +1394,7 @@ fn main() -> ExitCode {
                 }
                 // `parse_args` rejects every other value before this point.
                 Some(_) => unreachable!("page script profile was validated during argument parsing"),
+                }
             }
             .map_err(|error| {
                 io::Error::new(
@@ -761,13 +1481,13 @@ fn main() -> ExitCode {
 
     let _ = std::fs::remove_file(&args.socket);
     if let Some(path) = script_socket {
-        let _ = std::fs::remove_file(path);
+        remove_owned_socket_if_owned(&path);
     }
     if let Some(path) = debugger_socket {
         let _ = std::fs::remove_file(path);
     }
     if let Some(path) = compiler_socket {
-        remove_compiler_socket_if_owned(&path);
+        remove_owned_socket_if_owned(&path);
     }
     let _ = std::fs::remove_dir_all(&frame_dir);
 
@@ -808,7 +1528,24 @@ mod tests {
         assert_eq!(parsed.frame_dir, None);
         assert_eq!(parsed.gatekeeper_socket, None);
         assert_eq!(parsed.script_socket, None);
+        assert_eq!(parsed.script_session_token, None);
         assert_eq!(parsed.debugger_socket, None);
+        assert!(!parsed.debugger_static_metadata_inventory);
+        assert!(!parsed.debugger_static_metadata_summary);
+        assert!(!parsed.debugger_static_metadata_source_inventory);
+        assert!(!parsed.debugger_static_metadata_source_provenance);
+        assert!(!parsed.debugger_static_metadata_safe_point_span);
+        assert!(!parsed.debugger_static_metadata_type_inventory);
+        assert!(!parsed.debugger_static_metadata_type_display);
+        assert!(!parsed.debugger_static_metadata_symbol_inventory);
+        assert!(!parsed.debugger_static_metadata_contract_inventory);
+        assert!(!parsed.debugger_static_metadata_contract_display);
+        assert!(!parsed.debugger_static_metadata_contract_validation);
+        assert!(!parsed.debugger_static_metadata_lowering_summary);
+        assert!(!parsed.debugger_static_metadata_symbol_display);
+        assert!(!parsed.debugger_static_metadata_symbol_location);
+        assert!(!parsed.debugger_static_metadata_symbol_type);
+        assert!(!parsed.debugger_static_metadata_symbol_contract);
         assert_eq!(parsed.compiler_socket, None);
         assert_eq!(parsed.compiler_project_profile, None);
         assert_eq!(parsed.inline_bluets_profile, None);
@@ -816,6 +1553,55 @@ mod tests {
         assert_eq!(parsed.out_of_process_bluejs_socket, None);
         assert_eq!(parsed.out_of_process_bluejs_token, None);
         assert_eq!(parsed.out_of_process_bluejs_page_script_profile, None);
+    }
+
+    #[test]
+    fn script_listener_requires_one_fixed_shape_owner_capability() {
+        let base = [
+            "--socket",
+            "/tmp/core.sock",
+            "--script-socket",
+            "/tmp/script.sock",
+        ];
+        assert!(args(&base).is_err());
+        assert!(args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--script-session-token",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ])
+        .is_err());
+        assert!(args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--script-socket",
+            "/tmp/script.sock",
+            "--script-session-token",
+            "short",
+        ])
+        .is_err());
+        assert!(args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--script-socket",
+            "/tmp/script.sock",
+            "--script-session-token",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ])
+        .is_ok());
+        assert!(args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--script-socket",
+            "/tmp/script.sock",
+            "--script-session-token",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "--out-of-process-bluejs-socket",
+            "/tmp/child.sock",
+            "--out-of-process-bluejs-token",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ])
+        .is_err());
     }
 
     #[test]
@@ -833,6 +1619,8 @@ mod tests {
             "/tmp/gk.sock",
             "--script-socket",
             "/tmp/script.sock",
+            "--script-session-token",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "--debugger-socket",
             "/tmp/debugger.sock",
             "--compiler-socket",
@@ -852,9 +1640,31 @@ mod tests {
                 frame_dir: Some(PathBuf::from("/tmp/frames")),
                 gatekeeper_socket: Some(PathBuf::from("/tmp/gk.sock")),
                 script_socket: Some(PathBuf::from("/tmp/script.sock")),
+                script_session_token: Some("a".repeat(64)),
                 debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
+                debugger_static_metadata_inventory: false,
+                debugger_static_metadata_summary: false,
+                debugger_static_metadata_source_inventory: false,
+                debugger_static_metadata_source_provenance: false,
+                debugger_static_metadata_type_inventory: false,
+                debugger_static_metadata_type_display: false,
+                debugger_static_metadata_symbol_inventory: false,
+                debugger_static_metadata_contract_inventory: false,
+                debugger_static_metadata_contract_display: false,
+                debugger_static_metadata_contract_validation: false,
+                debugger_static_metadata_lowering_summary: false,
+                debugger_static_metadata_symbol_display: false,
+                debugger_static_metadata_symbol_location: false,
+                debugger_static_metadata_safe_point_span: false,
+                debugger_static_metadata_source_breakpoint: false,
+                debugger_static_metadata_source_span_step: false,
+                debugger_static_metadata_contract_location: false,
+                debugger_static_metadata_symbol_type: false,
+                debugger_static_metadata_symbol_contract: false,
                 compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
                 compiler_project_profile: Some("core-closed-fixture-v1".to_string()),
+                compiler_catalog_stdin: false,
+                owner_bootstrap_stdin: false,
                 inline_bluets_profile: Some("core-script-document-text-v1".to_string()),
                 inline_bluejs: false,
                 out_of_process_bluejs_socket: None,
@@ -881,6 +1691,328 @@ mod tests {
             ]),
             Err("--inline-bluejs cannot be combined with --inline-bluets-profile".to_string())
         );
+    }
+
+    #[test]
+    fn static_metadata_inventory_is_an_explicit_debugger_owner_opt_in() {
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-static-metadata-inventory",
+            ]),
+            Err("--debugger-static-metadata-inventory requires --debugger-socket".to_string())
+        );
+        assert!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+            ])
+            .unwrap()
+            .debugger_static_metadata_inventory
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-summary",
+            ]),
+            Err(
+                "--debugger-static-metadata-summary requires --debugger-static-metadata-inventory"
+                    .to_string()
+            )
+        );
+        let summary = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-summary",
+        ])
+        .unwrap();
+        assert!(summary.debugger_static_metadata_inventory);
+        assert!(summary.debugger_static_metadata_summary);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-source-inventory",
+            ]),
+            Err(
+                "--debugger-static-metadata-source-inventory requires --debugger-static-metadata-inventory"
+                    .to_string()
+            )
+        );
+        let source_inventory = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-summary",
+            "--debugger-static-metadata-source-inventory",
+        ])
+        .unwrap();
+        assert!(source_inventory.debugger_static_metadata_inventory);
+        assert!(source_inventory.debugger_static_metadata_summary);
+        assert!(source_inventory.debugger_static_metadata_source_inventory);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-source-provenance",
+            ]),
+            Err(
+                "--debugger-static-metadata-source-provenance requires --debugger-static-metadata-source-inventory"
+                    .to_string()
+            )
+        );
+        let provenance = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-source-inventory",
+            "--debugger-static-metadata-source-provenance",
+        ])
+        .unwrap();
+        assert!(provenance.debugger_static_metadata_source_provenance);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-contract-validation",
+            ]),
+            Err(
+                "--debugger-static-metadata-contract-validation requires --debugger-static-metadata-inventory"
+                    .to_string()
+            )
+        );
+        let contract_validation = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-contract-validation",
+        ])
+        .unwrap();
+        assert!(contract_validation.debugger_static_metadata_contract_validation);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-lowering-summary",
+            ]),
+            Err(
+                "--debugger-static-metadata-lowering-summary requires --debugger-static-metadata-inventory"
+                    .to_string()
+            )
+        );
+        let lowering_summary = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-lowering-summary",
+        ])
+        .unwrap();
+        assert!(lowering_summary.debugger_static_metadata_lowering_summary);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-symbol-location",
+            ]),
+            Err(
+                "--debugger-static-metadata-symbol-location requires --debugger-static-metadata-inventory"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                "--debugger-static-metadata-symbol-location",
+            ]),
+            Err(
+                "--debugger-static-metadata-symbol-location requires --debugger-static-metadata-source-inventory"
+                    .to_string()
+            )
+        );
+        let symbol_location = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-source-inventory",
+            "--debugger-static-metadata-symbol-inventory",
+            "--debugger-static-metadata-symbol-location",
+        ])
+        .unwrap();
+        assert!(symbol_location.debugger_static_metadata_symbol_location);
+        assert_eq!(
+            args(&[
+                "--socket", "/tmp/x.sock",
+                "--debugger-socket", "/tmp/debugger.sock",
+                "--debugger-static-metadata-contract-location",
+            ]),
+            Err("--debugger-static-metadata-contract-location requires --debugger-static-metadata-inventory".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket", "/tmp/x.sock",
+                "--debugger-socket", "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                "--debugger-static-metadata-contract-location",
+            ]),
+            Err("--debugger-static-metadata-contract-location requires --debugger-static-metadata-source-inventory".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket", "/tmp/x.sock",
+                "--debugger-socket", "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                "--debugger-static-metadata-source-inventory",
+                "--debugger-static-metadata-contract-location",
+            ]),
+            Err("--debugger-static-metadata-contract-location requires --debugger-static-metadata-contract-inventory".to_string())
+        );
+        assert!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                "--debugger-static-metadata-source-inventory",
+                "--debugger-static-metadata-contract-inventory",
+                "--debugger-static-metadata-contract-location",
+            ])
+            .unwrap()
+            .debugger_static_metadata_contract_location
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-symbol-type",
+            ]),
+            Err(
+                "--debugger-static-metadata-symbol-type requires --debugger-static-metadata-inventory"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                "--debugger-static-metadata-symbol-type",
+            ]),
+            Err(
+                "--debugger-static-metadata-symbol-type requires --debugger-static-metadata-type-inventory"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                "--debugger-static-metadata-type-inventory",
+                "--debugger-static-metadata-symbol-type",
+            ]),
+            Err(
+                "--debugger-static-metadata-symbol-type requires --debugger-static-metadata-symbol-inventory"
+                    .to_string()
+            )
+        );
+        let symbol_type = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-type-inventory",
+            "--debugger-static-metadata-symbol-inventory",
+            "--debugger-static-metadata-symbol-type",
+        ])
+        .unwrap();
+        assert!(symbol_type.debugger_static_metadata_symbol_type);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-symbol-contract",
+            ]),
+            Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-inventory".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                "--debugger-static-metadata-symbol-contract",
+            ]),
+            Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-symbol-inventory".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                "--debugger-static-metadata-symbol-inventory",
+                "--debugger-static-metadata-symbol-contract",
+            ]),
+            Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-contract-inventory".to_string())
+        );
+        let symbol_contract = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-symbol-inventory",
+            "--debugger-static-metadata-contract-inventory",
+            "--debugger-static-metadata-symbol-contract",
+        ])
+        .unwrap();
+        assert!(symbol_contract.debugger_static_metadata_symbol_contract);
     }
 
     #[test]
@@ -1005,10 +2137,7 @@ mod tests {
                 "--compiler-project-profile",
                 "core-closed-fixture-v1",
             ]),
-            Err(
-                "--compiler-socket and --compiler-project-profile must be provided together"
-                    .to_string()
-            )
+            Err("--compiler-socket requires exactly one compiler startup selector".to_string())
         );
         assert_eq!(
             args(&[
@@ -1017,10 +2146,7 @@ mod tests {
                 "--compiler-socket",
                 "/tmp/compiler.sock",
             ]),
-            Err(
-                "--compiler-socket and --compiler-project-profile must be provided together"
-                    .to_string()
-            )
+            Err("--compiler-socket requires exactly one compiler startup selector".to_string())
         );
         let parsed = args(&[
             "--socket",
@@ -1035,6 +2161,49 @@ mod tests {
             parsed.compiler_project_profile.as_deref(),
             Some("core-closed-fixture-v1")
         );
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--compiler-socket",
+            "/tmp/compiler.sock",
+            "--compiler-catalog-stdin",
+        ])
+        .unwrap();
+        assert!(parsed.compiler_catalog_stdin);
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--compiler-socket",
+            "/tmp/compiler.sock",
+            "--owner-bootstrap-stdin",
+        ])
+        .unwrap();
+        assert!(parsed.owner_bootstrap_stdin);
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--compiler-socket",
+            "/tmp/compiler.sock",
+            "--compiler-project-profile",
+            "core-closed-fixture-v1",
+            "--owner-bootstrap-stdin",
+        ])
+        .unwrap();
+        assert!(parsed.owner_bootstrap_stdin);
+        assert_eq!(
+            parsed.compiler_project_profile.as_deref(),
+            Some("core-closed-fixture-v1")
+        );
+        assert!(args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--compiler-socket",
+            "/tmp/compiler.sock",
+            "--compiler-catalog-stdin",
+            "--compiler-project-profile",
+            "core-closed-fixture-v1",
+        ])
+        .is_err());
     }
 
     #[test]
@@ -1048,6 +2217,27 @@ mod tests {
         assert_eq!(catalog.registered_project_count(), 0);
         register_compiler_startup_profile(&mut catalog, "core-closed-fixture-v1").unwrap();
         assert_eq!(catalog.registered_project_count(), 1);
+    }
+
+    #[test]
+    fn owner_http_policy_rejects_noncanonical_resource_and_origin_before_listener_setup() {
+        use blueice_ipc::owner_bootstrap::{
+            OwnerHttpOriginRule, OwnerHttpPolicyBootstrap, OwnerHttpResource,
+        };
+
+        let mut policy = OwnerHttpPolicyBootstrap {
+            origin_rule: OwnerHttpOriginRule::SameDocumentOrigin,
+            resources: vec![OwnerHttpResource {
+                canonical_url: "https://example.test/app.js".into(),
+                integrity: format!("sha256:{}", "0".repeat(64)),
+            }],
+        };
+        assert!(construct_owner_http_page_policy(policy.clone()).is_ok());
+        policy.resources[0].canonical_url = "https://example.test/app.js?query=1".into();
+        assert!(construct_owner_http_page_policy(policy.clone()).is_err());
+        policy.resources[0].canonical_url = "https://example.test/app.js".into();
+        policy.origin_rule = OwnerHttpOriginRule::ExactOrigin("https://example.test/path".into());
+        assert!(construct_owner_http_page_policy(policy).is_err());
     }
 
     #[test]
@@ -1068,6 +2258,155 @@ mod tests {
 
         drop(listener);
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn script_listener_is_owner_only_and_preserves_occupied_paths() {
+        let path = PathBuf::from("/tmp").join(format!(
+            "blueice-core-script-endpoint-{}-{}.sock",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, b"keep this file").unwrap();
+        assert_eq!(
+            bind_script_listener(&path).unwrap_err().kind(),
+            io::ErrorKind::AlreadyExists
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), b"keep this file");
+        std::fs::remove_file(&path).unwrap();
+
+        let listener = bind_script_listener(&path).unwrap();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            bind_script_listener(&path).unwrap_err().kind(),
+            io::ErrorKind::AddrInUse
+        );
+        drop(listener);
+        remove_owned_socket_if_owned(&path);
+    }
+
+    #[test]
+    fn static_metadata_safe_point_span_requires_explicit_owner_prerequisites() {
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-static-metadata-safe-point-span"
+            ]),
+            Err(
+                "--debugger-static-metadata-safe-point-span requires --debugger-socket".to_string()
+            )
+        );
+        assert_eq!(
+            args(&[
+                "--socket", "/tmp/x.sock", "--debugger-socket", "/tmp/debugger.sock",
+                "--debugger-static-metadata-safe-point-span",
+            ]),
+            Err("--debugger-static-metadata-safe-point-span requires --debugger-static-metadata-inventory".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket", "/tmp/x.sock", "--debugger-socket", "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory", "--debugger-static-metadata-safe-point-span",
+            ]),
+            Err("--debugger-static-metadata-safe-point-span requires --debugger-static-metadata-source-inventory".to_string())
+        );
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-source-inventory",
+            "--debugger-static-metadata-safe-point-span",
+        ])
+        .unwrap();
+        assert!(parsed.debugger_static_metadata_safe_point_span);
+    }
+
+    #[test]
+    fn static_metadata_source_breakpoint_requires_independent_owner_prerequisites() {
+        let flag = "--debugger-static-metadata-source-breakpoint";
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", flag]),
+            Err(format!("{flag} requires --debugger-socket"))
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                flag,
+            ]),
+            Err(format!(
+                "{flag} requires --debugger-static-metadata-inventory"
+            ))
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                flag,
+            ]),
+            Err(format!(
+                "{flag} requires --debugger-static-metadata-source-inventory"
+            ))
+        );
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-source-inventory",
+            flag,
+        ])
+        .unwrap();
+        assert!(parsed.debugger_static_metadata_source_breakpoint);
+        assert!(!parsed.debugger_static_metadata_safe_point_span);
+    }
+
+    #[test]
+    fn static_metadata_source_span_step_requires_separate_owner_prerequisites() {
+        let flag = "--debugger-static-metadata-source-span-step";
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", flag]),
+            Err(format!("{flag} requires --debugger-socket"))
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                flag,
+            ]),
+            Err(format!(
+                "{flag} requires --debugger-static-metadata-safe-point-span"
+            ))
+        );
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-source-inventory",
+            "--debugger-static-metadata-safe-point-span",
+            flag,
+        ])
+        .unwrap();
+        assert!(parsed.debugger_static_metadata_source_span_step);
     }
 
     #[test]

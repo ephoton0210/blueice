@@ -295,6 +295,391 @@ fn host_object_methods_are_realm_local_callable_globals() {
 }
 
 #[test]
+fn opaque_host_object_factory_roots_identity_without_exposing_its_key() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findHostNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::String(id)] = args else {
+            return Err(HostFunctionError::new("a string ID is required"));
+        };
+        Ok((id.to_utf8().ok().as_deref() == Some("present"))
+            .then_some(HostObjectKey::new(7, 3, 42)))
+    })
+    .unwrap();
+    let code = crate::compile(&crate::parse("findHostNode('present');").unwrap()).unwrap();
+    let Value::Object(first) = vm.execute_script(&code).unwrap() else {
+        panic!("a host key must become a JavaScript object");
+    };
+    vm.execute_script(&crate::compile(&crate::parse("undefined;").unwrap()).unwrap())
+        .unwrap();
+    vm.heap.collect_major();
+    assert!(
+        vm.heap.contains(first),
+        "the VM-owned host wrapper must remain collector-rooted"
+    );
+    assert_eq!(vm.execute_script(&code).unwrap(), Value::Object(first));
+    let inspection = crate::compile(
+        &crate::parse(
+            "let node = findHostNode('present'); \
+             node === findHostNode('present') && \
+             typeof node === 'object' && \
+             Object.keys(node).length === 0 && \
+             node.nodeId === undefined && \
+             findHostNode('missing') === null;",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(vm.execute_script(&inspection).unwrap(), Value::Bool(true));
+    assert!(matches!(
+        vm.execute_script(&crate::compile(&crate::parse("findHostNode({});").unwrap()).unwrap()),
+        Err(RuntimeError::TypeError(_))
+    ));
+    let mut other = Vm::default();
+    assert!(matches!(
+        other.install_host_object_factory("foreign", 0, family, |_args: &[HostValue]| { Ok(None) }),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn opaque_host_object_methods_require_an_exact_live_wrapper_receiver() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findHostNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::Number(id)] = args else {
+            return Err(HostFunctionError::new("a numeric test ID is required"));
+        };
+        Ok(Some(HostObjectKey::new(7, 3, *id as u64)))
+    })
+    .unwrap();
+    vm.install_host_object_method(family, "requireLive", 0, |key, args: &[HostValue]| {
+        if !args.is_empty() {
+            return Err(HostFunctionError::new("no arguments allowed"));
+        }
+        if key == HostObjectKey::new(7, 3, 42) {
+            Ok(HostValue::Bool(true))
+        } else {
+            Err(HostFunctionError::new("node is no longer live"))
+        }
+    })
+    .unwrap();
+    let valid =
+        crate::compile(&crate::parse("let node = findHostNode(42); node.requireLive();").unwrap())
+            .unwrap();
+    assert_eq!(vm.execute_script(&valid).unwrap(), Value::Bool(true));
+    for source in [
+        "findHostNode(43).requireLive();",
+        "node.requireLive.call({});",
+        "node.requireLive.call(Object.create(node));",
+        "node.requireLive.call(findHostNode(43));",
+        "new node.requireLive();",
+    ] {
+        let code = crate::compile(&crate::parse(source).unwrap()).unwrap();
+        assert!(
+            matches!(vm.execute_script(&code), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
+    }
+    let other_family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("otherHostNode", 0, other_family, |_args: &[HostValue]| {
+        Ok(Some(HostObjectKey::new(7, 3, 42)))
+    })
+    .unwrap();
+    let code =
+        crate::compile(&crate::parse("node.requireLive.call(otherHostNode());").unwrap()).unwrap();
+    assert!(matches!(
+        vm.execute_script(&code),
+        Err(RuntimeError::TypeError(_))
+    ));
+    let mut successor = Vm::default();
+    assert!(matches!(
+        successor.install_host_object_method(family, "stale", 0, |_key, _args: &[HostValue]| {
+            Ok(HostValue::Bool(true))
+        }),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn host_document_factory_and_node_accessor_verify_both_receivers() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let mut vm = Vm::default();
+    let document = vm.install_host_object("document").unwrap();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory_method(
+        document,
+        "getElementById",
+        1,
+        family,
+        |args: &[HostValue]| {
+            let [HostValue::String(id)] = args else {
+                return Err(HostFunctionError::new("a string ID is required"));
+            };
+            Ok((id.to_utf8().ok().as_deref() == Some("present"))
+                .then_some(HostObjectKey::new(7, 3, 42)))
+        },
+    )
+    .unwrap();
+    let text = Rc::new(RefCell::new(String::from("before")));
+    let getter_text = Rc::clone(&text);
+    let setter_text = Rc::clone(&text);
+    vm.install_host_object_accessor(
+        family,
+        "textContent",
+        move |key, args: &[HostValue]| {
+            if key != HostObjectKey::new(7, 3, 42) || !args.is_empty() {
+                return Err(HostFunctionError::new("invalid text getter"));
+            }
+            Ok(HostValue::String(getter_text.borrow().clone().into()))
+        },
+        move |key, args: &[HostValue]| {
+            let [HostValue::String(value)] = args else {
+                return Err(HostFunctionError::new("text setter requires a string"));
+            };
+            if key != HostObjectKey::new(7, 3, 42) {
+                return Err(HostFunctionError::new("invalid text setter"));
+            }
+            *setter_text.borrow_mut() = value.to_utf8().unwrap();
+            Ok(HostValue::Undefined)
+        },
+    )
+    .unwrap();
+    let code = crate::compile(
+        &crate::parse(
+            "let node = document.getElementById('present'); \
+             if (node !== document.getElementById('present')) throw 'identity'; \
+             if (document.getElementById('absent') !== null) throw 'miss'; \
+             if (node.textContent !== 'before') throw 'getter'; \
+             node.textContent = 'after'; node.textContent;",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        vm.execute_script(&code).unwrap(),
+        Value::String("after".into())
+    );
+    assert_eq!(&*text.borrow(), "after");
+    for source in [
+        "document.getElementById.call({}, 'present');",
+        "node.textContent = {};",
+        "Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), 'textContent').get.call({});",
+        "Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), 'textContent').set.call(Object.create(node), 'forged');",
+    ] {
+        let code = crate::compile(&crate::parse(source).unwrap()).unwrap();
+        assert!(matches!(vm.execute_script(&code), Err(RuntimeError::TypeError(_))), "{source}");
+    }
+    assert_eq!(&*text.borrow(), "after");
+}
+
+#[test]
+fn host_pair_method_requires_two_exact_minted_wrappers_and_returns_the_child() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::Number(id)] = args else {
+            return Err(HostFunctionError::new("a numeric fixture ID is required"));
+        };
+        let generation = if *id == 3.0 { 4 } else { 3 };
+        Ok(Some(HostObjectKey::new(7, generation, *id as u64)))
+    })
+    .unwrap();
+    let calls = Rc::new(RefCell::new(Vec::new()));
+    let recorded = Rc::clone(&calls);
+    vm.install_host_object_pair_method(
+        family,
+        "appendChild",
+        1,
+        move |parent: HostObjectKey, child: HostObjectKey| {
+            if !parent.matches_owner(7, 3) || !child.matches_owner(7, 3) {
+                return Err(HostFunctionError::new("cross-document child"));
+            }
+            recorded.borrow_mut().push((parent, child));
+            Ok(())
+        },
+    )
+    .unwrap();
+    let valid = crate::compile(
+        &crate::parse(
+            "let parent = findNode(1); let child = findNode(2); parent.appendChild(child) === child;",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(vm.execute_script(&valid).unwrap(), Value::Bool(true));
+    assert_eq!(
+        calls.borrow().as_slice(),
+        &[(HostObjectKey::new(7, 3, 1), HostObjectKey::new(7, 3, 2))]
+    );
+    let other_family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("otherNode", 0, other_family, |_args: &[HostValue]| {
+        Ok(Some(HostObjectKey::new(7, 3, 2)))
+    })
+    .unwrap();
+    for source in [
+        "parent.appendChild({});",
+        "parent.appendChild(Object.create(child));",
+        "parent.appendChild(otherNode());",
+        "parent.appendChild(findNode(3));",
+        "parent.appendChild();",
+        "parent.appendChild(child, child);",
+        "parent.appendChild.call({}, child);",
+        "parent.appendChild.call(Object.create(parent), child);",
+        "new parent.appendChild(child);",
+    ] {
+        let code = crate::compile(&crate::parse(source).unwrap()).unwrap();
+        assert!(
+            matches!(vm.execute_script(&code), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
+    }
+    assert_eq!(calls.borrow().len(), 1);
+}
+
+#[test]
+fn host_click_listeners_are_vm_rooted_and_prevent_default_only_during_dispatch() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findNode", 0, family, |_args: &[HostValue]| {
+        Ok(Some(HostObjectKey::new(7, 3, 42)))
+    })
+    .unwrap();
+    vm.install_host_click_event_methods(family).unwrap();
+    let source = "globalThis.calls = 0; findNode().addEventListener('click', function(event) { \
+                  if (event.type !== 'click' || event.target !== this || \
+                      event.currentTarget !== this) throw 'event target'; \
+                  globalThis.calls += 1; event.preventDefault(); globalThis.savedEvent = event; });";
+    vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.execute_script(&crate::compile(&crate::parse("undefined;").unwrap()).unwrap())
+        .unwrap();
+    vm.heap.collect_major();
+
+    assert!(vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    let read_calls = crate::compile(&crate::parse("globalThis.calls;").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(1.0));
+    assert!(vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(2.0));
+    assert!(!vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 99))
+        .unwrap());
+    let late = crate::compile(&crate::parse("savedEvent.preventDefault();").unwrap()).unwrap();
+    assert!(matches!(
+        vm.execute_script(&late),
+        Err(RuntimeError::TypeError(_))
+    ));
+
+    let mut successor = Vm::default();
+    assert!(matches!(
+        successor.dispatch_host_click(family, HostObjectKey::new(7, 3, 42)),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn host_click_listener_removal_and_receiver_checks_are_exact() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("findNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::Number(id)] = args else {
+            return Err(HostFunctionError::new("numeric node ID required"));
+        };
+        Ok(Some(HostObjectKey::new(7, 3, *id as u64)))
+    })
+    .unwrap();
+    vm.install_host_click_event_methods(family).unwrap();
+    let source = "globalThis.calls = 0; var node = findNode(42); \
+                  var listener = function(event) { globalThis.calls += 1; }; \
+                  node.addEventListener('click', listener); \
+                  node.addEventListener('click', listener);";
+    vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap())
+        .unwrap();
+    let callback = vm
+        .execute_script(&crate::compile(&crate::parse("listener;").unwrap()).unwrap())
+        .unwrap()
+        .object_id()
+        .expect("the registered listener is a JavaScript function object");
+    assert!(!vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    let read_calls = crate::compile(&crate::parse("globalThis.calls;").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(1.0));
+    for source in [
+        "node.addEventListener.call({}, 'click', listener);",
+        "node.addEventListener.call(Object.create(node), 'click', listener);",
+        "node.addEventListener('mouseover', listener);",
+        "node.addEventListener('click', {});",
+        "node.addEventListener('click', listener, true);",
+        "new node.addEventListener('click', listener);",
+    ] {
+        assert!(matches!(
+            vm.execute_script(&crate::compile(&crate::parse(source).unwrap()).unwrap()),
+            Err(RuntimeError::TypeError(_))
+        ));
+    }
+    vm.execute_script(
+        &crate::compile(&crate::parse("node.removeEventListener('click', listener);").unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    vm.execute_script(&crate::compile(&crate::parse("listener = undefined;").unwrap()).unwrap())
+        .unwrap();
+    vm.execute_script(&crate::compile(&crate::parse("undefined;").unwrap()).unwrap())
+        .unwrap();
+    vm.heap.collect_major();
+    assert!(
+        !vm.heap.contains(callback),
+        "removal must release the VM root"
+    );
+    assert!(!vm
+        .dispatch_host_click(family, HostObjectKey::new(7, 3, 42))
+        .unwrap());
+    assert_eq!(vm.execute_script(&read_calls).unwrap(), Value::Number(1.0));
+}
+
+#[test]
+fn opaque_host_object_family_has_a_fixed_root_limit() {
+    let mut vm = Vm::default();
+    let family = vm.create_host_object_family().unwrap();
+    vm.install_host_object_factory("makeHostNode", 1, family, |args: &[HostValue]| {
+        let [HostValue::Number(id)] = args else {
+            return Err(HostFunctionError::new("a numeric test ID is required"));
+        };
+        Ok(Some(HostObjectKey::new(7, 3, *id as u64)))
+    })
+    .unwrap();
+    let fill = crate::compile(
+        &crate::parse(&format!(
+            "for (let i = 0; i < {}; i++) makeHostNode(i);",
+            host_objects::MAX_HOST_OBJECTS_PER_FAMILY
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    vm.execute_script(&fill).unwrap();
+    assert!(matches!(
+        vm.execute_script(&crate::compile(&crate::parse("makeHostNode(0);").unwrap()).unwrap()),
+        Ok(Value::Object(_))
+    ));
+    assert!(matches!(
+        vm.execute_script(
+            &crate::compile(&crate::parse("makeHostNode(4096);").unwrap()).unwrap()
+        ),
+        Err(RuntimeError::RangeError(message)) if message == "host-object wrapper limit exceeded"
+    ));
+}
+
+#[test]
 fn host_objects_and_methods_reject_collisions_and_construction() {
     let mut vm = Vm::default();
     let code = crate::compile(&crate::parse("globalThis.reserved = undefined;").unwrap()).unwrap();

@@ -1725,7 +1725,14 @@ impl Vm {
         // which `import.meta` and `import()` inside it resolve against no
         // matter which module later calls it.
         let previous_module = self.active_module_name.replace(name.to_string());
-        let result = self.interpret(code, &mut iterators, 0, None, Some(entry), None);
+        let result = self.interpret(
+            code,
+            &mut iterators,
+            0,
+            None,
+            Some(InterpreterSuspensionPoint::Offset(entry)),
+            None,
+        );
         self.active_module_name = previous_module;
         *cells = std::mem::take(&mut self.cells);
         self.stack.clear();

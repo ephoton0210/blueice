@@ -278,6 +278,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "array-hole-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/array-hole-expression/main.ts"),
+        )],
+        expected_stdout: Some("3:false:undefined\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "array-spread-expression",
         modules: &[ (
             "memory:///main.ts",
@@ -669,6 +678,20 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[ExpectedDiagnostic {
             code: DiagnosticCode::TypeMismatch,
             line: 10,
+        }],
+    },
+    OracleCase {
+        name: "function-return-fallthrough-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!(
+                "fixtures/typescript_oracle/function-return-fallthrough-error/main.ts"
+            ),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::ReturnTypeMismatch,
+            line: 5,
         }],
     },
     OracleCase {

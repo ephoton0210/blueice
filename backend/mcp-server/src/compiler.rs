@@ -19,6 +19,7 @@ use std::io::{self, Read, Write};
 pub struct CompilerConnection<S> {
     stream: S,
     session_attestation: Option<blueice_ipc::compiler::CompilerSessionAttestation>,
+    capability_manifest: Option<blueice_ipc::compiler::CompilerSessionCapabilityManifest>,
 }
 
 impl<S: Read + Write> CompilerConnection<S> {
@@ -26,6 +27,7 @@ impl<S: Read + Write> CompilerConnection<S> {
         Self {
             stream,
             session_attestation: None,
+            capability_manifest: None,
         }
     }
 
@@ -39,6 +41,11 @@ impl<S: Read + Write> CompilerConnection<S> {
             COMPILER_PROTOCOL_VERSION,
         };
 
+        // A retry must not leave prior core evidence usable when this new
+        // negotiation fails. The connection is query-capable only after the
+        // exact acknowledgement below repopulates both values.
+        self.session_attestation = None;
+        self.capability_manifest = None;
         write_compiler_request(
             &mut self.stream,
             &CompilerRequest::Hello {
@@ -49,10 +56,13 @@ impl<S: Read + Write> CompilerConnection<S> {
             CompilerReply::HelloAck {
                 protocol_version,
                 session_attestation,
+                capability_manifest,
             } if protocol_version == COMPILER_PROTOCOL_VERSION
-                && session_attestation.is_well_formed() =>
+                && session_attestation.is_well_formed()
+                && capability_manifest.is_well_formed() =>
             {
                 self.session_attestation = Some(session_attestation);
+                self.capability_manifest = Some(capability_manifest);
                 Ok(())
             }
             CompilerReply::Error { message, .. } => Err(io::Error::other(message)),
@@ -63,12 +73,27 @@ impl<S: Read + Write> CompilerConnection<S> {
     }
 
     /// Returns the source-free core evidence minted for this exact accepted
-    /// transport stream. It is available only after a successful v3
+    /// transport stream. It is available only after a successful compiler
     /// handshake, and it grants no authority beyond the stream itself.
     pub fn session_attestation(
         &self,
     ) -> Option<&blueice_ipc::compiler::CompilerSessionAttestation> {
         self.session_attestation.as_ref()
+    }
+
+    /// Returns the complete fixed query-only capability manifest selected by
+    /// the core for this accepted stream. It is never constructed from MCP
+    /// tool definitions or caller input, and remains absent after any failed
+    /// handshake.
+    pub fn capability_manifest(
+        &self,
+    ) -> Option<&blueice_ipc::compiler::CompilerSessionCapabilityManifest> {
+        self.capability_manifest.as_ref()
+    }
+
+    /// Lists only opaque IDs from the core owner's sealed startup catalog.
+    pub fn list_projects(&mut self) -> io::Result<blueice_ipc::compiler::CompilerReply> {
+        self.request(blueice_ipc::compiler::CompilerRequest::ListProjects)
     }
 
     /// Returns the source-text-free description selected by the core for an
@@ -88,6 +113,43 @@ impl<S: Read + Write> CompilerConnection<S> {
     pub fn check(&mut self, project_id: u64) -> io::Result<blueice_ipc::compiler::CompilerReply> {
         self.request(blueice_ipc::compiler::CompilerRequest::Check {
             project: blueice_ipc::compiler::CompilerProject { id: project_id },
+        })
+    }
+
+    /// Lists one source-free page of retained diagnostics for exactly one
+    /// generation observed by a prior check. The cursor is core-minted and
+    /// one-shot; this client forwards it without interpreting it as a source
+    /// location or offset.
+    pub fn diagnostic_page(
+        &mut self,
+        project_id: u64,
+        generation: u64,
+        cursor: Option<u64>,
+        limit: Option<u32>,
+    ) -> io::Result<blueice_ipc::compiler::CompilerReply> {
+        self.request(blueice_ipc::compiler::CompilerRequest::ListDiagnostics {
+            generation: compiler_generation(project_id, generation),
+            cursor: cursor.map(|id| blueice_ipc::compiler::CompilerDiagnosticCursor { id }),
+            limit,
+        })
+    }
+
+    /// Lists one bounded page of compiler-produced incremental work-set
+    /// identities for a generation observed by this connection. The opaque
+    /// cursor is forwarded unchanged and grants no source-read operation.
+    pub fn work_set_page(
+        &mut self,
+        project_id: u64,
+        generation: u64,
+        kind: blueice_ipc::compiler::CompilerWorkSetKind,
+        cursor: Option<u64>,
+        limit: Option<u32>,
+    ) -> io::Result<blueice_ipc::compiler::CompilerReply> {
+        self.request(blueice_ipc::compiler::CompilerRequest::ListWorkSet {
+            generation: compiler_generation(project_id, generation),
+            kind,
+            cursor: cursor.map(|id| blueice_ipc::compiler::CompilerWorkSetCursor { id }),
+            limit,
         })
     }
 
@@ -121,6 +183,25 @@ impl<S: Read + Write> CompilerConnection<S> {
         })
     }
 
+    /// Resolves one compiler-retained symbol declaration location only for
+    /// an exact checked generation and source owner. No arbitrary offset or
+    /// source text can be requested.
+    pub fn static_symbol_location(
+        &mut self,
+        project_id: u64,
+        generation: u64,
+        symbol_id: u32,
+        source_id: u32,
+    ) -> io::Result<blueice_ipc::compiler::CompilerReply> {
+        self.request(
+            blueice_ipc::compiler::CompilerRequest::GetStaticSymbolLocation {
+                generation: compiler_generation(project_id, generation),
+                symbol_id,
+                source_id,
+            },
+        )
+    }
+
     /// Lists one capped, source-free page of compiler-minted metadata IDs for
     /// an exact retained generation. A continuation cursor is opaque,
     /// generation-bound, and one-shot; this client forwards it verbatim and
@@ -142,8 +223,8 @@ impl<S: Read + Write> CompilerConnection<S> {
     }
 
     /// Looks up one source-text-free static provenance record from exactly one
-    /// retained compiler generation. `source_id` is compiler-minted metadata,
-    /// never a path or a source-read capability.
+    /// retained compiler generation. Its labeled SHA-256 digest and `source_id`
+    /// are compiler-minted metadata, never a path or a source-read capability.
     pub fn static_provenance(
         &mut self,
         project_id: u64,
@@ -173,6 +254,24 @@ impl<S: Read + Write> CompilerConnection<S> {
         })
     }
 
+    /// Resolves the original declaration boundary of one exact retained
+    /// contract, without reading source or inspecting a runtime value.
+    pub fn static_contract_location(
+        &mut self,
+        project_id: u64,
+        generation: u64,
+        contract_id: u32,
+        source_id: u32,
+    ) -> io::Result<blueice_ipc::compiler::CompilerReply> {
+        self.request(
+            blueice_ipc::compiler::CompilerRequest::GetStaticContractLocation {
+                generation: compiler_generation(project_id, generation),
+                contract_id,
+                source_id,
+            },
+        )
+    }
+
     /// Validates one data-only snapshot against a compiler-retained exact
     /// static contract. The request does not execute JavaScript and does not
     /// echo the snapshot in its reply.
@@ -196,6 +295,12 @@ impl<S: Read + Write> CompilerConnection<S> {
         &mut self,
         request: blueice_ipc::compiler::CompilerRequest,
     ) -> io::Result<blueice_ipc::compiler::CompilerReply> {
+        if self.session_attestation.is_none() || self.capability_manifest.is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotConnected,
+                "compiler query requires a completed core-attested capability handshake",
+            ));
+        }
         blueice_ipc::compiler::write_compiler_request(&mut self.stream, &request)?;
         blueice_ipc::compiler::read_compiler_reply(&mut self.stream)
     }
@@ -253,10 +358,18 @@ mod tests {
         }
     }
 
+    fn session_evidence() -> blueice_ipc::compiler::CompilerSessionHelloEvidence {
+        blueice_ipc::compiler::CompilerSessionHelloEvidence {
+            session_attestation: session_attestation(),
+            capability_manifest:
+                blueice_ipc::compiler::CompilerSessionCapabilityManifest::fixed_query_only(),
+        }
+    }
+
     #[test]
     fn compiler_connection_checks_a_sealed_core_catalog_through_the_session_owner() {
-        // The MCP client gets only the owner-minted opaque project ID. The
-        // registration happens before `seal`, and the core session later owns
+        // The MCP client discovers only an owner-minted opaque project ID.
+        // Registration happens before `seal`, and the core session later owns
         // the mutable adapter/cache while a listener worker has framing only.
         let mut catalog = CoreCompilerProjectCatalog::default();
         let project = catalog
@@ -267,23 +380,37 @@ mod tests {
         let (client, mut server) = UnixStream::pair().unwrap();
         let listener = thread::spawn(move || {
             let hello = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
+            let evidence = session_evidence();
+            let bound = request_sender
+                .bind_session(evidence.session_attestation.clone())
+                .unwrap();
             blueice_ipc::compiler::write_compiler_reply(
                 &mut server,
-                &blueice_ipc::compiler::negotiate(&hello, Some(session_attestation())),
+                &blueice_ipc::compiler::negotiate(&hello, Some(evidence)),
             )
             .unwrap();
-            let request = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
-            let reply = request_sender.request(request).unwrap();
-            blueice_ipc::compiler::write_compiler_reply(&mut server, &reply).unwrap();
+            for _ in 0..2 {
+                let request = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
+                let reply = bound.request(request).unwrap();
+                blueice_ipc::compiler::write_compiler_reply(&mut server, &reply).unwrap();
+            }
         });
 
         let mcp_client = thread::spawn(move || {
             let mut connection = CompilerConnection::new(client);
             connection.handshake().unwrap();
+            let blueice_ipc::compiler::CompilerReply::Projects(inventory) =
+                connection.list_projects().unwrap()
+            else {
+                panic!("MCP client must receive the sealed project inventory")
+            };
+            assert_eq!(inventory.projects, vec![project]);
             connection.check(project.id).unwrap()
         });
-        while core_session.dispatch_pending(&request_receiver) == 0 {
-            thread::yield_now();
+        while !mcp_client.is_finished() {
+            if core_session.dispatch_pending(&request_receiver) == 0 {
+                thread::yield_now();
+            }
         }
         let blueice_ipc::compiler::CompilerReply::Check(check) = mcp_client.join().unwrap() else {
             panic!("the MCP client must receive a source-free core check reply")
@@ -327,14 +454,18 @@ mod tests {
         let (client, mut server) = UnixStream::pair().unwrap();
         let listener = thread::spawn(move || {
             let hello = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
+            let evidence = session_evidence();
+            let bound = request_sender
+                .bind_session(evidence.session_attestation.clone())
+                .unwrap();
             blueice_ipc::compiler::write_compiler_reply(
                 &mut server,
-                &blueice_ipc::compiler::negotiate(&hello, Some(session_attestation())),
+                &blueice_ipc::compiler::negotiate(&hello, Some(evidence)),
             )
             .unwrap();
-            for _ in 0..6 {
+            for _ in 0..9 {
                 let request = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
-                let reply = request_sender.request(request).unwrap();
+                let reply = bound.request(request).unwrap();
                 blueice_ipc::compiler::write_compiler_reply(&mut server, &reply).unwrap();
             }
         });
@@ -342,6 +473,12 @@ mod tests {
         let mcp_client = thread::spawn(move || {
             let mut connection = CompilerConnection::new(client);
             connection.handshake().unwrap();
+            let blueice_ipc::compiler::CompilerReply::Projects(inventory) =
+                connection.list_projects().unwrap()
+            else {
+                panic!("MCP client must receive the sealed project inventory")
+            };
+            assert_eq!(inventory.projects, vec![project]);
             let blueice_ipc::compiler::CompilerReply::Check(check) =
                 connection.check(project.id).unwrap()
             else {
@@ -383,8 +520,24 @@ mod tests {
             let provenance = connection
                 .static_provenance(project.id, check.generation.sequence, symbol.source_id)
                 .unwrap();
+            let symbol_location = connection
+                .static_symbol_location(
+                    project.id,
+                    check.generation.sequence,
+                    symbol.id,
+                    symbol.source_id,
+                )
+                .unwrap();
             let contract = connection
                 .static_contract(project.id, check.generation.sequence, contract_id)
+                .unwrap();
+            let contract_location = connection
+                .static_contract_location(
+                    project.id,
+                    check.generation.sequence,
+                    contract_id,
+                    symbol.source_id,
+                )
                 .unwrap();
             let validation = connection
                 .validate_static_contract(
@@ -399,21 +552,39 @@ mod tests {
                     ),
                 )
                 .unwrap();
-            (provenance, contract, validation)
+            (
+                provenance,
+                symbol_location,
+                contract,
+                contract_location,
+                validation,
+            )
         });
         while !mcp_client.is_finished() {
             if core_session.dispatch_pending(&request_receiver) == 0 {
                 thread::yield_now();
             }
         }
-        let (provenance, contract, validation) = mcp_client.join().unwrap();
+        let (provenance, symbol_location, contract, contract_location, validation) =
+            mcp_client.join().unwrap();
+        let blueice_ipc::compiler::CompilerReply::StaticProvenance(provenance) = provenance else {
+            panic!("static provenance must remain a distinct compiler reply")
+        };
+        assert!(provenance.content_hash.starts_with("bts-sha256:"));
+        assert_eq!(provenance.content_hash.len(), "bts-sha256:".len() + 64);
         assert!(matches!(
-            provenance,
-            blueice_ipc::compiler::CompilerReply::StaticProvenance(_)
+            symbol_location,
+            blueice_ipc::compiler::CompilerReply::StaticSymbolLocation(location)
+                if location.is_well_formed()
         ));
         assert!(matches!(
             contract,
             blueice_ipc::compiler::CompilerReply::StaticContract(_)
+        ));
+        assert!(matches!(
+            contract_location,
+            blueice_ipc::compiler::CompilerReply::StaticContractLocation(location)
+                if location.is_well_formed()
         ));
         assert!(matches!(
             validation,
@@ -437,7 +608,7 @@ mod tests {
             ));
             blueice_ipc::compiler::write_compiler_reply(
                 &mut server,
-                &blueice_ipc::compiler::negotiate(&hello, Some(session_attestation())),
+                &blueice_ipc::compiler::negotiate(&hello, Some(session_evidence())),
             )
             .unwrap();
 
@@ -493,6 +664,27 @@ mod tests {
                 },
             )
             .unwrap();
+
+            assert!(matches!(
+                blueice_ipc::compiler::read_compiler_request(&mut server).unwrap(),
+                blueice_ipc::compiler::CompilerRequest::ListWorkSet {
+                    generation: blueice_ipc::compiler::CompilerGeneration {
+                        project: blueice_ipc::compiler::CompilerProject { id: 41 },
+                        sequence: 9,
+                    },
+                    kind: blueice_ipc::compiler::CompilerWorkSetKind::Rechecked,
+                    cursor: Some(blueice_ipc::compiler::CompilerWorkSetCursor { id: 12 }),
+                    limit: Some(2),
+                }
+            ));
+            blueice_ipc::compiler::write_compiler_reply(
+                &mut server,
+                &blueice_ipc::compiler::CompilerReply::Error {
+                    code: blueice_ipc::compiler::CompilerErrorCode::InvalidWorkSetCursor,
+                    message: "invalid compiler work-set cursor".to_string(),
+                },
+            )
+            .unwrap();
         });
 
         let mut connection = CompilerConnection::new(client);
@@ -500,6 +692,10 @@ mod tests {
         assert_eq!(
             connection.session_attestation(),
             Some(&session_attestation())
+        );
+        assert_eq!(
+            connection.capability_manifest(),
+            Some(&blueice_ipc::compiler::CompilerSessionCapabilityManifest::fixed_query_only())
         );
         assert!(matches!(
             connection.check(41).unwrap(),
@@ -522,6 +718,21 @@ mod tests {
                 ..
             }
         ));
+        assert!(matches!(
+            connection
+                .work_set_page(
+                    41,
+                    9,
+                    blueice_ipc::compiler::CompilerWorkSetKind::Rechecked,
+                    Some(12),
+                    Some(2),
+                )
+                .unwrap(),
+            blueice_ipc::compiler::CompilerReply::Error {
+                code: blueice_ipc::compiler::CompilerErrorCode::InvalidWorkSetCursor,
+                ..
+            }
+        ));
         worker.join().unwrap();
     }
 
@@ -537,6 +748,8 @@ mod tests {
                     session_attestation: blueice_ipc::compiler::CompilerSessionAttestation {
                         id: "not-hex".to_string(),
                     },
+                    capability_manifest:
+                        blueice_ipc::compiler::CompilerSessionCapabilityManifest::fixed_query_only(),
                 },
             )
             .unwrap();
@@ -549,6 +762,53 @@ mod tests {
             "malformed core evidence must not create a usable compiler session: {error}"
         );
         assert_eq!(connection.session_attestation(), None);
+        assert_eq!(connection.capability_manifest(), None);
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn compiler_connection_rejects_a_malformed_core_capability_manifest_before_queries() {
+        let (client, mut server) = UnixStream::pair().unwrap();
+        let worker = thread::spawn(move || {
+            let _hello = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
+            blueice_ipc::compiler::write_compiler_reply(
+                &mut server,
+                &blueice_ipc::compiler::CompilerReply::HelloAck {
+                    protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
+                    session_attestation: session_attestation(),
+                    capability_manifest: blueice_ipc::compiler::CompilerSessionCapabilityManifest {
+                        version: 0,
+                        operation_ids: Vec::new(),
+                    },
+                },
+            )
+            .unwrap();
+        });
+
+        let mut connection = CompilerConnection::new(client);
+        let error = connection.handshake().unwrap_err();
+        assert!(
+            error.to_string().contains("expected compiler Hello"),
+            "malformed core manifest must not create a usable compiler session: {error}"
+        );
+        assert_eq!(connection.session_attestation(), None);
+        assert_eq!(connection.capability_manifest(), None);
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn compiler_connection_rejects_queries_before_a_core_capability_handshake() {
+        let (client, _server) = UnixStream::pair().unwrap();
+        let mut connection = CompilerConnection::new(client);
+        let error = connection.describe_project(1).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::NotConnected);
+        assert!(error
+            .to_string()
+            .contains("completed core-attested capability handshake"));
+        let error = connection.check(1).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::NotConnected);
+        assert!(error
+            .to_string()
+            .contains("core-attested capability handshake"));
     }
 }

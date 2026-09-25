@@ -125,6 +125,23 @@ fn resolves_a_ts_byte_position_to_the_next_verified_safe_point_or_unbound() {
         panic!("the second declaration must have a verified safe point")
     };
 
+    let exact = attachment
+        .safe_point_map
+        .source_span_for_safe_point(
+            second_safe_point.code_unit.ordinal(),
+            second_safe_point.bytecode_offset,
+        )
+        .expect("the second bound instruction must retain its original span");
+    assert_eq!(exact.source, ENTRY);
+    assert_eq!(
+        (exact.start_byte, exact.end_byte),
+        (second.source.start, second.source.end)
+    );
+    assert!(attachment
+        .safe_point_map
+        .source_span_for_safe_point(second_safe_point.code_unit.ordinal(), u32::MAX,)
+        .is_none());
+
     assert_eq!(
         attachment.breakpoint_at_or_after(ENTRY, first.source.start),
         DirectSafePointBinding::Bound(first_safe_point)
@@ -148,6 +165,32 @@ fn resolves_a_ts_byte_position_to_the_next_verified_safe_point_or_unbound() {
         attachment.breakpoint_at_or_after("page:///other.ts", 0),
         DirectSafePointBinding::Unbound
     );
+}
+
+#[test]
+fn safe_point_map_retains_original_utf16_coordinates_without_source_text() {
+    let source = "// original\r\n/* 🚀 */ const answer: number = 42;";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut registry = bluejs::BlueJsProgramRegistry::default();
+    let attachment = artifact.attach_in(&mut registry).unwrap();
+    let entry = &attachment.safe_point_map.entries[0];
+    assert_eq!(entry.start_byte, source.find("const answer").unwrap());
+    assert_eq!(entry.location.start.line, 1);
+    assert_eq!(entry.location.start.column_utf16, 9);
+    assert_eq!(entry.location.end.line, 1);
+    assert!(entry.location.end.column_utf16 > entry.location.start.column_utf16);
+    assert!(!format!("{entry:?}").contains("const answer"));
+
+    let mut malformed = attachment.safe_point_map.clone();
+    malformed.entries[0].location.end.column_utf16 = usize::MAX;
+    assert!(malformed
+        .validate_against(&registry, attachment.handle)
+        .is_err());
 }
 
 #[test]
@@ -730,6 +773,64 @@ fn lowers_checked_property_delete_expressions() {
         bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
         bluejs::Value::Bool(true)
     );
+}
+
+#[test]
+fn lowers_checked_array_holes_without_materializing_undefined_properties() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const values = [1,,3]; values.length === 3 && !(1 in values) && values[1] === undefined;",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    assert!(matches!(
+        artifact.program,
+        bluejs::BlueJsProgramV1::Script(bluejs::Program { ref body })
+            if matches!(
+                body.as_slice(),
+                [bluejs::Stmt::VarDecl(_, declarations), bluejs::Stmt::Expr(_)]
+                    if matches!(
+                        declarations.as_slice(),
+                        [bluejs::VarDeclarator {
+                            init: Some(bluejs::Expr::Array(elements)),
+                            ..
+                        }] if matches!(
+                            elements.as_slice(),
+                            [
+                                Some(bluejs::ArrayElement::Normal(bluejs::Expr::Number(1.0))),
+                                None,
+                                Some(bluejs::ArrayElement::Normal(bluejs::Expr::Number(3.0))),
+                            ]
+                        )
+                    )
+            )
+    ));
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+        bluejs::Value::Bool(true)
+    );
+}
+
+#[test]
+fn rejects_array_literals_that_mix_holes_and_spread() {
+    let error = match compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const suffix = [2]; const mixed = [1,,...suffix];",
+        )]),
+        CompilerOptions::default(),
+    ) {
+        Ok(_) => panic!("the direct bridge must reject a mixed hole/spread array"),
+        Err(error) => error,
+    };
+    let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+        panic!("the direct bridge must reject a mixed hole/spread array");
+    };
+    assert!(message.contains("cannot combine holes and spread"));
 }
 
 #[test]

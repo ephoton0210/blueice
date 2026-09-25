@@ -6,6 +6,13 @@
 
 use super::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StructuredTermination {
+    Terminates,
+    FallsThrough,
+    Opaque,
+}
+
 impl<'a> ModuleChecker<'a> {
     pub(crate) fn new(
         project: &'a Project,
@@ -570,7 +577,10 @@ impl<'a> ModuleChecker<'a> {
                 let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
                 property_type(parent, &field.name, &self.types, &mut visited, &mut budget)
             };
-            let PropertyType::Found(inherited) = inherited else {
+            let PropertyType::Found {
+                value: inherited, ..
+            } = inherited
+            else {
                 continue;
             };
             let declared = if field.optional {
@@ -595,6 +605,10 @@ impl<'a> ModuleChecker<'a> {
     pub(super) fn check_variable(&mut self, variable: &crate::parser::VariableDeclaration) {
         let scope = self.values.clone();
         self.check_variable_in_scope(variable, &scope);
+        if variable.annotation.is_none() && !variable.initializer.is_empty() && !variable.declared {
+            let inferred = self.infer_expression(&variable.initializer, &scope);
+            self.values.insert(variable.name.clone(), inferred);
+        }
     }
 
     pub(super) fn check_variable_in_scope(
@@ -602,6 +616,9 @@ impl<'a> ModuleChecker<'a> {
         variable: &crate::parser::VariableDeclaration,
         scope: &BTreeMap<String, Type>,
     ) {
+        if !variable.initializer.is_empty() && !variable.declared {
+            self.check_direct_runtime_expression(&variable.initializer, scope, &variable.span);
+        }
         let Some(annotation) = &variable.annotation else {
             return;
         };
@@ -609,9 +626,6 @@ impl<'a> ModuleChecker<'a> {
         if variable.initializer.is_empty() || variable.declared {
             return;
         }
-        self.check_function_call(&variable.initializer, scope, &variable.span);
-        self.check_direct_property_access(&variable.initializer, scope, &variable.span);
-        self.check_arithmetic_operators(&variable.initializer, scope, &variable.span);
         let inferred = if matches!(annotation, Type::Tuple(_)) {
             infer_contextual_tuple_literal(&variable.initializer, scope)
                 .unwrap_or_else(|| self.infer_expression(&variable.initializer, scope))
@@ -663,9 +677,7 @@ impl<'a> ModuleChecker<'a> {
                 );
             }
             if let Some(default) = &parameter.default {
-                self.check_function_call(default, &scope, &parameter.span);
-                self.check_direct_property_access(default, &scope, &parameter.span);
-                self.check_arithmetic_operators(default, &scope, &parameter.span);
+                self.check_direct_runtime_expression(default, &scope, &parameter.span);
                 let actual = self.infer_expression(default, &scope);
                 let expected = parameter
                     .annotation
@@ -699,23 +711,37 @@ impl<'a> ModuleChecker<'a> {
         }
         for local in &function.locals {
             self.check_variable_in_scope(local, &scope);
-            scope.insert(
-                local.name.clone(),
-                local.annotation.clone().unwrap_or(Type::Unknown),
-            );
+            let inferred = local
+                .annotation
+                .clone()
+                .unwrap_or_else(|| self.infer_expression(&local.initializer, &scope));
+            scope.insert(local.name.clone(), inferred);
         }
         self.check_function_body_expressions(&function.body, &scope);
         if let Some(return_type) = &function.return_type {
             self.check_type(return_type, &function.span);
+            let allows_implicit_undefined =
+                self.return_type_allows_implicit_undefined(return_type, &function.span);
             for returned in &function.returns {
                 if returned.is_empty() {
+                    if !allows_implicit_undefined {
+                        self.type_error(
+                            &function.span,
+                            format!(
+                                "return expression has type `undefined`, which is not assignable to `{}`",
+                                type_label(return_type)
+                            ),
+                            DiagnosticCode::ReturnTypeMismatch,
+                        );
+                    }
                     continue;
                 }
-                self.check_function_call(returned, &scope, &function.span);
-                self.check_direct_property_access(returned, &scope, &function.span);
-                self.check_arithmetic_operators(returned, &scope, &function.span);
+                self.check_direct_runtime_expression(returned, &scope, &function.span);
                 let actual = self.infer_expression(returned, &scope);
-                if !self.is_assignable_bounded(&actual, return_type, &function.span) {
+                let return_is_assignable = (matches!(actual, Type::Undefined)
+                    && allows_implicit_undefined)
+                    || self.is_assignable_bounded(&actual, return_type, &function.span);
+                if !return_is_assignable {
                     self.type_error(
                         &function.span,
                         format!(
@@ -727,8 +753,86 @@ impl<'a> ModuleChecker<'a> {
                     );
                 }
             }
+            if !function.declared
+                && !function.overload
+                && !allows_implicit_undefined
+                && matches!(
+                    Self::function_body_termination(&function.body),
+                    StructuredTermination::FallsThrough
+                )
+            {
+                self.type_error(
+                    &function.span,
+                    format!(
+                        "function with return type `{}` can complete without returning a value",
+                        type_label(return_type)
+                    ),
+                    DiagnosticCode::ReturnTypeMismatch,
+                );
+            }
         }
         self.type_parameters = previous_parameters;
+    }
+
+    /// Whether an explicit return annotation permits the JavaScript
+    /// fall-through result. `void` is special in TypeScript return positions;
+    /// the bounded assignability relation otherwise covers `undefined`,
+    /// `any`, `unknown`, aliases, and unions containing one of those types.
+    fn return_type_allows_implicit_undefined(
+        &mut self,
+        return_type: &Type,
+        span: &SourceSpan,
+    ) -> bool {
+        matches!(return_type, Type::Void)
+            || self.is_assignable_bounded(&Type::Undefined, return_type, span)
+    }
+
+    /// Determines whether the structured function body cannot reach its end.
+    ///
+    /// The parser records unsupported syntax as `Opaque`, which must never be
+    /// mistaken for a terminating branch. A recognized `return` (including an
+    /// invalid bare return, diagnosed separately) or `throw` terminates its
+    /// sequential path. An `if` does so only when both structured branches do.
+    /// The unknown result preserves the standalone parser's existing opaque
+    /// syntax behavior; the direct bridge rejects that syntax independently.
+    fn function_body_termination(items: &[FunctionBodyItem]) -> StructuredTermination {
+        for item in items {
+            match item {
+                FunctionBodyItem::Return { .. } | FunctionBodyItem::Throw { .. } => {
+                    return StructuredTermination::Terminates;
+                }
+                FunctionBodyItem::If(statement) => match Self::function_if_termination(statement) {
+                    StructuredTermination::Terminates => {
+                        return StructuredTermination::Terminates;
+                    }
+                    StructuredTermination::FallsThrough => {}
+                    StructuredTermination::Opaque => return StructuredTermination::Opaque,
+                },
+                FunctionBodyItem::Opaque(_) => return StructuredTermination::Opaque,
+                FunctionBodyItem::Variable(_) | FunctionBodyItem::Expression { .. } => {}
+            }
+        }
+        StructuredTermination::FallsThrough
+    }
+
+    fn function_if_termination(statement: &FunctionIfStatement) -> StructuredTermination {
+        let consequent = Self::function_body_termination(&statement.consequent);
+        let alternate = match &statement.alternate {
+            Some(FunctionElseBranch::Braced(body)) => Self::function_body_termination(body),
+            Some(FunctionElseBranch::ElseIf(branch)) => Self::function_if_termination(branch),
+            None => StructuredTermination::FallsThrough,
+        };
+        match (consequent, alternate) {
+            (StructuredTermination::Opaque, _) | (_, StructuredTermination::Opaque) => {
+                StructuredTermination::Opaque
+            }
+            (StructuredTermination::Terminates, StructuredTermination::Terminates) => {
+                StructuredTermination::Terminates
+            }
+            (StructuredTermination::FallsThrough, _) | (_, StructuredTermination::FallsThrough) => {
+                StructuredTermination::FallsThrough
+            }
+        }
     }
 
     pub(super) fn check_function_body_expressions(
@@ -777,8 +881,21 @@ impl<'a> ModuleChecker<'a> {
         if tokens.is_empty() {
             return;
         }
+        if tokens.iter().filter(|token| token.is(".")).count() > self.max_type_expansions {
+            self.type_error(
+                span,
+                format!(
+                    "member access exceeds the {} generic-expansion limit",
+                    self.max_type_expansions
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
+            return;
+        }
         self.check_function_call(tokens, scope, span);
+        self.check_member_calls_in_expression(tokens, scope, span);
         self.check_direct_property_access(tokens, scope, span);
+        self.check_member_assignment(tokens, scope, span);
         self.check_arithmetic_operators(tokens, scope, span);
     }
 
@@ -805,6 +922,14 @@ impl<'a> ModuleChecker<'a> {
                 for field in fields {
                     self.check_type(&field.value, &field.span);
                 }
+            }
+            Type::Function { parameters, result } => {
+                for parameter in parameters {
+                    if let Some(annotation) = &parameter.annotation {
+                        self.check_type(annotation, &parameter.span);
+                    }
+                }
+                self.check_type(result, span);
             }
             _ => {}
         }

@@ -7,6 +7,83 @@
 use super::*;
 
 #[test]
+fn parses_interface_method_signatures_as_static_function_members() {
+    let module = parse_module(
+        "memory:///lib.blueice.d.ts",
+        "interface Document { getElementById(id: string): Element | null; }",
+    )
+    .unwrap();
+    let Declaration::Interface(document) = &module.declarations[0] else {
+        panic!("expected an interface");
+    };
+    assert_eq!(document.fields.len(), 1);
+    assert_eq!(document.fields[0].name, "getElementById");
+    let Type::Function { parameters, result } = &document.fields[0].value else {
+        panic!("expected a function-valued interface member");
+    };
+    assert_eq!(parameters.len(), 1);
+    assert_eq!(parameters[0].name, "id");
+    assert_eq!(parameters[0].annotation, Some(Type::String));
+    assert_eq!(
+        **result,
+        Type::Union(vec![
+            Type::Named {
+                name: "Element".into(),
+                arguments: vec![],
+            },
+            Type::Null,
+        ])
+    );
+}
+
+#[test]
+fn parses_keyword_named_event_field_and_bounded_function_type() {
+    let module = parse_module(
+        "memory:///events.d.ts",
+        "interface Event { type: 'click'; }\n\
+         interface Node { addEventListener(eventType: 'click', listener: (event: Event) => void): void; }",
+    )
+    .unwrap();
+    let Declaration::Interface(event) = &module.declarations[0] else {
+        panic!("expected event interface");
+    };
+    assert_eq!(event.fields[0].name, "type");
+    let Declaration::Interface(node) = &module.declarations[1] else {
+        panic!("expected node interface");
+    };
+    let Type::Function { parameters, .. } = &node.fields[0].value else {
+        panic!("expected addEventListener method");
+    };
+    assert!(matches!(
+        parameters[1].annotation,
+        Some(Type::Function { .. })
+    ));
+}
+
+#[test]
+fn preserves_readonly_interface_and_record_fields() {
+    let module = parse_module(
+        "memory:///events.d.ts",
+        "interface Event { readonly type: 'click'; target: string; }\n\
+         type Detail = { readonly currentTarget: string; mutable?: string };",
+    )
+    .unwrap();
+    let Declaration::Interface(event) = &module.declarations[0] else {
+        panic!("expected event interface");
+    };
+    assert!(event.fields[0].readonly);
+    assert!(!event.fields[1].readonly);
+    let Declaration::TypeAlias(detail) = &module.declarations[1] else {
+        panic!("expected detail alias");
+    };
+    let Type::Record(fields) = &detail.value else {
+        panic!("expected record type");
+    };
+    assert!(fields[0].readonly);
+    assert!(!fields[1].readonly);
+}
+
+#[test]
 fn parses_typed_exports_and_marks_only_type_syntax_for_erasure() {
     let module = parse_module(
             "memory:///app.ts",
@@ -16,6 +93,22 @@ fn parses_typed_exports_and_marks_only_type_syntax_for_erasure() {
     assert!(matches!(module.declarations[0], Declaration::Interface(_)));
     assert!(matches!(module.declarations[1], Declaration::Variable(_)));
     assert_eq!(module.edits.len(), 2);
+}
+
+#[test]
+fn retains_array_holes_in_variable_initializer_tokens() {
+    let module = parse_module("memory:///app.ts", "const values = [1,,3];").unwrap();
+    let Declaration::Variable(values) = &module.declarations[0] else {
+        panic!("expected a variable declaration");
+    };
+    assert_eq!(
+        values
+            .initializer
+            .iter()
+            .map(|token| token.text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["[", "1", ",", ",", "3", "]"]
+    );
 }
 
 #[test]

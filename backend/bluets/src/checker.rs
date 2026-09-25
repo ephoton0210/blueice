@@ -554,6 +554,43 @@ struct DirectCall<'a> {
     generic: bool,
 }
 
+struct MemberCall<'a> {
+    receiver: &'a [Token],
+    member: &'a Token,
+    arguments: &'a [Token],
+}
+
+fn member_call_parts(tokens: &[Token]) -> Option<MemberCall<'_>> {
+    let mut depth = 0usize;
+    let mut top_level_dot = None;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.is("(") {
+            depth = depth.checked_add(1)?;
+        } else if token.is(")") {
+            depth = depth.checked_sub(1)?;
+        } else if token.is(".") && depth == 0 {
+            top_level_dot = Some(index);
+        }
+    }
+    if depth != 0 {
+        return None;
+    }
+    let dot = top_level_dot?;
+    let receiver = tokens.get(..dot)?;
+    let member = tokens.get(dot + 1)?;
+    let open = tokens.get(dot + 2)?;
+    let arguments = tokens.get(dot + 3..)?;
+    (!receiver.is_empty()
+        && member.kind == TokenKind::Identifier
+        && open.is("(")
+        && split_call_arguments(arguments).is_some())
+    .then_some(MemberCall {
+        receiver,
+        member,
+        arguments,
+    })
+}
+
 fn direct_call_parts(tokens: &[Token]) -> Option<DirectCall<'_>> {
     let callee = tokens.first()?;
     if callee.kind != TokenKind::Identifier {
@@ -598,8 +635,21 @@ fn matching_call_angle_bracket(tokens: &[Token], start: usize) -> Option<usize> 
 }
 
 fn split_call_arguments(tokens: &[Token]) -> Option<Vec<&[Token]>> {
-    let close = tokens.iter().position(|token| token.is(")"))?;
-    if close + 1 != tokens.len() {
+    let mut depth = 0usize;
+    let mut close = None;
+    for (index, token) in tokens.iter().enumerate() {
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" if depth == 0 => {
+                close = Some(index);
+                break;
+            }
+            ")" | "]" | "}" => depth = depth.checked_sub(1)?,
+            _ => {}
+        }
+    }
+    let close = close?;
+    if close + 1 != tokens.len() || depth != 0 {
         return None;
     }
     if close == 0 {
@@ -666,7 +716,10 @@ fn infer_type_arguments(
 }
 
 enum PropertyType {
-    Found(Type),
+    Found {
+        value: Type,
+        readonly: bool,
+    },
     Missing,
     /// The initial checker has no property semantics for this expression, so
     /// retain its conservative `unknown` behavior rather than rejecting a
@@ -686,12 +739,13 @@ fn property_type(
         Type::Record(fields) => fields
             .iter()
             .find(|field| field.name == property)
-            .map(|field| {
-                if field.optional {
-                    PropertyType::Found(Type::Union(vec![field.value.clone(), Type::Undefined]))
+            .map(|field| PropertyType::Found {
+                value: if field.optional {
+                    Type::Union(vec![field.value.clone(), Type::Undefined])
                 } else {
-                    PropertyType::Found(field.value.clone())
-                }
+                    field.value.clone()
+                },
+                readonly: field.readonly,
             })
             .unwrap_or(PropertyType::Missing),
         Type::Named { .. } => {
@@ -703,15 +757,24 @@ fn property_type(
         }
         Type::Intersection(parts) => {
             let mut indeterminate = false;
+            let mut found: Option<(Type, bool)> = None;
             for part in parts {
                 match property_type(part, property, aliases, visited, budget) {
-                    PropertyType::Found(value) => return PropertyType::Found(value),
+                    PropertyType::Found { value, readonly } => {
+                        if let Some((_, found_readonly)) = &mut found {
+                            *found_readonly |= readonly;
+                        } else {
+                            found = Some((value, readonly));
+                        }
+                    }
                     PropertyType::Missing => {}
                     PropertyType::Indeterminate => indeterminate = true,
                     PropertyType::Exhausted => return PropertyType::Exhausted,
                 }
             }
-            if indeterminate {
+            if let Some((value, readonly)) = found {
+                PropertyType::Found { value, readonly }
+            } else if indeterminate {
                 PropertyType::Indeterminate
             } else {
                 PropertyType::Missing
@@ -867,6 +930,7 @@ fn infer_record(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
             &mut fields,
             TypeField {
                 name,
+                readonly: false,
                 optional: false,
                 value,
                 span: SourceSpan::new(
@@ -1250,7 +1314,7 @@ fn is_assignable(
     if let (Type::Intersection(_), Type::Record(expected_fields)) = (actual, expected) {
         return expected_fields.iter().all(|expected_field| {
             match property_type(actual, &expected_field.name, aliases, visited, budget) {
-                PropertyType::Found(actual) => is_assignable(
+                PropertyType::Found { value: actual, .. } => is_assignable(
                     &actual,
                     &expected_field.value,
                     aliases,
@@ -1274,6 +1338,31 @@ fn is_assignable(
         (Type::Literal(value), Type::Boolean) => matches!(value.as_str(), "true" | "false"),
         (Type::Array(actual), Type::Array(expected)) => {
             is_assignable(actual, expected, aliases, visited, budget)
+        }
+        (
+            Type::Function {
+                parameters: actual_parameters,
+                result: actual_result,
+            },
+            Type::Function {
+                parameters: expected_parameters,
+                result: expected_result,
+            },
+        ) if actual_parameters.len() == expected_parameters.len() => {
+            expected_parameters
+                .iter()
+                .zip(actual_parameters)
+                .all(|(expected, actual)| {
+                    expected.optional == actual.optional
+                        && is_assignable(
+                            expected.annotation.as_ref().unwrap_or(&Type::Unknown),
+                            actual.annotation.as_ref().unwrap_or(&Type::Unknown),
+                            aliases,
+                            &mut visited.clone(),
+                            budget,
+                        )
+                })
+                && is_assignable(actual_result, expected_result, aliases, visited, budget)
         }
         (Type::Tuple(actual), Type::Tuple(expected)) if actual.len() == expected.len() => {
             actual.iter().zip(expected).all(|(actual, expected)| {
@@ -1376,12 +1465,26 @@ fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type
                 .iter()
                 .map(|field| TypeField {
                     name: field.name.clone(),
+                    readonly: field.readonly,
                     optional: field.optional,
                     value: substitute_type(&field.value, substitutions),
                     span: field.span.clone(),
                 })
                 .collect(),
         ),
+        Type::Function { parameters, result } => Type::Function {
+            parameters: parameters
+                .iter()
+                .map(|parameter| Parameter {
+                    annotation: parameter
+                        .annotation
+                        .as_ref()
+                        .map(|value| substitute_type(value, substitutions)),
+                    ..parameter.clone()
+                })
+                .collect(),
+            result: Box::new(substitute_type(result, substitutions)),
+        },
         Type::Union(values) => Type::Union(
             values
                 .iter()
@@ -1418,6 +1521,7 @@ fn type_identity(value: &Type) -> String {
                 .join(",")
         ),
         Type::Record(_) => "record".to_string(),
+        Type::Function { .. } => "function".to_string(),
         Type::Union(values) => values
             .iter()
             .map(type_identity)
@@ -1451,6 +1555,7 @@ pub(crate) fn type_label(value: &Type) -> String {
             values.iter().map(type_label).collect::<Vec<_>>().join(", ")
         ),
         Type::Record(_) => "record".to_string(),
+        Type::Function { .. } => "function".to_string(),
         Type::Union(values) => values
             .iter()
             .map(type_label)

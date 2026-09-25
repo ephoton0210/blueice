@@ -13,9 +13,10 @@
 
 use blueice_bluejs as bluejs;
 use blueice_bluets::{
-    compile, lex, BlueTsDebugInfo, CompilerOptions, Declaration, Diagnostic, FunctionBodyItem,
-    FunctionDeclaration, FunctionElseBranch, FunctionIfStatement, Module, ModuleLoader, Project,
-    SourceSpan, Token, TokenKind, VariableDeclaration, VariableKind, LANGUAGE_VERSION,
+    compile, lex, source_locations_for_spans, BlueTsDebugInfo, CompilerOptions,
+    DebugSourceLocation, Declaration, Diagnostic, FunctionBodyItem, FunctionDeclaration,
+    FunctionElseBranch, FunctionIfStatement, Module, ModuleLoader, Project, SourceSpan, Token,
+    TokenKind, VariableDeclaration, VariableKind, LANGUAGE_VERSION,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -51,6 +52,9 @@ pub struct BridgeSource {
 pub struct LoweringProvenance {
     pub source: SourceSpan,
     pub kind: LoweringProvenanceKind,
+    /// Precomputed original-source coordinates. The source text is discarded
+    /// before the program enters the live debugger registry.
+    pub location: DebugSourceLocation,
 }
 
 /// How a TypeScript source span contributed a direct BlueJS AST statement.
@@ -127,22 +131,27 @@ impl DirectProgramAttachment {
         source: &str,
         source_byte: usize,
     ) -> DirectSafePointBinding {
-        self.provenance
-            .iter()
-            .filter(|provenance| {
-                provenance.source.module == source && provenance.source.end > source_byte
-            })
-            .min_by_key(|provenance| {
-                (
-                    provenance.source.start.saturating_sub(source_byte),
-                    provenance.source.start,
-                    provenance.source.end,
-                )
-            })
-            .map_or(DirectSafePointBinding::Unbound, |provenance| {
-                provenance.safe_point
-            })
+        resolve_breakpoint_at_or_after(
+            self.provenance
+                .iter()
+                .map(|provenance| (&provenance.source, provenance.safe_point)),
+            source,
+            source_byte,
+        )
     }
+}
+
+fn resolve_breakpoint_at_or_after<'a>(
+    spans: impl Iterator<Item = (&'a SourceSpan, DirectSafePointBinding)>,
+    source: &str,
+    source_byte: usize,
+) -> DirectSafePointBinding {
+    spans
+        .filter(|(span, _)| span.module == source && span.end > source_byte)
+        .min_by_key(|(span, _)| (span.start.saturating_sub(source_byte), span.start, span.end))
+        .map_or(DirectSafePointBinding::Unbound, |(_, safe_point)| {
+            safe_point
+        })
 }
 
 /// One source-level lowering span attached to a generated BlueJS AST node.
@@ -152,6 +161,8 @@ pub struct AttachedLoweringProvenance {
     pub source: SourceSpan,
     /// How the source span contributed its generated AST statement.
     pub kind: LoweringProvenanceKind,
+    /// Exact original-source UTF-16 coordinates from the checked artifact.
+    pub location: DebugSourceLocation,
     /// The generation-bound BlueJS structured AST node.
     pub node_id: bluejs::BlueJsAstNodeId,
     /// The exact compiler-recorded instruction boundary for this node, or an
@@ -200,6 +211,8 @@ pub struct BlueTsSafePointEntryV1 {
     pub start_byte: usize,
     /// Exclusive UTF-8 source-byte end.
     pub end_byte: usize,
+    /// Original-source UTF-16 coordinates for this exact bound span.
+    pub location: DebugSourceLocation,
     /// How the original source supplied the executable statement.
     pub provenance_kind: LoweringProvenanceKind,
 }
@@ -419,7 +432,8 @@ impl DirectModule {
 /// `delete` with a property target; arithmetic, relational (including `in` and
 /// `instanceof`), equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
-/// non-hole array literals with spread elements, object literals with
+/// array literals with holes or spread elements (but never both in one
+/// literal), object literals with
 /// identifier/string/numeric/computed keys and spread properties, template literals
 /// whose substitutions use the same bounded expression subset, dot or bracket
 /// property reads, comma sequences, identifier/property prefix/postfix updates,
@@ -782,6 +796,7 @@ fn attach_existing_direct_program(
             Ok(AttachedLoweringProvenance {
                 source: provenance.source.clone(),
                 kind: provenance.kind,
+                location: provenance.location,
                 node_id,
                 safe_point,
             })
@@ -812,6 +827,21 @@ fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> b
 }
 
 impl BlueTsSafePointMapV1 {
+    /// Resolves only an exact compiler-bound BlueJS instruction to its
+    /// original BlueTS byte span. An instruction with no direct lowering
+    /// record stays unbound; no nearest-statement or generated-source guess
+    /// is made. Callers must first validate the map against its live program.
+    pub fn source_span_for_safe_point(
+        &self,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Option<&BlueTsSafePointEntryV1> {
+        self.entries.iter().find(|entry| {
+            entry.code_unit.ordinal() == code_unit_ordinal
+                && entry.bytecode_offset == bytecode_offset
+        })
+    }
+
     /// Finds the nearest bound entry at or after one TypeScript UTF-8 byte
     /// position. This bound-only view is useful when a caller has retained the
     /// map independently; [`DirectProgramAttachment::breakpoint_at_or_after`]
@@ -888,6 +918,7 @@ fn build_safe_point_map(
                 source: provenance.source.module.clone(),
                 start_byte: provenance.source.start,
                 end_byte: provenance.source.end,
+                location: provenance.location,
                 provenance_kind: provenance.kind,
             }),
             DirectSafePointBinding::Unbound => None,
@@ -910,7 +941,21 @@ fn build_safe_point_map(
 }
 
 fn safe_point_entries_are_strictly_valid(entries: &[BlueTsSafePointEntryV1]) -> bool {
-    entries.windows(2).all(|pair| {
+    entries.iter().all(|entry| {
+        let start = entry.location.start;
+        let end = entry.location.end;
+        !entry.source.is_empty()
+            && entry.start_byte < entry.end_byte
+            && (start.line, start.column_utf16) < (end.line, end.column_utf16)
+            && start
+                .line
+                .checked_add(start.column_utf16)
+                .is_some_and(|position| position <= entry.start_byte)
+            && end
+                .line
+                .checked_add(end.column_utf16)
+                .is_some_and(|position| position <= entry.end_byte)
+    }) && entries.windows(2).all(|pair| {
         safe_point_entry_order(&pair[0], &pair[1]).is_lt()
             && (pair[0].code_unit != pair[1].code_unit
                 || pair[0].bytecode_offset != pair[1].bytecode_offset)
@@ -972,19 +1017,13 @@ fn lower_script(
             Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
             Declaration::Variable(variable) if !variable.declared && !variable.exported => {
                 body.push(lower_variable(module, variable)?);
-                provenance.push(LoweringProvenance {
-                    source: variable.span.clone(),
-                    kind: LoweringProvenanceKind::LoweredSyntax,
-                });
+                provenance.push((variable.span.clone(), LoweringProvenanceKind::LoweredSyntax));
             }
             Declaration::Raw(raw) => {
                 body.push(bluejs::Stmt::Expr(
                     ExpressionLowerer::new(&module.id, &raw.tokens).parse()?,
                 ));
-                provenance.push(LoweringProvenance {
-                    source: raw.span.clone(),
-                    kind: LoweringProvenanceKind::Copied,
-                });
+                provenance.push((raw.span.clone(), LoweringProvenanceKind::Copied));
             }
             Declaration::Import(import) if import.type_only => {}
             Declaration::DefaultExport(export) => {
@@ -1018,10 +1057,7 @@ fn lower_script(
                     && !function.overload =>
             {
                 body.push(lower_function(module, function)?);
-                provenance.push(LoweringProvenance {
-                    source: function.span.clone(),
-                    kind: LoweringProvenanceKind::LoweredSyntax,
-                });
+                provenance.push((function.span.clone(), LoweringProvenanceKind::LoweredSyntax));
             }
             Declaration::Function(function) => {
                 return Err(unsupported(
@@ -1031,7 +1067,7 @@ fn lower_script(
             }
         }
     }
-    Ok((body, provenance))
+    Ok((body, finalize_provenance(module, provenance)?))
 }
 
 fn lower_module(
@@ -1048,10 +1084,7 @@ fn lower_module(
             Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
             Declaration::Variable(variable) if !variable.declared => {
                 body.push(lower_variable(module, variable)?);
-                provenance.push(LoweringProvenance {
-                    source: variable.span.clone(),
-                    kind: LoweringProvenanceKind::LoweredSyntax,
-                });
+                provenance.push((variable.span.clone(), LoweringProvenanceKind::LoweredSyntax));
                 if variable.exported {
                     exports.push(bluejs::ExportEntry::Local {
                         export_name: variable.name.clone(),
@@ -1061,10 +1094,7 @@ fn lower_module(
             }
             Declaration::Function(function) if !function.declared && !function.overload => {
                 body.push(lower_function(module, function)?);
-                provenance.push(LoweringProvenance {
-                    source: function.span.clone(),
-                    kind: LoweringProvenanceKind::LoweredSyntax,
-                });
+                provenance.push((function.span.clone(), LoweringProvenanceKind::LoweredSyntax));
                 if function.default_export {
                     exports.push(bluejs::ExportEntry::Local {
                         export_name: "default".to_string(),
@@ -1081,10 +1111,7 @@ fn lower_module(
                 body.push(bluejs::Stmt::Expr(
                     ExpressionLowerer::new(&module.id, &raw.tokens).parse()?,
                 ));
-                provenance.push(LoweringProvenance {
-                    source: raw.span.clone(),
-                    kind: LoweringProvenanceKind::Copied,
-                });
+                provenance.push((raw.span.clone(), LoweringProvenanceKind::Copied));
             }
             Declaration::DefaultExport(export) => exports.push(bluejs::ExportEntry::Local {
                 export_name: "default".to_string(),
@@ -1171,8 +1198,32 @@ fn lower_module(
                 })
                 .collect(),
         },
-        provenance,
+        finalize_provenance(module, provenance)?,
     ))
+}
+
+fn finalize_provenance(
+    module: &Module,
+    raw: Vec<(SourceSpan, LoweringProvenanceKind)>,
+) -> Result<Vec<LoweringProvenance>, BridgeError> {
+    let locations = source_locations_for_spans(&module.source, raw.iter().map(|(span, _)| span));
+    raw.into_iter()
+        .zip(locations)
+        .map(|((source, kind), location)| {
+            let location = location
+                .filter(|_| source.module == module.id && source.start < source.end)
+                .ok_or_else(|| {
+                    BridgeError::ProvenanceAttachment(
+                        "a lowered statement has no exact original-source location".to_string(),
+                    )
+                })?;
+            Ok(LoweringProvenance {
+                source,
+                kind,
+                location,
+            })
+        })
+        .collect()
 }
 
 fn lower_function(

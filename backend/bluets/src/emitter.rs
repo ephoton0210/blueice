@@ -267,12 +267,19 @@ fn emit_declaration(module: &Module) -> String {
                 output.push_str(" {\n");
                 for field in &interface.fields {
                     output.push_str("  ");
+                    if field.readonly {
+                        output.push_str("readonly ");
+                    }
                     output.push_str(&field.name);
                     if field.optional {
                         output.push('?');
                     }
-                    output.push_str(": ");
-                    output.push_str(&type_to_ts(&field.value));
+                    if let Type::Function { parameters, result } = &field.value {
+                        output.push_str(&method_signature_to_ts(parameters, result));
+                    } else {
+                        output.push_str(": ");
+                        output.push_str(&type_to_ts(&field.value));
+                    }
                     output.push_str(";\n");
                 }
                 output.push_str("}\n");
@@ -454,15 +461,29 @@ fn type_to_ts(value: &Type) -> String {
             "{{ {} }}",
             fields
                 .iter()
-                .map(|field| format!(
-                    "{}{}: {}",
-                    field.name,
-                    if field.optional { "?" } else { "" },
-                    type_to_ts(&field.value)
-                ))
+                .map(|field| {
+                    let name = format!(
+                        "{}{}{}",
+                        if field.readonly { "readonly " } else { "" },
+                        field.name,
+                        if field.optional { "?" } else { "" }
+                    );
+                    if let Type::Function { parameters, result } = &field.value {
+                        format!("{name}{}", method_signature_to_ts(parameters, result))
+                    } else {
+                        format!("{name}: {}", type_to_ts(&field.value))
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join("; ")
         ),
+        Type::Function { parameters, result } => {
+            format!(
+                "{} => {}",
+                method_parameters_to_ts(parameters),
+                type_to_ts(result)
+            )
+        }
         Type::Union(values) => values
             .iter()
             .map(type_to_ts)
@@ -474,6 +495,34 @@ fn type_to_ts(value: &Type) -> String {
             .collect::<Vec<_>>()
             .join(" & "),
     }
+}
+
+fn method_parameters_to_ts(parameters: &[crate::parser::Parameter]) -> String {
+    let members = parameters
+        .iter()
+        .map(|parameter| {
+            format!(
+                "{}{}: {}",
+                parameter.name,
+                if parameter.optional { "?" } else { "" },
+                parameter
+                    .annotation
+                    .as_ref()
+                    .map(type_to_ts)
+                    .unwrap_or_else(|| "unknown".to_string())
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("({members})")
+}
+
+fn method_signature_to_ts(parameters: &[crate::parser::Parameter], result: &Type) -> String {
+    format!(
+        "{}: {}",
+        method_parameters_to_ts(parameters),
+        type_to_ts(result)
+    )
 }
 
 struct ProvenanceEmitter<'a> {
@@ -719,6 +768,20 @@ mod tests {
     }
 
     #[test]
+    fn preserves_array_holes_while_erasing_the_annotation() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///holes.ts",
+            "const values: number[] = [1,,3];",
+        )]);
+        let output = compile("memory:///holes.ts", &loader, CompilerOptions::default())
+            .output
+            .unwrap();
+        let javascript = &output.artifacts["memory:///holes.ts"].javascript;
+        assert!(javascript.contains("[1,,3]"), "{javascript}");
+        assert!(!javascript.contains(": number[]"), "{javascript}");
+    }
+
+    #[test]
     fn emits_source_map_and_public_declaration() {
         let loader = MapLoader::from([ModuleSource::new(
             "memory:///api.ts",
@@ -855,6 +918,35 @@ mod tests {
     }
 
     #[test]
+    fn retains_readonly_fields_in_declaration_output() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///event.ts",
+            "export interface Event { readonly type: 'click'; mutable: string; }\n\
+             export type Detail = { readonly currentTarget: string; mutable: string };",
+        )]);
+        let result = compile(
+            "memory:///event.ts",
+            &loader,
+            CompilerOptions {
+                declaration: true,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+        let artifact = &result.output.unwrap().artifacts["memory:///event.ts"];
+        let declaration = artifact.declaration.as_deref().unwrap();
+        assert!(
+            declaration.contains("readonly type: 'click';"),
+            "{declaration}"
+        );
+        assert!(
+            declaration.contains("{ readonly currentTarget: string; mutable: string }"),
+            "{declaration}"
+        );
+        assert!(!artifact.javascript.contains("readonly"));
+    }
+
+    #[test]
     fn retains_interface_heritage_in_declaration_output_only() {
         let loader = MapLoader::from([ModuleSource::new(
             "memory:///inheritance.ts",
@@ -880,6 +972,34 @@ mod tests {
                 "export interface Envelope<T> {\n  payload: T;\n}\n\
                  export interface Tagged {\n  tag: string;\n}\n\
                  export interface Labeled<T extends string = string> extends Envelope<T>, Tagged {\n  label: T;\n}\n"
+            )
+        );
+    }
+
+    #[test]
+    fn erases_interface_methods_but_retains_their_exact_public_signature() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///document.ts",
+            "export interface Document { getElementById(id: string): Element | null; }\n\
+             export interface Element { textContent: string; }",
+        )]);
+        let output = compile(
+            "memory:///document.ts",
+            &loader,
+            CompilerOptions {
+                declaration: true,
+                ..CompilerOptions::default()
+            },
+        )
+        .output
+        .unwrap();
+        let artifact = &output.artifacts["memory:///document.ts"];
+        assert!(!artifact.javascript.contains("getElementById"));
+        assert_eq!(
+            artifact.declaration.as_deref(),
+            Some(
+                "export interface Document {\n  getElementById(id: string): Element | null;\n}\n\
+                 export interface Element {\n  textContent: string;\n}\n"
             )
         );
     }

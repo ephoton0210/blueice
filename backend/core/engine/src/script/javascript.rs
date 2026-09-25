@@ -15,7 +15,7 @@
 use super::{
     contracts::{core_script_binding_contract, CoreScriptBindingContractLimits},
     direct_page::DirectPageScriptKind,
-    BlueJsPageScriptDeclaration, BlueJsPageScriptKind,
+    BlueJsPageScriptDeclaration, BlueJsPageScriptKind, ScriptRequestReceiver,
 };
 use crate::{Page, TabId, TabManager};
 use blueice_bluejs::{
@@ -24,6 +24,7 @@ use blueice_bluejs::{
     BlueJsSourceIdentity, CompileError, HostFunctionError, HostValue, ParseError, RuntimeError,
     Value,
 };
+use blueice_ipc::compiler::CompilerContractValue;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::{fmt, io};
 
@@ -36,7 +37,31 @@ use debugger_support::{
 pub use debugger_support::{
     JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
     JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerProgram,
-    JavaScriptPageDebuggerSafePoint,
+    JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerStaticMetadata,
+    JavaScriptPageDebuggerStaticMetadataContractDisplay,
+    JavaScriptPageDebuggerStaticMetadataContractId,
+    JavaScriptPageDebuggerStaticMetadataContractLocation,
+    JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
+    JavaScriptPageDebuggerStaticMetadataContractTarget,
+    JavaScriptPageDebuggerStaticMetadataContractValidation,
+    JavaScriptPageDebuggerStaticMetadataLoweringSummary,
+    JavaScriptPageDebuggerStaticMetadataSafePointSpan,
+    JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+    JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget,
+    JavaScriptPageDebuggerStaticMetadataSourceId,
+    JavaScriptPageDebuggerStaticMetadataSourceProvenance,
+    JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
+    JavaScriptPageDebuggerStaticMetadataSymbolContract,
+    JavaScriptPageDebuggerStaticMetadataSymbolContractTarget,
+    JavaScriptPageDebuggerStaticMetadataSymbolDisplay,
+    JavaScriptPageDebuggerStaticMetadataSymbolId,
+    JavaScriptPageDebuggerStaticMetadataSymbolLocation,
+    JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
+    JavaScriptPageDebuggerStaticMetadataSymbolTarget,
+    JavaScriptPageDebuggerStaticMetadataSymbolType,
+    JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
+    JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
+    JavaScriptPageDebuggerStaticMetadataTypeTarget,
 };
 
 /// Source-free debugger location operations owned by an explicitly selected
@@ -47,8 +72,8 @@ pub use debugger_support::{
 /// The launcher-supervised child supports a bounded, exact breakpoint
 /// configuration table in addition to location discovery. The table neither
 /// pauses nor executes its VM unless an explicitly selected child execution
-/// controller implements the separate root-classic methods below. Stepping,
-/// stacks, scopes, source, bytecode, and runtime values remain excluded.
+/// controller implements the separate root-classic methods below. Nested
+/// stepping, stacks, scopes, source, bytecode, and runtime values remain excluded.
 pub trait PageJavaScriptDebuggerLocations {
     /// Whether this owner currently has the exact live tab/document realm.
     fn debugger_has_live_realm(&mut self, tab_id: TabId, document_generation: u64) -> bool;
@@ -70,12 +95,380 @@ pub trait PageJavaScriptDebuggerLocations {
         0
     }
 
+    /// Whether this selected route can list source-free static BlueTS metadata
+    /// handles. A capability report and the per-stream core authorization must
+    /// both grant the public operation before this inventory is called.
+    fn debugger_static_metadata_inventory_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this selected route can describe one existing static-metadata
+    /// handle with a bounded source-free summary. This remains a distinct
+    /// capability from handle inventory and is default-deny for every route.
+    fn debugger_static_metadata_summary_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can return a source-free aggregate summary of the
+    /// verified direct lowering map for an exact opaque metadata attachment.
+    /// Per-entry source spans and bytecode positions remain unavailable.
+    fn debugger_static_metadata_lowering_summary_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can list only compiler-minted source-record IDs for
+    /// an exact opaque metadata attachment. No source/provenance detail is
+    /// implied by this separate default-deny capability.
+    fn debugger_static_metadata_source_inventory_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can disclose one source-free module identity and
+    /// labeled SHA-256 digest for an ID returned by the distinct inventory.
+    /// Source text and all other metadata records remain unavailable.
+    fn debugger_static_metadata_source_provenance_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can list only compiler-minted type-record IDs for
+    /// one exact opaque metadata attachment. Type displays and static-record
+    /// reads remain separately default-denied.
+    fn debugger_static_metadata_type_inventory_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can disclose one bounded compiler-produced display
+    /// for a prior type-ID inventory receipt. This remains separately
+    /// default-denied because displays can contain project-authored names.
+    fn debugger_static_metadata_type_display_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can list payload-free compiler-minted symbol IDs
+    /// under an exact opaque metadata parent. Symbol record reads remain
+    /// separately default-denied.
+    fn debugger_static_metadata_symbol_inventory_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can disclose a source-text-free half-open byte
+    /// range for a prior exact symbol and independently inventoried source.
+    /// This is separate from symbol names and source provenance because it
+    /// exposes source structure.
+    fn debugger_static_metadata_symbol_location_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can bind an exact verified BlueTS safe point to a
+    /// separately receipted source ID under one opaque metadata attachment.
+    /// This is not a public grant by itself.
+    fn debugger_static_metadata_safe_point_span_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can resolve a bounded original BlueTS position
+    /// under one exact metadata/source tuple. A separate public owner and
+    /// session capability must authorize this source-position oracle.
+    fn debugger_static_metadata_source_breakpoint_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can disclose a separately authorized contract
+    /// declaration range under receipted contract and source IDs.
+    fn debugger_static_metadata_contract_location_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can verify a relation between separately
+    /// inventoried opaque symbol and type IDs under one static attachment.
+    fn debugger_static_metadata_symbol_type_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can verify a relation between separately
+    /// inventoried opaque symbol and contract IDs under one attachment.
+    fn debugger_static_metadata_symbol_contract_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can list payload-free compiler-minted contract IDs
+    /// under an exact opaque metadata parent. Contract record reads remain
+    /// separately default-denied.
+    fn debugger_static_metadata_contract_inventory_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can describe a bounded display for a prior exact
+    /// contract ID. Contract names remain an independently default-denied
+    /// surface; plans and validation behavior do not cross this boundary.
+    fn debugger_static_metadata_contract_display_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can validate one data-only snapshot against a prior
+    /// exact contract-ID receipt. The boolean outcome is independently
+    /// default-denied; plan and structural failure detail stay unavailable.
+    fn debugger_static_metadata_contract_validation_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can describe a bounded display for a prior exact
+    /// symbol ID. Symbol names remain an independently default-denied surface.
+    fn debugger_static_metadata_symbol_display_available(&self) -> bool {
+        false
+    }
+
     /// Lists only opaque public-facing program IDs for one live realm.
     fn debugger_programs(
         &mut self,
         tab_id: TabId,
         document_generation: u64,
     ) -> Result<Vec<JavaScriptPageDebuggerProgram>, JavaScriptPageDebuggerError>;
+
+    /// Lists only core-minted opaque metadata identities for one exact public
+    /// program generation. It exposes no static metadata payload; source,
+    /// module identity, symbol/type/span/contract, bytecode, VM object, and
+    /// runtime value all remain unavailable.
+    fn debugger_static_metadata(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadata>, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Describes one already inventoried opaque metadata identity. The owner
+    /// must verify the exact program and metadata generations before exposing
+    /// the bounded summary; it must never use these numbers to synthesize a
+    /// source/type/symbol/contract record read.
+    fn debugger_static_metadata_summary(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _metadata_handle: u64,
+        _metadata_generation: u64,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSummary, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Returns one verified direct-lowering-map aggregate only after the
+    /// caller presented the exact opaque parent metadata attachment. This is
+    /// not a source-map/bytecode entry lookup or a general static-record read.
+    fn debugger_static_metadata_lowering_summary(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _metadata_handle: u64,
+        _metadata_generation: u64,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataLoweringSummary, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Lists source-record identities only after the caller presented an
+    /// exact metadata attachment. Implementations must not synthesize source
+    /// details from the numeric IDs.
+    fn debugger_static_metadata_sources(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _metadata_handle: u64,
+        _metadata_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataSourceId>, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Describes one inventoried source ID under the same exact opaque parent
+    /// metadata attachment. Implementations must never turn this into source
+    /// text or an arbitrary-record read surface.
+    fn debugger_static_metadata_source_provenance(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSourceTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSourceProvenance, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Lists type-record identities only after the caller presented an exact
+    /// metadata attachment. Implementations must not expose type displays or
+    /// synthesize static records from the numeric IDs.
+    fn debugger_static_metadata_types(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _metadata_handle: u64,
+        _metadata_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataTypeId>, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Describes one previously inventoried type ID under the same exact
+    /// metadata attachment. Implementations must not turn this into a
+    /// source/span/symbol/contract or arbitrary-record read surface.
+    fn debugger_static_metadata_type_display(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataTypeTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Lists compiler-minted symbol IDs only after the caller presented an
+    /// exact metadata attachment. Implementations must not expose symbol
+    /// names, spans, declared types, or synthesize static records from IDs.
+    fn debugger_static_metadata_symbols(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _metadata_handle: u64,
+        _metadata_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataSymbolId>, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Lists compiler-minted contract IDs only after the caller presented an
+    /// exact metadata attachment. Implementations must not expose contract
+    /// names, spans, plans, or validate caller data from this inventory route.
+    fn debugger_static_metadata_contracts(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _metadata_handle: u64,
+        _metadata_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataContractId>, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Describes one compiler-minted contract ID only after the caller
+    /// presented that exact metadata attachment and ID. Implementations must
+    /// not expose source spans, plans, validation behavior, or static records.
+    fn debugger_static_metadata_contract_display(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataContractTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataContractDisplay, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Validates one data-only snapshot against an exact contract target. An
+    /// implementation must enforce its fixed value limits before touching a
+    /// retained plan and return only a boolean, never the input or plan/error
+    /// detail.
+    fn debugger_static_metadata_contract_validation(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataContractTarget,
+        _value: CompilerContractValue,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataContractValidation, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Describes one compiler-minted symbol ID only after the caller presented
+    /// that exact metadata attachment and ID. Implementations must not expose
+    /// source spans, types, contracts, or synthesize static records.
+    fn debugger_static_metadata_symbol_display(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSymbolTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolDisplay, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Describes one source-text-free declaration range for an exact prior
+    /// symbol. Implementations must not turn it into source/module/name/type/
+    /// contract/bytecode or arbitrary static-record access.
+    fn debugger_static_metadata_symbol_location(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolLocation, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Resolves only the exact safe point and source ID presented under the
+    /// live, core-reminted metadata identity. An unbound instruction has no
+    /// nearest-source fallback.
+    fn debugger_static_metadata_safe_point_span(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSafePointSpan, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    fn debugger_static_metadata_source_breakpoint(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget,
+    ) -> Result<Option<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Describes only the source ID and bounded declaration range for one
+    /// exact contract. No name, plan, source text, or value may be inferred.
+    fn debugger_static_metadata_contract_location(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataContractLocation, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Verifies one exact symbol/type relation without returning unrequested
+    /// IDs or compiler-produced displays.
+    fn debugger_static_metadata_symbol_type(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolType, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Verifies one exact symbol/contract relation without returning an
+    /// unrequested ID, contract plan, or validation result.
+    fn debugger_static_metadata_symbol_contract(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSymbolContractTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolContract, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
 
     /// Lists exact compiler-recorded instruction boundaries for one program.
     fn debugger_safe_points(
@@ -169,6 +562,36 @@ pub trait PageJavaScriptDebuggerLocations {
 
     /// Marks a paused root-classic continuation for the next child advance.
     fn resume_debugger_execution(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Whether this route can advance one retained classic-root instruction.
+    fn debugger_stepping_available(&self) -> bool {
+        false
+    }
+
+    /// Exact, compiler-bound BlueTS source-span stepping is separate from
+    /// ordinary source-free single-instruction stepping.
+    fn debugger_source_span_stepping_available(&self) -> bool {
+        false
+    }
+
+    fn step_debugger_bluets_source_span(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    fn step_debugger_root_instruction(
         &mut self,
         _tab_id: TabId,
         _document_generation: u64,
@@ -274,6 +697,31 @@ pub trait PageJavaScriptExecutor {
     /// Synchronizes current tab/document state and records bounded source-free
     /// execution results.
     fn synchronize_and_execute(&mut self, tabs: &TabManager) -> io::Result<()>;
+
+    /// Session-thread-only variant used when an isolated child may issue
+    /// synchronous DOM calls while core awaits its document result. Other
+    /// executors keep the existing immutable synchronization path.
+    fn synchronize_and_execute_serving_script(
+        &mut self,
+        tabs: &mut TabManager,
+        _script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<()> {
+        self.synchronize_and_execute(tabs)
+    }
+
+    /// Delivers a core-hit-tested click before default navigation. The
+    /// default is inert; only an explicitly selected child event profile may
+    /// return a cancellation decision. A child may synchronously call back
+    /// into core DOM, so the session supplies its mutable tab owner.
+    fn dispatch_click_serving_script(
+        &mut self,
+        _tabs: &mut TabManager,
+        _tab_id: TabId,
+        _node_id: u64,
+        _script_requests: Option<&ScriptRequestReceiver>,
+    ) -> io::Result<Option<bool>> {
+        Ok(None)
+    }
 
     /// Drains one tab's reports without exposing or consuming another tab's
     /// records.

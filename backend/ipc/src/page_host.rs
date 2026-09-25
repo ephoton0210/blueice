@@ -12,8 +12,34 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
+//! Version 31 adds an authenticated, source-free child-wide actual-usage
+//! snapshot for all live realms. It is private to the core/child connection,
+//! separate from the launcher's conservative reservations and from public
+//! debugger, frontend, and MCP protocols. Version 30 adds a child-private
+//! BlueTS source-span step on a retained classic-root continuation. It
+//! advances one verified root instruction per
+//! owner turn, stops at a different compiler-bound source span, completion,
+//! or an explicit fixed instruction-budget yield. It reveals no source text,
+//! runtime value, stack, or VM frame. Public debugger v30 separately gates its
+//! use with owner/client capability grants and same-stream source receipts.
+//! Version 29 adds a child-private, bounded BlueTS byte-position-to-safe-point
+//! binding under an exact live metadata attachment. It preserves explicitly
+//! unbound lowering spans and does not itself grant a public debugger client
+//! an arbitrary source-position query or execution control.
+//! Version 28 adds a child-private exact safe-point-to-BlueTS byte-span lookup
+//! under one live opaque metadata attachment. It returns only a compiler
+//! source ID and bounded original byte range, never source text, module
+//! identity, a guessed nearest span, or a public debugger capability.
+//! Version 27 adds an exact-program, source-free single-root-instruction
+//! debugger step and a transient `Stepping` state for the isolated child.
+//! Version 26 adds bounded compiler-produced original-source UTF-16
+//! coordinates to the existing child-private symbol and contract location
+//! replies. Version 25 adds the compiler's export classification to the existing
+//! child-private symbol display. Version 24 adds a fixed root-shape
+//! classification to the existing contract-display reply for an exact
+//! child-private metadata attachment.
 //!
-//! Version 6 retains the two fixed, core-derived document snapshots consumed
+//! Version 11 retains the two fixed, core-derived document snapshots consumed
 //! by the child-owned JavaScript bindings, the location-only debugger
 //! inventory, a bounded exact-breakpoint configuration table, and an opt-in
 //! root-classic continuation seam. The
@@ -23,18 +49,66 @@
 //! BlueTS stays a child-fixed, direct-lowering profile with no ambient host
 //! typings, compiler option, resolver, or emitted JavaScript crossing this
 //! channel. Apart from the two fixed JavaScript primitive snapshot callbacks,
-//! version 6 exposes only a core-proxied, source-free debugger location
+//! version 10 exposes only a core-proxied, source-free debugger location
 //! inventory and configuration records. A core-selected document may opt in
-//! to the one-shot root-classic arm/state/resume lifecycle; the child admits
-//! no generic interruption, stepping, nested continuation, stack, scope,
-//! bytecode, source, runtime value transport, general host callback,
-//! fetch/cache, or client-facing API.
+//! to the root-classic arm/state/resume lifecycle and, since v27, one
+//! root-instruction step per explicit request; the child admits no generic
+//! interruption, nested-frame stepping, stack, scope,
+//! bytecode, source-text, runtime-value transport, general host callback,
+//! fetch/cache, or client-facing API. Version 7 additionally lets that
+//! authenticated core enumerate one separately minted opaque static-metadata
+//! handle for an exact BlueTS program. The handle discloses neither static
+//! metadata nor a child program identity and is unusable after its realm is
+//! replaced or closed. Version 8 adds only an explicitly requested,
+//! handle-bound static summary: fixed compiler fingerprints and aggregate
+//! counts, never a source identity/text, span, name, type display, symbol,
+//! contract, bytecode, runtime value, or dereferenceable metadata record.
+//! Version 9 adds only bounded compiler-minted source-record IDs for that
+//! same handle; IDs carry no source identity, hash, text, or record detail.
+//! Version 10 adds the separately authorized source-provenance reply for one
+//! of those IDs: canonical module identity and a labeled SHA-256 digest only,
+//! never source text or a general static-record read.
+//! Version 11 adds only a parent-handle-bound compiler type-ID inventory.
+//! Version 12 adds one exact type-ID display lookup; it remains an explicit
+//! core-proxied operation, not a general static-record read or source access.
+//! Version 13 adds a payload-free parent-handle-bound symbol-ID inventory.
+//! Version 14 adds a payload-free parent-handle-bound contract-ID inventory.
+//! Version 15 adds one exact symbol-ID display lookup; it remains an explicit
+//! core-proxied operation, not a general static-record read or source access.
+//! Version 16 adds one exact contract-ID display lookup; it remains an explicit
+//! core-proxied operation, not a general static-record read or source access.
+//! Version 23 adds an exact contract/source declaration range without a
+//! contract plan, source text, module identity, or runtime value.
+//! Version 22 adds the compiler declaration kind to the exact child-local
+//! symbol display. It does not add a target, source read, or runtime access.
+//! Version 21 adds an exact symbol-to-reifiable-contract verification under
+//! one private metadata attachment. It repeats only two caller-supplied
+//! opaque IDs and does not disclose the contract plan or static record.
+//! Version 20 adds an exact symbol-to-static-type verification under one
+//! private metadata attachment. It repeats only two caller-supplied opaque
+//! IDs and does not disclose type displays or static records. Version 19 adds
+//! a separately requested, opaque-handle-bound symbol
+//! location. It carries only a receipted source ID and bounded half-open byte
+//! range, never source text, module identity, line/column data, name, type,
+//! contract, bytecode, VM object, or value. Version 18 adds a separately
+//! requested, opaque-handle-bound summary of the
+//! verified BlueTS-to-BlueJS lowering map. It carries only fixed ABI labels,
+//! a source-set fingerprint, and an aggregate bound-entry count; source
+//! identities/spans, map entries, AST nodes, and bytecode offsets remain
+//! private. Version 17 adds a separately requested, data-only validation against one
+//! exact prior contract ID. Its reply is only a boolean, never the input,
+//! contract plan, or structural failure detail.
 
+use crate::compiler::CompilerContractValue;
+use crate::debugger::{
+    DebuggerSourceCoordinates, DebuggerStaticMetadataContractRootKind,
+    DebuggerStaticMetadataSymbolKind,
+};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 6;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 33;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -59,6 +133,11 @@ pub const PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM: u32 = 4_096;
 /// debugger nor page code can grow the child table without bound.
 pub const PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM: u32 = 256;
 
+/// A document accepts at most 256 declarations and each declaration can
+/// carry at most eight closed graph modules. The accounting reply cannot name
+/// more live BlueJS programs than that fixed document envelope permits.
+pub const PAGE_HOST_REALM_STATS_MAX_PROGRAMS: u32 = 2_048;
+
 /// An opaque debugger program identity minted by the isolated child. It is
 /// valid only with the exact tab/document generation supplied by the request;
 /// it deliberately contains no source identity, BlueJS registry handle, or
@@ -74,6 +153,194 @@ impl PageHostDebuggerProgram {
     pub fn is_well_formed(self) -> bool {
         self.program_handle != 0 && self.program_generation != 0
     }
+}
+
+/// A child-minted opaque association with static BlueTS metadata for one
+/// exact live direct-program generation. It is deliberately a different
+/// identity namespace from [`PageHostDebuggerProgram`]: callers cannot reuse
+/// a program ID as a metadata ID, nor derive source/module/type/span/contract
+/// information from either field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct PageHostDebuggerMetadataHandle {
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+}
+
+impl PageHostDebuggerMetadataHandle {
+    /// Private metadata identities never use zero placeholders.
+    pub fn is_well_formed(self) -> bool {
+        self.metadata_handle != 0 && self.metadata_generation != 0
+    }
+}
+
+/// A bounded source-free description of a live BlueTS debug attachment.
+/// This private transport structure intentionally has no child program or
+/// metadata handle: the enclosing request/reply supplies those opaque
+/// identities and core verifies every component before reminting the public
+/// summary.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataSummary {
+    pub language_version: String,
+    pub compiler_options_hash: String,
+    pub source_count: u32,
+    pub type_count: u32,
+    pub symbol_count: u32,
+    pub contract_count: u32,
+}
+
+/// Source-free aggregate evidence for the exact retained direct-lowering map
+/// under one opaque metadata handle. The enclosing request/reply binds this
+/// to a child-private program and metadata identity. It deliberately contains
+/// no source/module identity, source span, map entry, AST node, code-unit ID,
+/// bytecode offset, VM object/value, or static-record payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataLoweringSummary {
+    pub safe_point_map_abi: String,
+    pub program_abi: String,
+    pub source_set_hash: String,
+    pub bound_safe_point_count: u32,
+}
+
+/// One compiler-minted source-record ID for an exact private BlueTS metadata
+/// attachment. It deliberately carries no module identity, source text,
+/// content hash, span, symbol, type, contract, bytecode, VM object, or value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataSourceId {
+    pub source_id: u32,
+}
+
+/// One compiler-minted type-record ID for an exact private BlueTS metadata
+/// attachment. It deliberately carries no display string, source identity,
+/// span, symbol, contract, bytecode, VM object, or value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataTypeId {
+    pub type_id: u32,
+}
+
+/// One compiler-minted symbol-record ID for an exact private BlueTS metadata
+/// attachment. It deliberately carries no name, source span, declared type,
+/// contract, bytecode, VM object, or value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataSymbolId {
+    pub symbol_id: u32,
+}
+
+/// One compiler-minted static contract ID for an exact private BlueTS metadata
+/// attachment. It deliberately carries no contract name, source span, plan,
+/// validation, bytecode, VM object, or value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataContractId {
+    pub contract_id: u32,
+}
+
+/// One child-local compiler-produced contract display for an exact contract ID
+/// under an opaque metadata attachment. The enclosing request/reply carries
+/// the child program and metadata identities; this value never grants a
+/// generic static-record read, contract-plan access, or validation authority.
+/// Its fixed root-kind field has no plan edges or field names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataContractDisplay {
+    pub contract_id: u32,
+    pub display: String,
+    pub root_kind: DebuggerStaticMetadataContractRootKind,
+}
+
+/// One child-local boolean result for validating a data-only snapshot against
+/// an exact contract ID. It exposes neither the submitted value nor plan/error
+/// detail; the enclosing reply binds it to one private program and metadata
+/// handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataContractValidation {
+    pub contract_id: u32,
+    pub valid: bool,
+}
+
+/// One child-local compiler-produced symbol display for an exact symbol ID
+/// under an opaque metadata attachment, with its bounded declaration kind.
+/// The enclosing request/reply carries the child program and metadata
+/// identities; this value never grants a generic static-record read or source
+/// access.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataSymbolDisplay {
+    pub symbol_id: u32,
+    pub display: String,
+    pub kind: DebuggerStaticMetadataSymbolKind,
+    pub exported: bool,
+}
+
+/// One child-local source-text-free declaration range for an exact symbol.
+/// The request/reply tuple owns the private program and metadata identities;
+/// this value contains neither a module name nor source bytes and is not a
+/// source-read or source-map operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataSymbolLocation {
+    pub symbol_id: u32,
+    pub source_id: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+    pub coordinates: DebuggerSourceCoordinates,
+}
+
+/// One child-local, source-text-free declaration range for a retained
+/// reifiable contract. Core must check the echoed contract/source IDs against
+/// the exact public stream's separate receipts before forwarding it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataContractLocation {
+    pub contract_id: u32,
+    pub source_id: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+    pub coordinates: DebuggerSourceCoordinates,
+}
+
+/// A child-private exact lowering association and original UTF-16 coordinates
+/// for one verified instruction.
+/// The enclosing reply repeats the live safe-point and metadata handles; this
+/// payload contains no module identity, source text, AST node, or VM value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsSafePointSpan {
+    pub source_id: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+    pub coordinates: DebuggerSourceCoordinates,
+}
+
+/// One exact child-verified relation between a compiler symbol and type.
+/// Both numeric IDs came from separate core-proxied inventories; this
+/// contains no name, type display, source, span, contract, or record payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataSymbolType {
+    pub symbol_id: u32,
+    pub type_id: u32,
+}
+
+/// One exact child-verified relation between a compiler symbol and its
+/// reifiable contract. Both numeric IDs came from separate core-proxied
+/// inventories; this contains no contract plan, name, or static record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataSymbolContract {
+    pub symbol_id: u32,
+    pub contract_id: u32,
+}
+
+/// One child-local compiler-produced type display for an exact type ID under
+/// an opaque metadata attachment. The enclosing request/reply carries the
+/// child program and metadata identities; this value never grants a generic
+/// static-record read or source access.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataTypeDisplay {
+    pub type_id: u32,
+    pub display: String,
+}
+
+/// One child-local, source-text-free provenance description for a source ID
+/// under an exact private metadata attachment. Core validates and remints the
+/// enclosing public identities; this value never grants source access.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataSourceProvenance {
+    pub source_id: u32,
+    pub module: String,
+    pub content_hash: String,
 }
 
 /// One exact compiler-verified instruction boundary returned without source
@@ -93,6 +360,13 @@ pub struct PageHostDebuggerSafePoint {
 pub enum PageHostDebuggerExecutionState {
     Pending,
     Paused {
+        safe_point: PageHostDebuggerSafePoint,
+    },
+    Stepping,
+    /// The source-span step reached its fixed root-instruction budget before
+    /// another bound span. The continuation remains paused at this exact
+    /// verified root boundary and may be resumed or instruction-stepped.
+    SourceStepLimitReached {
         safe_point: PageHostDebuggerSafePoint,
     },
     Resuming,
@@ -246,6 +520,48 @@ pub struct PageHostRealmStats {
     pub heap_bytes: u64,
 }
 
+impl PageHostRealmStats {
+    /// Checks the fixed, source-free accounting envelope before core caches a
+    /// child report. `u32::MAX`/`u64::MAX` are conversion-failure sentinels in
+    /// the child adapter, never credible live accounting values. This does
+    /// not disclose the launcher's private resource limits.
+    pub fn is_well_formed(&self) -> bool {
+        self.tab_id != 0
+            && self.document_generation != 0
+            && self.program_count <= PAGE_HOST_REALM_STATS_MAX_PROGRAMS
+            && self.bytecode_bytes != u64::MAX
+            && self.heap_bytes != u64::MAX
+    }
+}
+
+/// Actual source-free usage across every currently live child-owned realm.
+/// This excludes Rust allocation, source/cache copies, registry overhead,
+/// process RSS, and other children. It conveys no tab or program identity and
+/// is never a public debugger/frontend/MCP reply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostChildStats {
+    pub realm_count: u32,
+    pub program_count: u64,
+    pub bytecode_bytes: u64,
+    pub heap_bytes: u64,
+}
+
+impl PageHostChildStats {
+    /// Rejects conversion sentinels, impossible program counts, and a
+    /// nonempty charge for an empty child before core trusts the snapshot.
+    pub fn is_well_formed(self) -> bool {
+        self.realm_count != u32::MAX
+            && self.program_count != u64::MAX
+            && self.bytecode_bytes != u64::MAX
+            && self.heap_bytes != u64::MAX
+            && self.program_count
+                <= u64::from(self.realm_count) * u64::from(PAGE_HOST_REALM_STATS_MAX_PROGRAMS)
+            && (self.program_count != 0 || self.bytecode_bytes == 0)
+            && (self.realm_count != 0
+                || (self.program_count == 0 && self.bytecode_bytes == 0 && self.heap_bytes == 0))
+    }
+}
+
 /// Launcher/core requests to the private host. `Hello` carries the per-spawn
 /// secret capability so a same-user process that guesses a socket pathname
 /// cannot claim the child before its launcher does.
@@ -259,6 +575,13 @@ pub enum PageHostRequest {
     /// current child-owned generation. Repeating the current generation is
     /// idempotent and never re-runs page code.
     SynchronizeDocument { document: PageHostDocument },
+    /// Delivers one core-hit-tested node to the exact live child document.
+    /// The child returns only whether a listener canceled default navigation.
+    DispatchClick {
+        tab_id: u64,
+        document_generation: u64,
+        node_id: u64,
+    },
     /// Releases one exact live realm. A stale generation cannot close its
     /// successor after navigation.
     CloseRealm {
@@ -270,12 +593,184 @@ pub enum PageHostRequest {
         tab_id: u64,
         document_generation: u64,
     },
+    /// Returns one authenticated child-wide actual-usage snapshot. It has no
+    /// caller-selected realm, source, or runtime-object target.
+    GetChildStats,
     /// Lists only opaque program identities retained by one exact live child
     /// realm. This discovery operation cannot pause, resume, inspect, or
     /// mutate that realm.
     ListDebuggerPrograms {
         tab_id: u64,
         document_generation: u64,
+    },
+    /// Lists separately minted opaque static-metadata handles for one exact
+    /// private program. A JavaScript program, a BlueTS program without a live
+    /// registry attachment, or an invalidated attachment returns no handles.
+    /// The reply contains no static metadata, source/module/name/type/span,
+    /// contract, aggregate count, runtime handle, or VM object.
+    ListDebuggerBlueTsMetadata {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    },
+    /// Describes one previously minted private BlueTS metadata handle. The
+    /// request repeats its owning program so the child can reject a handle
+    /// from another live program without probing its registry. It returns
+    /// only a bounded fingerprint/count summary, never a metadata record.
+    DescribeDebuggerBlueTsMetadata {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    },
+    /// Returns only aggregate ABI/fingerprint evidence for the verified direct
+    /// lowering map paired with one exact opaque metadata handle. This is not
+    /// an entry, source span, AST-node, or bytecode inspection operation.
+    DescribeDebuggerBlueTsMetadataLoweringSummary {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    },
+    /// Lists compiler-minted source-record IDs for a prior exact private
+    /// metadata handle. This is not a source/provenance record read.
+    ListDebuggerBlueTsMetadataSources {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    },
+    /// Lists compiler-minted type-record IDs for a prior exact private
+    /// metadata handle. This is not a type display or static-record read.
+    ListDebuggerBlueTsMetadataTypes {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    },
+    /// Describes one compiler-minted type ID under a prior exact private
+    /// metadata handle. It returns one bounded display only; source text,
+    /// spans, symbols, contracts, bytecode, VM objects, and values remain in
+    /// the child.
+    DescribeDebuggerBlueTsMetadataType {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        type_id: u32,
+    },
+    /// Lists compiler-minted symbol-record IDs for a prior exact private
+    /// metadata handle. This is not a symbol-name, span, type, or record read.
+    ListDebuggerBlueTsMetadataSymbols {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    },
+    /// Lists compiler-minted contract IDs for a prior exact private metadata
+    /// handle. This is not a contract-name, span, plan, or validation read.
+    ListDebuggerBlueTsMetadataContracts {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    },
+    /// Describes a compiler-minted contract ID under a prior exact private
+    /// metadata handle. This is not a contract span, plan, validation, or
+    /// record read.
+    DescribeDebuggerBlueTsMetadataContract {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+    },
+    /// Validates a core-forwarded data-only snapshot against one exact prior
+    /// contract ID. The child applies fixed limits and returns only a boolean.
+    ValidateDebuggerBlueTsMetadataContract {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+        value: CompilerContractValue,
+    },
+    /// Describes a compiler-minted symbol ID under a prior exact private
+    /// metadata handle. This is not a symbol span/type/contract or record read.
+    DescribeDebuggerBlueTsMetadataSymbol {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+    },
+    /// Describes one bounded half-open source byte range for a prior exact
+    /// symbol ID. It has no source/module/name/type/contract/bytecode payload.
+    DescribeDebuggerBlueTsMetadataSymbolLocation {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+    },
+    /// Describes one bounded contract declaration range under the exact
+    /// child-local program and metadata attachment; no plan or source bytes.
+    DescribeDebuggerBlueTsMetadataContractLocation {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+    },
+    /// Resolves one already-verified child safe point to an exact retained
+    /// BlueTS lowering span under its live private metadata attachment.
+    /// There is no caller-selected source offset or nearest-match behavior.
+    DescribeDebuggerBlueTsSafePointSpan {
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        safe_point: PageHostDebuggerSafePoint,
+    },
+    /// Resolves one bounded original BlueTS byte position in a child-minted
+    /// source record to the first lowering span at or after it. A bound reply
+    /// names only a compiler-verified safe point; an unbound span or missing
+    /// following span returns `None` instead of guessing another instruction.
+    ResolveDebuggerBlueTsSourceBreakpoint {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        source_byte: u32,
+    },
+    /// Verifies exactly one symbol-to-static-type pair under the same private
+    /// attachment. The reply does not return an unrequested type ID.
+    DescribeDebuggerBlueTsMetadataSymbolType {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+        type_id: u32,
+    },
+    /// Verifies exactly one symbol-to-contract pair under the same private
+    /// attachment. The reply does not return an unrequested contract ID.
+    DescribeDebuggerBlueTsMetadataSymbolContract {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+        contract_id: u32,
+    },
+    /// Describes exactly one prior compiler-minted source ID. This private
+    /// request returns module identity and a digest only, never source text.
+    DescribeDebuggerBlueTsMetadataSource {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
     },
     /// Lists the child's bounded compiler-verified safe points for one exact
     /// opaque program. No source, bytecode, VM, or value crosses this channel.
@@ -335,6 +830,24 @@ pub enum PageHostRequest {
         document_generation: u64,
         program: PageHostDebuggerProgram,
     },
+    /// Schedules one root instruction on the retained classic continuation;
+    /// the next advance yields a verified root boundary or completion.
+    StepDebuggerRootInstruction {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    },
+    /// Requires an exact paused BlueTS classic safe point, live metadata,
+    /// and its compiler-minted source ID. The child derives the current span
+    /// from its retained map; no source text or caller-selected stop span is
+    /// accepted. This private operation does not authorize a public client.
+    StepDebuggerBlueTsSourceSpan {
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     /// Advances one exact opted-in realm in document order. It returns only
     /// fixed execution categories and never exposes a completion value.
     AdvanceDebuggerExecution {
@@ -362,15 +875,182 @@ pub enum PageHostReply {
         already_current: bool,
         reports: Vec<PageHostScriptReport>,
     },
+    ClickDispatched {
+        tab_id: u64,
+        document_generation: u64,
+        default_prevented: bool,
+    },
     RealmClosed {
         tab_id: u64,
         document_generation: u64,
     },
     RealmStats(PageHostRealmStats),
+    ChildStats(PageHostChildStats),
     DebuggerPrograms {
         tab_id: u64,
         document_generation: u64,
         programs: Vec<PageHostDebuggerProgram>,
+    },
+    /// A bounded inventory of child-minted opaque static BlueTS metadata
+    /// associations for one exact private program. This is a handle-discovery
+    /// operation only; the handle itself carries no metadata payload.
+    DebuggerBlueTsMetadata {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: Vec<PageHostDebuggerMetadataHandle>,
+    },
+    /// Bounded source-free summary for one exact private metadata handle.
+    /// It is valid only while the matching child realm, program, and retained
+    /// BlueTS registry attachment remain live.
+    DebuggerBlueTsMetadataSummary {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        summary: PageHostDebuggerBlueTsMetadataSummary,
+    },
+    /// Aggregate ABI/fingerprint evidence for the exact verified direct
+    /// lowering map retained under this opaque metadata handle. It carries no
+    /// map entries, source spans, AST nodes, or bytecode offsets.
+    DebuggerBlueTsMetadataLoweringSummary {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        summary: Box<PageHostDebuggerBlueTsMetadataLoweringSummary>,
+    },
+    DebuggerBlueTsMetadataSources {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        sources: Vec<PageHostDebuggerBlueTsMetadataSourceId>,
+    },
+    /// Bounded compiler-minted static type identities. The IDs are local to
+    /// the exact metadata attachment and carry no type display or record
+    /// payload.
+    DebuggerBlueTsMetadataTypes {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        types: Vec<PageHostDebuggerBlueTsMetadataTypeId>,
+    },
+    /// One bounded child-local compiler-produced type display under the exact
+    /// opaque metadata attachment.
+    DebuggerBlueTsMetadataType {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        static_type: PageHostDebuggerBlueTsMetadataTypeDisplay,
+    },
+    /// Bounded compiler-minted symbol identities. The IDs are local to the
+    /// exact metadata attachment and carry no symbol-record payload.
+    DebuggerBlueTsMetadataSymbols {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbols: Vec<PageHostDebuggerBlueTsMetadataSymbolId>,
+    },
+    /// Bounded compiler-minted contract identities. The IDs are local to the
+    /// exact metadata attachment and carry no contract-record payload.
+    DebuggerBlueTsMetadataContracts {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contracts: Vec<PageHostDebuggerBlueTsMetadataContractId>,
+    },
+    /// One bounded compiler-produced contract display. The enclosing tuple
+    /// keeps it bound to an exact child program and metadata attachment.
+    DebuggerBlueTsMetadataContract {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract: PageHostDebuggerBlueTsMetadataContractDisplay,
+    },
+    /// A data-only exact-contract validation outcome. It contains no caller
+    /// value, plan, failure path, expected shape, or runtime object.
+    DebuggerBlueTsMetadataContractValidation {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        validation: PageHostDebuggerBlueTsMetadataContractValidation,
+    },
+    /// One bounded compiler-produced symbol display. The enclosing tuple keeps
+    /// it bound to an exact child program and metadata attachment.
+    DebuggerBlueTsMetadataSymbol {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol: PageHostDebuggerBlueTsMetadataSymbolDisplay,
+    },
+    /// One bounded child-local source-text-free declaration range. The
+    /// enclosing tuple retains the exact private program and metadata binding.
+    DebuggerBlueTsMetadataSymbolLocation {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        location: PageHostDebuggerBlueTsMetadataSymbolLocation,
+    },
+    /// One exact child-local contract/source pair and bounded byte range.
+    DebuggerBlueTsMetadataContractLocation {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        location: PageHostDebuggerBlueTsMetadataContractLocation,
+    },
+    /// Exact original BlueTS byte span for the echoed verified child safe
+    /// point. This private reply is not exposed to a debugger socket client.
+    DebuggerBlueTsSafePointSpan {
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        safe_point: PageHostDebuggerSafePoint,
+        span: PageHostDebuggerBlueTsSafePointSpan,
+    },
+    /// Repeats the exact private request tuple and returns only a verified
+    /// child safe point or an explicit unbound result. Core must separately
+    /// authorize and remint this before any public debugger disclosure.
+    DebuggerBlueTsSourceBreakpoint {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        source_byte: u32,
+        safe_point: Option<PageHostDebuggerSafePoint>,
+    },
+    /// A verified relation that repeats only the two requested opaque IDs.
+    DebuggerBlueTsMetadataSymbolType {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_type: PageHostDebuggerBlueTsMetadataSymbolType,
+    },
+    /// A verified relation that repeats only the two requested opaque IDs.
+    DebuggerBlueTsMetadataSymbolContract {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_contract: PageHostDebuggerBlueTsMetadataSymbolContract,
+    },
+    DebuggerBlueTsMetadataSourceProvenance {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        provenance: PageHostDebuggerBlueTsMetadataSourceProvenance,
     },
     DebuggerSafePoints {
         tab_id: u64,
@@ -414,6 +1094,18 @@ pub enum PageHostReply {
         tab_id: u64,
         document_generation: u64,
         program: PageHostDebuggerProgram,
+    },
+    DebuggerExecutionStepRequested {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    },
+    DebuggerBlueTsSourceStepRequested {
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        safe_point: PageHostDebuggerSafePoint,
     },
     DebuggerExecutionAdvanced {
         tab_id: u64,
@@ -514,6 +1206,87 @@ mod tests {
     use super::*;
     use std::os::unix::net::UnixStream;
 
+    #[test]
+    fn symbol_type_relation_round_trips_on_private_socket() {
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let metadata = PageHostDebuggerMetadataHandle {
+            metadata_handle: 17,
+            metadata_generation: 19,
+        };
+        let request = PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolType {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            metadata,
+            symbol_id: 1,
+            type_id: 2,
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_request(&mut writer, &request).unwrap();
+        assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+        let reply = PageHostReply::DebuggerBlueTsMetadataSymbolType {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            metadata,
+            symbol_type: PageHostDebuggerBlueTsMetadataSymbolType {
+                symbol_id: 1,
+                type_id: 2,
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+
+        let click_reply = PageHostReply::ClickDispatched {
+            tab_id: 7,
+            document_generation: 3,
+            default_prevented: true,
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &click_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), click_reply);
+    }
+
+    #[test]
+    fn symbol_contract_relation_round_trips_on_private_socket() {
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let metadata = PageHostDebuggerMetadataHandle {
+            metadata_handle: 17,
+            metadata_generation: 19,
+        };
+        let request = PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            metadata,
+            symbol_id: 1,
+            contract_id: 2,
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_request(&mut writer, &request).unwrap();
+        assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+        let reply = PageHostReply::DebuggerBlueTsMetadataSymbolContract {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            metadata,
+            symbol_contract: PageHostDebuggerBlueTsMetadataSymbolContract {
+                symbol_id: 1,
+                contract_id: 2,
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+    }
+
     fn source() -> PageHostSource {
         PageHostSource::new("blueice://page/main.js", "globalThis.answer = 42;")
     }
@@ -551,6 +1324,11 @@ mod tests {
             PageHostRequest::SynchronizeDocument {
                 document: document(),
             },
+            PageHostRequest::DispatchClick {
+                tab_id: 7,
+                document_generation: 3,
+                node_id: 42,
+            },
             PageHostRequest::CloseRealm {
                 tab_id: 7,
                 document_generation: 3,
@@ -559,9 +1337,190 @@ mod tests {
                 tab_id: 7,
                 document_generation: 3,
             },
+            PageHostRequest::GetChildStats,
             PageHostRequest::ListDebuggerPrograms {
                 tab_id: 7,
                 document_generation: 3,
+            },
+            PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+            },
+            PageHostRequest::DescribeDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+            },
+            PageHostRequest::DescribeDebuggerBlueTsMetadataLoweringSummary {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+            },
+            PageHostRequest::ListDebuggerBlueTsMetadataSources {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+            },
+            PageHostRequest::ListDebuggerBlueTsMetadataTypes {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+            },
+            PageHostRequest::DescribeDebuggerBlueTsMetadataType {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+                type_id: 0,
+            },
+            PageHostRequest::ListDebuggerBlueTsMetadataSymbols {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+            },
+            PageHostRequest::ListDebuggerBlueTsMetadataContracts {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+            },
+            PageHostRequest::DescribeDebuggerBlueTsMetadataContract {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+                contract_id: 0,
+            },
+            PageHostRequest::ValidateDebuggerBlueTsMetadataContract {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+                contract_id: 0,
+                value: CompilerContractValue::Object(
+                    [("enabled".to_string(), CompilerContractValue::Boolean(true))]
+                        .into_iter()
+                        .collect(),
+                ),
+            },
+            PageHostRequest::DescribeDebuggerBlueTsMetadataSymbol {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+                symbol_id: 0,
+            },
+            PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+                symbol_id: 0,
+            },
+            PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+                tab_id: 7,
+                document_generation: 3,
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_handle: 11,
+                        program_generation: 13,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 4,
+                },
+            },
+            PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+                source_id: 0,
+                source_byte: 4,
             },
             PageHostRequest::ListDebuggerSafePoints {
                 tab_id: 7,
@@ -639,6 +1598,31 @@ mod tests {
                     program_generation: 13,
                 },
             },
+            PageHostRequest::StepDebuggerRootInstruction {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+            },
+            PageHostRequest::StepDebuggerBlueTsSourceSpan {
+                tab_id: 7,
+                document_generation: 3,
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+                source_id: 0,
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_handle: 11,
+                        program_generation: 13,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 4,
+                },
+            },
             PageHostRequest::AdvanceDebuggerExecution {
                 tab_id: 7,
                 document_generation: 3,
@@ -686,6 +1670,324 @@ mod tests {
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();
         assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
 
+        let debugger_reply = PageHostReply::DebuggerBlueTsSourceStepRequested {
+            tab_id: 7,
+            document_generation: 3,
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            source_id: 0,
+            safe_point: PageHostDebuggerSafePoint {
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsSafePointSpan {
+            tab_id: 7,
+            document_generation: 3,
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            safe_point: PageHostDebuggerSafePoint {
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            },
+            span: PageHostDebuggerBlueTsSafePointSpan {
+                source_id: 0,
+                start_byte: 0,
+                end_byte: 25,
+                coordinates: DebuggerSourceCoordinates {
+                    start_line: 0,
+                    start_column_utf16: 0,
+                    end_line: 0,
+                    end_column_utf16: 25,
+                },
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsSourceBreakpoint {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            source_id: 0,
+            source_byte: 4,
+            safe_point: Some(PageHostDebuggerSafePoint {
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            }),
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsSourceBreakpoint {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            source_id: 0,
+            source_byte: 30,
+            safe_point: None,
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: vec![PageHostDebuggerMetadataHandle {
+                metadata_handle: 1 << 63,
+                metadata_generation: 1 << 63,
+            }],
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataSummary {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            summary: PageHostDebuggerBlueTsMetadataSummary {
+                language_version: "blue-ts-0.1".to_string(),
+                compiler_options_hash: "0123456789abcdef".to_string(),
+                source_count: 1,
+                type_count: 2,
+                symbol_count: 3,
+                contract_count: 4,
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataLoweringSummary {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            summary: Box::new(PageHostDebuggerBlueTsMetadataLoweringSummary {
+                safe_point_map_abi: "bluejs-safe-point-map-v1".to_string(),
+                program_abi: "bluejs-program-v1".to_string(),
+                source_set_hash: "bts-source-set-0123456789abcdef".to_string(),
+                bound_safe_point_count: 1,
+            }),
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataSources {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            sources: vec![PageHostDebuggerBlueTsMetadataSourceId { source_id: 0 }],
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataTypes {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            types: vec![PageHostDebuggerBlueTsMetadataTypeId { type_id: 0 }],
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataSymbols {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            symbols: vec![PageHostDebuggerBlueTsMetadataSymbolId { symbol_id: 0 }],
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataSymbol {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            symbol: PageHostDebuggerBlueTsMetadataSymbolDisplay {
+                symbol_id: 0,
+                display: "ProjectControlledName".to_string(),
+                kind: DebuggerStaticMetadataSymbolKind::Interface,
+                exported: true,
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataSymbolLocation {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            location: PageHostDebuggerBlueTsMetadataSymbolLocation {
+                symbol_id: 0,
+                source_id: 0,
+                start_byte: 6,
+                end_byte: 31,
+                coordinates: DebuggerSourceCoordinates {
+                    start_line: 0,
+                    start_column_utf16: 6,
+                    end_line: 0,
+                    end_column_utf16: 31,
+                },
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataContract {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            contract: PageHostDebuggerBlueTsMetadataContractDisplay {
+                contract_id: 0,
+                display: "ProjectControlledContract".to_string(),
+                root_kind: DebuggerStaticMetadataContractRootKind::Record,
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataContractValidation {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            validation: PageHostDebuggerBlueTsMetadataContractValidation {
+                contract_id: 0,
+                valid: true,
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataContracts {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            contracts: vec![PageHostDebuggerBlueTsMetadataContractId { contract_id: 0 }],
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
         let debugger_reply = PageHostReply::DebuggerExecutionState {
             tab_id: 7,
             document_generation: 3,
@@ -707,6 +2009,29 @@ mod tests {
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();
         assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+        for debugger_reply in [
+            PageHostReply::DebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                state: PageHostDebuggerExecutionState::Stepping,
+            },
+            PageHostReply::DebuggerExecutionStepRequested {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+            },
+        ] {
+            let (mut writer, mut reader) = UnixStream::pair().unwrap();
+            write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+            assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+        }
     }
 
     #[test]
@@ -778,10 +2103,129 @@ mod tests {
     }
 
     #[test]
+    fn contract_location_round_trips_without_a_plan_or_source_record() {
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let metadata = PageHostDebuggerMetadataHandle {
+            metadata_handle: 17,
+            metadata_generation: 19,
+        };
+        let request = PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            metadata,
+            contract_id: 0,
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_request(&mut writer, &request).unwrap();
+        assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+        let reply = PageHostReply::DebuggerBlueTsMetadataContractLocation {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            metadata,
+            location: PageHostDebuggerBlueTsMetadataContractLocation {
+                contract_id: 0,
+                source_id: 0,
+                start_byte: 6,
+                end_byte: 31,
+                coordinates: DebuggerSourceCoordinates {
+                    start_line: 0,
+                    start_column_utf16: 6,
+                    end_line: 0,
+                    end_column_utf16: 31,
+                },
+            },
+        };
+        assert!(!format!("{reply:?}").contains("PrivateContract"));
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+    }
+
+    #[test]
     fn source_constructor_fingerprints_exact_bytes() {
         let source = PageHostSource::new("blueice://page/main.js", "let answer = 42;");
         assert_eq!(source.source_hash, source_hash(&source.source));
         assert_ne!(source.source_hash, source_hash("let answer = 43;"));
+    }
+
+    #[test]
+    fn realm_stats_reject_conversion_sentinels_and_program_overflow() {
+        let stats = PageHostRealmStats {
+            tab_id: 7,
+            document_generation: 3,
+            program_count: 2,
+            bytecode_bytes: 64,
+            heap_bytes: 128,
+        };
+        assert!(stats.is_well_formed());
+        assert!(!PageHostRealmStats {
+            tab_id: 0,
+            ..stats.clone()
+        }
+        .is_well_formed());
+        assert!(!PageHostRealmStats {
+            program_count: PAGE_HOST_REALM_STATS_MAX_PROGRAMS + 1,
+            ..stats.clone()
+        }
+        .is_well_formed());
+        assert!(!PageHostRealmStats {
+            bytecode_bytes: u64::MAX,
+            ..stats.clone()
+        }
+        .is_well_formed());
+        assert!(!PageHostRealmStats {
+            heap_bytes: u64::MAX,
+            ..stats
+        }
+        .is_well_formed());
+    }
+
+    #[test]
+    fn child_stats_round_trip_and_reject_impossible_totals() {
+        let stats = PageHostChildStats {
+            realm_count: 2,
+            program_count: 3,
+            bytecode_bytes: 64,
+            heap_bytes: 128,
+        };
+        assert!(stats.is_well_formed());
+        for invalid in [
+            PageHostChildStats {
+                realm_count: 0,
+                ..stats
+            },
+            PageHostChildStats {
+                realm_count: u32::MAX,
+                ..stats
+            },
+            PageHostChildStats {
+                program_count: u64::from(PAGE_HOST_REALM_STATS_MAX_PROGRAMS) * 2 + 1,
+                ..stats
+            },
+            PageHostChildStats {
+                bytecode_bytes: u64::MAX,
+                ..stats
+            },
+            PageHostChildStats {
+                program_count: 0,
+                ..stats
+            },
+            PageHostChildStats {
+                heap_bytes: u64::MAX,
+                ..stats
+            },
+        ] {
+            assert!(!invalid.is_well_formed());
+        }
+        let reply = PageHostReply::ChildStats(stats);
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
     }
 
     #[test]

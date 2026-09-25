@@ -24,6 +24,9 @@
 //! that a cutover which can't complete leaves v1 serving every
 //! already-connected client exactly as before.
 
+use blueice_ipc::owner_bootstrap::{
+    OwnerHttpOriginRule, OwnerHttpPolicyBootstrap, OwnerHttpResource,
+};
 use blueice_ipc::{
     read_server_message, read_server_message_with_id, write_client_message,
     write_client_message_with_id, ClientMessage, ServerMessage,
@@ -104,16 +107,24 @@ struct Launcher {
 
 impl Launcher {
     fn spawn() -> Self {
-        Self::spawn_with_options(None, false)
+        Self::spawn_with_options(None, false, None)
     }
 
     fn spawn_with_supervised_bluejs(gatekeeper_socket: &Path) -> Self {
-        Self::spawn_with_options(Some(gatekeeper_socket), true)
+        Self::spawn_with_options(Some(gatekeeper_socket), true, None)
+    }
+
+    fn spawn_with_supervised_bluejs_and_owner_http_policy(
+        gatekeeper_socket: &Path,
+        policy_file: &Path,
+    ) -> Self {
+        Self::spawn_with_options(Some(gatekeeper_socket), true, Some(policy_file))
     }
 
     fn spawn_with_options(
         gatekeeper_socket: Option<&Path>,
         supervise_out_of_process_bluejs: bool,
+        page_http_policy_file: Option<&Path>,
     ) -> Self {
         let rendezvous_socket = unique_path("rendezvous.sock");
         let control_socket = unique_path("control.sock");
@@ -140,6 +151,9 @@ impl Launcher {
         }
         if supervise_out_of_process_bluejs {
             command.arg("--out-of-process-bluejs");
+        }
+        if let Some(path) = page_http_policy_file {
+            command.arg("--page-http-policy-file").arg(path);
         }
         let child = command.spawn().expect("failed to spawn blueice-launcher");
 
@@ -448,7 +462,9 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
             "<script type=\"application/x-blueice-typescript\">const sharedAnswer: number = 42;</script>",
             "<script>if (sharedAnswer !== 42) throw 'BlueTS did not share this realm';</script>",
             "<script type=\"module\">export const moduleAnswer = 43;</script>",
-            "<script src=\"untrusted.js\"></script>"
+            "<script src=\"untrusted.js\"></script>",
+            "<script type=\"application/x-blueice-typescript-module\">export const typedModuleAnswer: number = 44;</script>",
+            "<script type=\"application/x-blueice-typescript\">blueiceDocumentText(1);</script>"
         );
         stream
             .write_all(
@@ -528,13 +544,31 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
     write_client_message(&mut frontend, &ClientMessage::GetBlueTsScriptReports).unwrap();
     assert_eq!(
         read_server_message(&mut frontend).unwrap(),
-        ServerMessage::BlueTsScriptReports(vec![blueice_ipc::BlueTsScriptExecutionReport {
-            tab_id: 1,
-            document_generation: 1,
-            ordinal: 1,
-            kind: blueice_ipc::BlueTsScriptKind::Classic,
-            outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
-        }])
+        ServerMessage::BlueTsScriptReports(vec![
+            blueice_ipc::BlueTsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 1,
+                kind: blueice_ipc::BlueTsScriptKind::Classic,
+                outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueTsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 5,
+                kind: blueice_ipc::BlueTsScriptKind::Module,
+                outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueTsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 6,
+                kind: blueice_ipc::BlueTsScriptKind::Classic,
+                outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Rejected {
+                    category: "BlueTS compilation rejected the page script".to_string(),
+                },
+            },
+        ])
     );
 
     // The only public operation here is normal frontend shutdown. It neither
@@ -549,6 +583,168 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
 }
 
 #[test]
+fn owner_http_manifest_admits_closed_page_graphs_and_rejects_unlisted_or_tampered_sources() {
+    const CLASSIC: &str = "globalThis.authorizedExternal = 42;";
+    const ENTRY: &str = "import { answer } from './dep.ts'; export const result: number = answer;";
+    const DEPENDENCY: &str = "export const answer: number = 42;";
+    const BAD_HASH: &str = "globalThis.untrustedExternal = true;";
+    const DOCUMENT: &str = concat!(
+        "<main>owner-manifest-page</main>",
+        "<script src=\"/allowed.js\"></script>",
+        "<script type=\"application/x-blueice-typescript-module\" src=\"/entry.ts\"></script>",
+        "<script src=\"/unlisted.js\"></script>",
+        "<script src=\"/bad-hash.js\"></script>"
+    );
+
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let policy = OwnerHttpPolicyBootstrap {
+        origin_rule: OwnerHttpOriginRule::SameDocumentOrigin,
+        resources: vec![
+            OwnerHttpResource {
+                canonical_url: format!("{origin}/allowed.js"),
+                integrity:
+                    "sha256:5a3082683c8778aefe6229bda5a9b2acc43f717b214b67b2a37d8efcc726f70f".into(),
+            },
+            OwnerHttpResource {
+                canonical_url: format!("{origin}/entry.ts"),
+                integrity:
+                    "sha256:4bd26f93084252bb985514f7b81e88c54f75969fd860bf600b2626c3c60bd55d".into(),
+            },
+            OwnerHttpResource {
+                canonical_url: format!("{origin}/dep.ts"),
+                integrity:
+                    "sha256:26a8680bbf0c861168714585a9facbb8dda5378b24d70451e9cb11495e71d37a".into(),
+            },
+            OwnerHttpResource {
+                canonical_url: format!("{origin}/bad-hash.js"),
+                integrity: format!("sha256:{}", "0".repeat(64)),
+            },
+        ],
+    };
+    let policy_file = unique_path("owner-http-policy.json");
+    std::fs::write(&policy_file, serde_json::to_vec(&policy).unwrap()).unwrap();
+    let server = thread::spawn(move || {
+        let mut requested = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while requested.len() < 5 && Instant::now() < deadline {
+            let Ok((mut stream, _)) = listener.accept() else {
+                thread::sleep(Duration::from_millis(10));
+                continue;
+            };
+            stream.set_nonblocking(false).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = [0u8; 2048];
+            let count = stream.read(&mut request).unwrap();
+            let request = std::str::from_utf8(&request[..count]).unwrap();
+            let path = request
+                .split_whitespace()
+                .nth(1)
+                .expect("HTTP fixture request must contain a path")
+                .to_string();
+            let (mime, body) = match path.as_str() {
+                "/" => ("text/html", DOCUMENT),
+                "/allowed.js" => ("text/javascript", CLASSIC),
+                "/entry.ts" => ("text/typescript", ENTRY),
+                "/dep.ts" => ("text/typescript", DEPENDENCY),
+                "/bad-hash.js" => ("text/javascript", BAD_HASH),
+                _ => panic!("an unlisted resource was fetched: {path}"),
+            };
+            requested.push(path);
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
+        requested
+    });
+
+    let mut launcher = Launcher::spawn_with_supervised_bluejs_and_owner_http_policy(
+        &gatekeeper_socket,
+        &policy_file,
+    );
+    let private_socket = launcher.private_bluejs_socket.clone().unwrap();
+    let mut frontend = launcher.connect();
+    let url = format!("{origin}/");
+    write_client_message(&mut frontend, &ClientMessage::Navigate { url: url.clone() }).unwrap();
+    assert_eq!(
+        read_server_message(&mut frontend).unwrap(),
+        ServerMessage::Navigated { url }
+    );
+    assert!(matches!(
+        read_server_message(&mut frontend).unwrap(),
+        ServerMessage::FrameReady { generation: 1, .. }
+    ));
+    write_client_message(&mut frontend, &ClientMessage::GetBlueJsScriptReports).unwrap();
+    let javascript_reports = read_server_message(&mut frontend).unwrap();
+    write_client_message(&mut frontend, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    let bluets_reports = read_server_message(&mut frontend).unwrap();
+    let mut requested = server.join().unwrap();
+    requested.sort();
+    assert_eq!(
+        requested,
+        ["/", "/allowed.js", "/bad-hash.js", "/dep.ts", "/entry.ts"]
+    );
+    assert_eq!(
+        javascript_reports,
+        ServerMessage::BlueJsScriptReports(vec![
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 0,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 2,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Rejected {
+                    category: "external JavaScript source authorization rejected the page script"
+                        .into(),
+                },
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 3,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Rejected {
+                    category: "external JavaScript source authorization rejected the page script"
+                        .into(),
+                },
+            },
+        ])
+    );
+    assert_eq!(
+        bluets_reports,
+        ServerMessage::BlueTsScriptReports(vec![blueice_ipc::BlueTsScriptExecutionReport {
+            tab_id: 1,
+            document_generation: 1,
+            ordinal: 1,
+            kind: blueice_ipc::BlueTsScriptKind::Module,
+            outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
+        }])
+    );
+
+    write_client_message(&mut frontend, &ClientMessage::Shutdown).unwrap();
+    launcher.wait_or_kill(Duration::from_secs(5));
+    assert!(!private_socket.exists());
+    let _ = std::fs::remove_file(gatekeeper_socket);
+    let _ = std::fs::remove_file(policy_file);
+}
+
+#[test]
 fn opt_in_launcher_replaces_the_private_child_at_cutover_and_reaps_both_generations() {
     let gatekeeper_socket = clearing_gatekeeper();
     let mut launcher = Launcher::spawn_with_supervised_bluejs(&gatekeeper_socket);
@@ -557,6 +753,11 @@ fn opt_in_launcher_replaces_the_private_child_at_cutover_and_reaps_both_generati
         .clone()
         .expect("the opted-in launcher must create v1's private child");
     assert!(v1_child_socket.exists());
+    let v1_script_socket = std::env::temp_dir().join(format!(
+        "blueice-launcher-script-{}-0.sock",
+        launcher.child.id()
+    ));
+    launcher.wait_for_socket(&v1_script_socket, "v1 private script");
 
     // Give cutover a real current tab to replay. `about:` avoids a network
     // fixture while still exercising the core-replacement lifecycle.
@@ -587,6 +788,10 @@ fn opt_in_launcher_replaces_the_private_child_at_cutover_and_reaps_both_generati
         !v1_child_socket.exists(),
         "cutover must reap the superseded core's child and unlink its capability endpoint"
     );
+    assert!(
+        !v1_script_socket.exists(),
+        "cutover must unlink the superseded core's script DOM listener"
+    );
 
     let v2_child_socket = std::env::temp_dir().join(format!(
         "blueice-launcher-bluejs-host-{}-1.sock",
@@ -596,12 +801,22 @@ fn opt_in_launcher_replaces_the_private_child_at_cutover_and_reaps_both_generati
         v2_child_socket.exists(),
         "replacement core must receive a fresh launcher-created child, not v1's capability"
     );
+    let v2_script_socket = std::env::temp_dir().join(format!(
+        "blueice-launcher-script-{}-1.sock",
+        launcher.child.id()
+    ));
+    launcher.wait_for_socket(&v2_script_socket, "v2 private script");
+    assert_ne!(v1_script_socket, v2_script_socket);
 
     write_client_message(&mut frontend, &ClientMessage::Shutdown).unwrap();
     launcher.wait_or_kill(Duration::from_secs(5));
     assert!(
         !v2_child_socket.exists(),
         "final launcher shutdown must reap the replacement child too"
+    );
+    assert!(
+        !v2_script_socket.exists(),
+        "final launcher shutdown must unlink the replacement script DOM listener"
     );
     let _ = std::fs::remove_file(gatekeeper_socket);
 }

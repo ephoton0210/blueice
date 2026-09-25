@@ -54,8 +54,11 @@ const MAX_MODULE_DEPTH: usize = 16;
 const MAX_MODULE_SOURCE_BYTES: usize = 256 * 1024;
 const MAX_GRAPH_SOURCE_BYTES: usize = 1024 * 1024;
 const MAX_RESOURCE_URL_BYTES: usize = 2048;
+/// Limits retained verified source payload across all documents using one
+/// core-owned authorizer. Graphs copied to an executor have separate budgets.
+const MAX_VERIFIED_SOURCE_CACHE_BYTES: usize = 4 * 1024 * 1024;
 const FETCH_TIMEOUT: Duration = Duration::from_secs(5);
-const AUTHORIZER_VERSION: &str = "core-page-http-resource-authorizer-v1";
+const AUTHORIZER_VERSION: &str = "core-page-http-resource-authorizer-v2";
 
 /// The only named HTTP page-script policy that the reference core can select
 /// during startup. The name carries no URL, manifest, resolver, path, or
@@ -213,13 +216,14 @@ impl HttpScriptResourcePolicy {
     ) -> Result<Self, HttpScriptResourcePolicyError> {
         validate_limits(&limits)?;
         let fingerprint_input = format!(
-            "{AUTHORIZER_VERSION}|{}|{}|{}|{}|{}|{}",
+            "{AUTHORIZER_VERSION}|{}|{}|{}|{}|{}|{}|{}",
             origin_rule.fingerprint_component(),
             integrity_manifest.fingerprint_component(),
             limits.max_modules_per_graph,
             limits.max_module_depth,
             limits.max_module_source_bytes,
             limits.max_graph_source_bytes,
+            MAX_VERIFIED_SOURCE_CACHE_BYTES,
         );
         Ok(Self {
             origin_rule,
@@ -252,7 +256,7 @@ impl HttpScriptResourcePolicy {
 /// static-edge, or resource-limit policy.
 pub struct HttpOutOfProcessPageScriptSourceAuthorizer {
     policy: HttpScriptResourcePolicy,
-    cache: RefCell<BTreeMap<ResourceCacheKey, CachedResource>>,
+    cache: RefCell<VerifiedResourceCache>,
 }
 
 /// Fixed core startup profile which installs the HTTP authorizer on the real
@@ -379,7 +383,7 @@ impl HttpOutOfProcessPageScriptSourceAuthorizer {
     pub fn new(policy: HttpScriptResourcePolicy) -> Self {
         Self {
             policy,
-            cache: RefCell::new(BTreeMap::new()),
+            cache: RefCell::new(VerifiedResourceCache::new(MAX_VERIFIED_SOURCE_CACHE_BYTES)),
         }
     }
 
@@ -496,8 +500,8 @@ impl HttpOutOfProcessPageScriptSourceAuthorizer {
             expected_integrity: integrity.to_string(),
             mime_lane: language.mime_lane(),
         };
-        if let Some(resource) = self.cache.borrow().get(&cache_key) {
-            return Ok(resource.source.clone());
+        if let Some(source) = self.cache.borrow_mut().get(&cache_key) {
+            return Ok(source);
         }
 
         let agent: ureq::Agent = ureq::Agent::config_builder()
@@ -562,12 +566,9 @@ impl HttpOutOfProcessPageScriptSourceAuthorizer {
             return Err(ResourceAuthorizationFailure::IntegrityMismatch);
         }
         let source = String::from_utf8(bytes).map_err(|_| ResourceAuthorizationFailure::NonUtf8)?;
-        self.cache.borrow_mut().insert(
-            cache_key,
-            CachedResource {
-                source: source.clone(),
-            },
-        );
+        self.cache
+            .borrow_mut()
+            .insert_verified(cache_key, source.clone());
         Ok(source)
     }
 }
@@ -623,6 +624,68 @@ struct ResourceCacheKey {
 #[derive(Debug, Clone)]
 struct CachedResource {
     source: String,
+    last_used: u64,
+}
+
+/// A byte-bounded, deterministic private cache. Eviction never changes the
+/// authorization result: a later fetch repeats the same response and SHA-256
+/// checks before admitting the source. Only retained source payload is
+/// charged; allocator, key, graph, and VM memory have separate accounting.
+struct VerifiedResourceCache {
+    entries: BTreeMap<ResourceCacheKey, CachedResource>,
+    source_bytes: usize,
+    max_source_bytes: usize,
+    clock: u64,
+}
+
+impl VerifiedResourceCache {
+    fn new(max_source_bytes: usize) -> Self {
+        Self {
+            entries: BTreeMap::new(),
+            source_bytes: 0,
+            max_source_bytes,
+            clock: 0,
+        }
+    }
+
+    fn get(&mut self, key: &ResourceCacheKey) -> Option<String> {
+        let entry = self.entries.get_mut(key)?;
+        self.clock = self.clock.saturating_add(1);
+        entry.last_used = self.clock;
+        Some(entry.source.clone())
+    }
+
+    fn insert_verified(&mut self, key: ResourceCacheKey, source: String) {
+        let bytes = source.len();
+        if bytes > self.max_source_bytes {
+            return;
+        }
+        if let Some(old) = self.entries.remove(&key) {
+            self.source_bytes -= old.source.len();
+        }
+        while self.source_bytes + bytes > self.max_source_bytes {
+            let victim = self
+                .entries
+                .iter()
+                .min_by_key(|(key, resource)| (resource.last_used, *key))
+                .map(|(key, _)| key.clone())
+                .expect("a nonempty cache must have a victim above its source budget");
+            let evicted = self
+                .entries
+                .remove(&victim)
+                .expect("selected cache victim exists");
+            self.source_bytes -= evicted.source.len();
+        }
+        self.clock = self.clock.saturating_add(1);
+        self.source_bytes += bytes;
+        self.entries.insert(
+            key,
+            CachedResource {
+                source,
+                last_used: self.clock,
+            },
+        );
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1149,6 +1212,106 @@ mod tests {
     use super::*;
 
     #[test]
+    fn verified_source_cache_is_byte_bounded_and_evicts_least_recently_used() {
+        let key = |name: &str| ResourceCacheKey {
+            canonical_url: format!("https://example.test/{name}.js"),
+            expected_integrity: sha256_integrity(name.as_bytes()),
+            mime_lane: "javascript",
+        };
+        let mut cache = VerifiedResourceCache::new(8);
+        cache.insert_verified(key("a"), "aaaa".into());
+        cache.insert_verified(key("b"), "bbbb".into());
+        assert_eq!(cache.get(&key("a")), Some("aaaa".into()));
+        cache.insert_verified(key("c"), "cccc".into());
+        assert_eq!(cache.get(&key("b")), None);
+        assert_eq!(cache.get(&key("a")), Some("aaaa".into()));
+        assert_eq!(cache.get(&key("c")), Some("cccc".into()));
+        assert_eq!(cache.source_bytes, 8);
+        cache.insert_verified(key("too-large"), "123456789".into());
+        assert_eq!(cache.get(&key("too-large")), None);
+        assert_eq!(cache.source_bytes, 8);
+        cache.insert_verified(key("a"), "aa".into());
+        assert_eq!(cache.source_bytes, 6);
+    }
+
+    #[test]
+    fn evicted_http_source_is_refetched_and_integrity_checked_again() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::time::{Duration, Instant};
+
+        const A: &str = "var a = 1;";
+        const B: &str = "var b = 2;";
+        const CHANGED_A: &str = "var a = 3;";
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let mut paths = Vec::new();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while paths.len() < 3 && Instant::now() < deadline {
+                let Ok((mut stream, _)) = listener.accept() else {
+                    std::thread::sleep(Duration::from_millis(5));
+                    continue;
+                };
+                stream.set_nonblocking(false).unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut request = [0u8; 1024];
+                let count = stream.read(&mut request).unwrap();
+                let path = std::str::from_utf8(&request[..count])
+                    .unwrap()
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap()
+                    .to_string();
+                let body = match (paths.len(), path.as_str()) {
+                    (0, "/a.js") => A,
+                    (1, "/b.js") => B,
+                    (2, "/a.js") => CHANGED_A,
+                    _ => panic!("unexpected cache fixture request: {path}"),
+                };
+                paths.push(path);
+                stream
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: text/javascript\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .unwrap();
+            }
+            paths
+        });
+        let a = format!("{origin}/a.js");
+        let b = format!("{origin}/b.js");
+        let policy = HttpScriptResourcePolicy::new(
+            HttpScriptResourceOriginRule::same_document_origin(),
+            HttpScriptIntegrityManifest::new([
+                (a.clone(), sha256_integrity(A.as_bytes())),
+                (b.clone(), sha256_integrity(B.as_bytes())),
+            ])
+            .unwrap(),
+            HttpScriptResourceLimits::default(),
+        )
+        .unwrap();
+        let authorizer = HttpOutOfProcessPageScriptSourceAuthorizer::new(policy);
+        authorizer
+            .cache
+            .replace(VerifiedResourceCache::new(A.len()));
+        let language = GraphLanguage::JavaScript(BlueJsPageScriptKind::Classic);
+        assert_eq!(authorizer.fetch_resource(&origin, &a, language).unwrap(), A);
+        assert_eq!(authorizer.fetch_resource(&origin, &b, language).unwrap(), B);
+        assert_eq!(
+            authorizer.fetch_resource(&origin, &a, language),
+            Err(ResourceAuthorizationFailure::IntegrityMismatch)
+        );
+        assert_eq!(server.join().unwrap(), ["/a.js", "/b.js", "/a.js"]);
+    }
+
+    #[test]
     fn sha256_integrity_matches_fips_vectors() {
         assert_eq!(
             sha256_integrity(b""),
@@ -1207,7 +1370,7 @@ mod tests {
         .unwrap();
         assert!(policy
             .resolver_fingerprint()
-            .starts_with("core-page-http-resource-authorizer-v1:sha256:"));
+            .starts_with("core-page-http-resource-authorizer-v2:sha256:"));
         let zero_depth = HttpScriptResourceLimits {
             max_module_depth: 0,
             ..HttpScriptResourceLimits::default()

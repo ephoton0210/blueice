@@ -73,11 +73,7 @@ impl Page {
         // recycled ID (plan §1's stable-ID-across-mutations requirement).
         self.doc = blueice_html::parse_continuing_from(html, self.doc.next_node_id());
         self.document_generation = self.document_generation.wrapping_add(1);
-        let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
-        self.styles = cascade(
-            &self.doc,
-            &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
-        );
+        self.recascade();
         self.scroll_y = 0.0;
         // A fresh document invalidates every NodeId a prior interaction
         // might have recorded -- holding onto a stale ID here would let
@@ -100,6 +96,14 @@ impl Page {
         );
         let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
         self.scroll_y = self.scroll_y.min(max_scroll);
+    }
+
+    fn recascade(&mut self) {
+        let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
+        self.styles = cascade(
+            &self.doc,
+            &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
+        );
     }
 
     /// Test-only direct navigation for exercising the fetch-to-document path.
@@ -172,6 +176,26 @@ impl Page {
         let content_y = y + self.scroll_y;
         let node = hit_test(&self.fragment, x, content_y)?;
         nearest_link_href(&self.doc, node)
+    }
+
+    /// The live element receiving an owner-originated click. Text fragments
+    /// hit-test to text nodes, but the first event profile exposes element
+    /// listeners, so route to their nearest element ancestor.
+    pub(crate) fn click_event_target(&self, x: f64, y: f64) -> Option<NodeId> {
+        let node = hit_test(&self.fragment, x, y + self.scroll_y)?;
+        self.event_element_target(node)
+    }
+
+    pub(crate) fn event_element_target(&self, mut node: NodeId) -> Option<NodeId> {
+        if !self.doc.contains(node) {
+            return None;
+        }
+        loop {
+            if matches!(self.doc.data(node), NodeData::Element { .. }) {
+                return Some(node);
+            }
+            node = self.doc.parent(node)?;
+        }
     }
 
     /// Hit-tests a pointer move the same way [`Page::click`] hit-tests
@@ -268,6 +292,12 @@ impl Page {
         find_element_by_id(&self.doc, self.doc.root(), id)
     }
 
+    /// Checks whether a child-private node handle still belongs to this
+    /// document. Detached nodes remain valid until their subtree is removed.
+    pub(crate) fn script_validate_node(&self, node: u64) -> Result<(), String> {
+        self.script_node(node).map(|_| ())
+    }
+
     /// Creates a detached element for the page-script IPC surface.
     pub(crate) fn script_create_element(&mut self, tag_name: String) -> Result<NodeId, String> {
         if tag_name.is_empty() {
@@ -302,6 +332,9 @@ impl Page {
             return Err("the child node is already attached".to_string());
         }
         self.doc.append_child(parent, child);
+        // Newly created elements have no computed style until they join this
+        // document. Recompute author/UA styles before layout and paint.
+        self.recascade();
         self.relayout();
         Ok(())
     }
@@ -829,6 +862,32 @@ mod tests {
         page.load_html_str(r#"<div style="background-color: red;">x</div>"#, None);
         assert!(page.dom_dump().contains("<div>"));
         assert!(page.snapshot(0, 1).nodes.is_empty());
+    }
+
+    #[test]
+    fn script_appended_element_receives_author_style_before_rasterization() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            "<style>span { display: block; width: 100px; height: 30px; background-color: red; }</style><div id='target'></div>",
+            None,
+        );
+        let mut static_page = Page::new(320.0, 200.0);
+        static_page.load_html_str(
+            "<style>span { display: block; width: 100px; height: 30px; background-color: red; }</style><div id='target'><span></span></div>",
+            None,
+        );
+        assert_eq!(
+            static_page.render_visible().get_pixel(0, 0),
+            [255, 0, 0, 255]
+        );
+        let baseline = page.render_visible();
+        let parent = page.script_get_element_by_id("target").unwrap();
+        let child = page.script_create_element("span".to_string()).unwrap();
+        page.script_append_child(parent.as_u64(), child.as_u64())
+            .unwrap();
+        let appended = page.render_visible();
+        assert_ne!(baseline.get_pixel(0, 0), appended.get_pixel(0, 0));
+        assert_eq!(appended.get_pixel(0, 0), [255, 0, 0, 255]);
     }
 
     fn all_text(frame: &Frame) -> String {

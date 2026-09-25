@@ -89,11 +89,32 @@ fn compiler_session_id(result: &rmcp::model::CallToolResult) -> String {
             blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION
         ))
     );
-    let capabilities = session
-        .get("capabilities")
+    let manifest = session
+        .get("capability_manifest")
+        .expect("session receipt must expose the core-authored capability manifest");
+    assert_eq!(
+        manifest.get("version"),
+        Some(&serde_json::json!(
+            blueice_ipc::compiler::COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION
+        ))
+    );
+    let operation_ids = manifest
+        .get("operation_ids")
         .and_then(serde_json::Value::as_array)
-        .expect("session receipt must expose its fixed read-only capabilities");
-    assert_eq!(capabilities.len(), 7);
+        .expect("capability manifest must expose its complete query vocabulary");
+    assert_eq!(operation_ids.len(), 13);
+    assert_eq!(
+        operation_ids.first(),
+        Some(&serde_json::json!("list-projects"))
+    );
+    assert_eq!(
+        operation_ids.last(),
+        Some(&serde_json::json!("validate-static-contract"))
+    );
+    assert!(operation_ids.contains(&serde_json::json!("list-diagnostics")));
+    assert!(operation_ids.contains(&serde_json::json!("list-work-set")));
+    assert!(operation_ids.contains(&serde_json::json!("get-static-symbol-location")));
+    assert!(operation_ids.contains(&serde_json::json!("get-static-contract-location")));
     assert!(
         !text.contains("coreRegisteredAnswer") && !text.contains("core-fixture-dist"),
         "capability result must remain source/output-free: {text}"
@@ -387,7 +408,7 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
     );
 
     macro_rules! compiler_tool {
-        ($name:literal, $arguments:expr) => {{
+        ($name:expr, $arguments:expr) => {{
             let mut arguments = $arguments;
             arguments["session_id"] = serde_json::Value::String(compiler_session.clone());
             client
@@ -404,6 +425,67 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         }};
     }
 
+    let unobserved_project = compiler_tool!(
+        "bluetsc_describe_project",
+        serde_json::json!({ "project_id": 1 })
+    );
+    assert!(matches!(
+        compiler_tool_reply(&unobserved_project),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::UnobservedProject,
+            ..
+        }
+    ));
+    let inventory_result = compiler_tool!("bluetsc_list_projects", serde_json::json!({}));
+    assert_eq!(inventory_result.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&inventory_result);
+    let blueice_ipc::compiler::CompilerReply::Projects(inventory) =
+        compiler_tool_reply(&inventory_result)
+    else {
+        panic!("sealed core catalog must return an opaque project inventory")
+    };
+    assert_eq!(
+        inventory.projects,
+        vec![blueice_ipc::compiler::CompilerProject { id: 1 }]
+    );
+
+    let project_result = compiler_tool!(
+        "bluetsc_describe_project",
+        serde_json::json!({ "project_id": 1 })
+    );
+    assert_eq!(project_result.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&project_result);
+    let blueice_ipc::compiler::CompilerReply::Project(project) =
+        compiler_tool_reply(&project_result)
+    else {
+        panic!("the sealed core profile must return its source-free project identity")
+    };
+    assert_eq!(project.project.id, 1);
+    assert_eq!(project.entry_module, "project:///core-fixture/main.ts");
+
+    let wrong_project_session = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_describe_project").with_arguments(
+                serde_json::json!({
+                    "session_id": "f".repeat(64),
+                    "project_id": 1,
+                })
+                .as_object()
+                .expect("MCP project description arguments must be an object")
+                .clone(),
+            ),
+        )
+        .await
+        .expect("mismatched project session must receive a structured MCP result");
+    assert_eq!(wrong_project_session.is_error, Some(true));
+    let wrong_project_session_text = wrong_project_session.content[0]
+        .as_text()
+        .expect("mismatched project session result must be text")
+        .text
+        .as_str();
+    assert!(wrong_project_session_text.contains("does not belong to this MCP adapter"));
+    assert!(!wrong_project_session_text.contains("coreRegisteredAnswer"));
+
     let check_result = compiler_tool!("bluetsc_check", serde_json::json!({ "project_id": 1 }));
     assert_eq!(check_result.is_error, Some(false));
     assert_source_free_compiler_tool_result(&check_result);
@@ -415,6 +497,130 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         .static_metadata
         .as_ref()
         .expect("successful check must retain source-free static metadata");
+
+    let work_set_result = compiler_tool!(
+        "bluetsc_list_work_set",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "kind": "parsed",
+            "limit": 1,
+        })
+    );
+    assert_eq!(work_set_result.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&work_set_result);
+    let blueice_ipc::compiler::CompilerReply::WorkSetPage(work_set_page) =
+        compiler_tool_reply(&work_set_result)
+    else {
+        panic!("the sealed core fixture must expose a bounded parsed-module page")
+    };
+    assert_eq!(work_set_page.generation, check.generation);
+    assert_eq!(
+        work_set_page.kind,
+        blueice_ipc::compiler::CompilerWorkSetKind::Parsed
+    );
+    assert_eq!(
+        work_set_page.entries,
+        vec!["project:///core-fixture/main.ts".to_string()]
+    );
+    assert!(work_set_page.next_cursor.is_none());
+    assert!(!work_set_page.truncated);
+
+    let unobserved_work_set = compiler_tool!(
+        "bluetsc_list_work_set",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence + 1,
+            "kind": "parsed",
+        })
+    );
+    assert_eq!(unobserved_work_set.is_error, Some(true));
+    assert!(matches!(
+        compiler_tool_reply(&unobserved_work_set),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::StaleGeneration,
+            ..
+        }
+    ));
+    let wrong_work_set_session = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_list_work_set").with_arguments(
+                serde_json::json!({
+                    "session_id": "f".repeat(64),
+                    "project_id": 1,
+                    "generation": check.generation.sequence,
+                    "kind": "parsed",
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .expect("wrong work-set session must receive a structured result");
+    assert_eq!(wrong_work_set_session.is_error, Some(true));
+
+    let diagnostic_page = compiler_tool!(
+        "bluetsc_list_diagnostics",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "limit": 1,
+        })
+    );
+    assert_eq!(diagnostic_page.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&diagnostic_page);
+    let blueice_ipc::compiler::CompilerReply::DiagnosticPage(diagnostic_page) =
+        compiler_tool_reply(&diagnostic_page)
+    else {
+        panic!("the checked core fixture must expose an exact diagnostic-page reply")
+    };
+    assert_eq!(diagnostic_page.generation, check.generation);
+    assert!(diagnostic_page.entries.is_empty());
+    assert!(diagnostic_page.next_cursor.is_none());
+
+    let unobserved_diagnostic_generation = compiler_tool!(
+        "bluetsc_list_diagnostics",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence + 1,
+            "limit": 1,
+        })
+    );
+    assert_eq!(unobserved_diagnostic_generation.is_error, Some(true));
+    assert_source_free_compiler_tool_result(&unobserved_diagnostic_generation);
+    assert!(matches!(
+        compiler_tool_reply(&unobserved_diagnostic_generation),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::StaleGeneration,
+            ..
+        }
+    ));
+
+    let wrong_diagnostic_session = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_list_diagnostics").with_arguments(
+                serde_json::json!({
+                    "session_id": "f".repeat(64),
+                    "project_id": 1,
+                    "generation": check.generation.sequence,
+                    "limit": 1,
+                })
+                .as_object()
+                .expect("MCP diagnostic-page arguments must be an object")
+                .clone(),
+            ),
+        )
+        .await
+        .expect("mismatched diagnostic session must receive a structured MCP result");
+    assert_eq!(wrong_diagnostic_session.is_error, Some(true));
+    let wrong_diagnostic_session_text = wrong_diagnostic_session.content[0]
+        .as_text()
+        .expect("mismatched diagnostic session result must be text")
+        .text
+        .as_str();
+    assert!(wrong_diagnostic_session_text.contains("does not belong to this MCP adapter"));
+    assert!(!wrong_diagnostic_session_text.contains("coreRegisteredAnswer"));
 
     let wrong_session = client
         .call_tool(
@@ -463,6 +669,86 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         blueice_ipc::compiler::CompilerErrorCode::StaleGeneration
     );
     assert!(message.contains("not observed by this MCP session"));
+
+    // Generation evidence alone is not dereference authority. Before this
+    // receipt has received an inventory page, every metadata category must
+    // reject a numerically guessed ID in the MCP adapter without passing it
+    // to the real core process.
+    for (tool, arguments) in [
+        (
+            "debug_get_provenance",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "source_id": 0,
+            }),
+        ),
+        (
+            "debug_get_type",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": 0,
+            }),
+        ),
+        (
+            "debug_get_symbol",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": 0,
+            }),
+        ),
+        (
+            "debug_get_symbol_location",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": 0,
+                "source_id": 0,
+            }),
+        ),
+        (
+            "debug_get_contract",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": 0,
+            }),
+        ),
+        (
+            "debug_get_contract_location",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": 0,
+                "source_id": 0,
+            }),
+        ),
+        (
+            "debug_validate_contract",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": 0,
+                "value": { "enabled": true },
+            }),
+        ),
+    ] {
+        let result = compiler_tool!(tool, arguments);
+        assert_eq!(result.is_error, Some(true));
+        assert_source_free_compiler_tool_result(&result);
+        let blueice_ipc::compiler::CompilerReply::Error { code, message } =
+            compiler_tool_reply(&result)
+        else {
+            panic!("unobserved {tool} ID must fail before compiler IPC")
+        };
+        assert_eq!(
+            code,
+            blueice_ipc::compiler::CompilerErrorCode::UnobservedMetadata
+        );
+        assert!(message.contains("not observed in an inventory page"));
+    }
 
     let mut source_ids = Vec::new();
     let mut type_ids = Vec::new();
@@ -553,10 +839,20 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         );
         assert_eq!(result.is_error, Some(false));
         assert_source_free_compiler_tool_result(&result);
-        assert!(matches!(
-            compiler_tool_reply(&result),
-            blueice_ipc::compiler::CompilerReply::StaticProvenance(_)
-        ));
+        let blueice_ipc::compiler::CompilerReply::StaticProvenance(provenance) =
+            compiler_tool_reply(&result)
+        else {
+            panic!("source provenance query must return a static provenance record")
+        };
+        assert!(
+            provenance.content_hash.starts_with("bts-sha256:"),
+            "public MCP provenance must use the labeled SHA-256 format"
+        );
+        assert_eq!(
+            provenance.content_hash.len(),
+            "bts-sha256:".len() + 64,
+            "public MCP provenance digest must contain exactly 32 SHA-256 bytes"
+        );
     }
     for type_id in &type_ids {
         let result = compiler_tool!(
@@ -577,6 +873,8 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
 
     let mut symbol_source_ids = Vec::new();
     let mut symbol_contract_ids = Vec::new();
+    let mut saw_local_symbol = false;
+    let mut saw_exported_symbol = false;
     for symbol_id in &symbol_ids {
         let result = compiler_tool!(
             "debug_get_symbol",
@@ -593,11 +891,23 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         else {
             panic!("discovered symbol ID must resolve through its exact query")
         };
+        match symbol.name.as_str() {
+            "CoreFixtureSettings" => {
+                assert!(!symbol.exported);
+                saw_local_symbol = true;
+            }
+            "coreFixtureSettings" | "coreRegisteredAnswer" => {
+                assert!(symbol.exported);
+                saw_exported_symbol = true;
+            }
+            _ => {}
+        }
         symbol_source_ids.push(symbol.source_id);
         if let Some(contract_id) = symbol.contract_id {
             symbol_contract_ids.push(contract_id);
         }
     }
+    assert!(saw_local_symbol && saw_exported_symbol);
     assert!(symbol_source_ids.iter().all(|id| source_ids.contains(id)));
     assert!(
         !symbol_contract_ids.is_empty(),
@@ -610,6 +920,44 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         "symbol contract references must come from the exact inventory"
     );
 
+    let symbol_location_result = compiler_tool!(
+        "debug_get_symbol_location",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "id": symbol_ids[0],
+            "source_id": symbol_source_ids[0],
+        })
+    );
+    assert_eq!(symbol_location_result.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&symbol_location_result);
+    let blueice_ipc::compiler::CompilerReply::StaticSymbolLocation(symbol_location) =
+        compiler_tool_reply(&symbol_location_result)
+    else {
+        panic!("inventoried symbol/source pair must resolve to a location")
+    };
+    assert!(symbol_location.is_well_formed());
+    assert_eq!(symbol_location.symbol_id, symbol_ids[0]);
+    assert_eq!(symbol_location.source_id, symbol_source_ids[0]);
+    let unobserved_source_result = compiler_tool!(
+        "debug_get_symbol_location",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "id": symbol_ids[0],
+            "source_id": u32::MAX,
+        })
+    );
+    assert_eq!(unobserved_source_result.is_error, Some(true));
+    assert!(matches!(
+        compiler_tool_reply(&unobserved_source_result),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::UnobservedMetadata,
+            ..
+        }
+    ));
+
+    let mut contract_source_ids = Vec::new();
     for contract_id in &contract_ids {
         let result = compiler_tool!(
             "debug_get_contract",
@@ -621,11 +969,32 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         );
         assert_eq!(result.is_error, Some(false));
         assert_source_free_compiler_tool_result(&result);
-        assert!(matches!(
-            compiler_tool_reply(&result),
-            blueice_ipc::compiler::CompilerReply::StaticContract(_)
-        ));
+        let blueice_ipc::compiler::CompilerReply::StaticContract(contract) =
+            compiler_tool_reply(&result)
+        else {
+            panic!("inventoried contract ID must resolve")
+        };
+        contract_source_ids.push(contract.source_id);
     }
+    let contract_location_result = compiler_tool!(
+        "debug_get_contract_location",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "id": contract_ids[0],
+            "source_id": contract_source_ids[0],
+        })
+    );
+    assert_eq!(contract_location_result.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&contract_location_result);
+    let blueice_ipc::compiler::CompilerReply::StaticContractLocation(contract_location) =
+        compiler_tool_reply(&contract_location_result)
+    else {
+        panic!("inventoried contract/source pair must resolve to a location")
+    };
+    assert!(contract_location.is_well_formed());
+    assert_eq!(contract_location.contract_id, contract_ids[0]);
+    assert_eq!(contract_location.source_id, contract_source_ids[0]);
     let validation_result = compiler_tool!(
         "debug_validate_contract",
         serde_json::json!({
@@ -738,6 +1107,70 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         panic!("later core check must produce a new generation")
     };
     assert_ne!(later_check.generation, check.generation);
+    for (tool, id, source_id) in [
+        (
+            "debug_get_symbol_location",
+            symbol_ids[0],
+            symbol_source_ids[0],
+        ),
+        (
+            "debug_get_contract_location",
+            contract_ids[0],
+            contract_source_ids[0],
+        ),
+    ] {
+        let stale_location = compiler_tool!(
+            tool,
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": id,
+                "source_id": source_id,
+            })
+        );
+        assert_eq!(stale_location.is_error, Some(true));
+        assert_source_free_compiler_tool_result(&stale_location);
+        assert!(matches!(
+            compiler_tool_reply(&stale_location),
+            blueice_ipc::compiler::CompilerReply::Error {
+                code: blueice_ipc::compiler::CompilerErrorCode::StaleGeneration,
+                ..
+            }
+        ));
+    }
+    let stale_work_set = compiler_tool!(
+        "bluetsc_list_work_set",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "kind": "parsed",
+        })
+    );
+    assert_eq!(stale_work_set.is_error, Some(true));
+    assert!(matches!(
+        compiler_tool_reply(&stale_work_set),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::StaleGeneration,
+            ..
+        }
+    ));
+    let stale_diagnostics = compiler_tool!(
+        "bluetsc_list_diagnostics",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "limit": 1,
+        })
+    );
+    assert_eq!(stale_diagnostics.is_error, Some(true));
+    assert_source_free_compiler_tool_result(&stale_diagnostics);
+    assert!(matches!(
+        compiler_tool_reply(&stale_diagnostics),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::StaleGeneration,
+            ..
+        }
+    ));
     let stale_result = compiler_tool!(
         "debug_list_static_metadata",
         serde_json::json!({
@@ -802,6 +1235,22 @@ async fn launcher_managed_core_keeps_mcp_browser_and_fixed_compiler_adapters_pai
             .await
             .expect("paired MCP compiler session capability must round-trip"),
     );
+
+    let inventory = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_list_projects").with_arguments(
+                serde_json::json!({ "session_id": compiler_session })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("paired project inventory must round-trip");
+    assert!(matches!(
+        compiler_tool_reply(&inventory),
+        blueice_ipc::compiler::CompilerReply::Projects(_)
+    ));
 
     let navigate = client
         .call_tool(
@@ -876,6 +1325,22 @@ async fn launcher_cutover_keeps_mcp_compiler_connections_generation_pinned() {
             .await
             .expect("v1 MCP compiler session capability must round-trip"),
     );
+
+    let v1_inventory = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_list_projects").with_arguments(
+                serde_json::json!({ "session_id": v1_session })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("v1 project inventory must round-trip");
+    assert!(matches!(
+        compiler_tool_reply(&v1_inventory),
+        blueice_ipc::compiler::CompilerReply::Projects(_)
+    ));
 
     let v1_check_result = client
         .call_tool(
@@ -976,6 +1441,21 @@ async fn launcher_cutover_keeps_mcp_compiler_connections_generation_pinned() {
             .await
             .expect("v2 MCP compiler session capability must round-trip"),
     );
+    let v2_inventory = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_list_projects").with_arguments(
+                serde_json::json!({ "session_id": v2_session })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("v2 project inventory must round-trip");
+    assert!(matches!(
+        compiler_tool_reply(&v2_inventory),
+        blueice_ipc::compiler::CompilerReply::Projects(_)
+    ));
     assert_ne!(
         v1_session, v2_session,
         "a newly accepted relay connection must receive a fresh MCP session receipt"
