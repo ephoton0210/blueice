@@ -303,6 +303,19 @@ before runtime. General `&&`, `||`, and `??` inference has its own fixed
 Unknown operands and other opaque expression forms still require a sound
 qualifier policy, so B4.2 remains open.
 
+**Readonly through tuple spread results (B4 partial):** Inferred array
+literals now resolve spread elements through the indexed-value logic used
+for computed receivers, with the existing named-type expansion budget. A
+tuple spread, including one named by a type alias, retains every possible
+element type instead of becoming
+`unknown`; a following indexed alias or direct receiver therefore cannot
+discard a reachable event's readonly fields. Mutable-only tuple spreads stay
+writable. This ordinary array inference merges tuple element possibilities
+rather than preserving their exact positions. The verified event-v1 bridge
+rejects the readonly alias before runtime. The array inference implementation
+moved into a small MPL-licensed module, leaving the checker below 1500 lines.
+Other opaque result forms and unknown spread sources remain open.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

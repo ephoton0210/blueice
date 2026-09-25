@@ -234,6 +234,9 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   than dropping to `unknown`, preserving readonly through aliases and direct
   receivers; the event-v1 bridge rejects an `||` alias. General logical
   inference has a separate 128-operator resource diagnostic, including `??`.
+  Array literals now retain readonly event elements from tuple spreads,
+  including named tuple aliases; indexed aliases and direct receivers reject
+  the write, and the event-v1 bridge verifies rejection before runtime.
   Opaque/unmodeled expression forms still need a sound policy, so do not
   claim full qualifier enforcement yet.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members

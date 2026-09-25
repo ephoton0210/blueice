@@ -12,6 +12,7 @@ mod readonly_assignment_results;
 mod readonly_logical_assignment_results;
 mod readonly_logical_results;
 mod readonly_sequence;
+mod readonly_spread_results;
 
 #[test]
 fn checks_named_callbacks_against_function_type_and_literal_event_name() {

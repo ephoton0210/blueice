@@ -700,36 +700,6 @@ fn infer_type_arguments(
     }
 }
 
-fn infer_array(tokens: &[Token], infer: &impl Fn(&[Token]) -> Type) -> Type {
-    let mut values = Vec::new();
-    let mut start = 1usize;
-    let mut depth = 0usize;
-    for index in 1..tokens.len() {
-        match tokens[index].text.as_str() {
-            "[" | "(" | "{" => depth += 1,
-            "]" | ")" | "}" if depth > 0 => depth -= 1,
-            "," if depth == 0 => {
-                if start < index {
-                    values.push(infer_array_element(&tokens[start..index], infer));
-                }
-                start = index + 1;
-            }
-            _ => {}
-        }
-    }
-    if start + 1 < tokens.len() {
-        values.push(infer_array_element(&tokens[start..tokens.len() - 1], infer));
-    }
-    let Some(first) = values.first().cloned() else {
-        return Type::Array(Box::new(Type::Unknown));
-    };
-    if values.iter().all(|value| value == &first) {
-        Type::Array(Box::new(first))
-    } else {
-        Type::Array(Box::new(Type::Union(values)))
-    }
-}
-
 /// Infers an array literal against an explicit tuple annotation without
 /// changing ordinary array-literal inference. A tuple spread is expanded only
 /// when its source is itself known to be a tuple, preserving fixed arity.
@@ -776,21 +746,9 @@ fn push_contextual_tuple_element(
         };
         values.extend(spread);
     } else {
-        values.push(infer_array_element(tokens, &|tokens| {
-            infer_simple(tokens, scope)
-        }));
+        values.push(infer_simple(tokens, scope));
     }
     Some(())
-}
-
-fn infer_array_element(tokens: &[Token], infer: &impl Fn(&[Token]) -> Type) -> Type {
-    if tokens.first().is_some_and(|token| token.is("...")) {
-        return match infer(&tokens[1..]) {
-            Type::Array(element) => *element,
-            _ => Type::Unknown,
-        };
-    }
-    infer(tokens)
 }
 
 fn infer_record(

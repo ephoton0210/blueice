@@ -6,6 +6,8 @@
 
 use super::*;
 
+mod arrays;
+
 impl<'a> ModuleChecker<'a> {
     pub(in crate::checker::module) fn infer_expression(
         &self,
@@ -295,7 +297,7 @@ impl<'a> ModuleChecker<'a> {
             "true" | "false" => Type::Boolean,
             "null" => Type::Null,
             "undefined" => Type::Undefined,
-            "[" => infer_array(tokens, &|value| self.infer_expression(value, scope)),
+            "[" => self.infer_array(tokens, scope),
             "{" => infer_record(tokens, scope, &|value| self.infer_expression(value, scope)),
             _ if first.kind == TokenKind::Identifier => {
                 if tokens.len() == 1 {
