@@ -225,7 +225,9 @@ fn fake_control_socket(
     std::thread::JoinHandle<Vec<blueice_launcher::control::ControlRequest>>,
 ) {
     use blueice_launcher::control::{read_control_request, write_control_reply};
-    let path = std::env::temp_dir().join(format!("mcp-rmcp-ctl-{}.sock", std::process::id()));
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!("mcp-rmcp-ctl-{}-{n}.sock", std::process::id()));
     let _ = std::fs::remove_file(&path);
     let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
     let worker = std::thread::spawn(move || {
