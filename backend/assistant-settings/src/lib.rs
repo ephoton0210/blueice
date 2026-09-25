@@ -269,13 +269,30 @@ pub fn save(path: &Path, settings: &AssistantSettings) -> Result<(), String> {
         .map_err(|error| format!("creating {}: {error}", parent.display()))?;
     let json = serde_json::to_vec_pretty(settings)
         .map_err(|error| format!("encoding assistant settings: {error}"))?;
-    let temporary = path.with_extension(format!("tmp-{}", std::process::id()));
+    let temporary = temporary_path(path);
     write_private(&temporary, &json)
         .map_err(|error| format!("writing {}: {error}", temporary.display()))?;
     fs::rename(&temporary, path).map_err(|error| {
         let _ = fs::remove_file(&temporary);
         format!("replacing {}: {error}", path.display())
     })
+}
+
+/// A fresh sibling path for one save. It *appends* to the file name (rather
+/// than replacing its extension, which would map `settings.json-1` and
+/// `settings.json-2` to the same name) and carries a per-process counter, so
+/// two saves -- of different files or of the same one -- never share a
+/// temporary, and the rename onto the target stays within one directory.
+fn temporary_path(path: &Path) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(
+        ".tmp-{}-{}",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    path.with_file_name(name)
 }
 
 #[cfg(unix)]
@@ -300,6 +317,7 @@ fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread;
 
     fn loopback() -> LoopbackSettings {
         LoopbackSettings {
@@ -542,6 +560,42 @@ mod tests {
             .map(|e| e.file_name().to_string_lossy().to_string())
             .collect();
         assert_eq!(leftovers, ["assistant-settings.json"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_temporary_file_never_collides_with_another_save() {
+        // `with_extension` would map both of these to the same temporary name.
+        let a = PathBuf::from("/d/settings.json-1");
+        let b = PathBuf::from("/d/settings.json-2");
+        assert_ne!(temporary_path(&a), temporary_path(&b));
+        // Two saves of the very same file (two threads, or a retry) differ too.
+        assert_ne!(temporary_path(&a), temporary_path(&a));
+        // The temporary sits beside its target, so the rename stays atomic.
+        assert_eq!(temporary_path(&a).parent(), a.parent());
+    }
+
+    #[test]
+    fn concurrent_saves_of_different_files_do_not_clobber_each_other() {
+        let dir = temp_path("concurrent");
+        fs::create_dir_all(&dir).unwrap();
+        let workers: Vec<_> = (0..8)
+            .map(|n| {
+                let path = dir.join(format!("settings.json-{n}"));
+                thread::spawn(move || {
+                    for _ in 0..50 {
+                        save(&path, &with_backend(BackendKind::Loopback)).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        for n in 0..8 {
+            let path = dir.join(format!("settings.json-{n}"));
+            assert_eq!(load(&path).unwrap(), with_backend(BackendKind::Loopback));
+        }
         let _ = fs::remove_dir_all(&dir);
     }
 

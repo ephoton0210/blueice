@@ -193,6 +193,26 @@ impl ProcessRegistry {
             .collect()
     }
 
+    /// Notices a resident process that exited on its own (a crash, or a
+    /// resource-limit kill) and forgets it, so the role reads as not resident
+    /// and an on-demand caller respawns it instead of relaying to a dead
+    /// process. Returns whether it reaped one.
+    pub fn reap_exited(&mut self, role: &str) -> bool {
+        let Some(entry) = self.entries.get_mut(role) else {
+            return false;
+        };
+        let exited = match entry.resident.as_mut() {
+            // `try_wait` failing means the child cannot be inspected any more;
+            // treating it as gone is safer than relaying to it.
+            Some(child) => child.try_wait().map(|status| status.is_some()).unwrap_or(true),
+            None => false,
+        };
+        if exited {
+            entry.resident = None;
+        }
+        exited
+    }
+
     /// Kills and reaps `role`'s resident process, if any, then marks it
     /// no-longer-resident -- the registry entry (and its policy) stays,
     /// so a future respawn can reuse it. A no-op if `role` isn't
@@ -219,6 +239,41 @@ mod tests {
     /// scale that still exercises a genuine OS process.
     fn spawn_dummy_child() -> Child {
         Command::new("sleep").arg("300").spawn().unwrap()
+    }
+
+    #[test]
+    fn a_process_that_exited_on_its_own_is_reaped_and_a_live_one_is_not() {
+        let mut registry = ProcessRegistry::new();
+        let start = Instant::now();
+        registry.register(
+            "ai-assistant",
+            ProcessPolicy::OnDemand {
+                idle_timeout: Duration::from_secs(60),
+            },
+            None,
+            start,
+        );
+        // Nothing resident yet, and an unknown role, reap nothing.
+        assert!(!registry.reap_exited("ai-assistant"));
+        assert!(!registry.reap_exited("nobody"));
+
+        // A live process stays resident.
+        assert!(registry
+            .set_resident("ai-assistant", spawn_dummy_child(), start)
+            .is_none());
+        assert!(!registry.reap_exited("ai-assistant"));
+        assert!(registry.is_resident("ai-assistant"));
+        registry.teardown("ai-assistant");
+
+        // One that has already exited is noticed.
+        let quick = Command::new("true").spawn().unwrap();
+        assert!(registry.set_resident("ai-assistant", quick, start).is_none());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !registry.reap_exited("ai-assistant") {
+            assert!(Instant::now() < deadline, "the exit was never noticed");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!registry.is_resident("ai-assistant"));
     }
 
     #[test]

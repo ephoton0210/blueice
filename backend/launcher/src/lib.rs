@@ -36,6 +36,7 @@
 //! tells "core genuinely died" apart from "we deliberately superseded
 //! it."
 
+pub mod assistant;
 pub mod control;
 pub mod memory_pressure;
 pub mod supervisor;
@@ -337,6 +338,10 @@ struct Broker {
     /// The installed package, if any, must be revalidated in each fresh core
     /// generation rather than silently disappearing after a cutover.
     extension_manifest: Option<PathBuf>,
+    /// The assistant's public socket, when the launcher supervises one. Every
+    /// replacement core receives the same path, so live translation and
+    /// assistant tasks keep working across a cutover.
+    assistant_socket: Option<PathBuf>,
     /// Signaled exactly once, by whichever generation-tagged broadcast
     /// thread's own death is NOT a deliberate cutover supersession --
     /// what [`run_broker`] blocks on to know when the whole launcher
@@ -727,12 +732,13 @@ fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
 
     let target_generation = broker.generation.load(Ordering::SeqCst) + 1;
     let frame_dir = v2_frame_dir(&broker.frame_dir, target_generation);
-    let mut v2 = match SpawnedCore::spawn_with_gatekeeper_and_extension(
+    let mut v2 = match SpawnedCore::spawn_with_assistant(
         broker.width,
         broker.height,
         &frame_dir,
         &broker.gatekeeper_socket,
         broker.extension_manifest.as_deref(),
+        broker.assistant_socket.as_deref(),
     ) {
         Ok(v2) => v2,
         Err(e) => {
@@ -839,6 +845,7 @@ pub fn run_broker_with_trusted_window(
 ) -> io::Result<()> {
     let frame_dir = core.frame_dir.clone();
     let extension_manifest = core.extension_manifest.clone();
+    let assistant_socket = core.assistant_socket.clone();
     let core_writer = Arc::new(Mutex::new(core.stream.try_clone()?));
     let broadcast_stream = core.stream.try_clone()?;
     let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
@@ -856,6 +863,7 @@ pub fn run_broker_with_trusted_window(
         frame_dir,
         gatekeeper_socket,
         extension_manifest,
+        assistant_socket,
         done: done_tx.clone(),
     });
 
@@ -1438,6 +1446,9 @@ pub struct SpawnedCore {
     script_socket_path: PathBuf,
     extension_socket_path: Option<PathBuf>,
     extension_manifest: Option<PathBuf>,
+    /// The launcher-owned public assistant socket this core was given, so a
+    /// cutover's replacement core is given the same one.
+    assistant_socket: Option<PathBuf>,
     permission_control: Option<PermissionControlChannel>,
     frame_dir: PathBuf,
     pub stream: UnixStream,
@@ -1478,6 +1489,27 @@ impl SpawnedCore {
         gatekeeper_socket: &Path,
         extension_manifest: Option<&Path>,
     ) -> io::Result<Self> {
+        Self::spawn_with_assistant(
+            width,
+            height,
+            frame_dir,
+            gatekeeper_socket,
+            extension_manifest,
+            None,
+        )
+    }
+
+    /// [`Self::spawn_with_gatekeeper_and_extension`] plus the launcher's public
+    /// assistant socket, which core is given as `--assistant-socket` so live
+    /// translation and assistant tasks reach the supervised assistant.
+    pub fn spawn_with_assistant(
+        width: f64,
+        height: f64,
+        frame_dir: &Path,
+        gatekeeper_socket: &Path,
+        extension_manifest: Option<&Path>,
+        assistant_socket: Option<&Path>,
+    ) -> io::Result<Self> {
         let this_exe = std::env::current_exe()?;
         let core_bin = sibling_core_binary(&this_exe);
         let bluejs_bin = sibling_bluejs_binary(&this_exe);
@@ -1503,6 +1535,9 @@ impl SpawnedCore {
             .arg(gatekeeper_socket)
             .arg("--script-socket")
             .arg(&script_socket_path);
+        if let Some(assistant) = assistant_socket {
+            command.arg("--assistant-socket").arg(assistant);
+        }
         if let (Some(manifest), Some(socket)) = (extension_manifest, extension_socket_path.as_deref()) {
             command.arg("--extension-socket").arg(socket)
                 .arg("--extension-manifest").arg(manifest)
@@ -1601,6 +1636,7 @@ impl SpawnedCore {
             script_socket_path,
             extension_socket_path,
             extension_manifest: extension_manifest.map(Path::to_path_buf),
+            assistant_socket: assistant_socket.map(Path::to_path_buf),
             permission_control: None,
             frame_dir: frame_dir.to_path_buf(),
             stream,
@@ -1916,7 +1952,7 @@ mod tests {
             child: fake_child(), script_child: fake_child(),
             internal_socket_path: root.join("core.sock"),
             script_socket_path: root.join("script.sock"),
-            extension_socket_path: None, extension_manifest: None,
+            extension_socket_path: None, extension_manifest: None, assistant_socket: None,
             permission_control: Some(PermissionControlChannel { requests }),
             frame_dir: root.join("frames"), stream: core_stream,
         };
@@ -1929,7 +1965,7 @@ mod tests {
             active_core: Mutex::new(Some(core)),
             width: 320.0, height: 200.0,
             frame_dir: root.join("frames"), gatekeeper_socket: root.join("gate.sock"),
-            extension_manifest: None, done,
+            extension_manifest: None, assistant_socket: None, done,
         });
         let change = |generation, id: &str, capability: &str, action| {
             trusted_window::TrustedWindowRequest::Change {
@@ -2091,7 +2127,7 @@ mod tests {
             width: 320.0, height: 200.0,
             frame_dir: root.join("frames"),
             gatekeeper_socket: root.join("unused-gatekeeper.sock"),
-            extension_manifest: Some(manifest), done,
+            extension_manifest: Some(manifest), assistant_socket: None, done,
         });
         let mut requests = Vec::new();
         for request in [
@@ -2155,6 +2191,7 @@ mod tests {
             script_socket_path: root.join("script.sock"),
             extension_socket_path: None,
             extension_manifest: None,
+            assistant_socket: None,
             permission_control: Some(PermissionControlChannel { requests }),
             frame_dir: root.join("frames"), stream,
         };

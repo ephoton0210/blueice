@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+blueice-assistant-settings = { path = "../assistant-settings" }
 blueice-ipc = { path = "../ipc" }
 sysinfo = "0.39.6"
 serde = { version = "1", features = ["derive"] }

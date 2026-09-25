@@ -13,6 +13,7 @@
 //! test -- this file is just argument parsing and wiring a real
 //! `UnixListener` to that already-tested logic.
 
+use blueice_launcher::assistant::{sibling_assistant_binary, AssistantSupervisor};
 use blueice_launcher::memory_pressure::{self, SystemMemorySource};
 use blueice_launcher::supervisor::ProcessRegistry;
 use blueice_launcher::{
@@ -54,6 +55,14 @@ struct Args {
     /// -- the real default (10s) would make an integration test wait
     /// that long to observe a single poll.
     memory_poll_interval: Duration,
+    /// Supervise `blueice-ai-assistant` (`phase-7-local-ai/PLAN.md`, step R2),
+    /// configured by this settings file. `--assistant` selects the default
+    /// path. Without either, no assistant is supervised and `core` is given
+    /// no assistant socket.
+    assistant_settings: Option<PathBuf>,
+    /// Test/debug-only override of the assistant binary; by default it is the
+    /// sibling of this launcher.
+    assistant_bin: Option<PathBuf>,
 }
 
 /// Takes an injectable argument iterator for the same reason
@@ -70,6 +79,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut trusted_frontend = false;
     let mut simulate_low_memory = false;
     let mut memory_poll_interval = memory_pressure::DEFAULT_POLL_INTERVAL;
+    let mut assistant_settings = None;
+    let mut assistant_bin = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -90,6 +101,11 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
             "--trusted-frontend" => trusted_frontend = true,
+            "--assistant" => {
+                assistant_settings.get_or_insert_with(blueice_assistant_settings::default_settings_path);
+            }
+            "--assistant-settings" => assistant_settings = Some(PathBuf::from(value()?)),
+            "--assistant-bin" => assistant_bin = Some(PathBuf::from(value()?)),
             "--simulate-low-memory" => simulate_low_memory = true,
             "--memory-poll-interval-ms" => {
                 let ms: u64 = value()?
@@ -113,6 +129,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         trusted_frontend,
         simulate_low_memory,
         memory_poll_interval,
+        assistant_settings,
+        assistant_bin,
     })
 }
 
@@ -137,12 +155,47 @@ fn main() -> ExitCode {
         }
     };
 
-    let core = match SpawnedCore::spawn_with_gatekeeper_and_extension(
+    // The registry exists before `core` so the assistant supervisor can register
+    // itself first: `core` is started knowing the assistant's public socket.
+    // `phase-8-live-core-hotswap/PLAN.md`'s fleet-memory-supervisor minimal
+    // first slice: the roles this launcher supervises are registered in one
+    // place (`ProcessRegistry::default_fleet`: `core` and `ai-gatekeeper`
+    // `AlwaysResident`; `mcp-server` an inert `IdleTeardown` slot), plus
+    // `ai-assistant` `OnDemand` when configured. Downloads stays outside this
+    // generic time-only supervisor until it exposes an idle query that proves
+    // no transfer is active or queued.
+    let registry = Arc::new(Mutex::new(ProcessRegistry::default_fleet(Instant::now())));
+
+    let assistant = match args.assistant_settings.as_deref() {
+        None => None,
+        Some(path) => {
+            let settings = match blueice_assistant_settings::load(path) {
+                Ok(settings) => settings,
+                Err(message) => {
+                    eprintln!("blueice-launcher: {message}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            let binary = args.assistant_bin.clone().unwrap_or_else(|| {
+                sibling_assistant_binary(&std::env::current_exe().unwrap_or_default())
+            });
+            match AssistantSupervisor::start(&settings, binary, Arc::clone(&registry)) {
+                Ok(assistant) => assistant,
+                Err(e) => {
+                    eprintln!("blueice-launcher: could not supervise the assistant: {e}");
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+    };
+
+    let core = match SpawnedCore::spawn_with_assistant(
         args.width,
         args.height,
         &frame_dir,
         gatekeeper.socket_path(),
         args.extension_manifest.as_deref(),
+        assistant.as_ref().map(AssistantSupervisor::public_socket),
     ) {
         Ok(core) => core,
         Err(e) => {
@@ -151,14 +204,6 @@ fn main() -> ExitCode {
         }
     };
 
-    // `phase-8-live-core-hotswap/PLAN.md`'s fleet-memory-supervisor
-    // minimal first slice: the roles this launcher supervises are
-    // registered in one place, `ProcessRegistry::default_fleet` (`core`
-    // and `ai-gatekeeper` `AlwaysResident`; `mcp-server` an inert
-    // `IdleTeardown` slot).
-    // Downloads stays outside this generic time-only supervisor until
-    // it exposes an idle query that proves no transfer is active/queued.
-    let registry = Arc::new(Mutex::new(ProcessRegistry::default_fleet(Instant::now())));
     let memory_source: Arc<dyn memory_pressure::MemorySource> = if args.simulate_low_memory {
         Arc::new(memory_pressure::FixedMemorySource(0.0))
     } else {
@@ -235,6 +280,7 @@ fn main() -> ExitCode {
 
     let _ = std::fs::remove_file(&args.rendezvous_socket);
     let _ = std::fs::remove_file(&args.control_socket);
+    drop(assistant);
     drop(gatekeeper);
 
     match result {
@@ -304,8 +350,43 @@ mod tests {
                 trusted_frontend: true,
                 simulate_low_memory: true,
                 memory_poll_interval: Duration::from_millis(50),
+                assistant_settings: None,
+                assistant_bin: None,
             }
         );
+    }
+
+    #[test]
+    fn assistant_flags_are_parsed_and_the_default_path_is_the_shared_default() {
+        let none = args(&[]).unwrap();
+        assert_eq!(none.assistant_settings, None);
+        assert_eq!(none.assistant_bin, None);
+        let explicit = args(&[
+            "--assistant-settings",
+            "/tmp/a.json",
+            "--assistant-bin",
+            "/tmp/assistant",
+        ])
+        .unwrap();
+        assert_eq!(explicit.assistant_settings, Some(PathBuf::from("/tmp/a.json")));
+        assert_eq!(explicit.assistant_bin, Some(PathBuf::from("/tmp/assistant")));
+        let default = args(&["--assistant"]).unwrap();
+        assert_eq!(
+            default.assistant_settings,
+            Some(blueice_assistant_settings::default_settings_path())
+        );
+        // An explicit path wins over `--assistant`, in either order.
+        for flags in [
+            ["--assistant", "--assistant-settings", "/tmp/a.json"],
+            ["--assistant-settings", "/tmp/a.json", "--assistant"],
+        ] {
+            assert_eq!(
+                args(&flags).unwrap().assistant_settings,
+                Some(PathBuf::from("/tmp/a.json")),
+                "{flags:?}"
+            );
+        }
+        assert!(args(&["--assistant-settings"]).is_err());
     }
 
     #[test]
