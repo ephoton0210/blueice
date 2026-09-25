@@ -554,6 +554,15 @@ existing explicit limit state. A child regression rejects a wrong source ID,
 reaches the next module statement's span, and resumes the retained graph; the
 classic limit regression still exercises the common bounded path.
 
+**Real-process module root steps (C1.1.2.4):** An admitted three-statement
+BlueTS ESM page is paused at its evaluate-body root point over the public
+debugger socket. The client requests a root-instruction step and validates its
+actual successor against the live safe-point inventory, then uses its
+metadata/source receipts to request a bounded source-span step. The latter
+pauses at a different bound source span; resume completes the same module and
+the public browser connection reports successful module execution. The full
+out-of-process debugger suite passes with this test.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

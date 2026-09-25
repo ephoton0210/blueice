@@ -35,6 +35,8 @@ const FIRST_BLUETS_SOURCE: &str = "export interface PrivateContract { enabled: b
 const SOURCE_STEP_BLUETS_SOURCE: &str =
     "const first: number = 1; const second: number = first + 1; const third: number = second + 1;";
 const MODULE_BLUETS_SOURCE: &str = "/* 🚀 */\r\nexport const moduleAnswer: number = 42;";
+const MODULE_STEP_BLUETS_SOURCE: &str =
+    "let first: number = 1; let second: number = first + 1; export const answer: number = second + 1;";
 
 fn unique_path(label: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -378,6 +380,29 @@ fn await_paused_execution(
                 thread::sleep(Duration::from_millis(10));
             }
             other => panic!("expected bounded root-frame pause, got {other:?}"),
+        }
+    }
+}
+
+fn await_step_paused_execution(
+    debugger: &mut UnixStream,
+    program: DebuggerProgram,
+    previous: DebuggerSafePoint,
+) -> DebuggerSafePoint {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match debugger_request(debugger, DebuggerRequest::GetExecutionState { program }) {
+            DebuggerReply::ExecutionState {
+                program: reply_program,
+                state: blueice_ipc::debugger::DebuggerExecutionState::Paused { safe_point },
+            } if reply_program == program && safe_point != previous => return safe_point,
+            DebuggerReply::ExecutionState {
+                program: reply_program,
+                state: blueice_ipc::debugger::DebuggerExecutionState::Stepping,
+            } if reply_program == program && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            other => panic!("expected bounded debugger step pause, got {other:?}"),
         }
     }
 }
@@ -869,6 +894,187 @@ fn launcher_pauses_and_resumes_a_real_bluets_module_entry() {
     assert!(matches!(
         read_server_message(&mut browser).unwrap(),
         ServerMessage::Dom(dom) if format!("{dom:?}").contains("module-entry-debugger")
+    ));
+
+    fixture.join().unwrap();
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_steps_a_real_bluets_module_instruction_and_source_span() {
+    use blueice_ipc::debugger::DebuggerStaticMetadataSafePointSpanTarget;
+
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("fixture must receive navigation");
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let body = format!(
+            "<main>module-step-debugger</main><script type=\"application/x-blueice-typescript-module\">{MODULE_STEP_BLUETS_SOURCE}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .expect("fixture must reply with the module document");
+    });
+    let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            inventory: true,
+            source_inventory: true,
+            safe_point_span: true,
+            source_span_step: true,
+            ..StaticMetadataPolicy::default()
+        },
+    );
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
+    navigate(&mut browser, &url);
+
+    let manifest = DebuggerMetadataCapabilityManifest::opaque_source_span_step();
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: manifest.clone(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: manifest,
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let program = one_program(
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    let DebuggerReply::StaticMetadata(metadata) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadata { program },
+    ) else {
+        panic!("the BlueTS module needs one opaque metadata attachment");
+    };
+    let metadata = metadata[0];
+    let DebuggerReply::StaticMetadataSources(sources) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataSources { metadata },
+    ) else {
+        panic!("the same debugger stream must receive source IDs");
+    };
+    let points = safe_points(
+        debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+        program,
+    );
+    let mut armed = None;
+    for point in points
+        .iter()
+        .copied()
+        .filter(|point| point.code_unit_ordinal == 0)
+    {
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmRootSafePointBreakpoint { safe_point: point },
+        ) {
+            DebuggerReply::RootSafePointBreakpointArmed { safe_point } => {
+                armed = Some(safe_point);
+                break;
+            }
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidSafePoint | DebuggerErrorCode::InvalidExecutionState,
+                ..
+            } => {}
+            reply => panic!("unexpected module arm reply: {reply:?}"),
+        }
+    }
+    let target = armed.expect("the module entry evaluate-body point must arm");
+    await_paused_execution(&mut debugger, program, target);
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::StepRootInstruction { program }
+        ),
+        DebuggerReply::ExecutionStepRequested { program }
+    );
+    let mut current = await_step_paused_execution(&mut debugger, program, target);
+    assert!(points.contains(&current));
+    let bound_span = |debugger: &mut UnixStream, point: DebuggerSafePoint| {
+        sources.iter().find_map(|source| {
+            let target = DebuggerStaticMetadataSafePointSpanTarget {
+                safe_point: point,
+                source: *source,
+            };
+            match debugger_request(
+                debugger,
+                DebuggerRequest::DescribeStaticMetadataSafePointSpan { target },
+            ) {
+                DebuggerReply::StaticMetadataSafePointSpan(span) => Some((target, span)),
+                _ => None,
+            }
+        })
+    };
+    let mut origin = None;
+    for _ in 0..128 {
+        if let Some(span) = bound_span(&mut debugger, current) {
+            origin = Some(span);
+            break;
+        }
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::StepRootInstruction { program }
+            ),
+            DebuggerReply::ExecutionStepRequested { program }
+        );
+        current = await_step_paused_execution(&mut debugger, program, current);
+        assert!(points.contains(&current));
+    }
+    let (source_target, original_span) =
+        origin.expect("module instruction step must reach a bound span");
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::StepStaticMetadataSourceSpan {
+                target: source_target,
+            },
+        ),
+        DebuggerReply::ExecutionSourceSpanStepRequested {
+            safe_point: current,
+        }
+    );
+    let successor = await_step_paused_execution(&mut debugger, program, current);
+    assert!(points.contains(&successor));
+    let (_, successor_span) = bound_span(&mut debugger, successor)
+        .expect("source step stops at another bound module span");
+    assert_ne!(
+        (original_span.start_byte, original_span.end_byte),
+        (successor_span.start_byte, successor_span.end_byte)
+    );
+    assert_eq!(
+        debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
+        DebuggerReply::ExecutionResumed { program }
+    );
+    await_completed_execution(&mut debugger, program);
+    write_client_message(&mut browser, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    assert!(matches!(
+        read_server_message(&mut browser).unwrap(),
+        ServerMessage::BlueTsScriptReports(reports)
+            if reports.len() == 1
+                && reports[0].kind == blueice_ipc::BlueTsScriptKind::Module
+                && reports[0].outcome == blueice_ipc::BlueTsScriptExecutionOutcome::Executed
     ));
 
     fixture.join().unwrap();
