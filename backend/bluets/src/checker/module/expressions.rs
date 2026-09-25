@@ -562,6 +562,7 @@ impl<'a> ModuleChecker<'a> {
         };
         let owner = self.infer_expression(mutation.receiver, scope);
         if self.reject_computed_readonly_mutation(mutation.receiver, mutation.property, scope, span)
+            || self.reject_opaque_readonly_receiver(mutation.receiver, scope, span)
         {
             return;
         }
@@ -695,6 +696,9 @@ impl<'a> ModuleChecker<'a> {
                 let Some((receiver, property)) = member_access_target(target) else {
                     continue;
                 };
+                if self.reject_opaque_readonly_receiver(receiver, scope, span) {
+                    return;
+                }
                 let owner = self.infer_expression(receiver, scope);
                 let possible_readonly = match self
                     .possible_readonly_computed_receiver(receiver, property, scope)

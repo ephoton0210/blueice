@@ -15,7 +15,8 @@ Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
 **Current leaf: B4.2.** Enforce the event object's `readonly` type, target,
-and currentTarget qualifiers across all supported BlueTS expression forms.
+and currentTarget qualifiers for the delivered form list plus the fail-closed
+rule for everything else (see B4 below).
 
 ## Current boundary
 
@@ -191,61 +192,26 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   owner-selected event-v1 profile has the exact 10-binding installer inventory
   and the BlueTS checker verifies the click callback type and literal name.
 - [ ] Enforce the event object's `readonly` type, target, and currentTarget
-  qualifiers in BlueTS checking. The parser now retains `readonly` for
-  interface and record fields, including inherited/generic lookup, and the
-  checker rejects direct dot-property assignment, compound assignment,
-  update, and deletion. Exact unescaped string-key computed writes share
-  that check; dynamic or escaped keys fail closed when the receiver has any
-  readonly member, including through generic inheritance. The child already
-  exposes these properties as non-writable and non-configurable. The checker
-  now infers parenthesized, chained dot/static-bracket, and direct-call result
-  receivers before testing the final field. A separately bounded scan catches
-  readonly writes nested in calls, assignment chains, arithmetic/boolean
-  expressions, and prefix/postfix updates or deletion without charging plain
-  assignments against generic-expansion fuel. Computed receiver chains now
-  retain the element type of typed arrays (including aliases) and uniform
-  tuples/records; literal canonical numeric indices select exact tuple
-  elements. Thus `events[index].type = ...` and `events['0'].type = ...` are
-  rejected even inside a larger expression. A separate bounded readonly-only
-  candidate walk now follows typed heterogeneous record/tuple/array-union
-  branches through dynamic indices and later member chains, rejecting a write
-  if any reachable branch has a readonly field; exhausting its expansion
-  budget fails with a resource diagnostic. Dynamic indexing also retains a
-  conservative union when stored in an unannotated local, and union property
-  lookup merges the readonly qualifier so a later alias write cannot bypass
-  it. Array and record literal values now infer their full supported member
-  expression, including nested records and calls with comma-separated
-  arguments, so storing `holder.event` in a literal cannot turn it into the
-  mutable Holder type. Literal inference is capped at 128 containers with a
-  resource diagnostic. Supported erased `as` and `satisfies` expressions now
-  preserve the operand's known readonly receiver type, including through
-  aliases, literals, and an assertion naming a writable-looking type; an
-  assertion cannot silently turn a known event into a mutable receiver.
-  Supported sequence expressions now infer the final runtime value rather
-  than a preceding mutable operand, including aliases and literal-held
-  results; the event-v1 bridge rejects that readonly write before runtime.
-  Simple `=` expressions now carry the right-hand runtime type through
-  direct, alias, literal-held, and chained assignment results; the verified
-  event-v1 bridge rejects a readonly alias before execution. `&&=`, `||=`,
-  and `??=` now conservatively retain known readonly result branches,
-  with a 128-logical-operator inference limit and a public event-v1 bridge
-  rejection; arithmetic/bitwise compound results remain open.
-  Non-boolean `&&`/`||` now retain the union of known result branches rather
-  than dropping to `unknown`, preserving readonly through aliases and direct
-  receivers; the event-v1 bridge rejects an `||` alias. General logical
-  inference has a separate 128-operator resource diagnostic, including `??`.
-  Array literals now retain readonly event elements from tuple spreads,
-  including named tuple aliases; indexed aliases and direct receivers reject
-  the write, and the event-v1 bridge verifies rejection before runtime.
-  Record spreads now retain nested event references through known interfaces,
-  aliases, member sources, and nested literals; new outer fields stay writable
-  and later overrides win. The event-v1 bridge rejects a copied holder write.
-  Known union record spreads retain every reachable event value, mark absent
-  fields optional, and cannot let a later optional spread erase an earlier
-  readonly event; the event-v1 bridge rejects a union-spread alias. Exhausting
-  the union/alias expansion budget emits a resource diagnostic.
-  Opaque/unmodeled expression forms still need a sound policy, so do not
-  claim full qualifier enforcement yet.
+  qualifiers in BlueTS checking. Acceptance is a finite list, not "every
+  expression form". Delivered forms (each has a test under
+  `backend/bluets/src/checker/tests/readonly*.rs`): direct, chained, and
+  static/computed member writes; compound, update, and `delete`; writes nested
+  in calls and expressions; typed array/tuple/record/union indexing; inferred
+  aliases; array/record literals and tuple/record spreads; `as`/`satisfies`;
+  sequence, `=`, logical, and logical-assignment results. The child already
+  exposes these properties as non-writable and non-configurable, so runtime is
+  the backstop for anything below.
+  - [x] Fail-closed policy: a write whose receiver inference cannot model
+    (`Unknown`) is rejected with "cannot prove ... avoids readonly members"
+    whenever a readonly-bearing binding is in scope; declared `any` is an
+    explicit opt-out, and an unrelated opaque receiver stays allowed. Any
+    form not on the delivered list is therefore rejected, not silently
+    accepted.
+  - [ ] Verify the policy against the event-v1 bridge (public boundary): an
+    opaque-receiver write on a click event is rejected before execution.
+  - [ ] Record known limitations (arithmetic/bitwise compound results,
+    destructuring, closure capture) in PLAN.md instead of adding forms; do
+    not add another expression form without a concrete failing page.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members
   must fail both static checking and JavaScript runtime access.
 

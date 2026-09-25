@@ -23,6 +23,49 @@ impl ModuleChecker<'_> {
         }
     }
 
+    /// Fail-closed policy for receivers inference cannot model. When the
+    /// receiver's type is lost (`Unknown`) while a readonly-bearing binding is
+    /// in scope, the write may reach that value through an unmodeled form, so
+    /// it cannot be proven safe. Declared `any` stays an explicit opt-out.
+    pub(super) fn opaque_receiver_may_reach_readonly(
+        &self,
+        receiver: &[Token],
+        scope: &BTreeMap<String, Type>,
+    ) -> Result<bool, ()> {
+        if self.infer_expression(receiver, scope) != Type::Unknown {
+            return Ok(false);
+        }
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        for value in scope.values() {
+            if deep_contains_readonly(value, &self.types, &mut budget, 0)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    pub(super) fn reject_opaque_readonly_receiver(
+        &mut self,
+        receiver: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) -> bool {
+        match self.opaque_receiver_may_reach_readonly(receiver, scope) {
+            Ok(false) => return false,
+            Ok(true) => self.type_error(
+                span,
+                "cannot prove a write through an unmodeled receiver avoids readonly members".into(),
+                DiagnosticCode::TypeMismatch,
+            ),
+            Err(()) => self.type_error(
+                span,
+                "opaque readonly receiver exceeds its type-expansion limit".into(),
+                DiagnosticCode::ResourceLimit,
+            ),
+        }
+        true
+    }
+
     pub(super) fn reject_computed_readonly_mutation(
         &mut self,
         receiver: &[Token],
@@ -228,4 +271,54 @@ fn push_type(
         result.push(value);
     }
     Ok(())
+}
+
+const MAX_READONLY_TAINT_DEPTH: usize = 16;
+
+/// Deep, bounded search for a readonly member anywhere reachable through
+/// arrays, tuples, records, unions and named types.
+fn deep_contains_readonly(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+    depth: usize,
+) -> Result<bool, ()> {
+    if depth > MAX_READONLY_TAINT_DEPTH || !budget.consume() {
+        return Err(());
+    }
+    match value {
+        Type::Record(fields) => {
+            for field in fields {
+                if field.readonly
+                    || deep_contains_readonly(&field.value, aliases, budget, depth + 1)?
+                {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        Type::Array(element) => deep_contains_readonly(element, aliases, budget, depth + 1),
+        Type::Tuple(parts) | Type::Union(parts) | Type::Intersection(parts) => {
+            for part in parts {
+                if deep_contains_readonly(part, aliases, budget, depth + 1)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        Type::Named { .. } => {
+            match instantiate_named(
+                value,
+                aliases,
+                &mut HashSet::new(),
+                budget,
+                "readonly taint",
+            ) {
+                Some(value) => deep_contains_readonly(&value, aliases, budget, depth + 1),
+                None if budget.exhausted => Err(()),
+                None => Ok(false),
+            }
+        }
+        _ => Ok(false),
+    }
 }
