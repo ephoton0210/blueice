@@ -122,7 +122,16 @@ impl Vm {
     pub fn resume_debugger_module_execution(
         &mut self,
     ) -> Result<VmDebuggerExecutionState, RuntimeError> {
-        self.resume_debugger_module_inner()
+        self.resume_debugger_module_inner(None)
+    }
+
+    /// Executes one instruction in the retained entry-module root frame and
+    /// reports its actual successor, or terminal completion. Dependencies and
+    /// nested frames remain outside this one-frame stepping capability.
+    pub fn step_debugger_module_root_instruction(
+        &mut self,
+    ) -> Result<VmDebuggerExecutionState, RuntimeError> {
+        self.resume_debugger_module_inner(Some(InterpreterSuspensionPoint::AfterRootInstruction))
     }
 
     /// Runs a classic script until the exact compiler-provided root code-unit
@@ -753,6 +762,61 @@ mod tests {
             rejected_vm.execute_module_graph(rejection, &rejected_modules),
             Err(error)
         );
+    }
+
+    #[test]
+    fn module_root_step_retains_the_frame_across_branches_until_completion() {
+        let entry = "stepping/entry.mjs";
+        let program = module_code("let index = 0; while (index < 2) { index++; } globalThis.moduleStepped = index; export const answer = index;");
+        let entry_offset = module_entry_offset(&program);
+        let instruction_offsets: Vec<_> = program
+            .instructions()
+            .map(|instruction| instruction.offset as u32)
+            .filter(|offset| *offset >= entry_offset)
+            .collect();
+        let modules = HashMap::from([(entry.to_string(), program)]);
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_module_graph_until_debugger_pause(entry, &modules, entry_offset),
+            Ok(VmDebuggerExecutionState::Paused {
+                bytecode_offset: entry_offset
+            })
+        );
+        let mut offsets = vec![entry_offset];
+        let mut completed = false;
+        for _ in 0..256 {
+            match vm.step_debugger_module_root_instruction().unwrap() {
+                VmDebuggerExecutionState::Paused { bytecode_offset } => {
+                    assert!(instruction_offsets.contains(&bytecode_offset));
+                    offsets.push(bytecode_offset);
+                    assert!(vm.debugger_module_continuation.is_some());
+                }
+                VmDebuggerExecutionState::Completed => {
+                    completed = true;
+                    break;
+                }
+            }
+        }
+        assert!(completed, "bounded module steps must complete");
+        assert!(
+            offsets
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                < offsets.len()
+        );
+        assert!(vm.debugger_module_continuation.is_none());
+        assert_eq!(
+            vm.execute_script(&code("globalThis.moduleStepped"))
+                .unwrap(),
+            Value::Number(2.0)
+        );
+        assert!(matches!(
+            vm.step_debugger_module_root_instruction(),
+            Err(RuntimeError::Unsupported(
+                "no debugger-paused root module is available"
+            ))
+        ));
     }
 
     #[test]

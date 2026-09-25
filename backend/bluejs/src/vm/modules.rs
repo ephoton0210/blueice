@@ -547,6 +547,7 @@ impl Vm {
 
     pub(super) fn resume_debugger_module_inner(
         &mut self,
+        suspension_point: Option<InterpreterSuspensionPoint>,
     ) -> Result<VmDebuggerExecutionState, RuntimeError> {
         let continuation =
             self.debugger_module_continuation
@@ -569,11 +570,49 @@ impl Vm {
         self.restore_module_execution(execution);
         debug_assert!(self.evaluating_linked.is_none());
         self.evaluating_linked = Some(std::mem::take(&mut graph.linked));
-        let outcome = self.interpret(&code, &mut iterators, pc, None, None, Some((handlers, 0)));
+        let outcome = self.interpret(
+            &code,
+            &mut iterators,
+            pc,
+            None,
+            suspension_point,
+            Some((handlers, 0)),
+        );
         graph.linked = self
             .evaluating_linked
             .take()
             .expect("paused module records return after the entry body runs");
+        let outcome = match outcome {
+            Ok(InterpreterExit::Suspend {
+                pc,
+                iterators,
+                handlers,
+            }) => {
+                let execution = self.suspend_module_execution();
+                let record = graph
+                    .linked
+                    .get_mut(&module)
+                    .expect("the stepped entry remains in its linked graph");
+                record.cells = execution.cells.clone();
+                record.suspended = true;
+                self.active_module_name = previous_module.clone();
+                self.debugger_module_continuation = Some(ModuleDebuggerContinuation {
+                    module,
+                    code,
+                    pc,
+                    execution,
+                    iterators,
+                    handlers,
+                    previous_module,
+                });
+                self.store_module_graph(graph, false);
+                return Ok(VmDebuggerExecutionState::Paused {
+                    bytecode_offset: u32::try_from(pc)
+                        .expect("verified BlueJS module offsets fit the debugger wire range"),
+                });
+            }
+            other => other,
+        };
         self.active_module_name = previous_module;
         let mut awaiting = false;
         let mut result = match outcome {
@@ -611,9 +650,9 @@ impl Vm {
             Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
                 "yield requires a generator function".into(),
             )),
-            Ok(InterpreterExit::Suspend { .. }) => Err(RuntimeError::Unsupported(
-                "module debugger resume unexpectedly suspended",
-            )),
+            Ok(InterpreterExit::Suspend { .. }) => {
+                unreachable!("module debugger suspension was handled before terminal cleanup")
+            }
             Err(error) => Err(error),
         };
         if !awaiting {

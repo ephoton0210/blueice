@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.1.2.** Instruction step and BlueTS source-span step inside
-the module root.
+**Current leaf: C1.1.2.2.** Expose exact module-root instruction step through
+the page runtime and child scheduler.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -252,6 +252,10 @@ channel with explicit owner/client grants.
       - [x] **C1.1.1.4.2** Route the BlueTS ESM child queue through that pair, preserving exact arm/resume state and rejecting unrelated module or stale targets. The child now arms only the attached entry's first evaluate-body point, holds its queue head during `Paused`, resumes the retained graph on request, and still rejects module stepping. An isolated-child regression covers wrong entry and dependency targets, repeated advance, `Paused`/`Resuming`/`Completed`, and stale document rejection.
       - [x] **C1.1.1.4.3** Prove the public source-free state sequence and execution report on a real launcher/core/child BlueTS ESM document. A local-HTTP launcher integration test arms only a verified entry safe point through the public debugger socket, observes all four states, and checks the module's successful source-free script report and the loaded page DOM through the public browser socket.
   - [ ] **C1.1.2** Instruction step and BlueTS source-span step inside the module root.
+    - [x] **C1.1.2.1** Step exactly one instruction in the retained module-root frame and return its actual verified successor or terminal state at the native VM boundary. BlueJS now re-parks the same entry frame after each root instruction and reports the real next offset, including backward loop hits; a native loop regression steps to terminal completion and proves the body result and continuation cleanup.
+    - [ ] **C1.1.2.2** Expose exact module-root instruction step through the page runtime and child scheduler without enabling dependency or nested-frame stepping.
+    - [ ] **C1.1.2.3** Reuse bounded BlueTS source-span stepping for a paused module root under its exact metadata/source receipts.
+    - [ ] **C1.1.2.4** Prove both module-root step modes and state transitions through the public real-process debugger route.
   - [ ] **C1.1.3** Reject a pause/step request carrying a stale generation.
 - [ ] **C1.2** Pause/step a nested frame and resume that same frame; reject stale
   or cross-tab targets.

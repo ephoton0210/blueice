@@ -517,6 +517,23 @@ public browser connection. The native and page-runtime tests separately pin
 single evaluation and retained-frame behavior; this process test proves the
 opaque protocol and scheduler route without exposing source or VM values.
 
+**Module root-step checkpoints (C1.1.2):** Reuse the existing exact root
+instruction-step and bounded BlueTS source-span-step contracts without
+claiming nested or dependency frames. First retain and step one module-root
+instruction in BlueJS (C1.1.2.1), then route its verified successor through
+the page runtime and child queue (C1.1.2.2), apply the existing metadata-bound
+source-span limit there (C1.1.2.3), and close with a public real-process test
+of both modes (C1.1.2.4).
+
+**Native module-root instruction step (C1.1.2.1):** The retained entry frame
+accepts the interpreter's existing after-one-root-instruction suspension.
+Each nonterminal step returns the actual verified successor PC and moves the
+same module execution context back into its GC-visible continuation without
+relinking the graph. A native loop regression observes backward successor
+hits, terminal completion, the final page-global result, and no remaining
+continuation after completion. Nested and dependency frames are still not
+separately addressable.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
