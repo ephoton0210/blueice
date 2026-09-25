@@ -483,16 +483,13 @@ impl Compiler {
                 continue;
             }
             let start = self.offset();
-            let child_index = self.bytecode.functions.len();
+            let child_index = self.metadata_index(self.bytecode.functions.len())?;
             self.function_declaration(statement)?;
-            if self.offset() > start {
-                offsets[index] = Some(start);
-                ranges[index] = Some((start, self.offset()));
-            }
-            if self.bytecode.functions.len() == child_index + 1 {
-                child_indices[index] =
-                    Some(u32::try_from(child_index).map_err(|_| CompileError::ProgramTooLarge)?);
-            }
+            // A successful declaration emits its closure and adds exactly one
+            // direct child. The metadata cap above makes its index a u32.
+            offsets[index] = Some(start);
+            ranges[index] = Some((start, self.offset()));
+            child_indices[index] = Some(child_index);
         }
         Ok(())
     }

@@ -931,3 +931,236 @@ fn structure_epoch_advances_only_when_the_set_of_findable_keys_changes() {
     heap.set_prototype(object, Some(prototype)).unwrap();
     assert!(advanced(&heap), "a new prototype");
 }
+
+#[test]
+fn completion_records_retain_object_references_and_charge_owned_payloads() {
+    let mut heap = Heap::default();
+    let first = heap.alloc_object(None).unwrap();
+    let second = heap.alloc_object(None).unwrap();
+    let values = vec![
+        Value::Object(first),
+        Value::String("payload".into()),
+        Value::Object(second),
+    ];
+    let completion = GeneratorPendingCompletion::TailRecur(values.clone());
+    assert_eq!(completion.references(), vec![first, second]);
+    assert_eq!(
+        completion.managed_bytes(),
+        values.len() * size_of::<Value>() + values.iter().map(Value::payload_bytes).sum::<usize>()
+    );
+
+    for completion in [
+        GeneratorPendingCompletion::Throw(Value::Object(first)),
+        GeneratorPendingCompletion::Return(Value::Object(first)),
+    ] {
+        assert_eq!(completion.references(), vec![first]);
+        assert_eq!(completion.managed_bytes(), 0);
+    }
+    for completion in [
+        GeneratorPendingCompletion::ReferenceError("message".into()),
+        GeneratorPendingCompletion::TypeError("message".into()),
+        GeneratorPendingCompletion::RangeError("message".into()),
+        GeneratorPendingCompletion::SyntaxError("message".into()),
+        GeneratorPendingCompletion::Test262("message".into()),
+    ] {
+        assert!(completion.references().is_empty());
+        assert_eq!(completion.managed_bytes(), "message".len());
+    }
+
+    let mut queue = AsyncGeneratorControl::default();
+    queue.requests.push_back(AsyncGeneratorRequest {
+        id: 0,
+        completion: AsyncGeneratorCompletion::ResumeThrow(Value::Object(first)),
+        target: second,
+    });
+    assert_eq!(queue.references(), vec![second, first]);
+    assert_eq!(queue.managed_bytes(), size_of::<AsyncGeneratorRequest>());
+}
+
+#[test]
+fn shared_buffer_rejects_overflow_and_notifies_only_matching_waiters() {
+    let buffer = SharedBuffer::new(4);
+    assert_eq!(buffer.copy(usize::MAX, 2), None);
+    assert!(!buffer.write(usize::MAX, &[1, 2]));
+    assert!(!buffer.write(4, &[1]));
+    assert_eq!(buffer.modify(usize::MAX, 2, |_| true), None);
+    assert_eq!(buffer.copy(0, 4), Some(vec![0; 4]));
+
+    let waiter = buffer.register_waiter(0);
+    assert_eq!(buffer.notify(4, 1), 0);
+    assert_eq!(buffer.notify(0, 0), 0);
+    assert_eq!(buffer.notify(0, 1), 1);
+    assert_eq!(
+        buffer.wait_for(waiter, Some(Duration::ZERO)),
+        SharedWaitResult::Ok
+    );
+}
+
+#[test]
+fn collection_index_keeps_other_entries_when_a_hash_bucket_is_shared() {
+    let first = Value::String("first".into());
+    let second = first.clone();
+    let mut collection = OrderedCollection {
+        entries: vec![
+            Some((first.clone(), Value::Number(1.0))),
+            Some((second.clone(), Value::Number(2.0))),
+        ],
+        indexes: HashMap::from([(same_value_zero_hash(&first), vec![0, 1])]),
+        len: 2,
+    };
+    // Two slots with one indexed key exercise bucket removal independently
+    // of a chance 64-bit hash collision.
+    assert_eq!(
+        collection.delete(&first),
+        Some((first.clone(), Value::Number(1.0)))
+    );
+    assert_eq!(collection.len(), 1);
+    assert_eq!(collection.indexes.values().next(), Some(&vec![1]));
+    assert_eq!(collection.get(&first), Some(&Value::Number(2.0)));
+    assert_eq!(
+        collection.delete(&first),
+        Some((second, Value::Number(2.0)))
+    );
+    assert_eq!(collection.delete(&first), None);
+}
+
+#[test]
+fn finalization_registry_allocation_traces_holdings_but_not_weak_targets() {
+    let mut heap = Heap::default();
+    let prototype = heap.alloc_object(None).unwrap();
+    let callback = heap.alloc_object(None).unwrap();
+    let target = heap.alloc_object(None).unwrap();
+    let holdings = heap.alloc_object(None).unwrap();
+    let registry = ObjectKind::FinalizationRegistry {
+        cleanup_callback: Value::Object(callback),
+        cells: vec![FinalizationCell {
+            target: Some(WeakCollectionKey::Object(target)),
+            holdings: Value::Object(holdings),
+            unregister_token: None,
+        }],
+    };
+    assert_eq!(
+        allocation_references(&registry, Some(prototype)),
+        vec![prototype, callback, holdings]
+    );
+    assert!(WeakCollectionKey::from_value(&Value::Bool(false)).is_none());
+}
+
+#[test]
+fn same_value_zero_index_hashes_every_key_category_consistently() {
+    let symbol = JsSymbol::new(Some("identity".into()));
+    let keys = [
+        Value::Undefined,
+        Value::Null,
+        Value::Bool(true),
+        Value::BigInt(BigInt::from(123)),
+        Value::Symbol(symbol),
+    ];
+    let mut collection = OrderedCollection::default();
+    for (index, key) in keys.iter().enumerate() {
+        collection.set(key.clone(), Value::Number(index as f64));
+        assert_eq!(collection.get(key), Some(&Value::Number(index as f64)));
+    }
+    collection.set(Value::Number(0.0), Value::Bool(true));
+    collection.set(Value::Number(f64::NAN), Value::Bool(false));
+    assert_eq!(
+        collection.get(&Value::Number(-0.0)),
+        Some(&Value::Bool(true))
+    );
+    assert_eq!(
+        collection.get(&Value::Number(-f64::NAN)),
+        Some(&Value::Bool(false))
+    );
+}
+
+#[test]
+fn heap_errors_identify_invalid_buffer_ranges_and_uninitialized_exports() {
+    assert_eq!(
+        HeapError::InvalidBufferRange.to_string(),
+        "invalid ArrayBuffer view range"
+    );
+    assert_eq!(
+        HeapError::UninitializedModuleExport.to_string(),
+        "module namespace export is uninitialized"
+    );
+}
+
+#[test]
+fn intl_host_records_only_trace_their_javascript_prototype() {
+    use blueice_ecma402 as ecma402;
+
+    let mut heap = Heap::default();
+    let prototype = heap.alloc_object(None).unwrap();
+    let display_names = ecma402::DisplayNames::try_new(
+        &[],
+        ecma402::DisplayNamesOptions {
+            locale_matcher: Default::default(),
+            display_type: ecma402::DisplayNamesType::Language,
+            style: Default::default(),
+            fallback: Default::default(),
+            language_display: Default::default(),
+        },
+    )
+    .unwrap();
+    let duration_format = ecma402::DurationFormat::try_new(&[], Default::default()).unwrap();
+    let list_format = ecma402::ListFormat::try_new(&[], Default::default()).unwrap();
+    let plural_rules = crate::intl::PluralRules {
+        data: ecma402::PluralRules::try_new(&[], Default::default()).unwrap(),
+        rule_type: Default::default(),
+        notation: "standard".into(),
+        compact_display: None,
+        minimum_integer_digits: 1,
+        minimum_fraction_digits: 0,
+        maximum_fraction_digits: 3,
+        minimum_significant_digits: None,
+        maximum_significant_digits: None,
+        rounding_increment: 1,
+        rounding_mode: "halfExpand".into(),
+        rounding_priority: "auto".into(),
+        trailing_zero_display: "auto".into(),
+    };
+    let relative_time_format =
+        ecma402::RelativeTimeFormat::try_new(&[], Default::default()).unwrap();
+    let segments = Rc::new(crate::intl::Segments {
+        input: "abc".into(),
+        records: vec![],
+    });
+    for kind in [
+        ObjectKind::DisplayNames(Rc::new(display_names)),
+        ObjectKind::DurationFormat(Rc::new(duration_format)),
+        ObjectKind::ListFormat(Rc::new(list_format)),
+        ObjectKind::PluralRules(Rc::new(plural_rules)),
+        ObjectKind::RelativeTimeFormat(Rc::new(relative_time_format)),
+        ObjectKind::SegmentIterator {
+            data: segments,
+            next: 0,
+        },
+    ] {
+        assert_eq!(
+            allocation_references(&kind, Some(prototype)),
+            vec![prototype]
+        );
+    }
+}
+
+#[test]
+#[should_panic(expected = "a duration has no date-time fields")]
+fn duration_cannot_be_interpreted_as_a_plain_date_time() {
+    let duration = TemporalValue {
+        kind: TemporalKind::Duration,
+        duration: None,
+        year: 0,
+        month: 0,
+        day: 0,
+        hour: 0,
+        minute: 0,
+        second: 0,
+        millisecond: 0,
+        microsecond: 0,
+        nanosecond: 0,
+        epoch_nanoseconds: BigInt::from(0),
+        calendar: String::new(),
+        time_zone: String::new(),
+    };
+    duration.plain_epoch_milliseconds();
+}

@@ -10084,7 +10084,7 @@ mod tests {
             PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
             reply => panic!("expected private BlueTS metadata, got {reply:?}"),
         };
-        let (source_id, first, second) = {
+        let (source_id, expected_breakpoints, past_last_byte) = {
             let handle =
                 host.documents[&7].debugger_programs[&program.program_handle].runtime_handle;
             let retained = host
@@ -10093,17 +10093,28 @@ mod tests {
                 .unwrap();
             let mut entries = retained.safe_point_map().entries.iter().collect::<Vec<_>>();
             entries.sort_by_key(|entry| entry.start_byte);
+            let source = retained
+                .static_info()
+                .sources
+                .iter()
+                .find(|source| source.module == entries[0].source)
+                .expect("the lowered source must have a compiler source ID");
+            let expected_breakpoints = [entries[0].start_byte, entries[0].end_byte].map(|byte| {
+                let safe_point = match retained.breakpoint_at_or_after(&source.module, byte) {
+                    DirectSafePointBinding::Bound(bound) => Some(PageHostDebuggerSafePoint {
+                        program,
+                        code_unit_ordinal: bound.code_unit.ordinal(),
+                        bytecode_offset: bound.bytecode_offset,
+                    }),
+                    DirectSafePointBinding::Unbound => None,
+                };
+                (u32::try_from(byte).unwrap(), safe_point)
+            });
             (
-                retained
-                    .static_info()
-                    .sources
-                    .iter()
-                    .find(|source| source.module == entries[0].source)
-                    .expect("the lowered source must have a compiler source ID")
-                    .id
-                    .0,
-                entries[0].clone(),
-                entries[1].clone(),
+                source.id.0,
+                expected_breakpoints,
+                u32::try_from(entries.iter().map(|entry| entry.end_byte).max().unwrap()).unwrap()
+                    + 10,
             )
         };
         let request = |source_byte| PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
@@ -10114,10 +10125,7 @@ mod tests {
             source_id,
             source_byte,
         };
-        for (source_byte, entry) in [
-            (u32::try_from(first.start_byte).unwrap(), &first),
-            (u32::try_from(first.end_byte).unwrap(), &second),
-        ] {
+        for (source_byte, safe_point) in expected_breakpoints {
             assert_eq!(
                 host.handle_request(request(source_byte)),
                 PageHostReply::DebuggerBlueTsSourceBreakpoint {
@@ -10127,23 +10135,19 @@ mod tests {
                     metadata,
                     source_id,
                     source_byte,
-                    safe_point: Some(PageHostDebuggerSafePoint {
-                        program,
-                        code_unit_ordinal: entry.code_unit.ordinal(),
-                        bytecode_offset: entry.bytecode_offset,
-                    }),
+                    safe_point,
                 }
             );
         }
         assert_eq!(
-            host.handle_request(request(u32::try_from(second.end_byte).unwrap() + 10)),
+            host.handle_request(request(past_last_byte)),
             PageHostReply::DebuggerBlueTsSourceBreakpoint {
                 tab_id: 7,
                 document_generation: 1,
                 program,
                 metadata,
                 source_id,
-                source_byte: u32::try_from(second.end_byte).unwrap() + 10,
+                source_byte: past_last_byte,
                 safe_point: None,
             }
         );
@@ -11262,12 +11266,17 @@ mod tests {
                 .debug_registry
                 .get(host.runtime.program_registry(), handle)
                 .unwrap();
+            let slow_start = source.find("let slow:").unwrap();
             let entry = retained
                 .safe_point_map()
                 .entries
                 .iter()
-                .filter(|entry| entry.code_unit.ordinal() == 0)
-                .nth(1)
+                .filter(|entry| {
+                    entry.code_unit.ordinal() == 0
+                        && entry.start_byte <= slow_start
+                        && slow_start < entry.end_byte
+                })
+                .min_by_key(|entry| entry.bytecode_offset)
                 .expect("the long second statement must have a bound root entry");
             let source_id = retained
                 .static_info()

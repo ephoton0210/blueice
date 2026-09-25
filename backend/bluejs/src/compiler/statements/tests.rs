@@ -28,6 +28,30 @@ fn bare_compiler() -> Compiler {
 }
 
 #[test]
+fn top_level_function_provenance_rejects_an_exhausted_child_table_before_emitting() {
+    let program = crate::parse("function f() {}").unwrap();
+    let mut compiler = bare_compiler();
+    compiler.max_metadata_entries = 0;
+    let mut offsets = [None];
+    let mut ranges = [None];
+    let mut child_indices = [None];
+    assert_eq!(
+        compiler.top_level_function_declarations(
+            &program.body,
+            &mut offsets,
+            &mut ranges,
+            &mut child_indices,
+        ),
+        Err(CompileError::ProgramTooLarge)
+    );
+    assert!(compiler.bytecode.code.is_empty());
+    assert!(compiler.bytecode.functions.is_empty());
+    assert_eq!(offsets, [None]);
+    assert_eq!(ranges, [None]);
+    assert_eq!(child_indices, [None]);
+}
+
+#[test]
 fn malformed_internal_class_fields_are_rejected() {
     let assign = |target| {
         Stmt::Expr(Expr::Assign {

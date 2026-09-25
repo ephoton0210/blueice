@@ -3137,13 +3137,16 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
     for capability in [
         blueice_ipc::debugger::DebuggerCapability::Stack,
         blueice_ipc::debugger::DebuggerCapability::Scopes,
-        blueice_ipc::debugger::DebuggerCapability::BoundedValues,
     ] {
         assert!(capabilities.reports.iter().any(|report| {
             report.capability == capability
-                && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Planned
+                && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
         }));
     }
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::BoundedValues
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Planned
+    }));
 
     let program = match debugger_request(
         &mut debugger,
