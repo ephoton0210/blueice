@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.2.3.2.** Reject a predecessor child's frame after Launcher
-cutover, even if its replacement reuses numeric page/program identities.
+**Current leaf: C2.1.1.** Cap paused-frame stack and scope entries and report
+truncation explicitly before adding BlueTS coordinates in C2.1.2.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -258,7 +258,7 @@ channel with explicit owner/client grants.
     - [x] **C1.1.2.3** Reuse bounded BlueTS source-span stepping for a paused module root under its exact metadata/source receipts. The child now admits the armed BlueTS entry to the same 256-instruction source-span budget and metadata/source validation as classic scripts. A module regression rejects a wrong source ID, advances to the next bound source span, and resumes the same graph to completion; existing classic limit tests exercise the shared cap.
     - [x] **C1.1.2.4** Prove both module-root step modes and state transitions through the public real-process debugger route. A launcher/core/child integration test pauses an admitted BlueTS ESM entry, requests one root instruction through the public socket, checks its inventoried successor, then requests a metadata-receipted source-span step and checks the distinct bound span. It resumes to `Completed` and verifies the module execution report; the full real-process debugger suite passes.
   - [x] **C1.1.3** Reject a pause/step request carrying a stale generation. After a real HTTP reload, the same debugger stream receives `StaleRealm` for its previous module's root-breakpoint arm, root-instruction step, and metadata-receipted BlueTS source-span step; the successor realm has a distinct generation and remains discoverable.
-- [ ] **C1.2** Pause/step a nested frame and resume that same frame; reject stale
+- [x] **C1.2** Pause/step a nested frame and resume that same frame; reject stale
   or cross-tab targets.
   - [x] **C1.2.1** Pause inside a nested call frame and step within that frame.
     - [x] **C1.2.1.1** Specify the first nested-frame pause/step boundary, exact invocation identity, continuation lifetime, and fail-closed unsupported cases in PLAN.md. The decision distinguishes static code-unit safe points from invocation handles, constrains the initial synchronous direct-call shape, requires GC-visible parent/child continuations and exact successor steps, and reserves protocol widening until the entire route is wired.
@@ -289,9 +289,9 @@ channel with explicit owner/client grants.
     - [x] **C1.2.2.1** Add exact-frame resume to the BlueJS VM and page runtime for classic and entry-module roots, preserving caller/graph completion and rejecting wrong or returned frames. The VM runs the retained child to return without a step suspension, then parks its original caller at the next root instruction. The page runtime requires its complete live frame tuple and revokes it on return. Classic serial/call-count and linked-module graph/identity regressions pass; 524 non-environmental BlueJS library tests pass.
     - [x] **C1.2.2.2** Route that resume through the child scheduler, page-host IPC, and core child proxy under the existing nested-frame capability; distinguish its requested state from one-instruction stepping. Private page-host v36 carries an exact frame resume command, reply, and `NestedResuming` state. The child admits only its actual paused frame and later returns to the original classic or BlueTS module root; the core accepts only its own live reminted handle and revokes it on return. Child classic/module regressions and a real BlueTS child/core socket regression pass. The public resume command remains disabled until C1.2.2.3.
     - [x] **C1.2.2.3** Add a separate public frame-resume command and reply, bump the public protocol only when it works over the socket, and prove exact-frame completion plus stale-handle denial in a real BlueTS page. Public debugger v33 distinguishes `ResumeNestedExecution`, `NestedResumeRequested`, and `NestedResuming` from root resume and nested step. A launcher-supervised BlueTS page steps and resumes its exact core-owned frame through the public socket, rejects wrong/root-alias handles while active, then rejects that frame after return; root completion and its BlueTS report remain correct. The complete 12-test public debugger suite passes.
-  - [ ] **C1.2.3** Reject a cross-tab target and a target from a predecessor child.
+  - [x] **C1.2.3** Reject a cross-tab target and a target from a predecessor child.
     - [x] **C1.2.3.1** Prove a live frame from one tab cannot step or resume another live tab through the public debugger socket, even when both tabs have the same BlueTS program shape. A real Launcher test opens two live BlueTS pages with the same direct inner function, pauses each on its own core-owned frame, and forges both cross-tab frame/program combinations. Both public controls reject both forgeries without consuming either original frame; the original handles still resume their own pages.
-    - [ ] **C1.2.3.2** Prove a frame from a predecessor supervised child cannot control a successor after Launcher cutover, including when tab/document/program numeric identities are replayed; harden core-minted handle identity if the public regression exposes a collision.
+    - [x] **C1.2.3.2** Prove a frame from a predecessor supervised child cannot control a successor after Launcher cutover, including when tab/document/program numeric identities are replayed; harden core-minted handle identity if the public regression exposes a collision. The real cutover regression exposed that both cores minted `frame_handle = 1` for otherwise identical second-generation BlueTS realms/programs. Public debugger v34 now binds each monotonic handle to a core-instance identity containing the process ID and 96 OS-random bits; failure to obtain entropy fails closed. The predecessor's public step/resume requests are denied after cutover, while the successor remains paused and its own handle resumes normally.
 
 #### C2. Inspect execution within fixed budgets.
 

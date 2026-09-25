@@ -2733,6 +2733,7 @@ fn child_execution_state(
                     let public_frame = DebuggerFrame {
                         program,
                         code_unit_ordinal: frame.code_unit_ordinal,
+                        core_instance: frame.core_instance,
                         frame_handle: frame.frame_handle,
                     };
                     let safe_point = DebuggerSafePoint {
@@ -2765,6 +2766,7 @@ fn child_execution_state(
                     let public_frame = DebuggerFrame {
                         program,
                         code_unit_ordinal: frame.code_unit_ordinal,
+                        core_instance: frame.core_instance,
                         frame_handle: frame.frame_handle,
                     };
                     if !public_frame.is_well_formed() {
@@ -2781,6 +2783,7 @@ fn child_execution_state(
                     let public_frame = DebuggerFrame {
                         program,
                         code_unit_ordinal: frame.code_unit_ordinal,
+                        core_instance: frame.core_instance,
                         frame_handle: frame.frame_handle,
                     };
                     if !public_frame.is_well_formed() {
@@ -2928,6 +2931,7 @@ fn continue_child_nested_execution(
         program_handle: frame.program.program_handle,
         program_generation: frame.program.program_generation,
         code_unit_ordinal: frame.code_unit_ordinal,
+        core_instance: frame.core_instance,
         frame_handle: frame.frame_handle,
     };
     let result = if resume {

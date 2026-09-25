@@ -89,6 +89,7 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
+use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -106,6 +107,21 @@ const CHILD_DOCUMENT_POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// replaced in this core process. Exhaustion fails closed rather than aliasing
 /// a predecessor invocation.
 static NEXT_CORE_DEBUGGER_FRAME_HANDLE: AtomicU64 = AtomicU64::new(1);
+/// The same numeric handle may be minted by a successor core. Bind it to a
+/// distinct core instance as well: overlapping processes have different PIDs,
+/// and 96 random bits prevent a later PID reuse from recreating this identity.
+/// If OS randomness is unavailable, nested-frame minting fails closed.
+static CORE_DEBUGGER_INSTANCE: OnceLock<Option<[u8; 16]>> = OnceLock::new();
+
+fn core_debugger_instance() -> Result<[u8; 16], JavaScriptPageDebuggerError> {
+    (*CORE_DEBUGGER_INSTANCE.get_or_init(|| {
+        let mut identity = [0_u8; 16];
+        identity[..4].copy_from_slice(&std::process::id().to_le_bytes());
+        getrandom::fill(&mut identity[4..]).ok()?;
+        Some(identity)
+    }))
+    .ok_or(JavaScriptPageDebuggerError::ResourceLimit)
+}
 
 fn pump_script_requests_during_child_wait(
     script_requests: &ScriptRequestReceiver,
@@ -4549,12 +4565,14 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
                 current.checked_add(1)
             })
             .map_err(|_| JavaScriptPageDebuggerError::ResourceLimit)?;
+        let core_instance = core_debugger_instance()?;
         let public = JavaScriptPageDebuggerFrame {
             tab_id,
             document_generation,
             program_handle,
             program_generation,
             code_unit_ordinal: child.code_unit_ordinal,
+            core_instance,
             frame_handle,
         };
         self.debugger_nested_frames

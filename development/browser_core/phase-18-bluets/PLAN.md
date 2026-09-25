@@ -684,6 +684,20 @@ either tab's program identity around the other's frame handle fails for both
 step and resume, while both genuine handles remain usable. A matching static
 code-unit ordinal therefore cannot cross the tab/realm ownership boundary.
 
+**Predecessor-child denial across cutover (C1.2.3.2):** A real Launcher cutover
+test reproduces the dangerous case: two core/child generations replay the same
+BlueTS page to the same tab, document generation, and program numbers, and
+their first local frame counters both mint `1`. Before hardening, the old
+public frame was numerically identical to the successor's. Public debugger
+v34 now pairs the monotonic handle with a core-instance identity: the 32-bit
+process ID guarantees distinction while predecessor and successor overlap
+during cutover, and 96 OS-random bits protect against later PID reuse. Core
+fails closed if entropy is unavailable. The core proxy compares the whole
+frame tuple, including instance identity, before sending anything to the
+child; the child invocation serial remains private. The real socket test now
+rejects both old step and resume without disturbing the successor's own
+paused invocation.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

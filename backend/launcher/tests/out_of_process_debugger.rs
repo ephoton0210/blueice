@@ -22,16 +22,23 @@ use blueice_ipc::debugger::{
     DEBUGGER_PROTOCOL_VERSION,
 };
 use blueice_ipc::{read_server_message, write_client_message, ClientMessage, ServerMessage};
+use blueice_launcher::control::{
+    read_control_reply, write_control_request, ControlReply, ControlRequest,
+};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+/// Each test owns a full launcher/core/child tree. Running several at once
+/// can exhaust the debugger's intentionally short pending-admission window.
+static LAUNCHER_DEBUGGER_TEST_LOCK: Mutex<()> = Mutex::new(());
 const FIRST_BLUETS_SOURCE: &str = "export interface PrivateContract { enabled: boolean; }\r\n/* 🚀 */ const privateBlueTsMetadata: number = 42;";
 const SOURCE_STEP_BLUETS_SOURCE: &str =
     "const first: number = 1; const second: number = first + 1; const third: number = second + 1;";
@@ -100,6 +107,7 @@ struct StaticMetadataPolicy {
 }
 
 struct LauncherProcess {
+    _test_guard: MutexGuard<'static, ()>,
     child: Child,
     rendezvous_socket: PathBuf,
     control_socket: PathBuf,
@@ -116,6 +124,9 @@ impl LauncherProcess {
         gatekeeper_socket: &Path,
         policy: StaticMetadataPolicy,
     ) -> Self {
+        let test_guard = LAUNCHER_DEBUGGER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let rendezvous_socket = unique_path("rendezvous");
         let control_socket = unique_path("control");
         let debugger_socket = unique_path("debugger");
@@ -202,6 +213,7 @@ impl LauncherProcess {
         }
         let child = command.spawn().expect("blueice-launcher must spawn");
         let mut process = Self {
+            _test_guard: test_guard,
             child,
             rendezvous_socket,
             control_socket,
@@ -952,7 +964,6 @@ fn public_socket_rejects_cross_tab_nested_frames_with_two_live_bluets_pages() {
     let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).unwrap();
-    navigate(&mut browser, &url);
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
     assert!(matches!(
         debugger_request(
@@ -964,6 +975,7 @@ fn public_socket_rejects_cross_tab_nested_frames_with_two_live_bluets_pages() {
         ),
         DebuggerReply::HelloAck { .. }
     ));
+    navigate(&mut browser, &url);
     let first_realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,
@@ -1039,6 +1051,133 @@ fn public_socket_rejects_cross_tab_nested_frames_with_two_live_bluets_pages() {
             DebuggerReply::NestedResumeRequested { frame }
         );
     }
+
+    fixture.join().unwrap();
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn public_socket_rejects_predecessor_frame_after_supervised_child_cutover() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        for _ in 0..4 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let source = "function inner(): number { return 4; } globalThis.answer = inner() + 1;";
+            let body = format!(
+                "<main>cutover-nested-frame</main><script type=\"application/x-blueice-typescript\">{source}</script>"
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
+    });
+    let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    navigate(&mut browser, &url);
+    navigate(&mut browser, &url);
+    let mut predecessor_debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert!(matches!(
+        debugger_request(
+            &mut predecessor_debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            },
+        ),
+        DebuggerReply::HelloAck { .. }
+    ));
+    let predecessor_realm = one_realm(debugger_request(
+        &mut predecessor_debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let (predecessor_program, predecessor_frame) =
+        arm_first_nested_frame(&mut predecessor_debugger, predecessor_realm);
+
+    let mut control = UnixStream::connect(&launcher.control_socket).unwrap();
+    write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
+    assert_eq!(
+        read_control_reply(&mut control).unwrap(),
+        ControlReply::CutoverDone { tabs_migrated: 1 }
+    );
+    drop(predecessor_debugger);
+    let mut successor_browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut successor_browser).unwrap();
+    navigate(&mut successor_browser, &url);
+    let mut successor_debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert!(matches!(
+        debugger_request(
+            &mut successor_debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            },
+        ),
+        DebuggerReply::HelloAck { .. }
+    ));
+    let successor_realm = one_realm(debugger_request(
+        &mut successor_debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let (successor_program, successor_frame) =
+        arm_first_nested_frame(&mut successor_debugger, successor_realm);
+    assert_eq!(successor_realm, predecessor_realm);
+    assert_eq!(successor_program, predecessor_program);
+    assert_eq!(successor_frame.frame_handle, predecessor_frame.frame_handle);
+    assert_ne!(
+        successor_frame.core_instance,
+        predecessor_frame.core_instance
+    );
+    for request in [
+        DebuggerRequest::StepNestedInstruction {
+            frame: predecessor_frame,
+        },
+        DebuggerRequest::ResumeNestedExecution {
+            frame: predecessor_frame,
+        },
+    ] {
+        assert!(matches!(
+            debugger_request(&mut successor_debugger, request),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                ..
+            }
+        ));
+    }
+    assert!(matches!(
+        debugger_request(
+            &mut successor_debugger,
+            DebuggerRequest::GetExecutionState {
+                program: successor_program,
+            },
+        ),
+        DebuggerReply::ExecutionState {
+            state: DebuggerExecutionState::NestedPaused { frame: same, .. },
+            ..
+        } if same == successor_frame
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut successor_debugger,
+            DebuggerRequest::ResumeNestedExecution {
+                frame: successor_frame,
+            },
+        ),
+        DebuggerReply::NestedResumeRequested {
+            frame: successor_frame,
+        }
+    );
 
     fixture.join().unwrap();
     launcher.shutdown();

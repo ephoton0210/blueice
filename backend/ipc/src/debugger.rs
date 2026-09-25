@@ -9,7 +9,9 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version thirty-three adds
+//! and an opt-in root-code-unit pause/resume seam. Version thirty-four binds
+//! each active frame handle to its core instance across supervised cutover.
+//! Version thirty-three adds
 //! an exact active-frame resume command and distinct resuming state. Version
 //! thirty-two adds a
 //! separately gated, core-reminted active nested-frame identity and exact
@@ -76,7 +78,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 33;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 34;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -718,12 +720,18 @@ impl DebuggerSafePoint {
 pub struct DebuggerFrame {
     pub program: DebuggerProgram,
     pub code_unit_ordinal: u32,
+    /// A core-instance identity: PID plus 96 random bits. It prevents a
+    /// successor core's fresh handle counter from aliasing its predecessor.
+    pub core_instance: [u8; 16],
     pub frame_handle: u64,
 }
 
 impl DebuggerFrame {
     pub fn is_well_formed(self) -> bool {
-        self.program.is_well_formed() && self.code_unit_ordinal != 0 && self.frame_handle != 0
+        self.program.is_well_formed()
+            && self.code_unit_ordinal != 0
+            && self.core_instance != [0; 16]
+            && self.frame_handle != 0
     }
 
     pub fn matches_safe_point(self, safe_point: DebuggerSafePoint) -> bool {
@@ -2693,11 +2701,17 @@ mod tests {
         let frame = DebuggerFrame {
             program,
             code_unit_ordinal: 1,
+            core_instance: [7; 16],
             frame_handle: 19,
         };
         assert!(frame.matches_safe_point(safe_point));
         assert!(!DebuggerFrame {
             frame_handle: 0,
+            ..frame
+        }
+        .is_well_formed());
+        assert!(!DebuggerFrame {
+            core_instance: [0; 16],
             ..frame
         }
         .is_well_formed());

@@ -323,6 +323,8 @@ pub struct JavaScriptPageDebuggerFrame {
     pub program_handle: u64,
     pub program_generation: u64,
     pub code_unit_ordinal: u32,
+    /// Binds the public handle to this core instance across replacement.
+    pub core_instance: [u8; 16],
     /// Process-unique core handle; the child invocation serial stays inside
     /// the out-of-process executor's exact active-frame association.
     pub frame_handle: u64,
