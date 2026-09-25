@@ -21,10 +21,17 @@ impl<'a> ModuleChecker<'a> {
                 }
                 let spread = self.infer_expression(&tokens[start..end], scope);
                 let (spread, exhausted) = self.expanded_record_fields(spread);
-                if exhausted && self.record_spread_inference_exhausted.get().is_none() {
-                    self.record_spread_inference_exhausted.set(Some((
+                if exhausted
+                    || (spread.is_none() && self.record_spread_inference_failure.get().is_none())
+                {
+                    self.record_spread_inference_failure.set(Some((
                         tokens.first().expect("record has opening brace").start,
                         tokens.last().expect("record has closing brace").end,
+                        if exhausted {
+                            RecordSpreadFailure::ResourceLimit
+                        } else {
+                            RecordSpreadFailure::UnprovenSource
+                        },
                     )));
                 }
                 let Some(spread) = spread else {

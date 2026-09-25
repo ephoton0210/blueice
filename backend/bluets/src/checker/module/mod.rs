@@ -7,6 +7,12 @@
 use super::*;
 use std::cell::Cell;
 
+#[derive(Clone, Copy)]
+enum RecordSpreadFailure {
+    ResourceLimit,
+    UnprovenSource,
+}
+
 pub(super) struct ModuleChecker<'a> {
     project: &'a Project,
     module: &'a Module,
@@ -22,7 +28,8 @@ pub(super) struct ModuleChecker<'a> {
     function_implementations: BTreeSet<String>,
     type_parameters: BTreeSet<String>,
     max_type_expansions: usize,
-    record_spread_inference_exhausted: Cell<Option<(usize, usize)>>,
+    /// Inference uses `&self`; checked validation emits its first failure.
+    record_spread_inference_failure: Cell<Option<(usize, usize, RecordSpreadFailure)>>,
 }
 
 mod binding;

@@ -684,5 +684,18 @@ mod tests {
                 "{source}: {diagnostics:#?}"
             );
         }
+        let opaque = "interface Holder { event: BlueIceClickEvent; } function erase(value: Holder): any { return value; } function write(holder: Holder): void { const copied = { ...erase(holder) }; copied.event.type = 'click'; }";
+        let error = compile(opaque)
+            .err()
+            .expect("opaque record spread must fail before runtime");
+        let crate::BridgeError::BlueTs(diagnostics) = error else {
+            panic!("expected BlueTS diagnostics, got {error:?}");
+        };
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("record spread source")),
+            "{diagnostics:#?}"
+        );
     }
 }

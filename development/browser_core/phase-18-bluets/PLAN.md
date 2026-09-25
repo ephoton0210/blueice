@@ -338,8 +338,15 @@ readonly event; a definite explicit field or required spread still overrides
 it. Mutable-only union spreads remain writable. The verified event-v1 bridge
 rejects a readonly union-spread alias before runtime. Exhausting the
 type-expansion budget emits a resource diagnostic rather than allowing an
-`unknown` alias to pass. Unknown/non-record branches still need a sound
-qualifier policy, so B4.2 remains open.
+`unknown` alias to pass.
+
+**Fail-closed opaque record spreads (B4 partial):** In checked mode, a spread
+source that cannot be proven to have a supported record shape now reports a
+type diagnostic, including `any`, `unknown`, and non-record union branches.
+This deliberately narrows dynamic object spread in the checked subset;
+transpile-only mode remains unchanged. The verified event-v1 bridge rejects
+an opaque holder spread before runtime. Other opaque expression forms still
+need a sound qualifier policy, so B4.2 remains open.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

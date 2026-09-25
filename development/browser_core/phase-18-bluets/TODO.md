@@ -208,6 +208,9 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
     explicit opt-out, and an unrelated opaque receiver stays allowed. Any
     form not on the delivered list is therefore rejected, not silently
     accepted.
+    Checked record spreads with `any`, `unknown`, or non-record sources also
+    fail closed with a type diagnostic; an event-v1 bridge test rejects an
+    opaque holder spread before runtime. Transpile-only mode is unchanged.
   - [ ] **B4.2.2** Verify the policy against the event-v1 bridge (public boundary): an
     opaque-receiver write on a click event is rejected before execution.
   - [ ] **B4.2.3** Record known limitations (arithmetic/bitwise compound results,

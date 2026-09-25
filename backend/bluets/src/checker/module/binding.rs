@@ -38,7 +38,7 @@ impl<'a> ModuleChecker<'a> {
             function_implementations: BTreeSet::new(),
             type_parameters: BTreeSet::new(),
             max_type_expansions,
-            record_spread_inference_exhausted: Cell::new(None),
+            record_spread_inference_failure: Cell::new(None),
         }
     }
 
@@ -521,15 +521,21 @@ impl<'a> ModuleChecker<'a> {
                 }
             }
         }
-        if let Some((start, end)) = self.record_spread_inference_exhausted.take() {
-            self.type_error(
-                &SourceSpan::new(&self.module.id, start, end),
-                format!(
-                    "record spread exceeds the {}-type-expansion inference limit",
-                    self.max_type_expansions
+        if let Some((start, end, failure)) = self.record_spread_inference_failure.take() {
+            let (message, code) = match failure {
+                RecordSpreadFailure::ResourceLimit => (
+                    format!(
+                        "record spread exceeds the {}-type-expansion inference limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
                 ),
-                DiagnosticCode::ResourceLimit,
-            );
+                RecordSpreadFailure::UnprovenSource => (
+                    "record spread source must have a provable record type".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                ),
+            };
+            self.type_error(&SourceSpan::new(&self.module.id, start, end), message, code);
         }
     }
 

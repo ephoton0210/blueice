@@ -14,6 +14,7 @@ mod readonly_logical_results;
 mod readonly_opaque_receivers;
 mod readonly_record_spread;
 mod readonly_record_spread_union;
+mod readonly_record_spread_unknown;
 mod readonly_sequence;
 mod readonly_spread_results;
 
