@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.3.1.** Map a thrown error's position to the original BlueTS
-span for classic, module, and nested frames.
+**Current leaf: C2.3.1.2.** Capture exact uncaught BlueJS throw sites without
+changing the VM's catch/finally behavior or any wire protocol.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -346,6 +346,11 @@ channel with explicit owner/client grants.
     - [x] **C2.2.2.3** Prove guessed handles, source-text attempts, cross-realm and unsupported-value refusal on real Launcher-supervised sockets; then check off C2.2.2 and C2.2. The classic/module v38 test refuses local/foreign source-text probes and unit unknown commands identically, keeps framing, and rejects guessed program and foreign-realm value targets as `InvalidTarget`; a separate real BlueTS nested function argument refuses without a partial preview. Both focused tests pass; the classic/module test once hit the previously documented pending-admission timing race and passed unchanged on rerun. The v38 exact-cap budget test and workspace Clippy pass.
 - [ ] **C2.3** Report an exception at its original BlueTS source position.
   - [ ] **C2.3.1** Map a thrown error's position to the original BlueTS span for classic, module, and nested frames.
+    - [x] **C2.3.1.1** Specify uncaught throw-site capture across nested calls and catches, exact compiler-bound mapping with no nearest-span fallback, source-free child/core retention, and a separately granted public location request/reply before changing code. PLAN.md binds the VM sidecar to debugger generation/code-unit/instruction offset, maps only exact live BlueTS attachment records, keeps frontend reports source-free, and reserves existing `OpaqueSafePointSpan` owner/client plus same-stream source receipt for the future public location; private/public version bumps occur only with complete routes.
+    - [ ] **C2.3.1.2** Capture the exact originating BlueJS debugger code-unit generation/ordinal and instruction offset for an uncaught catchable exception; clear caught/superseded sites and prove classic, module, and nested VM behavior without a wire change.
+    - [ ] **C2.3.1.3** Map the retained site only through its exact live BlueTS safe-point attachment in the supervised child, add a versioned private location route, and prove classic/module/nested mapping, unbound refusal, and replacement expiry.
+    - [ ] **C2.3.1.4** Remint the exception location through core behind the existing independent safe-point-span owner/client grant and same-stream source receipt; add the complete public request/reply and protocol bump with typed denial tests.
+    - [ ] **C2.3.1.5** Prove original classic/module/nested UTF-8 and UTF-16 exception spans, missing grants/receipts, caught errors, and stale generations on real Launcher-supervised debugger sockets; then check off C2.3.1 and C2.3.
 
 #### C3. Preserve original static metadata.
 

@@ -1054,8 +1054,8 @@ returns `CapabilityUnavailable`; malformed or unreceipted selectors return
 `InvalidExecutionState` (or the existing more specific stale realm/program
 code); and any tree or receipt budget excess returns `ResourceLimit`.
 Unsupported VM shapes remain a typed refusal, not an implicit `undefined`.
-The wire has no expression, source-text, arbitrary object, or property-path
-selector. C2.2.1.5.2 installs the internal receipt boundary, C2.2.1.5.3
+The value wire has no expression, positive source-text read, arbitrary object,
+or property-path selector. C2.2.1.5.2 installs the internal receipt boundary, C2.2.1.5.3
 installs the complete public route, and C2.2.1.5.4 proves it on real sockets.
 
 **Core-local scope receipt groundwork (C2.2.1.5.2):** The existing
@@ -1215,6 +1215,43 @@ still passes under v38, and workspace Clippy is clean. The classic/module
 test hit the previously observed pending-admission timing race once (program
 completed before breakpoint arming) and passed unchanged on rerun; no v38
 reply mismatch was observed.
+
+**Uncaught BlueTS exception-location contract (C2.3.1.1):** Location means
+the exact original BlueTS span of the instruction that first produced an
+*uncaught, catchable* runtime exception, not the caller's `Call`, a nearest
+statement, the location where a message was formatted, or a compile/host
+failure. BlueJS retains only its already-installed debugger program
+generation, code-unit ordinal, and verified instruction start offset as a
+source-free throw-site sidecar. Propagation through a direct nested call keeps
+the callee's first site; entering a catch clears it, and a new throw that
+replaces an older completion records its own site. A normal completion clears
+any retained site. These rules must not change JavaScript catch/finally
+semantics or turn a host/resource abort into a reportable language exception.
+No source identity, text, span, value, or error message enters the VM sidecar.
+
+The supervised child matches that tuple only against the exact live BlueTS
+debug attachment and its compiler-bound safe-point map. An unbound
+instruction, wrong program generation, missing/ambiguous source record,
+ordinary JavaScript program, or replaced document produces no guessed
+location. The private page-host route will carry one bounded
+source-ID/safe-point/original-byte-range/UTF-16-coordinate record under the
+exact tab/document/program identity, never the thrown value, stack, source
+text, generated text, or runtime message. The next complete private route
+bumps page-host v38 to v39; the frontend script reports remain source-free
+fixed categories and do not acquire this privileged detail.
+
+Public `DescribeExceptionLocation { source }` will require the already
+independent owner/client `OpaqueSafePointSpan` grant and that exact source ID's
+same-stream inventory receipt under the program's metadata parent. Core must
+revalidate the live document/program and child record, remint a distinct
+exception-location reply containing only the exact program-bound safe point
+and original half-open UTF-8 byte/UTF-16 coordinate span, and refuse any
+source mismatch or stale generation without a partial position. Missing
+grant returns typed `CapabilityUnavailable`; forged/unreceipted source or
+unbound mapping returns `InvalidTarget`; a normally completed or still-active
+program has no exception location. No exception-policy pause capability or
+source-text read is implied. The complete public route bumps debugger v38 to
+v39; C2.3.1.2–C2.3.1.5 implement and prove each boundary in order.
 
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
