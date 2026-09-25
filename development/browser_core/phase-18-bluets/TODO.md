@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.2.1.2.4.2.** Step the retained module child and rejoin its
-module-root caller without replaying effects.
+**Current leaf: C1.2.1.2.4.3.** Preserve module catch/error and asynchronous
+graph cleanup through nested completion.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -267,7 +267,7 @@ channel with explicit owner/client grants.
       - [x] **C1.2.1.2.3** Step the retained child by one actual instruction under an invocation serial, restore the same child/classic caller on a successor, and integrate one terminal child result without replaying its call site. Native regressions verify actual backward loop PCs, wrong and returned frame serials, exactly one caller effect after resume, the waiting caller's temporary operand across GC, and a child throw entering the caller's catch. Direct eval and tail-call targets fail closed; 514 non-environmental BlueJS library tests pass.
       - [ ] **C1.2.1.2.4** Apply that native nested pause/step/rejoin to an entry-module root without losing the linked graph, module cells, or entry completion; cover dependency effects and graph cleanup.
         - [x] **C1.2.1.2.4.1** Capture an exact entry-module child invocation at a verified inner safe point, retaining the module-root caller and linked graph after dependencies run once. A native module-graph entry now arms the same program-generation/code-unit target, pauses the direct synchronous child, and preserves the entry root plus linked graph; a two-module regression observes one dependency effect, no child-body effect before pause, and rejection of another execution entry. The public debugger route remains unavailable.
-        - [ ] **C1.2.1.2.4.2** Step that module child under the same invocation serial and rejoin the retained module-root `Call` without repeating dependency or entry effects.
+        - [x] **C1.2.1.2.4.2** Step that module child under the same invocation serial and rejoin the retained module-root `Call` without repeating dependency or entry effects. Native stepping updates the saved module-root operands, PC, and remaining instruction budget; a two-module test validates each child successor, resumes the same graph, and observes exactly one dependency and entry effect. An unhandled child throw clears both debugger frames and records a module error instead of leaving a false paused state.
         - [ ] **C1.2.1.2.4.3** Preserve module catch/error and asynchronous graph cleanup through nested completion; verify no detached continuation or false completion.
     - [ ] **C1.2.1.3** Add an opaque, generation-bound active-frame debugger identity and route nested pause/step through the page runtime, child, page-host IPC, and public debugger protocol without conflating it with a static code unit.
     - [ ] **C1.2.1.4** Prove the nested pause and same-frame instruction successor on a real BlueTS page through the public debugger socket; keep unsupported call shapes unavailable.

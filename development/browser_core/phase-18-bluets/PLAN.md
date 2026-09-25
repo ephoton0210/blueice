@@ -684,6 +684,17 @@ body has not run, the entry `Call` and graph remain retained, and an unrelated
 execution entry cannot overtake the pause. Module-child stepping and module
 record cleanup remain the next two checkpoints.
 
+**Entry-module child step and rejoin (C1.2.1.2.4.2):** The same serial-bound
+child step now recognizes a saved module-root caller. Each successor preserves
+the child and linked graph; terminal return replaces the saved module-root
+`Call` inputs, advances its real PC, and carries forward the spent instruction
+budget before the existing module resume completes the graph. A two-module
+regression verifies compiler instruction boundaries and exactly one
+dependency/entry effect. An unhandled child throw takes a conservative error
+path: both debugger frames are released, the linked entry record is marked
+failed and no ordinary execution entry remains blocked. Catch/finally and
+asynchronous graph behavior are still C1.2.1.2.4.3.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

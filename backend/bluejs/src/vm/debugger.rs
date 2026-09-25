@@ -436,9 +436,29 @@ impl Vm {
                 match completion {
                     Ok(value) => {
                         if let Err(error) = self.check_string(&value) {
+                            if self.debugger_module_continuation.is_some() {
+                                return self.abort_nested_module_execution(error);
+                            }
                             self.debugger_continuation = None;
                             return self.finish_root_execution(Err(error)).map(|_| {
                                 unreachable!("failed nested completion cannot finish the root")
+                            });
+                        }
+                        if let Some(root) = self.debugger_module_continuation.as_mut() {
+                            let call = root
+                                .code
+                                .instruction(root.pc)
+                                .expect("waiting module root retains a verified Call instruction");
+                            debug_assert_eq!(call.opcode, Opcode::Call);
+                            let call_base =
+                                root.execution.stack.len() - call.operand.unwrap_or(0) as usize - 2;
+                            root.execution.stack.truncate(call_base);
+                            root.execution.stack.push(value);
+                            root.execution.remaining_instructions = child_remaining_instructions;
+                            root.pc += call.opcode.width();
+                            return Ok(VmDebuggerNestedExecutionState::FrameReturned {
+                                root_bytecode_offset: u32::try_from(root.pc)
+                                    .expect("verified module offsets fit the debugger wire range"),
                             });
                         }
                         let root = self
@@ -460,6 +480,9 @@ impl Vm {
                         })
                     }
                     Err(error) => {
+                        if self.debugger_module_continuation.is_some() {
+                            return self.abort_nested_module_execution(error);
+                        }
                         if !error.is_catchable() {
                             self.debugger_continuation = None;
                             return self.finish_root_execution(Err(error)).map(|_| {
@@ -501,6 +524,61 @@ impl Vm {
                 }
             }
         }
+    }
+
+    fn abort_nested_module_execution(
+        &mut self,
+        error: RuntimeError,
+    ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
+        let continuation = self
+            .debugger_module_continuation
+            .take()
+            .expect("a nested module failure retains its entry root");
+        let ModuleDebuggerContinuation {
+            module,
+            execution,
+            previous_module,
+            ..
+        } = continuation;
+        self.restore_module_execution(execution);
+        self.active_module_name = previous_module;
+        let result = if error.is_catchable() {
+            self.error_value(error).map(RuntimeError::Thrown)
+        } else {
+            Ok(error)
+        };
+        let mut error_root = None;
+        let result = match result {
+            Ok(RuntimeError::Thrown(Value::Object(id))) => match self.heap.root(id) {
+                Ok(root) => {
+                    error_root = Some(root);
+                    Ok(RuntimeError::Thrown(Value::Object(id)))
+                }
+                Err(error) => Err(RuntimeError::from(error)),
+            },
+            other => other,
+        };
+        let graph = self
+            .module_graph
+            .as_mut()
+            .expect("a nested module failure retains its linked graph");
+        if let Some(root) = error_root {
+            graph.roots.push(root);
+        }
+        let record = graph
+            .linked
+            .get_mut(&module)
+            .expect("the paused entry remains in its linked graph");
+        record.cells = std::mem::take(&mut self.cells);
+        record.suspended = false;
+        record.evaluating = false;
+        if let Ok(RuntimeError::Thrown(value)) = &result {
+            record.evaluated = true;
+            record.error = Some(value.clone());
+        }
+        let error = result.unwrap_or_else(|error| error);
+        self.finish_module_graph_execution(Err(error))
+            .map(|_| unreachable!("failed nested module cannot complete successfully"))
     }
 
     /// Runs a classic script until the exact compiler-provided root code-unit
@@ -1154,6 +1232,93 @@ mod tests {
             vm.execute_script(&code("1 + 1")),
             Err(RuntimeError::Unsupported(_))
         ));
+        let safe_offsets = graph[entry]
+            .child_code_units()
+            .next()
+            .unwrap()
+            .instructions()
+            .map(|instruction| instruction.offset as u32)
+            .collect::<std::collections::HashSet<_>>();
+        let mut returned = None;
+        for _ in 0..128 {
+            match vm.step_debugger_nested_instruction(1).unwrap() {
+                VmDebuggerNestedExecutionState::Paused {
+                    frame_serial: 1,
+                    code_unit_ordinal: 1,
+                    bytecode_offset,
+                } => assert!(safe_offsets.contains(&bytecode_offset)),
+                VmDebuggerNestedExecutionState::FrameReturned {
+                    root_bytecode_offset,
+                } => {
+                    returned = Some(root_bytecode_offset);
+                    break;
+                }
+                other => panic!("unexpected module child step: {other:?}"),
+            }
+        }
+        assert_eq!(
+            vm.debugger_module_continuation.as_ref().unwrap().pc,
+            returned.expect("module child must return within its step budget") as usize
+        );
+        assert!(vm.debugger_nested_continuation.is_none());
+        assert!(vm.module_graph.is_some());
+        assert_eq!(
+            vm.resume_debugger_module_execution().unwrap(),
+            VmDebuggerExecutionState::Completed
+        );
+        assert!(vm.linked_record(entry).unwrap().evaluated);
+        assert_eq!(
+            vm.lookup_global_name("dependencyRuns").unwrap(),
+            Some(Value::Number(1.0))
+        );
+        assert_eq!(
+            vm.lookup_global_name("entryCalls").unwrap(),
+            Some(Value::Number(1.0))
+        );
+    }
+
+    #[test]
+    fn unhandled_nested_module_throw_releases_both_debugger_frames() {
+        let entry = "pages/throwing.mjs";
+        let mut registry = BlueJsProgramRegistry::default();
+        let handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(entry, "sha256:throwing").unwrap(),
+                module_code("function inner(){throw 7;} export const answer = inner();"),
+            )
+            .unwrap();
+        let graph = HashMap::from([(
+            entry.to_string(),
+            registry.get(handle).unwrap().bytecode().clone(),
+        )]);
+        let mut vm = Vm::default();
+        let VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = vm
+            .execute_module_graph_until_nested_debugger_pause(entry, &graph, 1, 0)
+            .unwrap()
+        else {
+            panic!("the throwing child must pause before its body");
+        };
+        let mut thrown = None;
+        for _ in 0..32 {
+            match vm.step_debugger_nested_instruction(frame_serial) {
+                Ok(VmDebuggerNestedExecutionState::Paused { .. }) => {}
+                Err(error) => {
+                    thrown = Some(error);
+                    break;
+                }
+                other => panic!("unexpected nested module throw result: {other:?}"),
+            }
+        }
+        assert_eq!(thrown, Some(RuntimeError::Thrown(Value::Number(7.0))));
+        assert!(vm.debugger_module_continuation.is_none());
+        assert!(vm.debugger_nested_continuation.is_none());
+        let record = vm.linked_record(entry).unwrap();
+        assert!(!record.suspended);
+        assert_eq!(record.error, Some(Value::Number(7.0)));
+        assert_eq!(
+            vm.execute_script(&code("1 + 1")).unwrap(),
+            Value::Number(2.0)
+        );
     }
 
     #[test]
