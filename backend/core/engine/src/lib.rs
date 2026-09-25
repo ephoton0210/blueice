@@ -12,6 +12,7 @@ mod ai_snapshot;
 pub mod credits;
 pub mod downloads_page;
 pub mod gatekeeper_settings_page;
+pub mod assistant_client;
 mod gatekeeper_client;
 mod page;
 pub mod script;
