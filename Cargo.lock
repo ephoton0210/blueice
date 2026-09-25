@@ -189,9 +189,9 @@ name = "blueice-ai-gatekeeper"
 version = "0.1.0"
 dependencies = [
  "blueice-ipc",
+ "blueice-loopback-model",
  "serde",
  "serde_json",
- "ureq",
  "url",
 ]
 
@@ -325,6 +325,15 @@ dependencies = [
  "blueice-font",
  "blueice-html",
  "blueice-testing",
+]
+
+[[package]]
+name = "blueice-loopback-model"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "ureq",
+ "url",
 ]
 
 [[package]]

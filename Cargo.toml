@@ -16,6 +16,7 @@ members = [
     "backend/frontend-reference",
     "backend/i18n",
     "backend/launcher",
+    "backend/loopback-model",
     "backend/mcp-server",
     "backend/ipc",
     "backend/net",

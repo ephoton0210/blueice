@@ -176,7 +176,7 @@ Organizing data, summarization, and **live translation** per the given scope. Ca
 - [x] Define the resource budget policy for each process — launcher-enforced OS ceilings sized for simultaneous mode; complete advanced settings (implementation open)
 - [x] Design `ai-assistant`'s idle-teardown behavior — idle-eligible, resident while live translation is active (registry wiring open)
 - [x] Cross-reference the finished risk taxonomy back into plan §5's "AI agent browsing" risk entry
-- [ ] Extract `blueice-loopback-model` from `ai-gatekeeper` with unchanged gatekeeper behavior
+- [x] Extract `blueice-loopback-model` from `ai-gatekeeper` with unchanged gatekeeper behavior — `backend/loopback-model` owns endpoint validation and the bounded `chat` transport (no proxy, no redirects, request/reply/latency limits, llama.cpp thinking switch); `ai-gatekeeper/src/model.rs` keeps only its classifier prompt and strict verdict parsing, and its existing tests pass unchanged in behavior
 - [ ] Add `blueice_ipc::assistant` and the `ai-assistant` process skeleton with the `InferenceBackend` trait and `llama.cpp` backend
 - [ ] Live translation: pre-layout hook in `core`, retained original text, representation field, fail-open to original
 - [ ] Summary/organize side panel rendered by the engine and visible in the AI snapshot
