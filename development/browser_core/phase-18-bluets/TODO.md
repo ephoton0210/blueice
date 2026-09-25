@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.2.1.4.2.** Expose the exact paused-slot read through the
-page runtime and versioned private child request/reply.
+**Current leaf: C2.2.1.4.3.** Validate and remint the child preview through
+the core proxy, then verify real Launcher-supervised BlueTS sockets.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -323,7 +323,7 @@ channel with explicit owner/client grants.
     - [x] **C2.2.1.3** Extend the native snapshot to bounded plain records and arrays without invoking accessors or proxy traps; reject unsupported shape, cycles, and every excess budget with native regressions. Heap-only descriptor traversal copies ordered own string keys and explicit array holes, rejects accessor/proxy/exotic/custom-prototype/symbol-key/cyclic shapes, and enforces depth 4, 32 entries, 256 nodes, and 4,096 aggregate payload bytes atomically. Three new native shape/budget tests pass; 532 BlueJS lib tests pass with only the pre-existing native-stack environment test excluded.
     - [ ] **C2.2.1.4** Carry the exact bounded native preview through a versioned private page-host/child route and the core proxy; prove classic/module root and nested reads at that boundary.
       - [x] **C2.2.1.4.1** Define exact private target and bounded lossless preview value types, validate malicious depth/length/node/byte and mismatched-frame payloads, without adding wire variants yet. An exact tab/document/program/frame/safe-point/slot target and lossless tagged preview have independent shape/budget validators; duplicate record keys and impossible nested/root selection refuse. IPC v37 remains unchanged; all 103 IPC library tests and IPC Clippy pass.
-      - [ ] **C2.2.1.4.2** Expose the exact page-runtime slot read to the supervised child, add a complete versioned private request/reply, and test classic/module/nested dispatch and stale-target denial in the child.
+      - [x] **C2.2.1.4.2** Expose the exact page-runtime slot read to the supervised child, add a complete versioned private request/reply, and test classic/module/nested dispatch and stale-target denial in the child. Private page-host v38 adds an exact GetDebuggerValueSnapshot/DebuggerValueSnapshot route; the child requires a live BlueTS attachment and retained queue-head pause, then remints only the validated bounded tree. Page-runtime, IPC socket, classic/module/nested child tests, all 103 IPC tests, 533 non-environmental BlueJS lib tests, and workspace Clippy pass. Launcher full lib has three independently reproducible failures in older source-breakpoint/source-step/socket tests; all five focused BlueTS child tests pass.
       - [ ] **C2.2.1.4.3** Validate and remint the bounded child preview through the core proxy, with real Launcher-supervised classic/module root and nested regressions; then check off C2.2.1.4.
     - [ ] **C2.2.1.5** Add the owner-gated public same-stream scope-receipt request/reply, bump the debugger protocol with the complete route, and prove limits and stale-target denial on real Launcher-supervised BlueTS sockets; then check off C2.2.1.
   - [ ] **C2.2.2** Refuse guessed handles, source text, and cross-realm references with a typed error.

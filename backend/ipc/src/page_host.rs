@@ -12,7 +12,9 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
-//! Version 37 adds a bounded source-free stack/scope snapshot from an exact
+//! Version 38 adds an exact paused-slot, bounded plain-data value preview.
+//! It is child-private and does not itself grant a public debugger client
+//! value access. Version 37 adds a bounded source-free stack/scope snapshot from an exact
 //! paused root or nested frame. It remains private and does not enable a
 //! public debugger capability. Version 36 adds exact active nested-frame resume without reusing root
 //! resume or single-instruction stepping. Version 35 adds nested-frame arm, state, and single-instruction
@@ -118,7 +120,7 @@ use std::io::{self, Read, Write};
 /// Independent version for the private launcher-to-BlueJS-host channel.
 /// V34 carries a document-bound script handle, not a raw core NodeId, in
 /// `DispatchClick` so its target matches child-owned listener identities.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 37;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 38;
 
 pub const PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -1084,6 +1086,9 @@ pub enum PageHostRequest {
         max_frames: u32,
         max_scope_entries: u32,
     },
+    /// Copies only one exact active lexical slot in a paused BlueTS frame.
+    /// This private route does not accept an object handle or run JavaScript.
+    GetDebuggerValueSnapshot { target: PageHostDebuggerValueTarget },
     /// Requires an exact paused BlueTS classic safe point, live metadata,
     /// and its compiler-minted source ID. The child derives the current span
     /// from its retained map; no source text or caller-selected stop span is
@@ -1365,6 +1370,7 @@ pub enum PageHostReply {
         frame: Option<PageHostDebuggerFrame>,
         snapshot: PageHostDebuggerStackSnapshot,
     },
+    DebuggerValueSnapshot(Box<PageHostDebuggerValueSnapshot>),
     DebuggerBlueTsSourceStepRequested {
         tab_id: u64,
         document_generation: u64,
@@ -1532,7 +1538,7 @@ mod tests {
         target.safe_point.program.program_generation -= 1;
         target.frame_index = 2;
         assert!(!target.is_well_formed());
-        assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 37);
+        assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 38);
     }
 
     #[test]
@@ -1701,6 +1707,18 @@ mod tests {
             code_unit_ordinal: 1,
             invocation_serial: 19,
         };
+        let value_target = PageHostDebuggerValueTarget {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            frame: Some(frame),
+            frame_index: 0,
+            safe_point,
+            scope_entry: PageHostDebuggerScopeEntry {
+                slot_ordinal: 2,
+                scope_depth: 0,
+            },
+        };
         for request in [
             PageHostRequest::ArmDebuggerNestedSafePointBreakpoint {
                 tab_id: 7,
@@ -1716,6 +1734,9 @@ mod tests {
                 frame: Some(frame),
                 max_frames: 1,
                 max_scope_entries: 2,
+            },
+            PageHostRequest::GetDebuggerValueSnapshot {
+                target: value_target,
             },
         ] {
             let (mut writer, mut reader) = UnixStream::pair().unwrap();
@@ -1754,6 +1775,13 @@ mod tests {
                     stack_truncated: true,
                 },
             },
+            PageHostReply::DebuggerValueSnapshot(Box::new(PageHostDebuggerValueSnapshot {
+                target: value_target,
+                preview: PageHostDebuggerValuePreview::Array(vec![
+                    Some(PageHostDebuggerValuePreview::NumberBits(7.0_f64.to_bits())),
+                    None,
+                ]),
+            })),
             PageHostReply::DebuggerExecutionState {
                 tab_id: 7,
                 document_generation: 3,

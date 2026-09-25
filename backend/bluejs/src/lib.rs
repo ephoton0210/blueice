@@ -83,8 +83,9 @@ pub use compiler::{
 pub use heap::{Heap, HeapConfig, HeapError, HeapStats, RootId};
 pub use page_runtime::{
     BlueJsHostBindingRegistrar, BlueJsPageDebuggerExecutionState, BlueJsPageDebuggerFrame,
-    BlueJsPageDebuggerNestedExecutionState, BlueJsPageOrigin, BlueJsPageRealmStats,
-    BlueJsPageRuntime, BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BLUEJS_PAGE_RUNTIME_ABI_V1,
+    BlueJsPageDebuggerNestedExecutionState, BlueJsPageDebuggerValueTarget, BlueJsPageOrigin,
+    BlueJsPageRealmStats, BlueJsPageRuntime, BlueJsPageRuntimeConfig, BlueJsPageRuntimeError,
+    BLUEJS_PAGE_RUNTIME_ABI_V1,
 };
 pub(crate) use parser::parse_eval;
 pub use parser::{parse, parse_module, ParseError};

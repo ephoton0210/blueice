@@ -16,7 +16,8 @@ use crate::{
     BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, Bytecode, HeapError, HeapStats,
     HostFunction, HostObject, HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod,
     HostObjectPairMethod, RuntimeError, Value, Vm, VmConfig, VmDebuggerExecutionState,
-    VmDebuggerNestedExecutionState, VmDebuggerStackSnapshot,
+    VmDebuggerNestedExecutionState, VmDebuggerScopeEntry, VmDebuggerStackSnapshot,
+    VmDebuggerValuePreview,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -98,6 +99,16 @@ pub struct BlueJsPageDebuggerFrame {
     program: BlueJsProgramHandle,
     code_unit_ordinal: u32,
     invocation_serial: u64,
+}
+
+/// One source-free, exact paused-frame lexical-slot selector. The page
+/// runtime rechecks ownership and the active VM stack before returning data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlueJsPageDebuggerValueTarget {
+    pub frame_index: u32,
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+    pub scope_entry: VmDebuggerScopeEntry,
 }
 
 impl BlueJsPageDebuggerFrame {
@@ -764,6 +775,34 @@ impl BlueJsPageRuntime {
         Ok(snapshot)
     }
 
+    /// Copies only one active binding of an exact retained continuation.
+    /// The native VM applies the fixed plain-data budgets without execution.
+    pub fn debugger_value_preview(
+        &self,
+        tab_id: u64,
+        program: BlueJsProgramHandle,
+        frame: Option<BlueJsPageDebuggerFrame>,
+        target: BlueJsPageDebuggerValueTarget,
+    ) -> Result<VmDebuggerValuePreview, BlueJsPageRuntimeError> {
+        // Reuse the page ownership, generation and invocation checks before
+        // the native VM checks the selected safe point and active slot.
+        self.debugger_stack_snapshot(tab_id, program, frame, 2, 256)?;
+        let realm = self
+            .realms
+            .get(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        realm
+            .vm
+            .debugger_value_preview(
+                frame.map(|frame| frame.invocation_serial),
+                target.frame_index,
+                target.code_unit_ordinal,
+                target.bytecode_offset,
+                target.scope_entry,
+            )
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
     /// Resumes the single root-frame debugger continuation in a tab realm.
     /// The caller does not receive a result value, bytecode, source, or VM
     /// reference; terminal errors remain the page runtime's usual category.
@@ -1334,6 +1373,62 @@ mod tests {
             .into_iter()
             .find(|point| point.code_unit.ordinal() == 1 && point.bytecode_offset == 0)
             .expect("the direct child has a first verified instruction")
+    }
+
+    #[test]
+    fn page_value_preview_requires_owned_exact_paused_slot() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        runtime.open_realm(8, origin()).unwrap();
+        let program = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///value.js"),
+                &BlueJsProgramV1::Script(parse("let answer = 41;").unwrap()),
+            )
+            .unwrap();
+        let halt = runtime
+            .safe_points(7, program, 1024)
+            .unwrap()
+            .into_iter()
+            .rfind(|point| point.code_unit.ordinal() == 0)
+            .unwrap();
+        runtime
+            .execute_program_until_debugger_pause(7, program, halt)
+            .unwrap();
+        let frame = &runtime
+            .debugger_stack_snapshot(7, program, None, 1, 256)
+            .unwrap()
+            .frames[0];
+        let target = BlueJsPageDebuggerValueTarget {
+            frame_index: 0,
+            code_unit_ordinal: frame.code_unit_ordinal,
+            bytecode_offset: frame.bytecode_offset,
+            scope_entry: frame.scope_entries[0],
+        };
+        assert_eq!(
+            runtime.debugger_value_preview(7, program, None, target),
+            Ok(VmDebuggerValuePreview::NumberBits(41.0_f64.to_bits()))
+        );
+        assert!(runtime
+            .debugger_value_preview(
+                7,
+                program,
+                None,
+                BlueJsPageDebuggerValueTarget {
+                    bytecode_offset: target.bytecode_offset - 1,
+                    ..target
+                },
+            )
+            .is_err());
+        assert!(runtime
+            .debugger_value_preview(8, program, None, target)
+            .is_err());
+        assert!(runtime.close_realm(7));
+        assert!(runtime
+            .debugger_value_preview(7, program, None, target)
+            .is_err());
     }
 
     #[test]

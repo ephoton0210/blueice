@@ -8,18 +8,20 @@
 //! [`SpawnedBlueJsHost`] owns a separate `blueice-bluejs-host` child, its
 //! private Unix socket, and its one-time connection capability. The child
 //! owns every [`BlueJsPageRuntime`] VM and program registry; no `Vm`, source
-//! text, program handle, DOM object, or runtime value crosses back into the
-//! launcher. A future core page-loader adapter is responsible for deriving
+//! text, program handle, or DOM object crosses back into the launcher. Only
+//! an exact paused-slot, bounded plain-data debugger preview may now carry a
+//! runtime value. A future core page-loader adapter is responsible for deriving
 //! [`PageHostDocument`] from an already-authorized navigation. This module
 //! deliberately does not let a page or a frontend connect to the child.
 
 use blueice_bluejs::{
     parse, parse_module, BlueJsPageDebuggerExecutionState, BlueJsPageDebuggerFrame,
-    BlueJsPageDebuggerNestedExecutionState, BlueJsPageOrigin, BlueJsPageRuntime,
-    BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BlueJsProgramHandle, BlueJsProgramV1,
-    BlueJsSourceIdentity, CompileError, HeapConfig, HostFunctionError, HostObjectFamily,
-    HostObjectKey, HostValue, Module, ParseError, RuntimeError, Value, Vm, VmConfig,
-    VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
+    BlueJsPageDebuggerNestedExecutionState, BlueJsPageDebuggerValueTarget, BlueJsPageOrigin,
+    BlueJsPageRuntime, BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BlueJsProgramHandle,
+    BlueJsProgramV1, BlueJsSourceIdentity, CompileError, HeapConfig, HostFunctionError,
+    HostObjectFamily, HostObjectKey, HostValue, Module, ParseError, RuntimeError, Value, Vm,
+    VmConfig, VmDebuggerScopeEntry, VmDebuggerValuePreview, VM_DEBUGGER_MAX_SCOPE_ENTRIES,
+    VM_DEBUGGER_MAX_STACK_FRAMES,
 };
 use blueice_bluets::{
     AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
@@ -59,7 +61,8 @@ use blueice_ipc::page_host::{
     PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerBlueTsSafePointSpan,
     PageHostDebuggerExecutionState, PageHostDebuggerFrame, PageHostDebuggerMetadataHandle,
     PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDebuggerScopeEntry,
-    PageHostDebuggerStackFrame, PageHostDebuggerStackSnapshot, PageHostDocument,
+    PageHostDebuggerStackFrame, PageHostDebuggerStackSnapshot, PageHostDebuggerValuePreview,
+    PageHostDebuggerValueSnapshot, PageHostDebuggerValueTarget, PageHostDocument,
     PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph, PageHostRealmStats,
     PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
     PageHostScriptOutcome, PageHostScriptReport, PageHostSource, PageHostStaticResolution,
@@ -1048,6 +1051,9 @@ impl BlueJsChildHost {
                 max_frames,
                 max_scope_entries,
             ),
+            PageHostRequest::GetDebuggerValueSnapshot { target } => {
+                self.debugger_value_snapshot(target)
+            }
             PageHostRequest::StepDebuggerBlueTsSourceSpan {
                 tab_id,
                 document_generation,
@@ -3692,6 +3698,94 @@ impl BlueJsChildHost {
         }
     }
 
+    fn debugger_value_snapshot(&self, target: PageHostDebuggerValueTarget) -> PageHostReply {
+        if !target.is_well_formed() {
+            return invalid_request();
+        }
+        let document = match self.exact_document(target.tab_id, target.document_generation) {
+            Ok(document) => document,
+            Err(reply) => return reply,
+        };
+        if !document.debugger_execution_control
+            || document
+                .pending_debugger_executions
+                .front()
+                .and_then(|pending| pending.program)
+                != Some(target.program)
+        {
+            return invalid_debugger_state();
+        }
+        let Some(record) = document
+            .debugger_programs
+            .get(&target.program.program_handle)
+        else {
+            return invalid_debugger_state();
+        };
+        if record.program_generation != target.program.program_generation
+            || self
+                .debug_registry
+                .get(self.runtime.program_registry(), record.runtime_handle)
+                .is_err()
+        {
+            return invalid_debugger_state();
+        }
+        let runtime_frame = match (
+            target.frame,
+            document
+                .debugger_execution_states
+                .get(&target.program)
+                .copied(),
+        ) {
+            (
+                None,
+                Some(
+                    ChildDebuggerExecutionStatus::Paused(_)
+                    | ChildDebuggerExecutionStatus::SourceStepLimitReached(_),
+                ),
+            ) => None,
+            (
+                Some(frame),
+                Some(ChildDebuggerExecutionStatus::NestedPaused {
+                    frame: active,
+                    safe_point,
+                }),
+            ) if frame
+                == child_debugger_frame(
+                    target.tab_id,
+                    target.document_generation,
+                    target.program,
+                    active,
+                )
+                && frame.matches_safe_point(safe_point) =>
+            {
+                Some(active)
+            }
+            _ => return invalid_debugger_state(),
+        };
+        let preview = match self.runtime.debugger_value_preview(
+            target.tab_id,
+            record.runtime_handle,
+            runtime_frame,
+            BlueJsPageDebuggerValueTarget {
+                frame_index: target.frame_index,
+                code_unit_ordinal: target.safe_point.code_unit_ordinal,
+                bytecode_offset: target.safe_point.bytecode_offset,
+                scope_entry: VmDebuggerScopeEntry {
+                    slot_ordinal: target.scope_entry.slot_ordinal,
+                    scope_depth: target.scope_entry.scope_depth,
+                },
+            },
+        ) {
+            Ok(preview) => page_host_debugger_value_preview(preview),
+            Err(_) => return invalid_debugger_state(),
+        };
+        let snapshot = PageHostDebuggerValueSnapshot { target, preview };
+        if !snapshot.is_well_formed() {
+            return invalid_debugger_state();
+        }
+        PageHostReply::DebuggerValueSnapshot(Box::new(snapshot))
+    }
+
     fn debugger_execution_state(
         &self,
         tab_id: u64,
@@ -5818,6 +5912,38 @@ fn child_debugger_frame(
     }
 }
 
+fn page_host_debugger_value_preview(value: VmDebuggerValuePreview) -> PageHostDebuggerValuePreview {
+    match value {
+        VmDebuggerValuePreview::Undefined => PageHostDebuggerValuePreview::Undefined,
+        VmDebuggerValuePreview::Null => PageHostDebuggerValuePreview::Null,
+        VmDebuggerValuePreview::Bool(value) => PageHostDebuggerValuePreview::Bool(value),
+        VmDebuggerValuePreview::NumberBits(bits) => PageHostDebuggerValuePreview::NumberBits(bits),
+        VmDebuggerValuePreview::BigIntBytes(bytes) => {
+            PageHostDebuggerValuePreview::BigIntBytes(bytes)
+        }
+        VmDebuggerValuePreview::StringUnits(units) => {
+            PageHostDebuggerValuePreview::StringUnits(units)
+        }
+        VmDebuggerValuePreview::Array(elements) => PageHostDebuggerValuePreview::Array(
+            elements
+                .into_iter()
+                .map(|element| element.map(page_host_debugger_value_preview))
+                .collect(),
+        ),
+        VmDebuggerValuePreview::Record(entries) => PageHostDebuggerValuePreview::Record(
+            entries
+                .into_iter()
+                .map(|(key, value)| {
+                    (
+                        key.as_code_units().to_vec(),
+                        page_host_debugger_value_preview(value),
+                    )
+                })
+                .collect(),
+        ),
+    }
+}
+
 fn child_debugger_execution_state(
     tab_id: u64,
     document_generation: u64,
@@ -7879,6 +8005,340 @@ mod tests {
             kind: PageHostScriptKind::Classic,
             graph: graph(&id, vec![PageHostSource::new(id.clone(), source)]),
         }
+    }
+
+    fn paused_value_targets(
+        host: &mut BlueJsChildHost,
+        program: PageHostDebuggerProgram,
+        frame: Option<PageHostDebuggerFrame>,
+        frame_index: usize,
+    ) -> Vec<PageHostDebuggerValueTarget> {
+        let snapshot = match host.handle_request(PageHostRequest::GetDebuggerStackSnapshot {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+            frame,
+            max_frames: 2,
+            max_scope_entries: 256,
+        }) {
+            PageHostReply::DebuggerStackSnapshot { snapshot, .. } => snapshot,
+            reply => panic!("expected active stack: {reply:?}"),
+        };
+        let selected = &snapshot.frames[frame_index];
+        selected
+            .scope_entries
+            .iter()
+            .copied()
+            .map(|scope_entry| PageHostDebuggerValueTarget {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                frame,
+                frame_index: frame_index as u32,
+                safe_point: PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: selected.code_unit_ordinal,
+                    bytecode_offset: selected.bytecode_offset,
+                },
+                scope_entry,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn private_child_bluets_classic_returns_only_exact_paused_plain_values() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(
+                    1,
+                    vec![blue_ts_classic(
+                        0,
+                        "let answer: number = 41; let data = { answer: answer };",
+                    )],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap()
+            .program
+            .unwrap();
+        let halt = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .filter(|point| point.code_unit_ordinal == 0)
+                .max_by_key(|point| point.bytecode_offset)
+                .unwrap(),
+            reply => panic!("expected BlueTS root points: {reply:?}"),
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: halt,
+            }),
+            PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let targets = paused_value_targets(&mut host, program, None, 0);
+        let replies: Vec<_> = targets
+            .iter()
+            .map(|target| {
+                host.handle_request(PageHostRequest::GetDebuggerValueSnapshot { target: *target })
+            })
+            .collect();
+        assert!(replies.iter().any(|reply| matches!(
+            reply,
+            PageHostReply::DebuggerValueSnapshot(snapshot)
+                if matches!(&snapshot.preview, PageHostDebuggerValuePreview::NumberBits(bits) if *bits == 41.0_f64.to_bits())
+        )));
+        assert!(replies.iter().any(|reply| matches!(
+            reply,
+            PageHostReply::DebuggerValueSnapshot(snapshot)
+                if matches!(&snapshot.preview, PageHostDebuggerValuePreview::Record(entries)
+                    if entries == &vec![("answer".encode_utf16().collect(), PageHostDebuggerValuePreview::NumberBits(41.0_f64.to_bits()))])
+        )));
+        let target = targets[0];
+        for invalid in [
+            PageHostDebuggerValueTarget {
+                safe_point: PageHostDebuggerSafePoint {
+                    bytecode_offset: target.safe_point.bytecode_offset + 1,
+                    ..target.safe_point
+                },
+                ..target
+            },
+            PageHostDebuggerValueTarget {
+                scope_entry: PageHostDebuggerScopeEntry {
+                    slot_ordinal: u32::MAX,
+                    ..target.scope_entry
+                },
+                ..target
+            },
+        ] {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::GetDebuggerValueSnapshot { target: invalid }),
+                PageHostReply::Error { .. }
+            ));
+        }
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerValueSnapshot {
+                target: PageHostDebuggerValueTarget {
+                    document_generation: 2,
+                    ..target
+                },
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn private_child_bluets_nested_preview_requires_its_active_frame() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(
+                    1,
+                    vec![blue_ts_classic(
+                        0,
+                        "let seed: number = 7; function inner(value: number): number { let local: number = value; return local; } inner(seed);",
+                    )],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap()
+            .program
+            .unwrap();
+        let point = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+                .unwrap(),
+            reply => panic!("expected BlueTS nested points: {reply:?}"),
+        };
+        host.arm_debugger_nested_target(7, 1, point).unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let frame = match host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::NestedPaused { frame, .. },
+                ..
+            } => frame,
+            reply => panic!("expected nested pause: {reply:?}"),
+        };
+        let mut selected = None;
+        for _ in 0..64 {
+            for target in paused_value_targets(&mut host, program, Some(frame), 0) {
+                if matches!(
+                    host.handle_request(PageHostRequest::GetDebuggerValueSnapshot { target }),
+                    PageHostReply::DebuggerValueSnapshot(snapshot)
+                        if matches!(&snapshot.preview, PageHostDebuggerValuePreview::NumberBits(bits) if *bits == 7.0_f64.to_bits())
+                ) {
+                    selected = Some(target);
+                    break;
+                }
+            }
+            if selected.is_some() {
+                break;
+            }
+            assert!(matches!(
+                host.handle_request(PageHostRequest::StepDebuggerNestedInstruction { frame }),
+                PageHostReply::DebuggerNestedStepRequested { .. }
+            ));
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+        }
+        let target = selected.expect("one active child slot must hold the parameter value");
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerValueSnapshot {
+                target: PageHostDebuggerValueTarget {
+                    frame: None,
+                    ..target
+                }
+            }),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerValueSnapshot {
+                target: PageHostDebuggerValueTarget {
+                    frame: Some(PageHostDebuggerFrame {
+                        invocation_serial: frame.invocation_serial + 1,
+                        ..frame
+                    }),
+                    ..target
+                }
+            }),
+            PageHostReply::Error { .. }
+        ));
+    }
+
+    #[test]
+    fn private_child_bluets_module_root_preview_reads_retained_binding() {
+        let entry = "blueice://page/private-values.ts";
+        let module = PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Module,
+            graph: graph(
+                entry,
+                vec![PageHostSource::new(
+                    entry,
+                    "let answer: number = 41; export const result: number = answer + 1;",
+                )],
+            ),
+        };
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(1, vec![module]),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let pending = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap();
+        let program = pending.program.unwrap();
+        let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
+            panic!("the checked module must be pending");
+        };
+        let point = host
+            .runtime
+            .module_evaluate_entry_safe_point(7, attachment.entry.handle)
+            .unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: 0,
+                    bytecode_offset: point.bytecode_offset,
+                },
+            }),
+            PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let mut selected = None;
+        for _ in 0..64 {
+            for target in paused_value_targets(&mut host, program, None, 0) {
+                if matches!(
+                    host.handle_request(PageHostRequest::GetDebuggerValueSnapshot { target }),
+                    PageHostReply::DebuggerValueSnapshot(snapshot)
+                        if matches!(&snapshot.preview, PageHostDebuggerValuePreview::NumberBits(bits) if *bits == 41.0_f64.to_bits())
+                ) {
+                    selected = Some(target);
+                    break;
+                }
+            }
+            if selected.is_some() {
+                break;
+            }
+            assert!(matches!(
+                host.handle_request(PageHostRequest::StepDebuggerRootInstruction {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                }),
+                PageHostReply::DebuggerExecutionStepRequested { .. }
+            ));
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+        }
+        let target = selected.expect("module root must expose its initialized binding");
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerValueSnapshot { target }),
+            PageHostReply::DebuggerValueSnapshot(snapshot)
+                if matches!(&snapshot.preview, PageHostDebuggerValuePreview::NumberBits(bits) if *bits == 41.0_f64.to_bits())
+        ));
     }
 
     #[test]

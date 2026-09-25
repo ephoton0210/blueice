@@ -979,6 +979,24 @@ bits, BigInt bytes, UTF-16 strings, sparse array holes, and record keys round
 trip without lossy JSON number/string conversion. Malformed target/tree tests,
 all 103 IPC library tests with local Unix-socket access, and IPC Clippy pass.
 
+**Private v38 paused-value route (C2.2.1.4.2):** The page runtime now admits
+only an owned exact program and retained root or nested invocation before the
+VM validates the selected active slot. The supervised child adds
+`GetDebuggerValueSnapshot`/`DebuggerValueSnapshot` in private page-host v38,
+requires the queue-head BlueTS program, live direct-debug attachment and
+paused execution state, and echoes the whole exact target with a bounded
+lossless tree. There is no object handle, source lookup or JavaScript call.
+The child validates the reminted preview again before replying; the snapshot
+is boxed in the Rust reply enum so its payload does not enlarge unrelated
+error variants or change their wire representation. Page-runtime owner/stale
+tests, private IPC socket round-trip, and child classic root, nested and
+module-root tests pass. IPC 103/103, BlueJS 533/533 excluding the known
+native-stack environment case, and workspace Clippy pass. Launcher full lib
+passes 102/105: two old source-breakpoint/source-step expectations and one
+private-socket missing-path case also fail when run individually; all five
+focused BlueTS child tests pass. Core proxy and public value grants are not
+yet installed.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
