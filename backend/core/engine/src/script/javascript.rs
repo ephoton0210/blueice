@@ -609,6 +609,13 @@ pub trait PageJavaScriptDebuggerLocations {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 
+    /// Whether this page-host route can perform the private bounded value
+    /// read. A public owner/client grant and same-stream receipt remain
+    /// separate requirements.
+    fn debugger_values_available(&self) -> bool {
+        false
+    }
+
     /// Stack locations and active lexical scopes are separately granted on
     /// the owner-selected debugger route; neither follows from stepping.
     fn debugger_stack_available(&self) -> bool {

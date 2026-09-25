@@ -4520,6 +4520,10 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             && self.child.debugger_stack_snapshot_available()
     }
 
+    fn debugger_values_available(&self) -> bool {
+        self.debugger_scopes_available() && self.child.debugger_value_snapshot_available()
+    }
+
     fn debugger_stepping_available(&self) -> bool {
         self.debugger_execution_control_available() && self.child.debugger_stepping_available()
     }

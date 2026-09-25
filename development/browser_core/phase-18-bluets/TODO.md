@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.2.1.5.3.2.2.** Add the complete owner/client/receipt-gated
-public value route and bump the debugger protocol only with that route.
+**Current leaf: C2.2.1.5.3.2.2.2.** Bind the owner/client grant and complete
+public GetValue/Value route, then bump the debugger protocol to v37.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -333,6 +333,8 @@ channel with explicit owner/client grants.
         - [ ] **C2.2.1.5.3.2** Add the separate client grant, bounded public target/reply, and complete receipt-gated core route in one debugger protocol bump; test handshake, dispatch, malformed targets, and budgets before checking off C2.2.1.5.3.
           - [x] **C2.2.1.5.3.2.1** Define exact public target and independently validated lossless preview/snapshot types; test malformed identity, depth, length, nodes, bytes, and duplicate keys without new wire variants or a protocol bump. The public target binds program, core frame, index, safe point, and slot; the handle-free tagged tree enforces depth 4, length 32, nodes 256, and aggregate payload 4,096. All 107 IPC library tests and workspace Clippy pass; debugger v36 is unchanged.
           - [ ] **C2.2.1.5.3.2.2** Add the separate client grant and complete owner/receipt/native-gated request/reply route, bump debugger v37 only with that route, and prove negotiation/dispatch/limits before checking off C2.2.1.5.3.2 and C2.2.1.5.3.
+            - [x] **C2.2.1.5.3.2.2.1** Build and test the core-internal value read: gate an exact same-stream scope receipt and pause incarnation, re-read the active scope, invoke the already validated child proxy, and remint an independently budgeted public snapshot. Do not add wire variants or alter v36 availability. Exact core-frame and slot routing, cross-stream/old-pause/forged-slot denial, moved-frame rejection, lossless payload, and all remint budgets pass two focused tests, all 295 engine library tests, and workspace Clippy.
+            - [ ] **C2.2.1.5.3.2.2.2** Bind the owner/client grant to Hello, wire the complete GetValue/Value dispatch and receipt recording, advertise only live granted BoundedValues, bump to v37, and prove negotiation, denial, and limits before checking off C2.2.1.5.3.2.2 and its parents.
       - [ ] **C2.2.1.5.4** Prove classic/module root and nested value reads, cross-stream and stale-pause denial, forged slots, and all preview budgets on real Launcher-supervised BlueTS sockets; then check off C2.2.1.5 and C2.2.1.
   - [ ] **C2.2.2** Refuse guessed handles, source text, and cross-realm references with a typed error.
 - [ ] **C2.3** Report an exception at its original BlueTS source position.

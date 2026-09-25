@@ -14,7 +14,9 @@ use crate::{
     script::javascript::{
         JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
         JavaScriptPageDebuggerFrame, JavaScriptPageDebuggerNestedExecutionState,
-        JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
+        JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
+        JavaScriptPageDebuggerScopeEntry,
+        JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
         JavaScriptPageDebuggerStaticMetadataContractTarget,
         JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
         JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget,
@@ -23,8 +25,9 @@ use crate::{
         JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
         JavaScriptPageDebuggerStaticMetadataSymbolTarget,
         JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
-        JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageExecutor,
-        PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
+        JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageDebuggerValuePreview,
+        JavaScriptPageDebuggerValueTarget, JavaScriptPageExecutor, PageJavaScriptDebuggerLocations,
+        PageJavaScriptExecutor,
     },
     TabId, TabManager,
 };
@@ -45,12 +48,15 @@ use blueice_ipc::debugger::{
     DebuggerStaticMetadataSymbolContract, DebuggerStaticMetadataSymbolDisplay,
     DebuggerStaticMetadataSymbolId, DebuggerStaticMetadataSymbolLocation,
     DebuggerStaticMetadataSymbolLocationTarget, DebuggerStaticMetadataSymbolType,
-    DebuggerStaticMetadataTypeDisplay, DebuggerStaticMetadataTypeId, DEBUGGER_MAX_SCOPE_ENTRIES,
-    DEBUGGER_MAX_STACK_FRAMES, DEBUGGER_PROTOCOL_VERSION, DEBUGGER_STATIC_METADATA_MAX_CONTRACTS,
-    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_SYMBOLS,
-    DEBUGGER_STATIC_METADATA_MAX_TYPES,
+    DebuggerStaticMetadataTypeDisplay, DebuggerStaticMetadataTypeId, DebuggerValuePreview,
+    DebuggerValueSnapshot, DebuggerValueTarget, DEBUGGER_MAX_SCOPE_ENTRIES,
+    DEBUGGER_MAX_STACK_FRAMES, DEBUGGER_MAX_VALUE_CONTAINER_LENGTH, DEBUGGER_MAX_VALUE_DEPTH,
+    DEBUGGER_MAX_VALUE_NODES, DEBUGGER_MAX_VALUE_PAYLOAD_BYTES, DEBUGGER_PROTOCOL_VERSION,
+    DEBUGGER_STATIC_METADATA_MAX_CONTRACTS, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
+    DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
 };
 use std::cell::Cell;
+use std::collections::HashSet;
 use std::io;
 use std::sync::mpsc;
 
@@ -3249,6 +3255,164 @@ fn child_scopes(
     })
 }
 
+/// Private core-side half of the future public value route. The caller must
+/// supply the combined owner/client grant and this core session's current
+/// pause incarnation; no wire variant reaches it in debugger v36.
+#[allow(dead_code)] // C2.2.1.5.3.2.2.2 wires the complete v37 request to this guarded route.
+fn child_value_snapshot(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    session: Option<&DebuggerMetadataSessionAuthorization>,
+    granted: bool,
+    pause_incarnation: u64,
+    target: DebuggerValueTarget,
+) -> Result<DebuggerValueSnapshot, Box<DebuggerReply>> {
+    if !granted {
+        return Err(Box::new(unavailable_values()));
+    }
+    let Some(session) = session else {
+        return Err(Box::new(unavailable_values()));
+    };
+    if !target.is_well_formed() || !session.observed_scope(target, pause_incarnation) {
+        return Err(Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "debugger value target was not returned by Scopes on this stream".to_string(),
+        }));
+    }
+    if !locations.debugger_values_available() {
+        return Err(Box::new(unavailable_values()));
+    }
+    let scopes = match child_scopes(
+        tabs,
+        locations,
+        target.program,
+        target.frame,
+        target.frame_index,
+        target.safe_point,
+        MAX_SCOPE_BINDINGS,
+    ) {
+        DebuggerReply::Scopes(scopes) => scopes,
+        other => return Err(Box::new(other)),
+    };
+    if !scopes.entries.contains(&target.scope_entry) {
+        return Err(Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "debugger value slot is no longer active at this pause".to_string(),
+        }));
+    }
+    let (tab_id, frame) = resolve_child_stack_target(tabs, target.program, target.frame)?;
+    let core_target = JavaScriptPageDebuggerValueTarget {
+        program: JavaScriptPageDebuggerProgram {
+            program_handle: target.program.program_handle,
+            program_generation: target.program.program_generation,
+        },
+        frame,
+        frame_index: target.frame_index,
+        safe_point: JavaScriptPageDebuggerSafePoint {
+            code_unit_ordinal: target.safe_point.code_unit_ordinal,
+            bytecode_offset: target.safe_point.bytecode_offset,
+        },
+        scope_entry: JavaScriptPageDebuggerScopeEntry {
+            slot_ordinal: target.scope_entry.slot_ordinal,
+            scope_depth: target.scope_entry.scope_depth,
+        },
+    };
+    let preview = locations
+        .debugger_value_snapshot(tab_id, target.program.realm.realm_generation, core_target)
+        .map_err(|error| Box::new(debugger_program_error(error)))?;
+    let mut budget = ValueRemintBudget::default();
+    let preview = remint_core_debugger_value(preview, 0, &mut budget).ok_or_else(|| {
+        Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::ResourceLimit,
+            message: "debugger value exceeds the complete public preview budget".to_string(),
+        })
+    })?;
+    let snapshot = DebuggerValueSnapshot { target, preview };
+    if !snapshot.is_well_formed() {
+        return Err(Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::ResourceLimit,
+            message: "invalid complete debugger value preview".to_string(),
+        }));
+    }
+    Ok(snapshot)
+}
+
+#[derive(Default)]
+struct ValueRemintBudget {
+    nodes: usize,
+    payload_bytes: usize,
+}
+
+impl ValueRemintBudget {
+    fn node(&mut self, depth: usize) -> Option<()> {
+        if depth > DEBUGGER_MAX_VALUE_DEPTH {
+            return None;
+        }
+        self.nodes = self.nodes.checked_add(1)?;
+        (self.nodes <= DEBUGGER_MAX_VALUE_NODES).then_some(())
+    }
+
+    fn bytes(&mut self, bytes: usize) -> Option<()> {
+        self.payload_bytes = self.payload_bytes.checked_add(bytes)?;
+        (self.payload_bytes <= DEBUGGER_MAX_VALUE_PAYLOAD_BYTES).then_some(())
+    }
+}
+
+fn remint_core_debugger_value(
+    value: JavaScriptPageDebuggerValuePreview,
+    depth: usize,
+    budget: &mut ValueRemintBudget,
+) -> Option<DebuggerValuePreview> {
+    budget.node(depth)?;
+    Some(match value {
+        JavaScriptPageDebuggerValuePreview::Undefined => DebuggerValuePreview::Undefined,
+        JavaScriptPageDebuggerValuePreview::Null => DebuggerValuePreview::Null,
+        JavaScriptPageDebuggerValuePreview::Bool(value) => DebuggerValuePreview::Bool(value),
+        JavaScriptPageDebuggerValuePreview::NumberBits(bits) => {
+            DebuggerValuePreview::NumberBits(bits)
+        }
+        JavaScriptPageDebuggerValuePreview::BigIntBytes(bytes) => {
+            budget.bytes(bytes.len())?;
+            DebuggerValuePreview::BigIntBytes(bytes)
+        }
+        JavaScriptPageDebuggerValuePreview::StringUnits(units) => {
+            budget.bytes(units.len().checked_mul(2)?)?;
+            DebuggerValuePreview::StringUnits(units)
+        }
+        JavaScriptPageDebuggerValuePreview::Array(elements) => {
+            if elements.len() > DEBUGGER_MAX_VALUE_CONTAINER_LENGTH {
+                return None;
+            }
+            let mut result = Vec::with_capacity(elements.len());
+            for element in elements {
+                result.push(match element {
+                    Some(value) => Some(remint_core_debugger_value(value, depth + 1, budget)?),
+                    None => {
+                        budget.node(depth + 1)?;
+                        None
+                    }
+                });
+            }
+            DebuggerValuePreview::Array(result)
+        }
+        JavaScriptPageDebuggerValuePreview::Record(entries) => {
+            if entries.len() > DEBUGGER_MAX_VALUE_CONTAINER_LENGTH {
+                return None;
+            }
+            let mut keys = HashSet::new();
+            let mut result = Vec::with_capacity(entries.len());
+            for (key, value) in entries {
+                budget.bytes(key.len().checked_mul(2)?)?;
+                if !keys.insert(key.clone()) {
+                    return None;
+                }
+                result.push((key, remint_core_debugger_value(value, depth + 1, budget)?));
+            }
+            DebuggerValuePreview::Record(result)
+        }
+    })
+}
+
 fn step_child_static_metadata_source_span(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,
@@ -4025,6 +4189,14 @@ fn unavailable_scopes() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
         message: "bounded debugger scope inspection is not installed for this page-host route"
+            .to_string(),
+    }
+}
+
+fn unavailable_values() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "bounded debugger values require an owner/client grant and a live child route"
             .to_string(),
     }
 }
@@ -8167,6 +8339,8 @@ mod tests {
         moved_root_offset: u32,
         unbound_root: bool,
         span_calls: usize,
+        value_preview: Option<JavaScriptPageDebuggerValuePreview>,
+        value_calls: usize,
     }
 
     impl PageJavaScriptDebuggerLocations for StackCoordinateLocations {
@@ -8223,6 +8397,14 @@ mod tests {
         }
 
         fn debugger_stack_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_scopes_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_values_available(&self) -> bool {
             true
         }
 
@@ -8304,7 +8486,10 @@ mod tests {
                     crate::script::javascript::JavaScriptPageDebuggerStackFrame {
                         code_unit_ordinal,
                         bytecode_offset,
-                        scope_entries: vec![],
+                        scope_entries: vec![JavaScriptPageDebuggerScopeEntry {
+                            slot_ordinal: 3,
+                            scope_depth: 0,
+                        }],
                         scope_truncated: false,
                     }
                 })
@@ -8315,6 +8500,30 @@ mod tests {
                     stack_truncated: max_frames < 2,
                 },
             )
+        }
+
+        fn debugger_value_snapshot(
+            &mut self,
+            _tab_id: TabId,
+            _generation: u64,
+            target: JavaScriptPageDebuggerValueTarget,
+        ) -> Result<JavaScriptPageDebuggerValuePreview, JavaScriptPageDebuggerError> {
+            self.value_calls += 1;
+            if target.program.program_handle != 7
+                || target.program.program_generation != 3
+                || target.frame_index != 1
+                || target.safe_point.code_unit_ordinal != 0
+                || target.safe_point.bytecode_offset != self.moved_root_offset
+                || target.scope_entry.slot_ordinal != 3
+                || target
+                    .frame
+                    .is_none_or(|frame| frame.core_instance != [7; 16] || frame.frame_handle != 19)
+            {
+                return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+            }
+            self.value_preview
+                .clone()
+                .ok_or(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
         }
 
         fn debugger_static_metadata_safe_point_span(
@@ -8410,6 +8619,8 @@ mod tests {
             moved_root_offset: 41,
             unbound_root: false,
             span_calls: 0,
+            value_preview: None,
+            value_calls: 0,
         };
         assert_eq!(
             handle_debugger_request_with_child_locations(
@@ -8515,5 +8726,199 @@ mod tests {
             DebuggerReply::StackCoordinates(_)
         ));
         assert_eq!(locations.span_calls, 4);
+    }
+
+    #[test]
+    fn core_value_remint_enforces_all_tree_budgets_before_reply() {
+        let remint =
+            |value| remint_core_debugger_value(value, 0, &mut ValueRemintBudget::default());
+        let mut too_deep = JavaScriptPageDebuggerValuePreview::Null;
+        for _ in 0..5 {
+            too_deep = JavaScriptPageDebuggerValuePreview::Array(vec![Some(too_deep)]);
+        }
+        assert!(remint(too_deep).is_none());
+        assert!(remint(JavaScriptPageDebuggerValuePreview::Array(vec![None; 33])).is_none());
+        assert!(remint(JavaScriptPageDebuggerValuePreview::Array(vec![
+            Some(
+                JavaScriptPageDebuggerValuePreview::Array(vec![None; 32])
+            );
+            8
+        ]))
+        .is_none());
+        assert!(remint(JavaScriptPageDebuggerValuePreview::StringUnits(vec![
+            0;
+            2_049
+        ]))
+        .is_none());
+        assert!(remint(JavaScriptPageDebuggerValuePreview::Record(vec![
+            (vec![b'a' as u16], JavaScriptPageDebuggerValuePreview::Null),
+            (vec![b'a' as u16], JavaScriptPageDebuggerValuePreview::Null),
+        ]))
+        .is_none());
+    }
+
+    #[test]
+    fn core_value_read_requires_same_stream_pause_and_live_scope() {
+        let (tabs, realm) = loaded_tabs();
+        let program = DebuggerProgram {
+            realm,
+            program_handle: 7,
+            program_generation: 3,
+        };
+        let frame = DebuggerFrame {
+            program,
+            code_unit_ordinal: 1,
+            core_instance: [7; 16],
+            frame_handle: 19,
+        };
+        let safe_point = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 41,
+        };
+        let hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
+        };
+        let ack = blueice_ipc::debugger::negotiate(
+            &hello,
+            &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
+        );
+        let session = blueice_ipc::debugger::metadata_session_authorization(&hello, &ack).unwrap();
+        let separate = blueice_ipc::debugger::metadata_session_authorization(&hello, &ack).unwrap();
+        let mut locations = StackCoordinateLocations {
+            moved_root_offset: 41,
+            unbound_root: false,
+            span_calls: 0,
+            value_preview: Some(JavaScriptPageDebuggerValuePreview::Record(vec![(
+                vec![0xd800],
+                JavaScriptPageDebuggerValuePreview::Array(vec![
+                    Some(JavaScriptPageDebuggerValuePreview::NumberBits(
+                        (-0.0_f64).to_bits(),
+                    )),
+                    None,
+                    Some(JavaScriptPageDebuggerValuePreview::StringUnits(vec![
+                        0xdc00,
+                    ])),
+                ]),
+            )])),
+            value_calls: 0,
+        };
+        let DebuggerReply::Scopes(scopes) = child_scopes(
+            &tabs,
+            &mut locations,
+            program,
+            Some(frame),
+            1,
+            safe_point,
+            MAX_SCOPE_BINDINGS,
+        ) else {
+            panic!("mock must expose the paused caller-root scope");
+        };
+        let target = DebuggerValueTarget {
+            program,
+            frame: Some(frame),
+            frame_index: 1,
+            safe_point,
+            scope_entry: scopes.entries[0],
+        };
+        assert!(session.observe_scopes(&scopes, 1));
+        assert!(matches!(
+            child_value_snapshot(&tabs, &mut locations, Some(&session), false, 1, target)
+                .map_err(|reply| *reply),
+            Err(DebuggerReply::Error {
+                code: DebuggerErrorCode::CapabilityUnavailable,
+                ..
+            })
+        ));
+        assert!(matches!(
+            child_value_snapshot(&tabs, &mut locations, Some(&separate), true, 1, target)
+                .map_err(|reply| *reply),
+            Err(DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            })
+        ));
+        assert!(matches!(
+            child_value_snapshot(&tabs, &mut locations, Some(&session), true, 2, target)
+                .map_err(|reply| *reply),
+            Err(DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            })
+        ));
+        assert!(matches!(
+            child_value_snapshot(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                true,
+                1,
+                DebuggerValueTarget {
+                    scope_entry: DebuggerScopeEntry {
+                        slot_ordinal: 4,
+                        ..target.scope_entry
+                    },
+                    ..target
+                }
+            )
+            .map_err(|reply| *reply),
+            Err(DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            })
+        ));
+        assert_eq!(locations.value_calls, 0);
+        let snapshot = child_value_snapshot(&tabs, &mut locations, Some(&session), true, 1, target)
+            .expect("exact same-stream paused slot must be reminted");
+        assert_eq!(snapshot.target, target);
+        assert_eq!(
+            snapshot.preview,
+            DebuggerValuePreview::Record(vec![(
+                vec![0xd800],
+                DebuggerValuePreview::Array(vec![
+                    Some(DebuggerValuePreview::NumberBits((-0.0_f64).to_bits())),
+                    None,
+                    Some(DebuggerValuePreview::StringUnits(vec![0xdc00])),
+                ]),
+            )])
+        );
+        assert_eq!(locations.value_calls, 1);
+        locations.moved_root_offset = 42;
+        assert!(matches!(
+            child_value_snapshot(&tabs, &mut locations, Some(&session), true, 1, target)
+                .map_err(|reply| *reply),
+            Err(DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                ..
+            })
+        ));
+        assert_eq!(locations.value_calls, 1);
+        locations.moved_root_offset = 41;
+        locations.value_preview = Some(JavaScriptPageDebuggerValuePreview::BigIntBytes(vec![
+            0;
+            4_097
+        ]));
+        assert!(matches!(
+            child_value_snapshot(&tabs, &mut locations, Some(&session), true, 1, target)
+                .map_err(|reply| *reply),
+            Err(DebuggerReply::Error {
+                code: DebuggerErrorCode::ResourceLimit,
+                ..
+            })
+        ));
+        locations.value_preview = Some(JavaScriptPageDebuggerValuePreview::Record(vec![
+            (vec![b'a' as u16], JavaScriptPageDebuggerValuePreview::Null),
+            (vec![b'a' as u16], JavaScriptPageDebuggerValuePreview::Null),
+        ]));
+        assert!(matches!(
+            child_value_snapshot(&tabs, &mut locations, Some(&session), true, 1, target)
+                .map_err(|reply| *reply),
+            Err(DebuggerReply::Error {
+                code: DebuggerErrorCode::ResourceLimit,
+                ..
+            })
+        ));
     }
 }

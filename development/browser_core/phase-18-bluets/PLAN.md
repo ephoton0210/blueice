@@ -1099,6 +1099,22 @@ malformed program/frame/index identities, every budget, and duplicates.
 Debugger v36 remains unchanged; the complete negotiated route and bump are
 C2.2.1.5.3.2.2. All 107 IPC library tests and workspace Clippy pass.
 
+**Core-internal public-value remint (C2.2.1.5.3.2.2.1):** A guarded core
+helper now accepts only a combined owner/client grant, a negotiated stream's
+exact Scopes-slot receipt, and the current core pause incarnation. It
+re-reads that frame's full active scope inventory before calling the private
+child proxy, then copies the complete core-facing tree into an independently
+budgeted public snapshot. This remint limits depth, container length, nodes
+including holes, aggregate UTF-16/BigInt bytes, and duplicate record keys
+before allocation grows past a cap. The out-of-process executor separately
+reports whether its private value route is installed; no public request can
+reach the helper until C2.2.1.5.3.2.2.2 wires the grant and operation.
+Mock-core regressions prove exact core frame/slot forwarding, distinct
+stream and pause denial, moved live scope rejection, lossless bits/UTF-16 and
+array holes, and every remint budget. Two focused tests, all 295 engine
+library tests, and workspace Clippy pass. Public debugger v36 and
+BoundedValues Planned are unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
