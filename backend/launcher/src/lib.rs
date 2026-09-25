@@ -37,6 +37,7 @@
 //! it."
 
 pub mod assistant;
+pub mod assistant_proposals;
 pub mod control;
 pub mod memory_pressure;
 pub mod supervisor;
