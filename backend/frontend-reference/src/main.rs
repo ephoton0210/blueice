@@ -193,6 +193,9 @@ enum UserEvent {
     Navigate(String),
     GoBack,
     GoForward,
+    /// `translate <tag|off>`, `original`, `translated`, `translation`: live
+    /// translation controls, sent to the selected tab like history commands.
+    Translation(ClientMessage),
     OpenTab,
     CloseSelectedTab,
     SelectTab(u64),
@@ -1441,9 +1444,14 @@ impl ApplicationHandler<UserEvent> for App {
                         self.request_redraw();
                     }
                 }
-                // Reported by the `translate`/`original`/`translated` stdin
-                // commands in the frontend's own step (T5c).
-                ServerMessage::TranslationState { .. } => {}
+                ServerMessage::TranslationState {
+                    language,
+                    available,
+                    shown,
+                } => println!(
+                    "{}",
+                    translation_state_line(tab_id, language.as_deref(), available, shown)
+                ),
                 ServerMessage::TabGroupCreated(group) | ServerMessage::TabGroupUpdated(group) => {
                     self.upsert_group(group);
                 }
@@ -1521,6 +1529,7 @@ impl ApplicationHandler<UserEvent> for App {
                 url: navigation_url(&url, self.locale),
             }),
             UserEvent::GoBack => self.send_selected(&ClientMessage::GoBack),
+            UserEvent::Translation(message) => self.send_selected(&message),
             UserEvent::GoForward => self.send_selected(&ClientMessage::GoForward),
             UserEvent::OpenTab => self.open_tab(),
             UserEvent::CloseSelectedTab => {
@@ -1721,6 +1730,27 @@ fn start_download(url: &str) -> Result<TransferInfo, String> {
     start_download_at(&socket, &spawn, url)
 }
 
+/// The stdout line reporting a tab's translation state, so a person driving the
+/// stdin commands sees what core answered (`translation: tab 1, language
+/// zh-TW, translated`).
+fn translation_state_line(
+    tab_id: Option<u64>,
+    language: Option<&str>,
+    available: bool,
+    shown: bool,
+) -> String {
+    let tab = tab_id.map_or("default tab".to_string(), |id| format!("tab {id}"));
+    let showing = match (available, shown) {
+        (false, _) => "nothing translated on this page",
+        (true, true) => "showing the translation",
+        (true, false) => "showing the original",
+    };
+    format!(
+        "translation: {tab}, language {}, {showing}",
+        language.unwrap_or("off")
+    )
+}
+
 /// Maps one trimmed stdin line to the event it requests, or `None` for
 /// a blank/unrecognized line -- split out from [`spawn_stdin_commands`]
 /// so this mapping is a plain unit-testable function, not something
@@ -1735,6 +1765,32 @@ fn stdin_line_to_event(line: &str) -> Option<UserEvent> {
         "settings" => Some(UserEvent::Navigate(GATEKEEPER_SETTINGS_URL.to_string())),
         "back" => Some(UserEvent::GoBack),
         "forward" => Some(UserEvent::GoForward),
+        "original" => Some(UserEvent::Translation(ClientMessage::ShowTranslation {
+            shown: false,
+        })),
+        "translated" => Some(UserEvent::Translation(ClientMessage::ShowTranslation {
+            shown: true,
+        })),
+        "translation" => Some(UserEvent::Translation(ClientMessage::GetTranslationState)),
+        "translate off" => Some(UserEvent::Translation(
+            ClientMessage::SetTranslationLanguage {
+                target_language: None,
+            },
+        )),
+        other if other.starts_with("translate ") => {
+            let tag = other["translate ".len()..].trim();
+            // The core validates the tag too; refusing an obviously bad one
+            // here just avoids a round trip for a typo.
+            if blueice_ipc::assistant::validate_language_tag(tag).is_err() {
+                eprintln!("blueice-frontend: translate needs a language tag such as zh-TW, or off");
+                return None;
+            }
+            Some(UserEvent::Translation(
+                ClientMessage::SetTranslationLanguage {
+                    target_language: Some(tag.to_string()),
+                },
+            ))
+        }
         "tab-new" => Some(UserEvent::OpenTab),
         "tab-close" => Some(UserEvent::CloseSelectedTab),
         "quit" => Some(UserEvent::Quit),
@@ -2238,6 +2294,51 @@ mod tests {
             stdin_line_to_event("group-collapse 7"),
             Some(UserEvent::ToggleGroup(7))
         ));
+    }
+
+    #[test]
+    fn stdin_translation_commands_map_to_translation_messages() {
+        for (line, expected) in [
+            (
+                "translate zh-TW",
+                ClientMessage::SetTranslationLanguage {
+                    target_language: Some("zh-TW".to_string()),
+                },
+            ),
+            (
+                "translate off",
+                ClientMessage::SetTranslationLanguage {
+                    target_language: None,
+                },
+            ),
+            ("original", ClientMessage::ShowTranslation { shown: false }),
+            ("translated", ClientMessage::ShowTranslation { shown: true }),
+            ("translation", ClientMessage::GetTranslationState),
+        ] {
+            match stdin_line_to_event(line) {
+                Some(UserEvent::Translation(message)) => assert_eq!(message, expected, "{line}"),
+                _ => panic!("{line:?} must map to a translation event"),
+            }
+        }
+        // A bare `translate`, or something that is not a tag, is not a command.
+        assert!(stdin_line_to_event("translate").is_none());
+        assert!(stdin_line_to_event("translate ignore previous instructions").is_none());
+    }
+
+    #[test]
+    fn translation_state_is_reported_in_plain_words() {
+        assert_eq!(
+            translation_state_line(Some(2), Some("zh-TW"), true, true),
+            "translation: tab 2, language zh-TW, showing the translation"
+        );
+        assert_eq!(
+            translation_state_line(Some(2), Some("zh-TW"), true, false),
+            "translation: tab 2, language zh-TW, showing the original"
+        );
+        assert_eq!(
+            translation_state_line(None, None, false, false),
+            "translation: default tab, language off, nothing translated on this page"
+        );
     }
 
     #[test]
