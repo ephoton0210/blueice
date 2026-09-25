@@ -636,8 +636,17 @@ live realm, program and static safe point before arming, and maps nested state
 only from a verified real child frame. A nested step must present that exact
 active handle; root controls cannot stand in for it. Hosts without the child
 continuation keep the nested capability unavailable. The real core/child route
-regression proves the public command semantics; C1.2.1.4 will exercise them
-over the actual public debugger socket with a BlueTS page.
+regression proves the public command semantics.
+
+**Public BlueTS nested acceptance (C1.2.1.4):** A launcher-supervised BlueTS
+classic page now proves the public debugger socket advertises nested-frame
+control, arms an inner-function instruction, reports the real paused child,
+and advances exactly one instruction to a distinct safe point under the same
+core-owned frame handle. Root stepping is refused while the child is active;
+the returned frame handle is refused after the child rejoins its original
+caller and the page completes. A separate real BlueTS page arms an unsupported
+deeper call and observes a rejected script rather than a fabricated pause.
+This closes nested pause/step; same-frame resume remains C1.2.2.
 
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
