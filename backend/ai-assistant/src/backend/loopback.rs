@@ -38,6 +38,11 @@ impl InferenceBackend for LoopbackBackend {
     }
 
     fn complete(&self, completion: Completion<'_>) -> Result<String, String> {
+        // A blocking HTTP call cannot be interrupted, so cancellation is only
+        // honoured before it starts.
+        if completion.is_cancelled() {
+            return Err("cancelled".to_string());
+        }
         chat(
             &self.config,
             ChatRequest {
@@ -121,6 +126,7 @@ mod tests {
             system: "sys",
             user: "usr",
             max_tokens: 321,
+            cancel: None,
         });
         assert_eq!(reply, Ok("done".to_string()));
         let request = worker.join().unwrap();
@@ -144,8 +150,34 @@ mod tests {
             .complete(Completion {
                 system: "s",
                 user: "u",
-                max_tokens: 8
+                max_tokens: 8,
+                cancel: None,
             })
             .is_err());
+    }
+
+    #[test]
+    fn a_completion_cancelled_before_it_starts_never_reaches_the_server() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let backend = LoopbackBackend::new(
+            "ollama".into(),
+            format!("http://127.0.0.1:{port}/v1/"),
+            "m".into(),
+        )
+        .unwrap();
+        let token = crate::backend::CancelToken::new();
+        token.cancel();
+        assert_eq!(
+            backend.complete(Completion {
+                system: "s",
+                user: "u",
+                max_tokens: 8,
+                cancel: Some(&token),
+            }),
+            Err("cancelled".to_string())
+        );
+        assert!(matches!(listener.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock));
     }
 }

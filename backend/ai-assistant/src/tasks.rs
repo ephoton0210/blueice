@@ -36,6 +36,7 @@ pub(crate) fn translate(
         system: &system,
         user: &user,
         max_tokens: TRANSLATE_MAX_TOKENS,
+        cancel: None,
     })?;
     let translated: Vec<String> = serde_json::from_str(reply.trim())
         .map_err(|_| "model translation is not a JSON array of strings".to_string())?;
@@ -59,6 +60,7 @@ pub(crate) fn summarize(backend: &dyn InferenceBackend, text: &str) -> Result<St
             system,
             user: text,
             max_tokens: SUMMARY_MAX_TOKENS,
+            cancel: None,
         })?,
         MAX_SUMMARY_BYTES,
         "summary",
@@ -80,6 +82,7 @@ pub(crate) fn organize(
             system: &system,
             user: text,
             max_tokens: ORGANIZE_MAX_TOKENS,
+            cancel: None,
         })?,
         MAX_ORGANIZED_BYTES,
         "organized text",
