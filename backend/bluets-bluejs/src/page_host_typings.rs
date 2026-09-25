@@ -670,6 +670,7 @@ mod tests {
             "interface MutableEvent { type: string; } interface Holder { slot: MutableEvent; } interface Source { event: BlueIceClickEvent; } function write(holder: Holder, source: Source): void { const selected = (holder.slot ||= source.event); selected.type = 'click'; }",
             "interface MutableEvent { type: string; } interface Holder { event: BlueIceClickEvent; mutable: MutableEvent; } function write(holder: Holder): void { const selected = holder.mutable || holder.event; selected.type = 'click'; }",
             "interface MutableEvent { type: string; } type EventPair = [BlueIceClickEvent, MutableEvent]; function write(pair: EventPair): void { const selected = [...pair][0]; selected.type = 'click'; }",
+            "interface Holder { event: BlueIceClickEvent; } function write(holder: Holder): void { const copied = { ...holder }; copied.event.type = 'click'; }",
         ] {
             let error = compile(source).err().expect("readonly write must fail");
             let crate::BridgeError::BlueTs(diagnostics) = error else {

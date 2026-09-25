@@ -316,6 +316,18 @@ rejects the readonly alias before runtime. The array inference implementation
 moved into a small MPL-licensed module, leaving the checker below 1500 lines.
 Other opaque result forms and unknown spread sources remain open.
 
+**Readonly through record spread results (B4 partial):** Inferred record
+literals now parse a complete spread source expression and expand known
+interface/type aliases to their record fields. A copied holder therefore
+retains the readonly event type in nested field values, including when the
+spread comes from a member expression, typed call, or nested literal. Object
+spread makes the new outer properties writable, and later explicit fields
+override spread fields; neither operation erases a nested event's readonly
+qualifier. The verified event-v1 bridge rejects a copied holder's event
+write before runtime. Record-result inference moved to its own MPL-licensed
+module, leaving the parent checker below 1500 lines. Opaque or union spread
+sources still need a conservative qualifier policy, so B4.2 remains open.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

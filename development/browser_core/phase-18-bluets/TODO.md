@@ -237,6 +237,9 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   Array literals now retain readonly event elements from tuple spreads,
   including named tuple aliases; indexed aliases and direct receivers reject
   the write, and the event-v1 bridge verifies rejection before runtime.
+  Record spreads now retain nested event references through known interfaces,
+  aliases, member sources, and nested literals; new outer fields stay writable
+  and later overrides win. The event-v1 bridge rejects a copied holder write.
   Opaque/unmodeled expression forms still need a sound policy, so do not
   claim full qualifier enforcement yet.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members

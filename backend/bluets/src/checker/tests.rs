@@ -11,6 +11,7 @@ mod readonly_assertions;
 mod readonly_assignment_results;
 mod readonly_logical_assignment_results;
 mod readonly_logical_results;
+mod readonly_record_spread;
 mod readonly_sequence;
 mod readonly_spread_results;
 

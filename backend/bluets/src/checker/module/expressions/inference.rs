@@ -7,6 +7,7 @@
 use super::*;
 
 mod arrays;
+mod records;
 
 impl<'a> ModuleChecker<'a> {
     pub(in crate::checker::module) fn infer_expression(
@@ -298,7 +299,7 @@ impl<'a> ModuleChecker<'a> {
             "null" => Type::Null,
             "undefined" => Type::Undefined,
             "[" => self.infer_array(tokens, scope),
-            "{" => infer_record(tokens, scope, &|value| self.infer_expression(value, scope)),
+            "{" => self.infer_record(tokens, scope),
             _ if first.kind == TokenKind::Identifier => {
                 if tokens.len() == 1 {
                     if let Some(signature) =
