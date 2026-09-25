@@ -84,6 +84,10 @@ pub const DEBUGGER_PROTOCOL_VERSION: u32 = 36;
 
 pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
+pub const DEBUGGER_MAX_VALUE_DEPTH: usize = 4;
+pub const DEBUGGER_MAX_VALUE_CONTAINER_LENGTH: usize = 32;
+pub const DEBUGGER_MAX_VALUE_NODES: usize = 256;
+pub const DEBUGGER_MAX_VALUE_PAYLOAD_BYTES: usize = 4_096;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -862,13 +866,119 @@ pub struct DebuggerScopeSnapshot {
 
 /// Exact selector for a slot previously emitted by Scopes on this stream.
 /// It is not yet a debugger request and carries no heap-object handle.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DebuggerValueTarget {
     pub program: DebuggerProgram,
     pub frame: Option<DebuggerFrame>,
     pub frame_index: u32,
     pub safe_point: DebuggerSafePoint,
     pub scope_entry: DebuggerScopeEntry,
+}
+
+/// A handle-free, lossless tree copied from one paused active binding.
+/// `None` in an array is a hole, distinct from an explicit `Undefined`.
+/// This type does not yet introduce a public request or reply variant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DebuggerValuePreview {
+    Undefined,
+    Null,
+    Bool(bool),
+    NumberBits(u64),
+    BigIntBytes(Vec<u8>),
+    StringUnits(Vec<u16>),
+    Array(Vec<Option<Self>>),
+    Record(Vec<(Vec<u16>, Self)>),
+}
+
+impl DebuggerValuePreview {
+    /// Rejects a partial or over-budget tree before it becomes a public
+    /// reply. Traversal is iterative and checks duplicate record keys.
+    pub fn is_well_formed(&self) -> bool {
+        let mut pending = vec![(self, 0usize)];
+        let mut nodes = 0usize;
+        let mut payload_bytes = 0usize;
+        while let Some((value, depth)) = pending.pop() {
+            if depth > DEBUGGER_MAX_VALUE_DEPTH {
+                return false;
+            }
+            nodes += 1;
+            if nodes > DEBUGGER_MAX_VALUE_NODES {
+                return false;
+            }
+            let bytes = match value {
+                Self::Undefined | Self::Null | Self::Bool(_) | Self::NumberBits(_) => 0,
+                Self::BigIntBytes(bytes) => bytes.len(),
+                Self::StringUnits(units) => match units.len().checked_mul(2) {
+                    Some(bytes) => bytes,
+                    None => return false,
+                },
+                Self::Array(elements) => {
+                    if elements.len() > DEBUGGER_MAX_VALUE_CONTAINER_LENGTH {
+                        return false;
+                    }
+                    for element in elements {
+                        if let Some(value) = element {
+                            pending.push((value, depth + 1));
+                        } else {
+                            if depth + 1 > DEBUGGER_MAX_VALUE_DEPTH {
+                                return false;
+                            }
+                            nodes += 1;
+                            if nodes > DEBUGGER_MAX_VALUE_NODES {
+                                return false;
+                            }
+                        }
+                    }
+                    0
+                }
+                Self::Record(entries) => {
+                    if entries.len() > DEBUGGER_MAX_VALUE_CONTAINER_LENGTH {
+                        return false;
+                    }
+                    let mut keys = HashSet::new();
+                    for (key, value) in entries {
+                        if !keys.insert(key.as_slice()) {
+                            return false;
+                        }
+                        let Some(key_bytes) = key.len().checked_mul(2) else {
+                            return false;
+                        };
+                        let Some(total) = payload_bytes.checked_add(key_bytes) else {
+                            return false;
+                        };
+                        payload_bytes = total;
+                        if payload_bytes > DEBUGGER_MAX_VALUE_PAYLOAD_BYTES {
+                            return false;
+                        }
+                        pending.push((value, depth + 1));
+                    }
+                    0
+                }
+            };
+            let Some(total) = payload_bytes.checked_add(bytes) else {
+                return false;
+            };
+            payload_bytes = total;
+            if payload_bytes > DEBUGGER_MAX_VALUE_PAYLOAD_BYTES {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// Exact selected Scopes slot and its complete validated preview. The target
+/// is echoed to let the client reject a mismatched reply without a heap ID.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerValueSnapshot {
+    pub target: DebuggerValueTarget,
+    pub preview: DebuggerValuePreview,
+}
+
+impl DebuggerValueSnapshot {
+    pub fn is_well_formed(&self) -> bool {
+        self.target.is_well_formed() && self.preview.is_well_formed()
+    }
 }
 
 impl DebuggerValueTarget {
@@ -5221,6 +5331,156 @@ mod tests {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+    }
+
+    #[test]
+    fn public_value_types_validate_exact_targets_without_a_wire_route() {
+        let program = DebuggerProgram {
+            realm: realm(),
+            program_handle: 12,
+            program_generation: 5,
+        };
+        let frame = DebuggerFrame {
+            program,
+            code_unit_ordinal: 2,
+            core_instance: [1; 16],
+            frame_handle: 9,
+        };
+        let root = DebuggerValueTarget {
+            program,
+            frame: None,
+            frame_index: 0,
+            safe_point: DebuggerSafePoint {
+                program,
+                code_unit_ordinal: 0,
+                bytecode_offset: 8,
+            },
+            scope_entry: DebuggerScopeEntry {
+                slot_ordinal: 512,
+                scope_depth: 1,
+            },
+        };
+        assert!(root.is_well_formed());
+        let snapshot = DebuggerValueSnapshot {
+            target: root,
+            preview: DebuggerValuePreview::Undefined,
+        };
+        assert!(snapshot.is_well_formed());
+        assert_eq!(
+            serde_json::from_slice::<DebuggerValueSnapshot>(
+                &serde_json::to_vec(&snapshot).unwrap()
+            )
+            .unwrap(),
+            snapshot
+        );
+        assert!(!DebuggerValueTarget {
+            frame_index: 1,
+            ..root
+        }
+        .is_well_formed());
+        assert!(!DebuggerValueTarget {
+            safe_point: DebuggerSafePoint {
+                code_unit_ordinal: 2,
+                ..root.safe_point
+            },
+            ..root
+        }
+        .is_well_formed());
+        assert!(!DebuggerValueTarget {
+            safe_point: DebuggerSafePoint {
+                program: DebuggerProgram {
+                    program_generation: 6,
+                    ..program
+                },
+                ..root.safe_point
+            },
+            ..root
+        }
+        .is_well_formed());
+        let nested = DebuggerValueTarget {
+            frame: Some(frame),
+            safe_point: DebuggerSafePoint {
+                code_unit_ordinal: 2,
+                ..root.safe_point
+            },
+            ..root
+        };
+        assert!(nested.is_well_formed());
+        assert!(!DebuggerValueTarget {
+            frame: Some(DebuggerFrame {
+                core_instance: [0; 16],
+                ..frame
+            }),
+            ..nested
+        }
+        .is_well_formed());
+        assert!(!DebuggerValueTarget {
+            frame_index: DEBUGGER_MAX_STACK_FRAMES,
+            ..nested
+        }
+        .is_well_formed());
+        assert!(DebuggerValueTarget {
+            frame_index: 1,
+            safe_point: root.safe_point,
+            ..nested
+        }
+        .is_well_formed());
+        assert_eq!(DEBUGGER_PROTOCOL_VERSION, 36);
+    }
+
+    #[test]
+    fn public_value_preview_rejects_every_excess_budget_and_duplicate_keys() {
+        let preview = DebuggerValuePreview::Record(vec![(
+            vec![0xd800],
+            DebuggerValuePreview::Array(vec![
+                Some(DebuggerValuePreview::NumberBits((-0.0_f64).to_bits())),
+                None,
+                Some(DebuggerValuePreview::StringUnits(vec![0xdc00])),
+            ]),
+        )]);
+        assert!(preview.is_well_formed());
+        assert_eq!(
+            serde_json::from_slice::<DebuggerValuePreview>(&serde_json::to_vec(&preview).unwrap())
+                .unwrap(),
+            preview
+        );
+        let mut too_deep = DebuggerValuePreview::Null;
+        for _ in 0..5 {
+            too_deep = DebuggerValuePreview::Array(vec![Some(too_deep)]);
+        }
+        assert!(!too_deep.is_well_formed());
+        assert!(!DebuggerValuePreview::Array(vec![None; 33]).is_well_formed());
+        assert!(!DebuggerValuePreview::Array(vec![
+            Some(DebuggerValuePreview::Array(vec![
+                None;
+                32
+            ]));
+            8
+        ])
+        .is_well_formed());
+        assert!(!DebuggerValuePreview::BigIntBytes(vec![0; 4_097]).is_well_formed());
+        assert!(DebuggerValuePreview::StringUnits(vec![0; 2_048]).is_well_formed());
+        assert!(!DebuggerValuePreview::Record(vec![
+            (
+                vec![b'a' as u16],
+                DebuggerValuePreview::StringUnits(vec![0; 1_024])
+            ),
+            (
+                vec![b'b' as u16],
+                DebuggerValuePreview::StringUnits(vec![0; 1_024])
+            ),
+        ])
+        .is_well_formed());
+        assert!(!DebuggerValuePreview::Record(vec![(
+            vec![b'x' as u16; 2_049],
+            DebuggerValuePreview::Null,
+        )])
+        .is_well_formed());
+        assert!(!DebuggerValuePreview::Record(vec![
+            (vec![b'a' as u16], DebuggerValuePreview::Null),
+            (vec![b'a' as u16], DebuggerValuePreview::Bool(true)),
+        ])
+        .is_well_formed());
     }
 
     #[test]

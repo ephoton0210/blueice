@@ -1086,6 +1086,19 @@ Launcher CLI tests reject the flag without an endpoint and prove it remains
 independent of static-metadata inventory; the Launcher launch-option test
 passes. Both binaries pass `cargo check`.
 
+**Public value types before transport (C2.2.1.5.3.2.1):** The debugger IPC
+now has a serializable exact value target and separately validated snapshot
+and tagged preview types, but no `GetValue`/`Value` wire variants yet. The
+target contains only the already-defined Scopes selector and core frame;
+the snapshot echoes that selector and a handle-free tree. Public validation
+independently enforces the private/native depth 4, container length 32, node
+count 256 (including holes), and aggregate UTF-16 key/string and BigInt byte
+limit 4,096; duplicate record keys and impossible root/nested shapes refuse.
+Tests cover lossless number bits and lone-surrogate UTF-16 round trips,
+malformed program/frame/index identities, every budget, and duplicates.
+Debugger v36 remains unchanged; the complete negotiated route and bump are
+C2.2.1.5.3.2.2. All 107 IPC library tests and workspace Clippy pass.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
