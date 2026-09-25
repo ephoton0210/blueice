@@ -166,6 +166,10 @@ const DOWNLOADS_URL: &str = "about:downloads";
 /// because the frontend is intentionally a separate process from `core`.
 const GATEKEEPER_SETTINGS_URL: &str = "about:settings";
 
+/// The built-in assistant panel (`blueice_engine::assistant_page::
+/// ASSISTANT_URL`), a wire-level string for the same reason.
+const ASSISTANT_URL: &str = "about:assistant";
+
 /// Native window chrome is local to this frontend. `core` receives page
 /// coordinates below it, while the tab strip itself is rendered here from the
 /// same core-owned tab/group state an MCP observer can inspect.
@@ -196,6 +200,10 @@ enum UserEvent {
     /// `translate <tag|off>`, `original`, `translated`, `translation`: live
     /// translation controls, sent to the selected tab like history commands.
     Translation(ClientMessage),
+    /// `summarize`, `organize <instruction>`: assistant tasks on the selected
+    /// tab. The result arrives later and is printed (and shown on
+    /// `about:assistant`, which the `assistant` command opens).
+    AssistantTask(ClientMessage),
     OpenTab,
     CloseSelectedTab,
     SelectTab(u64),
@@ -1444,9 +1452,9 @@ impl ApplicationHandler<UserEvent> for App {
                         self.request_redraw();
                     }
                 }
-                // Printed by the `summarize`/`organize` commands in the
-                // frontend's own step (S6).
-                ServerMessage::AssistantResult { .. } => {}
+                ServerMessage::AssistantResult { kind, text } => {
+                    println!("{}", assistant_result_line(kind, &text))
+                }
                 ServerMessage::TranslationState {
                     language,
                     available,
@@ -1532,7 +1540,9 @@ impl ApplicationHandler<UserEvent> for App {
                 url: navigation_url(&url, self.locale),
             }),
             UserEvent::GoBack => self.send_selected(&ClientMessage::GoBack),
-            UserEvent::Translation(message) => self.send_selected(&message),
+            UserEvent::Translation(message) | UserEvent::AssistantTask(message) => {
+                self.send_selected(&message)
+            }
             UserEvent::GoForward => self.send_selected(&ClientMessage::GoForward),
             UserEvent::OpenTab => self.open_tab(),
             UserEvent::CloseSelectedTab => {
@@ -1667,7 +1677,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
 /// content are opened in the window's own language; everything else stays
 /// exactly as given.
 fn navigation_url(url: &str, locale: &str) -> String {
-    if url == DOWNLOADS_URL || url == GATEKEEPER_SETTINGS_URL {
+    if url == DOWNLOADS_URL || url == GATEKEEPER_SETTINGS_URL || url == ASSISTANT_URL {
         format!("{url}?lang={locale}")
     } else {
         url.to_string()
@@ -1733,6 +1743,16 @@ fn start_download(url: &str) -> Result<TransferInfo, String> {
     start_download_at(&socket, &spawn, url)
 }
 
+/// The stdout block for a finished assistant task, so a person driving the
+/// stdin commands sees the result without opening the panel.
+fn assistant_result_line(kind: blueice_ipc::AssistantTaskKind, text: &str) -> String {
+    let label = match kind {
+        blueice_ipc::AssistantTaskKind::Summary => "summary",
+        blueice_ipc::AssistantTaskKind::Organized => "organized",
+    };
+    format!("assistant {label}:\n{text}")
+}
+
 /// The stdout line reporting a tab's translation state, so a person driving the
 /// stdin commands sees what core answered (`translation: tab 1, language
 /// zh-TW, translated`).
@@ -1768,6 +1788,18 @@ fn stdin_line_to_event(line: &str) -> Option<UserEvent> {
         "settings" => Some(UserEvent::Navigate(GATEKEEPER_SETTINGS_URL.to_string())),
         "back" => Some(UserEvent::GoBack),
         "forward" => Some(UserEvent::GoForward),
+        "assistant" => Some(UserEvent::Navigate(ASSISTANT_URL.to_string())),
+        "summarize" => Some(UserEvent::AssistantTask(ClientMessage::SummarizePage)),
+        other if other.starts_with("organize ") => {
+            let instruction = other["organize ".len()..].trim();
+            if instruction.is_empty() {
+                eprintln!("blueice-frontend: organize needs an instruction, e.g. organize make a table");
+                return None;
+            }
+            Some(UserEvent::AssistantTask(ClientMessage::OrganizePage {
+                instruction: instruction.to_string(),
+            }))
+        }
         "original" => Some(UserEvent::Translation(ClientMessage::ShowTranslation {
             shown: false,
         })),
@@ -2326,6 +2358,45 @@ mod tests {
         // A bare `translate`, or something that is not a tag, is not a command.
         assert!(stdin_line_to_event("translate").is_none());
         assert!(stdin_line_to_event("translate ignore previous instructions").is_none());
+    }
+
+    #[test]
+    fn stdin_assistant_commands_map_to_tasks_and_the_panel() {
+        assert!(matches!(
+            stdin_line_to_event("summarize"),
+            Some(UserEvent::AssistantTask(ClientMessage::SummarizePage))
+        ));
+        match stdin_line_to_event("  organize  make a table of prices ") {
+            Some(UserEvent::AssistantTask(ClientMessage::OrganizePage { instruction })) => {
+                assert_eq!(instruction, "make a table of prices")
+            }
+            _ => panic!("organize must carry its instruction"),
+        }
+        assert!(
+            matches!(stdin_line_to_event("assistant"), Some(UserEvent::Navigate(url)) if url == ASSISTANT_URL)
+        );
+        assert!(stdin_line_to_event("organize").is_none());
+        assert!(stdin_line_to_event("organize   ").is_none());
+    }
+
+    #[test]
+    fn the_assistant_panel_opens_in_the_windows_own_language() {
+        assert_eq!(
+            navigation_url("about:assistant", "zh-TW"),
+            "about:assistant?lang=zh-TW"
+        );
+    }
+
+    #[test]
+    fn a_finished_task_is_printed_with_its_kind() {
+        assert_eq!(
+            assistant_result_line(blueice_ipc::AssistantTaskKind::Summary, "short"),
+            "assistant summary:\nshort"
+        );
+        assert_eq!(
+            assistant_result_line(blueice_ipc::AssistantTaskKind::Organized, "| a |"),
+            "assistant organized:\n| a |"
+        );
     }
 
     #[test]
