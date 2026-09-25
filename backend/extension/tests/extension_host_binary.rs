@@ -640,7 +640,7 @@ fn core_connection_mode_authenticates_then_runs_a_navigation_event_reactor_over_
         ExtensionRequest::HelloAuthenticated {
             extension_id,
             capability_versions: BTreeMap::from([
-                ("dom:read".to_string(), 2),
+                ("dom:read".to_string(), 3),
                 ("dom:write".to_string(), 9),
                 ("storage".to_string(), 3),
             ]),
