@@ -83,7 +83,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 37;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 38;
 
 pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -880,7 +880,7 @@ pub struct DebuggerValueTarget {
 
 /// A handle-free, lossless tree copied from one paused active binding.
 /// `None` in an array is a hole, distinct from an explicit `Undefined`.
-/// The v37 request/reply route still requires an independent session grant.
+/// The public request/reply route still requires an independent session grant.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DebuggerValuePreview {
     Undefined,
@@ -2551,7 +2551,8 @@ pub enum DebuggerExecutionState {
 
 /// Versioned requests for the core debugger route and the isolated BlueJS host.
 ///
-/// Command families are deliberately added only with real native behavior.
+/// Positive command families are added only with real native behavior; a
+/// denial-only source-text probe is explicitly non-dereferenceable.
 /// The first non-discovery family resolves opaque programs and exact
 /// compiler-verified instruction boundaries. The second is exact, bounded
 /// breakpoint configuration. The root-entry arm/resume operations are
@@ -2794,6 +2795,11 @@ pub enum DebuggerRequest {
     GetValue {
         target: DebuggerValueTarget,
     },
+    /// Denial-only compatibility probe. Core never resolves this target or
+    /// reads source text; the reply is always a typed capability refusal.
+    GetSourceText {
+        program: DebuggerProgram,
+    },
     /// Steps from one exact paused BlueTS root safe point to the next distinct
     /// compiler-bound source span, completion, or a bounded-limit stop.
     /// Requires a separate metadata grant and same-stream source receipt.
@@ -2801,8 +2807,8 @@ pub enum DebuggerRequest {
         target: DebuggerStaticMetadataSafePointSpanTarget,
     },
     /// Catch-all for a newer request variant. Like the frontend protocol, a
-    /// receiver preserves connection framing and replies with `Unsupported`
-    /// rather than deserializing an unknown command as an unrelated request.
+    /// receiver preserves framing for an unknown unit command and replies
+    /// with a typed capability refusal rather than running another command.
     #[serde(other)]
     Unknown,
 }
@@ -3036,6 +3042,7 @@ pub fn negotiate_with_values(
         | DebuggerRequest::GetStackCoordinates { .. }
         | DebuggerRequest::GetScopes { .. }
         | DebuggerRequest::GetValue { .. }
+        | DebuggerRequest::GetSourceText { .. }
         | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
         | DebuggerRequest::Unknown => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
@@ -3357,6 +3364,47 @@ mod tests {
     }
 
     #[test]
+    fn denied_source_text_probe_keeps_stream_framing() {
+        let program = DebuggerProgram {
+            realm: realm(),
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let attempted_source_read = serde_json::to_vec(&serde_json::json!({
+            "GetSourceText": {"program": program}
+        }))
+        .unwrap();
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        sender
+            .write_all(
+                &u32::try_from(attempted_source_read.len())
+                    .unwrap()
+                    .to_le_bytes(),
+            )
+            .unwrap();
+        sender.write_all(&attempted_source_read).unwrap();
+        write_debugger_request(&mut sender, &DebuggerRequest::ListPageRealms).unwrap();
+        assert_eq!(
+            read_debugger_request(&mut receiver).unwrap(),
+            DebuggerRequest::GetSourceText { program }
+        );
+        assert_eq!(
+            read_debugger_request(&mut receiver).unwrap(),
+            DebuggerRequest::ListPageRealms
+        );
+        assert!(matches!(
+            negotiate(
+                &DebuggerRequest::GetSourceText { program },
+                &DebuggerMetadataCapabilityManifest::empty(),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::ProtocolVersion,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn request_and_reply_round_trip_on_a_real_socket() {
         for request in [
             DebuggerRequest::Hello {
@@ -3607,6 +3655,13 @@ mod tests {
                 },
             },
             DebuggerRequest::StepRootInstruction {
+                program: DebuggerProgram {
+                    realm: realm(),
+                    program_handle: 12,
+                    program_generation: 5,
+                },
+            },
+            DebuggerRequest::GetSourceText {
                 program: DebuggerProgram {
                     realm: realm(),
                     program_handle: 12,
@@ -5426,7 +5481,7 @@ mod tests {
     }
 
     #[test]
-    fn public_value_types_validate_exact_targets_without_a_wire_route() {
+    fn public_value_targets_require_exact_frame_and_scope_identity() {
         let program = DebuggerProgram {
             realm: realm(),
             program_handle: 12,
@@ -5525,7 +5580,6 @@ mod tests {
             ..nested
         }
         .is_well_formed());
-        assert_eq!(DEBUGGER_PROTOCOL_VERSION, 37);
     }
 
     #[test]

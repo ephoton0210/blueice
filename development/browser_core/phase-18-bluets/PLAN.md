@@ -1175,16 +1175,32 @@ tree or a shape-specific oracle. Core's independent remint can still return
 `ResourceLimit` if a child violates its output budget. These existing typed
 categories are stable identifiers; clients must not parse diagnostic prose.
 
-No public source-text read selector is added. A framed but unknown operation
-after `Hello`, including an attempted source-text command, should receive a
-generic typed `CapabilityUnavailable` without parsing its target, echoing its
-name, or accessing source/realm state. Before `Hello`, the existing typed
-`ProtocolVersion` refusal remains. This changes the previous `Unsupported`
-reply for unknown operations, so the complete semantic change belongs to
-debugger v38 even though the request/reply shapes remain unchanged. An
-authorized runtime string whose bytes resemble source text is still a value,
-not a source-read operation. C2.2.2.2 implements the mapping and tests the
-unknown-command framing; C2.2.2.3 proves it on real Launcher sockets.
+No positive public source-text read selector is added. The existing unit
+`Unknown` catch-all cannot deserialize a payload-bearing unknown JSON
+command: it closes the stream before core can give a typed refusal. Therefore
+v38 adds an explicitly denial-only `GetSourceText { program }` probe. IPC
+parses its opaque program shape, but core never looks up the program, realm,
+child, or source; every post-`Hello` probe gets the same generic typed
+`CapabilityUnavailable` as a unit unknown command, without echoing its target.
+Malformed JSON still fails framing rather than becoming a different request.
+Before `Hello`, the existing typed `ProtocolVersion` refusal remains. The
+new denial-only variant and changed unknown-operation reply require debugger
+v38; no source text can be returned. An authorized runtime string whose bytes
+resemble source text is still a value, not a source-read operation. C2.2.2.2
+implements the mapping and tests framing; C2.2.2.3 proves it on real sockets.
+
+**Typed public refusal implementation (C2.2.2.2):** Debugger v38 carries
+the denial-only `GetSourceText { program }` request. The core never resolves
+that program; it returns the same fixed `CapabilityUnavailable` code and
+message as a post-`Hello` unit unknown command, whether the parsed program
+names the local realm or another one. Before `Hello`, the probe returns
+`ProtocolVersion`. A raw framed probe followed by another request remains
+parseable, while guessed and cross-realm `GetValue` targets still fail at the
+same-stream receipt gate with `InvalidTarget` and no child call. The existing
+private child tests retain exact active-frame and plain-value refusals; no
+private source-text operation or value grant was added. All 109 IPC and 297
+engine library tests, five focused private child tests, formatting, and
+workspace Clippy pass. Real public socket proof remains C2.2.2.3.
 
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant

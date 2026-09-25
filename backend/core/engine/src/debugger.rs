@@ -423,10 +423,9 @@ pub fn handle_debugger_request_with_javascript_executor(
             code: DebuggerErrorCode::ProtocolVersion,
             message: "debugger Hello is valid only as the first request".to_string(),
         },
-        DebuggerRequest::Unknown => DebuggerReply::Unsupported {
-            operation: "unknown debugger request".to_string(),
-            reason: "this core build does not recognize the requested debugger operation"
-                .to_string(),
+        DebuggerRequest::GetSourceText { .. } | DebuggerRequest::Unknown => DebuggerReply::Error {
+            code: DebuggerErrorCode::CapabilityUnavailable,
+            message: "debugger operation is unavailable".to_string(),
         },
     }
 }
@@ -8816,6 +8815,42 @@ mod tests {
     }
 
     #[test]
+    fn source_text_probe_and_unknown_command_have_target_independent_typed_refusals() {
+        let (tabs, realm) = loaded_tabs();
+        let live_realm_program = DebuggerProgram {
+            realm,
+            program_handle: 7,
+            program_generation: 3,
+        };
+        let foreign_realm_program = DebuggerProgram {
+            realm: DebuggerPageRealm {
+                tab_id: realm.tab_id + 1,
+                ..realm
+            },
+            program_handle: u64::MAX,
+            program_generation: u64::MAX,
+        };
+        let expected = DebuggerReply::Error {
+            code: DebuggerErrorCode::CapabilityUnavailable,
+            message: "debugger operation is unavailable".to_string(),
+        };
+        for request in [
+            DebuggerRequest::GetSourceText {
+                program: live_realm_program,
+            },
+            DebuggerRequest::GetSourceText {
+                program: foreign_realm_program,
+            },
+            DebuggerRequest::Unknown,
+        ] {
+            assert_eq!(
+                handle_debugger_request_with_javascript_executor(&tabs, None, request),
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn public_value_dispatch_requires_granted_scopes_receipt_and_current_pause() {
         let (tabs, realm) = loaded_tabs();
         let program = DebuggerProgram {
@@ -8952,6 +8987,46 @@ mod tests {
                 ..
             }
         ));
+        for guessed_program in [
+            DebuggerProgram {
+                program_handle: program.program_handle + 1,
+                ..program
+            },
+            DebuggerProgram {
+                realm: DebuggerPageRealm {
+                    tab_id: realm.tab_id + 1,
+                    ..realm
+                },
+                ..program
+            },
+        ] {
+            let guessed = DebuggerValueTarget {
+                program: guessed_program,
+                frame: Some(DebuggerFrame {
+                    program: guessed_program,
+                    ..frame
+                }),
+                safe_point: DebuggerSafePoint {
+                    program: guessed_program,
+                    ..safe_point
+                },
+                ..target
+            };
+            assert!(guessed.is_well_formed());
+            assert!(matches!(
+                handle_debugger_request_with_child_locations_and_pause(
+                    &tabs,
+                    &mut locations,
+                    Some(&granted),
+                    1,
+                    DebuggerRequest::GetValue { target: guessed },
+                ),
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    ..
+                }
+            ));
+        }
         assert!(matches!(
             handle_debugger_request_with_child_locations_and_pause(
                 &tabs,

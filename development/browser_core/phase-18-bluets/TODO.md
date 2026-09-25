@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.2.2.2.** Implement the typed public refusal mapping without
-granting a source-text read operation.
+**Current leaf: C2.2.2.3.** Prove typed public value and source-text refusals
+on real Launcher-supervised sockets.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -339,8 +339,8 @@ channel with explicit owner/client grants.
         - [x] **C2.2.1.5.4.1** Prove exact granted classic/module nested and caller-root reads, then resumed root reads, through the real public Launcher-supervised socket. A real public v37 socket with independent owner/client grant reads lossless numeric slots from each nested child, its waiting caller root, and its resumed root; both classic and module paths pass.
         - [x] **C2.2.1.5.4.2** Prove cross-stream and stale-pause denial, forged slots, and all preview budgets on real Launcher-supervised BlueTS sockets; then check off C2.2.1.5.4 and its parents. The classic/module fixture refuses a target on an unreceipted second stream, an ungranted client, a forged slot, and the old nested pause after resume. A second real BlueTS fixture reads four exact 4/32/256/4,096 cap values while refusing four one-over-cap parameters atomically; both focused tests and workspace Clippy pass.
   - [ ] **C2.2.2** Refuse guessed handles, source text, and cross-realm references with a typed error.
-    - [x] **C2.2.2.1** Specify the public typed refusal matrix and non-disclosing validation order for guessed value targets, cross-realm references, unknown source-text requests, unsupported shapes, and budgets; decide whether the wire needs a version bump before implementation. PLAN.md selects generic typed `CapabilityUnavailable` for unknown post-Hello requests (including source-text attempts), keeps exact receipted GetValue targets and `InvalidTarget` before any realm lookup, retains typed `InvalidExecutionState` for native unsupported/over-budget values, and requires public v38 for the changed unknown-request reply semantics; no positive source-text variant is added.
-    - [ ] **C2.2.2.2** Implement the typed refusal mapping at the public debugger boundary with IPC/core/child regressions, preserving the source-text-free request set and independent value grants.
+    - [x] **C2.2.2.1** Specify the public typed refusal matrix and non-disclosing validation order for guessed value targets, cross-realm references, unknown source-text requests, unsupported shapes, and budgets; decide whether the wire needs a version bump before implementation. PLAN.md selects generic typed `CapabilityUnavailable` for post-Hello source-text probes and unit unknown commands, keeps exact receipted GetValue targets and `InvalidTarget` before any realm lookup, retains typed `InvalidExecutionState` for native unsupported/over-budget values, and requires public v38. IPC's unit `Unknown` cannot parse a payload-bearing command, so v38 adds a denial-only `GetSourceText { program }` probe, never a positive source-read route.
+    - [x] **C2.2.2.2** Implement the typed refusal mapping at the public debugger boundary with IPC/core/child regressions, preserving independent value grants and adding only a denial-only source-text probe. Public debugger v38 adds `GetSourceText { program }` only to return target-independent `CapabilityUnavailable`, and unit unknown commands get the same typed reply. Existing GetValue receipt checks reject guessed or cross-realm targets before child access. A raw probe preserves IPC framing; 109 IPC and 297 engine library tests, five focused private child tests, and workspace Clippy pass.
     - [ ] **C2.2.2.3** Prove guessed handles, source-text attempts, cross-realm and unsupported-value refusal on real Launcher-supervised sockets; then check off C2.2.2 and C2.2.
 - [ ] **C2.3** Report an exception at its original BlueTS source position.
   - [ ] **C2.3.1** Map a thrown error's position to the original BlueTS span for classic, module, and nested frames.
