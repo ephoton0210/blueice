@@ -68,6 +68,9 @@ struct Args {
     /// separate from both frontend and DOM-script IPC; the session thread
     /// validates each requested tab/document generation before replying.
     debugger_socket: Option<PathBuf>,
+    /// Owner policy for a future separately negotiated bounded paused-value
+    /// read. It has no effect on debugger v36.
+    debugger_bounded_values: bool,
     /// Core-owner opt-in for a bounded opaque static-metadata inventory. It
     /// never exposes a metadata record itself and still requires a client
     /// request plus a live child-side capability.
@@ -184,6 +187,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut script_socket = None;
     let mut script_session_token = None;
     let mut debugger_socket = None;
+    let mut debugger_bounded_values = false;
     let mut debugger_static_metadata_inventory = false;
     let mut debugger_static_metadata_summary = false;
     let mut debugger_static_metadata_source_inventory = false;
@@ -233,6 +237,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--script-socket" => script_socket = Some(PathBuf::from(value()?)),
             "--script-session-token" => script_session_token = Some(value()?),
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
+            "--debugger-bounded-values" => debugger_bounded_values = true,
             "--debugger-static-metadata-inventory" => debugger_static_metadata_inventory = true,
             "--debugger-static-metadata-summary" => debugger_static_metadata_summary = true,
             "--debugger-static-metadata-source-inventory" => {
@@ -360,6 +365,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--out-of-process-bluejs-socket cannot be combined with --inline-bluejs or --inline-bluets-profile"
                 .to_string(),
         );
+    }
+    if debugger_bounded_values && debugger_socket.is_none() {
+        return Err("--debugger-bounded-values requires --debugger-socket".to_string());
     }
     if debugger_static_metadata_inventory && debugger_socket.is_none() {
         return Err("--debugger-static-metadata-inventory requires --debugger-socket".to_string());
@@ -607,6 +615,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         script_socket,
         script_session_token,
         debugger_socket,
+        debugger_bounded_values,
         debugger_static_metadata_inventory,
         debugger_static_metadata_summary,
         debugger_static_metadata_source_inventory,
@@ -923,6 +932,7 @@ fn serve_debugger_connection(
     mut stream: UnixStream,
     sender: blueice_engine::debugger::DebuggerRequestSender,
     allowed_metadata_capabilities: &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest,
+    _allow_bounded_values: bool,
 ) -> io::Result<()> {
     let first = blueice_ipc::debugger::read_debugger_request(&mut stream)?;
     let reply = blueice_ipc::debugger::negotiate(&first, allowed_metadata_capabilities);
@@ -952,12 +962,18 @@ fn serve_debugger_listener(
     listener: UnixListener,
     sender: blueice_engine::debugger::DebuggerRequestSender,
     allowed_metadata_capabilities: blueice_ipc::debugger::DebuggerMetadataCapabilityManifest,
+    allow_bounded_values: bool,
 ) {
     for stream in listener.incoming() {
         let Ok(stream) = stream else {
             break;
         };
-        let _ = serve_debugger_connection(stream, sender.clone(), &allowed_metadata_capabilities);
+        let _ = serve_debugger_connection(
+            stream,
+            sender.clone(),
+            &allowed_metadata_capabilities,
+            allow_bounded_values,
+        );
     }
 }
 
@@ -1129,6 +1145,9 @@ fn main() -> ExitCode {
     let script_socket = args.script_socket.clone();
     let script_session_token = args.script_session_token.clone();
     let debugger_socket = args.debugger_socket.clone();
+    // The owner choice is carried to this core generation's debugger
+    // listener, but v36 still has no client value grant or route.
+    let debugger_bounded_values = args.debugger_bounded_values;
     let debugger_allowed_metadata_capabilities = if args.debugger_static_metadata_inventory {
         blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_selected(
             blueice_ipc::debugger::DebuggerMetadataCapabilitySelection {
@@ -1327,6 +1346,7 @@ fn main() -> ExitCode {
                     listener,
                     debugger_sender,
                     debugger_allowed_metadata_capabilities,
+                    debugger_bounded_values,
                 )
             });
         }
@@ -1530,6 +1550,7 @@ mod tests {
         assert_eq!(parsed.script_socket, None);
         assert_eq!(parsed.script_session_token, None);
         assert_eq!(parsed.debugger_socket, None);
+        assert!(!parsed.debugger_bounded_values);
         assert!(!parsed.debugger_static_metadata_inventory);
         assert!(!parsed.debugger_static_metadata_summary);
         assert!(!parsed.debugger_static_metadata_source_inventory);
@@ -1553,6 +1574,24 @@ mod tests {
         assert_eq!(parsed.out_of_process_bluejs_socket, None);
         assert_eq!(parsed.out_of_process_bluejs_token, None);
         assert_eq!(parsed.out_of_process_bluejs_page_script_profile, None);
+    }
+
+    #[test]
+    fn bounded_values_owner_policy_requires_an_explicit_debugger_socket() {
+        assert_eq!(
+            args(&["--socket", "/tmp/core.sock", "--debugger-bounded-values"]),
+            Err("--debugger-bounded-values requires --debugger-socket".to_string())
+        );
+        let parsed = args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-bounded-values",
+        ])
+        .unwrap();
+        assert!(parsed.debugger_bounded_values);
+        assert!(!parsed.debugger_static_metadata_inventory);
     }
 
     #[test]
@@ -1642,6 +1681,7 @@ mod tests {
                 script_socket: Some(PathBuf::from("/tmp/script.sock")),
                 script_session_token: Some("a".repeat(64)),
                 debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
+                debugger_bounded_values: false,
                 debugger_static_metadata_inventory: false,
                 debugger_static_metadata_summary: false,
                 debugger_static_metadata_source_inventory: false,

@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.2.1.5.3.** Add the independent owner/client value opt-in
-and the complete public value route with its debugger protocol bump.
+**Current leaf: C2.2.1.5.3.2.** Add the complete public value handshake,
+request/reply, receipt-gated core route, and debugger protocol bump together.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -329,6 +329,8 @@ channel with explicit owner/client grants.
       - [x] **C2.2.1.5.1** Specify the independent owner/client value grant, exact scope receipt and pause-incarnation invalidation, bounded public tree, and refusal mapping before changing the wire. The grant is separate from static metadata; a core-local, per-stream receipt is bound to the active pause incarnation and every exact Scopes entry. The public protocol stays v36.
       - [x] **C2.2.1.5.2** Add the bounded core-local scope-receipt ledger and global pause-incarnation invalidation with focused core/IPC tests; keep the public wire and BoundedValues advertisement unchanged. Each stream stores at most 4,096 exact slot tuples under one core-owned pause incarnation; duplicate/malformed snapshots and atomic budget overflow refuse, and accepted execution controls invalidate receipts across streams. Two IPC receipt tests, the engine invalidation test, and workspace Clippy pass; v36 and BoundedValues Planned are unchanged.
       - [ ] **C2.2.1.5.3** Add the independent owner/client value opt-in and complete public GetValue/Value route together with the debugger protocol bump; prove negotiation, policy, dispatch, malformed targets and complete preview limits at public boundaries.
+        - [x] **C2.2.1.5.3.1** Carry a default-denied owner `--debugger-bounded-values` policy through Launcher to core; require an explicit debugger endpoint, test CLI validation and propagation, but leave public negotiation and value reads unchanged. Launcher and core reject the flag without a debugger socket; Launcher forwards the independent opt-in to its spawned core, while v36 BoundedValues remains Planned. Focused core/Launcher CLI and launch-option tests pass.
+        - [ ] **C2.2.1.5.3.2** Add the separate client grant, bounded public target/reply, and complete receipt-gated core route in one debugger protocol bump; test handshake, dispatch, malformed targets, and budgets before checking off C2.2.1.5.3.
       - [ ] **C2.2.1.5.4** Prove classic/module root and nested value reads, cross-stream and stale-pause denial, forged slots, and all preview budgets on real Launcher-supervised BlueTS sockets; then check off C2.2.1.5 and C2.2.1.
   - [ ] **C2.2.2** Refuse guessed handles, source text, and cross-realm references with a typed error.
 - [ ] **C2.3** Report an exception at its original BlueTS source position.

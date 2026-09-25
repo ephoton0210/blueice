@@ -1074,6 +1074,18 @@ debugger v36, Hello, and BoundedValues Planned remain unchanged. Two focused
 IPC receipt/budget tests, the engine invalidation test, and all-target
 workspace Clippy pass.
 
+**Owner value policy before public transport (C2.2.1.5.3.1):** Launcher and
+core now parse the independent `--debugger-bounded-values` owner opt-in and
+require an explicit debugger socket. The Launcher launch options carry this
+choice to each supervised core generation without enabling any static-metadata
+policy. Core retains the choice but debugger v36 still has no value grant,
+request, or reply; BoundedValues stays Planned, even with the flag. The next
+leaf activates this owner policy only in the same change that adds separate
+client negotiation and the complete receipt-gated route. Focused core and
+Launcher CLI tests reject the flag without an endpoint and prove it remains
+independent of static-metadata inventory; the Launcher launch-option test
+passes. Both binaries pass `cargo check`.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

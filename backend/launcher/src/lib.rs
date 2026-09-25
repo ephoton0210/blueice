@@ -125,6 +125,9 @@ mod unix {
         /// protocol versioning and every target-bound operation remain
         /// enforced by the trusted core.
         debugger_socket: Option<PathBuf>,
+        /// Owner-selected value-read policy; inert until the separately
+        /// negotiated public debugger value route is installed.
+        debugger_bounded_values: bool,
         /// Owner-only policy for source-free opaque-handle inventory after a
         /// client requests it in `Hello`; it never grants a metadata record
         /// read.
@@ -334,6 +337,13 @@ mod unix {
         /// never retargeted across a cutover.
         pub fn with_debugger_endpoint(mut self, path: PathBuf) -> Self {
             self.debugger_socket = Some(path);
+            self
+        }
+
+        /// Carries the default-denied bounded-value policy to this core
+        /// generation. It does not itself grant a debugger client any read.
+        pub fn with_debugger_bounded_values(mut self) -> Self {
+            self.debugger_bounded_values = true;
             self
         }
 
@@ -1931,6 +1941,9 @@ mod unix {
             }
             if let Some(debugger_socket) = &debugger_private_socket_path {
                 command.arg("--debugger-socket").arg(debugger_socket);
+                if options.debugger_bounded_values {
+                    command.arg("--debugger-bounded-values");
+                }
                 if options.debugger_static_metadata_inventory {
                     command.arg("--debugger-static-metadata-inventory");
                 }
@@ -2191,6 +2204,15 @@ mod unix {
     mod tests {
         use super::*;
         use blueice_ipc::*;
+
+        #[test]
+        fn bounded_values_policy_is_independent_of_static_metadata() {
+            let options = CoreLaunchOptions::default()
+                .with_debugger_endpoint(PathBuf::from("/tmp/debugger.sock"))
+                .with_debugger_bounded_values();
+            assert!(options.debugger_bounded_values);
+            assert!(!options.debugger_static_metadata_inventory);
+        }
 
         #[test]
         fn forward_client_to_core_relays_one_message_then_stops_on_disconnect() {

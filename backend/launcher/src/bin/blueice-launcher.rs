@@ -76,6 +76,8 @@ struct Args {
     /// supplies each core generation a fresh private listener. Debugger
     /// protocol authorization remains in `blueice-core`.
     debugger_socket: Option<PathBuf>,
+    /// Owner opt-in for the future bounded paused-value debugger route.
+    debugger_bounded_values: bool,
     /// Owner opt-in for the debugger's source-free opaque static-metadata
     /// inventory. It requires the separate debugger endpoint and does not
     /// grant metadata reads or source/runtime inspection.
@@ -165,6 +167,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut compiler_catalog_file = None;
     let mut page_http_policy_file = None;
     let mut debugger_socket = None;
+    let mut debugger_bounded_values = false;
     let mut debugger_static_metadata_inventory = false;
     let mut debugger_static_metadata_summary = false;
     let mut debugger_static_metadata_source_inventory = false;
@@ -210,6 +213,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--compiler-catalog-file" => compiler_catalog_file = Some(PathBuf::from(value()?)),
             "--page-http-policy-file" => page_http_policy_file = Some(PathBuf::from(value()?)),
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
+            "--debugger-bounded-values" => debugger_bounded_values = true,
             "--debugger-static-metadata-inventory" => debugger_static_metadata_inventory = true,
             "--debugger-static-metadata-summary" => debugger_static_metadata_summary = true,
             "--debugger-static-metadata-source-inventory" => {
@@ -274,6 +278,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
 
     let rendezvous_socket = rendezvous_socket.unwrap_or_else(default_rendezvous_socket_path);
     let control_socket = control_socket.unwrap_or_else(default_control_socket_path);
+    if debugger_bounded_values && debugger_socket.is_none() {
+        return Err("--debugger-bounded-values requires --debugger-socket".to_string());
+    }
     if debugger_static_metadata_inventory && debugger_socket.is_none() {
         return Err("--debugger-static-metadata-inventory requires --debugger-socket".to_string());
     }
@@ -512,6 +519,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         compiler_catalog_file,
         page_http_policy_file,
         debugger_socket,
+        debugger_bounded_values,
         debugger_static_metadata_inventory,
         debugger_static_metadata_summary,
         debugger_static_metadata_source_inventory,
@@ -598,6 +606,9 @@ fn main() -> ExitCode {
     }
     if let Some(debugger_socket) = args.debugger_socket.clone() {
         core_options = core_options.with_debugger_endpoint(debugger_socket);
+    }
+    if args.debugger_bounded_values {
+        core_options = core_options.with_debugger_bounded_values();
     }
     if args.debugger_static_metadata_inventory {
         core_options = core_options.with_debugger_static_metadata_inventory();
@@ -842,6 +853,22 @@ mod tests {
     }
 
     #[test]
+    fn bounded_values_owner_policy_requires_an_explicit_debugger_socket() {
+        assert_eq!(
+            args(&["--debugger-bounded-values"]),
+            Err("--debugger-bounded-values requires --debugger-socket".to_string())
+        );
+        let parsed = args(&[
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-bounded-values",
+        ])
+        .unwrap();
+        assert!(parsed.debugger_bounded_values);
+        assert!(!parsed.debugger_static_metadata_inventory);
+    }
+
+    #[test]
     fn owner_catalog_requires_a_compiler_endpoint() {
         assert!(args(&["--compiler-catalog-file", "/tmp/catalog.json"]).is_err());
         let parsed = args(&[
@@ -1005,6 +1032,7 @@ mod tests {
                 compiler_catalog_file: None,
                 page_http_policy_file: None,
                 debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
+                debugger_bounded_values: false,
                 debugger_static_metadata_inventory: true,
                 debugger_static_metadata_summary: true,
                 debugger_static_metadata_source_inventory: true,
