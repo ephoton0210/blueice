@@ -239,8 +239,6 @@ impl Page {
     /// Re-renders this page from the panel's current state, keeping the scroll
     /// position, when (and only when) it is showing `about:assistant`.
     /// Returns whether it did, so the caller knows a fresh frame is due.
-    // Called by the session when a task finishes (step S4 of the panel checklist).
-    #[allow(dead_code)]
     pub(crate) fn refresh_assistant_panel(&mut self) -> bool {
         let Some(url) = self.url.clone().filter(|url| is_assistant_url(url)) else {
             return false;

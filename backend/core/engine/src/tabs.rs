@@ -764,6 +764,14 @@ impl TabManager {
         self.assistant_panel.set_available(true);
     }
 
+    /// The assistant a summarize or organize task talks to: the same startup-fixed
+    /// socket translation uses, `None` when core has no assistant.
+    pub fn assistant_socket(&self) -> Option<std::path::PathBuf> {
+        self.translation_endpoint
+            .as_ref()
+            .map(|(socket, _)| socket.clone())
+    }
+
     /// The shared results behind every tab's `about:assistant`.
     pub fn assistant_panel(&self) -> &Arc<AssistantPanel> {
         &self.assistant_panel
@@ -772,8 +780,6 @@ impl TabManager {
     /// Re-renders every tab currently showing `about:assistant` from the
     /// panel's state and returns those tabs, so the caller can send each a
     /// fresh frame.
-    // Called by the session when a task finishes (step S4 of the panel checklist).
-    #[allow(dead_code)]
     pub(crate) fn refresh_assistant_panels(&mut self) -> Vec<TabId> {
         let ids: Vec<TabId> = self.order.clone();
         ids.into_iter()

@@ -118,6 +118,16 @@ pub enum ClientMessage {
     /// Requests the translation state, replied to with
     /// [`ServerMessage::TranslationState`].
     GetTranslationState,
+    /// Asks the local assistant to summarize the addressed tab's shown text.
+    /// The reply arrives when the task finishes -- a [`ServerMessage::
+    /// AssistantResult`] or an `Error` carrying the same `request_id` -- and
+    /// the result is also added to the `about:assistant` page. `core` keeps
+    /// answering other traffic meanwhile.
+    SummarizePage,
+    /// Asks the local assistant to reorganize the addressed tab's shown text
+    /// per `instruction` (for example "make a table of names and prices").
+    /// Completes like [`ClientMessage::SummarizePage`].
+    OrganizePage { instruction: String },
     /// The viewport size changed; `core` re-lays-out at the new width.
     Resize {
         width: u32,
@@ -268,6 +278,13 @@ pub enum ClientMessage {
     Unknown,
 }
 
+/// Which assistant task produced a [`ServerMessage::AssistantResult`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AssistantTaskKind {
+    Summary,
+    Organized,
+}
+
 /// Sent by `core` to a client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ServerMessage {
@@ -312,6 +329,13 @@ pub enum ServerMessage {
         language: Option<String>,
         available: bool,
         shown: bool,
+    },
+    /// A finished [`ClientMessage::SummarizePage`] or
+    /// [`ClientMessage::OrganizePage`]. The text is model output derived from
+    /// untrusted page text and must be treated as such.
+    AssistantResult {
+        kind: AssistantTaskKind,
+        text: String,
     },
     /// Reply to [`ClientMessage::GetRepresentation`].
     Representation(AiSnapshot),
@@ -773,6 +797,10 @@ mod tests {
             },
             ClientMessage::ShowTranslation { shown: false },
             ClientMessage::GetTranslationState,
+            ClientMessage::SummarizePage,
+            ClientMessage::OrganizePage {
+                instruction: "make a table".to_string(),
+            },
             ClientMessage::ActivateExtensionPopupAction { popup_id: 42 },
             ClientMessage::CreateTabGroup {
                 name: "Research".to_string(),
@@ -818,6 +846,10 @@ mod tests {
             },
             ServerMessage::Navigated {
                 url: "https://example.com/".to_string(),
+            },
+            ServerMessage::AssistantResult {
+                kind: AssistantTaskKind::Organized,
+                text: "| a | 1 |".to_string(),
             },
             ServerMessage::TranslationState {
                 language: Some("zh-TW".to_string()),

@@ -1444,6 +1444,9 @@ impl ApplicationHandler<UserEvent> for App {
                         self.request_redraw();
                     }
                 }
+                // Printed by the `summarize`/`organize` commands in the
+                // frontend's own step (S6).
+                ServerMessage::AssistantResult { .. } => {}
                 ServerMessage::TranslationState {
                     language,
                     available,

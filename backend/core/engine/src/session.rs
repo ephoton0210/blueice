@@ -485,6 +485,7 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
     }
 
     let (completion_tx, completion_rx) = mpsc::channel::<Completion>();
+    let (assistant_tx, assistant_rx) = mpsc::channel::<AssistantCompletion>();
     let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
     let (listing_tx, listing_rx) = mpsc::channel::<DownloadsListing>();
     let mut downloads_refresher = DownloadsRefresher::default();
@@ -623,6 +624,9 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                             continue;
                         }
                         write_translation_state(tabs, stream, reply_tab, request_id, target)?;
+                    }
+                    task @ (ClientMessage::SummarizePage | ClientMessage::OrganizePage { .. }) => {
+                        begin_assistant_task(tabs, stream, reply_tab, request_id, target, task, &assistant_tx)?;
                     }
                     ClientMessage::Resize { width, height } => {
                         if tabs.get(target).is_none() {
@@ -1188,6 +1192,10 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
             }
             Err(e) if is_timeout(&e) => {} // no message yet -- fall through to drain completions
             Err(_) => return Ok(()),       // client disconnected without an explicit Shutdown
+        }
+
+        while let Ok(done) = assistant_rx.try_recv() {
+            finish_assistant_task(tabs, stream, frame_dir, generation, done)?;
         }
 
         while let Ok(completion) = completion_rx.try_recv() {
@@ -2054,6 +2062,138 @@ struct Completion {
     /// The assistant's translation of a cleared page's text, obtained on the
     /// navigation thread; `None` keeps the page as fetched.
     translations: Option<Vec<String>>,
+}
+
+/// A summarize or organize task that finished on its background thread.
+struct AssistantCompletion {
+    reply_tab: Option<u64>,
+    request_id: Option<u64>,
+    kind: blueice_ipc::AssistantTaskKind,
+    source_url: Option<String>,
+    request: Option<String>,
+    outcome: Result<String, String>,
+}
+
+/// Starts a summarize or organize task for `target`'s shown text.
+///
+/// Refusals that can be decided immediately (no assistant, unknown tab, an
+/// invalid instruction, a page with no text) are answered with an `Error` at
+/// once. Otherwise the assistant is asked on a background thread, so `core`
+/// keeps serving every other tab and client, and the result arrives later as a
+/// reply carrying the same `request_id` (see [`finish_assistant_task`]).
+fn begin_assistant_task<S: Write>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    reply_tab: Option<u64>,
+    request_id: Option<u64>,
+    target: TabId,
+    task: ClientMessage,
+    assistant_tx: &mpsc::Sender<AssistantCompletion>,
+) -> io::Result<()> {
+    let Some(page) = tabs.get(target) else {
+        return write_unknown_tab_error(stream, request_id, target);
+    };
+    let Some(socket) = tabs.assistant_socket() else {
+        return write_error(
+            stream,
+            reply_tab,
+            request_id,
+            "the assistant is unavailable: blueice-core was started without one".to_string(),
+        );
+    };
+    let (kind, instruction) = match task {
+        ClientMessage::OrganizePage { instruction } => {
+            (blueice_ipc::AssistantTaskKind::Organized, Some(instruction))
+        }
+        _ => (blueice_ipc::AssistantTaskKind::Summary, None),
+    };
+    let text = page.visible_text();
+    if text.is_empty() {
+        return write_error(
+            stream,
+            reply_tab,
+            request_id,
+            "this page has no text for the assistant to read".to_string(),
+        );
+    }
+    // Validate exactly what will be sent, so an out-of-bounds instruction is an
+    // immediate error rather than a failure reported only after a thread ran.
+    let checked = match &instruction {
+        Some(instruction) => blueice_ipc::assistant::AssistantRequest::Organize {
+            request_id: 0,
+            text: text.clone(),
+            instruction: instruction.clone(),
+        },
+        None => blueice_ipc::assistant::AssistantRequest::Summarize {
+            request_id: 0,
+            text: text.clone(),
+        },
+    };
+    if let Err(reason) = checked.validate() {
+        return write_error(stream, reply_tab, request_id, reason);
+    }
+    let source_url = page.url().map(str::to_string);
+    let tx = assistant_tx.clone();
+    thread::spawn(move || {
+        let deadline = crate::assistant_client::DEFAULT_TASK_DEADLINE;
+        let outcome = match &instruction {
+            Some(instruction) => {
+                crate::assistant_client::organize_text(&socket, deadline, &text, instruction)
+            }
+            None => crate::assistant_client::summarize_text(&socket, deadline, &text),
+        };
+        let _ = tx.send(AssistantCompletion {
+            reply_tab,
+            request_id,
+            kind,
+            source_url,
+            request: instruction,
+            outcome,
+        });
+    });
+    Ok(())
+}
+
+/// Records a finished task on the shared `about:assistant` panel, answers the
+/// request that started it, and publishes a fresh frame for every tab showing
+/// the panel. A failure is recorded and answered too: nothing else would tell
+/// the person why no result appeared.
+fn finish_assistant_task<S: Write>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    done: AssistantCompletion,
+) -> io::Result<()> {
+    let panel_kind = match done.kind {
+        blueice_ipc::AssistantTaskKind::Summary => crate::assistant_page::PanelKind::Summary,
+        blueice_ipc::AssistantTaskKind::Organized => crate::assistant_page::PanelKind::Organized,
+    };
+    tabs.assistant_panel().push(
+        panel_kind,
+        done.source_url,
+        done.request,
+        done.outcome.clone(),
+    );
+    match done.outcome {
+        Ok(text) => blueice_ipc::write_server_message_with_ids(
+            stream,
+            done.reply_tab,
+            done.request_id,
+            &ServerMessage::AssistantResult {
+                kind: done.kind,
+                text,
+            },
+        )?,
+        Err(reason) => write_error(stream, done.reply_tab, done.request_id, reason)?,
+    }
+    for id in tabs.refresh_assistant_panels() {
+        let page = tabs
+            .get_mut(id)
+            .expect("refresh only returns live tabs");
+        send_frame(page, stream, frame_dir, generation, Some(id.as_u64()), None)?;
+    }
+    Ok(())
 }
 
 /// Replies with the core-wide translation language and the addressed tab's
