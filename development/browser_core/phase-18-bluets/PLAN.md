@@ -1160,6 +1160,32 @@ workspace Clippy pass. The child currently maps a native unsupported or
 over-budget preview to `InvalidExecutionState`; the more precise typed
 refusal distinctions belong to C2.2.2.
 
+**Typed value-refusal boundary (C2.2.2.1):** Preserve the only positive
+value selector: an exact, active `Scopes` slot receipted on this granted
+debugger stream. A syntactically malformed or guessed target, a target copied
+from another stream or realm, and a slot from an expired pause all fail with
+typed `InvalidTarget` before resolving a realm, program, or private child.
+This intentionally gives no existence oracle for another realm. An owner or
+client without the independent value grant receives typed
+`CapabilityUnavailable`; a receipted but no-longer-live frame receives
+`InvalidExecutionState` where the live check can establish it. Native
+unsupported shapes—including cross-heap object references—and native
+over-budget trees remain a whole-value `InvalidExecutionState`, not a partial
+tree or a shape-specific oracle. Core's independent remint can still return
+`ResourceLimit` if a child violates its output budget. These existing typed
+categories are stable identifiers; clients must not parse diagnostic prose.
+
+No public source-text read selector is added. A framed but unknown operation
+after `Hello`, including an attempted source-text command, should receive a
+generic typed `CapabilityUnavailable` without parsing its target, echoing its
+name, or accessing source/realm state. Before `Hello`, the existing typed
+`ProtocolVersion` refusal remains. This changes the previous `Unsupported`
+reply for unknown operations, so the complete semantic change belongs to
+debugger v38 even though the request/reply shapes remain unchanged. An
+authorized runtime string whose bytes resemble source text is still a value,
+not a source-read operation. C2.2.2.2 implements the mapping and tests the
+unknown-command framing; C2.2.2.3 proves it on real Launcher sockets.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
