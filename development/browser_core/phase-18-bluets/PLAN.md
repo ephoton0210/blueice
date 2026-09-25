@@ -346,7 +346,18 @@ type diagnostic, including `any`, `unknown`, and non-record union branches.
 This deliberately narrows dynamic object spread in the checked subset;
 transpile-only mode remains unchanged. The verified event-v1 bridge rejects
 an opaque holder spread before runtime. Other opaque expression forms still
-need a sound qualifier policy, so B4.2 remains open.
+use the general fail-closed receiver policy below, so B4.2 remains open.
+
+**Opaque readonly receiver policy (B4.2.1–B4.2.2):** A write through an
+unmodeled receiver (`Unknown`) fails in checked mode when a readonly-bearing
+binding is in scope. The scan is bounded by type-expansion fuel and reports a
+resource diagnostic on exhaustion. A declared `any` receiver remains an
+explicit escape, and an opaque receiver in a scope without readonly-bearing
+bindings remains allowed. Through the verified event-v1 public bridge, a
+registered click callback writing `pick(event).type = 'click'` receives a
+BlueTS diagnostic before an executable script is produced. This is a
+conservative scope-level policy, not proof that every unmodeled receiver
+actually aliases the event; B4.2.3 records the remaining limits.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

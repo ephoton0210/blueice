@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: B4.2.2.** Verify the fail-closed readonly policy against the
-event-v1 bridge. Every item has an ID (`<section>.<item>[.<step>]`, e.g.
+**Current leaf: B4.2.3.** Record the known readonly-policy limitations in
+PLAN.md. Every item has an ID (`<section>.<item>[.<step>]`, e.g.
 `B4.2.2`); commit messages and PLAN.md cite these IDs, and a parent is checked
 only when all its steps are.
 
@@ -211,8 +211,9 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
     Checked record spreads with `any`, `unknown`, or non-record sources also
     fail closed with a type diagnostic; an event-v1 bridge test rejects an
     opaque holder spread before runtime. Transpile-only mode is unchanged.
-  - [ ] **B4.2.2** Verify the policy against the event-v1 bridge (public boundary): an
-    opaque-receiver write on a click event is rejected before execution.
+  - [x] **B4.2.2** Verify the policy against the event-v1 bridge (public boundary):
+    `pick(event).type = 'click'` in a registered click callback is rejected
+    with a BlueTS diagnostic before an executable script is produced.
   - [ ] **B4.2.3** Record known limitations (arithmetic/bitwise compound results,
     destructuring, closure capture) in PLAN.md instead of adding forms; do
     not add another expression form without a concrete failing page.

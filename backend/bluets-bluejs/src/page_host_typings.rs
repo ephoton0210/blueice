@@ -697,5 +697,19 @@ mod tests {
                 .any(|diagnostic| diagnostic.message.contains("record spread source")),
             "{diagnostics:#?}"
         );
+
+        let opaque_receiver = "declare function pick(value: unknown): unknown; function onClick(event: BlueIceClickEvent): void { pick(event).type = 'click'; } document.getElementById('link')!.addEventListener('click', onClick);";
+        let error = compile(opaque_receiver)
+            .err()
+            .expect("opaque click-event receiver must fail before runtime");
+        let crate::BridgeError::BlueTs(diagnostics) = error else {
+            panic!("expected BlueTS diagnostics, got {error:?}");
+        };
+        assert!(
+            diagnostics.iter().any(|diagnostic| diagnostic
+                .message
+                .contains("cannot prove a write through an unmodeled receiver")),
+            "{diagnostics:#?}"
+        );
     }
 }
