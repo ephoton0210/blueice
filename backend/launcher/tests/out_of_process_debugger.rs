@@ -431,6 +431,33 @@ fn await_nested_paused_execution(
     }
 }
 
+fn arm_first_nested_frame(
+    debugger: &mut UnixStream,
+    realm: DebuggerPageRealm,
+) -> (DebuggerProgram, blueice_ipc::debugger::DebuggerFrame) {
+    let program = one_program(
+        debugger_request(debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    let target = safe_points(
+        debugger_request(debugger, DebuggerRequest::ListSafePoints { program }),
+        program,
+    )
+    .into_iter()
+    .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+    .expect("direct BlueTS child has its first verified instruction");
+    assert_eq!(
+        debugger_request(
+            debugger,
+            DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point: target },
+        ),
+        DebuggerReply::NestedSafePointBreakpointArmed { safe_point: target }
+    );
+    let (frame, paused) = await_nested_paused_execution(debugger, program);
+    assert_eq!(paused, target);
+    (program, frame)
+}
+
 fn serve_two_classic_documents(listener: TcpListener) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         for _ in 0..2 {
@@ -891,6 +918,127 @@ fn public_socket_steps_and_resumes_one_real_bluets_nested_frame() {
                 && reports[0].kind == blueice_ipc::BlueTsScriptKind::Classic
                 && reports[0].outcome == blueice_ipc::BlueTsScriptExecutionOutcome::Executed
     ));
+
+    fixture.join().unwrap();
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn public_socket_rejects_cross_tab_nested_frames_with_two_live_bluets_pages() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let source = "function inner(): number { return 4; } globalThis.answer = inner() + 1;";
+            let body = format!(
+                "<main>two-nested-tabs</main><script type=\"application/x-blueice-typescript\">{source}</script>"
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
+    });
+    let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    navigate(&mut browser, &url);
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            },
+        ),
+        DebuggerReply::HelloAck { .. }
+    ));
+    let first_realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let (first_program, first_frame) = arm_first_nested_frame(&mut debugger, first_realm);
+
+    write_client_message(
+        &mut browser,
+        &ClientMessage::OpenTab {
+            url: Some(url.clone()),
+        },
+    )
+    .unwrap();
+    let second_tab = match read_server_message(&mut browser).unwrap() {
+        ServerMessage::TabOpened {
+            tab_id,
+            url: Some(opened_url),
+        } => {
+            assert_eq!(opened_url, url);
+            tab_id
+        }
+        reply => panic!("expected second live BlueTS tab: {reply:?}"),
+    };
+    assert!(matches!(
+        read_server_message(&mut browser).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
+    let second_realm = match debugger_request(&mut debugger, DebuggerRequest::ListPageRealms) {
+        DebuggerReply::PageRealms(realms) => {
+            assert_eq!(realms.len(), 2);
+            realms
+                .into_iter()
+                .find(|realm| realm.tab_id == second_tab)
+                .unwrap()
+        }
+        reply => panic!("expected two live debugger realms: {reply:?}"),
+    };
+    assert_ne!(second_realm.tab_id, first_realm.tab_id);
+    let (second_program, second_frame) = arm_first_nested_frame(&mut debugger, second_realm);
+    assert_ne!(first_frame, second_frame);
+
+    for (frame, target_program) in [(first_frame, second_program), (second_frame, first_program)] {
+        let wrong_tab = blueice_ipc::debugger::DebuggerFrame {
+            program: target_program,
+            ..frame
+        };
+        for request in [
+            DebuggerRequest::StepNestedInstruction { frame: wrong_tab },
+            DebuggerRequest::ResumeNestedExecution { frame: wrong_tab },
+        ] {
+            assert!(matches!(
+                debugger_request(&mut debugger, request),
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidExecutionState,
+                    ..
+                }
+            ));
+        }
+    }
+    for (program, frame) in [(first_program, first_frame), (second_program, second_frame)] {
+        assert!(matches!(
+            debugger_request(&mut debugger, DebuggerRequest::GetExecutionState { program }),
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::NestedPaused { frame: same, .. },
+                ..
+            } if same == frame
+        ));
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::ResumeNestedExecution { frame },
+            ),
+            DebuggerReply::NestedResumeRequested { frame }
+        );
+    }
 
     fixture.join().unwrap();
     launcher.shutdown();

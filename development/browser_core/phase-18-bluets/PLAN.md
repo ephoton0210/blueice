@@ -678,6 +678,12 @@ launcher-supervised BlueTS page steps once, resumes the same child frame,
 observes the separate requested state, returns to the original root, and
 finishes after root resume. Wrong and returned frame handles are rejected.
 
+**Cross-tab active-frame denial (C1.2.3.1):** A real Launcher public debugger
+session now pauses the same BlueTS child shape in two live tabs. Substituting
+either tab's program identity around the other's frame handle fails for both
+step and resume, while both genuine handles remain usable. A matching static
+code-unit ordinal therefore cannot cross the tab/realm ownership boundary.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.2.3.** Reject a cross-tab active-frame target and a handle
-from a predecessor child over the public debugger route.
+**Current leaf: C1.2.3.2.** Reject a predecessor child's frame after Launcher
+cutover, even if its replacement reuses numeric page/program identities.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -290,6 +290,8 @@ channel with explicit owner/client grants.
     - [x] **C1.2.2.2** Route that resume through the child scheduler, page-host IPC, and core child proxy under the existing nested-frame capability; distinguish its requested state from one-instruction stepping. Private page-host v36 carries an exact frame resume command, reply, and `NestedResuming` state. The child admits only its actual paused frame and later returns to the original classic or BlueTS module root; the core accepts only its own live reminted handle and revokes it on return. Child classic/module regressions and a real BlueTS child/core socket regression pass. The public resume command remains disabled until C1.2.2.3.
     - [x] **C1.2.2.3** Add a separate public frame-resume command and reply, bump the public protocol only when it works over the socket, and prove exact-frame completion plus stale-handle denial in a real BlueTS page. Public debugger v33 distinguishes `ResumeNestedExecution`, `NestedResumeRequested`, and `NestedResuming` from root resume and nested step. A launcher-supervised BlueTS page steps and resumes its exact core-owned frame through the public socket, rejects wrong/root-alias handles while active, then rejects that frame after return; root completion and its BlueTS report remain correct. The complete 12-test public debugger suite passes.
   - [ ] **C1.2.3** Reject a cross-tab target and a target from a predecessor child.
+    - [x] **C1.2.3.1** Prove a live frame from one tab cannot step or resume another live tab through the public debugger socket, even when both tabs have the same BlueTS program shape. A real Launcher test opens two live BlueTS pages with the same direct inner function, pauses each on its own core-owned frame, and forges both cross-tab frame/program combinations. Both public controls reject both forgeries without consuming either original frame; the original handles still resume their own pages.
+    - [ ] **C1.2.3.2** Prove a frame from a predecessor supervised child cannot control a successor after Launcher cutover, including when tab/document/program numeric identities are replayed; harden core-minted handle identity if the public regression exposes a collision.
 
 #### C2. Inspect execution within fixed budgets.
 
