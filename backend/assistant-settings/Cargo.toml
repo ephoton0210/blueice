@@ -1,0 +1,10 @@
+[package]
+name = "blueice-assistant-settings"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+blueice-loopback-model = { path = "../loopback-model" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

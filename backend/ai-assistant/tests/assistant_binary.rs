@@ -250,3 +250,58 @@ fn simultaneous_mode_that_cannot_load_its_candle_half_stops_startup() {
         "{stderr}"
     );
 }
+
+/// The launcher will start the assistant with whatever the settings render to;
+/// the binary's own parser must accept every rendering of every valid setting.
+/// "Accept" means it gets as far as the backend (a load failure is fine), never
+/// an argument error.
+mod settings_contract {
+    use super::*;
+    use blueice_assistant_settings::{
+        AssistantSettings, BackendKind, CandleSettings, LoopbackSettings,
+    };
+
+    fn settings(backend: BackendKind) -> AssistantSettings {
+        AssistantSettings {
+            backend,
+            loopback: matches!(backend, BackendKind::Loopback | BackendKind::Both).then(|| {
+                LoopbackSettings {
+                    provider: "llamacpp".into(),
+                    base_url: "http://127.0.0.1:1/v1/".into(),
+                    model: "m".into(),
+                }
+            }),
+            candle: matches!(backend, BackendKind::Candle | BackendKind::Both).then(|| {
+                CandleSettings {
+                    model_path: "/nonexistent/m.gguf".into(),
+                    tokenizer_path: "/nonexistent/t.json".into(),
+                    context: 2048,
+                }
+            }),
+            ..AssistantSettings::default()
+        }
+    }
+
+    #[test]
+    fn candle_and_both_renderings_reach_the_backend_load_not_an_argument_error() {
+        for backend in [BackendKind::Candle, BackendKind::Both] {
+            let settings = settings(backend);
+            settings.validate().unwrap();
+            let args = settings.assistant_args();
+            let stderr = refused_at_startup(&args.iter().map(String::as_str).collect::<Vec<_>>());
+            assert!(
+                stderr.contains("--features candle")
+                    || stderr.contains("cannot open the model file"),
+                "{backend:?} was rejected as arguments, not at load: {stderr}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_loopback_rendering_starts_the_assistant_and_no_assistant_renders_no_arguments() {
+        let s = settings(BackendKind::Loopback);
+        s.validate().unwrap();
+        let (_assistant, _client) = spawn(&s.assistant_args());
+        assert!(AssistantSettings::default().assistant_args().is_empty());
+    }
+}

@@ -210,6 +210,7 @@ dependencies = [
 name = "blueice-ai-assistant"
 version = "0.1.0"
 dependencies = [
+ "blueice-assistant-settings",
  "blueice-ipc",
  "blueice-loopback-model",
  "candle-core",
@@ -227,6 +228,15 @@ dependencies = [
  "serde",
  "serde_json",
  "url",
+]
+
+[[package]]
+name = "blueice-assistant-settings"
+version = "0.1.0"
+dependencies = [
+ "blueice-loopback-model",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

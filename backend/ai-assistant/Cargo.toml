@@ -12,6 +12,9 @@ candle-core = { version = "0.11", optional = true }
 candle-transformers = { version = "0.11", optional = true }
 tokenizers = { version = "0.22", default-features = false, features = ["onig"], optional = true }
 
+[dev-dependencies]
+blueice-assistant-settings = { path = "../assistant-settings" }
+
 [features]
 # In-process inference (`phase-7-local-ai/PLAN.md`, step C2). Off by default so
 # builds that do not ask for it carry none of these dependencies.
