@@ -13,6 +13,10 @@
 //! malformed or mismatched reply, or running past the deadline never blocks or
 //! breaks the page. A batch that fails keeps the batches already translated and
 //! leaves the rest of the text as the page wrote it.
+//!
+//! Summaries and organized data are different: a person or agent asked for
+//! them explicitly, so a failure is reported as `Err(reason)` rather than
+//! silently dropped.
 
 use blueice_ipc::assistant::{
     read_assistant_reply, write_assistant_request, AssistantReply, AssistantRequest,
@@ -20,8 +24,12 @@ use blueice_ipc::assistant::{
 };
 use std::ops::Range;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+
+/// How long an explicitly requested task (summary, organize) may take: a local
+/// model can be slow, and the person is waiting on a result, not a page load.
+pub const DEFAULT_TASK_DEADLINE: Duration = Duration::from_secs(60);
 
 /// Most batches (requests) one navigation may spend; text beyond them stays
 /// original. Together with the per-batch bounds this caps the work a single
@@ -99,6 +107,84 @@ pub fn translate_html(config: &AssistantConfig, html: &str) -> Option<Vec<String
         }
     }
     translated_any.then_some(out)
+}
+
+/// Summarizes `text` (at most [`MAX_REQUEST_TEXT_BYTES`]) with the assistant.
+pub fn summarize_text(socket: &Path, deadline: Duration, text: &str) -> Result<String, String> {
+    run_task(
+        socket,
+        deadline,
+        AssistantRequest::Summarize {
+            request_id: 1,
+            text: text.to_string(),
+        },
+    )
+}
+
+/// Reorganizes `text` per `instruction` with the assistant.
+pub fn organize_text(
+    socket: &Path,
+    deadline: Duration,
+    text: &str,
+    instruction: &str,
+) -> Result<String, String> {
+    run_task(
+        socket,
+        deadline,
+        AssistantRequest::Organize {
+            request_id: 1,
+            text: text.to_string(),
+            instruction: instruction.to_string(),
+        },
+    )
+}
+
+/// One request on its own connection, every failure reported with a reason a
+/// person can act on.
+fn run_task(
+    socket: &Path,
+    deadline: Duration,
+    request: AssistantRequest,
+) -> Result<String, String> {
+    request.validate()?;
+    let started = Instant::now();
+    let mut stream =
+        UnixStream::connect(socket).map_err(|_| "the assistant is not running".to_string())?;
+    let out_of_time = || "the assistant did not answer in time".to_string();
+    handshake(
+        &mut stream,
+        remaining(started, deadline).ok_or_else(out_of_time)?,
+    )
+    .map_err(|_| "the assistant did not accept the connection".to_string())?;
+    limit(
+        &stream,
+        remaining(started, deadline).ok_or_else(out_of_time)?,
+    )
+    .map_err(|_| "could not talk to the assistant".to_string())?;
+    let request_id = request.request_id();
+    write_assistant_request(&mut stream, &request)
+        .map_err(|_| "could not send the request to the assistant".to_string())?;
+    match read_assistant_reply(&mut stream) {
+        Ok(AssistantReply::Summary {
+            request_id: id,
+            text,
+        })
+        | Ok(AssistantReply::Organized {
+            request_id: id,
+            text,
+        }) if Some(id) == request_id => Ok(text),
+        Ok(AssistantReply::Failed { reason, .. }) => Err(reason),
+        Ok(_) => Err("the assistant sent an unexpected reply".to_string()),
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+            ) =>
+        {
+            Err(out_of_time())
+        }
+        Err(_) => Err("the assistant closed the connection".to_string()),
+    }
 }
 
 fn remaining(started: Instant, deadline: Duration) -> Option<Duration> {
@@ -405,5 +491,194 @@ mod tests {
         let batches = plan_batches(&strings(&vec![eight_k; 8 * (MAX_BATCHES + 3)]));
         assert_eq!(batches.len(), MAX_BATCHES);
         assert_eq!(batches[0], 0..8);
+    }
+
+    /// A one-connection fake that answers the first non-`Hello` request with
+    /// `respond`, or never answers when `respond` is `None`.
+    fn task_assistant(
+        socket: &std::path::Path,
+        respond: Option<fn(AssistantRequest) -> AssistantReply>,
+    ) -> thread::JoinHandle<Option<AssistantRequest>> {
+        let listener = UnixListener::bind(socket).unwrap();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let Ok(AssistantRequest::Hello { .. }) = read_assistant_request(&mut stream) else {
+                return None;
+            };
+            write_assistant_reply(
+                &mut stream,
+                &AssistantReply::HelloAck {
+                    protocol_version: ASSISTANT_PROTOCOL_VERSION,
+                },
+            )
+            .unwrap();
+            let request = read_assistant_request(&mut stream).ok()?;
+            match respond {
+                Some(respond) => {
+                    let _ = write_assistant_reply(&mut stream, &respond(request.clone()));
+                }
+                None => thread::sleep(Duration::from_secs(1)),
+            }
+            Some(request)
+        })
+    }
+
+    #[test]
+    fn a_summary_is_returned_and_the_request_carries_the_page_text() {
+        let socket = socket_path("sum");
+        let worker = task_assistant(
+            &socket,
+            Some(|request| AssistantReply::Summary {
+                request_id: request.request_id().unwrap(),
+                text: "short".into(),
+            }),
+        );
+        let out = summarize_text(&socket, Duration::from_secs(5), "a long page");
+        assert_eq!(out, Ok("short".to_string()));
+        assert!(matches!(
+            worker.join().unwrap(),
+            Some(AssistantRequest::Summarize { text, .. }) if text == "a long page"
+        ));
+        let _ = std::fs::remove_file(&socket);
+    }
+
+    #[test]
+    fn organized_text_carries_the_instruction() {
+        let socket = socket_path("org");
+        let worker = task_assistant(
+            &socket,
+            Some(|request| AssistantReply::Organized {
+                request_id: request.request_id().unwrap(),
+                text: "| a | 1 |".into(),
+            }),
+        );
+        let out = organize_text(&socket, Duration::from_secs(5), "a 1", "make a table");
+        assert_eq!(out, Ok("| a | 1 |".to_string()));
+        assert!(matches!(
+            worker.join().unwrap(),
+            Some(AssistantRequest::Organize { instruction, .. }) if instruction == "make a table"
+        ));
+        let _ = std::fs::remove_file(&socket);
+    }
+
+    #[test]
+    fn a_failed_task_reports_the_assistants_own_reason() {
+        let socket = socket_path("taskfail");
+        let worker = task_assistant(
+            &socket,
+            Some(|request| AssistantReply::Failed {
+                request_id: request.request_id().unwrap(),
+                reason: "no local model is configured".into(),
+            }),
+        );
+        assert_eq!(
+            summarize_text(&socket, Duration::from_secs(5), "page"),
+            Err("no local model is configured".to_string())
+        );
+        worker.join().unwrap();
+        let _ = std::fs::remove_file(&socket);
+    }
+
+    #[test]
+    fn a_wrong_kind_of_reply_or_id_is_an_error_not_a_result() {
+        for reply in [
+            (|request: AssistantRequest| AssistantReply::Translated {
+                request_id: request.request_id().unwrap(),
+                texts: vec![],
+            }) as fn(AssistantRequest) -> AssistantReply,
+            |request| AssistantReply::Summary {
+                request_id: request.request_id().unwrap() + 1,
+                text: "x".into(),
+            },
+        ] {
+            let socket = socket_path("wrongreply");
+            let worker = task_assistant(&socket, Some(reply));
+            assert!(summarize_text(&socket, Duration::from_secs(5), "page").is_err());
+            worker.join().unwrap();
+            let _ = std::fs::remove_file(&socket);
+        }
+    }
+
+    #[test]
+    fn a_missing_assistant_says_it_is_not_running() {
+        let socket = socket_path("norun");
+        assert_eq!(
+            summarize_text(&socket, Duration::from_secs(1), "page"),
+            Err("the assistant is not running".to_string())
+        );
+    }
+
+    #[test]
+    fn a_silent_assistant_times_out_with_a_clear_reason() {
+        let socket = socket_path("tasksilent");
+        let worker = task_assistant(&socket, None);
+        let started = Instant::now();
+        assert_eq!(
+            summarize_text(&socket, Duration::from_millis(300), "page"),
+            Err("the assistant did not answer in time".to_string())
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
+        worker.join().unwrap();
+        let _ = std::fs::remove_file(&socket);
+    }
+
+    #[test]
+    fn an_invalid_request_never_reaches_the_assistant() {
+        let socket = socket_path("taskinvalid");
+        let listener = UnixListener::bind(&socket).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        assert!(summarize_text(&socket, Duration::from_secs(1), "").is_err());
+        assert!(organize_text(&socket, Duration::from_secs(1), "x", "").is_err());
+        assert!(matches!(listener.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock));
+        let _ = std::fs::remove_file(&socket);
+    }
+
+    #[test]
+    fn a_refused_handshake_is_reported() {
+        let socket = socket_path("taskhello");
+        let listener = UnixListener::bind(&socket).unwrap();
+        let worker = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = read_assistant_request(&mut stream);
+            write_assistant_reply(
+                &mut stream,
+                &AssistantReply::Failed {
+                    request_id: 0,
+                    reason: "version".into(),
+                },
+            )
+            .unwrap();
+        });
+        assert_eq!(
+            summarize_text(&socket, Duration::from_secs(5), "page"),
+            Err("the assistant did not accept the connection".to_string())
+        );
+        worker.join().unwrap();
+        let _ = std::fs::remove_file(&socket);
+    }
+
+    #[test]
+    fn a_hung_up_assistant_is_reported() {
+        let socket = socket_path("taskhangup");
+        let listener = UnixListener::bind(&socket).unwrap();
+        let worker = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = read_assistant_request(&mut stream);
+            write_assistant_reply(
+                &mut stream,
+                &AssistantReply::HelloAck {
+                    protocol_version: ASSISTANT_PROTOCOL_VERSION,
+                },
+            )
+            .unwrap();
+            // Read the task, then drop the connection without answering.
+            let _ = read_assistant_request(&mut stream);
+        });
+        assert_eq!(
+            summarize_text(&socket, Duration::from_secs(5), "page"),
+            Err("the assistant closed the connection".to_string())
+        );
+        worker.join().unwrap();
+        let _ = std::fs::remove_file(&socket);
     }
 }
