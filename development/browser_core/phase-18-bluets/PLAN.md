@@ -570,6 +570,47 @@ old module handles each fail with `StaleRealm`. The new page is still
 discoverable under a different realm generation; no old request is retargeted
 to its program.
 
+**First nested-frame debugger boundary (C1.2.1.1):** Existing compiler-safe
+points already name non-root code units, but that static tuple is not an active
+frame: recursive or repeated calls can execute the same code unit at the same
+offset. The current BlueJS interpreter nests ordinary calls on the Rust stack,
+and its debugger continuation stores only the root frame. Therefore neither
+`StepRootInstruction` nor a non-root `DebuggerSafePoint` may be reused as a
+nested-frame step target. The first increment supports one ordinary,
+synchronous interpreted closure called directly from a paused or executing
+classic/entry-module root. It pauses before an exact verified instruction in
+that closure, then steps within that same invocation. It does not claim
+generator, async, constructor, tail-call replacement, direct-eval, native or
+proxy-mediated calls, reentrant host callbacks, or deeper interpreted frames;
+an armed request encountering one of these paths must fail with an explicit
+unsupported outcome before executing the target, never silently skip the
+requested pause or return a fabricated root successor.
+
+On activation, BlueJS must match the closure's compiled code unit to the
+selected program generation and mint a nonzero, per-realm invocation serial.
+The child/public handle binds that serial to the exact tab, document realm,
+program handle/generation, and code-unit ordinal. It is issued only for an
+actually paused frame, not inferred from a static breakpoint. A frame step
+requires this whole live tuple, and a returned frame or replaced realm revokes
+it; even another invocation of the same code unit cannot inherit it. The
+public replies disclose only the frame handle, verified safe point, and
+source-free state, not operands, bindings, closure objects, or source text.
+
+The VM continuation must own both the child frame and its suspended call-site
+parent. Preserve each frame's operand, handler, iterator and execution-context
+state, the unconsumed call inputs and pending completion, plus the module graph
+when applicable. Every retained object edge must remain visible to the VM GC;
+normal execution entry points cannot run concurrently. One nested step
+executes exactly one child instruction and reports its real next instruction
+boundary, including a backward branch; a terminal child result is integrated
+once into the saved parent call site, never dispatched a second time.
+Exception unwinding and unsupported call forms must leave no detached frame.
+The protocol/page-host version changes only when the new active-frame type
+and commands are wired end-to-end, with a separate capability that remains
+unavailable on hosts lacking the continuation. C1.2.2 adds one-shot resume of
+that same active frame; C1.2.3 proves returned-frame, cross-tab and predecessor-
+child rejection.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
