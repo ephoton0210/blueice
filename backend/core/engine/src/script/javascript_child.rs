@@ -28,8 +28,9 @@ use crate::script::javascript::{
     AuthorizedJavaScriptModuleGraph, BlueTsPageExecutionReport, JavaScriptPageDebuggerBreakpoint,
     JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
     JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
-    JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerStaticMetadata,
-    JavaScriptPageDebuggerStaticMetadataContractDisplay,
+    JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerScopeEntry,
+    JavaScriptPageDebuggerStackFrame, JavaScriptPageDebuggerStackSnapshot,
+    JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataContractDisplay,
     JavaScriptPageDebuggerStaticMetadataContractId,
     JavaScriptPageDebuggerStaticMetadataContractLocation,
     JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
@@ -74,11 +75,12 @@ use blueice_ipc::page_host::{
     self, PageHostChildStats, PageHostDebuggerBlueTsMetadataSymbolContract,
     PageHostDebuggerBlueTsMetadataSymbolLocation, PageHostDebuggerBlueTsMetadataSymbolType,
     PageHostDebuggerExecutionState, PageHostDebuggerFrame, PageHostDebuggerMetadataHandle,
-    PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot,
-    PageHostErrorCode, PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest,
-    PageHostScript, PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome,
-    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
-    PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+    PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDebuggerStackSnapshot,
+    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
+    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
+    PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
+    PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+    PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES, PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES,
 };
 use blueice_ipc::script::ScriptDocumentTarget;
 use blueice_net::canonical_http_origin;
@@ -831,6 +833,25 @@ pub trait PageHostClient {
         false
     }
 
+    fn debugger_stack_snapshot_available(&self) -> bool {
+        false
+    }
+
+    fn debugger_stack_snapshot(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _frame: Option<PageHostDebuggerFrame>,
+        _max_frames: u32,
+        _max_scope_entries: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger stack inspection",
+        ))
+    }
+
     fn arm_debugger_nested_safe_point_breakpoint(
         &mut self,
         _tab_id: u64,
@@ -1462,6 +1483,29 @@ impl PageHostClient for PageHostConnection {
 
     fn debugger_nested_frames_available(&self) -> bool {
         true
+    }
+
+    fn debugger_stack_snapshot_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_stack_snapshot(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        frame: Option<PageHostDebuggerFrame>,
+        max_frames: u32,
+        max_scope_entries: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::GetDebuggerStackSnapshot {
+            tab_id,
+            document_generation,
+            program,
+            frame,
+            max_frames,
+            max_scope_entries,
+        })
     }
 
     fn arm_debugger_nested_safe_point_breakpoint(
@@ -4200,6 +4244,163 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         }
     }
 
+    fn debugger_stack_snapshot(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        core_program: JavaScriptPageDebuggerProgram,
+        frame: Option<JavaScriptPageDebuggerFrame>,
+        max_frames: u32,
+        max_scope_entries: u32,
+    ) -> Result<JavaScriptPageDebuggerStackSnapshot, JavaScriptPageDebuggerError> {
+        let JavaScriptPageDebuggerProgram {
+            program_handle,
+            program_generation,
+        } = core_program;
+        if !self.debugger_execution_control_available()
+            || !self.child.debugger_stack_snapshot_available()
+        {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        if !(1..=PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES).contains(&max_frames)
+            || !(1..=PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES).contains(&max_scope_entries)
+        {
+            return Err(JavaScriptPageDebuggerError::ResourceLimit);
+        }
+        let program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let (child_frame, top_code_unit, top_offset) = if let Some(frame) = frame {
+            if frame.tab_id != tab_id
+                || frame.document_generation != document_generation
+                || frame.program_handle != program_handle
+                || frame.program_generation != program_generation
+                || frame.code_unit_ordinal == 0
+                || frame.frame_handle == 0
+            {
+                return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+            }
+            let active = self
+                .debugger_nested_frames
+                .get(&tab_id)
+                .copied()
+                .filter(|active| active.public == frame && active.child.program == program)
+                .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
+            let Some(JavaScriptPageDebuggerNestedExecutionState::Paused {
+                frame: still_paused,
+                bytecode_offset,
+            }) = self.debugger_nested_execution_state(
+                tab_id,
+                document_generation,
+                program_handle,
+                program_generation,
+            )?
+            else {
+                return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+            };
+            if still_paused != frame {
+                return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+            }
+            (Some(active.child), frame.code_unit_ordinal, bytecode_offset)
+        } else {
+            let state = self.debugger_execution_state(
+                tab_id,
+                document_generation,
+                program_handle,
+                program_generation,
+            );
+            let bytecode_offset = match state {
+                Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable) => {
+                    return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+                }
+                Err(error) => return Err(error),
+                Ok(state) => match state {
+                    JavaScriptPageDebuggerExecutionState::Paused {
+                        code_unit_ordinal: 0,
+                        bytecode_offset,
+                    }
+                    | JavaScriptPageDebuggerExecutionState::SourceStepLimitReached {
+                        code_unit_ordinal: 0,
+                        bytecode_offset,
+                    } => bytecode_offset,
+                    _ => return Err(JavaScriptPageDebuggerError::InvalidExecutionState),
+                },
+            };
+            (None, 0, bytecode_offset)
+        };
+        let reply = self
+            .child
+            .debugger_stack_snapshot(
+                tab_id.as_u64(),
+                document_generation,
+                program,
+                child_frame,
+                max_frames,
+                max_scope_entries,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerStackSnapshot {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program: reply_program,
+            frame: reply_frame,
+            snapshot,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || reply_program != program
+            || reply_frame != child_frame
+            || !valid_child_debugger_stack_snapshot(
+                &snapshot,
+                child_frame,
+                top_code_unit,
+                top_offset,
+                max_frames,
+                max_scope_entries,
+            )
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        for stack_frame in &snapshot.frames {
+            validate_child_safe_point_reply(
+                self,
+                tab_id,
+                document_generation,
+                PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: stack_frame.code_unit_ordinal,
+                    bytecode_offset: stack_frame.bytecode_offset,
+                },
+            )?;
+        }
+        Ok(JavaScriptPageDebuggerStackSnapshot {
+            frames: snapshot
+                .frames
+                .into_iter()
+                .map(|frame| JavaScriptPageDebuggerStackFrame {
+                    code_unit_ordinal: frame.code_unit_ordinal,
+                    bytecode_offset: frame.bytecode_offset,
+                    scope_entries: frame
+                        .scope_entries
+                        .into_iter()
+                        .map(|entry| JavaScriptPageDebuggerScopeEntry {
+                            slot_ordinal: entry.slot_ordinal,
+                            scope_depth: entry.scope_depth,
+                        })
+                        .collect(),
+                    scope_truncated: frame.scope_truncated,
+                })
+                .collect(),
+            stack_truncated: snapshot.stack_truncated,
+        })
+    }
+
     fn debugger_stepping_available(&self) -> bool {
         self.debugger_execution_control_available() && self.child.debugger_stepping_available()
     }
@@ -4698,6 +4899,34 @@ fn has_duplicate_child_static_metadata_contract_ids(
     contracts
         .iter()
         .any(|contract| !seen.insert(contract.contract_id))
+}
+
+fn valid_child_debugger_stack_snapshot(
+    snapshot: &PageHostDebuggerStackSnapshot,
+    child_frame: Option<PageHostDebuggerFrame>,
+    top_code_unit: u32,
+    top_offset: u32,
+    max_frames: u32,
+    max_scope_entries: u32,
+) -> bool {
+    let nested = child_frame.is_some();
+    let expected_frames = if nested && max_frames > 1 { 2 } else { 1 };
+    if snapshot.frames.len() != expected_frames
+        || snapshot.stack_truncated != (nested && max_frames == 1)
+        || snapshot.frames[0].code_unit_ordinal != top_code_unit
+        || snapshot.frames[0].bytecode_offset != top_offset
+        || (expected_frames == 2 && snapshot.frames[1].code_unit_ordinal != 0)
+    {
+        return false;
+    }
+    snapshot.frames.iter().all(|frame| {
+        frame.scope_entries.len() <= max_scope_entries as usize
+            && (!frame.scope_truncated || frame.scope_entries.len() == max_scope_entries as usize)
+            && frame
+                .scope_entries
+                .windows(2)
+                .all(|pair| pair[0].scope_depth <= pair[1].scope_depth)
+    })
 }
 
 fn validate_child_safe_point_reply<C: PageHostClient>(
@@ -5363,6 +5592,308 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread;
+
+    #[test]
+    fn core_rejects_malformed_child_stack_shapes_and_scope_budgets() {
+        use blueice_ipc::page_host::{PageHostDebuggerScopeEntry, PageHostDebuggerStackFrame};
+
+        let child = PageHostDebuggerFrame {
+            tab_id: 7,
+            document_generation: 1,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            code_unit_ordinal: 1,
+            invocation_serial: 17,
+        };
+        let entry = PageHostDebuggerScopeEntry {
+            slot_ordinal: 2,
+            scope_depth: 0,
+        };
+        let top = PageHostDebuggerStackFrame {
+            code_unit_ordinal: 1,
+            bytecode_offset: 4,
+            scope_entries: vec![entry],
+            scope_truncated: true,
+        };
+        let snapshot = PageHostDebuggerStackSnapshot {
+            frames: vec![top.clone()],
+            stack_truncated: true,
+        };
+        assert!(valid_child_debugger_stack_snapshot(
+            &snapshot,
+            Some(child),
+            1,
+            4,
+            1,
+            1
+        ));
+        let mut malformed = snapshot.clone();
+        malformed.frames[0].bytecode_offset = 5;
+        assert!(!valid_child_debugger_stack_snapshot(
+            &malformed,
+            Some(child),
+            1,
+            4,
+            1,
+            1
+        ));
+        malformed = snapshot.clone();
+        malformed.stack_truncated = false;
+        assert!(!valid_child_debugger_stack_snapshot(
+            &malformed,
+            Some(child),
+            1,
+            4,
+            1,
+            1
+        ));
+        malformed = snapshot.clone();
+        malformed.frames[0].scope_entries.push(entry);
+        assert!(!valid_child_debugger_stack_snapshot(
+            &malformed,
+            Some(child),
+            1,
+            4,
+            1,
+            1
+        ));
+        malformed = snapshot.clone();
+        malformed.frames[0].scope_entries.clear();
+        assert!(!valid_child_debugger_stack_snapshot(
+            &malformed,
+            Some(child),
+            1,
+            4,
+            1,
+            1
+        ));
+        malformed = snapshot.clone();
+        malformed.frames[0]
+            .scope_entries
+            .push(PageHostDebuggerScopeEntry {
+                slot_ordinal: 3,
+                scope_depth: 0,
+            });
+        malformed.frames[0].scope_entries[0].scope_depth = 1;
+        assert!(!valid_child_debugger_stack_snapshot(
+            &malformed,
+            Some(child),
+            1,
+            4,
+            1,
+            2
+        ));
+        let root = PageHostDebuggerStackFrame {
+            code_unit_ordinal: 0,
+            bytecode_offset: 8,
+            scope_entries: Vec::new(),
+            scope_truncated: false,
+        };
+        let full = PageHostDebuggerStackSnapshot {
+            frames: vec![top, root],
+            stack_truncated: false,
+        };
+        assert!(valid_child_debugger_stack_snapshot(
+            &full,
+            Some(child),
+            1,
+            4,
+            2,
+            1
+        ));
+        assert!(!valid_child_debugger_stack_snapshot(
+            &full, None, 0, 8, 2, 1
+        ));
+        malformed = full.clone();
+        malformed.frames[1].code_unit_ordinal = 1;
+        assert!(!valid_child_debugger_stack_snapshot(
+            &malformed,
+            Some(child),
+            1,
+            4,
+            2,
+            1
+        ));
+    }
+
+    struct SnapshotReplyChild {
+        reply: PageHostReply,
+    }
+
+    impl PageHostClient for SnapshotReplyChild {
+        fn synchronize_document(&mut self, _: PageHostDocument) -> io::Result<PageHostReply> {
+            unreachable!("the test installs a core-owned identity directly")
+        }
+
+        fn close_realm(&mut self, _: u64, _: u64) -> io::Result<PageHostReply> {
+            unreachable!("the test does not close the test realm")
+        }
+
+        fn debugger_execution_control_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_stack_snapshot_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_execution_state(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+            program: PageHostDebuggerProgram,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::DebuggerExecutionState {
+                tab_id,
+                document_generation,
+                program,
+                state: PageHostDebuggerExecutionState::Paused {
+                    safe_point: PageHostDebuggerSafePoint {
+                        program,
+                        code_unit_ordinal: 0,
+                        bytecode_offset: 4,
+                    },
+                },
+            })
+        }
+
+        fn validate_debugger_safe_point(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+            safe_point: PageHostDebuggerSafePoint,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::DebuggerSafePointValidated {
+                tab_id,
+                document_generation,
+                safe_point,
+            })
+        }
+
+        fn debugger_stack_snapshot(
+            &mut self,
+            _: u64,
+            _: u64,
+            _: PageHostDebuggerProgram,
+            _: Option<PageHostDebuggerFrame>,
+            _: u32,
+            _: u32,
+        ) -> io::Result<PageHostReply> {
+            Ok(self.reply.clone())
+        }
+    }
+
+    #[test]
+    fn core_rejects_private_snapshot_reply_identity_mismatches() {
+        use blueice_ipc::page_host::PageHostDebuggerStackFrame;
+
+        let tab_id = TabId::from_u64(7);
+        let child_program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let reply = PageHostReply::DebuggerStackSnapshot {
+            tab_id: 7,
+            document_generation: 1,
+            program: child_program,
+            frame: None,
+            snapshot: PageHostDebuggerStackSnapshot {
+                frames: vec![PageHostDebuggerStackFrame {
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 4,
+                    scope_entries: Vec::new(),
+                    scope_truncated: false,
+                }],
+                stack_truncated: false,
+            },
+        };
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new(SnapshotReplyChild {
+            reply: reply.clone(),
+        });
+        executor.enable_debugger_execution_control();
+        executor.live_documents.insert(
+            tab_id,
+            LiveDocument {
+                document_generation: 1,
+                origin: "https://example.test".into(),
+            },
+        );
+        executor.debugger_programs.insert(
+            tab_id,
+            BTreeMap::from([(
+                child_program,
+                CoreDebuggerProgram {
+                    program_handle: 101,
+                    program_generation: 103,
+                },
+            )]),
+        );
+        let request = |executor: &mut OutOfProcessJavaScriptPageExecutor<SnapshotReplyChild>| {
+            executor.debugger_stack_snapshot(
+                tab_id,
+                1,
+                JavaScriptPageDebuggerProgram {
+                    program_handle: 101,
+                    program_generation: 103,
+                },
+                None,
+                2,
+                2,
+            )
+        };
+        assert_eq!(request(&mut executor).unwrap().frames.len(), 1);
+        let PageHostReply::DebuggerStackSnapshot { snapshot, .. } = &reply else {
+            unreachable!();
+        };
+        let snapshot = snapshot.clone();
+        for malformed in [
+            PageHostReply::DebuggerStackSnapshot {
+                tab_id: 8,
+                document_generation: 1,
+                program: child_program,
+                frame: None,
+                snapshot: snapshot.clone(),
+            },
+            PageHostReply::DebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 2,
+                program: child_program,
+                frame: None,
+                snapshot: snapshot.clone(),
+            },
+            PageHostReply::DebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 1,
+                program: PageHostDebuggerProgram {
+                    program_generation: 14,
+                    ..child_program
+                },
+                frame: None,
+                snapshot: snapshot.clone(),
+            },
+            PageHostReply::DebuggerStackSnapshot {
+                tab_id: 7,
+                document_generation: 1,
+                program: child_program,
+                frame: Some(PageHostDebuggerFrame {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program: child_program,
+                    code_unit_ordinal: 1,
+                    invocation_serial: 17,
+                }),
+                snapshot,
+            },
+        ] {
+            executor.child.reply = malformed;
+            assert_eq!(
+                request(&mut executor),
+                Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            );
+        }
+    }
 
     #[test]
     fn child_symbol_location_rejects_malformed_original_coordinates() {
@@ -8231,6 +8762,31 @@ mod tests {
         assert_eq!(frame.program_generation, program.program_generation);
         assert_eq!(frame.code_unit_ordinal, 1);
         assert_ne!(frame.frame_handle, 0);
+        let stack = executor
+            .debugger_stack_snapshot(tab_id, 1, program, Some(frame), 1, 1)
+            .unwrap();
+        assert_eq!(stack.frames.len(), 1);
+        assert_eq!(stack.frames[0].code_unit_ordinal, 1);
+        assert_eq!(stack.frames[0].bytecode_offset, bytecode_offset);
+        assert!(stack.stack_truncated);
+        assert_eq!(
+            executor.debugger_stack_snapshot(
+                tab_id,
+                1,
+                program,
+                Some(JavaScriptPageDebuggerFrame {
+                    frame_handle: frame.frame_handle + 1,
+                    ..frame
+                }),
+                2,
+                256,
+            ),
+            Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+        );
+        assert_eq!(
+            executor.debugger_stack_snapshot(tab_id, 1, program, None, 2, 256,),
+            Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+        );
         assert_eq!(
             executor
                 .debugger_nested_execution_state(
@@ -8306,6 +8862,12 @@ mod tests {
                 ..
             }
         ));
+        let root_stack = executor
+            .debugger_stack_snapshot(tab_id, 1, program, None, 2, 256)
+            .unwrap();
+        assert_eq!(root_stack.frames.len(), 1);
+        assert_eq!(root_stack.frames[0].code_unit_ordinal, 0);
+        assert!(!root_stack.stack_truncated);
         executor
             .resume_debugger_execution(
                 tab_id,

@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.1.1.3.2.** Route the private stack/scope snapshot through
-the core child proxy with exact identity and budget validation.
+**Current leaf: C2.1.1.3.3.** Prove the bounded private stack/scope route over
+a real child and keep the public capability disabled.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -302,7 +302,7 @@ channel with explicit owner/client grants.
     - [x] **C2.1.1.2** Capture that bounded stack/scope snapshot from the retained BlueJS classic and module continuations through the page runtime; test nested/root frame order, active-scope exclusion, both truncation flags, and no execution or getter effects. The VM snapshots only its parked classic/module continuation and exact child serial into source-free code-unit offsets plus active lexical slot/depth entries, with hard 64-frame/256-entry caps and explicit truncation. Page runtime binds the request to a live tab, installed program generation, and exact nested frame. Tests cover child-first and root-only order in classic/module paths, inactive block exclusion, limit rejection, stale-frame denial, and a getter whose effects occur only on actual resume.
     - [ ] **C2.1.1.3** Carry the exact paused snapshot through child scheduling, page-host IPC, and the core child proxy with generation/active-frame validation; keep the public stack/scope capability disabled.
       - [x] **C2.1.1.3.1** Define the bounded source-free private page-host request/reply, bump its version, and implement child-side exact paused root/nested snapshot validation with focused tests. Private page-host v37 carries a source-free, bounded request/reply; the child admits only a live document's queue-head paused root or exact nested invocation, validates the installed program and positive native/protocol budgets, and rejects stale documents, wrong frames, and in-flight stepping. IPC round-trip and child scheduler tests pass; no public capability changes.
-      - [ ] **C2.1.1.3.2** Route the private snapshot through the core child proxy, validating every echoed identity, active frame, limit, and source-free entry before returning a core-facing snapshot.
+      - [x] **C2.1.1.3.2** Route the private snapshot through the core child proxy, validating every echoed identity, active frame, limit, and source-free entry before returning a core-facing snapshot. The core checks the current paused state and its own core-to-child frame association before the request, then validates the full child echo, child-first/root-only shape, exact top offset, independent truncation and entry budgets, lexical depth order, and every returned safe point. The core-facing result has no private program/frame IDs. A real child route, malformed-payload matrix, and mismatched-reply identity test cover the proxy; no public request/capability is added.
       - [ ] **C2.1.1.3.3** Prove the private route over a real child with stale document, wrong program/frame, both truncation flags, and no public capability; then check off C2.1.1.3.
     - [ ] **C2.1.1.4** Expose separately gated public stack/scope requests and bounded replies, bump the public protocol only with the complete route, and prove limits/truncation on a real BlueTS debugger socket.
   - [ ] **C2.1.2** Return stack frames with original BlueTS coordinates for nested and module frames.

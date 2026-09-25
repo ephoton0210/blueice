@@ -741,6 +741,18 @@ states fail closed. The v37 private wire and child scheduler are tested; the
 core-facing proxy and public capability remain disabled pending the next
 leaves.
 
+**Core proxy snapshot seam (C2.1.1.3.2):** The core executor exposes only a
+private, default-denied method returning its own source-free snapshot types.
+Before asking the child, it verifies the core-owned live document/program and
+either the still-paused root or the exact core-minted nested frame mapped to
+the child invocation. Afterward it checks the full private reply echo, expected
+root/child-first shape and top bytecode offset, frame and per-frame entry
+budgets, explicit truncation, monotonic active-scope depth, and each exact
+child safe point. The core never passes private program/frame IDs to its
+caller. Tests include a real child, malformed shapes, and a transport double
+that forges the reply tab, document, program, or frame. No public debugger
+request or capability exists yet.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -330,6 +330,27 @@ pub struct JavaScriptPageDebuggerFrame {
     pub frame_handle: u64,
 }
 
+/// Source-free lexical slot copied from an active paused interpreter scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerScopeEntry {
+    pub slot_ordinal: u32,
+    pub scope_depth: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStackFrame {
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+    pub scope_entries: Vec<JavaScriptPageDebuggerScopeEntry>,
+    pub scope_truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStackSnapshot {
+    pub frames: Vec<JavaScriptPageDebuggerStackFrame>,
+    pub stack_truncated: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JavaScriptPageDebuggerNestedExecutionState {
     Paused {
@@ -357,8 +378,8 @@ pub struct JavaScriptPageDebuggerBreakpoint {
 
 /// Source-free execution state for the opt-in native debugger root-frame
 /// continuation seam. `Paused` can name a non-entry root instruction, but
-/// this intentionally does not imply arbitrary interpreter continuation,
-/// stack inspection, nested-function pause, or stepping support.
+/// this alone does not imply stack inspection, nested-function pause, or
+/// stepping support; each has a separately gated route.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JavaScriptPageDebuggerExecutionState {
     Pending,

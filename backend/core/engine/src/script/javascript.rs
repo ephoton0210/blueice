@@ -38,8 +38,9 @@ pub use debugger_support::{
     JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
     JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
     JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
-    JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerStaticMetadata,
-    JavaScriptPageDebuggerStaticMetadataContractDisplay,
+    JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerScopeEntry,
+    JavaScriptPageDebuggerStackFrame, JavaScriptPageDebuggerStackSnapshot,
+    JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataContractDisplay,
     JavaScriptPageDebuggerStaticMetadataContractId,
     JavaScriptPageDebuggerStaticMetadataContractLocation,
     JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
@@ -578,6 +579,20 @@ pub trait PageJavaScriptDebuggerLocations {
         &mut self,
         _frame: JavaScriptPageDebuggerFrame,
     ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Private core-facing bounded inspection; no public debugger capability
+    /// is implied until an independently gated socket command exists.
+    fn debugger_stack_snapshot(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program: JavaScriptPageDebuggerProgram,
+        _frame: Option<JavaScriptPageDebuggerFrame>,
+        _max_frames: u32,
+        _max_scope_entries: u32,
+    ) -> Result<JavaScriptPageDebuggerStackSnapshot, JavaScriptPageDebuggerError> {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 
