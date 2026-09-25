@@ -967,6 +967,18 @@ excess. All 532 BlueJS library tests other than the already known native-stack
 environment case pass; all-target BlueJS Clippy and formatting pass. There is
 still no private or public value transport.
 
+**Private value types before transport (C2.2.1.4.1):** The page-host IPC now
+defines an exact tab/document/program/frame/safe-point/active-slot target and
+a lossless, handle-free preview tree, but adds no request or reply variant and
+keeps private protocol v37. The target validator accepts only root index zero
+without a child frame, or a matching live child index zero/root index one
+shape. The preview validator checks depth 4, 32 entries per container, 256
+nodes including holes, 4,096 aggregate UTF-16 key/string and BigInt bytes,
+and duplicate record keys iteratively before core remints a reply. Number
+bits, BigInt bytes, UTF-16 strings, sparse array holes, and record keys round
+trip without lossy JSON number/string conversion. Malformed target/tree tests,
+all 103 IPC library tests with local Unix-socket access, and IPC Clippy pass.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

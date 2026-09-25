@@ -112,6 +112,7 @@ use crate::debugger::{
     DebuggerStaticMetadataSymbolKind,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
@@ -121,6 +122,10 @@ pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 37;
 
 pub const PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
+pub const PAGE_HOST_DEBUGGER_MAX_VALUE_DEPTH: u32 = 4;
+pub const PAGE_HOST_DEBUGGER_MAX_VALUE_CONTAINER_LENGTH: usize = 32;
+pub const PAGE_HOST_DEBUGGER_MAX_VALUE_NODES: usize = 256;
+pub const PAGE_HOST_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES: usize = 4_096;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -415,6 +420,149 @@ pub struct PageHostDebuggerStackFrame {
 pub struct PageHostDebuggerStackSnapshot {
     pub frames: Vec<PageHostDebuggerStackFrame>,
     pub stack_truncated: bool,
+}
+
+/// One exact active slot in a retained debugger continuation. Core and child
+/// must revalidate the entire target against the live paused stack; these
+/// fields are identities, not authority tokens or heap-object handles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerValueTarget {
+    pub tab_id: u64,
+    pub document_generation: u64,
+    pub program: PageHostDebuggerProgram,
+    pub frame: Option<PageHostDebuggerFrame>,
+    /// Zero selects the child when `frame` is present; one selects its root.
+    pub frame_index: u32,
+    pub safe_point: PageHostDebuggerSafePoint,
+    pub scope_entry: PageHostDebuggerScopeEntry,
+}
+
+impl PageHostDebuggerValueTarget {
+    pub fn is_well_formed(self) -> bool {
+        self.tab_id != 0
+            && self.document_generation != 0
+            && self.program.is_well_formed()
+            && self.safe_point.program == self.program
+            && match self.frame {
+                None => self.frame_index == 0 && self.safe_point.code_unit_ordinal == 0,
+                Some(frame) => {
+                    frame.is_well_formed()
+                        && frame.tab_id == self.tab_id
+                        && frame.document_generation == self.document_generation
+                        && frame.program == self.program
+                        && match self.frame_index {
+                            0 => self.safe_point.code_unit_ordinal == frame.code_unit_ordinal,
+                            1 => self.safe_point.code_unit_ordinal == 0,
+                            _ => false,
+                        }
+                }
+            }
+    }
+}
+
+/// Lossless, handle-free payload copied from stored own data in a paused VM.
+/// String and record keys are UTF-16 code units, including lone surrogates;
+/// number bits preserve non-finite values and negative zero. Array `None` is
+/// a hole, distinct from an explicit `Undefined` element.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PageHostDebuggerValuePreview {
+    Undefined,
+    Null,
+    Bool(bool),
+    NumberBits(u64),
+    BigIntBytes(Vec<u8>),
+    StringUnits(Vec<u16>),
+    Array(Vec<Option<Self>>),
+    Record(Vec<(Vec<u16>, Self)>),
+}
+
+impl PageHostDebuggerValuePreview {
+    /// Checks the whole tree iteratively before any core remint or public
+    /// reply. No partial/truncated preview is a valid result.
+    pub fn is_well_formed(&self) -> bool {
+        let mut pending = vec![(self, 0)];
+        let mut nodes = 0usize;
+        let mut payload_bytes = 0usize;
+        while let Some((value, depth)) = pending.pop() {
+            if depth > PAGE_HOST_DEBUGGER_MAX_VALUE_DEPTH {
+                return false;
+            }
+            nodes += 1;
+            if nodes > PAGE_HOST_DEBUGGER_MAX_VALUE_NODES {
+                return false;
+            }
+            let bytes = match value {
+                Self::Undefined | Self::Null | Self::Bool(_) | Self::NumberBits(_) => 0,
+                Self::BigIntBytes(bytes) => bytes.len(),
+                Self::StringUnits(units) => match units.len().checked_mul(2) {
+                    Some(bytes) => bytes,
+                    None => return false,
+                },
+                Self::Array(elements) => {
+                    if elements.len() > PAGE_HOST_DEBUGGER_MAX_VALUE_CONTAINER_LENGTH {
+                        return false;
+                    }
+                    for element in elements {
+                        if let Some(value) = element {
+                            pending.push((value, depth + 1));
+                        } else {
+                            if depth + 1 > PAGE_HOST_DEBUGGER_MAX_VALUE_DEPTH {
+                                return false;
+                            }
+                            nodes += 1;
+                            if nodes > PAGE_HOST_DEBUGGER_MAX_VALUE_NODES {
+                                return false;
+                            }
+                        }
+                    }
+                    0
+                }
+                Self::Record(entries) => {
+                    if entries.len() > PAGE_HOST_DEBUGGER_MAX_VALUE_CONTAINER_LENGTH {
+                        return false;
+                    }
+                    let mut keys = HashSet::new();
+                    for (key, value) in entries {
+                        if !keys.insert(key.as_slice()) {
+                            return false;
+                        }
+                        let Some(key_bytes) = key.len().checked_mul(2) else {
+                            return false;
+                        };
+                        let Some(total) = payload_bytes.checked_add(key_bytes) else {
+                            return false;
+                        };
+                        payload_bytes = total;
+                        if payload_bytes > PAGE_HOST_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES {
+                            return false;
+                        }
+                        pending.push((value, depth + 1));
+                    }
+                    0
+                }
+            };
+            let Some(total) = payload_bytes.checked_add(bytes) else {
+                return false;
+            };
+            payload_bytes = total;
+            if payload_bytes > PAGE_HOST_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerValueSnapshot {
+    pub target: PageHostDebuggerValueTarget,
+    pub preview: PageHostDebuggerValuePreview,
+}
+
+impl PageHostDebuggerValueSnapshot {
+    pub fn is_well_formed(&self) -> bool {
+        self.target.is_well_formed() && self.preview.is_well_formed()
+    }
 }
 
 /// Source-free lifecycle state for the one-shot root-classic continuation
@@ -1322,6 +1470,128 @@ pub fn source_hash(source: &str) -> String {
 mod tests {
     use super::*;
     use std::os::unix::net::UnixStream;
+
+    #[test]
+    fn private_value_target_requires_exact_root_or_nested_frame_shape() {
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let frame = PageHostDebuggerFrame {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            code_unit_ordinal: 1,
+            invocation_serial: 19,
+        };
+        let mut target = PageHostDebuggerValueTarget {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            frame: None,
+            frame_index: 0,
+            safe_point: PageHostDebuggerSafePoint {
+                program,
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            },
+            scope_entry: PageHostDebuggerScopeEntry {
+                slot_ordinal: 2,
+                scope_depth: 0,
+            },
+        };
+        assert!(target.is_well_formed());
+        let snapshot = PageHostDebuggerValueSnapshot {
+            target,
+            preview: PageHostDebuggerValuePreview::Undefined,
+        };
+        assert!(snapshot.is_well_formed());
+        assert_eq!(
+            serde_json::from_slice::<PageHostDebuggerValueSnapshot>(
+                &serde_json::to_vec(&snapshot).unwrap()
+            )
+            .unwrap(),
+            snapshot
+        );
+        target.frame_index = 1;
+        assert!(!target.is_well_formed());
+        target.frame_index = 0;
+        target.frame = Some(frame);
+        assert!(!target.is_well_formed());
+        target.safe_point.code_unit_ordinal = 1;
+        assert!(target.is_well_formed());
+        target.frame_index = 1;
+        assert!(!target.is_well_formed());
+        target.safe_point.code_unit_ordinal = 0;
+        assert!(target.is_well_formed());
+        target.document_generation += 1;
+        assert!(!target.is_well_formed());
+        target.document_generation -= 1;
+        target.safe_point.program.program_generation += 1;
+        assert!(!target.is_well_formed());
+        target.safe_point.program.program_generation -= 1;
+        target.frame_index = 2;
+        assert!(!target.is_well_formed());
+        assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 37);
+    }
+
+    #[test]
+    fn private_value_preview_validates_lossless_bounded_trees() {
+        let preview = PageHostDebuggerValuePreview::Record(vec![(
+            vec![0xd800],
+            PageHostDebuggerValuePreview::Array(vec![
+                Some(PageHostDebuggerValuePreview::NumberBits(
+                    (-0.0_f64).to_bits(),
+                )),
+                None,
+                Some(PageHostDebuggerValuePreview::StringUnits(vec![0xdc00])),
+            ]),
+        )]);
+        assert!(preview.is_well_formed());
+        assert_eq!(
+            serde_json::from_slice::<PageHostDebuggerValuePreview>(
+                &serde_json::to_vec(&preview).unwrap()
+            )
+            .unwrap(),
+            preview
+        );
+        let mut too_deep = PageHostDebuggerValuePreview::Null;
+        for _ in 0..5 {
+            too_deep = PageHostDebuggerValuePreview::Array(vec![Some(too_deep)]);
+        }
+        assert!(!too_deep.is_well_formed());
+        assert!(!PageHostDebuggerValuePreview::Array(vec![None; 33]).is_well_formed());
+        assert!(!PageHostDebuggerValuePreview::Array(vec![
+            Some(
+                PageHostDebuggerValuePreview::Array(vec![None; 32])
+            );
+            9
+        ])
+        .is_well_formed());
+        assert!(!PageHostDebuggerValuePreview::BigIntBytes(vec![0; 4_097]).is_well_formed());
+        assert!(PageHostDebuggerValuePreview::StringUnits(vec![0; 2_048]).is_well_formed());
+        assert!(!PageHostDebuggerValuePreview::Record(vec![
+            (
+                vec![b'a' as u16],
+                PageHostDebuggerValuePreview::StringUnits(vec![0; 1_024])
+            ),
+            (
+                vec![b'b' as u16],
+                PageHostDebuggerValuePreview::StringUnits(vec![0; 1_024])
+            ),
+        ])
+        .is_well_formed());
+        assert!(!PageHostDebuggerValuePreview::Record(vec![(
+            vec![b'x' as u16; 2_049],
+            PageHostDebuggerValuePreview::Null,
+        )])
+        .is_well_formed());
+        assert!(!PageHostDebuggerValuePreview::Record(vec![
+            (vec![b'a' as u16], PageHostDebuggerValuePreview::Null),
+            (vec![b'a' as u16], PageHostDebuggerValuePreview::Bool(true)),
+        ])
+        .is_well_formed());
+    }
 
     #[test]
     fn active_frame_wire_identity_is_exact_source_free_and_nonzero() {
