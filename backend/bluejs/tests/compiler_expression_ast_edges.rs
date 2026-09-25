@@ -242,6 +242,28 @@ fn parenthesized_ordinary_member_in_an_optional_call_keeps_its_receiver() {
 }
 
 #[test]
+fn parenthesized_nonmember_calls_use_the_ordinary_callee_value() {
+    for expression in [
+        Expr::Call {
+            callee: Box::new(Expr::Parenthesized(Box::new(Expr::Identifier("f".into())))),
+            args: Vec::new(),
+        },
+        Expr::OptionalCall {
+            callee: Box::new(Expr::Parenthesized(Box::new(Expr::Identifier("f".into())))),
+            args: Vec::new(),
+        },
+    ] {
+        let mut program = parse("let f = () => 13;").unwrap();
+        program.body.push(Stmt::Expr(expression));
+        assert_eq!(
+            Vm::default().execute(&compile(&program).unwrap()),
+            Ok(Value::Number(13.0))
+        );
+        assert_every_byte_limit(&program);
+    }
+}
+
+#[test]
 fn parenthesized_optional_computed_and_private_methods_keep_their_receivers() {
     for (source, expected) in [
         (
@@ -370,24 +392,32 @@ fn invalid_nested_super_expressions_are_rejected_at_their_original_site() {
         ))
     ));
 
-    let mut program =
-        parse("class A {} class B extends A { constructor() { super(...[]); } }").unwrap();
-    let Stmt::ClassDecl(class) = &mut program.body[1] else {
-        panic!("expected derived class");
-    };
-    let ClassElement::Method { function, .. } = &mut class.elements[0] else {
-        panic!("expected constructor");
-    };
-    let Stmt::Expr(Expr::Call { args, .. }) = &mut function.body[0] else {
-        panic!("expected super call");
-    };
-    args[0] = Argument::Spread(Expr::Super);
-    assert!(matches!(
-        compile(&program),
-        Err(CompileError::InvalidSyntax(
-            "super must be used as a property access or constructor call"
-        ))
-    ));
+    for (arg, expected) in [
+        (
+            Expr::Super,
+            "super must be used as a property access or constructor call",
+        ),
+        (Expr::ImportMeta, "import.meta is only valid in module code"),
+    ] {
+        for argument in [Argument::Spread(arg.clone()), Argument::Normal(arg)] {
+            let mut program =
+                parse("class A {} class B extends A { constructor() { super(...[]); } }").unwrap();
+            let Stmt::ClassDecl(class) = &mut program.body[1] else {
+                panic!("expected derived class");
+            };
+            let ClassElement::Method { function, .. } = &mut class.elements[0] else {
+                panic!("expected constructor");
+            };
+            let Stmt::Expr(Expr::Call { args, .. }) = &mut function.body[0] else {
+                panic!("expected super call");
+            };
+            args[0] = argument;
+            assert!(matches!(
+                compile(&program),
+                Err(CompileError::InvalidSyntax(message)) if message == expected
+            ));
+        }
+    }
 }
 
 #[test]

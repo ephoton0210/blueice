@@ -32,6 +32,51 @@ fn private_update_operand(owner: u32, op: UpdateOp, prefix: bool) -> Result<u32,
 }
 
 impl Compiler {
+    fn tagged_template_expression(
+        &mut self,
+        tag: &Expr,
+        raw: &[JsString],
+        cooked: &[Option<JsString>],
+        expressions: &[Expr],
+        counter: &std::sync::atomic::AtomicU64,
+    ) -> Result<(), CompileError> {
+        let argument_count = self.list_count(expressions.len().saturating_add(1))?;
+        let tail = std::mem::take(&mut self.tail_call_pending);
+        if matches!(tag, Expr::Member { .. }) {
+            if let Some((object, name)) = private_member_parts(tag) {
+                let owner = self.private_member_reference(object, name)?;
+                self.emit(Opcode::PrivateGetMethod, owner)?;
+            } else if is_super_member(tag) {
+                self.member_reference(tag)?;
+                self.emit_this()?;
+                self.emit(Opcode::SuperGetMethod, 0)?;
+            } else {
+                self.member_reference(tag)?;
+                self.emit(Opcode::GetMethod, 0)?;
+            }
+        } else {
+            self.expression(tag)?;
+            self.constant(Value::Undefined)?;
+        }
+        let id = next_template_site_id(counter)?;
+        let site = self.bytecode.templates.len() as u32;
+        self.bytecode.templates.push(crate::bytecode::TemplateSite {
+            id,
+            raw: raw.to_vec(),
+            cooked: cooked.to_vec(),
+        });
+        self.emit(Opcode::TemplateObject, site)?;
+        for expression in expressions {
+            self.expression(expression)?;
+        }
+        if tail {
+            self.emit(Opcode::TailCall, argument_count << 1)?;
+        } else {
+            self.emit(Opcode::Call, argument_count)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn expression(&mut self, expr: &Expr) -> Result<(), CompileError> {
         if optional_chain_root(expr) {
             let mut exits = Vec::new();
@@ -59,42 +104,9 @@ impl Compiler {
                 cooked,
                 expressions,
             } => {
-                let argument_count = self.list_count(expressions.len().saturating_add(1))?;
-                let tail = std::mem::take(&mut self.tail_call_pending);
-                if matches!(&**tag, Expr::Member { .. }) {
-                    if let Some((object, name)) = private_member_parts(tag) {
-                        let owner = self.private_member_reference(object, name)?;
-                        self.emit(Opcode::PrivateGetMethod, owner)?;
-                    } else if is_super_member(tag) {
-                        self.member_reference(tag)?;
-                        self.emit_this()?;
-                        self.emit(Opcode::SuperGetMethod, 0)?;
-                    } else {
-                        self.member_reference(tag)?;
-                        self.emit(Opcode::GetMethod, 0)?;
-                    }
-                } else {
-                    self.expression(tag)?;
-                    self.constant(Value::Undefined)?;
-                }
                 static NEXT_SITE: std::sync::atomic::AtomicU64 =
                     std::sync::atomic::AtomicU64::new(1);
-                let id = next_template_site_id(&NEXT_SITE)?;
-                let site = self.bytecode.templates.len() as u32;
-                self.bytecode.templates.push(crate::bytecode::TemplateSite {
-                    id,
-                    raw: raw.clone(),
-                    cooked: cooked.clone(),
-                });
-                self.emit(Opcode::TemplateObject, site)?;
-                for expression in expressions {
-                    self.expression(expression)?;
-                }
-                if tail {
-                    self.emit(Opcode::TailCall, argument_count << 1)?;
-                } else {
-                    self.emit(Opcode::Call, argument_count)?;
-                }
+                return self.tagged_template_expression(tag, raw, cooked, expressions, &NEXT_SITE);
             }
             Expr::Number(n) => self.constant(Value::Number(*n))?,
             Expr::BigInt(n) => self.constant(Value::BigInt(n.clone()))?,
@@ -849,7 +861,9 @@ impl Compiler {
                     argument_count,
                 )?;
             }
-            Expr::OptionalCall { .. } => unreachable!("optional calls are compiled by expression"),
+            Expr::OptionalCall { .. } => {
+                return Err(CompileError::Unsupported("optional chaining"))
+            }
             Expr::This => self.emit_this()?,
             Expr::NewTarget => {
                 if !self.bytecode.new_target_allowed {

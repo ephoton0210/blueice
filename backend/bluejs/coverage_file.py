@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 import tempfile
@@ -111,6 +112,94 @@ def checked_export(payload: dict) -> tuple[dict[Path, dict], dict]:
     return files, totals
 
 
+def source_union_export(payload: dict, show_text: str) -> tuple[dict[Path, dict], dict]:
+    """Count each source location once across unit and integration binaries."""
+    raw_files, _ = checked_export(payload)
+    regions: dict[Path, dict[tuple[int, ...], int]] = {
+        path: {} for path in raw_files
+    }
+    functions: dict[Path, dict[tuple[int, ...], int]] = {
+        path: {} for path in raw_files
+    }
+    for function in payload["data"][0]["functions"]:
+        for index, filename in enumerate(function["filenames"]):
+            path = Path(filename).resolve()
+            if path not in raw_files:
+                continue
+            code_regions = [
+                region
+                for region in function["regions"]
+                if len(region) == 8 and region[5] == index and region[7] == 0
+            ]
+            if not code_regions:
+                continue
+            count = function["count"]
+            if not isinstance(count, int) or count < 0:
+                raise ValueError(f"invalid function counter for {path}")
+            function_key = tuple(code_regions[0][:4])
+            functions[path][function_key] = max(
+                functions[path].get(function_key, 0), count
+            )
+            for region in code_regions:
+                hit = region[4]
+                if not isinstance(hit, int) or hit < 0:
+                    raise ValueError(f"invalid region counter for {path}")
+                key = tuple(region[:4])
+                regions[path][key] = max(regions[path].get(key, 0), hit)
+
+    lines: dict[Path, dict[int, bool]] = {path: {} for path in raw_files}
+    source_rows: dict[Path, set[int]] = {path: set() for path in raw_files}
+    active: Path | None = None
+    for row in show_text.splitlines():
+        if row.startswith(str(SOURCE_ROOT)) and row.endswith(".rs:"):
+            active = Path(row[:-1]).resolve()
+            if active not in raw_files:
+                raise ValueError(f"unexpected source file in text coverage: {active}")
+            continue
+        if active is None:
+            continue
+        match = re.match(r"^\s*(\d+)\|([^|]*)\|", row)
+        if match is None:
+            continue
+        number = int(match.group(1))
+        if number in source_rows[active]:
+            raise ValueError(f"duplicate source line in text coverage: {active}:{number}")
+        source_rows[active].add(number)
+        counter = match.group(2).strip()
+        if not counter:
+            continue
+        if not re.fullmatch(r"0|[1-9][0-9.]*(?:[kMGT])?", counter):
+            raise ValueError(f"invalid line counter for {active}: {counter}")
+        lines[active][number] = counter != "0"
+
+    summaries: dict[Path, dict] = {}
+    totals = {metric: {"count": 0, "covered": 0} for metric in METRICS}
+    for path, raw in raw_files.items():
+        source_lines = len(path.read_text().splitlines())
+        if source_rows[path] != set(range(1, source_lines + 1)):
+            raise ValueError(f"incomplete source-line coverage view for {path}")
+        counts = {
+            "lines": (len(lines[path]), sum(lines[path].values())),
+            "functions": (
+                len(functions[path]),
+                sum(hit > 0 for hit in functions[path].values()),
+            ),
+            "regions": (len(regions[path]), sum(hit > 0 for hit in regions[path].values())),
+        }
+        summary = {}
+        for metric, (count, covered) in counts.items():
+            if count == 0 or count > raw[metric]["count"]:
+                raise ValueError(f"invalid source-union {metric} denominator for {path}")
+            if metric != "lines" and count != raw[metric]["count"]:
+                raise ValueError(f"unreconciled source-union {metric} for {path}")
+            summary[metric] = {"count": count, "covered": covered}
+            totals[metric]["count"] += count
+            totals[metric]["covered"] += covered
+        summary["_raw"] = raw
+        summaries[path] = summary
+    return summaries, totals
+
+
 def metric_cell(metric: dict) -> str:
     count, covered = metric["count"], metric["covered"]
     if (
@@ -139,7 +228,15 @@ def markdown_row(path: Path, summary: dict | None) -> str:
         return f"| {link} | - | - | - | - | {note} |"
     cells = " | ".join(metric_cell(summary[metric]) for metric in METRICS)
     completed = "☑" if is_complete(summary) else "☐"
-    return f"| {link} | {cells} | {completed} |  |"
+    raw = summary.get("_raw")
+    note = ""
+    if raw is not None and is_complete(summary) and not is_complete(raw):
+        raw_counts = ", ".join(
+            f"{metric} {raw[metric]['covered']:,}/{raw[metric]['count']:,}"
+            for metric in METRICS
+        )
+        note = f"Combined test coverage is complete; raw LLVM summary: {raw_counts}"
+    return f"| {link} | {cells} | {completed} | {note} |"
 
 
 def provenance() -> str:
@@ -178,7 +275,8 @@ def report_section(files: dict[Path, dict], totals: dict) -> str:
         "inventory and historical verification above. "
         "`python3 backend/bluejs/coverage_file.py --update-macos-report` "
         "cleaned prior LLVM artifacts, ran the complete default BlueJS Rust "
-        "test suite, and exported fresh per-file JSON. The opt-in Node "
+        "test suite, and exported fresh per-file JSON and source-line text. "
+        "The opt-in Node "
         "oracle and external full Test262 runner were not included. "
         "Workspace coverage was not remeasured at this revision."
     )
@@ -190,7 +288,16 @@ def report_section(files: dict[Path, dict], totals: dict) -> str:
         "instrumented denominator and zero covered units. `☑` means "
         "**lines, functions and regions all reach 100%**; `☐` means at least "
         "one is below 100%. The total aggregates only instrumented files. "
-        "Region coverage is separate from branch coverage. To rerun any one "
+        "Source lines and regions are counted once per file location: a "
+        "location is covered when any unit or integration test binary executes "
+        "it. Function and region denominators are checked against LLVM JSON; "
+        "line hits come from LLVM's source-line view. These per-source "
+        "counts can differ from LLVM's raw summary for multiply compiled "
+        "source files; they are not the CI raw summary coverage metric. "
+        "Any file that reaches 100% with combined results while its raw LLVM "
+        "summary is lower includes the raw counts in `Note`. Region coverage "
+        "is separate from branch coverage. "
+        "To rerun any one "
         "file independently, use `python3 backend/bluejs/coverage_file.py ast.rs` "
         "(replace `ast.rs` with its source path). Each invocation reruns the "
         "entire test suite, since tests outside a file can still exercise it."
@@ -240,6 +347,7 @@ def update_macos_report(files: dict[Path, dict], totals: dict) -> None:
 def run_coverage() -> tuple[dict[Path, dict], dict]:
     with tempfile.TemporaryDirectory(prefix="bluejs-coverage-") as tmp:
         output = Path(tmp) / "coverage.json"
+        text_output = Path(tmp) / "coverage.txt"
         subprocess.run(
             ["cargo", "llvm-cov", "clean", "--workspace"], cwd=REPO_ROOT, check=True
         )
@@ -250,14 +358,27 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
                 "-p",
                 "blueice-bluejs",
                 "--json",
-                "--summary-only",
                 "--output-path",
                 str(output),
             ],
             cwd=REPO_ROOT,
             check=True,
         )
-        return checked_export(json.loads(output.read_text()))
+        subprocess.run(
+            [
+                "cargo",
+                "llvm-cov",
+                "report",
+                "-p",
+                "blueice-bluejs",
+                "--text",
+                "--output-path",
+                str(text_output),
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+        )
+        return source_union_export(json.loads(output.read_text()), text_output.read_text())
 
 
 def main(argv: list[str] | None = None) -> int:
