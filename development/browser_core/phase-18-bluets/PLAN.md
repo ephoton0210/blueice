@@ -414,6 +414,28 @@ explicit-`any` source used by that page, with the same member-name constants,
 then verifies both runtime catches and subsequent live DOM writes. This pins
 the checker and child behavior together for the two unsupported operations.
 
+**Module-root debugger decision (C1.1.1.1):** The first module pause targets
+the entry program of an owner-authorized, checked ESM graph, at its first
+compiler-verified root instruction in the evaluate body (at or after
+`module_evaluate_entry`). Module declaration instantiation and eager dependency
+evaluation may run before this boundary; the reported pause must precede the
+entry body's target instruction. The graph is attached before the first
+debugger advance, so its entry and dependency program generations and BlueTS
+metadata can be inventoried without executing page code. The pending entry
+uses the same exact tab, document generation, program, and safe-point identity
+checks as classic execution; unrelated module programs cannot arm its root
+pause. At the pause, BlueJS retains the linked graph, module cells, roots,
+active module identity, execution context, operand/handler/iterator stacks,
+and instruction budget as one realm-owned continuation. A resume finishes that
+continuation before the child reports the module script completed. Reload,
+close, or core cutover discards the entire continuation and rejects its old
+tuple. The public state sequence is `Pending` → `Paused` → `Resuming` →
+`Completed`; none of these replies exposes source text or VM values. An
+asynchronous module suspension or a resource failure must produce a bounded
+rejection, never a fabricated completion or a detached continuation. This
+first entry-root control does not claim nested-frame or dependency-frame
+stepping; those require their own exact frame identity in C1.2.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
