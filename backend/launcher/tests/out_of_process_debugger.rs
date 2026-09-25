@@ -466,12 +466,15 @@ fn arm_first_nested_frame(
     .into_iter()
     .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
     .expect("direct BlueTS child has its first verified instruction");
+    let armed = debugger_request(
+        debugger,
+        DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point: target },
+    );
     assert_eq!(
-        debugger_request(
-            debugger,
-            DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point: target },
-        ),
-        DebuggerReply::NestedSafePointBreakpointArmed { safe_point: target }
+        armed,
+        DebuggerReply::NestedSafePointBreakpointArmed { safe_point: target },
+        "execution state: {:?}",
+        debugger_request(debugger, DebuggerRequest::GetExecutionState { program })
     );
     let (frame, paused) = await_nested_paused_execution(debugger, program);
     assert_eq!(paused, target);
@@ -876,7 +879,7 @@ fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
                 && report.state == DebuggerCapabilityState::Available
         }));
         let (program, frame) = arm_first_nested_frame(&mut debugger, realm);
-        let mut values_ready = false;
+        let mut nested_target = None;
         for _ in 0..96 {
             let DebuggerReply::Stack(stack) = debugger_request(
                 &mut debugger,
@@ -889,25 +892,24 @@ fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
                 panic!("{slug} nested frame must expose a bounded stack");
             };
             assert_eq!(stack.safe_points.len(), 2);
-            values_ready = find_number_value(
+            let child_value = find_number_value(
                 &mut debugger,
                 program,
                 Some(frame),
                 0,
                 stack.safe_points[0],
                 3.0,
-            )
-            .is_some()
-                && find_number_value(
-                    &mut debugger,
-                    program,
-                    Some(frame),
-                    1,
-                    stack.safe_points[1],
-                    9.0,
-                )
-                .is_some();
-            if values_ready {
+            );
+            let caller_value = find_number_value(
+                &mut debugger,
+                program,
+                Some(frame),
+                1,
+                stack.safe_points[1],
+                9.0,
+            );
+            if child_value.is_some() && caller_value.is_some() {
+                nested_target = child_value;
                 break;
             }
             assert_eq!(
@@ -920,10 +922,26 @@ fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
             let (same_frame, _) = await_nested_paused_execution(&mut debugger, program);
             assert_eq!(same_frame, frame);
         }
-        assert!(
-            values_ready,
-            "{slug} nested and caller-root values must be readable"
-        );
+        let nested_target = nested_target.expect("nested and caller-root values must be readable");
+
+        assert!(matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetValue {
+                    target: DebuggerValueTarget {
+                        scope_entry: blueice_ipc::debugger::DebuggerScopeEntry {
+                            slot_ordinal: nested_target.scope_entry.slot_ordinal + 1_000_000,
+                            ..nested_target.scope_entry
+                        },
+                        ..nested_target
+                    }
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
 
         assert_eq!(
             debugger_request(
@@ -932,6 +950,18 @@ fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
             ),
             DebuggerReply::NestedResumeRequested { frame }
         );
+        assert!(matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetValue {
+                    target: nested_target
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             match debugger_request(
@@ -962,22 +992,268 @@ fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
             panic!("{slug} returned root must expose its paused stack");
         };
         assert_eq!(root_stack.safe_points.len(), 1);
-        assert!(
-            find_number_value(
-                &mut debugger,
-                program,
-                None,
-                0,
-                root_stack.safe_points[0],
-                9.0,
-            )
-            .is_some(),
-            "{slug} returned root must retain its own binding"
-        );
+        let root_target = find_number_value(
+            &mut debugger,
+            program,
+            None,
+            0,
+            root_stack.safe_points[0],
+            9.0,
+        )
+        .expect("returned root must retain its own binding");
         drop(debugger);
+
+        let mut separate = UnixStream::connect(&launcher.debugger_socket).unwrap();
+        assert_eq!(
+            debugger_request(
+                &mut separate,
+                DebuggerRequest::Hello {
+                    protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    requested_bounded_values: true,
+                    requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+                },
+            ),
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_bounded_values: true,
+                granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            }
+        );
+        assert!(matches!(
+            debugger_request(
+                &mut separate,
+                DebuggerRequest::GetExecutionState { program },
+            ),
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::Paused { .. },
+                ..
+            }
+        ));
+        assert!(matches!(
+            debugger_request(
+                &mut separate,
+                DebuggerRequest::GetValue {
+                    target: root_target
+                }
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+        drop(separate);
+
+        let mut ungranted = UnixStream::connect(&launcher.debugger_socket).unwrap();
+        assert!(matches!(
+            debugger_request(
+                &mut ungranted,
+                DebuggerRequest::Hello {
+                    protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    requested_bounded_values: false,
+                    requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+                },
+            ),
+            DebuggerReply::HelloAck {
+                granted_bounded_values: false,
+                ..
+            }
+        ));
+        assert!(matches!(
+            debugger_request(
+                &mut ungranted,
+                DebuggerRequest::GetValue {
+                    target: root_target
+                }
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::CapabilityUnavailable,
+                ..
+            }
+        ));
+        drop(ungranted);
         launcher.shutdown();
         let _ = std::fs::remove_file(gatekeeper_socket);
     }
+}
+
+#[test]
+fn launcher_refuses_every_bounded_value_budget_on_a_real_bluets_socket() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let edge_array = vec!["1"; 32].join(",");
+        let over_nodes = ["row"; 9].join(",");
+        let edge_nodes = format!("{},shortRow", ["row"; 7].join(","));
+        let short_row = vec!["1"; 23].join(",");
+        let source = format!(
+            "let row = [{edge_array}]; let shortRow = [{short_row}]; let overNodes = [{over_nodes}]; let edgeNodes = [{edge_nodes}]; function inner(depth: any, length: any, nodes: any, bytes: any, edgeDepth: any, edgeLength: any, edgeNodeCount: any, edgeBytes: any, good: number): number {{ return good; }} globalThis.answer = inner([[[[[1]]]]], new Array(33), overNodes, 'x'.repeat(2049), [[[[1]]]], row, edgeNodes, 'x'.repeat(2048), 7);"
+        );
+        let body = format!(
+            "<main>bounded-value-budgets</main><script type=\"application/x-blueice-typescript\">{source}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+    let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            bounded_values: true,
+            ..StaticMetadataPolicy::default()
+        },
+    );
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    navigate(&mut browser, &url);
+    fixture.join().unwrap();
+
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: true,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            granted_bounded_values: true,
+            ..
+        }
+    ));
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let (program, frame) = arm_first_nested_frame(&mut debugger, realm);
+    let replies = {
+        let mut result = None;
+        for _ in 0..96 {
+            let DebuggerReply::Stack(stack) = debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetStack {
+                    program,
+                    frame: Some(frame),
+                    max_frames: 2,
+                },
+            ) else {
+                panic!("the budget fixture must expose its paused nested frame");
+            };
+            let safe_point = stack.safe_points[0];
+            let DebuggerReply::Scopes(scopes) = debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetScopes {
+                    program,
+                    frame: Some(frame),
+                    frame_index: 0,
+                    expected_safe_point: safe_point,
+                    max_scope_entries: 256,
+                },
+            ) else {
+                panic!("the budget fixture must expose exact parameter slots");
+            };
+            if scopes.entries.len() >= 9 {
+                let replies: Vec<_> = scopes
+                    .entries
+                    .iter()
+                    .copied()
+                    .map(|scope_entry| {
+                        debugger_request(
+                            &mut debugger,
+                            DebuggerRequest::GetValue {
+                                target: DebuggerValueTarget {
+                                    program,
+                                    frame: Some(frame),
+                                    frame_index: 0,
+                                    safe_point,
+                                    scope_entry,
+                                },
+                            },
+                        )
+                    })
+                    .collect();
+                if replies.iter().any(|reply| {
+                    matches!(reply, DebuggerReply::Value(snapshot)
+                        if snapshot.preview == DebuggerValuePreview::NumberBits(7.0_f64.to_bits()))
+                }) {
+                    result = Some(replies);
+                    break;
+                }
+            }
+            assert_eq!(
+                debugger_request(
+                    &mut debugger,
+                    DebuggerRequest::StepNestedInstruction { frame },
+                ),
+                DebuggerReply::NestedStepRequested { frame }
+            );
+            let (same_frame, _) = await_nested_paused_execution(&mut debugger, program);
+            assert_eq!(same_frame, frame);
+        }
+        result.expect("the initialized in-budget nested parameter must become readable")
+    };
+    assert_eq!(
+        replies
+            .iter()
+            .filter(|reply| matches!(
+                reply,
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidExecutionState,
+                    ..
+                }
+            ))
+            .count(),
+        4,
+        "each of the depth, length, node, and byte excesses must refuse: {replies:?}"
+    );
+    let one = DebuggerValuePreview::NumberBits(1.0_f64.to_bits());
+    let mut edge_depth = one.clone();
+    for _ in 0..4 {
+        edge_depth = DebuggerValuePreview::Array(vec![Some(edge_depth)]);
+    }
+    let edge_length = DebuggerValuePreview::Array(vec![Some(one.clone()); 32]);
+    let mut edge_rows = vec![Some(edge_length.clone()); 7];
+    edge_rows.push(Some(DebuggerValuePreview::Array(vec![Some(one); 23])));
+    let edge_nodes = DebuggerValuePreview::Array(edge_rows);
+    let edge_bytes = DebuggerValuePreview::StringUnits(vec![u16::from(b'x'); 2_048]);
+    for (budget, expected) in [
+        ("depth", edge_depth),
+        ("length", edge_length),
+        ("nodes", edge_nodes),
+        ("bytes", edge_bytes),
+    ] {
+        assert!(expected.is_well_formed(), "{budget} boundary must be valid");
+        assert!(
+            replies
+                .iter()
+                .any(|reply| matches!(reply, DebuggerReply::Value(snapshot)
+                if snapshot.preview == expected && snapshot.is_well_formed())),
+            "the exact {budget} boundary must remain readable"
+        );
+    }
+    assert!(
+        replies.iter().any(|reply| matches!(
+            reply,
+            DebuggerReply::Value(snapshot)
+                if snapshot.preview == DebuggerValuePreview::NumberBits(7.0_f64.to_bits())
+                    && snapshot.is_well_formed()
+        )),
+        "the neighboring in-budget value must remain readable: {replies:?}"
+    );
+    drop(debugger);
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
 }
 
 #[test]

@@ -1145,6 +1145,21 @@ reads the returned root's own number from a newly receipted slot. Both paths
 pass the focused real-process test. Cross-stream, stale-pause, forged-slot,
 and complete budget denials remain C2.2.1.5.4.2.
 
+**Real public value refusal and caps (C2.2.1.5.4.2):** On the same
+Launcher-supervised classic/module sockets, a client without a value grant is
+refused, a separate granted stream cannot reuse the first stream's exact root
+slot while that root remains paused, a forged slot is refused, and the nested
+slot receipt expires immediately when its pause is resumed. The real BlueTS
+budget fixture passes four over-limit values as active nested arguments:
+depth 5, container length 33, 298 tree nodes, and 4,098 UTF-16 payload bytes.
+Each is refused as a whole at the public `GetValue` route. Four neighboring
+arguments at depth 4, length 32, exactly 256 nodes, and exactly 4,096 payload
+bytes return complete independently validated previews; an ordinary numeric
+argument remains readable. Both focused real-process tests, formatting, and
+workspace Clippy pass. The child currently maps a native unsupported or
+over-budget preview to `InvalidExecutionState`; the more precise typed
+refusal distinctions belong to C2.2.2.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
