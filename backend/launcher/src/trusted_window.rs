@@ -11,6 +11,7 @@
 //! remain unable to send a grant or revoke request.
 
 use crate::control::InstalledExtensionPermissions;
+use blueice_assistant_settings::AssistantSettings;
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
@@ -55,11 +56,43 @@ pub enum TrustedWindowRequest {
         tab_id: u64,
         document_epoch: u64,
     },
+    /// Read the assistant's settings in force and any proposal an agent has
+    /// made that is waiting for this person's decision
+    /// (`phase-7-local-ai/PLAN.md`, R6).
+    InspectAssistantSettings,
+    /// The person approves the proposal they were shown. It names the id *and*
+    /// the digest of the settings displayed, so a different or swapped proposal
+    /// cannot ride this approval.
+    ApproveAssistantProposal { id: u64, digest: String },
+    DenyAssistantProposal { id: u64 },
+    /// The person edits the settings directly. The rule-base that screens an
+    /// agent's proposals does not apply: only the validator does.
+    EditAssistantSettings { settings: AssistantSettings },
+}
+
+/// An agent's proposal, as shown to the person for a decision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingAssistantProposal {
+    pub id: u64,
+    /// What an approval must name.
+    pub digest: String,
+    /// The `label: before -> after` lines, computed when the proposal was made.
+    pub diff: Vec<String>,
+    pub proposed: AssistantSettings,
+    pub seconds_left: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum TrustedWindowReply {
+    /// The assistant's settings in force and the proposal awaiting a decision.
+    /// Also the reply to every successful assistant request, so a frontend
+    /// shows what is true now rather than inferring it.
+    AssistantSettingsState {
+        // Boxed: these carry whole settings, far larger than the other replies.
+        current: Box<AssistantSettings>,
+        pending: Option<Box<PendingAssistantProposal>>,
+    },
     /// Also returned after a successful change, with the newly inspected
     /// grant state. A frontend must not infer success from sending a request.
     State {

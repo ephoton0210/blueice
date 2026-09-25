@@ -1351,6 +1351,23 @@ fn handle_trusted_window_session_request(
     // Any intervening request cancels the old review. Arm consumes it before
     // reaching core, including when cutover or a changed document rejects it.
     *reviewed_ephemeral = None;
+    // Assistant-settings requests are about the launcher's own settings, not the
+    // core, so they are answered here without inspecting the extension state.
+    if let Some(service) = broker.assistant_settings.as_ref() {
+        if let Some(reply) = service.handle_trusted(request.clone()) {
+            return reply;
+        }
+    } else if matches!(
+        request,
+        trusted_window::TrustedWindowRequest::InspectAssistantSettings
+            | trusted_window::TrustedWindowRequest::ApproveAssistantProposal { .. }
+            | trusted_window::TrustedWindowRequest::DenyAssistantProposal { .. }
+            | trusted_window::TrustedWindowRequest::EditAssistantSettings { .. }
+    ) {
+        return trusted_window::TrustedWindowReply::Rejected {
+            reason: "this launcher supervises no assistant".to_string(),
+        };
+    }
     if !confirmation_matches_review {
         return trusted_window::TrustedWindowReply::Rejected {
             reason: "review the live one-shot document before confirming it".into(),
@@ -1452,6 +1469,13 @@ fn handle_trusted_window_request(
                     installed: installed.expect("a validated one-shot target has an installed package"),
                     capability, tab_id, document_epoch,
                 })
+            }
+            // Answered before this handler (`handle_trusted_window_session_request`).
+            trusted_window::TrustedWindowRequest::InspectAssistantSettings
+            | trusted_window::TrustedWindowRequest::ApproveAssistantProposal { .. }
+            | trusted_window::TrustedWindowRequest::DenyAssistantProposal { .. }
+            | trusted_window::TrustedWindowRequest::EditAssistantSettings { .. } => {
+                Err("assistant settings are not handled here".to_string())
             }
         }
     })();
@@ -2948,6 +2972,156 @@ mod tests {
         let (mut stream, peer) = UnixStream::pair().unwrap();
         drop(peer);
         assert!(structural_health_check(&mut stream, &[9], &[Some(3)]).is_err());
+    }
+
+    // ---- assistant settings over the trusted-window pipe ----
+
+    /// A broker around a fake core, with or without an assistant settings owner.
+    /// Assistant requests never touch the core, so a stand-in is enough.
+    fn broker_with_settings(
+        service: Option<Arc<assistant_settings_service::AssistantSettingsService>>,
+    ) -> Arc<Broker> {
+        let root = std::env::temp_dir().join(format!(
+            "trusted-assistant-{}-{}",
+            std::process::id(),
+            synthetic_request_id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let (core_stream, _peer) = UnixStream::pair().unwrap();
+        let fake_child = || Command::new("true").spawn().unwrap();
+        let core = SpawnedCore {
+            child: fake_child(),
+            script_child: fake_child(),
+            internal_socket_path: root.join("core.sock"),
+            script_socket_path: root.join("script.sock"),
+            extension_socket_path: None,
+            extension_manifest: None,
+            assistant: None,
+            permission_control: None,
+            frame_dir: root.join("frames"),
+            stream: core_stream,
+        };
+        let (done, _done_rx) = mpsc::channel();
+        Arc::new(Broker {
+            core_writer: Arc::new(Mutex::new(core.stream.try_clone().unwrap())),
+            clients: Arc::new(Mutex::new(Vec::new())),
+            generation: Arc::new(AtomicU64::new(1)),
+            cutover_gate: CutoverGate::new(),
+            active_core: Mutex::new(Some(core)),
+            width: 320.0,
+            height: 200.0,
+            frame_dir: root.join("frames"),
+            gatekeeper_socket: root.join("gate.sock"),
+            extension_manifest: None,
+            assistant: None,
+            assistant_settings: service,
+            done,
+        })
+    }
+
+    fn assistant_service() -> Arc<assistant_settings_service::AssistantSettingsService> {
+        let dir = std::env::temp_dir().join(format!(
+            "trusted-assistant-svc-{}-{}",
+            std::process::id(),
+            synthetic_request_id()
+        ));
+        Arc::new(assistant_settings_service::AssistantSettingsService::with_environment(
+            dir.join("assistant-settings.json"),
+            blueice_assistant_settings::AssistantSettings::default(),
+            std::sync::Weak::new(),
+            dir.join("models"),
+            32 * 1024,
+        ))
+    }
+
+    #[test]
+    fn without_a_supervised_assistant_every_assistant_request_is_rejected() {
+        let broker = broker_with_settings(None);
+        for request in [
+            trusted_window::TrustedWindowRequest::InspectAssistantSettings,
+            trusted_window::TrustedWindowRequest::ApproveAssistantProposal { id: 1, digest: "x".into() },
+            trusted_window::TrustedWindowRequest::DenyAssistantProposal { id: 1 },
+            trusted_window::TrustedWindowRequest::EditAssistantSettings {
+                settings: blueice_assistant_settings::AssistantSettings::default(),
+            },
+        ] {
+            let reply = handle_trusted_window_session_request(request, &broker, &mut None);
+            assert!(
+                matches!(&reply, trusted_window::TrustedWindowReply::Rejected { reason } if reason.contains("no assistant")),
+                "{reply:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn assistant_requests_are_answered_without_inspecting_the_core_and_cancel_an_ephemeral_review() {
+        let broker = broker_with_settings(Some(assistant_service()));
+        let mut review = Some(ReviewedEphemeral {
+            core_generation: 1,
+            extension_id: "sha256:x".into(),
+            capability: "dom:read".into(),
+            tab_id: 1,
+            document_epoch: 1,
+        });
+        // The fake core has no permission pipe at all, so a reply proves the
+        // core was never asked.
+        let reply = handle_trusted_window_session_request(
+            trusted_window::TrustedWindowRequest::InspectAssistantSettings,
+            &broker,
+            &mut review,
+        );
+        assert!(
+            matches!(reply, trusted_window::TrustedWindowReply::AssistantSettingsState { pending: None, .. }),
+            "{reply:?}"
+        );
+        assert!(review.is_none(), "any intervening request cancels an ephemeral review");
+    }
+
+    #[test]
+    fn a_direct_edit_over_the_pipe_takes_effect_and_the_next_inspect_shows_it() {
+        let broker = broker_with_settings(Some(assistant_service()));
+        let edited = blueice_assistant_settings::AssistantSettings {
+            nice: 15,
+            ..Default::default()
+        };
+        let reply = handle_trusted_window_session_request(
+            trusted_window::TrustedWindowRequest::EditAssistantSettings { settings: edited.clone() },
+            &broker,
+            &mut None,
+        );
+        assert!(matches!(&reply, trusted_window::TrustedWindowReply::AssistantSettingsState { current, .. } if **current == edited));
+        let again = handle_trusted_window_session_request(
+            trusted_window::TrustedWindowRequest::InspectAssistantSettings,
+            &broker,
+            &mut None,
+        );
+        assert!(matches!(&again, trusted_window::TrustedWindowReply::AssistantSettingsState { current, .. } if **current == edited));
+    }
+
+    #[test]
+    fn the_new_trusted_window_messages_round_trip_over_the_pipe_format() {
+        let settings = blueice_assistant_settings::AssistantSettings::default();
+        for request in [
+            trusted_window::TrustedWindowRequest::InspectAssistantSettings,
+            trusted_window::TrustedWindowRequest::ApproveAssistantProposal { id: 3, digest: "d".into() },
+            trusted_window::TrustedWindowRequest::DenyAssistantProposal { id: 3 },
+            trusted_window::TrustedWindowRequest::EditAssistantSettings { settings: settings.clone() },
+        ] {
+            let json = serde_json::to_string(&request).unwrap();
+            assert_eq!(serde_json::from_str::<trusted_window::TrustedWindowRequest>(&json).unwrap(), request);
+        }
+        let reply = trusted_window::TrustedWindowReply::AssistantSettingsState {
+            current: Box::new(settings.clone()),
+            pending: Some(Box::new(trusted_window::PendingAssistantProposal {
+                id: 1,
+                digest: "d".into(),
+                diff: vec!["a".into()],
+                proposed: settings,
+                seconds_left: 9,
+            })),
+        };
+        let json = serde_json::to_string(&reply).unwrap();
+        assert_eq!(serde_json::from_str::<trusted_window::TrustedWindowReply>(&json).unwrap(), reply);
     }
 
     #[test]

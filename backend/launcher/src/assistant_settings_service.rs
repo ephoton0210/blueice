@@ -24,6 +24,7 @@ use crate::assistant::AssistantSupervisor;
 use crate::assistant_proposals::{
     DecisionError, PendingView, ProposalStore, ProposeOutcome, Status,
 };
+use crate::trusted_window::{PendingAssistantProposal, TrustedWindowReply, TrustedWindowRequest};
 use blueice_assistant_settings::proposal::Environment;
 use blueice_assistant_settings::{proposal, AssistantSettings};
 use std::path::{Path, PathBuf};
@@ -197,6 +198,43 @@ impl AssistantSettingsService {
                 })?;
         }
         Ok(())
+    }
+
+    /// What the trusted window shows: the settings in force and the proposal
+    /// waiting for a decision.
+    pub fn trusted_state(&self) -> TrustedWindowReply {
+        TrustedWindowReply::AssistantSettingsState {
+            current: Box::new(self.current()),
+            pending: self.pending().map(|view| {
+                Box::new(PendingAssistantProposal {
+                    id: view.id,
+                    digest: view.digest,
+                    diff: view.diff,
+                    proposed: view.proposed,
+                    seconds_left: view.expires_in.as_secs(),
+                })
+            }),
+        }
+    }
+
+    /// Answers a trusted-window request about the assistant's settings, or
+    /// `None` if `request` is about something else. Only the launcher's own
+    /// trusted-window handler calls this: these requests travel on private
+    /// pipes, never on a socket an agent can reach.
+    pub fn handle_trusted(&self, request: TrustedWindowRequest) -> Option<TrustedWindowReply> {
+        let outcome = match request {
+            TrustedWindowRequest::InspectAssistantSettings => Ok(()),
+            TrustedWindowRequest::ApproveAssistantProposal { id, digest } => {
+                self.approve(id, &digest)
+            }
+            TrustedWindowRequest::DenyAssistantProposal { id } => self.deny(id),
+            TrustedWindowRequest::EditAssistantSettings { settings } => self.edit(settings),
+            _ => return None,
+        };
+        Some(match outcome {
+            Ok(()) => self.trusted_state(),
+            Err(reason) => TrustedWindowReply::Rejected { reason },
+        })
     }
 
     /// The `label: before -> after` lines between what is in force and `other`.
@@ -502,6 +540,112 @@ while True:
         service.edit(settings.clone()).unwrap();
         assert_eq!(blueice_assistant_settings::load(&file).unwrap(), settings);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_trusted_window_sees_the_pending_proposal_and_decides_it_by_id_and_digest() {
+        let rig = rig("trusted", configured("first"));
+        let inspect = |rig: &Rig| {
+            rig.service
+                .handle_trusted(TrustedWindowRequest::InspectAssistantSettings)
+                .unwrap()
+        };
+        let TrustedWindowReply::AssistantSettingsState { current, pending } = inspect(&rig) else {
+            panic!("expected the state")
+        };
+        assert_eq!(*current, configured("first"));
+        assert!(pending.is_none());
+
+        let ProposeOutcome::Accepted { id, digest, .. } = rig.service.propose(AssistantSettings {
+            nice: 12,
+            ..configured("first")
+        }) else {
+            panic!("accepted")
+        };
+        let TrustedWindowReply::AssistantSettingsState { pending, .. } = inspect(&rig) else {
+            panic!("expected the state")
+        };
+        let pending = pending.expect("the proposal is waiting");
+        assert_eq!((pending.id, pending.digest.as_str()), (id, digest.as_str()));
+        assert_eq!(pending.diff, ["Priority (nice): 10 -> 12"]);
+        assert!(pending.seconds_left > 500);
+
+        // A wrong digest is refused and leaves the proposal waiting.
+        let refused = rig
+            .service
+            .handle_trusted(TrustedWindowRequest::ApproveAssistantProposal {
+                id,
+                digest: "0".repeat(64),
+            })
+            .unwrap();
+        assert!(matches!(refused, TrustedWindowReply::Rejected { .. }));
+        assert!(rig.service.pending().is_some());
+
+        let approved = rig
+            .service
+            .handle_trusted(TrustedWindowRequest::ApproveAssistantProposal { id, digest })
+            .unwrap();
+        let TrustedWindowReply::AssistantSettingsState { current, pending } = approved else {
+            panic!("expected the new state")
+        };
+        assert_eq!(current.nice, 12);
+        assert!(pending.is_none());
+    }
+
+    #[test]
+    fn denying_and_editing_over_the_trusted_pipe_reply_with_the_new_truth() {
+        let rig = rig("trusted-more", configured("first"));
+        let ProposeOutcome::Accepted { id, .. } = rig.service.propose(AssistantSettings {
+            nice: 12,
+            ..configured("first")
+        }) else {
+            panic!("accepted")
+        };
+        let denied = rig
+            .service
+            .handle_trusted(TrustedWindowRequest::DenyAssistantProposal { id })
+            .unwrap();
+        assert!(matches!(
+            denied,
+            TrustedWindowReply::AssistantSettingsState { pending: None, .. }
+        ));
+        assert!(matches!(
+            rig.service
+                .handle_trusted(TrustedWindowRequest::DenyAssistantProposal { id })
+                .unwrap(),
+            TrustedWindowReply::Rejected { .. }
+        ));
+
+        let edited = AssistantSettings {
+            nice: 0,
+            max_resident_mb: None,
+            ..configured("first")
+        };
+        let reply = rig
+            .service
+            .handle_trusted(TrustedWindowRequest::EditAssistantSettings {
+                settings: edited.clone(),
+            })
+            .unwrap();
+        assert!(
+            matches!(&reply, TrustedWindowReply::AssistantSettingsState { current, .. } if **current == edited)
+        );
+        let invalid = AssistantSettings { nice: 99, ..edited };
+        assert!(matches!(
+            rig.service
+                .handle_trusted(TrustedWindowRequest::EditAssistantSettings { settings: invalid })
+                .unwrap(),
+            TrustedWindowReply::Rejected { .. }
+        ));
+    }
+
+    #[test]
+    fn requests_that_are_not_about_the_assistant_are_left_to_the_permission_handler() {
+        let rig = rig("not-mine", configured("first"));
+        assert!(rig
+            .service
+            .handle_trusted(TrustedWindowRequest::Inspect)
+            .is_none());
     }
 
     #[test]
