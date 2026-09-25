@@ -949,6 +949,24 @@ Clippy with warnings denied, formatting, and 529 of 530 BlueJS lib tests pass;
 the remaining pre-existing native-stack host-query test fails under this
 environment's 1 MiB reported thread stack (measured about 2 MiB).
 
+**Native plain-data preview (C2.2.1.3):** The paused binding preview now asks
+the current VM heap to copy a bounded tagged tree. Only ordinary objects with
+null or this realm's Object prototype and actual arrays with this realm's
+Array prototype qualify. The heap examines its own stored descriptors and
+keys, never a JavaScript `Get`, prototype lookup, accessor, or Proxy trap.
+Records retain ordinary own-key order and lossless string keys; arrays retain
+explicit holes distinct from `undefined`. A cycle or any unsupported nested
+value rejects the entire result. Custom prototypes, private-field instances,
+host/exotic objects, symbol keys and values, accessors, extra array props,
+and cross-heap IDs cannot become plain-data previews. The native walk enforces
+depth 4, 32 entries per container, 256 nodes including holes, and 4,096
+aggregate UTF-16/string-key/BigInt payload bytes before returning a tree.
+Native regressions verify sparse arrays, nested records, getter and Proxy
+side-effect absence, cyclic and non-plain shapes, and depth/length/node/byte
+excess. All 532 BlueJS library tests other than the already known native-stack
+environment case pass; all-target BlueJS Clippy and formatting pass. There is
+still no private or public value transport.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

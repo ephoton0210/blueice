@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C2.2.1.3.** Extend the native paused-slot snapshot to bounded
-plain records and arrays without executing JavaScript.
+**Current leaf: C2.2.1.4.** Carry bounded paused-slot previews through the
+versioned private page-host/child route and core proxy.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -320,7 +320,7 @@ channel with explicit owner/client grants.
   - [ ] **C2.2.1** Return primitives and bounded plain data only; cap depth, length, and string bytes.
     - [x] **C2.2.1.1** Specify the exact paused-slot authority, lossless primitive and plain-data representation, side-effect exclusions, and hard resource budgets in PLAN.md; leave the wire unchanged. The selected active Scopes slot requires an owner value grant and same-stream receipt; previews are lossless tagged trees with 4/32/256/4,096 hard caps, no getter/proxy execution, and no reusable object handle. Public v36 remains unchanged.
     - [x] **C2.2.1.2** Read exact active root/nested binding primitives through a side-effect-free native VM snapshot, including cell-backed captures, with native regressions. Exact frame/safe-point/active-slot checks precede root, module, or nested binding reads; undefined/null/boolean/number bits/BigInt bytes/UTF-16 units are lossless, uninitialized and unsupported values refuse, and 4,096-byte primitive payloads are capped. Three native preview tests and Clippy pass; the 530-case BlueJS lib run has only the pre-existing native-stack environment test failure.
-    - [ ] **C2.2.1.3** Extend the native snapshot to bounded plain records and arrays without invoking accessors or proxy traps; reject unsupported shape, cycles, and every excess budget with native regressions.
+    - [x] **C2.2.1.3** Extend the native snapshot to bounded plain records and arrays without invoking accessors or proxy traps; reject unsupported shape, cycles, and every excess budget with native regressions. Heap-only descriptor traversal copies ordered own string keys and explicit array holes, rejects accessor/proxy/exotic/custom-prototype/symbol-key/cyclic shapes, and enforces depth 4, 32 entries, 256 nodes, and 4,096 aggregate payload bytes atomically. Three new native shape/budget tests pass; 532 BlueJS lib tests pass with only the pre-existing native-stack environment test excluded.
     - [ ] **C2.2.1.4** Carry the exact bounded native preview through a versioned private page-host/child route and the core proxy; prove classic/module root and nested reads at that boundary.
     - [ ] **C2.2.1.5** Add the owner-gated public same-stream scope-receipt request/reply, bump the debugger protocol with the complete route, and prove limits and stale-target denial on real Launcher-supervised BlueTS sockets; then check off C2.2.1.
   - [ ] **C2.2.2** Refuse guessed handles, source text, and cross-realm references with a typed error.

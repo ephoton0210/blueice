@@ -90,7 +90,6 @@ pub const VM_DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
 pub const VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES: usize = 4_096;
 
 /// Lossless, handle-free data copied from one exact paused lexical slot.
-/// Containers are added only after the side-effect-free heap walk is installed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VmDebuggerValuePreview {
     Undefined,
@@ -99,6 +98,10 @@ pub enum VmDebuggerValuePreview {
     NumberBits(u64),
     BigIntBytes(Vec<u8>),
     StringUnits(Vec<u16>),
+    /// `None` is an own-property hole, distinct from JavaScript `undefined`.
+    Array(Vec<Option<VmDebuggerValuePreview>>),
+    /// Keys are ordered, lossless JavaScript strings; no prototype is copied.
+    Record(Vec<(JsString, VmDebuggerValuePreview)>),
 }
 
 /// One active lexical binding slot. No identifier, value, object handle, or
@@ -169,8 +172,8 @@ enum DebuggerRunOutcome {
 
 impl Vm {
     /// Reads one currently active lexical slot without resuming the VM,
-    /// looking up a name, or invoking an accessor. This first native seam
-    /// copies primitives only; objects and symbols are refused in full.
+    /// looking up a name, or invoking an accessor. Heap-owned data are copied
+    /// under fixed output budgets; unsupported shapes refuse in full.
     pub fn debugger_value_preview(
         &self,
         frame_serial: Option<u64>,
@@ -223,41 +226,9 @@ impl Vm {
         .ok_or(RuntimeError::Unsupported(
             "debugger value binding is uninitialized",
         ))?;
-        match value {
-            Value::Undefined => Ok(VmDebuggerValuePreview::Undefined),
-            Value::Null => Ok(VmDebuggerValuePreview::Null),
-            Value::Bool(value) => Ok(VmDebuggerValuePreview::Bool(value)),
-            Value::Number(value) => Ok(VmDebuggerValuePreview::NumberBits(value.to_bits())),
-            Value::BigInt(value) => {
-                // At the boundary a positive sign byte may make the copy
-                // one byte too long; the post-check rejects it atomically.
-                if value.bits() > (VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES as u64) * 8 {
-                    return Err(RuntimeError::Unsupported(
-                        "debugger value exceeds the payload byte budget",
-                    ));
-                }
-                let bytes = value.to_signed_bytes_le();
-                if bytes.len() > VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES {
-                    return Err(RuntimeError::Unsupported(
-                        "debugger value exceeds the payload byte budget",
-                    ));
-                }
-                Ok(VmDebuggerValuePreview::BigIntBytes(bytes))
-            }
-            Value::String(value) => {
-                if value.byte_len() > VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES {
-                    return Err(RuntimeError::Unsupported(
-                        "debugger value exceeds the payload byte budget",
-                    ));
-                }
-                Ok(VmDebuggerValuePreview::StringUnits(
-                    value.as_code_units().to_vec(),
-                ))
-            }
-            Value::Symbol(_) | Value::Object(_) => Err(RuntimeError::Unsupported(
-                "debugger value is not a supported primitive",
-            )),
-        }
+        self.heap
+            .debugger_value_preview(&value, self.object_prototype, self.array_prototype)
+            .map_err(RuntimeError::Unsupported)
     }
 
     /// Inspects only an exact paused root or nested invocation. No bytecode is
@@ -1372,7 +1343,13 @@ mod tests {
         );
         assert!(read("too_long").is_err());
         assert!(read("too_big").is_err());
-        assert!(read("object").is_err());
+        assert_eq!(
+            read("object").unwrap(),
+            VmDebuggerValuePreview::Record(vec![(
+                "a".into(),
+                VmDebuggerValuePreview::NumberBits(1.0_f64.to_bits()),
+            )])
+        );
         let flag = active_entry(frame, &program, "flag");
         for (serial, index, unit, offset, entry) in [
             (Some(1), 0, 0, halt, flag),
@@ -1506,6 +1483,98 @@ mod tests {
             preview,
             Some(VmDebuggerValuePreview::NumberBits(41.0_f64.to_bits()))
         );
+    }
+
+    fn preview_root_binding(
+        vm: &Vm,
+        program: &Bytecode,
+        name: &str,
+    ) -> Result<VmDebuggerValuePreview, RuntimeError> {
+        let frame = &vm.debugger_stack_snapshot(None, 1, 256)?.frames[0];
+        vm.debugger_value_preview(
+            None,
+            0,
+            frame.code_unit_ordinal,
+            frame.bytecode_offset,
+            active_entry(frame, program, name),
+        )
+    }
+
+    #[test]
+    fn paused_preview_copies_plain_records_and_sparse_arrays_without_handles() {
+        let program = installed_script("let data = { a: 1, nested: [true, , 'ok'] };");
+        let halt = program.instructions().last().unwrap().offset as u32;
+        let mut vm = Vm::default();
+        vm.execute_script_until_debugger_pause(&program, halt)
+            .unwrap();
+        assert_eq!(
+            preview_root_binding(&vm, &program, "data").unwrap(),
+            VmDebuggerValuePreview::Record(vec![
+                (
+                    "a".into(),
+                    VmDebuggerValuePreview::NumberBits(1.0_f64.to_bits()),
+                ),
+                (
+                    "nested".into(),
+                    VmDebuggerValuePreview::Array(vec![
+                        Some(VmDebuggerValuePreview::Bool(true)),
+                        None,
+                        Some(VmDebuggerValuePreview::StringUnits(vec![
+                            b'o' as u16,
+                            b'k' as u16,
+                        ])),
+                    ]),
+                ),
+            ])
+        );
+        assert_eq!(
+            preview_root_binding(&vm, &program, "data").unwrap(),
+            preview_root_binding(&vm, &program, "data").unwrap()
+        );
+    }
+
+    #[test]
+    fn paused_preview_refuses_accessors_proxies_cycles_and_non_plain_arrays() {
+        let program = installed_script(
+            "var getterRuns = 0; let accessor = { get x() { getterRuns++; return 1; } }; let proxy = new Proxy({ x: 1 }, { ownKeys() { getterRuns++; return ['x']; } }); let cycle = {}; cycle.self = cycle; let extra = [1]; extra.x = 2; let custom = Object.create({ inherited: 1 }); let symbolKey = { [Symbol('secret')]: 1 }; let typed = new Uint8Array([1]); let arrayGetter = [1]; Object.defineProperty(arrayGetter, '0', { get() { getterRuns++; return 1; } });",
+        );
+        let halt = program.instructions().last().unwrap().offset as u32;
+        let mut vm = Vm::default();
+        vm.execute_script_until_debugger_pause(&program, halt)
+            .unwrap();
+        for name in [
+            "accessor",
+            "proxy",
+            "cycle",
+            "extra",
+            "custom",
+            "symbolKey",
+            "typed",
+            "arrayGetter",
+        ] {
+            assert!(preview_root_binding(&vm, &program, name).is_err(), "{name}");
+        }
+        assert_eq!(
+            vm.lookup_global_name("getterRuns").unwrap(),
+            Some(Value::Number(0.0))
+        );
+    }
+
+    #[test]
+    fn paused_preview_refuses_depth_length_node_and_aggregate_byte_excess() {
+        let repeated_row = format!("[{}]", vec!["1"; 32].join(","));
+        let source = format!(
+            "let depth = [[[[[1]]]]]; let length = new Array(33); let nodes = [{}]; let bytes = {{ a: 'x'.repeat(1025), b: 'y'.repeat(1025) }}; let keyBytes = {{ ['z'.repeat(2049)]: 1 }};",
+            vec![repeated_row; 9].join(",")
+        );
+        let program = installed_script(&source);
+        let halt = program.instructions().last().unwrap().offset as u32;
+        let mut vm = Vm::default();
+        vm.execute_script_until_debugger_pause(&program, halt)
+            .unwrap();
+        for name in ["depth", "length", "nodes", "bytes", "keyBytes"] {
+            assert!(preview_root_binding(&vm, &program, name).is_err(), "{name}");
+        }
     }
 
     #[test]
