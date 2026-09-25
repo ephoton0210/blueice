@@ -323,7 +323,9 @@ pub struct JavaScriptPageDebuggerFrame {
     pub program_handle: u64,
     pub program_generation: u64,
     pub code_unit_ordinal: u32,
-    pub invocation_serial: u64,
+    /// Process-unique core handle; the child invocation serial stays inside
+    /// the out-of-process executor's exact active-frame association.
+    pub frame_handle: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

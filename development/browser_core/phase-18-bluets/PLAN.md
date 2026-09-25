@@ -620,6 +620,14 @@ own program identity and validates each reply. Root-only execution state and
 controls do not alias the active child; no public debugger frame or nested
 capability is advertised until C1.2.1.3.3.
 
+**Core frame reminting (C1.2.1.3.3.1):** The core proxy retains the exact
+child-private serial only in its live per-tab association and issues a
+process-unique nonzero frame handle after a verified child pause. Repeated
+observations of that invocation keep the same handle. Child return, realm
+replacement/close, and predecessor executor loss revoke it; even a replacement
+child that starts its program counters at the same numbers receives a different
+public-facing frame handle. The public wire type is still pending.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
