@@ -1435,6 +1435,86 @@ mod tests {
     }
 
     #[test]
+    fn nested_module_step_preserves_async_dependency_and_entry_await() {
+        let entry = "async-nested/entry.mjs";
+        let dependency = "async-nested/dep.mjs";
+        let mut registry = BlueJsProgramRegistry::default();
+        let dependency_handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(dependency, "sha256:async-dependency").unwrap(),
+                module_code("globalThis.dependencyRuns = (globalThis.dependencyRuns || 0) + 1; await Promise.resolve(); export const seed = 41;"),
+            )
+            .unwrap();
+        let entry_handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(entry, "sha256:async-entry").unwrap(),
+                module_code("import { seed } from './dep.mjs'; globalThis.entryRuns = (globalThis.entryRuns || 0) + 1; globalThis.innerRuns = 0; function inner(){globalThis.innerRuns++; return seed + 1;} export const answer = inner(); await Promise.resolve(); globalThis.afterAwait = 1;"),
+            )
+            .unwrap();
+        let graph = HashMap::from([
+            (
+                dependency.to_string(),
+                registry.get(dependency_handle).unwrap().bytecode().clone(),
+            ),
+            (
+                entry.to_string(),
+                registry.get(entry_handle).unwrap().bytecode().clone(),
+            ),
+        ]);
+        let mut vm = Vm::default();
+        let VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = vm
+            .execute_module_graph_until_nested_debugger_pause(entry, &graph, 1, 0)
+            .unwrap()
+        else {
+            panic!("async dependency must settle before entry child pause");
+        };
+        assert_eq!(
+            vm.lookup_global_name("dependencyRuns").unwrap(),
+            Some(Value::Number(1.0))
+        );
+        assert_eq!(
+            vm.lookup_global_name("entryRuns").unwrap(),
+            Some(Value::Number(1.0))
+        );
+        assert_eq!(
+            vm.lookup_global_name("innerRuns").unwrap(),
+            Some(Value::Number(0.0))
+        );
+        let mut returned = false;
+        for _ in 0..128 {
+            match vm.step_debugger_nested_instruction(frame_serial).unwrap() {
+                VmDebuggerNestedExecutionState::Paused { .. } => {}
+                VmDebuggerNestedExecutionState::FrameReturned { .. } => {
+                    returned = true;
+                    break;
+                }
+                other => panic!("unexpected async module child step: {other:?}"),
+            }
+        }
+        assert!(returned);
+        assert_eq!(
+            vm.resume_debugger_module_execution().unwrap(),
+            VmDebuggerExecutionState::Completed
+        );
+        assert!(vm.linked_record(entry).unwrap().evaluated);
+        assert!(vm.linked_record(dependency).unwrap().evaluated);
+        assert!(vm.module_continuations.is_empty());
+        assert!(vm.promise_jobs.is_empty());
+        for (name, expected) in [
+            ("dependencyRuns", 1.0),
+            ("entryRuns", 1.0),
+            ("innerRuns", 1.0),
+            ("afterAwait", 1.0),
+        ] {
+            assert_eq!(
+                vm.lookup_global_name(name).unwrap(),
+                Some(Value::Number(expected)),
+                "{name} must run exactly once"
+            );
+        }
+    }
+
+    #[test]
     fn root_safe_point_preserves_operand_and_global_state_until_resume() {
         let program = code("globalThis.before = 1; globalThis.after = 2;");
         let offset = non_entry_root_offset(&program);

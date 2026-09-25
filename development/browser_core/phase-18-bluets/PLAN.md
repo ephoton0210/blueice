@@ -714,6 +714,14 @@ flows to the explicit graph-error cleanup. A native module regression checks
 the original thrown value reaches `catch`, `finally` executes once, and the
 entry completes with no error. The unhandled-throw regression still passes.
 
+**Async graph across a nested pause (C1.2.1.2.4.3.2):** A tagged entry graph
+with a top-level-await dependency reaches the requested child pause only after
+the dependency Promise job settles. Stepping returns to the retained entry
+root, whose own later top-level await then finishes through the existing
+module-await continuation. A native regression verifies the dependency,
+entry, child and post-await effects each run once, both linked records are
+evaluated, and the module-continuation and Promise-job queues are empty.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

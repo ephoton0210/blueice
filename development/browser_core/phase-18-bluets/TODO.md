@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.2.1.2.4.3.2.** Verify asynchronous dependency and entry
-await across nested pause, step, and completion.
+**Current leaf: C1.2.1.2.4.3.3.** Prove bounded nested-step resource failure
+clears both frames without false module completion.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -270,7 +270,7 @@ channel with explicit owner/client grants.
         - [x] **C1.2.1.2.4.2** Step that module child under the same invocation serial and rejoin the retained module-root `Call` without repeating dependency or entry effects. Native stepping updates the saved module-root operands, PC, and remaining instruction budget; a two-module test validates each child successor, resumes the same graph, and observes exactly one dependency and entry effect. An unhandled child throw clears both debugger frames and records a module error instead of leaving a false paused state.
         - [ ] **C1.2.1.2.4.3** Preserve module catch/error and asynchronous graph cleanup through nested completion; verify no detached continuation or false completion.
           - [x] **C1.2.1.2.4.3.1** Route a catchable nested-child throw into the retained module-root handler stack and resume that same graph through catch/finally without fabricating a completion. The VM restores the saved entry execution and linked records for completion resolution, then re-parks the handler successor in the same graph. A native regression catches the original thrown value, runs `finally` exactly once, and completes without a module error; the unhandled-throw cleanup regression remains green.
-          - [ ] **C1.2.1.2.4.3.2** Verify an asynchronous dependency and entry await still reach nested pause, step/rejoin, and graph completion exactly once.
+          - [x] **C1.2.1.2.4.3.2** Verify an asynchronous dependency and entry await still reach nested pause, step/rejoin, and graph completion exactly once. A tagged two-module native regression puts an await in the dependency before the nested entry pause and another in the entry after child return; it verifies all four dependency/entry/child/post-await effects occur once, both records evaluate, and all module continuations and Promise jobs drain.
           - [ ] **C1.2.1.2.4.3.3** Exhaust a bounded nested step and prove child/root continuations are cleared, graph state is not falsely completed, and later realm execution remains possible.
     - [ ] **C1.2.1.3** Add an opaque, generation-bound active-frame debugger identity and route nested pause/step through the page runtime, child, page-host IPC, and public debugger protocol without conflating it with a static code unit.
     - [ ] **C1.2.1.4** Prove the nested pause and same-frame instruction successor on a real BlueTS page through the public debugger socket; keep unsupported call shapes unavailable.
