@@ -42,6 +42,7 @@ pub mod assistant_settings_service;
 pub mod control;
 pub mod memory_pressure;
 pub mod supervisor;
+pub mod trace;
 pub mod trusted_window;
 pub mod update_watch;
 
@@ -973,8 +974,10 @@ fn attempt_cutover(
 
 fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
     let Some(_guard) = broker.cutover_gate.try_acquire() else {
+        crate::trace::event("cutover.busy", "another cutover is in flight");
         return control::ControlReply::CutoverBusy;
     };
+    crate::trace::event("cutover.start", "");
 
     let captured_tabs =
         match capture_v1_tabs(&broker.core_writer, &broker.clients, TAB_CAPTURE_TIMEOUT) {
@@ -1007,9 +1010,16 @@ fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
         Ok((v2, replay_frames)) => {
             let tabs_migrated = captured_tabs.len();
             perform_swap(broker, v2, target_generation, replay_frames);
+            crate::trace::event(
+                "cutover.done",
+                &format!("generation {target_generation}, {tabs_migrated} tab(s)"),
+            );
             control::ControlReply::CutoverDone { tabs_migrated }
         }
-        Err(reason) => control::ControlReply::CutoverFailed { reason },
+        Err(reason) => {
+            crate::trace::event("cutover.failed", &reason);
+            control::ControlReply::CutoverFailed { reason }
+        }
     }
 }
 
@@ -1356,6 +1366,7 @@ fn handle_trusted_window_session_request(
         }),
         _ => true,
     };
+    crate::trace::event("trusted.request", &crate::trace::trusted_request_name(&request));
     // Any intervening request cancels the old review. Arm consumes it before
     // reaching core, including when cutover or a changed document rejects it.
     *reviewed_ephemeral = None;
@@ -1363,6 +1374,7 @@ fn handle_trusted_window_session_request(
     // core, so they are answered here without inspecting the extension state.
     if let Some(service) = broker.assistant_settings.as_ref() {
         if let Some(reply) = service.handle_trusted(request.clone()) {
+            crate::trace::event("trusted.reply", &crate::trace::trusted_reply_name(&reply));
             return reply;
         }
     } else if matches!(
@@ -1382,6 +1394,7 @@ fn handle_trusted_window_session_request(
         };
     }
     let reply = handle_trusted_window_request(request, broker);
+    crate::trace::event("trusted.reply", &crate::trace::trusted_reply_name(&reply));
     if let trusted_window::TrustedWindowReply::EphemeralReview {
         core_generation, installed, capability, tab_id, document_epoch, ..
     } = &reply {

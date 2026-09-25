@@ -171,7 +171,11 @@ impl Inner {
         // make the readiness probe below succeed against nothing.
         let _ = std::fs::remove_file(&self.private_socket);
         let child = (self.spawner.lock().unwrap_or_else(|e| e.into_inner()))(&self.private_socket)?;
-        self.spawns.fetch_add(1, Ordering::Relaxed);
+        let spawn_number = self.spawns.fetch_add(1, Ordering::Relaxed) + 1;
+        crate::trace::event(
+            "assistant.spawn",
+            &format!("pid {} (spawn #{spawn_number})", child.id()),
+        );
         let nice = self.limits.lock().unwrap_or_else(|e| e.into_inner()).nice;
         if let Some(nice) = nice {
             if let Err(error) = apply_nice(child.id(), nice) {
@@ -237,10 +241,13 @@ impl Inner {
                 continue;
             };
             if used > ceiling {
-                eprintln!(
-                    "blueice-launcher: the assistant used {} MiB, over its {} MiB ceiling; stopping it",
-                    used / (1024 * 1024),
-                    ceiling / (1024 * 1024)
+                crate::trace::event(
+                    "assistant.ceiling",
+                    &format!(
+                        "used {} MiB, over its {} MiB ceiling; stopping it",
+                        used / (1024 * 1024),
+                        ceiling / (1024 * 1024)
+                    ),
                 );
                 self.registry
                     .lock()
@@ -390,6 +397,7 @@ impl AssistantSupervisor {
     /// supervisor was started with.
     pub fn reconfigure_settings(&self, settings: &AssistantSettings) -> io::Result<()> {
         settings.validate().map_err(io::Error::other)?;
+        crate::trace::event("assistant.reconfigure", &format!("backend {:?}", settings.backend));
         let bin = self.assistant_bin.clone().ok_or_else(|| {
             io::Error::other("this supervisor has no assistant binary to reconfigure")
         })?;

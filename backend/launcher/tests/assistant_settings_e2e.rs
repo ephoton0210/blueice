@@ -305,6 +305,7 @@ impl Stack {
                 dir.join("blueice-ai-assistant").to_str().unwrap(),
             ])
             .env("FAKE_WINDOW_DIR", &window)
+            .env("BLUEICE_TRACE", dir.join("trace.log"))
             .stderr(Stdio::piped())
             .spawn()
             .expect("failed to start the launcher");
@@ -621,4 +622,44 @@ fn a_denied_proposal_changes_nothing_and_a_direct_edit_by_the_person_may_exceed_
     let after = use_the_assistant(&stack, &mut client, &url);
     assert_ne!(after, before);
     assert_eq!(niceness(after), launcher_nice);
+}
+
+#[test]
+fn the_trace_file_tells_the_story_of_a_proposal_without_leaking_settings_or_digests() {
+    let model = model_base_url();
+    let settings = settings_file(&model);
+    let stack = Stack::start(settings.path());
+    let mut client = stack.client();
+    let url = page_url();
+    use_the_assistant(&stack, &mut client, &url);
+
+    let _ = stack.control(&ControlRequest::ProposeAssistantSettings {
+        settings: proposing(&model, 0),
+    });
+    let (id, digest) = accepted(stack.control(&ControlRequest::ProposeAssistantSettings {
+        settings: proposing(&model, 12),
+    }));
+    let TrustedWindowReply::AssistantSettingsState { .. } =
+        stack.window(&TrustedWindowRequest::ApproveAssistantProposal {
+            id,
+            digest: digest.clone(),
+        })
+    else {
+        panic!("the approval was refused")
+    };
+
+    let trace = std::fs::read_to_string(stack.dir.join("trace.log")).unwrap();
+    for expected in [
+        "assistant.spawn",
+        "proposal.blocked",
+        &format!("proposal.accepted: id {id}"),
+        &format!("trusted.request: approve_assistant_proposal {id}"),
+        &format!("proposal.approved: id {id}"),
+        "assistant.reconfigure",
+    ] {
+        assert!(trace.contains(expected), "missing {expected:?} in:\n{trace}");
+    }
+    assert!(!trace.contains(&digest), "the digest leaked into the trace");
+    assert!(!trace.contains(&model), "settings leaked into the trace");
+    assert!(trace.lines().all(|line| line.starts_with("[+")), "{trace}");
 }

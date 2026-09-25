@@ -121,7 +121,24 @@ impl AssistantSettingsService {
     pub fn propose(&self, proposed: AssistantSettings) -> ProposeOutcome {
         let current = self.current();
         let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        self.with_environment_view(|env| store.propose(Instant::now(), &current, proposed, env))
+        let outcome =
+            self.with_environment_view(|env| store.propose(Instant::now(), &current, proposed, env));
+        match &outcome {
+            ProposeOutcome::Accepted { id, .. } => {
+                crate::trace::event("proposal.accepted", &format!("id {id}, waiting for the person"))
+            }
+            ProposeOutcome::Blocked(rules) => crate::trace::event(
+                "proposal.blocked",
+                &format!("{} rule(s): {}", rules.len(), rules.join("; ")),
+            ),
+            ProposeOutcome::PendingExists => {
+                crate::trace::event("proposal.refused", "another proposal is still waiting")
+            }
+            ProposeOutcome::RateLimited => {
+                crate::trace::event("proposal.refused", "too many proposals this hour")
+            }
+        }
+        outcome
     }
 
     pub fn proposal_status(&self, id: u64) -> Status {
@@ -157,6 +174,7 @@ impl AssistantSettingsService {
                     "the settings changed after the proposal was made".to_string()
                 }
             })?;
+        crate::trace::event("proposal.approved", &format!("id {id}"));
         self.apply(approved)
     }
 
@@ -169,13 +187,16 @@ impl AssistantSettingsService {
             .map_err(|error| match error {
                 DecisionError::Expired => "the proposal expired".to_string(),
                 _ => "there is no such pending proposal".to_string(),
-            })
+            })?;
+        crate::trace::event("proposal.denied", &format!("id {id}"));
+        Ok(())
     }
 
     /// The person edits the settings directly. Only the validator applies.
     pub fn edit(&self, settings: AssistantSettings) -> Result<(), String> {
         settings.validate()?;
         self.apply(settings)?;
+        crate::trace::event("settings.edited", "by the trusted window");
         // Whatever an agent proposed was made against settings that are gone.
         self.store
             .lock()
