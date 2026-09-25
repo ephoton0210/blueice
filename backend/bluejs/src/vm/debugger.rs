@@ -164,16 +164,11 @@ impl Vm {
         self.resume_debugger_module_inner(Some(InterpreterSuspensionPoint::AfterRootInstruction))
     }
 
-    /// Runs a classic root until one verified instruction of a directly
-    /// called synchronous closure. The parent call site and child invocation
-    /// remain VM-owned; this first native seam does not yet expose a public
-    /// child debugger route or resume operation.
-    pub fn execute_script_until_nested_debugger_pause(
-        &mut self,
+    fn nested_debugger_target_generation(
         code: &Bytecode,
         code_unit_ordinal: u32,
         bytecode_offset: u32,
-    ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
+    ) -> Result<u64, RuntimeError> {
         fn find_code_unit(code: &Bytecode, ordinal: u32) -> Option<&Bytecode> {
             if code.debugger_code_unit_ordinal == Some(ordinal) {
                 return Some(code);
@@ -213,6 +208,21 @@ impl Vm {
                 "nested debugger target contains a tail call or direct eval",
             ));
         }
+        Ok(generation)
+    }
+
+    /// Runs a classic root until one verified instruction of a directly
+    /// called synchronous closure. The parent call site and child invocation
+    /// remain VM-owned; this first native seam does not yet expose a public
+    /// child debugger route or resume operation.
+    pub fn execute_script_until_nested_debugger_pause(
+        &mut self,
+        code: &Bytecode,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
+        let generation =
+            Self::nested_debugger_target_generation(code, code_unit_ordinal, bytecode_offset)?;
         self.prepare_root_execution(code, false)?;
         if let Err(error) = self.prepare_global_declarations(code) {
             return self.finish_root_execution(Err(error)).map(|_| {
@@ -243,6 +253,74 @@ impl Vm {
             DebuggerRunOutcome::Completed(result) => self
                 .finish_root_execution(result)
                 .map(|_| VmDebuggerNestedExecutionState::Completed),
+        }
+    }
+
+    /// Evaluates an authorized linked graph until its entry module calls the
+    /// exact synchronous child code unit and pauses at the selected inner
+    /// instruction. Dependency work and the graph remain attached to the
+    /// ordinary module debugger continuation, not reconstructed on resume.
+    pub fn execute_module_graph_until_nested_debugger_pause(
+        &mut self,
+        entry: &str,
+        modules: &HashMap<String, Bytecode>,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
+        self.ensure_no_debugger_continuation()?;
+        let code = modules.get(entry).ok_or(RuntimeError::Unsupported(
+            "nested debugger module entry is absent from the graph",
+        ))?;
+        if !code.module {
+            return Err(RuntimeError::Unsupported(
+                "nested debugger entry is not a module",
+            ));
+        }
+        let generation =
+            Self::nested_debugger_target_generation(code, code_unit_ordinal, bytecode_offset)?;
+        self.debugger_nested_pause_request = Some(NestedDebuggerPauseRequest {
+            program_generation: generation,
+            code_unit_ordinal,
+            bytecode_offset: bytecode_offset as usize,
+        });
+        let result = (|| {
+            self.execute_module_graph_inner(entry, modules, false, false, ImportPhase::Evaluation)?;
+            while self.debugger_nested_continuation.is_none() && !self.promise_jobs.is_empty() {
+                self.remaining_instructions = self.config.instruction_budget;
+                self.run_next_promise_job()?;
+            }
+            Ok::<(), RuntimeError>(())
+        })();
+        self.debugger_nested_pause_request = None;
+        result?;
+        if let Some(child) = &self.debugger_nested_continuation {
+            if self.debugger_module_continuation.is_none() || self.module_graph.is_none() {
+                return Err(RuntimeError::Unsupported(
+                    "nested debugger module did not retain its entry graph",
+                ));
+            }
+            return Ok(VmDebuggerNestedExecutionState::Paused {
+                frame_serial: child.frame_serial,
+                code_unit_ordinal: child.code_unit_ordinal,
+                bytecode_offset: u32::try_from(child.pc)
+                    .expect("verified bytecode offsets fit the debugger wire range"),
+            });
+        }
+        if let Some(error) = self
+            .linked_record(entry)
+            .and_then(|record| record.error.clone())
+        {
+            return Err(RuntimeError::Thrown(error));
+        }
+        if self
+            .linked_record(entry)
+            .is_some_and(|record| record.evaluated)
+        {
+            Ok(VmDebuggerNestedExecutionState::Completed)
+        } else {
+            Err(RuntimeError::Unsupported(
+                "nested debugger module target was not reached",
+            ))
         }
     }
 
@@ -1016,6 +1094,66 @@ mod tests {
             vm.lookup_global_name("result").unwrap(),
             Some(Value::Number(7.0))
         );
+    }
+
+    #[test]
+    fn nested_module_pause_retains_its_entry_graph_after_dependency_evaluation() {
+        let entry = "pages/entry.mjs";
+        let dependency = "pages/dep.mjs";
+        let mut registry = BlueJsProgramRegistry::default();
+        let dependency_handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(dependency, "sha256:dependency").unwrap(),
+                module_code("globalThis.dependencyRuns = (globalThis.dependencyRuns || 0) + 1; export const seed = 41;"),
+            )
+            .unwrap();
+        let entry_handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(entry, "sha256:entry").unwrap(),
+                module_code("import { seed } from './dep.mjs'; globalThis.entryCalls = 0; function inner(){globalThis.entryCalls++; return seed + 1;} export const answer = inner();"),
+            )
+            .unwrap();
+        let graph = HashMap::from([
+            (
+                dependency.to_string(),
+                registry.get(dependency_handle).unwrap().bytecode().clone(),
+            ),
+            (
+                entry.to_string(),
+                registry.get(entry_handle).unwrap().bytecode().clone(),
+            ),
+        ]);
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_module_graph_until_nested_debugger_pause(entry, &graph, 1, 0)
+                .unwrap(),
+            VmDebuggerNestedExecutionState::Paused {
+                frame_serial: 1,
+                code_unit_ordinal: 1,
+                bytecode_offset: 0,
+            }
+        );
+        assert_eq!(
+            vm.lookup_global_name("dependencyRuns").unwrap(),
+            Some(Value::Number(1.0))
+        );
+        assert_eq!(
+            vm.lookup_global_name("entryCalls").unwrap(),
+            Some(Value::Number(0.0))
+        );
+        assert!(vm.module_graph.is_some());
+        assert!(vm.linked_record(dependency).unwrap().evaluated);
+        let parent = vm.debugger_module_continuation.as_ref().unwrap();
+        assert_eq!(parent.module, entry);
+        assert_eq!(
+            parent.code.instruction(parent.pc).unwrap().opcode,
+            Opcode::Call
+        );
+        assert!(vm.debugger_nested_continuation.is_some());
+        assert!(matches!(
+            vm.execute_script(&code("1 + 1")),
+            Err(RuntimeError::Unsupported(_))
+        ));
     }
 
     #[test]

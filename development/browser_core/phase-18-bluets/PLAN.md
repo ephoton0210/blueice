@@ -662,6 +662,28 @@ child allocations and collection. This path currently owns a classic root;
 the entry-module graph has a different root continuation and remains the
 explicit C1.2.1.2.4 checkpoint. No public frame control is advertised yet.
 
+**Entry-module nested checkpoints (C1.2.1.2.4):** The module evaluator already
+stores a suspended entry root together with its linked graph when its
+interpreter returns `Suspend`. First reuse the exact installed-program
+generation and code-unit target to let a direct synchronous child produce
+that suspension, retaining dependency effects and the graph (C1.2.1.2.4.1).
+Then adapt the child step/rejoin to mutate the saved module-root `Call` frame,
+not the ordinary classic root fields, and resume the same graph once
+(C1.2.1.2.4.2). Finally route a child throw through the module caller's
+handlers and the module evaluator's record/async cleanup, including graph
+invalidation on failure (C1.2.1.2.4.3). These are native boundaries; no
+public frame identity is minted until C1.2.1.3.
+
+**Entry-module child pause (C1.2.1.2.4.1):** The native module graph entry now
+accepts the same exact installed-program generation and non-root code-unit
+instruction as the classic seam. It runs the authorized graph until the entry
+calls that child, then the existing module evaluator stores its suspended root
+and linked graph while the child context remains in the nested continuation.
+A two-module regression verifies the dependency's effect ran once, the child
+body has not run, the entry `Call` and graph remain retained, and an unrelated
+execution entry cannot overtake the pause. Module-child stepping and module
+record cleanup remain the next two checkpoints.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
