@@ -221,6 +221,9 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   preserve the operand's known readonly receiver type, including through
   aliases, literals, and an assertion naming a writable-looking type; an
   assertion cannot silently turn a known event into a mutable receiver.
+  Supported sequence expressions now infer the final runtime value rather
+  than a preceding mutable operand, including aliases and literal-held
+  results; the event-v1 bridge rejects that readonly write before runtime.
   Opaque/unmodeled expression forms still need a sound policy, so do not
   claim full qualifier enforcement yet.
 - [ ] Execute a supported BlueTS page through B2/B3; unsupported members

@@ -262,6 +262,15 @@ to keep the parent test file below 1500 lines. This is a qualifier-preservation
 rule, not a claim of complete assertion compatibility or coverage of opaque
 expression forms.
 
+**Readonly through sequence results (B4 partial):** The supported JavaScript
+sequence expression now infers its rightmost operand, matching the value the
+VM actually produces. A preceding mutable receiver can no longer disguise a
+later readonly event through `(holder, source.event)`, whether the result is
+written directly, held in a local or array, or follows a call with its own
+comma-separated arguments. A reversed sequence ending in a mutable receiver
+remains writable. The verified event-v1 bridge rejects the readonly alias
+before execution. Other unmodeled expression shapes remain open.
+
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked

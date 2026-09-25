@@ -31,6 +31,12 @@ impl<'a> ModuleChecker<'a> {
             return Type::Unknown;
         }
         let tokens = strip_outer_parentheses(tokens);
+        if let Some((_, _, result)) = top_level_binary_parts(tokens, &[","], |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
+            // A sequence evaluates every operand but yields its final value.
+            return self.infer_expression(result, scope);
+        }
         if tokens.len() > 1 && tokens.last().is_some_and(|token| token.is("!")) {
             let inferred = self.infer_expression(&tokens[..tokens.len() - 1], scope);
             return match inferred {

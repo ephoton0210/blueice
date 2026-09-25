@@ -8,6 +8,7 @@ use crate::compiler::{CompilerOptions, MapLoader, ModuleSource};
 mod member_calls;
 mod readonly;
 mod readonly_assertions;
+mod readonly_sequence;
 
 #[test]
 fn checks_named_callbacks_against_function_type_and_literal_event_name() {
