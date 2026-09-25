@@ -389,8 +389,15 @@ event-v1 profile. Its execution report confirms compilation and execution;
 the callback uses `getElementById`, writes `textContent`, creates an element
 and a text node, and appends both through the live DOM route. A core `GetDom`
 reply after the click contains both the updated status and the created text
-node. This proves the supported path through the real child, not yet the
-unsupported-member static/runtime rejection required by B4.3.2–B4.3.4.
+node. This proves the supported path through the real child; unsupported
+member rejection is tracked separately in B4.3.2–B4.3.4.
+
+**Named unsupported-member diagnostics (B4.3.2):** The verified event-v1
+direct-script bridge rejects `event.stopPropagation()` inside a registered
+typed click callback and `document.querySelector(...)` at the page root.
+Both return BlueTS diagnostics that name the missing member. The generated
+profile has no declaration for either operation; B4.3.3 still must exercise
+the runtime boundary through an explicit `any` escape.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

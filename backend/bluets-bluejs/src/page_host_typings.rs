@@ -646,6 +646,26 @@ mod tests {
                 .is_err()
         );
         assert!(compile("document.getElementById('link')!.dispatchEvent('click');").is_err());
+        for (source, member) in [
+            (
+                "function onClick(event: BlueIceClickEvent): void { event.stopPropagation(); } document.getElementById('link')!.addEventListener('click', onClick);",
+                "stopPropagation",
+            ),
+            ("document.querySelector('#link');", "querySelector"),
+        ] {
+            let error = compile(source)
+                .err()
+                .expect("an uninstalled event-v1 member must fail checking");
+            let crate::BridgeError::BlueTs(diagnostics) = error else {
+                panic!("{source}: expected BlueTS diagnostics, got {error:?}");
+            };
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.message.contains(member)),
+                "{source}: {diagnostics:#?}"
+            );
+        }
         for source in [
             "function onClick(event: BlueIceClickEvent): void { event.type = 'click'; }",
             "function onClick(event: BlueIceClickEvent): void { event.target = event.target; }",
