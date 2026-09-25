@@ -470,6 +470,86 @@ fn capture_v1_tabs(
     }
 }
 
+/// How many represented nodes v1 shows for each of `tabs`, in order, asked of
+/// v1 exactly as [`capture_v1_tabs`] asks for the tab list. Best effort by
+/// design: a tab whose representation does not arrive in time is `None` and is
+/// simply skipped by the structural health check, since the health bar must not
+/// fail a cutover merely because v1 was slow to describe one page.
+fn capture_v1_node_counts(
+    core_writer: &Arc<Mutex<UnixStream>>,
+    clients: &Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>,
+    tabs: &[TabSummary],
+    timeout: Duration,
+) -> Vec<Option<usize>> {
+    let mut counts = vec![None; tabs.len()];
+    if tabs.is_empty() {
+        return counts;
+    }
+    let (sender, receiver) = mpsc::channel::<TaggedServerMessage>();
+    clients
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .push(sender);
+
+    // One request per tab, each with its own id, so replies map back by id.
+    let base = synthetic_request_id();
+    {
+        let mut core = core_writer
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        for (index, tab) in tabs.iter().enumerate() {
+            let sent = blueice_ipc::write_client_message_with_ids(
+                &mut *core,
+                Some(tab.id),
+                Some(base.wrapping_add(index as u64 + 1)),
+                &ClientMessage::GetRepresentation,
+            );
+            if sent.is_err() {
+                return counts;
+            }
+        }
+    }
+
+    let deadline = Instant::now() + timeout;
+    let mut answered = 0;
+    while answered < tabs.len() {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        match receiver.recv_timeout(remaining) {
+            Ok(TaggedServerMessage {
+                request_id: Some(id),
+                message: ServerMessage::Representation(snapshot),
+                ..
+            }) => {
+                let index = id.wrapping_sub(base).wrapping_sub(1) as usize;
+                if index < counts.len() && counts[index].is_none() {
+                    counts[index] = Some(snapshot.nodes.len());
+                    answered += 1;
+                }
+            }
+            Ok(_) => continue, // some other client's concurrent broadcast traffic
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    counts
+}
+
+/// Whether v2's rendering of a tab is structurally comparable to v1's. A
+/// first-pass bar, as `phase-8-live-core-hotswap/PLAN.md` planned: v2 must not
+/// be blank when v1 was not, and its node count must stay within half to double
+/// of v1's. That catches a blank or crashed render without failing on a page
+/// whose content legitimately changed between the two fetches. A tab v1 itself
+/// showed nothing for (a blank tab) constrains nothing.
+fn structure_comparable(v1_nodes: usize, v2_nodes: usize) -> bool {
+    if v1_nodes == 0 {
+        return true;
+    }
+    v2_nodes > 0 && v2_nodes * 2 >= v1_nodes && v2_nodes <= v1_nodes * 2
+}
+
 /// Replays `captured_tabs` (v1's [`TabSummary`] list, in the order
 /// [`capture_v1_tabs`] returned them) into `v2`, talking directly to
 /// `v2_stream` -- v2 has no other client yet, so there's no broadcast/
@@ -611,7 +691,10 @@ fn expect_open_tab_success(
 /// slice's plan settled on (structurally diffing each tab's DOM/
 /// representation against v1's own captured state is explicitly
 /// deferred).
-fn health_check(v2_stream: &mut UnixStream, captured_tabs: &[TabSummary]) -> Result<(), String> {
+fn health_check(
+    v2_stream: &mut UnixStream,
+    captured_tabs: &[TabSummary],
+) -> Result<Vec<u64>, String> {
     let request_id = synthetic_request_id();
     write_client_message_with_id(v2_stream, Some(request_id), &ClientMessage::ListTabs)
         .map_err(|e| format!("failed to send v2's health-check ListTabs: {e}"))?;
@@ -626,7 +709,7 @@ fn health_check(v2_stream: &mut UnixStream, captured_tabs: &[TabSummary]) -> Res
                 let expected: Vec<&Option<String>> = captured_tabs.iter().map(|t| &t.url).collect();
                 let actual: Vec<&Option<String>> = tabs.iter().map(|t| &t.url).collect();
                 return if actual == expected {
-                    Ok(())
+                    Ok(tabs.iter().map(|t| t.id).collect())
                 } else {
                     Err(format!(
                         "v2's post-replay ListTabs didn't match what was captured from v1: expected {expected:?}, got {actual:?}"
@@ -636,6 +719,52 @@ fn health_check(v2_stream: &mut UnixStream, captured_tabs: &[TabSummary]) -> Res
             _ => continue,
         }
     }
+}
+
+/// The structural half of the health bar: each replayed tab of v2 (`v2_tab_ids`,
+/// in replay order) must render something [`structure_comparable`] to what v1
+/// showed for the same tab. Tabs with no v1 measurement are skipped.
+fn structural_health_check(
+    v2_stream: &mut UnixStream,
+    v2_tab_ids: &[u64],
+    v1_node_counts: &[Option<usize>],
+) -> Result<(), String> {
+    for (index, tab_id) in v2_tab_ids.iter().enumerate() {
+        let Some(v1_nodes) = v1_node_counts.get(index).copied().flatten() else {
+            continue;
+        };
+        let request_id = synthetic_request_id();
+        blueice_ipc::write_client_message_with_ids(
+            v2_stream,
+            Some(*tab_id),
+            Some(request_id),
+            &ClientMessage::GetRepresentation,
+        )
+        .map_err(|e| format!("failed to ask v2 to describe replayed tab {index}: {e}"))?;
+        let v2_nodes = loop {
+            let (_, reply_id, message) = read_server_message_with_ids(v2_stream).map_err(|e| {
+                format!("failed reading v2's description of replayed tab {index}: {e}")
+            })?;
+            if reply_id != Some(request_id) {
+                continue;
+            }
+            match message {
+                ServerMessage::Representation(snapshot) => break snapshot.nodes.len(),
+                ServerMessage::Error { message } => {
+                    return Err(format!(
+                        "v2 could not describe replayed tab {index}: {message}"
+                    ));
+                }
+                _ => continue,
+            }
+        };
+        if !structure_comparable(v1_nodes, v2_nodes) {
+            return Err(format!(
+                "v2's post-replay representation of tab {index} is structurally different from v1's: v1 showed {v1_nodes} node(s), v2 shows {v2_nodes}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// A fresh, unique frame directory for a newly-[`SpawnedCore::spawn`]ed
@@ -750,7 +879,9 @@ const V2_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 fn classify_attempt_error(reason: String) -> AttemptFailure {
     if reason.contains("gatekeeper blocked") || reason.contains("rejected the replayed") {
         AttemptFailure::Final(reason)
-    } else if reason.contains("post-replay ListTabs") {
+    } else if reason.contains("post-replay ListTabs")
+        || reason.contains("post-replay representation")
+    {
         AttemptFailure::RetryOnce(reason)
     } else {
         AttemptFailure::Retry(reason)
@@ -799,6 +930,7 @@ fn run_with_retries<T>(
 fn attempt_cutover(
     broker: &Arc<Broker>,
     captured_tabs: &[TabSummary],
+    v1_node_counts: &[Option<usize>],
     target_generation: u64,
     attempt: u32,
 ) -> Result<(SpawnedCore, Vec<TaggedServerMessage>), AttemptFailure> {
@@ -824,7 +956,10 @@ fn attempt_cutover(
     // A v2 that stops answering must fail this attempt, not hang the cutover.
     let _ = v2.stream.set_read_timeout(Some(V2_REPLY_TIMEOUT));
     let replay_frames = replay_tabs(&mut v2.stream, captured_tabs).map_err(classify_attempt_error)?;
-    health_check(&mut v2.stream, captured_tabs).map_err(classify_attempt_error)?;
+    let v2_tab_ids =
+        health_check(&mut v2.stream, captured_tabs).map_err(classify_attempt_error)?;
+    structural_health_check(&mut v2.stream, &v2_tab_ids, v1_node_counts)
+        .map_err(classify_attempt_error)?;
     // v2's stream is about to become the live connection, read by a broadcast
     // thread that blocks indefinitely by design.
     let _ = v2.stream.set_read_timeout(None);
@@ -842,9 +977,26 @@ fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
             Err(reason) => return control::ControlReply::CutoverFailed { reason },
         };
 
+    // What v1 shows for each tab, measured before v2 exists, so v2's rendering
+    // has something structural to be compared against.
+    let v1_node_counts = capture_v1_node_counts(
+        &broker.core_writer,
+        &broker.clients,
+        &captured_tabs,
+        TAB_CAPTURE_TIMEOUT,
+    );
+
     let target_generation = broker.generation.load(Ordering::SeqCst) + 1;
     match run_with_retries(
-        |attempt| attempt_cutover(broker, &captured_tabs, target_generation, attempt),
+        |attempt| {
+            attempt_cutover(
+                broker,
+                &captured_tabs,
+                &v1_node_counts,
+                target_generation,
+                attempt,
+            )
+        },
         thread::sleep,
     ) {
         Ok((v2, replay_frames)) => {
@@ -2492,6 +2644,10 @@ mod tests {
             ("v2's gatekeeper blocked the replayed Navigate: rule", "final"),
             ("v2's gatekeeper blocked the replayed OpenTab: rule", "final"),
             ("v2's post-replay ListTabs didn't match what was captured from v1", "once"),
+            ("v2's post-replay representation of tab 0 is structurally different from v1's: v1 showed 9 node(s), v2 shows 0", "once"),
+            ("failed to ask v2 to describe replayed tab 0: broken pipe", "retry"),
+            ("failed reading v2's description of replayed tab 0: timed out", "retry"),
+            ("v2 could not describe replayed tab 0: no such tab", "retry"),
             ("failed reading v2's reply while replaying: timed out", "retry"),
             ("failed reading v2's health-check reply: eof", "retry"),
             ("failed to send v2's health-check ListTabs: broken pipe", "retry"),
@@ -2515,6 +2671,225 @@ mod tests {
         assert!(!wait_for_socket_or_exit(&path, &mut child, Duration::from_secs(20)));
         assert!(started.elapsed() < Duration::from_secs(5));
         let _ = child.wait();
+    }
+
+    // ---- structural per-tab health diff ----
+
+    #[test]
+    fn a_render_is_comparable_within_half_to_double_and_never_blank_when_v1_was_not() {
+        for (v1, v2, ok) in [
+            (10, 10, true),
+            (10, 5, true),   // exactly half
+            (10, 4, false),  // less than half
+            (10, 20, true),  // exactly double
+            (10, 21, false), // more than double
+            (10, 0, false),  // blank where v1 had content
+            (1, 1, true),
+            (1, 2, true),
+            (1, 3, false),
+            (0, 0, true), // a blank tab constrains nothing
+            (0, 50, true),
+        ] {
+            assert_eq!(structure_comparable(v1, v2), ok, "v1={v1} v2={v2}");
+        }
+    }
+
+    /// A snapshot with `n` nodes, for counting.
+    fn snapshot_with_nodes(n: usize) -> blueice_ipc::AiSnapshot {
+        use blueice_ipc::{AiNode, Bounds, NodeState, Role};
+        blueice_ipc::AiSnapshot {
+            frame_source: 0,
+            generation: 1,
+            tab_id: 1,
+            url: None,
+            scroll_y: 0.0,
+            nodes: (0..n as u64)
+                .map(|id| AiNode {
+                    id,
+                    parent: None,
+                    children: vec![],
+                    role: Role::Paragraph,
+                    name: None,
+                    name_from: None,
+                    original_name: None,
+                    state: NodeState::default(),
+                    bounds: Bounds {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 1.0,
+                        height: 1.0,
+                    },
+                    opacity: 1.0,
+                    occluded: false,
+                    occluded_by: None,
+                    occluded_fraction: 0.0,
+                })
+                .collect(),
+        }
+    }
+
+    fn tab(id: u64) -> TabSummary {
+        TabSummary {
+            id,
+            url: Some(format!("about:tab{id}")),
+            group_id: None,
+        }
+    }
+
+    #[test]
+    fn v1_node_counts_are_captured_per_tab_in_order_ignoring_other_traffic() {
+        let (core_side, mut core_observed) = UnixStream::pair().unwrap();
+        let core_writer = Arc::new(Mutex::new(core_side.try_clone().unwrap()));
+        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        let broadcast_clients = Arc::clone(&clients);
+        let broadcaster =
+            thread::spawn(move || broadcast_core_to_clients(core_side, broadcast_clients));
+
+        let responder = thread::spawn(move || {
+            // Two requests arrive, one per tab, each addressed to its own tab.
+            let mut requests = Vec::new();
+            for _ in 0..2 {
+                let (tab_id, request_id, message) =
+                    read_client_message_with_ids(&mut core_observed).unwrap();
+                assert!(matches!(message, ClientMessage::GetRepresentation));
+                requests.push((tab_id.unwrap(), request_id.unwrap()));
+            }
+            assert_eq!(requests.iter().map(|r| r.0).collect::<Vec<_>>(), [7, 9]);
+            // Unrelated traffic first, then the answers out of order.
+            write_server_message_with_id(
+                &mut core_observed,
+                Some(1),
+                &ServerMessage::Navigated { url: "x".into() },
+            )
+            .unwrap();
+            write_server_message_with_id(
+                &mut core_observed,
+                Some(requests[1].1),
+                &ServerMessage::Representation(snapshot_with_nodes(3)),
+            )
+            .unwrap();
+            write_server_message_with_id(
+                &mut core_observed,
+                Some(requests[0].1),
+                &ServerMessage::Representation(snapshot_with_nodes(12)),
+            )
+            .unwrap();
+            drop(core_observed);
+        });
+
+        let counts = capture_v1_node_counts(
+            &core_writer,
+            &clients,
+            &[tab(7), tab(9)],
+            Duration::from_secs(5),
+        );
+        assert_eq!(counts, [Some(12), Some(3)]);
+        responder.join().unwrap();
+        broadcaster.join().unwrap();
+    }
+
+    #[test]
+    fn a_tab_v1_does_not_describe_in_time_is_unmeasured_not_a_failure() {
+        let (core_side, mut core_observed) = UnixStream::pair().unwrap();
+        let core_writer = Arc::new(Mutex::new(core_side.try_clone().unwrap()));
+        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        let broadcast_clients = Arc::clone(&clients);
+        let _broadcaster =
+            thread::spawn(move || broadcast_core_to_clients(core_side, broadcast_clients));
+        let responder = thread::spawn(move || {
+            let (_, first, _) = read_client_message_with_ids(&mut core_observed).unwrap();
+            let _ = read_client_message_with_ids(&mut core_observed).unwrap(); // the second is never answered
+            write_server_message_with_id(
+                &mut core_observed,
+                first,
+                &ServerMessage::Representation(snapshot_with_nodes(5)),
+            )
+            .unwrap();
+            core_observed // keep the connection open so the wait times out
+        });
+        let counts = capture_v1_node_counts(
+            &core_writer,
+            &clients,
+            &[tab(1), tab(2)],
+            Duration::from_millis(400),
+        );
+        assert_eq!(counts, [Some(5), None]);
+        drop(responder.join().unwrap());
+        // Nothing to ask for means nothing to wait for.
+        assert!(
+            capture_v1_node_counts(&core_writer, &clients, &[], Duration::from_secs(5)).is_empty()
+        );
+    }
+
+    /// A v2 stand-in answering each `GetRepresentation` with the next canned
+    /// reply, recording which tab each was addressed to.
+    fn fake_v2(replies: Vec<ServerMessage>) -> (UnixStream, thread::JoinHandle<Vec<Option<u64>>>) {
+        let (client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            let mut asked = Vec::new();
+            for reply in replies {
+                let (tab_id, request_id, message) =
+                    read_client_message_with_ids(&mut server).unwrap();
+                assert!(matches!(message, ClientMessage::GetRepresentation));
+                asked.push(tab_id);
+                write_server_message_with_id(&mut server, request_id, &reply).unwrap();
+            }
+            asked
+        });
+        (client, handle)
+    }
+
+    #[test]
+    fn a_comparable_replay_passes_the_structural_check_and_each_tab_is_asked_about() {
+        let (mut stream, v2) = fake_v2(vec![
+            ServerMessage::Representation(snapshot_with_nodes(11)),
+            ServerMessage::Representation(snapshot_with_nodes(2)),
+        ]);
+        structural_health_check(&mut stream, &[41, 42], &[Some(10), Some(3)]).unwrap();
+        assert_eq!(v2.join().unwrap(), [Some(41), Some(42)]);
+    }
+
+    #[test]
+    fn a_blank_or_far_smaller_render_fails_the_structural_check_with_a_retry_once_reason() {
+        for v2_nodes in [0, 2] {
+            let (mut stream, v2) = fake_v2(vec![ServerMessage::Representation(
+                snapshot_with_nodes(v2_nodes),
+            )]);
+            let reason = structural_health_check(&mut stream, &[5], &[Some(10)]).unwrap_err();
+            v2.join().unwrap();
+            assert!(reason.contains("structurally different"), "{reason}");
+            assert!(matches!(
+                classify_attempt_error(reason),
+                AttemptFailure::RetryOnce(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn unmeasured_tabs_are_skipped_and_never_asked_about() {
+        // Only the middle tab has a v1 measurement, so v2 is asked exactly once.
+        let (mut stream, v2) = fake_v2(vec![ServerMessage::Representation(snapshot_with_nodes(4))]);
+        structural_health_check(&mut stream, &[1, 2, 3], &[None, Some(4)]).unwrap();
+        assert_eq!(v2.join().unwrap(), [Some(2)]);
+        // No measurements at all: nothing is asked.
+        let (mut stream, _peer) = UnixStream::pair().unwrap();
+        structural_health_check(&mut stream, &[1, 2], &[]).unwrap();
+    }
+
+    #[test]
+    fn a_v2_that_cannot_describe_a_tab_or_stops_answering_fails_the_check() {
+        let (mut stream, v2) = fake_v2(vec![ServerMessage::Error {
+            message: "no such tab".into(),
+        }]);
+        let reason = structural_health_check(&mut stream, &[9], &[Some(3)]).unwrap_err();
+        v2.join().unwrap();
+        assert!(reason.contains("could not describe"), "{reason}");
+
+        let (mut stream, peer) = UnixStream::pair().unwrap();
+        drop(peer);
+        assert!(structural_health_check(&mut stream, &[9], &[Some(3)]).is_err());
     }
 
     #[test]
