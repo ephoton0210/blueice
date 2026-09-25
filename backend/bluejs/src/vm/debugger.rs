@@ -60,7 +60,6 @@ pub(super) struct NestedDebuggerPauseRequest {
     pub(super) bytecode_offset: usize,
 }
 
-#[allow(dead_code)] // Child code/handlers are restored by C1.2.1.2.3's step path.
 pub(super) struct NestedDebuggerContinuation {
     pub(super) frame_serial: u64,
     pub(super) code_unit_ordinal: u32,
@@ -77,6 +76,9 @@ pub enum VmDebuggerNestedExecutionState {
         frame_serial: u64,
         code_unit_ordinal: u32,
         bytecode_offset: u32,
+    },
+    FrameReturned {
+        root_bytecode_offset: u32,
     },
     Completed,
 }
@@ -201,6 +203,16 @@ impl Vm {
                 "nested debugger target is not an inner instruction boundary",
             ));
         }
+        if target.instructions().any(|instruction| {
+            matches!(
+                instruction.opcode,
+                Opcode::TailCall | Opcode::DirectEval | Opcode::DirectEvalSpread
+            )
+        }) {
+            return Err(RuntimeError::Unsupported(
+                "nested debugger target contains a tail call or direct eval",
+            ));
+        }
         self.prepare_root_execution(code, false)?;
         if let Err(error) = self.prepare_global_declarations(code) {
             return self.finish_root_execution(Err(error)).map(|_| {
@@ -231,6 +243,185 @@ impl Vm {
             DebuggerRunOutcome::Completed(result) => self
                 .finish_root_execution(result)
                 .map(|_| VmDebuggerNestedExecutionState::Completed),
+        }
+    }
+
+    /// Steps one instruction in the exact retained synchronous closure
+    /// invocation. A returned child rejoins its waiting root at the next
+    /// instruction after `Call`; the root remains paused for ordinary resume.
+    pub fn step_debugger_nested_instruction(
+        &mut self,
+        frame_serial: u64,
+    ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
+        let continuation =
+            self.debugger_nested_continuation
+                .take()
+                .ok_or(RuntimeError::Unsupported(
+                    "no debugger-paused nested frame is available",
+                ))?;
+        if continuation.frame_serial != frame_serial {
+            self.debugger_nested_continuation = Some(continuation);
+            return Err(RuntimeError::Unsupported(
+                "debugger nested frame invocation is stale",
+            ));
+        }
+        if matches!(
+            continuation.code.instruction(continuation.pc),
+            Some(crate::bytecode::Instruction {
+                opcode: Opcode::TailCall | Opcode::DirectEval | Opcode::DirectEvalSpread,
+                ..
+            })
+        ) {
+            self.debugger_nested_continuation = Some(continuation);
+            return Err(RuntimeError::Unsupported(
+                "nested debugger cannot step a tail call or direct eval",
+            ));
+        }
+        let NestedDebuggerContinuation {
+            frame_serial,
+            code_unit_ordinal,
+            code,
+            pc,
+            execution,
+            mut iterators,
+            handlers,
+        } = continuation;
+        debug_assert!(self.debugger_nested_parent_execution.is_none());
+        self.debugger_nested_parent_execution = Some(self.suspend_module_execution());
+        self.restore_module_execution(execution);
+        let previous_call_depth = self.call_depth;
+        let previous_call_stack_len = self.call_stack.len();
+        self.call_depth += 1;
+        self.call_stack.extend(self.callee.object_id());
+        let result = self.interpret(
+            &code,
+            &mut iterators,
+            pc,
+            None,
+            Some(InterpreterSuspensionPoint::AfterRootInstruction),
+            Some((handlers, 0)),
+        );
+        self.call_stack.truncate(previous_call_stack_len);
+        self.call_depth = previous_call_depth;
+        let child_remaining_instructions = self.remaining_instructions;
+        let parent = self
+            .debugger_nested_parent_execution
+            .take()
+            .expect("nested instruction step retains its caller execution");
+        match result {
+            Ok(InterpreterExit::Suspend {
+                pc,
+                iterators,
+                handlers,
+            }) => {
+                let execution = self.suspend_module_execution();
+                self.restore_module_execution(parent);
+                self.debugger_nested_continuation = Some(NestedDebuggerContinuation {
+                    frame_serial,
+                    code_unit_ordinal,
+                    code,
+                    pc,
+                    execution,
+                    iterators,
+                    handlers,
+                });
+                Ok(VmDebuggerNestedExecutionState::Paused {
+                    frame_serial,
+                    code_unit_ordinal,
+                    bytecode_offset: u32::try_from(pc)
+                        .expect("verified bytecode offsets fit the debugger wire range"),
+                })
+            }
+            result => {
+                let completion = match result {
+                    Ok(InterpreterExit::Return(value)) => {
+                        self.finish_debugger_interpret_result(Ok(value), &mut iterators, 0, 0)
+                    }
+                    Ok(InterpreterExit::Yield { .. } | InterpreterExit::Await { .. }) => self
+                        .finish_debugger_interpret_result(
+                            Err(RuntimeError::Unsupported(
+                                "nested debugger frame yielded or awaited",
+                            )),
+                            &mut iterators,
+                            0,
+                            0,
+                        ),
+                    Err(error) => {
+                        self.finish_debugger_interpret_result(Err(error), &mut iterators, 0, 0)
+                    }
+                    Ok(InterpreterExit::Suspend { .. }) => {
+                        unreachable!("nested suspend is handled above")
+                    }
+                };
+                self.restore_module_execution(parent);
+                self.remaining_instructions = child_remaining_instructions;
+                match completion {
+                    Ok(value) => {
+                        if let Err(error) = self.check_string(&value) {
+                            self.debugger_continuation = None;
+                            return self.finish_root_execution(Err(error)).map(|_| {
+                                unreachable!("failed nested completion cannot finish the root")
+                            });
+                        }
+                        let root = self
+                            .debugger_continuation
+                            .as_mut()
+                            .expect("nested child retains a waiting root frame");
+                        let call = root
+                            .code
+                            .instruction(root.pc)
+                            .expect("waiting root retains a verified Call instruction");
+                        debug_assert_eq!(call.opcode, Opcode::Call);
+                        let call_base = self.stack.len() - call.operand.unwrap_or(0) as usize - 2;
+                        self.stack.truncate(call_base);
+                        self.stack.push(value);
+                        root.pc += call.opcode.width();
+                        Ok(VmDebuggerNestedExecutionState::FrameReturned {
+                            root_bytecode_offset: u32::try_from(root.pc)
+                                .expect("verified bytecode offsets fit the debugger wire range"),
+                        })
+                    }
+                    Err(error) => {
+                        if !error.is_catchable() {
+                            self.debugger_continuation = None;
+                            return self.finish_root_execution(Err(error)).map(|_| {
+                                unreachable!("uncatchable nested failure cannot finish the root")
+                            });
+                        }
+                        let mut root = self
+                            .debugger_continuation
+                            .take()
+                            .expect("nested child retains a waiting root frame");
+                        match self.resolve_completion(
+                            &root.code,
+                            &mut root.handlers,
+                            &mut root.iterators,
+                            Completion::Throw(error),
+                        ) {
+                            Ok(CompletionAction::Jump(pc)) => {
+                                root.pc = pc;
+                                self.debugger_continuation = Some(root);
+                                Ok(VmDebuggerNestedExecutionState::FrameReturned {
+                                    root_bytecode_offset: u32::try_from(pc).expect(
+                                        "verified bytecode offsets fit the debugger wire range",
+                                    ),
+                                })
+                            }
+                            Ok(CompletionAction::Return(value)) => self
+                                .finish_root_execution(Ok(value))
+                                .map(|_| VmDebuggerNestedExecutionState::Completed),
+                            Ok(CompletionAction::Throw(error)) | Err(error) => self
+                                .finish_root_execution(Err(error))
+                                .map(|_| unreachable!("failed nested step cannot finish the root")),
+                            Ok(
+                                CompletionAction::Continue
+                                | CompletionAction::TailRecur(_)
+                                | CompletionAction::TailCall(_),
+                            ) => unreachable!("throw cannot continue or become a tail call"),
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -478,6 +669,9 @@ impl Vm {
             ));
             references.extend(continuation.iterators.iter().filter_map(Value::object_id));
         }
+        if let Some(execution) = &self.debugger_nested_parent_execution {
+            references.extend(Self::suspended_execution_references(execution));
+        }
         references
     }
 }
@@ -668,6 +862,160 @@ mod tests {
             Some(Value::Number(1.0))
         );
         assert!(vm.debugger_nested_continuation.is_none());
+    }
+
+    #[test]
+    fn nested_instruction_steps_rejoin_the_original_call_once() {
+        let code = installed_script(
+            "var calls = 0; var result = 0; function inner(){var i = 0; while (i < 2) { i++; } calls++; return i + 1;} result = inner() + 1;",
+        );
+        let safe_offsets = code
+            .child_code_units()
+            .next()
+            .unwrap()
+            .instructions()
+            .map(|instruction| instruction.offset as u32)
+            .collect::<std::collections::HashSet<_>>();
+        let mut vm = Vm::default();
+        let VmDebuggerNestedExecutionState::Paused {
+            frame_serial,
+            bytecode_offset: mut previous,
+            ..
+        } = vm
+            .execute_script_until_nested_debugger_pause(&code, 1, 0)
+            .unwrap()
+        else {
+            panic!("the direct inner call must pause before its first instruction");
+        };
+        assert_eq!(
+            vm.step_debugger_nested_instruction(frame_serial + 1),
+            Err(RuntimeError::Unsupported(
+                "debugger nested frame invocation is stale"
+            ))
+        );
+        let mut saw_backward_successor = false;
+        let mut returned = None;
+        for _ in 0..128 {
+            match vm.step_debugger_nested_instruction(frame_serial).unwrap() {
+                VmDebuggerNestedExecutionState::Paused {
+                    frame_serial: same_frame,
+                    code_unit_ordinal: 1,
+                    bytecode_offset,
+                } => {
+                    assert_eq!(same_frame, frame_serial);
+                    assert!(safe_offsets.contains(&bytecode_offset));
+                    saw_backward_successor |= bytecode_offset < previous;
+                    previous = bytecode_offset;
+                }
+                VmDebuggerNestedExecutionState::FrameReturned {
+                    root_bytecode_offset,
+                } => {
+                    returned = Some(root_bytecode_offset);
+                    break;
+                }
+                other => panic!("unexpected nested step state: {other:?}"),
+            }
+        }
+        assert!(
+            saw_backward_successor,
+            "loop steps must report their real PC"
+        );
+        let root_successor = returned.expect("the child must return within the step budget");
+        assert_eq!(
+            vm.debugger_continuation.as_ref().unwrap().pc,
+            root_successor as usize
+        );
+        assert!(vm.debugger_nested_continuation.is_none());
+        assert_eq!(
+            vm.step_debugger_nested_instruction(frame_serial),
+            Err(RuntimeError::Unsupported(
+                "no debugger-paused nested frame is available"
+            ))
+        );
+        assert_eq!(
+            vm.resume_debugger_execution().unwrap(),
+            VmDebuggerExecutionState::Completed
+        );
+        assert_eq!(
+            vm.lookup_global_name("calls").unwrap(),
+            Some(Value::Number(1.0))
+        );
+        assert_eq!(
+            vm.lookup_global_name("result").unwrap(),
+            Some(Value::Number(4.0))
+        );
+    }
+
+    #[test]
+    fn nested_throw_enters_the_original_caller_catch() {
+        let code = installed_script(
+            "var caught = 0; function inner(){throw 7;} try { inner(); } catch (error) { caught = error; }",
+        );
+        let mut vm = Vm::default();
+        let VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = vm
+            .execute_script_until_nested_debugger_pause(&code, 1, 0)
+            .unwrap()
+        else {
+            panic!("the inner throw must be intercepted before execution");
+        };
+        let mut returned = false;
+        for _ in 0..32 {
+            match vm.step_debugger_nested_instruction(frame_serial).unwrap() {
+                VmDebuggerNestedExecutionState::Paused { .. } => {}
+                VmDebuggerNestedExecutionState::FrameReturned { .. } => {
+                    returned = true;
+                    break;
+                }
+                other => panic!("unexpected throw step state: {other:?}"),
+            }
+        }
+        assert!(returned, "the thrown value must reach the waiting caller");
+        assert!(vm.debugger_nested_continuation.is_none());
+        assert_eq!(
+            vm.resume_debugger_execution().unwrap(),
+            VmDebuggerExecutionState::Completed
+        );
+        assert_eq!(
+            vm.lookup_global_name("caught").unwrap(),
+            Some(Value::Number(7.0))
+        );
+    }
+
+    #[test]
+    fn nested_step_keeps_the_waiting_callers_operand_alive_through_gc() {
+        let code = installed_script(
+            "function inner(){var scratch = {x: 1}; return 0;} var result = ({0: 7})[inner()];",
+        );
+        let mut config = VmConfig::default();
+        config.heap.nursery_capacity = 1;
+        let mut vm = Vm::new(config).unwrap();
+        let VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = vm
+            .execute_script_until_nested_debugger_pause(&code, 1, 0)
+            .unwrap()
+        else {
+            panic!("the computed-key call must pause in its child");
+        };
+        let mut returned = false;
+        for _ in 0..64 {
+            match vm.step_debugger_nested_instruction(frame_serial).unwrap() {
+                VmDebuggerNestedExecutionState::Paused { .. } => {}
+                VmDebuggerNestedExecutionState::FrameReturned { .. } => {
+                    returned = true;
+                    break;
+                }
+                other => panic!("unexpected GC step state: {other:?}"),
+            }
+        }
+        assert!(returned);
+        assert!(vm.debugger_nested_parent_execution.is_none());
+        assert_eq!(
+            vm.resume_debugger_execution().unwrap(),
+            VmDebuggerExecutionState::Completed
+        );
+        assert_eq!(
+            vm.lookup_global_name("result").unwrap(),
+            Some(Value::Number(7.0))
+        );
     }
 
     #[test]

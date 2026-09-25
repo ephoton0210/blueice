@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C1.2.1.2.3.** Step the retained nested invocation and rejoin
-its caller once at terminal completion.
+**Current leaf: C1.2.1.2.4.** Carry the same nested-frame continuation through
+an entry-module root and its retained graph.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -264,7 +264,8 @@ channel with explicit owner/client grants.
     - [ ] **C1.2.1.2** Retain one synchronous nested interpreted call and its caller at a verified inner safe point in BlueJS; step exactly one instruction in that same invocation, preserving operands, handlers, GC roots, and caller effects.
       - [x] **C1.2.1.2.1** Stamp each installed root/closure bytecode with the exact pre-order code-unit ordinal used by the safe-point inventory, including precompiled BlueTS input; test duplicate-shaped closures and reinstallations. Registry installation now stamps the bytecode tree while collecting its safe-point inventory; bare compiled bytecode remains untagged. A regression checks distinct ordinals for identical closure bodies, nested descendants, cloned code, separate generations, and both structured and precompiled installs. All 507 non-environmental BlueJS library tests pass.
       - [x] **C1.2.1.2.2** Capture one direct synchronous caller/child invocation at a selected verified inner instruction without treating suspension as a catchable JavaScript error; keep both frames GC-visible and reject unsupported call shapes. A native seam now retains the child execution context and root call-site operands at the requested inner instruction, with a fresh invocation serial and GC-visible child edges. It rejects deeper calls and constructors before target-body execution, and an old closure with the same ordinal but another program generation cannot satisfy the request. The public route remains unavailable until C1.2.1.3; 511 non-environmental BlueJS library tests pass.
-      - [ ] **C1.2.1.2.3** Step the retained child by one actual instruction under an invocation serial, restore the same child/caller on a successor, and integrate one terminal child result without replaying its call site.
+      - [x] **C1.2.1.2.3** Step the retained child by one actual instruction under an invocation serial, restore the same child/classic caller on a successor, and integrate one terminal child result without replaying its call site. Native regressions verify actual backward loop PCs, wrong and returned frame serials, exactly one caller effect after resume, the waiting caller's temporary operand across GC, and a child throw entering the caller's catch. Direct eval and tail-call targets fail closed; 514 non-environmental BlueJS library tests pass.
+      - [ ] **C1.2.1.2.4** Apply that native nested pause/step/rejoin to an entry-module root without losing the linked graph, module cells, or entry completion; cover dependency effects and graph cleanup.
     - [ ] **C1.2.1.3** Add an opaque, generation-bound active-frame debugger identity and route nested pause/step through the page runtime, child, page-host IPC, and public debugger protocol without conflating it with a static code unit.
     - [ ] **C1.2.1.4** Prove the nested pause and same-frame instruction successor on a real BlueTS page through the public debugger socket; keep unsupported call shapes unavailable.
   - [ ] **C1.2.2** Resume that same frame; reject a stale frame identity after it returns.

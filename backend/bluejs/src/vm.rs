@@ -818,6 +818,7 @@ pub struct Vm {
     debugger_module_continuation: Option<ModuleDebuggerContinuation>,
     debugger_nested_pause_request: Option<NestedDebuggerPauseRequest>,
     debugger_nested_continuation: Option<NestedDebuggerContinuation>,
+    debugger_nested_parent_execution: Option<SuspendedModuleExecution>,
     debugger_nested_direct_call: bool,
     next_debugger_frame_serial: u64,
     stack: Vec<Value>,

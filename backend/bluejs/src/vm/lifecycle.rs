@@ -45,6 +45,7 @@ impl Vm {
             debugger_module_continuation: None,
             debugger_nested_pause_request: None,
             debugger_nested_continuation: None,
+            debugger_nested_parent_execution: None,
             debugger_nested_direct_call: false,
             next_debugger_frame_serial: 1,
             stack: Vec::new(),

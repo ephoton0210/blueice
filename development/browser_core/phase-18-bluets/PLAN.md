@@ -619,9 +619,11 @@ registry generation is stamped alongside the ordinal and still belongs to the
 page program, not to the ordinal alone.
 Then capture a direct synchronous caller and child at the selected inner
 instruction without passing a pause marker through JavaScript exception
-handling (C1.2.1.2.2). Finally step only that retained invocation and rejoin
-its caller once at terminal completion (C1.2.1.2.3). Each checkpoint needs a
-native regression before the public transport gains this control.
+handling (C1.2.1.2.2). Step only that retained invocation and rejoin its
+classic caller once at terminal completion (C1.2.1.2.3), then repeat the
+continuation transfer for an entry-module root whose linked graph is retained
+separately (C1.2.1.2.4). Each checkpoint needs a native regression before the
+public transport gains this control.
 
 **Installed code-unit identity (C1.2.1.2.1):** The debugger registry now
 assigns each root and closure bytecode its ordinal in the same traversal that
@@ -645,6 +647,20 @@ ordinal but a different program generation runs normally and cannot trigger
 the new program's pause. Native regressions inspect the preserved call site,
 pre-instruction effects, child object roots, unsupported paths, and generation
 aliasing. Stepping/rejoin and the public route remain C1.2.1.2.3/C1.2.1.3.
+
+**Native nested-frame step and classic rejoin (C1.2.1.2.3):** A step accepts
+only the active invocation serial, temporarily roots the waiting classic
+caller's complete execution while restoring the child, then suspends again
+after one actual child instruction. A branch reports its real backward PC.
+When the child returns, its result replaces the waiting `Call` inputs exactly
+once and the root remains paused at the following verified instruction; an
+ordinary root resume finishes without replay. A child throw takes the saved
+caller's catch/finally path, while an uncatchable error cleans both frames.
+Target code containing direct eval or a tail call is refused before execution.
+A one-object nursery regression also retains a caller-only operand through
+child allocations and collection. This path currently owns a classic root;
+the entry-module graph has a different root continuation and remains the
+explicit C1.2.1.2.4 checkpoint. No public frame control is advertised yet.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
