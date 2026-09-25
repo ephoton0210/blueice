@@ -486,6 +486,12 @@ pub trait PageHostClient {
         false
     }
 
+    /// Private child-only terminal exception location. Public debugger policy
+    /// and reminting remain separate from this transport capability.
+    fn debugger_bluets_exception_location_available(&self) -> bool {
+        false
+    }
+
     fn debugger_bluets_source_breakpoint_available(&self) -> bool {
         false
     }
@@ -711,6 +717,19 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement exact BlueTS safe-point spans",
+        ))
+    }
+
+    fn debugger_bluets_exception_location(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS exception locations",
         ))
     }
 
@@ -1088,6 +1107,10 @@ impl PageHostClient for PageHostConnection {
         true
     }
 
+    fn debugger_bluets_exception_location_available(&self) -> bool {
+        true
+    }
+
     fn debugger_bluets_source_breakpoint_available(&self) -> bool {
         true
     }
@@ -1368,6 +1391,21 @@ impl PageHostClient for PageHostConnection {
             document_generation,
             metadata,
             safe_point,
+        })
+    }
+
+    fn debugger_bluets_exception_location(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsExceptionLocation {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
         })
     }
 
@@ -6322,6 +6360,65 @@ mod tests {
         child_task.join().unwrap();
         assert_eq!(reply, PageHostReply::ShutdownAck);
         assert!(pump_calls > 0);
+    }
+
+    #[test]
+    fn private_exception_location_wrapper_preserves_the_exact_child_tuple() {
+        let (core, mut child) = UnixStream::pair().unwrap();
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let metadata = PageHostDebuggerMetadataHandle {
+            metadata_handle: 1 << 63,
+            metadata_generation: 1 << 63,
+        };
+        let expected = PageHostReply::DebuggerBlueTsExceptionLocation {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            metadata,
+            location: page_host::PageHostDebuggerBlueTsExceptionLocation {
+                safe_point: PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: 1,
+                    bytecode_offset: 4,
+                },
+                span: page_host::PageHostDebuggerBlueTsSafePointSpan {
+                    source_id: 0,
+                    start_byte: 2,
+                    end_byte: 8,
+                    coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                        start_line: 0,
+                        start_column_utf16: 2,
+                        end_line: 0,
+                        end_column_utf16: 8,
+                    },
+                },
+            },
+        };
+        let child_reply = expected.clone();
+        let child_task = thread::spawn(move || {
+            assert_eq!(
+                page_host::read_page_host_request(&mut child).unwrap(),
+                PageHostRequest::DescribeDebuggerBlueTsExceptionLocation {
+                    tab_id: 7,
+                    document_generation: 3,
+                    program,
+                    metadata,
+                }
+            );
+            page_host::write_page_host_reply(&mut child, &child_reply).unwrap();
+        });
+        let mut connection = PageHostConnection { stream: core };
+        assert!(connection.debugger_bluets_exception_location_available());
+        assert_eq!(
+            connection
+                .debugger_bluets_exception_location(7, 3, program, metadata)
+                .unwrap(),
+            expected
+        );
+        child_task.join().unwrap();
     }
 
     #[test]

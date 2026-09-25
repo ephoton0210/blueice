@@ -51,8 +51,9 @@ use blueice_ipc::debugger::{
     DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
 use blueice_ipc::page_host::{
-    self, PageHostChildStats, PageHostDebuggerBlueTsMetadataContractDisplay,
-    PageHostDebuggerBlueTsMetadataContractId, PageHostDebuggerBlueTsMetadataContractLocation,
+    self, PageHostChildStats, PageHostDebuggerBlueTsExceptionLocation,
+    PageHostDebuggerBlueTsMetadataContractDisplay, PageHostDebuggerBlueTsMetadataContractId,
+    PageHostDebuggerBlueTsMetadataContractLocation,
     PageHostDebuggerBlueTsMetadataContractValidation,
     PageHostDebuggerBlueTsMetadataLoweringSummary, PageHostDebuggerBlueTsMetadataSourceId,
     PageHostDebuggerBlueTsMetadataSourceProvenance, PageHostDebuggerBlueTsMetadataSummary,
@@ -924,6 +925,17 @@ impl BlueJsChildHost {
                 document_generation,
                 metadata,
                 safe_point,
+            ),
+            PageHostRequest::DescribeDebuggerBlueTsExceptionLocation {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+            } => self.debugger_bluets_exception_location(
+                tab_id,
+                document_generation,
+                program,
+                metadata,
             ),
             PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
                 tab_id,
@@ -2513,6 +2525,59 @@ impl BlueJsChildHost {
             metadata,
             safe_point,
             span,
+        }
+    }
+
+    fn debugger_bluets_exception_location(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> PageHostReply {
+        let document = match self.exact_document(tab_id, document_generation) {
+            Ok(document) => document,
+            Err(reply) => return reply,
+        };
+        if !document.debugger_execution_control
+            || !program.is_well_formed()
+            || !metadata.is_well_formed()
+        {
+            return invalid_request();
+        }
+        let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+            return invalid_request();
+        };
+        if record.program_generation != program.program_generation
+            || record.metadata != Some(metadata)
+        {
+            return invalid_request();
+        }
+        let Some(location) = record.exception_location else {
+            return invalid_debugger_state();
+        };
+        if location.safe_point.program != program
+            || self
+                .exact_debugger_safe_point(tab_id, document_generation, location.safe_point)
+                .is_err()
+            || self
+                .debug_registry
+                .get(self.runtime.program_registry(), record.runtime_handle)
+                .ok()
+                .and_then(|retained| exact_bluets_span_for_site(retained, location.safe_point))
+                != Some(location.span)
+        {
+            return invalid_request();
+        }
+        PageHostReply::DebuggerBlueTsExceptionLocation {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            location: PageHostDebuggerBlueTsExceptionLocation {
+                safe_point: location.safe_point,
+                span: location.span,
+            },
         }
     }
 
@@ -8123,6 +8188,27 @@ mod tests {
             reply => panic!("expected three private programs, got {reply:?}"),
         };
         assert_eq!(programs.len(), 3);
+        let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 1,
+            program: programs[0],
+        }) {
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+            reply => panic!("expected private BlueTS attachment, got {reply:?}"),
+        };
+        let request = PageHostRequest::DescribeDebuggerBlueTsExceptionLocation {
+            tab_id: 7,
+            document_generation: 1,
+            program: programs[0],
+            metadata,
+        };
+        assert!(matches!(
+            host.handle_request(request.clone()),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidDebuggerState,
+                ..
+            }
+        ));
         assert!(matches!(
             host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
                 tab_id: 7,
@@ -8141,6 +8227,46 @@ mod tests {
             .is_well_formed_for_range(first.span.start_byte, first.span.end_byte));
         assert_eq!(first.span.start_byte, 0);
         assert!(first.span.end_byte > first.span.start_byte);
+        assert_eq!(
+            host.handle_request(request.clone()),
+            PageHostReply::DebuggerBlueTsExceptionLocation {
+                tab_id: 7,
+                document_generation: 1,
+                program: programs[0],
+                metadata,
+                location: PageHostDebuggerBlueTsExceptionLocation {
+                    safe_point: first.safe_point,
+                    span: first.span,
+                },
+            }
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::DescribeDebuggerBlueTsExceptionLocation {
+                tab_id: 7,
+                document_generation: 1,
+                program: programs[1],
+                metadata,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::DescribeDebuggerBlueTsExceptionLocation {
+                tab_id: 7,
+                document_generation: 1,
+                program: programs[0],
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_generation: metadata.metadata_generation + 1,
+                    ..metadata
+                },
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            }
+        ));
         for program in &programs[1..] {
             assert!(
                 host.documents[&7].debugger_programs[&program.program_handle]
@@ -8157,6 +8283,13 @@ mod tests {
         assert!(!host.documents[&7]
             .debugger_programs
             .contains_key(&programs[0].program_handle));
+        assert!(matches!(
+            host.handle_request(request),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
     }
 
     #[test]

@@ -12,7 +12,8 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
-//! Version 38 adds an exact paused-slot, bounded plain-data value preview.
+//! Version 39 adds a source-free, exact terminal BlueTS exception-location
+//! route after version 38's paused-slot, bounded plain-data value preview.
 //! It is child-private and does not itself grant a public debugger client
 //! value access. Version 37 adds a bounded source-free stack/scope snapshot from an exact
 //! paused root or nested frame. It remains private and does not enable a
@@ -120,7 +121,7 @@ use std::io::{self, Read, Write};
 /// Independent version for the private launcher-to-BlueJS-host channel.
 /// V34 carries a document-bound script handle, not a raw core NodeId, in
 /// `DispatchClick` so its target matches child-owned listener identities.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 38;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 39;
 
 pub const PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -322,6 +323,15 @@ pub struct PageHostDebuggerBlueTsSafePointSpan {
     pub start_byte: u32,
     pub end_byte: u32,
     pub coordinates: DebuggerSourceCoordinates,
+}
+
+/// One child-private, terminal uncaught BlueTS location. Its safe point and
+/// original coordinates contain no thrown value, error text, or source text.
+/// Core must revalidate and remint both components before public disclosure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsExceptionLocation {
+    pub safe_point: PageHostDebuggerSafePoint,
+    pub span: PageHostDebuggerBlueTsSafePointSpan,
 }
 
 /// One exact child-verified relation between a compiler symbol and type.
@@ -957,6 +967,14 @@ pub enum PageHostRequest {
         metadata: PageHostDebuggerMetadataHandle,
         safe_point: PageHostDebuggerSafePoint,
     },
+    /// Reads only the terminal uncaught location retained for this exact
+    /// private BlueTS program and metadata attachment, never a VM value.
+    DescribeDebuggerBlueTsExceptionLocation {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    },
     /// Resolves one bounded original BlueTS byte position in a child-minted
     /// source record to the first lowering span at or after it. A bound reply
     /// names only a compiler-verified safe point; an unbound span or missing
@@ -1269,6 +1287,15 @@ pub enum PageHostReply {
         safe_point: PageHostDebuggerSafePoint,
         span: PageHostDebuggerBlueTsSafePointSpan,
     },
+    /// Complete private location under the echoed document/program/metadata
+    /// tuple. A missing, stale, or unbound site returns a typed error instead.
+    DebuggerBlueTsExceptionLocation {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        location: PageHostDebuggerBlueTsExceptionLocation,
+    },
     /// Repeats the exact private request tuple and returns only a verified
     /// child safe point or an explicit unbound result. Core must separately
     /// authorize and remint this before any public debugger disclosure.
@@ -1538,7 +1565,7 @@ mod tests {
         target.safe_point.program.program_generation -= 1;
         target.frame_index = 2;
         assert!(!target.is_well_formed());
-        assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 38);
+        assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 39);
     }
 
     #[test]
@@ -2103,6 +2130,18 @@ mod tests {
                     bytecode_offset: 4,
                 },
             },
+            PageHostRequest::DescribeDebuggerBlueTsExceptionLocation {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+            },
             PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
                 tab_id: 7,
                 document_generation: 3,
@@ -2310,6 +2349,43 @@ mod tests {
                     start_column_utf16: 0,
                     end_line: 0,
                     end_column_utf16: 25,
+                },
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsExceptionLocation {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            location: PageHostDebuggerBlueTsExceptionLocation {
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_handle: 11,
+                        program_generation: 13,
+                    },
+                    code_unit_ordinal: 1,
+                    bytecode_offset: 4,
+                },
+                span: PageHostDebuggerBlueTsSafePointSpan {
+                    source_id: 0,
+                    start_byte: 2,
+                    end_byte: 25,
+                    coordinates: DebuggerSourceCoordinates {
+                        start_line: 0,
+                        start_column_utf16: 2,
+                        end_line: 0,
+                        end_column_utf16: 25,
+                    },
                 },
             },
         };

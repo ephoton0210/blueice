@@ -1320,6 +1320,21 @@ reproduced existing source-breakpoint expectation mismatch (offset 10 versus
 C2.3.1.2, while real caught-BlueTS socket coverage remains for C2.3.1.5.
 No page-host wire or frontend report changed.
 
+**Complete private v39 exception route (C2.3.1.3.3):** Page-host v39 adds
+`DescribeDebuggerBlueTsExceptionLocation` and a dedicated reply under the
+exact tab/document/program/metadata tuple. The child revalidates its saved
+safe point against the live installed program and the exact retained BlueTS
+map before returning only the child-private safe point plus source-ID,
+half-open byte span, and UTF-16 coordinates. Pending/normal executions have
+typed `InvalidDebuggerState`; mismatched program/metadata or failed live
+mapping is `InvalidRequest`; replaced documents are `StaleDocument`. Core's
+page-host transport wrapper remains default-denied for test doubles and
+does not yet remint this into a public debugger response. All 14 page-host
+IPC tests pass with local sockets, as do the focused child route test, the
+real Launcher-supervised child socket test, the core wrapper socket test,
+format checking, and workspace Clippy. No frontend report or public debugger
+protocol changed; C2.3.1.4 provides the separate public authorization.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

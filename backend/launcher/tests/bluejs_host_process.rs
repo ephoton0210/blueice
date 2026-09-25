@@ -58,6 +58,132 @@ fn blue_ts_classic(ordinal: u32, source: &str) -> PageHostScript {
 }
 
 #[test]
+fn isolated_child_returns_only_exact_terminal_bluets_exception_locations() {
+    assert!(std::path::Path::new(CHILD_BINARY).exists());
+    let mut host = SpawnedBlueJsHost::spawn().unwrap();
+    let mut page = document(
+        1,
+        vec![
+            blue_ts_classic(0, "function fail(): number { throw 7; } fail();"),
+            blue_ts_classic(1, "const successor: number = 1;"),
+        ],
+    );
+    page.debugger_execution_control = true;
+    assert!(matches!(
+        host.synchronize_document(page).unwrap(),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let programs = match host
+        .request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerPrograms { programs, .. } => programs,
+        reply => panic!("expected private programs, got {reply:?}"),
+    };
+    assert_eq!(programs.len(), 2);
+    let metadata = match host
+        .request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 41,
+            document_generation: 1,
+            program: programs[0],
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+        reply => panic!("expected private BlueTS metadata, got {reply:?}"),
+    };
+    let request = PageHostRequest::DescribeDebuggerBlueTsExceptionLocation {
+        tab_id: 41,
+        document_generation: 1,
+        program: programs[0],
+        metadata,
+    };
+    assert!(matches!(
+        host.request(request.clone()).unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.len() == 2
+    ));
+    let reply = host.request(request.clone()).unwrap();
+    let PageHostReply::DebuggerBlueTsExceptionLocation {
+        tab_id: 41,
+        document_generation: 1,
+        program,
+        metadata: echoed_metadata,
+        location,
+    } = reply.clone()
+    else {
+        panic!("expected exact private exception location, got {reply:?}");
+    };
+    assert_eq!(program, programs[0]);
+    assert_eq!(echoed_metadata, metadata);
+    assert_eq!(location.safe_point.program, program);
+    assert_eq!(location.safe_point.code_unit_ordinal, 1);
+    assert!(location
+        .span
+        .coordinates
+        .is_well_formed_for_range(location.span.start_byte, location.span.end_byte));
+    assert!(!format!("{reply:?}").contains("throw 7"));
+    assert!(matches!(
+        host.request(PageHostRequest::DescribeDebuggerBlueTsExceptionLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program: programs[1],
+            metadata,
+        })
+        .unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidRequest,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::DescribeDebuggerBlueTsExceptionLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program: programs[0],
+            metadata: blueice_ipc::page_host::PageHostDebuggerMetadataHandle {
+                metadata_generation: metadata.metadata_generation + 1,
+                ..metadata
+            },
+        })
+        .unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidRequest,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.synchronize_document(document(
+            2,
+            vec![blue_ts_classic(0, "const replacement: number = 2;")],
+        ))
+        .unwrap(),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(matches!(
+        host.request(request).unwrap(),
+        PageHostReply::Error {
+            code: PageHostErrorCode::StaleDocument,
+            ..
+        }
+    ));
+    host.shutdown().unwrap();
+}
+
+#[test]
 fn isolated_child_steps_one_verified_bluets_source_span_over_its_private_protocol() {
     assert!(std::path::Path::new(CHILD_BINARY).exists());
     let mut host = SpawnedBlueJsHost::spawn().unwrap();
