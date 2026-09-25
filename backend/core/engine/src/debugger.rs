@@ -12,10 +12,10 @@
 
 use crate::{
     script::javascript::{
-        JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
-        JavaScriptPageDebuggerFrame, JavaScriptPageDebuggerNestedExecutionState,
-        JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
-        JavaScriptPageDebuggerScopeEntry,
+        JavaScriptPageDebuggerError, JavaScriptPageDebuggerExceptionLocationTarget,
+        JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
+        JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
+        JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerScopeEntry,
         JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
         JavaScriptPageDebuggerStaticMetadataContractTarget,
         JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
@@ -34,11 +34,11 @@ use crate::{
 use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
     DebuggerCapabilities, DebuggerCapability, DebuggerCapabilityReport, DebuggerCapabilityState,
-    DebuggerErrorCode, DebuggerExecutionState, DebuggerFrame, DebuggerMetadataCapability,
-    DebuggerMetadataSessionAuthorization, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
-    DebuggerRequest, DebuggerSafePoint, DebuggerScopeEntry, DebuggerScopeSnapshot,
-    DebuggerStackCoordinates, DebuggerStackCoordinatesTarget, DebuggerStackSnapshot,
-    DebuggerStaticMetadataContractDisplay, DebuggerStaticMetadataContractId,
+    DebuggerErrorCode, DebuggerExceptionLocation, DebuggerExecutionState, DebuggerFrame,
+    DebuggerMetadataCapability, DebuggerMetadataSessionAuthorization, DebuggerPageRealm,
+    DebuggerProgram, DebuggerReply, DebuggerRequest, DebuggerSafePoint, DebuggerScopeEntry,
+    DebuggerScopeSnapshot, DebuggerStackCoordinates, DebuggerStackCoordinatesTarget,
+    DebuggerStackSnapshot, DebuggerStaticMetadataContractDisplay, DebuggerStaticMetadataContractId,
     DebuggerStaticMetadataContractLocation, DebuggerStaticMetadataContractLocationTarget,
     DebuggerStaticMetadataContractValidation, DebuggerStaticMetadataHandle,
     DebuggerStaticMetadataLoweringSummary, DebuggerStaticMetadataSafePointSpan,
@@ -359,6 +359,7 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::DescribeStaticMetadataSafePointSpan { .. } => {
             unavailable_static_metadata_safe_point_span()
         }
+        DebuggerRequest::DescribeExceptionLocation { .. } => unavailable_exception_location(),
         DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { .. } => {
             unavailable_static_metadata_source_breakpoint()
         }
@@ -568,6 +569,9 @@ fn handle_debugger_request_with_child_locations_and_pause(
                 metadata_session,
                 target,
             )
+        }
+        DebuggerRequest::DescribeExceptionLocation { source } => {
+            describe_child_exception_location(tabs, locations, metadata_session, source)
         }
         DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target } => {
             resolve_child_static_metadata_source_breakpoint(
@@ -2102,6 +2106,123 @@ fn describe_child_static_metadata_safe_point_span(
             message: "mismatched debugger static metadata safe-point source identity".to_string(),
         },
         Err(error) => debugger_program_error(error),
+    }
+}
+
+/// The caller supplies only one previously inventoried source ID. Core
+/// separately authorizes the old safe-point-span capability, asks the child
+/// for its terminal site, and remints a distinct exact exception reply.
+fn describe_child_exception_location(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    source: DebuggerStaticMetadataSourceId,
+) -> DebuggerReply {
+    if !source.is_well_formed() {
+        return invalid_exception_location();
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_exception_location();
+    };
+    let realm = source.metadata.program.realm;
+    let capabilities =
+        describe_child_location_capabilities(tabs, locations, Some(metadata_session), realm);
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueSafePointSpan,
+    ) else {
+        return unavailable_exception_location();
+    };
+    if !authorization.permits(realm, DebuggerMetadataCapability::OpaqueSafePointSpan)
+        || !locations.debugger_exception_location_available()
+    {
+        return unavailable_exception_location();
+    }
+    if !metadata_session.observed_metadata(source.metadata)
+        || !metadata_session.observed_source(source)
+    {
+        return invalid_exception_location();
+    }
+    let tab_id = match resolve_live_realm(tabs, realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    let program = source.metadata.program;
+    match locations.debugger_exception_location(
+        tab_id,
+        realm.realm_generation,
+        JavaScriptPageDebuggerExceptionLocationTarget {
+            program_handle: program.program_handle,
+            program_generation: program.program_generation,
+            metadata_handle: source.metadata.metadata_handle,
+            metadata_generation: source.metadata.metadata_generation,
+            source_id: source.source_id,
+        },
+    ) {
+        Ok(location) if location.source_id == source.source_id => {
+            let result = DebuggerExceptionLocation {
+                source,
+                safe_point: DebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: location.code_unit_ordinal,
+                    bytecode_offset: location.bytecode_offset,
+                },
+                start_byte: location.start_byte,
+                end_byte: location.end_byte,
+                coordinates: location.coordinates,
+            };
+            if !result.is_well_formed() {
+                return invalid_exception_location();
+            }
+            if locations
+                .validate_debugger_safe_point(
+                    tab_id,
+                    realm.realm_generation,
+                    program.program_handle,
+                    program.program_generation,
+                    result.safe_point.code_unit_ordinal,
+                    result.safe_point.bytecode_offset,
+                )
+                .is_err()
+            {
+                return invalid_exception_location();
+            }
+            let bound_span = locations.debugger_static_metadata_safe_point_span(
+                tab_id,
+                realm.realm_generation,
+                JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+                    program_handle: program.program_handle,
+                    program_generation: program.program_generation,
+                    metadata_handle: source.metadata.metadata_handle,
+                    metadata_generation: source.metadata.metadata_generation,
+                    source_id: source.source_id,
+                    code_unit_ordinal: result.safe_point.code_unit_ordinal,
+                    bytecode_offset: result.safe_point.bytecode_offset,
+                },
+            );
+            if !matches!(
+                bound_span,
+                Ok(span) if span.source_id == source.source_id
+                    && span.start_byte == result.start_byte
+                    && span.end_byte == result.end_byte
+                    && span.coordinates == result.coordinates
+            ) {
+                return invalid_exception_location();
+            }
+            DebuggerReply::ExceptionLocation(result)
+        }
+        Ok(_) => invalid_exception_location(),
+        Err(JavaScriptPageDebuggerError::InvalidExecutionState) => DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "BlueTS program has no terminal uncaught exception location".to_string(),
+        },
+        Err(JavaScriptPageDebuggerError::ResourceLimit) => {
+            debugger_program_error(JavaScriptPageDebuggerError::ResourceLimit)
+        }
+        Err(_) => invalid_exception_location(),
     }
 }
 
@@ -4158,6 +4279,20 @@ fn unavailable_static_metadata_safe_point_span() -> DebuggerReply {
     }
 }
 
+fn unavailable_exception_location() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "BlueTS exception locations require a separate owner/client span grant and live child route".to_string(),
+    }
+}
+
+fn invalid_exception_location() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::InvalidTarget,
+        message: "invalid BlueTS exception location target".to_string(),
+    }
+}
+
 fn unavailable_static_metadata_source_span_step() -> DebuggerReply {
     DebuggerReply::Unsupported {
         operation: "step static metadata source span".to_string(),
@@ -4836,6 +4971,10 @@ mod tests {
             true
         }
 
+        fn debugger_exception_location_available(&self) -> bool {
+            true
+        }
+
         fn debugger_static_metadata_source_breakpoint_available(&self) -> bool {
             true
         }
@@ -5140,7 +5279,7 @@ mod tests {
                 || target.metadata_handle != 41
                 || target.metadata_generation != 9
                 || target.source_id != 0
-                || target.code_unit_ordinal != 0
+                || !matches!(target.code_unit_ordinal, 0 | 1)
                 || target.bytecode_offset != 4
             {
                 return Err(JavaScriptPageDebuggerError::UnknownProgram);
@@ -5151,6 +5290,43 @@ mod tests {
                     start_byte: 6,
                     end_byte: 31,
                     coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                        start_line: 0,
+                        start_column_utf16: 6,
+                        end_line: 0,
+                        end_column_utf16: 31,
+                    },
+                },
+            )
+        }
+
+        fn debugger_exception_location(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            target: JavaScriptPageDebuggerExceptionLocationTarget,
+        ) -> Result<
+            crate::script::javascript::JavaScriptPageDebuggerExceptionLocation,
+            JavaScriptPageDebuggerError,
+        > {
+            if target.source_id == 1 {
+                return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+            }
+            if target.program_handle != 7
+                || target.program_generation != 3
+                || target.metadata_handle != 41
+                || target.metadata_generation != 9
+                || target.source_id != 0
+            {
+                return Err(JavaScriptPageDebuggerError::UnknownProgram);
+            }
+            Ok(
+                crate::script::javascript::JavaScriptPageDebuggerExceptionLocation {
+                    source_id: 0,
+                    code_unit_ordinal: 1,
+                    bytecode_offset: 4,
+                    start_byte: 6,
+                    end_byte: 31,
+                    coordinates: DebuggerSourceCoordinates {
                         start_line: 0,
                         start_column_utf16: 6,
                         end_line: 0,
@@ -5375,6 +5551,12 @@ mod tests {
                 code_unit_ordinal,
                 bytecode_offset,
             ) == (7, 3, 0, 4)
+                || (
+                    program_handle,
+                    program_generation,
+                    code_unit_ordinal,
+                    bytecode_offset,
+                ) == (7, 3, 1, 4)
             {
                 Ok(())
             } else {
@@ -6273,6 +6455,169 @@ mod tests {
             ),
             unavailable_static_metadata_symbol_location(),
             "a guessed source ID cannot be paired with an observed symbol"
+        );
+    }
+
+    #[test]
+    fn exception_location_requires_its_own_grant_and_exact_stream_source_receipt() {
+        let (tabs, realm) = loaded_tabs();
+        let program = DebuggerProgram {
+            realm,
+            program_handle: 7,
+            program_generation: 3,
+        };
+        let metadata = DebuggerStaticMetadataHandle {
+            program,
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let source = DebuggerStaticMetadataSourceId {
+            metadata,
+            source_id: 0,
+        };
+        let manifest =
+            blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
+        let hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
+            requested_metadata_capabilities: manifest.clone(),
+        };
+        let ack = blueice_ipc::debugger::negotiate(&hello, &manifest);
+        let session = blueice_ipc::debugger::metadata_session_authorization(&hello, &ack).unwrap();
+        let mut locations = MetadataLocations {
+            malformed_summary: false,
+            malformed_provenance: false,
+            malformed_lowering_summary: false,
+            mismatched_symbol_display: false,
+            mismatched_contract_display: false,
+            mismatched_contract_validation: false,
+        };
+        let request = DebuggerRequest::DescribeExceptionLocation { source };
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                None,
+                request.clone(),
+            ),
+            unavailable_exception_location()
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone(),
+            ),
+            invalid_exception_location()
+        );
+        let inventory_only =
+            blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_inventory();
+        let denied_ack = blueice_ipc::debugger::negotiate(&hello, &inventory_only);
+        let denied_session =
+            blueice_ipc::debugger::metadata_session_authorization(&hello, &denied_ack).unwrap();
+        assert!(denied_session.observe_metadata(&[metadata]));
+        assert!(denied_session.observe_sources(&[source]));
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&denied_session),
+                request.clone(),
+            ),
+            unavailable_exception_location()
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadata { program },
+            ),
+            DebuggerReply::StaticMetadata(vec![metadata])
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone(),
+            ),
+            invalid_exception_location()
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadataSources { metadata },
+            ),
+            DebuggerReply::StaticMetadataSources(vec![source])
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone(),
+            ),
+            DebuggerReply::ExceptionLocation(DebuggerExceptionLocation {
+                source,
+                safe_point: DebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: 1,
+                    bytecode_offset: 4,
+                },
+                start_byte: 6,
+                end_byte: 31,
+                coordinates: DebuggerSourceCoordinates {
+                    start_line: 0,
+                    start_column_utf16: 6,
+                    end_line: 0,
+                    end_column_utf16: 31,
+                },
+            })
+        );
+        let separate_session =
+            blueice_ipc::debugger::metadata_session_authorization(&hello, &ack).unwrap();
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&separate_session),
+                request,
+            ),
+            invalid_exception_location()
+        );
+        let other_source = DebuggerStaticMetadataSourceId {
+            source_id: 1,
+            ..source
+        };
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeExceptionLocation {
+                    source: other_source,
+                },
+            ),
+            invalid_exception_location()
+        );
+        assert!(session.observe_sources(&[other_source]));
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeExceptionLocation {
+                    source: other_source,
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                message: "BlueTS program has no terminal uncaught exception location".to_string(),
+            }
         );
     }
 

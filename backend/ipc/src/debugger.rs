@@ -9,7 +9,9 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version thirty-seven adds
+//! and an opt-in root-code-unit pause/resume seam. Version thirty-nine adds an
+//! independently granted, source-receipted terminal BlueTS exception location
+//! with an exact core-reminted safe point. Version thirty-seven adds
 //! independently owner/client-gated, same-stream Scopes-receipted bounded
 //! paused values. Version thirty-six adds atomic stack-coordinate batches.
 //! Version thirty-five adds
@@ -83,7 +85,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 38;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 39;
 
 pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -519,6 +521,29 @@ impl DebuggerStaticMetadataSafePointSpan {
             source: self.source,
         }
         .is_well_formed()
+            && self
+                .coordinates
+                .is_well_formed_for_range(self.start_byte, self.end_byte)
+    }
+}
+
+/// One terminal uncaught BlueTS location under a prior same-stream source
+/// receipt. The safe point is core-reminted, not the child's private handle;
+/// no error value, message, stack, source text, or generated span is present.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerExceptionLocation {
+    pub source: DebuggerStaticMetadataSourceId,
+    pub safe_point: DebuggerSafePoint,
+    pub start_byte: u32,
+    pub end_byte: u32,
+    pub coordinates: DebuggerSourceCoordinates,
+}
+
+impl DebuggerExceptionLocation {
+    pub fn is_well_formed(self) -> bool {
+        self.source.is_well_formed()
+            && self.safe_point.is_well_formed()
+            && self.safe_point.program == self.source.metadata.program
             && self
                 .coordinates
                 .is_well_formed_for_range(self.start_byte, self.end_byte)
@@ -2642,6 +2667,11 @@ pub enum DebuggerRequest {
     DescribeStaticMetadataSafePointSpan {
         target: DebuggerStaticMetadataSafePointSpanTarget,
     },
+    /// Reports only the terminal uncaught exception's exact BlueTS source
+    /// position under the separate safe-point-span grant and source receipt.
+    DescribeExceptionLocation {
+        source: DebuggerStaticMetadataSourceId,
+    },
     /// Resolves one bounded original BlueTS byte position in a previously
     /// inventoried source ID to a compiler-verified safe point or explicit
     /// unbound result. This separately granted operation neither reads source
@@ -2863,6 +2893,9 @@ pub enum DebuggerReply {
     /// The exact safe point and previously receipted source ID are echoed;
     /// no source text or module identity is included.
     StaticMetadataSafePointSpan(DebuggerStaticMetadataSafePointSpan),
+    /// Distinct terminal exception location, never an arbitrary source-map
+    /// lookup or a source-text/error-value read.
+    ExceptionLocation(DebuggerExceptionLocation),
     /// Reply to [`DebuggerRequest::ResolveStaticMetadataSourceBreakpoint`].
     /// It repeats only the requested source/position and a core-reminted
     /// verified safe point, or an explicit unbound result.
@@ -3016,6 +3049,7 @@ pub fn negotiate_with_values(
         | DebuggerRequest::DescribeStaticMetadataSymbol { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolLocation { .. }
         | DebuggerRequest::DescribeStaticMetadataSafePointSpan { .. }
+        | DebuggerRequest::DescribeExceptionLocation { .. }
         | DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { .. }
         | DebuggerRequest::ArmStaticMetadataSourceBreakpoint { .. }
         | DebuggerRequest::DescribeStaticMetadataContractLocation { .. }
@@ -5314,6 +5348,65 @@ mod tests {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+    }
+
+    #[test]
+    fn terminal_exception_location_round_trips_only_receipted_source_and_span() {
+        let program = DebuggerProgram {
+            realm: realm(),
+            program_handle: 12,
+            program_generation: 5,
+        };
+        let source = DebuggerStaticMetadataSourceId {
+            metadata: DebuggerStaticMetadataHandle {
+                program,
+                metadata_handle: 24,
+                metadata_generation: 7,
+            },
+            source_id: 0,
+        };
+        let location = DebuggerExceptionLocation {
+            source,
+            safe_point: DebuggerSafePoint {
+                program,
+                code_unit_ordinal: 1,
+                bytecode_offset: 4,
+            },
+            start_byte: 2,
+            end_byte: 31,
+            coordinates: DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 2,
+                end_line: 0,
+                end_column_utf16: 31,
+            },
+        };
+        assert!(location.is_well_formed());
+        assert!(!DebuggerExceptionLocation {
+            safe_point: DebuggerSafePoint {
+                program: DebuggerProgram {
+                    program_generation: 6,
+                    ..program
+                },
+                ..location.safe_point
+            },
+            ..location
+        }
+        .is_well_formed());
+        assert!(!DebuggerExceptionLocation {
+            end_byte: location.start_byte,
+            ..location
+        }
+        .is_well_formed());
+        let request = DebuggerRequest::DescribeExceptionLocation { source };
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_request(&mut sender, &request).unwrap();
+        assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
+        let reply = DebuggerReply::ExceptionLocation(location);
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_reply(&mut sender, &reply).unwrap();
+        assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+        assert!(!format!("{reply:?}").contains("throw"));
     }
 
     #[test]

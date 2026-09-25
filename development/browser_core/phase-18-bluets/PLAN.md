@@ -1374,6 +1374,22 @@ unimplemented test-double routes yield typed errors without partial data.
 The focused adapter test and all 299 engine library tests pass, as does
 workspace Clippy; the public debugger remains v38 until C2.3.1.4.3.
 
+**Public debugger v39 exception location (C2.3.1.4.3):** The complete
+`DescribeExceptionLocation { source }` command has only a previously
+inventoried opaque BlueTS source ID as input. Core requires the existing
+independent owner/client `OpaqueSafePointSpan` grant before testing the
+stream's exact metadata/source receipts, calls the default-denied exception
+adapter only after both gates, and rechecks the returned live safe point and
+compiler-bound span before constructing a distinct core-minted
+`ExceptionLocation` reply. Missing grant is fixed `CapabilityUnavailable`;
+unreceipted/forged source, malformed or mismatched location is `InvalidTarget`;
+normal/pending execution without an uncaught site is `InvalidExecutionState`.
+The reply contains only source ID, exact safe point, bounded original byte
+range, and UTF-16 coordinates; no error value, message, stack, source text,
+generated text, or child handle. The public debugger protocol is now v39.
+All 110 IPC and 300 engine library tests pass with local sockets, along with
+workspace Clippy; real Launcher-supervised public socket proof is C2.3.1.5.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
