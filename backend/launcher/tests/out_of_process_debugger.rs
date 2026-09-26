@@ -543,6 +543,50 @@ fn launcher_relates_classic_and_module_root_scopes_without_value_authority() {
                 ..
             }
         ));
+        let old_relation = blueice_ipc::debugger::DebuggerStaticScopeTarget::Ordinary {
+            metadata,
+            target: value,
+        };
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::StepRootInstruction { program }
+            ),
+            DebuggerReply::ExecutionStepRequested { program }
+        );
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetExecutionState { program },
+            ) {
+                DebuggerReply::ExecutionState {
+                    state: DebuggerExecutionState::Paused { safe_point },
+                    ..
+                } if safe_point != point => break,
+                DebuggerReply::ExecutionState {
+                    state: DebuggerExecutionState::Completed,
+                    ..
+                } => break,
+                DebuggerReply::ExecutionState {
+                    state: DebuggerExecutionState::Stepping,
+                    ..
+                } if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+                other => panic!("{label} root did not advance after step: {other:?}"),
+            }
+        }
+        assert!(matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetStaticScopeRelation {
+                    target: old_relation,
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget | DebuggerErrorCode::InvalidExecutionState,
+                ..
+            }
+        ));
         drop(debugger);
         let mut foreign = UnixStream::connect(&launcher.debugger_socket).unwrap();
         let foreign_manifest = DebuggerMetadataCapabilityManifest::opaque_selected(
@@ -1490,6 +1534,7 @@ fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
             "denied source and unknown probes must preserve the public stream"
         );
         let mut nested_target = None;
+        let mut parent_target = None;
         for _ in 0..96 {
             let DebuggerReply::Stack(stack) = debugger_request(
                 &mut debugger,
@@ -1520,6 +1565,7 @@ fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
             );
             if child_value.is_some() && caller_value.is_some() {
                 nested_target = child_value;
+                parent_target = caller_value;
                 break;
             }
             assert_eq!(
@@ -1533,6 +1579,28 @@ fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
             assert_eq!(same_frame, frame);
         }
         let nested_target = nested_target.expect("nested and caller-root values must be readable");
+        let parent_target = parent_target.expect("caller-root value must be readable");
+        let static_target = blueice_ipc::debugger::DebuggerStaticScopeTarget::Ordinary {
+            metadata: blueice_ipc::debugger::DebuggerStaticMetadataHandle {
+                program,
+                metadata_handle: 1,
+                metadata_generation: 1,
+            },
+            target: parent_target,
+        };
+        assert!(static_target.is_well_formed());
+        assert!(matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetStaticScopeRelation {
+                    target: static_target,
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::CapabilityUnavailable,
+                ..
+            }
+        ));
 
         for guessed_program in [
             DebuggerProgram {
@@ -6963,9 +7031,54 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
     }
     assert!(!format!("{coordinates:?}").contains("linked-dependency.ts"));
 
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResumeLinkedNestedExecution {
+                top_frame: stack.frames[0].frame,
+            },
+        ),
+        DebuggerReply::LinkedNestedResumeRequested {
+            top_frame: stack.frames[0].frame,
+        }
+    );
+    for request in [
+        DebuggerRequest::GetLinkedScopes {
+            expected_stack: stack,
+            max_scope_entries: 256,
+        },
+        DebuggerRequest::GetStaticScopeRelation {
+            target: linked_target,
+        },
+    ] {
+        assert!(matches!(
+            debugger_request(&mut debugger, request),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget | DebuggerErrorCode::InvalidExecutionState,
+                ..
+            }
+        ));
+    }
+
     navigate(&mut browser, &url);
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStaticScopeRelation {
+                target: linked_target,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm | DebuggerErrorCode::CapabilityUnavailable,
+            ..
+        }
+    ));
     for request in [
         DebuggerRequest::GetLinkedExecutionState { entry },
+        DebuggerRequest::GetLinkedScopes {
+            expected_stack: stack,
+            max_scope_entries: 256,
+        },
         DebuggerRequest::GetLinkedStackCoordinates { target },
         DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { target: arm },
         DebuggerRequest::ResolveStaticMetadataSourceBreakpoint {
@@ -6993,13 +7106,17 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
             },
         },
     ] {
-        assert!(matches!(
-            debugger_request(&mut debugger, request),
-            DebuggerReply::Error {
-                code: DebuggerErrorCode::StaleRealm,
-                ..
-            }
-        ));
+        let reply = debugger_request(&mut debugger, request.clone());
+        assert!(
+            matches!(
+                reply,
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::StaleRealm,
+                    ..
+                }
+            ),
+            "stale linked request {request:?} returned {reply:?}"
+        );
     }
     stop_tx.send(()).unwrap();
     let requested = fixture.join().unwrap();

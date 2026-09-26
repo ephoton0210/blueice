@@ -2323,6 +2323,20 @@ so the cross-stream check is deliberately sequential. Both focused real
 Launcher tests pass. On request, a BlueTS >1,300-line modularity audit and
 justified refactors will follow C3.1.3.4.7.4 before C3.1.3.4 closes.
 
+**C3.1.3.4.7.4.2 real pause lifecycle and grant separation:** The classic
+and module static-only root sockets reject `Value` for the very slot whose
+compiler relation succeeded; after stepping that root, its old static
+selector also returns only a typed error. The linked graph rejects old
+linked-scopes and relation selectors after resuming its dependency pause.
+After reload, old linked-scopes and the other linked-program requests are
+StaleRealm; the static relation instead returns CapabilityUnavailable
+because reload revokes the independent grant/receipts before that route's
+realm preflight. Neither path returns a partial pair. Conversely, the real
+classic/module value-only nested socket reads its caller-root value but
+cannot use a well-formed static selector without the separate grant. All
+three focused real Launcher tests pass against the shared Cargo target;
+complete socket/workspace gates remain C3.1.3.4.7.4.3.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

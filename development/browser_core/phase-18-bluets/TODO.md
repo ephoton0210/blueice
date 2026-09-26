@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.7.4.2.** Prove old ordinary and linked targets refuse
-after step/resume/reload, with independent static and `Value` authority.
+**Current leaf: C3.1.3.4.7.4.3.** Re-run the complete public socket and
+workspace gates, then close C3.1.3.4.7.4.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -451,7 +451,7 @@ channel with explicit owner/client grants.
         - [x] **C3.1.3.4.7.3** Prove linked entry-root static relations through real Launcher sockets with complete linked-scopes receipts and reject dependency-owned selectors. The existing real two-module Launcher graph now also negotiates the static-only grant, reacquires exact complete `GetLinkedScopes`, inventories the entry's own type/symbol IDs, and returns one full echoed entry-root relation. Dependency metadata in that selector refuses with a typed error. The focused real Launcher graph test passes.
         - [ ] **C3.1.3.4.7.4** Prove no-partial stale/moved/forged/cross-stream denials and separate `Value` authority across real socket pause lifecycles; then close C3.1.3.4.7 and C3.1.3.4.
           - [x] **C3.1.3.4.7.4.1** Prove forged linked and cross-stream ordinary static selectors produce only typed denials on real Launcher sockets. The real linked graph rejects a forged slot and metadata generation without partial relation replies; the classic and module root test closes its successful stream and proves its formerly valid selector cannot be borrowed by a fresh static-granted stream. The linked breakpoint is armed as soon as its two program IDs and verified safe point are available, avoiding a race with graph completion. Both focused Launcher tests pass using the shared Cargo target.
-          - [ ] **C3.1.3.4.7.4.2** Prove old ordinary and linked targets refuse after step/resume/reload, and static-only and value-only sessions cannot borrow one another's authority.
+          - [x] **C3.1.3.4.7.4.2** Prove old ordinary and linked targets refuse after step/resume/reload, and static-only and value-only sessions cannot borrow one another's authority. The classic/module static-only root test steps past the selected slot and rejects its old relation, while `GetValue` stays denied; the real linked graph rejects old scopes/relation after linked resume and old scopes after reload. Reload removes static relation grants/receipts before the realm preflight, so an old relation returns a typed `CapabilityUnavailable` rather than a partial reply; the other old linked routes return `StaleRealm`. A separate classic/module value-only nested pause rejects a well-formed static selector despite a readable caller-root value. All three focused real Launcher tests pass with one reused target.
           - [ ] **C3.1.3.4.7.4.3** Re-run the complete public socket and workspace gates, then close C3.1.3.4.7.4.
         - [ ] **C3.1.3.4.7.5** Audit BlueTS source and test file responsibilities after C3.1.3.4.7.4. Assess each file over 1,300 lines for cohesive module boundaries, refactor oversized files where a maintainable split is justified, preserve coverage and public behavior, then close C3.1.3.4.7 and C3.1.3.4. Split this into reviewable leaves after the inventory identifies exact targets.
     - [ ] **C3.1.3.5** Prove a static type display and independently authorized runtime preview remain distinct, correctly matched to the same paused classic/module/linked slot, and expire after step/reload/cutover on real Launcher sockets; then check off C3.1.3 and C3.1.
