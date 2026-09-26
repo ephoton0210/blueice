@@ -196,6 +196,8 @@ mod unix {
         /// under two separately inventoried opaque IDs. Plans and validation
         /// remain independently denied.
         debugger_static_metadata_symbol_contract: bool,
+        /// Independent owner policy for compiler-only paused-slot relations.
+        debugger_static_scope_relation: bool,
     }
 
     impl CoreLaunchOptions {
@@ -530,6 +532,16 @@ mod unix {
             self.debugger_static_metadata_symbol_inventory = true;
             self.debugger_static_metadata_contract_inventory = true;
             self.debugger_static_metadata_symbol_contract = true;
+            self
+        }
+
+        /// Enables compiler-only paused-slot relations and their three opaque
+        /// inventories. It does not enable runtime value previews.
+        pub fn with_debugger_static_scope_relation(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_type_inventory = true;
+            self.debugger_static_metadata_symbol_inventory = true;
+            self.debugger_static_scope_relation = true;
             self
         }
     }
@@ -2000,6 +2012,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_symbol_contract {
                     command.arg("--debugger-static-metadata-symbol-contract");
+                }
+                if options.debugger_static_scope_relation {
+                    command.arg("--debugger-static-scope-relation");
                 }
             }
             let mut child = command.spawn()?;

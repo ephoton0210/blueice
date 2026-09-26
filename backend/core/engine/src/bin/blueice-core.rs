@@ -134,6 +134,8 @@ struct Args {
     /// Core-owner opt-in for one compiler-verified symbol/contract relation
     /// under separately inventoried IDs. It exposes no plan or static record.
     debugger_static_metadata_symbol_contract: bool,
+    /// Independent compiler-only paused lexical-slot relation grant.
+    debugger_static_scope_relation: bool,
     /// Optional listener for queries over projects a trusted core owner
     /// registered during startup. Its protocol does not accept registration,
     /// source, path, resolver, compiler-option, build, or write requests.
@@ -207,6 +209,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_contract_location = false;
     let mut debugger_static_metadata_symbol_type = false;
     let mut debugger_static_metadata_symbol_contract = false;
+    let mut debugger_static_scope_relation = false;
     let mut compiler_socket = None;
     let mut compiler_project_profile = None;
     let mut compiler_catalog_stdin = false;
@@ -289,6 +292,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--debugger-static-metadata-symbol-contract" => {
                 debugger_static_metadata_symbol_contract = true
             }
+            "--debugger-static-scope-relation" => debugger_static_scope_relation = true,
             "--compiler-socket" => compiler_socket = Some(PathBuf::from(value()?)),
             "--compiler-project-profile" => compiler_project_profile = Some(value()?),
             "--compiler-catalog-stdin" => compiler_catalog_stdin = true,
@@ -589,6 +593,27 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if debugger_static_metadata_symbol_contract && !debugger_static_metadata_contract_inventory {
         return Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-contract-inventory".to_string());
     }
+    if debugger_static_scope_relation && debugger_socket.is_none() {
+        return Err("--debugger-static-scope-relation requires --debugger-socket".to_string());
+    }
+    if debugger_static_scope_relation && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-scope-relation requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_scope_relation && !debugger_static_metadata_type_inventory {
+        return Err(
+            "--debugger-static-scope-relation requires --debugger-static-metadata-type-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_scope_relation && !debugger_static_metadata_symbol_inventory {
+        return Err(
+            "--debugger-static-scope-relation requires --debugger-static-metadata-symbol-inventory"
+                .to_string(),
+        );
+    }
     if owner_bootstrap_stdin
         && (compiler_catalog_stdin || out_of_process_bluejs_page_script_profile.is_some())
     {
@@ -635,6 +660,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_contract_location,
         debugger_static_metadata_symbol_type,
         debugger_static_metadata_symbol_contract,
+        debugger_static_scope_relation,
         compiler_socket,
         compiler_project_profile,
         compiler_catalog_stdin,
@@ -1150,7 +1176,7 @@ fn main() -> ExitCode {
     let script_session_token = args.script_session_token.clone();
     let debugger_socket = args.debugger_socket.clone();
     // The owner choice is carried to this core generation's debugger
-    // listener and intersected with each client's v37 Hello request.
+    // listener and intersected with each client's current-version Hello request.
     let debugger_bounded_values = args.debugger_bounded_values;
     let debugger_allowed_metadata_capabilities = if args.debugger_static_metadata_inventory {
         blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_selected(
@@ -1173,6 +1199,7 @@ fn main() -> ExitCode {
                 contract_location: args.debugger_static_metadata_contract_location,
                 symbol_type: args.debugger_static_metadata_symbol_type,
                 symbol_contract: args.debugger_static_metadata_symbol_contract,
+                static_scope_relation: args.debugger_static_scope_relation,
             },
         )
     } else {
@@ -1544,6 +1571,51 @@ mod tests {
     }
 
     #[test]
+    fn static_scope_relation_requires_independent_owner_prerequisites() {
+        let flag = "--debugger-static-scope-relation";
+        let socket = ["--socket", "/tmp/x.sock"];
+        assert_eq!(
+            args(&[socket[0], socket[1], flag]),
+            Err(format!("{flag} requires --debugger-socket"))
+        );
+        let mut flags = vec![
+            socket[0],
+            socket[1],
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+        ];
+        flags.push(flag);
+        assert_eq!(
+            args(&flags),
+            Err(format!(
+                "{flag} requires --debugger-static-metadata-inventory"
+            ))
+        );
+        flags.insert(flags.len() - 1, "--debugger-static-metadata-inventory");
+        assert_eq!(
+            args(&flags),
+            Err(format!(
+                "{flag} requires --debugger-static-metadata-type-inventory"
+            ))
+        );
+        flags.insert(flags.len() - 1, "--debugger-static-metadata-type-inventory");
+        assert_eq!(
+            args(&flags),
+            Err(format!(
+                "{flag} requires --debugger-static-metadata-symbol-inventory"
+            ))
+        );
+        flags.insert(
+            flags.len() - 1,
+            "--debugger-static-metadata-symbol-inventory",
+        );
+        let parsed = args(&flags).unwrap();
+        assert!(parsed.debugger_static_scope_relation);
+        assert!(!parsed.debugger_bounded_values);
+        assert!(!args(&socket).unwrap().debugger_static_scope_relation);
+    }
+
+    #[test]
     fn socket_alone_uses_default_width_height_and_frame_dir() {
         let parsed = args(&["--socket", "/tmp/x.sock"]).unwrap();
         assert_eq!(parsed.socket, PathBuf::from("/tmp/x.sock"));
@@ -1705,6 +1777,7 @@ mod tests {
                 debugger_static_metadata_contract_location: false,
                 debugger_static_metadata_symbol_type: false,
                 debugger_static_metadata_symbol_contract: false,
+                debugger_static_scope_relation: false,
                 compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
                 compiler_project_profile: Some("core-closed-fixture-v1".to_string()),
                 compiler_catalog_stdin: false,

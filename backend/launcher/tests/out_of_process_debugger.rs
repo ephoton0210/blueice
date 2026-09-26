@@ -2925,6 +2925,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                             contract_display: true,
                             contract_validation: true,
                             lowering_summary: true,
+                            static_scope_relation: false,
                         },
                     ),
             },
@@ -2952,6 +2953,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                     contract_display: true,
                     contract_validation: true,
                     lowering_summary: true,
+                    static_scope_relation: false,
                 },
             ),
         }

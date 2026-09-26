@@ -89,7 +89,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 40;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 41;
 
 pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -1355,6 +1355,9 @@ pub enum DebuggerCapability {
     Scopes,
     ExceptionPolicy,
     BoundedValues,
+    /// Compiler-only symbol/type relation for a receipted paused lexical
+    /// slot. It does not imply the independently granted runtime Value read.
+    StaticScopeRelation,
     /// A bounded inventory of source-free, generation-bound static metadata
     /// handles. This does not grant source text, source identity, spans,
     /// symbols, types, contracts, bytecode, runtime values, or a general
@@ -1519,6 +1522,10 @@ pub enum DebuggerMetadataCapability {
     /// Steps one paused root-classic BlueTS span only after exact metadata and
     /// source receipts and an independent owner/client execution grant.
     OpaqueSourceSpanStep,
+    /// Relates one receipted paused lexical slot to separately inventoried
+    /// compiler symbol/type IDs. This is independent from `OpaqueSymbolType`
+    /// and bounded runtime values.
+    OpaqueStaticScopeRelation,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -1557,6 +1564,7 @@ impl DebuggerMetadataCapability {
                 Some(DebuggerCapability::StaticMetadataSourceBreakpoint)
             }
             Self::OpaqueSourceSpanStep => Some(DebuggerCapability::StaticMetadataSourceSpanStep),
+            Self::OpaqueStaticScopeRelation => Some(DebuggerCapability::StaticScopeRelation),
             Self::Unknown => None,
         }
     }
@@ -1582,6 +1590,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueSafePointSpan => Some(16),
             Self::OpaqueSourceBreakpoint => Some(17),
             Self::OpaqueSourceSpanStep => Some(18),
+            Self::OpaqueStaticScopeRelation => Some(19),
             Self::Unknown => None,
         }
     }
@@ -1591,7 +1600,7 @@ impl DebuggerMetadataCapability {
 /// capability manifest. It is intentionally separate from the transport
 /// version so future metadata operations cannot be inferred from a transport
 /// upgrade alone.
-pub const DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION: u32 = 4;
+pub const DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION: u32 = 5;
 
 /// A canonical requested or granted metadata-capability set for one debugger
 /// transport session. It carries capability identifiers only: no realm,
@@ -1631,6 +1640,7 @@ pub struct DebuggerMetadataCapabilitySelection {
     pub safe_point_span: bool,
     pub source_breakpoint: bool,
     pub source_span_step: bool,
+    pub static_scope_relation: bool,
 }
 
 impl DebuggerMetadataCapabilityManifest {
@@ -1938,6 +1948,7 @@ impl DebuggerMetadataCapabilityManifest {
             safe_point_span,
             source_breakpoint,
             source_span_step,
+            static_scope_relation,
         } = selection;
         let any = summary
             || source_inventory
@@ -1956,7 +1967,8 @@ impl DebuggerMetadataCapabilityManifest {
             || symbol_contract
             || safe_point_span
             || source_breakpoint
-            || source_span_step;
+            || source_span_step
+            || static_scope_relation;
         let mut capabilities = Vec::new();
         if any {
             capabilities.push(DebuggerMetadataCapability::OpaqueInventory);
@@ -1976,13 +1988,19 @@ impl DebuggerMetadataCapabilityManifest {
         if source_provenance {
             capabilities.push(DebuggerMetadataCapability::OpaqueSourceProvenance);
         }
-        if type_inventory || type_display || symbol_type {
+        if type_inventory || type_display || symbol_type || static_scope_relation {
             capabilities.push(DebuggerMetadataCapability::OpaqueTypeInventory);
         }
         if type_display {
             capabilities.push(DebuggerMetadataCapability::OpaqueTypeDisplay);
         }
-        if symbol_inventory || symbol_display || symbol_location || symbol_type || symbol_contract {
+        if symbol_inventory
+            || symbol_display
+            || symbol_location
+            || symbol_type
+            || symbol_contract
+            || static_scope_relation
+        {
             capabilities.push(DebuggerMetadataCapability::OpaqueSymbolInventory);
         }
         if contract_inventory
@@ -2025,6 +2043,9 @@ impl DebuggerMetadataCapabilityManifest {
         }
         if source_span_step {
             capabilities.push(DebuggerMetadataCapability::OpaqueSourceSpanStep);
+        }
+        if static_scope_relation {
+            capabilities.push(DebuggerMetadataCapability::OpaqueStaticScopeRelation);
         }
         let manifest = Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
@@ -2223,6 +2244,18 @@ impl DebuggerMetadataCapabilityManifest {
                     && self
                         .capabilities
                         .contains(&DebuggerMetadataCapability::OpaqueSafePointSpan)))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueStaticScopeRelation)
+                || (self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueTypeInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueSymbolInventory)))
     }
 
     /// Whether this well-formed manifest contains one exact capability.
@@ -3200,6 +3233,17 @@ pub enum DebuggerRequest {
         expected_safe_point: DebuggerSafePoint,
         max_scope_entries: u32,
     },
+    /// Reads only the entry-root lexical slots of one complete linked pause.
+    /// An incomplete reply does not mint a static-scope receipt.
+    GetLinkedScopes {
+        expected_stack: DebuggerLinkedStackSnapshot,
+        max_scope_entries: u32,
+    },
+    /// Returns a compiler-only relation for an exact same-stream paused slot
+    /// after the independent static grant and all three inventories.
+    GetStaticScopeRelation {
+        target: DebuggerStaticScopeTarget,
+    },
     /// Reads only a Scopes slot receipted on this debugger stream during the
     /// same core-owned pause incarnation and independently granted in Hello.
     GetValue {
@@ -3355,6 +3399,8 @@ pub enum DebuggerReply {
     Stack(DebuggerStackSnapshot),
     StackCoordinates(DebuggerStackCoordinates),
     Scopes(DebuggerScopeSnapshot),
+    LinkedScopes(Box<DebuggerLinkedScopeSnapshot>),
+    StaticScopeRelation(Box<DebuggerStaticScopeRelation>),
     Value(Box<DebuggerValueSnapshot>),
     ExecutionSourceSpanStepRequested {
         safe_point: DebuggerSafePoint,
@@ -3472,6 +3518,8 @@ pub fn negotiate_with_values(
         | DebuggerRequest::GetStack { .. }
         | DebuggerRequest::GetStackCoordinates { .. }
         | DebuggerRequest::GetScopes { .. }
+        | DebuggerRequest::GetLinkedScopes { .. }
+        | DebuggerRequest::GetStaticScopeRelation { .. }
         | DebuggerRequest::GetValue { .. }
         | DebuggerRequest::GetSourceText { .. }
         | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
@@ -3947,6 +3995,142 @@ mod tests {
             serde_json::from_slice::<DebuggerStaticScopeRelation>(&encoded).unwrap(),
             relation
         );
+    }
+
+    #[test]
+    fn public_static_scope_grant_and_wire_are_independent_of_values() {
+        let manifest = DebuggerMetadataCapabilityManifest::opaque_selected(
+            DebuggerMetadataCapabilitySelection {
+                static_scope_relation: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(DEBUGGER_PROTOCOL_VERSION, 41);
+        assert_eq!(DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION, 5);
+        assert_eq!(
+            manifest.capabilities,
+            vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueTypeInventory,
+                DebuggerMetadataCapability::OpaqueSymbolInventory,
+                DebuggerMetadataCapability::OpaqueStaticScopeRelation,
+            ]
+        );
+        for capabilities in [
+            vec![DebuggerMetadataCapability::OpaqueStaticScopeRelation],
+            vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueStaticScopeRelation,
+            ],
+        ] {
+            assert!(!DebuggerMetadataCapabilityManifest {
+                version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+                capabilities,
+            }
+            .is_well_formed());
+        }
+        let hello = hello(manifest.clone());
+        let ack = negotiate(&hello, &manifest);
+        let session = metadata_session_authorization(&hello, &ack).unwrap();
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueStaticScopeRelation));
+        assert!(!session.permits_bounded_values());
+        let no_owner_ack = negotiate(&hello, &DebuggerMetadataCapabilityManifest::empty());
+        assert!(!metadata_session_authorization(&hello, &no_owner_ack)
+            .unwrap()
+            .permits(DebuggerMetadataCapability::OpaqueStaticScopeRelation));
+
+        let dependency = DebuggerProgram {
+            realm: realm(),
+            program_handle: 11,
+            program_generation: 12,
+        };
+        let entry = DebuggerProgram {
+            realm: realm(),
+            program_handle: 21,
+            program_generation: 22,
+        };
+        let points = [
+            DebuggerSafePoint {
+                program: dependency,
+                code_unit_ordinal: 1,
+                bytecode_offset: 4,
+            },
+            DebuggerSafePoint {
+                program: entry,
+                code_unit_ordinal: 0,
+                bytecode_offset: 8,
+            },
+        ];
+        let stack = DebuggerLinkedStackSnapshot {
+            frames: [0, 1].map(|index| DebuggerLinkedStackFrame {
+                frame: DebuggerLinkedFrame {
+                    program: points[index].program,
+                    code_unit_ordinal: points[index].code_unit_ordinal,
+                    core_instance: [7; 16],
+                    frame_handle: index as u64 + 1,
+                },
+                safe_point: points[index],
+            }),
+        };
+        let scopes = DebuggerLinkedScopeSnapshot {
+            stack,
+            frame_index: 1,
+            entries: vec![DebuggerScopeEntry {
+                slot_ordinal: 0,
+                scope_depth: 0,
+            }],
+            scope_truncated: false,
+            max_scope_entries: 4,
+        };
+        let target = DebuggerStaticScopeTarget::Linked {
+            metadata: DebuggerStaticMetadataHandle {
+                program: entry,
+                metadata_handle: 31,
+                metadata_generation: 41,
+            },
+            target: DebuggerLinkedScopeTarget {
+                stack,
+                frame_index: 1,
+                scope_entry: scopes.entries[0],
+            },
+        };
+        let relation = DebuggerStaticScopeRelation {
+            target,
+            symbol: DebuggerStaticMetadataSymbolId {
+                metadata: target.metadata(),
+                symbol_id: 2,
+            },
+            static_type: DebuggerStaticMetadataTypeId {
+                metadata: target.metadata(),
+                type_id: 1,
+            },
+        };
+        for request in [
+            DebuggerRequest::GetLinkedScopes {
+                expected_stack: stack,
+                max_scope_entries: 4,
+            },
+            DebuggerRequest::GetStaticScopeRelation { target },
+        ] {
+            let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+            write_debugger_request(&mut sender, &request).unwrap();
+            assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
+            assert!(matches!(
+                negotiate(&request, &manifest),
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::ProtocolVersion,
+                    ..
+                }
+            ));
+        }
+        for reply in [
+            DebuggerReply::LinkedScopes(Box::new(scopes)),
+            DebuggerReply::StaticScopeRelation(Box::new(relation)),
+        ] {
+            let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+            write_debugger_reply(&mut sender, &reply).unwrap();
+            assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+        }
     }
 
     #[test]

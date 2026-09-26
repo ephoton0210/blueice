@@ -443,6 +443,8 @@ pub fn handle_debugger_request_with_javascript_executor(
             unavailable_static_metadata_safe_point_span()
         }
         DebuggerRequest::GetScopes { .. } => unavailable_scopes(),
+        DebuggerRequest::GetLinkedScopes { .. } => unavailable_scopes(),
+        DebuggerRequest::GetStaticScopeRelation { .. } => unavailable_static_scope_relation(),
         DebuggerRequest::GetValue { .. } => unavailable_values(),
         DebuggerRequest::Hello { .. } => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
@@ -711,9 +713,11 @@ fn handle_debugger_request_with_child_locations_and_pause(
                 max_scope_entries,
             );
             if let DebuggerReply::Scopes(snapshot) = &reply {
-                if metadata_session.is_some_and(|session| session.permits_bounded_values())
-                    && !metadata_session
-                        .is_some_and(|session| session.observe_scopes(snapshot, pause_incarnation))
+                if metadata_session.is_some_and(|session| {
+                    session.permits_bounded_values()
+                        || session.permits(DebuggerMetadataCapability::OpaqueStaticScopeRelation)
+                }) && !metadata_session
+                    .is_some_and(|session| session.observe_scopes(snapshot, pause_incarnation))
                 {
                     return DebuggerReply::Error {
                         code: DebuggerErrorCode::ResourceLimit,
@@ -723,6 +727,36 @@ fn handle_debugger_request_with_child_locations_and_pause(
             }
             reply
         }
+        DebuggerRequest::GetLinkedScopes {
+            expected_stack,
+            max_scope_entries,
+        } => match staged_child_linked_scopes(tabs, locations, expected_stack, max_scope_entries) {
+            Ok(snapshot) => {
+                if !snapshot.scope_truncated
+                    && metadata_session.is_some_and(|session| {
+                        session.permits(DebuggerMetadataCapability::OpaqueStaticScopeRelation)
+                    })
+                    && !metadata_session.is_some_and(|session| {
+                        session.observe_linked_scopes(&snapshot, pause_incarnation)
+                    })
+                {
+                    DebuggerReply::Error {
+                        code: DebuggerErrorCode::ResourceLimit,
+                        message: "debugger linked scope receipt budget is exhausted".to_string(),
+                    }
+                } else {
+                    DebuggerReply::LinkedScopes(Box::new(snapshot))
+                }
+            }
+            Err(reply) => *reply,
+        },
+        DebuggerRequest::GetStaticScopeRelation { target } => child_static_scope_relation(
+            tabs,
+            locations,
+            metadata_session,
+            pause_incarnation,
+            target,
+        ),
         DebuggerRequest::GetValue { target } => match child_value_snapshot(
             tabs,
             locations,
@@ -894,6 +928,12 @@ fn describe_child_location_capabilities(
         && metadata_session
             .is_some_and(|session| session.permits(DebuggerMetadataCapability::OpaqueSymbolType))
         && locations.debugger_static_metadata_symbol_type_available();
+    let static_scope_relation_available = scopes_available
+        && static_metadata_type_inventory_available
+        && static_metadata_symbol_inventory_available
+        && metadata_session.is_some_and(|session| {
+            session.permits(DebuggerMetadataCapability::OpaqueStaticScopeRelation)
+        });
     let static_metadata_symbol_contract_available = static_metadata_contract_inventory_available
         && static_metadata_symbol_inventory_available
         && metadata_session.is_some_and(|session| {
@@ -940,6 +980,7 @@ fn describe_child_location_capabilities(
             static_metadata_contract_location_available,
             static_metadata_symbol_type_available,
             static_metadata_symbol_contract_available,
+            static_scope_relation_available,
         }),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -3828,10 +3869,9 @@ fn child_scopes(
     })
 }
 
-/// Staged core-side linked entry-root scopes. A later public request must
-/// mint a same-stream receipt only for a complete result; this helper neither
-/// grants a static relation nor returns dependency captures.
-#[allow(dead_code)]
+/// Core-side linked entry-root scopes. Public dispatch mints a same-stream
+/// receipt only for a complete result; this helper neither grants a static
+/// relation nor returns dependency captures.
 fn staged_child_linked_scopes(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,
@@ -3897,10 +3937,8 @@ fn staged_child_linked_scopes(
     Ok(snapshot)
 }
 
-/// Core-session staging point for a static-only paused-slot relation. It is
-/// deliberately not dispatched by any public request: C3.1.3.4 must supply
-/// independent owner/client grants and same-stream scope/type receipts first.
-#[allow(dead_code)]
+/// Rechecks a static-only paused-slot relation against the live child. Public
+/// dispatch must first establish independent grant and same-stream receipts.
 fn private_core_static_scope_relation(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,
@@ -4001,10 +4039,8 @@ fn private_core_static_scope_relation(
     Ok(relation)
 }
 
-/// Staged session-side static relation. The `granted` flag must later come
-/// only from the independently negotiated owner/client capability for this
-/// exact live realm; no public request calls this helper in debugger v40.
-#[allow(dead_code)]
+/// Session-side static relation. The `granted` flag comes only from the
+/// independently negotiated owner/client capability for this exact live realm.
 fn staged_child_static_scope_relation(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,
@@ -4106,6 +4142,48 @@ fn staged_child_static_scope_relation(
         return Err(unavailable());
     }
     Ok(public)
+}
+
+fn child_static_scope_relation(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    session: Option<&DebuggerMetadataSessionAuthorization>,
+    pause_incarnation: u64,
+    target: DebuggerStaticScopeTarget,
+) -> DebuggerReply {
+    if !target.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger static scope target".to_string(),
+        };
+    }
+    let realm = target.metadata().program.realm;
+    let granted = session.is_some_and(|session| {
+        let DebuggerReply::Capabilities(capabilities) =
+            describe_child_location_capabilities(tabs, locations, Some(session), realm)
+        else {
+            return false;
+        };
+        capabilities
+            .authorize_metadata(
+                session,
+                DebuggerMetadataCapability::OpaqueStaticScopeRelation,
+            )
+            .is_some_and(|authorization| {
+                authorization.permits(realm, DebuggerMetadataCapability::OpaqueStaticScopeRelation)
+            })
+    });
+    match staged_child_static_scope_relation(
+        tabs,
+        locations,
+        session,
+        granted,
+        pause_incarnation,
+        target,
+    ) {
+        Ok(relation) => DebuggerReply::StaticScopeRelation(Box::new(relation)),
+        Err(reply) => *reply,
+    }
 }
 
 /// Private core-side half of the public value route. The caller must
@@ -4423,6 +4501,7 @@ fn describe_capabilities(
             static_metadata_contract_location_available: false,
             static_metadata_symbol_type_available: false,
             static_metadata_symbol_contract_available: false,
+            static_scope_relation_available: false,
         }),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -5076,6 +5155,15 @@ fn unavailable_values() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_scope_relation() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message:
+            "static scope relations require an independent owner/client grant and live child route"
+                .to_string(),
+    }
+}
+
 fn debugger_program_error(error: JavaScriptPageDebuggerError) -> DebuggerReply {
     let (code, message) = match error {
         JavaScriptPageDebuggerError::NoLiveRealm => (
@@ -5185,6 +5273,7 @@ struct DebuggerCapabilityAvailability {
     static_metadata_contract_location_available: bool,
     static_metadata_symbol_type_available: bool,
     static_metadata_symbol_contract_available: bool,
+    static_scope_relation_available: bool,
 }
 
 fn capability_reports(
@@ -5217,6 +5306,7 @@ fn capability_reports(
         static_metadata_contract_location_available,
         static_metadata_symbol_type_available,
         static_metadata_symbol_contract_available,
+        static_scope_relation_available,
     }: DebuggerCapabilityAvailability,
 ) -> Vec<DebuggerCapabilityReport> {
     [
@@ -5600,6 +5690,19 @@ fn capability_reports(
                 "compiler-verified symbol-to-contract relations are installed for prior symbol and contract-ID receipts"
             } else {
                 "static metadata symbol contracts require explicit inventory, symbol-inventory, contract-inventory, and symbol-contract session grants plus a live BlueTS child program"
+            },
+        ),
+        (
+            DebuggerCapability::StaticScopeRelation,
+            if static_scope_relation_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_scope_relation_available {
+                "compiler-only relations for receipted paused lexical slots are installed"
+            } else {
+                "static scope relations require independent owner/client and inventory grants plus a live child scope route"
             },
         ),
     ]
@@ -10877,6 +10980,22 @@ mod tests {
                 tab_id == self.tab_id && generation == self.generation
             }
 
+            fn debugger_execution_control_available(&self) -> bool {
+                true
+            }
+
+            fn debugger_static_metadata_inventory_available(&self) -> bool {
+                true
+            }
+
+            fn debugger_static_metadata_type_inventory_available(&self) -> bool {
+                true
+            }
+
+            fn debugger_static_metadata_symbol_inventory_available(&self) -> bool {
+                true
+            }
+
             fn max_debugger_safe_points_per_program(&self) -> usize {
                 1
             }
@@ -11329,5 +11448,297 @@ mod tests {
         locations.linked_scope.stack = linked_stack;
         locations.scopes_available = false;
         assert!(staged_child_linked_scopes(&tabs, &mut locations, expected, 2).is_err());
+
+        locations.scopes_available = true;
+        locations.changed_echo = None;
+        locations.linked_scope.scope_entries = vec![slot];
+        let route_manifest =
+            blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_selected(
+                blueice_ipc::debugger::DebuggerMetadataCapabilitySelection {
+                    static_scope_relation: true,
+                    ..Default::default()
+                },
+            );
+        let route_hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
+            requested_metadata_capabilities: route_manifest.clone(),
+        };
+        let route_ack = blueice_ipc::debugger::negotiate(&route_hello, &route_manifest);
+        let routed =
+            blueice_ipc::debugger::metadata_session_authorization(&route_hello, &route_ack)
+                .unwrap();
+        let routed_other =
+            blueice_ipc::debugger::metadata_session_authorization(&route_hello, &route_ack)
+                .unwrap();
+        assert!(!routed.permits_bounded_values());
+        let DebuggerReply::Capabilities(capabilities) =
+            describe_child_location_capabilities(&tabs, &mut locations, Some(&routed), realm)
+        else {
+            panic!("live child must describe its separately granted capabilities");
+        };
+        assert!(capabilities
+            .authorize_metadata(
+                &routed,
+                DebuggerMetadataCapability::OpaqueStaticScopeRelation
+            )
+            .is_some());
+        let DebuggerReply::Capabilities(no_grant_capabilities) =
+            describe_child_location_capabilities(&tabs, &mut locations, Some(&session), realm)
+        else {
+            panic!("ungranted stream should still describe planned capabilities");
+        };
+        assert!(no_grant_capabilities
+            .authorize_metadata(
+                &session,
+                DebuggerMetadataCapability::OpaqueStaticScopeRelation
+            )
+            .is_none());
+        let relation_request = |target| DebuggerRequest::GetStaticScopeRelation { target };
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                1,
+                relation_request(public_targets[0]),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::CapabilityUnavailable,
+                ..
+            }
+        ));
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&routed),
+                1,
+                relation_request(public_targets[1]),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+        locations
+            .linked_scope
+            .scope_entries
+            .push(JavaScriptPageDebuggerScopeEntry {
+                slot_ordinal: 1,
+                scope_depth: 1,
+            });
+        let DebuggerReply::LinkedScopes(truncated) =
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&routed),
+                1,
+                DebuggerRequest::GetLinkedScopes {
+                    expected_stack: expected,
+                    max_scope_entries: 1,
+                },
+            )
+        else {
+            panic!("linked scopes should allow a visibly truncated read");
+        };
+        assert!(truncated.scope_truncated);
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&routed),
+                1,
+                relation_request(public_targets[1]),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+        locations.linked_scope.scope_entries.pop();
+        let DebuggerReply::LinkedScopes(complete) =
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&routed),
+                1,
+                DebuggerRequest::GetLinkedScopes {
+                    expected_stack: expected,
+                    max_scope_entries: 2,
+                },
+            )
+        else {
+            panic!("complete linked scopes should be available");
+        };
+        assert!(!complete.scope_truncated);
+        let DebuggerReply::Scopes(_) = handle_debugger_request_with_child_locations_and_pause(
+            &tabs,
+            &mut locations,
+            Some(&routed),
+            1,
+            DebuggerRequest::GetScopes {
+                program: public_entry,
+                frame: None,
+                frame_index: 0,
+                expected_safe_point: public_value.safe_point,
+                max_scope_entries: 2,
+            },
+        ) else {
+            panic!("ordinary scopes should be available without Value authority");
+        };
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&routed),
+                1,
+                DebuggerRequest::GetValue {
+                    target: public_value,
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::CapabilityUnavailable,
+                ..
+            }
+        ));
+        assert!(routed.observe_metadata(&[public_metadata]));
+        assert!(routed.observe_symbols(&[symbol]));
+        assert!(routed.observe_types(&[static_type]));
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&routed_other),
+                1,
+                relation_request(public_targets[1]),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+        let malformed = DebuggerStaticScopeTarget::Linked {
+            metadata: DebuggerStaticMetadataHandle {
+                program: DebuggerProgram {
+                    program_generation: public_entry.program_generation + 1,
+                    ..public_entry
+                },
+                ..public_metadata
+            },
+            target: blueice_ipc::debugger::DebuggerLinkedScopeTarget {
+                stack: expected,
+                frame_index: 1,
+                scope_entry: public_slot,
+            },
+        };
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&routed),
+                1,
+                relation_request(malformed),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+        for target in public_targets {
+            assert_eq!(
+                handle_debugger_request_with_child_locations_and_pause(
+                    &tabs,
+                    &mut locations,
+                    Some(&routed),
+                    1,
+                    relation_request(target),
+                ),
+                DebuggerReply::StaticScopeRelation(Box::new(DebuggerStaticScopeRelation {
+                    target,
+                    symbol,
+                    static_type,
+                }))
+            );
+            assert!(matches!(
+                handle_debugger_request_with_child_locations_and_pause(
+                    &tabs,
+                    &mut locations,
+                    Some(&routed),
+                    2,
+                    relation_request(target),
+                ),
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    ..
+                }
+            ));
+        }
+        locations.linked.frames[1].safe_point.bytecode_offset += 1;
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&routed),
+                1,
+                relation_request(public_targets[1]),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                ..
+            }
+        ));
+        locations.linked = linked_stack;
+        locations.changed_echo = Some(ordinary);
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&routed),
+                1,
+                relation_request(public_targets[1]),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                ..
+            }
+        ));
+
+        let full = blueice_ipc::debugger::metadata_session_authorization(&route_hello, &route_ack)
+            .unwrap();
+        for batch in 0..16 {
+            assert!(full.observe_scopes(
+                &DebuggerScopeSnapshot {
+                    program: public_entry,
+                    frame: None,
+                    frame_index: 0,
+                    safe_point: public_value.safe_point,
+                    entries: (0..256)
+                        .map(|index| DebuggerScopeEntry {
+                            slot_ordinal: batch * 256 + index,
+                            scope_depth: 0,
+                        })
+                        .collect(),
+                    scope_truncated: false,
+                },
+                1,
+            ));
+        }
+        assert!(matches!(
+            handle_debugger_request_with_child_locations_and_pause(
+                &tabs,
+                &mut locations,
+                Some(&full),
+                1,
+                DebuggerRequest::GetLinkedScopes {
+                    expected_stack: expected,
+                    max_scope_entries: 2,
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::ResourceLimit,
+                ..
+            }
+        ));
     }
 }

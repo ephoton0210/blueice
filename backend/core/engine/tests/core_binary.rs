@@ -3062,8 +3062,8 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
     // This crosses both real sockets: the public debugger reaches the core
     // session, which in turn reaches the separately owned BlueJS child over
     // its private capability-authenticated page-host transport. The explicit
-    // debugger listener activates only the root-classic state machine: it
-    // must never become generic child interruption or VM inspection.
+    // debugger listener activates bounded root-classic control and source-free
+    // stack/scope inspection, never generic child interruption or VM values.
     const PAGE_SECRET: &str = "OOP_DEBUGGER_BREAKPOINT_SECRET_DO_NOT_DISCLOSE";
     let socket_path = unique_socket_path("oop-debugger-core");
     let debugger_socket_path = unique_socket_path("oop-debugger-host");
@@ -3204,7 +3204,15 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
     for capability in [
         blueice_ipc::debugger::DebuggerCapability::Stack,
         blueice_ipc::debugger::DebuggerCapability::Scopes,
+    ] {
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == capability
+                && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+        }));
+    }
+    for capability in [
         blueice_ipc::debugger::DebuggerCapability::BoundedValues,
+        blueice_ipc::debugger::DebuggerCapability::StaticScopeRelation,
     ] {
         assert!(capabilities.reports.iter().any(|report| {
             report.capability == capability

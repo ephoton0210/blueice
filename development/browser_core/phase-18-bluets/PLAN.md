@@ -2250,6 +2250,33 @@ foreign stream, forged slot or metadata, moved linked stack, and changed
 private echo. Launcher/core startup tests cover prerequisite failures. Real
 Launcher socket acceptance remains C3.1.3.4.7.
 
+**C3.1.3.4.6.2 guarded public route delivered:** The complete route now
+ships as debugger v41 with canonical metadata manifest v5. Launcher and core
+both require an explicit default-off `--debugger-static-scope-relation` owner
+selection with debugger socket plus opaque metadata, type, and symbol
+inventories; the client separately requests `OpaqueStaticScopeRelation` in
+Hello. A live child advertises `StaticScopeRelation` only when Scopes and all
+three prerequisites are available for that stream. `GetLinkedScopes` remaps
+and reacquires the complete linked stack, returning only bounded entry-root
+slots; an untruncated complete reply can mint a linked same-stream receipt.
+Ordinary `GetScopes` likewise mints a receipt for the independent static grant
+without a value grant. `GetStaticScopeRelation` then requires the exact pause
+receipt, metadata receipt, symbol/type inventory receipts, live realm and
+active slot, and full private target echo before returning one boxed,
+parent-bound opaque pair. The existing `GetValue` gate still requires
+`BoundedValues` and only an ordinary receipt.
+
+Focused IPC wire/manifest, core dispatch, and both owner-option tests pass.
+The core denial matrix covers missing owner/client grant, missing or foreign
+receipt, stale pause, malformed target, moved linked stack, altered private
+echo, truncated linked scope, and combined receipt-cap exhaustion. The full
+workspace test suite, workspace Clippy, formatting, and diff checks pass.
+One old core-binary test still expected Stack/Scopes to be Planned on the
+out-of-process route; it was updated to assert their already available
+source-free state while retaining Planned runtime values and the new static
+relation without a grant. Real Launcher public-socket acceptance and
+no-partial lifecycle tests remain C3.1.3.4.7.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

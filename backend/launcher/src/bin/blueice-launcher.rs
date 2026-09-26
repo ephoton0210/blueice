@@ -138,6 +138,8 @@ struct Args {
     /// Owner opt-in for one compiler-verified symbol/contract relation under
     /// separately inventoried opaque IDs. It exposes no plan or record.
     debugger_static_metadata_symbol_contract: bool,
+    /// Independent owner opt-in for compiler-only paused-slot relations.
+    debugger_static_scope_relation: bool,
     /// Test/debug-only: use a [`memory_pressure::FixedMemorySource`]
     /// reporting zero availability instead of real host memory, so the
     /// memory-pressure-response path can be exercised deterministically
@@ -187,6 +189,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_contract_location = false;
     let mut debugger_static_metadata_symbol_type = false;
     let mut debugger_static_metadata_symbol_contract = false;
+    let mut debugger_static_scope_relation = false;
     let mut simulate_low_memory = false;
     let mut memory_poll_interval = memory_pressure::DEFAULT_POLL_INTERVAL;
 
@@ -265,6 +268,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--debugger-static-metadata-symbol-contract" => {
                 debugger_static_metadata_symbol_contract = true
             }
+            "--debugger-static-scope-relation" => debugger_static_scope_relation = true,
             "--simulate-low-memory" => simulate_low_memory = true,
             "--memory-poll-interval-ms" => {
                 let ms: u64 = value()?
@@ -501,6 +505,27 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if debugger_static_metadata_symbol_contract && !debugger_static_metadata_contract_inventory {
         return Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-contract-inventory".to_string());
     }
+    if debugger_static_scope_relation && debugger_socket.is_none() {
+        return Err("--debugger-static-scope-relation requires --debugger-socket".to_string());
+    }
+    if debugger_static_scope_relation && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-scope-relation requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_scope_relation && !debugger_static_metadata_type_inventory {
+        return Err(
+            "--debugger-static-scope-relation requires --debugger-static-metadata-type-inventory"
+                .to_string(),
+        );
+    }
+    if debugger_static_scope_relation && !debugger_static_metadata_symbol_inventory {
+        return Err(
+            "--debugger-static-scope-relation requires --debugger-static-metadata-symbol-inventory"
+                .to_string(),
+        );
+    }
     if compiler_catalog_file.is_some() && compiler_mcp_socket.is_none() {
         return Err("--compiler-catalog-file requires --compiler-mcp-socket".to_string());
     }
@@ -539,6 +564,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_contract_location,
         debugger_static_metadata_symbol_type,
         debugger_static_metadata_symbol_contract,
+        debugger_static_scope_relation,
         simulate_low_memory,
         memory_poll_interval,
     })
@@ -666,6 +692,9 @@ fn main() -> ExitCode {
     }
     if args.debugger_static_metadata_symbol_contract {
         core_options = core_options.with_debugger_static_metadata_symbol_contract();
+    }
+    if args.debugger_static_scope_relation {
+        core_options = core_options.with_debugger_static_scope_relation();
     }
     let core =
         match SpawnedCore::spawn_with_options(args.width, args.height, &frame_dir, core_options) {
@@ -1052,6 +1081,7 @@ mod tests {
                 debugger_static_metadata_contract_location: true,
                 debugger_static_metadata_symbol_type: true,
                 debugger_static_metadata_symbol_contract: true,
+                debugger_static_scope_relation: false,
                 simulate_low_memory: true,
                 memory_poll_interval: Duration::from_millis(50),
             }
@@ -1104,6 +1134,44 @@ mod tests {
             args(&["--bogus"]),
             Err("unrecognized argument: --bogus".to_string())
         );
+    }
+
+    #[test]
+    fn static_scope_relation_requires_independent_owner_prerequisites() {
+        let flag = "--debugger-static-scope-relation";
+        assert_eq!(
+            args(&[flag]),
+            Err(format!("{flag} requires --debugger-socket"))
+        );
+        let mut flags = vec!["--debugger-socket", "/tmp/debugger.sock", flag];
+        assert_eq!(
+            args(&flags),
+            Err(format!(
+                "{flag} requires --debugger-static-metadata-inventory"
+            ))
+        );
+        flags.insert(flags.len() - 1, "--debugger-static-metadata-inventory");
+        assert_eq!(
+            args(&flags),
+            Err(format!(
+                "{flag} requires --debugger-static-metadata-type-inventory"
+            ))
+        );
+        flags.insert(flags.len() - 1, "--debugger-static-metadata-type-inventory");
+        assert_eq!(
+            args(&flags),
+            Err(format!(
+                "{flag} requires --debugger-static-metadata-symbol-inventory"
+            ))
+        );
+        flags.insert(
+            flags.len() - 1,
+            "--debugger-static-metadata-symbol-inventory",
+        );
+        let parsed = args(&flags).unwrap();
+        assert!(parsed.debugger_static_scope_relation);
+        assert!(!parsed.debugger_bounded_values);
+        assert!(!args(&[]).unwrap().debugger_static_scope_relation);
     }
 
     #[test]
