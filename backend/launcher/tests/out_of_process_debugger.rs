@@ -21,8 +21,9 @@ use blueice_ipc::debugger::{
     DebuggerMetadataCapabilityManifest, DebuggerMetadataCapabilitySelection, DebuggerPageRealm,
     DebuggerProgram, DebuggerReply, DebuggerRequest, DebuggerSafePoint,
     DebuggerStackCoordinatesTarget, DebuggerStaticMetadataSafePointSpanTarget,
-    DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSymbolKind, DebuggerValuePreview,
-    DebuggerValueTarget, DEBUGGER_PROTOCOL_VERSION,
+    DebuggerStaticMetadataSourceBreakpointTarget, DebuggerStaticMetadataSourceId,
+    DebuggerStaticMetadataSymbolKind, DebuggerStaticMetadataSymbolLocationTarget,
+    DebuggerValuePreview, DebuggerValueTarget, DEBUGGER_PROTOCOL_VERSION,
 };
 use blueice_ipc::owner_bootstrap::{
     OwnerHttpOriginRule, OwnerHttpPolicyBootstrap, OwnerHttpResource,
@@ -5857,7 +5858,10 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
         StaticMetadataPolicy {
             inventory: true,
             source_inventory: true,
+            symbol_inventory: true,
+            symbol_location: true,
             safe_point_span: true,
+            source_breakpoint: true,
             ..StaticMetadataPolicy::default()
         },
         Some(&policy_file),
@@ -5867,7 +5871,13 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
     let url = format!("{origin}/");
     navigate(&mut browser, &url);
 
-    let manifest = DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
+    let manifest =
+        DebuggerMetadataCapabilityManifest::opaque_selected(DebuggerMetadataCapabilitySelection {
+            safe_point_span: true,
+            source_breakpoint: true,
+            symbol_location: true,
+            ..DebuggerMetadataCapabilitySelection::default()
+        });
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
     assert_eq!(
         debugger_request(
@@ -5975,6 +5985,22 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
         handles[0]
     });
     assert_ne!(metadata[0], metadata[1]);
+    let guessed_dependency_source = DebuggerStaticMetadataSourceId {
+        metadata: metadata[0],
+        source_id: 0,
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResolveStaticMetadataSourceBreakpoint {
+                target: DebuggerStaticMetadataSourceBreakpointTarget {
+                    source: guessed_dependency_source,
+                    source_byte: 0,
+                },
+            },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
     let source_for = |debugger: &mut UnixStream, metadata| {
         let DebuggerReply::StaticMetadataSources(sources) = debugger_request(
             debugger,
@@ -6007,6 +6033,127 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
     ));
     let entry_source = source_for(&mut debugger, metadata[1]);
     assert_ne!(dependency_source, entry_source);
+    let mut matched_symbols = Vec::new();
+    for (program, source, original, position, declaration, ordinal) in [
+        (
+            dependency,
+            dependency_source,
+            LINKED_DEPENDENCY_SOURCE,
+            "function inner",
+            LINKED_DEPENDENCY_SOURCE,
+            1,
+        ),
+        (
+            entry,
+            entry_source,
+            LINKED_ENTRY_SOURCE,
+            "export const answer",
+            "export const answer: number = inner() + 1;",
+            0,
+        ),
+    ] {
+        let target = DebuggerStaticMetadataSourceBreakpointTarget {
+            source,
+            source_byte: original.find(position).unwrap() as u32,
+        };
+        let DebuggerReply::StaticMetadataSourceBreakpoint(binding) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target },
+        ) else {
+            panic!("module source position must resolve under its own program")
+        };
+        assert_eq!(binding.target, target);
+        let point = binding
+            .safe_point
+            .expect("module declaration must be bound");
+        assert_eq!(point.program, program);
+        assert_eq!(point.code_unit_ordinal, ordinal);
+        if program == dependency {
+            assert_eq!(point, dependency_safe_point);
+        }
+        let unbound = DebuggerStaticMetadataSourceBreakpointTarget {
+            source_byte: original.len() as u32,
+            ..target
+        };
+        let DebuggerReply::StaticMetadataSourceBreakpoint(binding) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target: unbound },
+        ) else {
+            panic!("module source end must return an explicit unbound result")
+        };
+        assert_eq!(binding.target, unbound);
+        assert_eq!(binding.safe_point, None);
+
+        let guessed_symbol = blueice_ipc::debugger::DebuggerStaticMetadataSymbolId {
+            metadata: source.metadata,
+            symbol_id: 0,
+        };
+        assert!(matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+                    target: DebuggerStaticMetadataSymbolLocationTarget {
+                        symbol: guessed_symbol,
+                        source,
+                    },
+                },
+            ),
+            DebuggerReply::Unsupported { .. }
+        ));
+        let DebuggerReply::StaticMetadataSymbols(symbols) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadataSymbols {
+                metadata: source.metadata,
+            },
+        ) else {
+            panic!("each module program must inventory its own symbol IDs")
+        };
+        let mut matching = None;
+        let mut seen = Vec::new();
+        for symbol in symbols {
+            let reply = debugger_request(
+                &mut debugger,
+                DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+                    target: DebuggerStaticMetadataSymbolLocationTarget { symbol, source },
+                },
+            );
+            let DebuggerReply::StaticMetadataSymbolLocation(location) = reply else {
+                panic!("receipted module symbol must have an original location: {reply:?}")
+            };
+            assert_eq!(location.symbol, symbol);
+            assert_eq!(location.source, source);
+            let slice = &original[location.start_byte as usize..location.end_byte as usize];
+            seen.push(slice);
+            if slice == declaration {
+                assert_eq!(location.coordinates.start_line, 0);
+                assert_eq!(
+                    location.coordinates.start_column_utf16,
+                    original[..location.start_byte as usize]
+                        .encode_utf16()
+                        .count() as u32
+                );
+                matching = Some(symbol);
+            }
+        }
+        matched_symbols.push(matching.unwrap_or_else(|| {
+            panic!("module declaration {declaration} not found in original locations {seen:?}")
+        }));
+    }
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+                target: DebuggerStaticMetadataSymbolLocationTarget {
+                    symbol: matched_symbols[0],
+                    source: entry_source,
+                },
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            ..
+        }
+    ));
     let target = DebuggerLinkedStackCoordinatesTarget {
         expected_stack: stack,
         sources: [dependency_source, entry_source],
@@ -6064,6 +6211,18 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
         DebuggerRequest::GetLinkedExecutionState { entry },
         DebuggerRequest::GetLinkedStackCoordinates { target },
         DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { target: arm },
+        DebuggerRequest::ResolveStaticMetadataSourceBreakpoint {
+            target: DebuggerStaticMetadataSourceBreakpointTarget {
+                source: dependency_source,
+                source_byte: LINKED_DEPENDENCY_SOURCE.find("function inner").unwrap() as u32,
+            },
+        },
+        DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+            target: DebuggerStaticMetadataSymbolLocationTarget {
+                symbol: matched_symbols[0],
+                source: dependency_source,
+            },
+        },
     ] {
         assert!(matches!(
             debugger_request(&mut debugger, request),

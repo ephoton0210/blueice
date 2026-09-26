@@ -121,10 +121,10 @@ pub struct DirectProgramAttachment {
 }
 
 impl DirectProgramAttachment {
-    /// Resolves a TypeScript UTF-8 byte position to the nearest following
-    /// lowered statement in this exact program generation. If the position is
-    /// inside a statement whose generated root has no instruction, or there is
-    /// no later statement in this canonical source, the result is explicitly
+    /// Resolves a TypeScript UTF-8 byte position in this exact program
+    /// generation. A verified nested instruction takes precedence over an
+    /// overlapping root declaration; otherwise the nearest following span
+    /// wins. An unbound selected span or exhausted source remains explicitly
     /// unbound. This never guesses a bytecode offset.
     pub fn breakpoint_at_or_after(
         &self,
@@ -134,23 +134,64 @@ impl DirectProgramAttachment {
         resolve_breakpoint_at_or_after(
             self.provenance
                 .iter()
-                .map(|provenance| (&provenance.source, provenance.safe_point)),
+                .map(|provenance| {
+                    (
+                        provenance.source.module.as_str(),
+                        provenance.source.start,
+                        provenance.source.end,
+                        provenance.safe_point,
+                    )
+                })
+                .chain(verified_child_breakpoint_spans(&self.safe_point_map)),
             source,
             source_byte,
         )
     }
 }
 
+fn verified_child_breakpoint_spans(
+    map: &BlueTsSafePointMapV1,
+) -> impl Iterator<Item = (&str, usize, usize, DirectSafePointBinding)> {
+    map.entries.iter().filter_map(|entry| {
+        (entry.code_unit.ordinal() != 0).then_some((
+            entry.source.as_str(),
+            entry.start_byte,
+            entry.end_byte,
+            DirectSafePointBinding::Bound(bluejs::BlueJsSafePoint {
+                code_unit: entry.code_unit,
+                bytecode_offset: entry.bytecode_offset,
+            }),
+        ))
+    })
+}
+
 fn resolve_breakpoint_at_or_after<'a>(
-    spans: impl Iterator<Item = (&'a SourceSpan, DirectSafePointBinding)>,
+    spans: impl Iterator<Item = (&'a str, usize, usize, DirectSafePointBinding)>,
     source: &str,
     source_byte: usize,
 ) -> DirectSafePointBinding {
+    // Prefer the most specific containing span, then the nearest following
+    // span. Identical declaration/function ranges prefer the verified child
+    // entry; multiple instructions in one range choose the earliest offset.
     spans
-        .filter(|(span, _)| span.module == source && span.end > source_byte)
-        .min_by_key(|(span, _)| (span.start.saturating_sub(source_byte), span.start, span.end))
-        .map_or(DirectSafePointBinding::Unbound, |(_, safe_point)| {
-            safe_point
+        .filter(|(module, _, end, _)| *module == source && *end > source_byte)
+        .min_by_key(|(_, start, end, binding)| {
+            let (ordinal, offset) = match binding {
+                DirectSafePointBinding::Bound(point) => {
+                    (point.code_unit.ordinal() as usize, point.bytecode_offset)
+                }
+                DirectSafePointBinding::Unbound => (0, u32::MAX),
+            };
+            (
+                start.saturating_sub(source_byte),
+                usize::MAX - start,
+                *end,
+                usize::MAX - ordinal,
+                offset,
+            )
+        })
+        .map_or(DirectSafePointBinding::Unbound, |(_, _, _, binding)| {
+            binding
         })
 }
 

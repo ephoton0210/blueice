@@ -263,6 +263,34 @@ fn classic_and_module_maps_own_root_call_and_child_entry_without_mapping_halt() 
 }
 
 #[test]
+fn module_function_source_breakpoint_selects_child_entry_over_declaration_root() {
+    let source = "export function inner(): number { return 41; }";
+    let mut registry = bluejs::BlueJsProgramRegistry::default();
+    let mut debug = DirectDebugRegistry::default();
+    let attachment = compile_direct_module(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap()
+    .attach_debug_in(&mut registry, &mut debug)
+    .unwrap();
+    let bound = attachment.breakpoint_at_or_after(ENTRY, source.find("function inner").unwrap());
+    let DirectSafePointBinding::Bound(point) = bound else {
+        panic!("a verified module function entry must be source-bound")
+    };
+    assert_eq!(point.code_unit.ordinal(), 1);
+    assert_eq!(point.bytecode_offset, 0);
+    assert_eq!(
+        debug
+            .get(&registry, attachment.handle)
+            .unwrap()
+            .breakpoint_at_or_after(ENTRY, source.find("function inner").unwrap()),
+        bound
+    );
+}
+
+#[test]
 fn rejects_object_methods_without_reparsing_emitted_javascript() {
     let result = compile_direct_script(
         ENTRY,

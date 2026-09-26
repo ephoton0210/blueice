@@ -76,7 +76,15 @@ impl RetainedDirectDebugInfo {
         resolve_breakpoint_at_or_after(
             self.breakpoint_spans
                 .iter()
-                .map(|span| (&span.source, span.safe_point)),
+                .map(|span| {
+                    (
+                        span.source.module.as_str(),
+                        span.source.start,
+                        span.source.end,
+                        span.safe_point,
+                    )
+                })
+                .chain(verified_child_breakpoint_spans(&self.safe_point_map)),
             source,
             source_byte,
         )

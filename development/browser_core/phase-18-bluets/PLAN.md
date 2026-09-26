@@ -1705,6 +1705,29 @@ the implementation leaf will decide whether it needs an atomic source-arm
 request after proving the existing module behavior. This decision changes no
 wire or capability and leaves public debugger v40 unchanged.
 
+**C3.1.2.2 module source/symbol binding:** The two-file Launcher fixture now
+negotiates the separate source-breakpoint and symbol-location grants. For
+each program it inventories only that program's metadata, source, and symbol
+handles; a source position resolves to a safe point in the same program,
+while the compiler symbol range names only its own original declaration.
+Source-end positions remain explicitly unbound. Guessed source/symbol IDs
+fail before child lookup, a dependency symbol paired with the entry source
+is invalid, and the old source/symbol handles become stale after HTTP reload.
+The test exposed that direct-bridge breakpoint resolution indexed root AST
+provenance but omitted verified nested map entries: the dependency function
+declaration resolved to its module root instead of the child entry. Both the
+live attachment and retained registry now consult the already-validated
+nested safe-point entries without duplicating their stored source map. The
+resolver selects the most specific containing span, then the nearest
+following span; identical declaration/child ranges choose the child's first
+verified instruction. All 97 bridge library tests, the focused real Launcher
+test, workspace Clippy, and formatting pass. No protocol bump is needed.
+The broader 24-test Launcher debugger file passed 22 tests in one run; two
+existing nested-arm cases lost their short pending-admission window before
+arm. Each passed when rerun alone (the cutover case on its second retry).
+All 305 engine library tests passed with local socket access and one test
+thread; the full Launcher file is therefore not claimed clean for this run.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
