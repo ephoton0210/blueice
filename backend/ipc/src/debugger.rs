@@ -2306,9 +2306,9 @@ pub struct DebuggerCapabilities {
 pub struct DebuggerMetadataSessionAuthorization {
     granted: DebuggerMetadataCapabilityManifest,
     granted_bounded_values: bool,
-    /// Exact Scopes entries emitted on this stream during one core-owned
-    /// pause incarnation. Only the separately granted value route consumes
-    /// these receipts.
+    /// Exact ordinary and linked Scopes entries emitted on this stream during
+    /// one core-owned pause incarnation. `Value` consumes ordinary receipts
+    /// only; a future static relation additionally needs its own grant.
     observed_scope_entries: Arc<Mutex<DebuggerScopeReceipts>>,
     /// Bounded per-stream receipts for opaque metadata handles emitted by the
     /// public inventory operation. A handle must not become a summary or
@@ -2336,6 +2336,7 @@ pub struct DebuggerMetadataSessionAuthorization {
 struct DebuggerScopeReceipts {
     pause_incarnation: u64,
     targets: HashSet<DebuggerValueTarget>,
+    linked_targets: HashSet<DebuggerLinkedScopeTarget>,
 }
 
 pub const DEBUGGER_SESSION_MAX_OBSERVED_SCOPE_ENTRIES: usize = 4_096;
@@ -2518,13 +2519,18 @@ impl DebuggerMetadataSessionAuthorization {
         }
         if observed.pause_incarnation != incarnation {
             observed.targets.clear();
+            observed.linked_targets.clear();
             observed.pause_incarnation = incarnation;
         }
         let Some(targets) = snapshot.receipt_targets() else {
             return false;
         };
         let new_count = targets.difference(&observed.targets).count();
-        if observed.targets.len().saturating_add(new_count)
+        if observed
+            .targets
+            .len()
+            .saturating_add(observed.linked_targets.len())
+            .saturating_add(new_count)
             > DEBUGGER_SESSION_MAX_OBSERVED_SCOPE_ENTRIES
         {
             return false;
@@ -2539,6 +2545,77 @@ impl DebuggerMetadataSessionAuthorization {
             && target.is_well_formed()
             && self.observed_scope_entries.lock().is_ok_and(|observed| {
                 observed.pause_incarnation == incarnation && observed.targets.contains(&target)
+            })
+    }
+
+    /// Receipts the complete entry-root slot list from one exact linked
+    /// Scopes-family reply. Truncated or malformed replies create no receipt;
+    /// a changed pause incarnation still clears both ordinary and linked
+    /// receipts before refusing the reply.
+    pub fn observe_linked_scopes(
+        &self,
+        snapshot: &DebuggerLinkedScopeSnapshot,
+        incarnation: u64,
+    ) -> bool {
+        let Ok(mut observed) = self.observed_scope_entries.lock() else {
+            return false;
+        };
+        if incarnation == 0 || incarnation < observed.pause_incarnation {
+            return false;
+        }
+        if observed.pause_incarnation != incarnation {
+            observed.targets.clear();
+            observed.linked_targets.clear();
+            observed.pause_incarnation = incarnation;
+        }
+        if !snapshot.is_well_formed() || snapshot.scope_truncated {
+            return false;
+        }
+        let targets = snapshot
+            .entries
+            .iter()
+            .map(|scope_entry| DebuggerLinkedScopeTarget {
+                stack: snapshot.stack,
+                frame_index: snapshot.frame_index,
+                scope_entry: *scope_entry,
+            })
+            .collect::<HashSet<_>>();
+        let new_count = targets.difference(&observed.linked_targets).count();
+        if observed
+            .targets
+            .len()
+            .saturating_add(observed.linked_targets.len())
+            .saturating_add(new_count)
+            > DEBUGGER_SESSION_MAX_OBSERVED_SCOPE_ENTRIES
+        {
+            return false;
+        }
+        observed.linked_targets.extend(targets);
+        true
+    }
+
+    /// Staged receipt check only. A future public handler must separately
+    /// prove the independent static-scope grant, metadata/ID receipts, and
+    /// current live pause before it may return a relation.
+    pub fn observed_static_scope(
+        &self,
+        target: DebuggerStaticScopeTarget,
+        incarnation: u64,
+    ) -> bool {
+        incarnation != 0
+            && target.is_well_formed()
+            && self.observed_scope_entries.lock().is_ok_and(|observed| {
+                if observed.pause_incarnation != incarnation {
+                    return false;
+                }
+                match target {
+                    DebuggerStaticScopeTarget::Ordinary { target, .. } => {
+                        observed.targets.contains(&target)
+                    }
+                    DebuggerStaticScopeTarget::Linked { target, .. } => {
+                        observed.linked_targets.contains(&target)
+                    }
+                }
             })
     }
 
@@ -6644,6 +6721,144 @@ mod tests {
         ));
         assert!(!session.observe_scopes(&snapshot, 0));
         assert!(!session.observed_scope(target, 0));
+    }
+
+    #[test]
+    fn linked_static_scope_receipts_cannot_be_used_as_value_receipts() {
+        let hello = hello(DebuggerMetadataCapabilityManifest::empty());
+        let ack = negotiate(&hello, &DebuggerMetadataCapabilityManifest::empty());
+        let session = metadata_session_authorization(&hello, &ack).unwrap();
+        let other = metadata_session_authorization(&hello, &ack).unwrap();
+        let dependency = DebuggerProgram {
+            realm: realm(),
+            program_handle: 11,
+            program_generation: 12,
+        };
+        let entry = DebuggerProgram {
+            realm: realm(),
+            program_handle: 21,
+            program_generation: 22,
+        };
+        let stack = DebuggerLinkedStackSnapshot {
+            frames: [(dependency, 1, 4, 31), (entry, 0, 8, 32)].map(
+                |(program, ordinal, offset, handle)| DebuggerLinkedStackFrame {
+                    frame: DebuggerLinkedFrame {
+                        program,
+                        code_unit_ordinal: ordinal,
+                        core_instance: [7; 16],
+                        frame_handle: handle,
+                    },
+                    safe_point: DebuggerSafePoint {
+                        program,
+                        code_unit_ordinal: ordinal,
+                        bytecode_offset: offset,
+                    },
+                },
+            ),
+        };
+        let slot = DebuggerScopeEntry {
+            slot_ordinal: 0,
+            scope_depth: 0,
+        };
+        let linked_scopes = DebuggerLinkedScopeSnapshot {
+            stack,
+            frame_index: 1,
+            entries: vec![slot],
+            scope_truncated: false,
+            max_scope_entries: 4,
+        };
+        let metadata = DebuggerStaticMetadataHandle {
+            program: entry,
+            metadata_handle: 41,
+            metadata_generation: 42,
+        };
+        let linked_target = DebuggerLinkedScopeTarget {
+            stack,
+            frame_index: 1,
+            scope_entry: slot,
+        };
+        let linked = DebuggerStaticScopeTarget::Linked {
+            metadata,
+            target: linked_target,
+        };
+        let ordinary_value = DebuggerValueTarget {
+            program: entry,
+            frame: None,
+            frame_index: 0,
+            safe_point: stack.frames[1].safe_point,
+            scope_entry: slot,
+        };
+        let ordinary = DebuggerStaticScopeTarget::Ordinary {
+            metadata,
+            target: ordinary_value,
+        };
+        assert!(!session.observed_static_scope(linked, 1));
+        assert!(session.observe_linked_scopes(&linked_scopes, 1));
+        assert!(session.observed_static_scope(linked, 1));
+        assert!(!session.observed_static_scope(ordinary, 1));
+        assert!(!session.observed_scope(ordinary_value, 1));
+        assert!(!other.observed_static_scope(linked, 1));
+        let ordinary_scopes = DebuggerScopeSnapshot {
+            program: entry,
+            frame: None,
+            frame_index: 0,
+            safe_point: stack.frames[1].safe_point,
+            entries: vec![slot],
+            scope_truncated: false,
+        };
+        assert!(session.observe_scopes(&ordinary_scopes, 1));
+        assert!(session.observed_static_scope(ordinary, 1));
+        assert!(session.observed_scope(ordinary_value, 1));
+        assert!(!session.observed_static_scope(
+            DebuggerStaticScopeTarget::Linked {
+                metadata,
+                target: DebuggerLinkedScopeTarget {
+                    scope_entry: DebuggerScopeEntry {
+                        slot_ordinal: 9,
+                        ..slot
+                    },
+                    ..linked_target
+                },
+            },
+            1
+        ));
+        assert!(!session.observed_static_scope(linked, 2));
+        let truncated = DebuggerLinkedScopeSnapshot {
+            scope_truncated: true,
+            max_scope_entries: 1,
+            ..linked_scopes.clone()
+        };
+        assert!(truncated.is_well_formed());
+        assert!(!session.observe_linked_scopes(&truncated, 2));
+        assert!(!session.observed_static_scope(linked, 1));
+        assert!(!session.observed_static_scope(ordinary, 2));
+        assert!(session.observe_linked_scopes(&linked_scopes, 2));
+        assert!(session.observed_static_scope(linked, 2));
+        assert!(!session.observe_linked_scopes(&linked_scopes, 1));
+        for batch in 0..(DEBUGGER_SESSION_MAX_OBSERVED_SCOPE_ENTRIES / 256) {
+            let snapshot = DebuggerScopeSnapshot {
+                entries: (0..256)
+                    .map(|index| DebuggerScopeEntry {
+                        slot_ordinal: (10_000 + batch * 256 + index) as u32,
+                        scope_depth: 0,
+                    })
+                    .collect(),
+                ..ordinary_scopes.clone()
+            };
+            if batch + 1 == DEBUGGER_SESSION_MAX_OBSERVED_SCOPE_ENTRIES / 256 {
+                assert!(!session.observe_scopes(&snapshot, 2));
+                assert!(!session.observed_scope(
+                    DebuggerValueTarget {
+                        scope_entry: snapshot.entries[0],
+                        ..ordinary_value
+                    },
+                    2
+                ));
+            } else {
+                assert!(session.observe_scopes(&snapshot, 2));
+            }
+        }
+        assert!(session.observed_static_scope(linked, 2));
     }
 
     #[test]

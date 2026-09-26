@@ -2173,6 +2173,20 @@ real Launcher-child tests, engine 309-test suite, workspace Clippy, and
 formatting pass. No public linked-scopes request, receipt, grant, or version
 change exists in this leaf.
 
+**C3.1.3.4.4 staged pause receipts:** The core-local debugger session now
+retains ordinary `GetScopes` slot targets and complete linked entry-root
+stack/slot targets in separate sets under one 4,096-entry bound and one
+core-owned pause incarnation. A new or malformed later-pause reply clears
+both old sets before denial; stale incarnation values and other streams
+cannot borrow either. Linked replies that are truncated, malformed, or
+over-budget mint no receipt. The static-only receipt checker accepts the
+appropriate shape, while the existing `Value` receipt checker consults only
+the ordinary set and its separate runtime-value grant remains required.
+Focused tests cover same-stream exactness, forged slots, cross-stream and
+stale denials, truncation, and atomic combined-budget refusal. IPC 118-test
+suite, workspace Clippy, and formatting pass. No public static relation
+request, dispatch, grant, or protocol change is added here.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
