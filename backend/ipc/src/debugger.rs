@@ -874,6 +874,95 @@ impl DebuggerStackCoordinates {
     }
 }
 
+/// One core-reminted invocation in a linked dependency/entry stack. Unlike
+/// the older nested-frame type, this shape also permits the entry caller's
+/// root code unit (ordinal zero). Its role is fixed by the complete stack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DebuggerLinkedFrame {
+    pub program: DebuggerProgram,
+    pub code_unit_ordinal: u32,
+    pub core_instance: [u8; 16],
+    pub frame_handle: u64,
+}
+
+impl DebuggerLinkedFrame {
+    pub fn is_well_formed(self) -> bool {
+        self.program.is_well_formed() && self.core_instance != [0; 16] && self.frame_handle != 0
+    }
+
+    pub fn matches_safe_point(self, safe_point: DebuggerSafePoint) -> bool {
+        self.is_well_formed()
+            && self.program == safe_point.program
+            && self.code_unit_ordinal == safe_point.code_unit_ordinal
+    }
+}
+
+/// Source-free location of one retained frame. The top frame is the linked
+/// dependency; the second is its distinct entry-module caller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerLinkedStackFrame {
+    pub frame: DebuggerLinkedFrame,
+    pub safe_point: DebuggerSafePoint,
+}
+
+/// Complete child-first linked stack. An array prevents truncated, reordered,
+/// or partial source disclosures from masquerading as a full graph pause.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerLinkedStackSnapshot {
+    pub frames: [DebuggerLinkedStackFrame; 2],
+}
+
+impl DebuggerLinkedStackSnapshot {
+    pub fn is_well_formed(self) -> bool {
+        let [dependency, caller] = self.frames;
+        dependency.frame.matches_safe_point(dependency.safe_point)
+            && caller.frame.matches_safe_point(caller.safe_point)
+            && dependency.frame.code_unit_ordinal != 0
+            && caller.frame.code_unit_ordinal == 0
+            && dependency.frame.program != caller.frame.program
+            && dependency.frame.program.realm == caller.frame.program.realm
+            && dependency.frame.core_instance == caller.frame.core_instance
+            && dependency.frame.frame_handle != caller.frame.frame_handle
+    }
+}
+
+/// An exact previously returned linked stack and independently inventoried
+/// source ID for each frame. Possession of this value grants no span access.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerLinkedStackCoordinatesTarget {
+    pub expected_stack: DebuggerLinkedStackSnapshot,
+    pub sources: [DebuggerStaticMetadataSourceId; 2],
+}
+
+impl DebuggerLinkedStackCoordinatesTarget {
+    pub fn is_well_formed(self) -> bool {
+        self.expected_stack.is_well_formed()
+            && self.sources.iter().enumerate().all(|(index, source)| {
+                source.is_well_formed()
+                    && source.metadata.program == self.expected_stack.frames[index].frame.program
+            })
+    }
+}
+
+/// All-or-nothing original coordinates for both ordered linked frames. The
+/// source/metadata pair is independently bound for each returned span.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerLinkedStackCoordinates {
+    pub stack: DebuggerLinkedStackSnapshot,
+    pub spans: [DebuggerStaticMetadataSafePointSpan; 2],
+}
+
+impl DebuggerLinkedStackCoordinates {
+    pub fn is_well_formed(self) -> bool {
+        self.stack.is_well_formed()
+            && self.spans.iter().enumerate().all(|(index, span)| {
+                span.is_well_formed()
+                    && span.safe_point == self.stack.frames[index].safe_point
+                    && span.source.metadata.program == self.stack.frames[index].frame.program
+            })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DebuggerScopeEntry {
     pub slot_ordinal: u32,
@@ -3117,6 +3206,98 @@ mod tests {
             tab_id: 7,
             realm_generation: 3,
         }
+    }
+
+    #[test]
+    fn linked_stack_shapes_require_two_distinct_programs_and_source_attachments() {
+        let programs = [11, 21].map(|handle| DebuggerProgram {
+            realm: realm(),
+            program_handle: handle,
+            program_generation: handle + 1,
+        });
+        let points = [
+            DebuggerSafePoint {
+                program: programs[0],
+                code_unit_ordinal: 1,
+                bytecode_offset: 0,
+            },
+            DebuggerSafePoint {
+                program: programs[1],
+                code_unit_ordinal: 0,
+                bytecode_offset: 8,
+            },
+        ];
+        let stack = DebuggerLinkedStackSnapshot {
+            frames: [0, 1].map(|index| DebuggerLinkedStackFrame {
+                frame: DebuggerLinkedFrame {
+                    program: programs[index],
+                    code_unit_ordinal: points[index].code_unit_ordinal,
+                    core_instance: [7; 16],
+                    frame_handle: index as u64 + 1,
+                },
+                safe_point: points[index],
+            }),
+        };
+        assert!(stack.is_well_formed());
+        assert!(!DebuggerLinkedStackSnapshot {
+            frames: [stack.frames[1], stack.frames[0]],
+        }
+        .is_well_formed());
+        assert!(!DebuggerLinkedStackSnapshot {
+            frames: [
+                stack.frames[0],
+                DebuggerLinkedStackFrame {
+                    frame: DebuggerLinkedFrame {
+                        frame_handle: stack.frames[0].frame.frame_handle,
+                        ..stack.frames[1].frame
+                    },
+                    ..stack.frames[1]
+                },
+            ],
+        }
+        .is_well_formed());
+        let sources = [0, 1].map(|index| DebuggerStaticMetadataSourceId {
+            metadata: DebuggerStaticMetadataHandle {
+                program: programs[index],
+                metadata_handle: index as u64 + 31,
+                metadata_generation: index as u64 + 41,
+            },
+            source_id: index as u32,
+        });
+        let target = DebuggerLinkedStackCoordinatesTarget {
+            expected_stack: stack,
+            sources,
+        };
+        assert!(target.is_well_formed());
+        assert!(!DebuggerLinkedStackCoordinatesTarget {
+            sources: [sources[1], sources[0]],
+            ..target
+        }
+        .is_well_formed());
+        let spans = [0, 1].map(|index| DebuggerStaticMetadataSafePointSpan {
+            safe_point: points[index],
+            source: sources[index],
+            start_byte: 0,
+            end_byte: 1,
+            coordinates: DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 0,
+                end_line: 0,
+                end_column_utf16: 1,
+            },
+        });
+        let result = DebuggerLinkedStackCoordinates { stack, spans };
+        assert!(result.is_well_formed());
+        assert!(!DebuggerLinkedStackCoordinates {
+            spans: [spans[1], spans[0]],
+            ..result
+        }
+        .is_well_formed());
+        let encoded = serde_json::to_vec(&target).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<DebuggerLinkedStackCoordinatesTarget>(&encoded).unwrap(),
+            target
+        );
     }
 
     #[test]

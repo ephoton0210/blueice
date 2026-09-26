@@ -1594,6 +1594,16 @@ focused fake-child test proves stable/moved identities, distinct provenance,
 grant/receipt/swapped-attachment denials without child calls, and complete
 two-span success. The public debugger wire remains v39 until the final route.
 
+**C3.1.1.2.2.3.3.1 public linked data shapes:** The public IPC crate now
+defines a distinct linked-frame identity that can represent both the non-root
+dependency and root entry caller. Its fixed two-frame stack requires ordered
+distinct programs, one realm/core instance, separate frame handles, and exact
+per-frame safe points. The two-source coordinate target and result each bind
+their metadata/source attachment to the corresponding frame, rejecting a
+swapped pair or reordered span. A focused IPC serialization/denial test passes.
+No request/reply variant or callable route was added, and public v39 stays
+unchanged until the complete authorized handler is ready.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
