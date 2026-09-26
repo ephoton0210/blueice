@@ -2453,6 +2453,13 @@ which is 4,158 lines until metadata and admission/step concerns are split.
 All 116 Launcher library tests pass with the reused target; behavior and
 wire contracts remain unchanged.
 
+**C3.1.3.4.7.5.4.2.3 Launcher host metadata test owners:** Resource
+accounting, debugger configuration, BlueTS root slots, metadata inventory and
+contracts, and source-span cases now have bounded 184-, 516-, 520-, 690-, and
+289-line modules. The 1,989-line parent retains fixtures and admission/step
+tests for the last split. All 116 Launcher library tests pass with one reused
+Cargo target; no wire or runtime behavior changed.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

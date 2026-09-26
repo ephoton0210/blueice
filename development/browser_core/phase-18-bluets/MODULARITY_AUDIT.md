@@ -113,3 +113,8 @@ C3.1.3.4.7.5.4.2.2 moved DOM/transport, nested scheduler, exception-site,
 and static-scope/value cases to 704-, 659-, 261-, and 636-line children.
 The shared-fixture/remaining host test owner is 4,158 lines pending the
 metadata and admission/step splits.
+
+C3.1.3.4.7.5.4.2.3 moved resource accounting, debugger control, metadata
+roots, metadata inventory/contracts, and source-span cases into 184-, 516-,
+520-, 690-, and 289-line modules. The fixture/admission/step parent is now
+1,989 lines; one final test-family split remains.
