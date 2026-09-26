@@ -2300,6 +2300,16 @@ that operation invalidates the core's previous private metadata mapping,
 even if old numeric handles happen to match. The focused two-kind real
 socket test passes. Linked and lifecycle cases remain separate leaves.
 
+**C3.1.3.4.7.3 real linked entry root:** The existing Launcher-supervised
+two-module graph now independently negotiates static-scope authority and
+receives a complete `GetLinkedScopes` snapshot for the exact child-first
+dependency/entry stack. Only entry-root slot/depth entries cross that reply;
+the same stream inventories entry-owned type and symbol IDs before one
+compiler-only relation echoes the complete linked target. A selector using
+dependency metadata refuses as InvalidTarget, never returning a partial
+pair. The focused real linked graph test passes. Lifecycle, cross-stream,
+and separate runtime-value grant cases remain C3.1.3.4.7.4.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

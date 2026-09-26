@@ -6296,11 +6296,13 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
         StaticMetadataPolicy {
             inventory: true,
             source_inventory: true,
+            type_inventory: true,
             symbol_inventory: true,
             symbol_display: true,
             symbol_location: true,
             safe_point_span: true,
             source_breakpoint: true,
+            static_scope_relation: true,
             ..StaticMetadataPolicy::default()
         },
         Some(&policy_file),
@@ -6316,6 +6318,7 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
             source_breakpoint: true,
             symbol_display: true,
             symbol_location: true,
+            static_scope_relation: true,
             ..DebuggerMetadataCapabilitySelection::default()
         });
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
@@ -6574,6 +6577,85 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
         handles[0]
     });
     assert_ne!(metadata[0], metadata[1]);
+    let DebuggerReply::LinkedScopes(linked_scopes) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetLinkedScopes {
+            expected_stack: stack,
+            max_scope_entries: 256,
+        },
+    ) else {
+        panic!("complete linked pause must expose entry-root slots only");
+    };
+    assert!(linked_scopes.is_well_formed());
+    assert_eq!(linked_scopes.stack, stack);
+    assert_eq!(linked_scopes.frame_index, 1);
+    assert!(!linked_scopes.scope_truncated);
+    assert!(!linked_scopes.entries.is_empty());
+    let DebuggerReply::StaticMetadataTypes(entry_types) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataTypes {
+            metadata: metadata[1],
+        },
+    ) else {
+        panic!("linked entry must inventory its own type IDs");
+    };
+    let DebuggerReply::StaticMetadataSymbols(entry_symbols) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataSymbols {
+            metadata: metadata[1],
+        },
+    ) else {
+        panic!("linked entry must inventory its own symbol IDs");
+    };
+    let mut bound = None;
+    for scope_entry in linked_scopes.entries.iter().copied() {
+        let target = blueice_ipc::debugger::DebuggerStaticScopeTarget::Linked {
+            metadata: metadata[1],
+            target: blueice_ipc::debugger::DebuggerLinkedScopeTarget {
+                stack,
+                frame_index: 1,
+                scope_entry,
+            },
+        };
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStaticScopeRelation { target },
+        ) {
+            DebuggerReply::StaticScopeRelation(relation) => {
+                assert_eq!(relation.target, target);
+                assert!(relation.is_well_formed());
+                assert!(entry_types.contains(&relation.static_type));
+                assert!(entry_symbols.contains(&relation.symbol));
+                bound = Some(scope_entry);
+                break;
+            }
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget | DebuggerErrorCode::InvalidExecutionState,
+                ..
+            } => {}
+            other => panic!("linked entry relation must be typed: {other:?}"),
+        }
+    }
+    let bound = bound.expect("linked entry root must retain one compiler-bound slot");
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStaticScopeRelation {
+                target: blueice_ipc::debugger::DebuggerStaticScopeTarget::Linked {
+                    metadata: metadata[0],
+                    target: blueice_ipc::debugger::DebuggerLinkedScopeTarget {
+                        stack,
+                        frame_index: 1,
+                        scope_entry: bound,
+                    },
+                },
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            ..
+        }
+    ));
     let guessed_dependency_source = DebuggerStaticMetadataSourceId {
         metadata: metadata[0],
         source_id: u32::MAX,

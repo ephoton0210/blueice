@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.7.3.** Prove linked entry-root static relations
-through real Launcher sockets with complete linked-scopes receipts and reject
-dependency-owned selectors.
+**Current leaf: C3.1.3.4.7.4.** Prove no-partial stale/moved/forged/cross-stream
+denials and separate `Value` authority across real socket pause lifecycles;
+then close C3.1.3.4.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -449,7 +449,7 @@ channel with explicit owner/client grants.
       - [ ] **C3.1.3.4.7** Prove ordinary classic/module/nested and linked real Launcher sockets, same-stream receipts, no-partial denials, and separate `Value` authority before checking off C3.1.3.4.
         - [x] **C3.1.3.4.7.1** Prove classic and module root static relations through real Launcher sockets using the independent grant, exact Scopes and metadata/symbol/type receipts, while `Value` stays denied. A real Launcher/core/child tree independently grants static relations and the three inventories, arms each BlueTS root, receives exact Scopes slots, and returns one complete compiler symbol/type pair drawn only from the same stream's inventories. Both classic and module focused tests pass; the same selected slot still refuses `GetValue` without its separate grant.
         - [x] **C3.1.3.4.7.2** Prove nested parent-root static relations through real Launcher sockets and deny child-local or mismatched parent selections. Real classic and module nested pauses expose a parent-root Scopes slot and same-stream static relation; child-local selection and a forged parent slot refuse with typed errors. The test waits for the child argument to become active and performs metadata/type/symbol inventory only after the last `ListPrograms`, which invalidates earlier private handle maps. The focused real Launcher test passes.
-        - [ ] **C3.1.3.4.7.3** Prove linked entry-root static relations through real Launcher sockets with complete linked-scopes receipts and reject dependency-owned selectors.
+        - [x] **C3.1.3.4.7.3** Prove linked entry-root static relations through real Launcher sockets with complete linked-scopes receipts and reject dependency-owned selectors. The existing real two-module Launcher graph now also negotiates the static-only grant, reacquires exact complete `GetLinkedScopes`, inventories the entry's own type/symbol IDs, and returns one full echoed entry-root relation. Dependency metadata in that selector refuses with a typed error. The focused real Launcher graph test passes.
         - [ ] **C3.1.3.4.7.4** Prove no-partial stale/moved/forged/cross-stream denials and separate `Value` authority across real socket pause lifecycles; then close C3.1.3.4.7 and C3.1.3.4.
     - [ ] **C3.1.3.5** Prove a static type display and independently authorized runtime preview remain distinct, correctly matched to the same paused classic/module/linked slot, and expire after step/reload/cutover on real Launcher sockets; then check off C3.1.3 and C3.1.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
