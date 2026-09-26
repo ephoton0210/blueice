@@ -2430,6 +2430,13 @@ debugger/metadata cases for the final test split. All 309 engine library
 tests pass using the same target directory; wire and runtime behavior is
 unchanged.
 
+**C3.1.3.4.7.5.4.1.4 real-child test owners:** Real-child metadata, exact
+span/envelope validation, nested pause, stack/scope, and lifecycle tests are
+now separate 390-, 935-, 647-, 647-, and 448-line modules. Shared fixtures
+remain in a 407-line parent, and the largest file across the completed child
+test family is 1,226 lines. All 309 engine library tests pass; production
+adapter extraction remains a separate leaf.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

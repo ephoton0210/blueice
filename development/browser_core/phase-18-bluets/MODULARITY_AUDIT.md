@@ -98,3 +98,9 @@ requires the planned transport/authorization and real-child metadata splits.
 C3.1.3.4.7.5.4.1.3 moved transport/session, resource-accounting, and closed
 authorization cases to 432-, 294-, and 506-line children. One 3,444-line
 fixture/real-child test owner remains for the final test-family split.
+
+C3.1.3.4.7.5.4.1.4 completed the child-executor test-family split: the
+shared-fixture owner is 407 lines and every child file is below 1,300 lines
+(maximum 1,226). Metadata, span envelopes, nested pause, stack/scope, and
+lifecycle cases are independent modules; the 7,016-line production executor
+still awaits its separate adapter extraction.
