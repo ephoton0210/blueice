@@ -66,7 +66,8 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataSymbolType,
     JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
     JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
-    JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageDebuggerValuePreview,
+    JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageDebuggerStaticScopeRelation,
+    JavaScriptPageDebuggerStaticScopeTarget, JavaScriptPageDebuggerValuePreview,
     JavaScriptPageDebuggerValueTarget,
 };
 
@@ -679,6 +680,17 @@ pub trait PageJavaScriptDebuggerLocations {
         _document_generation: u64,
         _target: JavaScriptPageDebuggerValueTarget,
     ) -> Result<JavaScriptPageDebuggerValuePreview, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Private static-only paused-slot relation. The public debugger has no
+    /// request or grant for it until its independent receipt work is complete.
+    fn debugger_static_scope_relation(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticScopeTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticScopeRelation, JavaScriptPageDebuggerError> {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 

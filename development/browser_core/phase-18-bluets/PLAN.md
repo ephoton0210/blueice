@@ -2033,6 +2033,21 @@ protocol), the real Launcher/Core integration case and full engine 306-test
 library suite pass. Workspace Clippy and formatting pass; no public debugger
 request, capability, receipt, or protocol change was added.
 
+**C3.1.3.3.5.3 ordinary core remap:** The core-facing static-only target and
+relation types carry only core-owned program/frame/metadata identities and
+opaque compiler symbol/type IDs. For an ordinary root or nested parent-root
+slot, the out-of-process executor reacquires the full current stack through
+its existing live document/program/frame checks, rejects truncation, checks
+the exact root safe point and one unambiguous active lexical slot, then maps
+the core program and metadata generations to their live child identities.
+The private adapter demands a complete exact echo before core remints the
+two compiler IDs; it never reads `Value`. Tests cover successful root and
+nested-parent mapping, child-local refusal, stale/moved frames, forged slot
+and scope depth, sibling-owned metadata, stale program/document, truncation,
+and altered child replies. Linked targets remain denied pending the next
+leaf. The engine 308-test library suite, workspace Clippy, and formatting
+pass; the public debugger protocol and grants are unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -422,6 +422,30 @@ pub struct JavaScriptPageDebuggerValueTarget {
     pub scope_entry: JavaScriptPageDebuggerScopeEntry,
 }
 
+/// Core-owned static compiler relation selector. Neither form asks the VM for
+/// a runtime value. Linked scope receipt/grant remains a later public step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JavaScriptPageDebuggerStaticScopeTarget {
+    Ordinary {
+        metadata: JavaScriptPageDebuggerStaticMetadata,
+        target: JavaScriptPageDebuggerValueTarget,
+    },
+    Linked {
+        metadata: JavaScriptPageDebuggerStaticMetadata,
+        expected_stack: JavaScriptPageDebuggerLinkedStackSnapshot,
+        frame_index: u32,
+        scope_entry: JavaScriptPageDebuggerScopeEntry,
+    },
+}
+
+/// Compiler IDs for one exact echoed core-owned paused slot, without name,
+/// display, source, runtime tag, preview, or reusable child identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticScopeRelation {
+    pub target: JavaScriptPageDebuggerStaticScopeTarget,
+    pub symbol_type: JavaScriptPageDebuggerStaticMetadataSymbolType,
+}
+
 /// A complete bounded value copied out of a paused VM, with no reusable
 /// object identity. UTF-16 units and IEEE-754 bits remain lossless.
 #[derive(Debug, Clone, PartialEq, Eq)]
