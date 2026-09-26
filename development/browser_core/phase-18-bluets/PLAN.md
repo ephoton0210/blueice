@@ -1738,6 +1738,20 @@ call position arms its exact program-bound safe point, pauses, resumes, and
 completes. The public capability description now names both classic and
 module roots; no wire or runtime behavior changed.
 
+**C3.1.2.3.2 dependency source-to-linked control:** The real Launcher debugger
+stream now inventories the dependency's metadata and source while the two-file
+graph is pending, resolves an original dependency function position to the
+verified child-entry safe point, and supplies that exact program-generation
+bound point with a distinct entry program to `ArmLinkedNestedSafePointBreakpoint`.
+The public arm revalidates the safe point before the private child validates
+the live closed graph and pending state in the same owning request. A
+same-program entry, wrong dependency generation, or arm after the pause has
+moved returns a typed refusal; earlier core/child tests cover unrelated graph
+members and forged child acknowledgements. Since source maps cannot change
+within a retained program generation, the two-step source discovery plus
+arm-time generation/graph validation preserves the contract without adding an
+atomic source-specific public operation or bumping debugger v40.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

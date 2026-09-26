@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.2.3.2.** Connect a receipted dependency source position
-to the exact distinct live entry's linked arm, retaining graph and generation
-checks without introducing a public wire change unless necessary.
+**Current leaf: C3.1.2.3.3.** Compose a separately receipted module symbol
+declaration range with source resolution and the correct root or linked
+control route, preserving explicit unbound/type-only refusals.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -402,7 +402,7 @@ channel with explicit owner/client grants.
     - [x] **C3.1.2.2** Prove existing source-position resolution and symbol locations bind to their own original entry/dependency source and exact verified safe points; preserve explicit unbound results and reject cross-program, swapped, stale, and missing-receipt targets. A bridge regression found that the retained resolver indexed only root provenance, so a dependency function's original position selected the root; it now also consults the already-verified nested safe-point map, preferring the most specific overlapping span and child entry. The real Launcher test verifies both programs' original declaration ranges and bound safe points, explicit source-end unbound results, absent source/symbol receipts, cross-program symbol/source refusal, and reload-stale targets. Public debugger remains v40.
     - [ ] **C3.1.2.3** Connect the verified source/symbol mapping to module-root and linked-dependency breakpoint control, with atomic revalidation and no program/source aliasing.
       - [x] **C3.1.2.3.1** Prove a separately receipted original module-entry root position atomically arms only that entry's pending root frame; unbound or dependency child positions must refuse without starting the declaration. A real Launcher public-socket module test verifies missing source receipt refusal, child-entry and source-end refusal while the module stays pending, exact root safe-point arm, pause, resume, and completion. The existing atomic source-arm route serves classic and module roots without a protocol bump.
-      - [ ] **C3.1.2.3.2** Connect a receipted dependency source position to the distinct live entry's linked arm, rechecking the exact generation, verified child safe point, and closed graph at arm time; add core/child denial coverage and change the public wire only if the existing two-step route cannot preserve the contract.
+      - [x] **C3.1.2.3.2** Connect a receipted dependency source position to the distinct live entry's linked arm, rechecking the exact generation, verified child safe point, and closed graph at arm time; add core/child denial coverage and change the public wire only if the existing two-step route cannot preserve the contract. The real Launcher socket first resolves the dependency's own receipted original position to its verified child safe point, then arms the distinct entry; same-program, wrong-generation, and moved-pause arms refuse, while the existing child graph validator remains the final authority. Immutable generation-bound source maps and arm-time safe-point/graph checks preserve this two-step composition without a v41 wire.
       - [ ] **C3.1.2.3.3** Compose a separately receipted module symbol declaration range with source resolution and the appropriate root/linked control route; preserve explicit unbound/type-only results and no cross-program aliasing, then check off C3.1.2.3.
     - [ ] **C3.1.2.4** Prove module entry/dependency source and symbol breakpoint behavior, typed denials, and stale expiry through real Launcher-supervised public sockets; then check off C3.1.2.
   - [ ] **C3.1.3** Show static types separately from runtime values in every reply.

@@ -5933,10 +5933,88 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
         .iter()
         .find(|program| **program != dependency)
         .unwrap();
+    let DebuggerReply::StaticMetadata(dependency_metadata) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadata {
+            program: dependency,
+        },
+    ) else {
+        panic!("pending dependency must retain its own metadata")
+    };
+    assert_eq!(dependency_metadata.len(), 1);
+    let DebuggerReply::StaticMetadataSources(dependency_sources) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataSources {
+            metadata: dependency_metadata[0],
+        },
+    ) else {
+        panic!("pending dependency must receipt its own original source")
+    };
+    assert_eq!(dependency_sources.len(), 1);
+    let source_target = DebuggerStaticMetadataSourceBreakpointTarget {
+        source: dependency_sources[0],
+        source_byte: LINKED_DEPENDENCY_SOURCE.find("function inner").unwrap() as u32,
+    };
+    let DebuggerReply::StaticMetadataSourceBreakpoint(binding) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ResolveStaticMetadataSourceBreakpoint {
+            target: source_target,
+        },
+    ) else {
+        panic!("receipted dependency position must resolve before linked arm")
+    };
+    assert_eq!(binding.target, source_target);
+    assert_eq!(binding.safe_point, Some(dependency_safe_point));
     let arm = DebuggerLinkedArmTarget {
         entry,
-        dependency_safe_point,
+        dependency_safe_point: binding.safe_point.unwrap(),
     };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmLinkedNestedSafePointBreakpoint {
+                target: DebuggerLinkedArmTarget {
+                    entry: dependency,
+                    ..arm
+                },
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmLinkedNestedSafePointBreakpoint {
+                target: DebuggerLinkedArmTarget {
+                    dependency_safe_point: DebuggerSafePoint {
+                        program: DebuggerProgram {
+                            program_generation: dependency.program_generation + 1,
+                            ..dependency
+                        },
+                        ..dependency_safe_point
+                    },
+                    ..arm
+                },
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleProgram | DebuggerErrorCode::InvalidTarget,
+            ..
+        }
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetLinkedExecutionState { entry }
+        ),
+        DebuggerReply::LinkedExecutionState {
+            entry,
+            state: Box::new(DebuggerLinkedExecutionState::Pending),
+        }
+    );
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -5965,6 +6043,16 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
     };
     assert_eq!(stack.frames[0].frame.program, dependency);
     assert_eq!(stack.frames[1].frame.program, entry);
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { target: arm },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
     assert_eq!(
         debugger_request(
             &mut debugger,
