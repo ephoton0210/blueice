@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.7.5.4.1.3.** Split child transport,
-authorization, and resource-accounting tests into bounded child-executor
-test modules while retaining one shared fixture harness.
+**Current leaf: C3.1.3.4.7.5.4.1.4.** Split the remaining real-child
+metadata, spans, pause, and navigation tests into bounded modules, retaining
+one shared fixture harness and checking every file in the family.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -467,7 +467,7 @@ channel with explicit owner/client grants.
             - [ ] **C3.1.3.4.7.5.4.1** Split `javascript_child.rs` inline tests into bounded BlueTS debugger/metadata and shared child-execution concern modules, retaining all tests.
               - [x] **C3.1.3.4.7.5.4.1.1** Move the existing inline test body to `javascript_child/tests.rs` unchanged so the production owner and test harness have separate files. The production file fell from 14,468 to 7,016 lines, and the unchanged test body is in a new MPL-headed 7,344-line child module with its original Rust test paths. Engine library 309/309, workspace Clippy, rustfmt, and diff checks pass. The test module remains oversized until the following concern splits.
               - [x] **C3.1.3.4.7.5.4.1.2** Split private static/linked debugger adapter and scope/value tests into bounded test submodules. `tests/private_scope.rs` (486 lines), `linked_pause.rs` (1,226), and `scope_values.rs` (992) own the original assertions; shared socket/child fixtures remain in `tests.rs` (4,658). All 309 engine library tests pass with one reused target. The remaining parent tests are split by transport/authorization and real-child metadata in the next leaves.
-              - [ ] **C3.1.3.4.7.5.4.1.3** Split child transport, authorization, and resource-accounting tests into bounded test submodules while keeping shared fixtures central.
+              - [x] **C3.1.3.4.7.5.4.1.3** Split child transport, authorization, and resource-accounting tests into bounded test submodules while keeping shared fixtures central. `tests/transport.rs` (432 lines) owns socket/session timing, nested DOM pump, and finite discovery deferrals; `resource_accounting.rs` (294) owns usage snapshots and successor accounting; `authorization.rs` (506) owns closed graph and HTTP authorization cases. The shared-fixture parent is 3,444 lines pending the final real-child concern split. All 309 engine library tests pass with the reused target.
               - [ ] **C3.1.3.4.7.5.4.1.4** Split real-child metadata, spans, pause, and navigation tests into bounded test submodules and verify no file in this test family exceeds 1,300 lines.
             - [ ] **C3.1.3.4.7.5.4.2** Split `bluejs_host.rs` inline tests into bounded BlueTS host/compiler and shared host concern modules, retaining all tests.
             - [ ] **C3.1.3.4.7.5.4.3** Extract BlueTS-owned child-executor adapter logic from `javascript_child.rs` into internal modules.

@@ -2422,6 +2422,14 @@ tests; it is 4,658 lines until the transport/authorization and real-child
 metadata leaves. All 309 engine library tests pass with the reused target;
 runtime and debugger contracts are unchanged.
 
+**C3.1.3.4.7.5.4.1.3 child transport and admission tests:** Socket/session
+timing and DOM-pump cases, resource-accounting/lifecycle cases, and closed
+graph/HTTP authorization cases now have independent 432-, 294-, and 506-line
+test owners. A 3,444-line parent retains shared fixtures and real-child
+debugger/metadata cases for the final test split. All 309 engine library
+tests pass using the same target directory; wire and runtime behavior is
+unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

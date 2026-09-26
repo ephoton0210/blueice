@@ -94,3 +94,7 @@ C3.1.3.4.7.5.4.1.2 separated the private static/linked adapter, linked pause,
 and scope/value cases into 486-, 1,226-, and 992-line test children. The
 shared fixture and remaining integration-test owner is 4,658 lines; it still
 requires the planned transport/authorization and real-child metadata splits.
+
+C3.1.3.4.7.5.4.1.3 moved transport/session, resource-accounting, and closed
+authorization cases to 432-, 294-, and 506-line children. One 3,444-line
+fixture/real-child test owner remains for the final test-family split.
