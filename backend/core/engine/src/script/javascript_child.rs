@@ -8453,6 +8453,41 @@ mod tests {
                 frame_index: 0,
                 scope_entry,
             },
+            JavaScriptPageDebuggerStaticScopeTarget::Linked {
+                metadata: JavaScriptPageDebuggerStaticMetadata {
+                    metadata_generation: targets[1].0.metadata_generation + 1,
+                    ..targets[1].0
+                },
+                expected_stack: stack,
+                frame_index: 1,
+                scope_entry,
+            },
+            JavaScriptPageDebuggerStaticScopeTarget::Linked {
+                metadata: targets[1].0,
+                expected_stack: stack,
+                frame_index: 1,
+                scope_entry: JavaScriptPageDebuggerScopeEntry {
+                    slot_ordinal: scope_entry.slot_ordinal + 1,
+                    ..scope_entry
+                },
+            },
+            JavaScriptPageDebuggerStaticScopeTarget::Linked {
+                metadata: targets[1].0,
+                expected_stack: JavaScriptPageDebuggerLinkedStackSnapshot {
+                    frames: [
+                        stack.frames[0],
+                        JavaScriptPageDebuggerLinkedStackFrame {
+                            safe_point: JavaScriptPageDebuggerSafePoint {
+                                bytecode_offset: stack.frames[1].safe_point.bytecode_offset + 1,
+                                ..stack.frames[1].safe_point
+                            },
+                            ..stack.frames[1]
+                        },
+                    ],
+                },
+                frame_index: 1,
+                scope_entry,
+            },
         ] {
             assert!(executor
                 .debugger_static_scope_relation(tab_id, 1, denied)
@@ -8527,6 +8562,9 @@ mod tests {
             }
         );
         executor.synchronize_and_execute(&tabs).unwrap();
+        assert!(executor
+            .debugger_static_scope_relation(tab_id, 1, static_target)
+            .is_err());
         assert!(matches!(
             executor.debugger_execution_state(
                 tab_id,
@@ -8546,6 +8584,16 @@ mod tests {
         assert_eq!(
             executor.debugger_linked_execution_state(tab_id, 1, entry),
             Ok(JavaScriptPageDebuggerLinkedExecutionState::Completed)
+        );
+        let mut tabs = tabs;
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<p>linked successor</p>",
+            Some("https://example.test/app/successor.html".to_string()),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.debugger_static_scope_relation(tab_id, 1, static_target),
+            Err(JavaScriptPageDebuggerError::InvalidExecutionState)
         );
         drop(executor);
         shutdown_child(&path, &token);
@@ -13366,6 +13414,39 @@ mod tests {
                     },
                 )
                 .is_err());
+            for denied in [
+                JavaScriptPageDebuggerStaticScopeTarget::Ordinary {
+                    metadata: JavaScriptPageDebuggerStaticMetadata {
+                        metadata_generation: metadata.metadata_generation + 1,
+                        ..metadata
+                    },
+                    target: target_for(1, parent_slot),
+                },
+                JavaScriptPageDebuggerStaticScopeTarget::Ordinary {
+                    metadata,
+                    target: JavaScriptPageDebuggerValueTarget {
+                        scope_entry: JavaScriptPageDebuggerScopeEntry {
+                            slot_ordinal: parent_slot.slot_ordinal + 1_000,
+                            ..parent_slot
+                        },
+                        ..target_for(1, parent_slot)
+                    },
+                },
+                JavaScriptPageDebuggerStaticScopeTarget::Ordinary {
+                    metadata,
+                    target: JavaScriptPageDebuggerValueTarget {
+                        safe_point: JavaScriptPageDebuggerSafePoint {
+                            bytecode_offset: stack.frames[1].bytecode_offset + 1,
+                            ..target_for(1, parent_slot).safe_point
+                        },
+                        ..target_for(1, parent_slot)
+                    },
+                },
+            ] {
+                assert!(executor
+                    .debugger_static_scope_relation(tab_id, 1, denied)
+                    .is_err());
+            }
             let selected = target_for(0, stack.frames[0].scope_entries[0]);
             assert_eq!(
                 executor.debugger_value_snapshot(
@@ -13397,6 +13478,9 @@ mod tests {
             );
             executor.resume_debugger_nested_execution(frame).unwrap();
             executor.synchronize_and_execute(&tabs).unwrap();
+            assert!(executor
+                .debugger_static_scope_relation(tab_id, 1, parent_static)
+                .is_err());
             let root = executor
                 .debugger_stack_snapshot(tab_id, 1, program, None, 1, 256)
                 .unwrap();

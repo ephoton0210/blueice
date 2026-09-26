@@ -2097,6 +2097,16 @@ root's active slot through its entry-owned metadata, and refuses dependency
 metadata or frame index zero. The two focused child/core socket tests pass;
 neither shape adds a public static-scope request or grant.
 
+**C3.1.3.3.6.3 no-partial closure:** Against the real Launcher-supervised
+child, ordinary nested-parent and linked entry-root relation targets now
+refuse forged metadata generations, forged slot ordinals, and moved safe
+points. Resuming the respective child/dependency invalidates the old paused
+target; replacement documents also refuse both shapes. Each refusal is a
+typed error with no symbol/type partial payload. The full engine 309-test
+suite, workspace Clippy, and formatting pass, closing the private child/core
+static-relation milestone C3.1.3.3. Public same-stream receipts and the
+independent owner/client grant remain C3.1.3.4 work.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
