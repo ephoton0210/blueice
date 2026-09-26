@@ -2825,7 +2825,8 @@ pub enum DebuggerRequest {
         target: DebuggerStaticMetadataSourceBreakpointTarget,
     },
     /// Atomically resolves one separately authorized original BlueTS byte
-    /// position and arms only its verified root-classic safe point. Both the
+    /// position and arms only its verified classic or module root-code-unit
+    /// safe point. Both the
     /// same-stream metadata/source receipts and execution-control capability
     /// must be live; an unbound position or non-root instruction fails before
     /// the pending declaration starts. The reply is the ordinary source-free

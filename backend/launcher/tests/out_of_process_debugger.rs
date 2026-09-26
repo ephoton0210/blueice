@@ -6242,3 +6242,166 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
     let _ = std::fs::remove_file(policy_file);
     let _ = std::fs::remove_file(gatekeeper_socket);
 }
+
+#[test]
+fn launcher_arms_only_a_receipted_module_root_source_position() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let body = format!(
+            "<script type=\"application/x-blueice-typescript-module\">{STACK_COORDINATE_BLUETS_SOURCE}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+    let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            inventory: true,
+            source_inventory: true,
+            source_breakpoint: true,
+            ..StaticMetadataPolicy::default()
+        },
+    );
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    navigate(&mut browser, &url);
+    fixture.join().unwrap();
+
+    let manifest = DebuggerMetadataCapabilityManifest::opaque_source_breakpoint();
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
+                requested_metadata_capabilities: manifest.clone(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
+            granted_metadata_capabilities: manifest,
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let program = one_program(
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    let DebuggerReply::StaticMetadata(metadata) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadata { program },
+    ) else {
+        panic!("pending typed module must expose one metadata receipt")
+    };
+    assert_eq!(metadata.len(), 1);
+    let guessed = DebuggerStaticMetadataSourceBreakpointTarget {
+        source: DebuggerStaticMetadataSourceId {
+            metadata: metadata[0],
+            source_id: 0,
+        },
+        source_byte: STACK_COORDINATE_BLUETS_SOURCE
+            .find("globalThis.answer")
+            .unwrap() as u32,
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target: guessed },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
+    let DebuggerReply::StaticMetadataSources(sources) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataSources {
+            metadata: metadata[0],
+        },
+    ) else {
+        panic!("pending typed module must expose its original source receipt")
+    };
+    assert_eq!(sources.len(), 1);
+    let child = DebuggerStaticMetadataSourceBreakpointTarget {
+        source: sources[0],
+        source_byte: STACK_COORDINATE_BLUETS_SOURCE
+            .find("function inner")
+            .unwrap() as u32,
+    };
+    let DebuggerReply::StaticMetadataSourceBreakpoint(child_binding) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target: child },
+    ) else {
+        panic!("module function declaration must resolve to its child entry")
+    };
+    assert_eq!(child_binding.safe_point.unwrap().code_unit_ordinal, 1);
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target: child },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            ..
+        }
+    ));
+    let unbound = DebuggerStaticMetadataSourceBreakpointTarget {
+        source_byte: STACK_COORDINATE_BLUETS_SOURCE.len() as u32,
+        ..child
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target: unbound },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidSafePoint,
+            ..
+        }
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program }
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: DebuggerExecutionState::Pending,
+        }
+    );
+    let root = DebuggerStaticMetadataSourceBreakpointTarget {
+        source: sources[0],
+        ..guessed
+    };
+    let DebuggerReply::RootSafePointBreakpointArmed { safe_point } = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target: root },
+    ) else {
+        panic!("receipted module root position must atomically arm its own safe point")
+    };
+    assert_eq!(safe_point.program, program);
+    assert_eq!(safe_point.code_unit_ordinal, 0);
+    await_paused_execution(&mut debugger, program, safe_point);
+    assert_eq!(
+        debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
+        DebuggerReply::ExecutionResumed { program }
+    );
+    await_completed_execution(&mut debugger, program);
+    drop(debugger);
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}

@@ -1728,6 +1728,16 @@ arm. Each passed when rerun alone (the cutover case on its second retry).
 All 305 engine library tests passed with local socket access and one test
 thread; the full Launcher file is therefore not claimed clean for this run.
 
+**C3.1.2.3.1 module-root source arm:** The existing atomic
+`ArmStaticMetadataSourceBreakpoint` route also owns a module root code unit,
+not just a classic root. A real Launcher/core/child socket test inventories
+the module's own metadata and source, refuses an unreceipted guess, then
+proves a verified function-child source position and a source-end unbound
+position both refuse arm while execution remains pending. The original root
+call position arms its exact program-bound safe point, pauses, resumes, and
+completes. The public capability description now names both classic and
+module roots; no wire or runtime behavior changed.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

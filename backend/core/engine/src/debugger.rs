@@ -2350,7 +2350,7 @@ fn resolve_child_static_metadata_source_breakpoint(
 }
 
 /// Combines the separately authorized source-position binding with the
-/// existing root-classic arm in one owning session turn. No worker or peer
+/// existing classic/module root arm in one owning session turn. No worker or peer
 /// can substitute a safe point between those checks, and an unbound or child
 /// code-unit result never reaches the execution-control call.
 fn arm_child_static_metadata_source_breakpoint(
@@ -5275,7 +5275,7 @@ fn capability_reports(
                 DebuggerCapabilityState::Planned
             },
             if static_metadata_source_breakpoint_available {
-                "bounded BlueTS source positions resolve to exact safe points or explicit unbound results under separate receipts; atomic root-classic arm also requires execution control"
+                "bounded BlueTS source positions resolve to exact safe points or explicit unbound results under separate receipts; atomic classic/module root arm also requires execution control"
             } else {
                 "BlueTS source-position binding requires independent inventory, source-inventory, and binding grants plus a live child attachment"
             },
