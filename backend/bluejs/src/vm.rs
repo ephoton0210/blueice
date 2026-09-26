@@ -825,6 +825,7 @@ pub struct Vm {
     debugger_nested_continuation: Option<NestedDebuggerContinuation>,
     debugger_nested_parent_execution: Option<SuspendedModuleExecution>,
     debugger_nested_direct_call: bool,
+    debugger_nested_direct_caller_generation: Option<u64>,
     next_debugger_frame_serial: u64,
     /// Transient origin while a catchable throw propagates through frames.
     pending_throw_site: Option<VmDebuggerThrowSite>,

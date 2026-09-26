@@ -1537,6 +1537,15 @@ impl Vm {
                                 &mut self.debugger_nested_direct_call,
                                 direct_debugger_call,
                             );
+                            let caller_generation = self
+                                .debugger_nested_pause_request
+                                .is_some()
+                                .then_some(code.debugger_program_generation)
+                                .flatten();
+                            let previous_caller_generation = std::mem::replace(
+                                &mut self.debugger_nested_direct_caller_generation,
+                                caller_generation,
+                            );
                             let result = self.call_native(
                                 callee,
                                 receiver,
@@ -1544,6 +1553,8 @@ impl Vm {
                                 instruction.opcode == Opcode::Construct,
                             );
                             self.debugger_nested_direct_call = previous;
+                            self.debugger_nested_direct_caller_generation =
+                                previous_caller_generation;
                             result?
                         };
                         self.check_string(&result)?;

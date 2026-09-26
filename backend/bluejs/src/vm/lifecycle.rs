@@ -47,6 +47,7 @@ impl Vm {
             debugger_nested_continuation: None,
             debugger_nested_parent_execution: None,
             debugger_nested_direct_call: false,
+            debugger_nested_direct_caller_generation: None,
             next_debugger_frame_serial: 1,
             pending_throw_site: None,
             uncaught_throw_site: None,

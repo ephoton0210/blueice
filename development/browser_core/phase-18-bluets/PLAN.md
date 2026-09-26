@@ -1489,6 +1489,19 @@ fixture is an authorized entry module importing a function from a separate
 BlueTS dependency and calling it from the entry body; tests must prove the
 two installed programs and two original source IDs remain distinct.
 
+**C3.1.1.2.2.1 native evidence:** BlueJS now stamps each retained stack frame
+with its own installed program generation. A separate linked-module native
+pause accepts an exact entry/dependency generation pair and dependency safe
+point only in the entry's reachable closed graph; the interpreter captures the
+generation of the *calling instruction* because the active module name can
+already denote the callee. This ensures a dependency function called during
+dependency evaluation cannot consume the entry's target. The linked snapshot
+requires the paused dependency child and entry caller, while the existing
+same-program snapshot still refuses mixed generations. Native debugger tests
+cover exact child/parent generations, wrong serial, stale entry/dependency
+generations, unrelated graph members, and expiry after resume. The full 36
+BlueJS native debugger tests pass; the private and public wires remain v39.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

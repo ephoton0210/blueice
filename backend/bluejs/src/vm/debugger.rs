@@ -71,11 +71,11 @@ pub(super) struct ModuleDebuggerContinuation {
     pub(super) previous_module: Option<String>,
 }
 
-#[derive(Clone, Copy)]
 pub(super) struct NestedDebuggerPauseRequest {
     pub(super) program_generation: u64,
     pub(super) code_unit_ordinal: u32,
     pub(super) bytecode_offset: usize,
+    pub(super) caller_program_generation: Option<u64>,
 }
 
 pub(super) struct NestedDebuggerContinuation {
@@ -99,6 +99,15 @@ pub enum VmDebuggerNestedExecutionState {
         root_bytecode_offset: u32,
     },
     Completed,
+}
+
+/// Exact installed entry and dependency target for a native linked pause.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VmDebuggerLinkedPauseTarget {
+    pub entry_generation: u64,
+    pub dependency_generation: u64,
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
 }
 
 /// Hard native inspection budgets; a caller may request a smaller positive
@@ -133,6 +142,7 @@ pub struct VmDebuggerScopeEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VmDebuggerStackFrame {
+    pub program_generation: u64,
     pub code_unit_ordinal: u32,
     pub bytecode_offset: u32,
     pub scope_entries: Vec<VmDebuggerScopeEntry>,
@@ -168,6 +178,7 @@ fn debugger_scope_entries(
 }
 
 fn debugger_stack_frame(
+    program_generation: u64,
     code_unit_ordinal: u32,
     pc: usize,
     scopes: &[Vec<u32>],
@@ -175,6 +186,7 @@ fn debugger_stack_frame(
 ) -> VmDebuggerStackFrame {
     let (scope_entries, scope_truncated) = debugger_scope_entries(scopes, max_entries);
     VmDebuggerStackFrame {
+        program_generation,
         code_unit_ordinal,
         bytecode_offset: u32::try_from(pc)
             .expect("verified bytecode offset fits the debugger wire"),
@@ -257,6 +269,47 @@ impl Vm {
         max_frames: u32,
         max_scope_entries: u32,
     ) -> Result<VmDebuggerStackSnapshot, RuntimeError> {
+        self.debugger_stack_snapshot_inner(frame_serial, max_frames, max_scope_entries, false)
+    }
+
+    /// A separate native-only read for one linked-module child and its entry
+    /// caller. The existing same-program snapshot must continue to refuse a
+    /// child from another installed generation.
+    pub fn debugger_linked_stack_snapshot(
+        &self,
+        frame_serial: u64,
+        max_frames: u32,
+        max_scope_entries: u32,
+    ) -> Result<VmDebuggerStackSnapshot, RuntimeError> {
+        if self.debugger_module_continuation.is_none() || self.module_graph.is_none() {
+            return Err(RuntimeError::Unsupported(
+                "debugger linked stack has no retained module entry graph",
+            ));
+        }
+        let snapshot = self.debugger_stack_snapshot_inner(
+            Some(frame_serial),
+            max_frames,
+            max_scope_entries,
+            true,
+        )?;
+        if snapshot.frames.len() != 2
+            || snapshot.frames[0].program_generation == snapshot.program_generation
+            || snapshot.frames[1].program_generation != snapshot.program_generation
+        {
+            return Err(RuntimeError::Unsupported(
+                "debugger linked stack is not a dependency child and entry caller",
+            ));
+        }
+        Ok(snapshot)
+    }
+
+    fn debugger_stack_snapshot_inner(
+        &self,
+        frame_serial: Option<u64>,
+        max_frames: u32,
+        max_scope_entries: u32,
+        allow_linked: bool,
+    ) -> Result<VmDebuggerStackSnapshot, RuntimeError> {
         if !(1..=VM_DEBUGGER_MAX_STACK_FRAMES).contains(&max_frames)
             || !(1..=VM_DEBUGGER_MAX_SCOPE_ENTRIES).contains(&max_scope_entries)
         {
@@ -287,19 +340,33 @@ impl Vm {
         let mut frames = Vec::new();
         match (frame_serial, &self.debugger_nested_continuation) {
             (Some(serial), Some(child)) if child.frame_serial == serial => {
-                if child.code.debugger_program_generation != Some(program_generation) {
+                let child_generation =
+                    child
+                        .code
+                        .debugger_program_generation
+                        .ok_or(RuntimeError::Unsupported(
+                            "debugger-paused child has no installed program generation",
+                        ))?;
+                if child_generation != program_generation && !allow_linked {
                     return Err(RuntimeError::Unsupported(
                         "nested debugger frame belongs to another program generation",
                     ));
                 }
                 frames.push(debugger_stack_frame(
+                    child_generation,
                     child.code_unit_ordinal,
                     child.pc,
                     &child.execution.active_scope_slots,
                     max_entries,
                 ));
                 if max_frames > 1 {
-                    frames.push(debugger_stack_frame(0, root_pc, root_scopes, max_entries));
+                    frames.push(debugger_stack_frame(
+                        program_generation,
+                        0,
+                        root_pc,
+                        root_scopes,
+                        max_entries,
+                    ));
                 }
                 Ok(VmDebuggerStackSnapshot {
                     program_generation,
@@ -308,7 +375,13 @@ impl Vm {
                 })
             }
             (None, None) => {
-                frames.push(debugger_stack_frame(0, root_pc, root_scopes, max_entries));
+                frames.push(debugger_stack_frame(
+                    program_generation,
+                    0,
+                    root_pc,
+                    root_scopes,
+                    max_entries,
+                ));
                 Ok(VmDebuggerStackSnapshot {
                     program_generation,
                     frames,
@@ -468,6 +541,7 @@ impl Vm {
             program_generation: generation,
             code_unit_ordinal,
             bytecode_offset: bytecode_offset as usize,
+            caller_program_generation: Some(generation),
         });
         let result = self.run_debugger_script(code, None);
         self.debugger_nested_pause_request = None;
@@ -513,6 +587,79 @@ impl Vm {
         }
         let generation =
             Self::nested_debugger_target_generation(code, code_unit_ordinal, bytecode_offset)?;
+        self.run_module_graph_until_nested_debugger_pause(
+            entry,
+            modules,
+            generation,
+            code.debugger_program_generation
+                .expect("verified module generation"),
+            code_unit_ordinal,
+            bytecode_offset,
+        )
+    }
+
+    /// Pauses a direct synchronous dependency closure called by this exact
+    /// entry module. Both installed generations are supplied by the owning
+    /// page runtime; unrelated graph members and stale handles fail before
+    /// the graph executes. This native route has no IPC exposure yet.
+    pub fn execute_module_graph_until_linked_nested_debugger_pause(
+        &mut self,
+        entry: &str,
+        dependency: &str,
+        modules: &HashMap<String, Bytecode>,
+        target: VmDebuggerLinkedPauseTarget,
+    ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
+        self.ensure_no_debugger_continuation()?;
+        if entry == dependency {
+            return Err(RuntimeError::Unsupported(
+                "linked debugger child must belong to a separate dependency",
+            ));
+        }
+        let entry_code = modules.get(entry).ok_or(RuntimeError::Unsupported(
+            "linked debugger entry is absent from the graph",
+        ))?;
+        let dependency_code = modules.get(dependency).ok_or(RuntimeError::Unsupported(
+            "linked debugger dependency is absent from the graph",
+        ))?;
+        if !entry_code.module
+            || !dependency_code.module
+            || entry_code.debugger_program_generation != Some(target.entry_generation)
+            || dependency_code.debugger_program_generation != Some(target.dependency_generation)
+            || !Self::module_reaches(entry, dependency, modules, &mut HashSet::new())?
+        {
+            return Err(RuntimeError::Unsupported(
+                "linked debugger target is not an exact live entry dependency",
+            ));
+        }
+        let generation = Self::nested_debugger_target_generation(
+            dependency_code,
+            target.code_unit_ordinal,
+            target.bytecode_offset,
+        )?;
+        if generation != target.dependency_generation {
+            return Err(RuntimeError::Unsupported(
+                "linked debugger target belongs to another installed generation",
+            ));
+        }
+        self.run_module_graph_until_nested_debugger_pause(
+            entry,
+            modules,
+            generation,
+            target.entry_generation,
+            target.code_unit_ordinal,
+            target.bytecode_offset,
+        )
+    }
+
+    fn run_module_graph_until_nested_debugger_pause(
+        &mut self,
+        entry: &str,
+        modules: &HashMap<String, Bytecode>,
+        generation: u64,
+        caller_generation: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
         self.pending_throw_site = None;
         self.uncaught_throw_site = None;
         self.throw_epoch = 0;
@@ -520,6 +667,7 @@ impl Vm {
             program_generation: generation,
             code_unit_ordinal,
             bytecode_offset: bytecode_offset as usize,
+            caller_program_generation: Some(caller_generation),
         });
         let result = (|| {
             self.execute_module_graph_inner(entry, modules, false, false, ImportPhase::Evaluation)?;
@@ -1387,6 +1535,8 @@ mod tests {
             program.debugger_program_generation.unwrap()
         );
         assert_eq!(full.frames.len(), 2);
+        assert_eq!(full.frames[0].program_generation, full.program_generation);
+        assert_eq!(full.frames[1].program_generation, full.program_generation);
         assert_eq!(full.frames[0].code_unit_ordinal, 1);
         assert_eq!(full.frames[1].code_unit_ordinal, 0);
         assert!(!full.stack_truncated);
@@ -2194,6 +2344,165 @@ mod tests {
             vm.lookup_global_name("entryCalls").unwrap(),
             Some(Value::Number(1.0))
         );
+    }
+
+    #[test]
+    fn linked_module_nested_pause_preserves_each_frame_generation() {
+        let entry = "pages/linked-entry.mjs";
+        let dependency = "pages/linked-dep.mjs";
+        let mut registry = BlueJsProgramRegistry::default();
+        let dependency_handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(dependency, "sha256:linked-dependency").unwrap(),
+                module_code("export function inner(){ return 41; } globalThis.depCall = inner();"),
+            )
+            .unwrap();
+        let entry_handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(entry, "sha256:linked-entry").unwrap(),
+                module_code(
+                    "import { inner } from './linked-dep.mjs'; export const answer = inner() + 1;",
+                ),
+            )
+            .unwrap();
+        let graph = HashMap::from([
+            (
+                dependency.to_string(),
+                registry.get(dependency_handle).unwrap().bytecode().clone(),
+            ),
+            (
+                entry.to_string(),
+                registry.get(entry_handle).unwrap().bytecode().clone(),
+            ),
+        ]);
+        let dependency_generation = dependency_handle.generation().as_u64();
+        let entry_generation = entry_handle.generation().as_u64();
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.execute_module_graph_until_linked_nested_debugger_pause(
+                entry,
+                dependency,
+                &graph,
+                VmDebuggerLinkedPauseTarget {
+                    entry_generation,
+                    dependency_generation,
+                    code_unit_ordinal: 1,
+                    bytecode_offset: 0,
+                },
+            ),
+            Ok(VmDebuggerNestedExecutionState::Paused {
+                frame_serial: 1,
+                code_unit_ordinal: 1,
+                bytecode_offset: 0,
+            })
+        );
+        assert_eq!(
+            vm.lookup_global_name("depCall").unwrap(),
+            Some(Value::Number(41.0))
+        );
+        assert!(vm.debugger_stack_snapshot(Some(1), 2, 256).is_err());
+        assert!(vm.debugger_linked_stack_snapshot(2, 2, 256).is_err());
+        let stack = vm.debugger_linked_stack_snapshot(1, 2, 256).unwrap();
+        assert_eq!(stack.program_generation, entry_generation);
+        assert_eq!(stack.frames.len(), 2);
+        assert_eq!(stack.frames[0].program_generation, dependency_generation);
+        assert_eq!(stack.frames[0].code_unit_ordinal, 1);
+        assert_eq!(stack.frames[1].program_generation, entry_generation);
+        assert_eq!(stack.frames[1].code_unit_ordinal, 0);
+        assert!(!stack.stack_truncated);
+        assert!(matches!(
+            vm.resume_debugger_nested_execution(1),
+            Ok(VmDebuggerNestedExecutionState::FrameReturned { .. })
+        ));
+        assert_eq!(
+            vm.resume_debugger_module_execution(),
+            Ok(VmDebuggerExecutionState::Completed)
+        );
+        assert!(vm.debugger_linked_stack_snapshot(1, 2, 256).is_err());
+    }
+
+    #[test]
+    fn linked_module_nested_pause_rejects_stale_or_unreachable_programs() {
+        let entry = "pages/linked-entry.mjs";
+        let dependency = "pages/linked-dep.mjs";
+        let unrelated = "pages/unrelated.mjs";
+        let mut registry = BlueJsProgramRegistry::default();
+        let dependency_handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(dependency, "sha256:linked-dependency").unwrap(),
+                module_code("export function inner(){ return 41; }"),
+            )
+            .unwrap();
+        let entry_handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(entry, "sha256:linked-entry").unwrap(),
+                module_code(
+                    "import { inner } from './linked-dep.mjs'; export const answer = inner() + 1;",
+                ),
+            )
+            .unwrap();
+        let unrelated_handle = registry
+            .install_precompiled(
+                BlueJsSourceIdentity::new(unrelated, "sha256:unrelated").unwrap(),
+                module_code("export function inner(){ return 99; }"),
+            )
+            .unwrap();
+        let graph = HashMap::from([
+            (
+                dependency.to_string(),
+                registry.get(dependency_handle).unwrap().bytecode().clone(),
+            ),
+            (
+                entry.to_string(),
+                registry.get(entry_handle).unwrap().bytecode().clone(),
+            ),
+            (
+                unrelated.to_string(),
+                registry.get(unrelated_handle).unwrap().bytecode().clone(),
+            ),
+        ]);
+        let dependency_generation = dependency_handle.generation().as_u64();
+        let entry_generation = entry_handle.generation().as_u64();
+        let mut vm = Vm::default();
+        for (target, expected_entry, expected_dependency) in [
+            (dependency, entry_generation + 1, dependency_generation),
+            (dependency, entry_generation, dependency_generation + 1),
+            (
+                unrelated,
+                entry_generation,
+                unrelated_handle.generation().as_u64(),
+            ),
+        ] {
+            assert!(matches!(
+                vm.execute_module_graph_until_linked_nested_debugger_pause(
+                    entry,
+                    target,
+                    &graph,
+                    VmDebuggerLinkedPauseTarget {
+                        entry_generation: expected_entry,
+                        dependency_generation: expected_dependency,
+                        code_unit_ordinal: 1,
+                        bytecode_offset: 0,
+                    },
+                ),
+                Err(RuntimeError::Unsupported(_))
+            ));
+            assert!(vm.debugger_linked_stack_snapshot(1, 2, 256).is_err());
+        }
+        assert!(matches!(
+            vm.execute_module_graph_until_linked_nested_debugger_pause(
+                entry,
+                dependency,
+                &graph,
+                VmDebuggerLinkedPauseTarget {
+                    entry_generation,
+                    dependency_generation,
+                    code_unit_ordinal: 1,
+                    bytecode_offset: 0,
+                },
+            ),
+            Ok(VmDebuggerNestedExecutionState::Paused { .. })
+        ));
     }
 
     #[test]

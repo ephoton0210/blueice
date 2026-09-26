@@ -65,10 +65,17 @@ impl Vm {
             home,
             with_objects: closure_with_objects,
         } = call;
-        let nested_debugger_target = self.debugger_nested_pause_request.filter(|request| {
-            code.debugger_program_generation == Some(request.program_generation)
-                && code.debugger_code_unit_ordinal == Some(request.code_unit_ordinal)
-        });
+        let nested_debugger_target = self
+            .debugger_nested_pause_request
+            .as_ref()
+            .filter(|request| {
+                code.debugger_program_generation == Some(request.program_generation)
+                    && code.debugger_code_unit_ordinal == Some(request.code_unit_ordinal)
+                    && request.caller_program_generation.is_none_or(|generation| {
+                        self.debugger_nested_direct_caller_generation == Some(generation)
+                    })
+            })
+            .map(|request| (request.bytecode_offset, request.code_unit_ordinal));
         if nested_debugger_target.is_some()
             && (self.call_depth != 1
                 || !self.debugger_nested_direct_call
@@ -332,7 +339,7 @@ impl Vm {
                     Err(error)
                 }
             }
-        } else if let Some(target) = nested_debugger_target {
+        } else if let Some((target_offset, target_ordinal)) = nested_debugger_target {
             let frame_serial = self.next_debugger_frame_serial;
             let next_frame_serial =
                 frame_serial
@@ -348,7 +355,7 @@ impl Vm {
                 &mut iterators,
                 0,
                 None,
-                Some(InterpreterSuspensionPoint::Offset(target.bytecode_offset)),
+                Some(InterpreterSuspensionPoint::Offset(target_offset)),
                 None,
             ) {
                 Ok(InterpreterExit::Suspend {
@@ -362,7 +369,7 @@ impl Vm {
                     self.next_debugger_frame_serial = next_frame_serial;
                     self.debugger_nested_continuation = Some(NestedDebuggerContinuation {
                         frame_serial,
-                        code_unit_ordinal: target.code_unit_ordinal,
+                        code_unit_ordinal: target_ordinal,
                         code: code.as_ref().clone(),
                         pc,
                         execution,
