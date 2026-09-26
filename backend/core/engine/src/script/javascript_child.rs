@@ -13124,7 +13124,7 @@ mod tests {
     }
 
     #[test]
-    fn launcher_supervised_bluets_classic_and_module_values_cross_the_private_core_proxy() {
+    fn launcher_supervised_bluets_classic_and_module_values_and_static_scopes_cross_core() {
         use blueice_ipc::debugger::{
             DebuggerCapability, DebuggerCapabilityState, DebuggerPageRealm, DebuggerReply,
             DebuggerRequest,
@@ -13334,6 +13334,26 @@ mod tests {
                     .then_some(target)
                 })
                 .expect("resumed root must retain its own initialized binding");
+            let metadata = executor
+                .debugger_static_metadata(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap()[0];
+            let static_target = JavaScriptPageDebuggerStaticScopeTarget::Ordinary {
+                metadata,
+                target: root_target,
+            };
+            assert_eq!(
+                executor
+                    .debugger_static_scope_relation(tab_id, 1, static_target)
+                    .unwrap()
+                    .target,
+                static_target,
+                "{slug} root static relation must cross the real child/core route"
+            );
             tabs.get_mut(tab_id).unwrap().load_html_str(
                 "<p>successor</p>",
                 Some(format!("https://example.test/{slug}-successor.html")),
@@ -13341,6 +13361,10 @@ mod tests {
             executor.synchronize_and_execute(&tabs).unwrap();
             assert_eq!(
                 executor.debugger_value_snapshot(tab_id, 1, root_target),
+                Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            );
+            assert_eq!(
+                executor.debugger_static_scope_relation(tab_id, 1, static_target),
                 Err(JavaScriptPageDebuggerError::NoLiveRealm)
             );
             drop(executor);

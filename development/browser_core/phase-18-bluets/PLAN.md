@@ -2079,6 +2079,15 @@ stack, and altered echo. The engine 309-test suite, workspace Clippy, and
 formatting pass. This staging helper is not wired to a public debugger
 request, capability, or grant; those remain C3.1.3.4 work.
 
+**C3.1.3.3.6.1 classic/module root boundary:** The real Launcher-supervised
+BlueJS child now proves that an initialized BlueTS root binding in both
+classic and module script kinds can pass through the private v41 relation,
+the child adapter's exact echo, and the core-reminted program and metadata
+identities. The returned relation echoes only the static core target and
+opaque compiler symbol/type IDs. Replacing the document makes the same
+target fail with no partial relation. The focused real-child test passes;
+public debugger routing and grants remain unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
