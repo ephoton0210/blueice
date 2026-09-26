@@ -2187,6 +2187,21 @@ stale denials, truncation, and atomic combined-budget refusal. IPC 118-test
 suite, workspace Clippy, and formatting pass. No public static relation
 request, dispatch, grant, or protocol change is added here.
 
+**C3.1.3.4.5 staged core relation dispatch:** A core-local helper now requires
+an explicit independent-grant decision and the exact ordinary or linked
+same-stream scope receipt at the current pause incarnation. It rejects absent
+metadata and separate symbol/type inventory receipts, then remaps the public
+selector through the live realm and core-owned frame/stack identity. The
+existing private relation helper reacquires the active lexical slot and
+metadata generation; the staged caller accepts only a full private target
+echo and a complete parent-bound public symbol/type pair already receipted on
+that session. Tests exercise ordinary and linked success without `Value`
+authority and deny missing grants, missing/foreign receipts, stale
+incarnations, and altered echoes. The engine 309-test suite, workspace Clippy,
+formatting, and diff checks pass. No public request, owner policy, manifest
+or protocol change exists yet; the explicit grant parameter must be derived
+from the actual owner/client negotiation in C3.1.3.4.6.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

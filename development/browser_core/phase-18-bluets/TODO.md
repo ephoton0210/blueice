@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.5.** Stage a core static-relation dispatcher that
-checks the exact scope receipt, live pause, metadata and symbol/type inventory
-receipts, and full response echo without a public request.
+**Current leaf: C3.1.3.4.6.** Add the independently negotiated owner/client
+grant, linked-scopes and static-relation request/reply dispatch, and public
+protocol/manifest bumps together; prove IPC/core denials.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -440,7 +440,7 @@ channel with explicit owner/client grants.
       - [x] **C3.1.3.4.2** Add bounded public data-only linked-scopes and static scope target/relation shapes with strict validators and serialization tests; do not add requests, grants, or a protocol bump yet. The staged types bind a complete linked entry-root scope snapshot, ordinary/linked static selectors, and a complete parent-owned symbol/type pair; validators reject wrong owners/index, duplicate lexical slots, impossible budgets/truncation, and mismatched IDs. IPC 117-test suite, workspace Clippy, and formatting pass while public debugger remains v40.
       - [x] **C3.1.3.4.3** Expose the complete linked entry-root lexical slots through a private core-facing snapshot, rechecking the entire active linked pause without a public wire change. The out-of-process executor reacquires a full-budget two-program stack, preserves exact core frame identities, compares any previously complete private scope, rejects truncation and duplicate ordinals, and returns only core-reminted frames plus entry-root slot/depth entries. Mock and real-child focused tests, engine 309-test suite, workspace Clippy, and formatting pass.
       - [x] **C3.1.3.4.4** Add distinct bounded same-stream ordinary/linked static scope receipts tied to the core pause incarnation; keep linked receipts unusable by `Value` and default-deny relation reads. The existing ordinary Scopes receipt and new complete linked-entry receipt share one 4,096-entry session cap and incarnation; malformed/truncated linked replies, stale incarnations, other streams, and over-budget batches refuse atomically. `Value` still checks only ordinary receipts. IPC 118-test suite, workspace Clippy, and formatting pass; no public relation route or grant exists yet.
-      - [ ] **C3.1.3.4.5** Stage a core static-relation dispatcher that checks the exact scope receipt, live pause, metadata and symbol/type inventory receipts, and full response echo without a public request.
+      - [x] **C3.1.3.4.5** Stage a core static-relation dispatcher that checks the exact scope receipt, live pause, metadata and symbol/type inventory receipts, and full response echo without a public request. The staged helper requires an explicit independent grant, exact ordinary or linked scope receipt, matching metadata and separately inventoried symbol/type IDs on this session, then rechecks the live pause and full private target echo. Tests deny absent grant, missing or foreign receipts, stale incarnations, and changed echoes, while positive ordinary/linked relations require no `Value` grant. Engine 309-test suite, workspace Clippy, and formatting pass; no public request or protocol bump yet.
       - [ ] **C3.1.3.4.6** Add the independently negotiated owner/client grant, linked-scopes and static-relation request/reply dispatch, and public protocol/manifest bumps together; prove malformed, unauthorized, stale, cross-stream, and over-budget IPC/core denials.
       - [ ] **C3.1.3.4.7** Prove ordinary classic/module/nested and linked real Launcher sockets, same-stream receipts, no-partial denials, and separate `Value` authority before checking off C3.1.3.4.
     - [ ] **C3.1.3.5** Prove a static type display and independently authorized runtime preview remain distinct, correctly matched to the same paused classic/module/linked slot, and expire after step/reload/cutover on real Launcher sockets; then check off C3.1.3 and C3.1.

@@ -18,6 +18,7 @@ use crate::{
         JavaScriptPageDebuggerLinkedStackFrame, JavaScriptPageDebuggerLinkedStackSnapshot,
         JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
         JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerScopeEntry,
+        JavaScriptPageDebuggerStaticMetadata,
         JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
         JavaScriptPageDebuggerStaticMetadataContractTarget,
         JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
@@ -54,12 +55,12 @@ use blueice_ipc::debugger::{
     DebuggerStaticMetadataSymbolDisplay, DebuggerStaticMetadataSymbolId,
     DebuggerStaticMetadataSymbolLocation, DebuggerStaticMetadataSymbolLocationTarget,
     DebuggerStaticMetadataSymbolType, DebuggerStaticMetadataTypeDisplay,
-    DebuggerStaticMetadataTypeId, DebuggerValuePreview, DebuggerValueSnapshot, DebuggerValueTarget,
-    DEBUGGER_MAX_SCOPE_ENTRIES, DEBUGGER_MAX_STACK_FRAMES, DEBUGGER_MAX_VALUE_CONTAINER_LENGTH,
-    DEBUGGER_MAX_VALUE_DEPTH, DEBUGGER_MAX_VALUE_NODES, DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
-    DEBUGGER_PROTOCOL_VERSION, DEBUGGER_STATIC_METADATA_MAX_CONTRACTS,
-    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_SYMBOLS,
-    DEBUGGER_STATIC_METADATA_MAX_TYPES,
+    DebuggerStaticMetadataTypeId, DebuggerStaticScopeRelation, DebuggerStaticScopeTarget,
+    DebuggerValuePreview, DebuggerValueSnapshot, DebuggerValueTarget, DEBUGGER_MAX_SCOPE_ENTRIES,
+    DEBUGGER_MAX_STACK_FRAMES, DEBUGGER_MAX_VALUE_CONTAINER_LENGTH, DEBUGGER_MAX_VALUE_DEPTH,
+    DEBUGGER_MAX_VALUE_NODES, DEBUGGER_MAX_VALUE_PAYLOAD_BYTES, DEBUGGER_PROTOCOL_VERSION,
+    DEBUGGER_STATIC_METADATA_MAX_CONTRACTS, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
+    DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
 };
 use std::cell::Cell;
 use std::collections::HashSet;
@@ -3928,6 +3929,113 @@ fn private_core_static_scope_relation(
         return Err(invalid());
     }
     Ok(relation)
+}
+
+/// Staged session-side static relation. The `granted` flag must later come
+/// only from the independently negotiated owner/client capability for this
+/// exact live realm; no public request calls this helper in debugger v40.
+#[allow(dead_code)]
+fn staged_child_static_scope_relation(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    session: Option<&DebuggerMetadataSessionAuthorization>,
+    granted: bool,
+    pause_incarnation: u64,
+    target: DebuggerStaticScopeTarget,
+) -> Result<DebuggerStaticScopeRelation, Box<DebuggerReply>> {
+    let unavailable = || {
+        Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::CapabilityUnavailable,
+            message: "static scope relation requires an independent grant and same-stream receipts"
+                .to_string(),
+        })
+    };
+    if !granted {
+        return Err(unavailable());
+    }
+    let Some(session) = session else {
+        return Err(unavailable());
+    };
+    if !target.is_well_formed() || !session.observed_static_scope(target, pause_incarnation) {
+        return Err(Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "static scope target was not receipted on this paused stream".to_string(),
+        }));
+    }
+    let metadata = target.metadata();
+    if !session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !session.permits(DebuggerMetadataCapability::OpaqueTypeInventory)
+        || !session.permits(DebuggerMetadataCapability::OpaqueSymbolInventory)
+        || !session.observed_metadata(metadata)
+    {
+        return Err(unavailable());
+    }
+    let realm = metadata.program.realm;
+    let tab_id = resolve_live_realm(tabs, realm)?;
+    let core_metadata = JavaScriptPageDebuggerStaticMetadata {
+        metadata_handle: metadata.metadata_handle,
+        metadata_generation: metadata.metadata_generation,
+    };
+    let core_target = match target {
+        DebuggerStaticScopeTarget::Ordinary { target, .. } => {
+            let (_, frame) = resolve_child_stack_target(tabs, target.program, target.frame)?;
+            JavaScriptPageDebuggerStaticScopeTarget::Ordinary {
+                metadata: core_metadata,
+                target: JavaScriptPageDebuggerValueTarget {
+                    program: JavaScriptPageDebuggerProgram {
+                        program_handle: target.program.program_handle,
+                        program_generation: target.program.program_generation,
+                    },
+                    frame,
+                    frame_index: target.frame_index,
+                    safe_point: JavaScriptPageDebuggerSafePoint {
+                        code_unit_ordinal: target.safe_point.code_unit_ordinal,
+                        bytecode_offset: target.safe_point.bytecode_offset,
+                    },
+                    scope_entry: JavaScriptPageDebuggerScopeEntry {
+                        slot_ordinal: target.scope_entry.slot_ordinal,
+                        scope_depth: target.scope_entry.scope_depth,
+                    },
+                },
+            }
+        }
+        DebuggerStaticScopeTarget::Linked { target, .. } => {
+            JavaScriptPageDebuggerStaticScopeTarget::Linked {
+                metadata: core_metadata,
+                expected_stack: internal_linked_stack(tab_id, target.stack),
+                frame_index: target.frame_index,
+                scope_entry: JavaScriptPageDebuggerScopeEntry {
+                    slot_ordinal: target.scope_entry.slot_ordinal,
+                    scope_depth: target.scope_entry.scope_depth,
+                },
+            }
+        }
+    };
+    let relation = private_core_static_scope_relation(tabs, locations, realm, core_target)?;
+    if relation.target != core_target {
+        return Err(Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "private static scope relation changed its target".to_string(),
+        }));
+    }
+    let public = DebuggerStaticScopeRelation {
+        target,
+        symbol: DebuggerStaticMetadataSymbolId {
+            metadata,
+            symbol_id: relation.symbol_type.symbol_id,
+        },
+        static_type: DebuggerStaticMetadataTypeId {
+            metadata,
+            type_id: relation.symbol_type.type_id,
+        },
+    };
+    if !public.is_well_formed()
+        || !session.observed_symbol(public.symbol)
+        || !session.observed_type(public.static_type)
+    {
+        return Err(unavailable());
+    }
+    Ok(public)
 }
 
 /// Private core-side half of the public value route. The caller must
@@ -10677,7 +10785,7 @@ mod tests {
     }
 
     #[test]
-    fn private_static_scope_helper_rechecks_ordinary_and_linked_pauses() {
+    fn private_static_scope_helper_and_staged_receipts_recheck_both_pauses() {
         use crate::script::javascript::{
             JavaScriptPageDebuggerLinkedStackFrame, JavaScriptPageDebuggerStackFrame,
             JavaScriptPageDebuggerStackSnapshot, JavaScriptPageDebuggerStaticMetadata,
@@ -10899,5 +11007,196 @@ mod tests {
         locations.changed_echo = Some(ordinary);
         assert!(private_core_static_scope_relation(&tabs, &mut locations, realm, linked).is_err());
         assert_eq!(locations.relation_calls, 3);
+        locations.changed_echo = None;
+
+        let public_entry = DebuggerProgram {
+            realm,
+            program_handle: entry.program_handle,
+            program_generation: entry.program_generation,
+        };
+        let public_metadata = DebuggerStaticMetadataHandle {
+            program: public_entry,
+            metadata_handle: metadata.metadata_handle,
+            metadata_generation: metadata.metadata_generation,
+        };
+        let public_slot = DebuggerScopeEntry {
+            slot_ordinal: slot.slot_ordinal,
+            scope_depth: slot.scope_depth,
+        };
+        let public_value = DebuggerValueTarget {
+            program: public_entry,
+            frame: None,
+            frame_index: 0,
+            safe_point: DebuggerSafePoint {
+                program: public_entry,
+                code_unit_ordinal: 0,
+                bytecode_offset: 41,
+            },
+            scope_entry: public_slot,
+        };
+        let public_linked = public_linked_stack(tab_id, realm, linked_stack).unwrap();
+        let public_targets = [
+            DebuggerStaticScopeTarget::Ordinary {
+                metadata: public_metadata,
+                target: public_value,
+            },
+            DebuggerStaticScopeTarget::Linked {
+                metadata: public_metadata,
+                target: blueice_ipc::debugger::DebuggerLinkedScopeTarget {
+                    stack: public_linked,
+                    frame_index: 1,
+                    scope_entry: public_slot,
+                },
+            },
+        ];
+        let manifest = blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_selected(
+            blueice_ipc::debugger::DebuggerMetadataCapabilitySelection {
+                type_inventory: true,
+                symbol_inventory: true,
+                ..Default::default()
+            },
+        );
+        let hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
+            requested_metadata_capabilities: manifest.clone(),
+        };
+        let ack = blueice_ipc::debugger::negotiate(&hello, &manifest);
+        let session = blueice_ipc::debugger::metadata_session_authorization(&hello, &ack).unwrap();
+        let other = blueice_ipc::debugger::metadata_session_authorization(&hello, &ack).unwrap();
+        assert!(!session.permits_bounded_values());
+        for target in public_targets {
+            assert!(staged_child_static_scope_relation(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                false,
+                1,
+                target,
+            )
+            .is_err());
+            assert!(staged_child_static_scope_relation(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                true,
+                1,
+                target,
+            )
+            .is_err());
+        }
+        assert_eq!(locations.relation_calls, 3);
+        assert!(session.observe_scopes(
+            &DebuggerScopeSnapshot {
+                program: public_entry,
+                frame: None,
+                frame_index: 0,
+                safe_point: public_value.safe_point,
+                entries: vec![public_slot],
+                scope_truncated: false,
+            },
+            1
+        ));
+        assert!(session.observe_linked_scopes(
+            &blueice_ipc::debugger::DebuggerLinkedScopeSnapshot {
+                stack: public_linked,
+                frame_index: 1,
+                entries: vec![public_slot],
+                scope_truncated: false,
+                max_scope_entries: 4,
+            },
+            1
+        ));
+        for target in public_targets {
+            assert!(staged_child_static_scope_relation(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                true,
+                1,
+                target,
+            )
+            .is_err());
+        }
+        assert_eq!(locations.relation_calls, 3);
+        assert!(session.observe_metadata(&[public_metadata]));
+        let symbol = DebuggerStaticMetadataSymbolId {
+            metadata: public_metadata,
+            symbol_id: 2,
+        };
+        let static_type = DebuggerStaticMetadataTypeId {
+            metadata: public_metadata,
+            type_id: 1,
+        };
+        for target in public_targets {
+            assert!(staged_child_static_scope_relation(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                true,
+                1,
+                target,
+            )
+            .is_err());
+        }
+        assert!(session.observe_symbols(&[symbol]));
+        for target in public_targets {
+            assert!(staged_child_static_scope_relation(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                true,
+                1,
+                target,
+            )
+            .is_err());
+        }
+        assert!(session.observe_types(&[static_type]));
+        for target in public_targets {
+            assert_eq!(
+                staged_child_static_scope_relation(
+                    &tabs,
+                    &mut locations,
+                    Some(&session),
+                    true,
+                    1,
+                    target,
+                )
+                .unwrap(),
+                DebuggerStaticScopeRelation {
+                    target,
+                    symbol,
+                    static_type,
+                }
+            );
+            assert!(staged_child_static_scope_relation(
+                &tabs,
+                &mut locations,
+                Some(&other),
+                true,
+                1,
+                target,
+            )
+            .is_err());
+            assert!(staged_child_static_scope_relation(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                true,
+                2,
+                target,
+            )
+            .is_err());
+        }
+        locations.changed_echo = Some(ordinary);
+        assert!(staged_child_static_scope_relation(
+            &tabs,
+            &mut locations,
+            Some(&session),
+            true,
+            1,
+            public_targets[1],
+        )
+        .is_err());
     }
 }
