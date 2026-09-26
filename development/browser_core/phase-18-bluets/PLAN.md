@@ -2351,6 +2351,18 @@ test executable was removed, retaining both currently used package and
 workspace variants. C3.1.3.4.7.4 is closed. The requested BlueTS file-size
 and module-boundary audit is C3.1.3.4.7.5 before the parent closes.
 
+**C3.1.3.4.7.5.1 modularity inventory:** `MODULARITY_AUDIT.md` records the
+2026-09-27 line-count snapshot for 27 over-1,300-line Rust files containing
+BlueTS-owned code or references, including the separate `checker.rs` owner.
+Four direct compiler/bridge files have clear test, inference, lowering, or
+attachment splits. Mixed child host, debugger, compiler transport, and
+acceptance owners need staged internal modules that preserve wire/ABI and
+same-stream receipt semantics. Ten adjacent generic browser/BlueJS files
+were evaluated but a BlueTS-only extraction was deferred because their
+large body is not BlueTS-owned. The first implementation leaf moves the
+compiler's inline tests to their own module; subsequent compiler, bridge,
+and mixed-runtime work stays file-scoped and runs focused gates.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
