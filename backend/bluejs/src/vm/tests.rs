@@ -6,6 +6,25 @@ use super::*;
 use crate::heap::TemporalKind;
 
 #[test]
+fn vm_construction_reports_a_limit_that_cannot_hold_both_prototypes() {
+    let mut probe = Heap::new(HeapConfig::default()).unwrap();
+    probe.alloc_object(None).unwrap();
+    let one_object = probe.stats().managed_bytes;
+    let config = VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: one_object,
+            max_heap_bytes: one_object,
+        },
+        ..VmConfig::default()
+    };
+    assert!(matches!(
+        Vm::new(config),
+        Err(HeapError::HeapLimitExceeded { .. })
+    ));
+}
+
+#[test]
 fn temporal_receiver_checks_propagate_invalid_object_handles() {
     let mut vm = Vm::default();
     let mut other_vm = Vm::default();

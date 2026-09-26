@@ -87,6 +87,21 @@ fn run(body: &str) {
 }
 
 #[test]
+fn malformed_time_zone_component_is_rejected_by_temporal_string_parsers() {
+    run(r#"
+      range(() => Z.from("2020-06-15T12:34[Area/Bad!Zone]"));
+      range(() => Temporal.Instant.from("2020-06-15T12:34Z[Area/Bad!Zone]"));
+      range(() => D.from("2020-06-15[Area/Bad!Zone]"));
+      range(() => Z.from("2020-06-15T12:34[Area"));
+      range(() => Z.from("2020-06-15T12:34[UTC][foo"));
+      range(() => Z.from("2020-06-15T12:34[UTC][u-!=value]"));
+      range(() => Temporal.Instant.from("2020-06-15T12:34Z[UTC][foo"));
+      range(() => Temporal.Instant.from("2020-06-15T12:34Z[UTC][!foo=bar]"));
+      same(() => Z.from("2020-06-15T12:34[UTC][foo=bar]").timeZoneId, "UTC");
+    "#);
+}
+
+#[test]
 fn to_string_fractional_second_digits_and_smallest_unit() {
     run(r#"
       const z = Z.from("2020-06-15T12:34:56.789123456[America/New_York]");

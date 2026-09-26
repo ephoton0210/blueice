@@ -613,6 +613,7 @@ impl Vm {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Barrier, Once};
 
     #[test]
     fn shutdown_wakes_an_agent_waiting_for_its_first_broadcast() {
@@ -620,11 +621,19 @@ mod tests {
         let control = host.register();
         let waiting_host = Arc::clone(&host);
         let waiting_control = Arc::clone(&control);
-        let waiter =
-            thread::spawn(move || waiting_host.receive_broadcast(&waiting_control).is_none());
+        let gate = Arc::new(Barrier::new(2));
+        let waiting_gate = Arc::clone(&gate);
+        let waiter = thread::spawn(move || {
+            waiting_gate.wait();
+            waiting_host.receive_broadcast(&waiting_control).is_none()
+        });
 
         let deadline = Instant::now() + Duration::from_secs(5);
+        let release = Once::new();
         while !control.wait_started_for_test.load(Ordering::Acquire) {
+            release.call_once(|| {
+                gate.wait();
+            });
             assert!(Instant::now() < deadline, "agent did not start waiting");
             thread::yield_now();
         }
