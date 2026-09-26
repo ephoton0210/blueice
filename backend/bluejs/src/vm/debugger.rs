@@ -1495,6 +1495,57 @@ mod tests {
     }
 
     #[test]
+    fn captured_parent_binding_is_not_an_active_child_scope_slot() {
+        let program = installed_script(
+            "let outer=7; function inner(){let own=1; return outer+own;} inner();",
+        );
+        let outer = program.root_declaration_binding_slots()[0].unwrap();
+        let child_code = program.child_code_units().next().unwrap();
+        let captured = child_code
+            .captures
+            .iter()
+            .position(|slot| *slot == outer)
+            .unwrap() as u32;
+        let own = child_code
+            .bindings
+            .iter()
+            .position(|binding| binding.name == "own")
+            .unwrap() as u32;
+        let mut vm = Vm::default();
+        let VmDebuggerNestedExecutionState::Paused { frame_serial, .. } = vm
+            .execute_script_until_nested_debugger_pause(&program, 1, 0)
+            .unwrap()
+        else {
+            panic!("child must pause");
+        };
+        for _ in 0..64 {
+            let snapshot = vm
+                .debugger_stack_snapshot(Some(frame_serial), 2, 256)
+                .unwrap();
+            if snapshot.frames[0]
+                .scope_entries
+                .iter()
+                .any(|entry| entry.slot_ordinal == own)
+            {
+                assert!(!snapshot.frames[0]
+                    .scope_entries
+                    .iter()
+                    .any(|entry| entry.slot_ordinal == captured));
+                assert!(snapshot.frames[1]
+                    .scope_entries
+                    .iter()
+                    .any(|entry| entry.slot_ordinal == outer));
+                return;
+            }
+            assert!(matches!(
+                vm.step_debugger_nested_instruction(frame_serial).unwrap(),
+                VmDebuggerNestedExecutionState::Paused { .. }
+            ));
+        }
+        panic!("child local must become active");
+    }
+
+    #[test]
     fn stack_snapshot_excludes_inactive_scopes_and_never_evaluates_a_getter() {
         let program = installed_script(
             "var result = 0; function inner(a, b) { let first = a; let second = b; if (false) { let hidden = 9; } return first + second + watched.value; } result = inner(1, 2);",

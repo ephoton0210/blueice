@@ -1852,6 +1852,19 @@ includes this new compiler metadata. This leaf does not yet join BlueTS
 symbols or types, retain child mappings, or expose a debugger request; those
 are separate ordered leaves.
 
+**C3.1.3.2.2 nested/captured exclusion:** The current BlueTS checker mints
+`DebugSymbol` records for module-level declarations, not function parameters
+or function-body/branch locals. Even when a BlueJS child code unit captures a
+root binding cell, that captured cell is not an active child `Scopes` slot;
+the paused stack lists it only in the still-active parent frame. A focused
+BlueTS inventory test and a real paused BlueJS child snapshot establish both
+boundaries. The first static-scope relation therefore joins only checked
+top-level declarations to exact root-code-unit slots. It must not attach a
+top-level SymbolId to a same-named child local, parameter, or captured slot;
+future local-symbol metadata would require its own compiler provenance and
+grant review. A parent frame shown alongside the child can still be queried
+through its own active slot and exact frame receipt.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -498,6 +498,23 @@ mod tests {
     }
 
     #[test]
+    fn static_symbol_inventory_does_not_mint_function_local_or_parameter_ids() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///app.ts",
+            "function read(input: number): number { const local: number = input; if (input > 0) { let nested: number = local; } return local; }",
+        )]);
+        let compilation = compile("memory:///app.ts", &loader, CompilerOptions::default());
+        assert!(
+            compilation.diagnostics.is_empty(),
+            "{:?}",
+            compilation.diagnostics
+        );
+        let debug = compilation.debug_info.unwrap();
+        assert_eq!(debug.symbols.len(), 1);
+        assert_eq!(debug.symbols[0].name, "read");
+    }
+
+    #[test]
     fn source_provenance_uses_a_labeled_cryptographic_digest() {
         assert_eq!(
             source_hash("abc"),
