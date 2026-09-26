@@ -1502,6 +1502,19 @@ cover exact child/parent generations, wrong serial, stale entry/dependency
 generations, unrelated graph members, and expiry after resume. The full 36
 BlueJS native debugger tests pass; the private and public wires remain v39.
 
+**C3.1.1.2.2.2 split and first seam:** The private route is staged as a
+host-neutral page-runtime seam, then a child-local state/source-mapping seam,
+then one complete private wire change. The page runtime now retains a distinct
+linked frame carrying the exact realm tab, entry program, dependency program,
+code-unit ordinal, and invocation serial. It accepts only a dependency safe
+point owned by the realm and present in the closed graph, delegates exact
+entry-to-dependency reachability to the VM, and checks both installed frame
+generations on linked stack reads. Its resume consumes only that retained
+linked frame and leaves the entry root for its separate module resume. Tests
+exercise the real imported dependency call, both generations, old-route
+refusal, wrong dependency/serial, cross-realm read, graph exclusion, unrelated
+member, and navigation expiry. No IPC shape or version changes in this seam.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

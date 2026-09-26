@@ -16,8 +16,8 @@ use crate::{
     BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, Bytecode, HeapError, HeapStats,
     HostFunction, HostObject, HostObjectFactory, HostObjectFamily, HostObjectKey, HostObjectMethod,
     HostObjectPairMethod, RuntimeError, Value, Vm, VmConfig, VmDebuggerExecutionState,
-    VmDebuggerNestedExecutionState, VmDebuggerScopeEntry, VmDebuggerStackSnapshot,
-    VmDebuggerThrowSite, VmDebuggerValuePreview,
+    VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState, VmDebuggerScopeEntry,
+    VmDebuggerStackSnapshot, VmDebuggerThrowSite, VmDebuggerValuePreview,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -101,6 +101,40 @@ pub struct BlueJsPageDebuggerFrame {
     invocation_serial: u64,
 }
 
+/// A paused dependency invocation whose suspended caller belongs to a
+/// different installed entry program. This identity is distinct from the
+/// same-program nested frame and never authorizes that route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlueJsPageDebuggerLinkedFrame {
+    tab_id: u64,
+    entry_program: BlueJsProgramHandle,
+    dependency_program: BlueJsProgramHandle,
+    code_unit_ordinal: u32,
+    invocation_serial: u64,
+}
+
+impl BlueJsPageDebuggerLinkedFrame {
+    pub fn tab_id(self) -> u64 {
+        self.tab_id
+    }
+
+    pub fn entry_program(self) -> BlueJsProgramHandle {
+        self.entry_program
+    }
+
+    pub fn dependency_program(self) -> BlueJsProgramHandle {
+        self.dependency_program
+    }
+
+    pub fn code_unit_ordinal(self) -> u32 {
+        self.code_unit_ordinal
+    }
+
+    pub fn invocation_serial(self) -> u64 {
+        self.invocation_serial
+    }
+}
+
 /// One source-free, exact paused-frame lexical-slot selector. The page
 /// runtime rechecks ownership and the active VM stack before returning data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,6 +176,19 @@ pub enum BlueJsPageDebuggerNestedExecutionState {
     Completed,
 }
 
+/// Source-free state of a cross-program dependency child and entry caller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlueJsPageDebuggerLinkedExecutionState {
+    Paused {
+        frame: BlueJsPageDebuggerLinkedFrame,
+        bytecode_offset: u32,
+    },
+    FrameReturned {
+        root_bytecode_offset: u32,
+    },
+    Completed,
+}
+
 struct PageRealm {
     origin: BlueJsPageOrigin,
     vm: Vm,
@@ -150,6 +197,7 @@ struct PageRealm {
     linked_module_ids: BTreeSet<String>,
     bytecode_bytes: usize,
     debugger_nested_frame: Option<BlueJsPageDebuggerFrame>,
+    debugger_linked_frame: Option<BlueJsPageDebuggerLinkedFrame>,
 }
 
 /// A restricted, temporary view for installing host callbacks into one live
@@ -330,6 +378,7 @@ impl BlueJsPageRuntime {
                 linked_module_ids: BTreeSet::new(),
                 bytecode_bytes: 0,
                 debugger_nested_frame: None,
+                debugger_linked_frame: None,
             },
         );
         Ok(())
@@ -359,6 +408,7 @@ impl BlueJsPageRuntime {
                     linked_module_ids: BTreeSet::new(),
                     bytecode_bytes: 0,
                     debugger_nested_frame: None,
+                    debugger_linked_frame: None,
                 },
             )
             .expect("the checked realm exists");
@@ -729,6 +779,73 @@ impl BlueJsPageRuntime {
         ))
     }
 
+    /// Resumes only the exact linked dependency child. The suspended entry
+    /// root remains separately resumable after the child returns.
+    pub fn resume_debugger_linked_nested_execution(
+        &mut self,
+        frame: BlueJsPageDebuggerLinkedFrame,
+    ) -> Result<BlueJsPageDebuggerLinkedExecutionState, BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get_mut(&frame.tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(frame.tab_id))?;
+        if realm.debugger_linked_frame != Some(frame)
+            || !realm.programs.contains(&frame.entry_program)
+            || !realm.programs.contains(&frame.dependency_program)
+        {
+            return Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable);
+        }
+        let state = realm
+            .vm
+            .resume_debugger_nested_execution(frame.invocation_serial);
+        if state.is_err() {
+            realm.debugger_linked_frame = None;
+        }
+        let state = state.map_err(BlueJsPageRuntimeError::Runtime)?;
+        Ok(page_debugger_linked_execution_state(
+            realm,
+            frame.tab_id,
+            frame.entry_program,
+            frame.dependency_program,
+            state,
+        ))
+    }
+
+    /// Reads exactly the dependency child and suspended entry caller. Every
+    /// native frame generation must match the independently owned page handle.
+    pub fn debugger_linked_stack_snapshot(
+        &self,
+        tab_id: u64,
+        frame: BlueJsPageDebuggerLinkedFrame,
+        max_frames: u32,
+        max_scope_entries: u32,
+    ) -> Result<VmDebuggerStackSnapshot, BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        if frame.tab_id != tab_id
+            || realm.debugger_linked_frame != Some(frame)
+            || !realm.programs.contains(&frame.entry_program)
+            || !realm.programs.contains(&frame.dependency_program)
+        {
+            return Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable);
+        }
+        let snapshot = realm
+            .vm
+            .debugger_linked_stack_snapshot(frame.invocation_serial, max_frames, max_scope_entries)
+            .map_err(BlueJsPageRuntimeError::Runtime)?;
+        if snapshot.program_generation != frame.entry_program.generation().as_u64()
+            || snapshot.frames[0].program_generation
+                != frame.dependency_program.generation().as_u64()
+            || snapshot.frames[0].code_unit_ordinal != frame.code_unit_ordinal
+            || snapshot.frames[1].program_generation != frame.entry_program.generation().as_u64()
+        {
+            return Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable);
+        }
+        Ok(snapshot)
+    }
+
     /// Copies only the retained paused root, or the exact nested child and
     /// its waiting root, in child-first order. The selected program must
     /// still belong to this tab and match the VM's installed generation.
@@ -1038,6 +1155,54 @@ impl BlueJsPageRuntime {
         let state = state.map_err(BlueJsPageRuntimeError::Runtime)?;
         Ok(page_debugger_nested_execution_state(
             realm, tab_id, entry, state,
+        ))
+    }
+
+    /// Pauses an exact dependency safe point only when the entry's live,
+    /// authorized module graph calls that dependency child synchronously.
+    pub fn execute_module_graph_until_linked_nested_debugger_pause(
+        &mut self,
+        tab_id: u64,
+        entry: BlueJsProgramHandle,
+        dependency: BlueJsProgramHandle,
+        modules: impl IntoIterator<Item = BlueJsProgramHandle>,
+        safe_point: BlueJsSafePoint,
+    ) -> Result<BlueJsPageDebuggerLinkedExecutionState, BlueJsPageRuntimeError> {
+        if entry == dependency || safe_point.code_unit.ordinal() == 0 {
+            return Err(BlueJsPageRuntimeError::DebuggerNestedCodeUnitOnly);
+        }
+        self.validate_safe_point(tab_id, dependency, safe_point)?;
+        let dependency_module = self
+            .registry
+            .get(dependency)
+            .map_err(BlueJsPageRuntimeError::ProgramRegistry)?
+            .source()
+            .canonical_module_id()
+            .to_string();
+        let (entry_module, module_bytecode) = self.module_graph_bytecode(tab_id, entry, modules)?;
+        if !module_bytecode.contains_key(&dependency_module) {
+            return Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable);
+        }
+        let realm = self.realms.get_mut(&tab_id).expect("validated live realm");
+        realm
+            .linked_module_ids
+            .extend(module_bytecode.keys().cloned());
+        let state = realm
+            .vm
+            .execute_module_graph_until_linked_nested_debugger_pause(
+                &entry_module,
+                &dependency_module,
+                &module_bytecode,
+                VmDebuggerLinkedPauseTarget {
+                    entry_generation: entry.generation().as_u64(),
+                    dependency_generation: dependency.generation().as_u64(),
+                    code_unit_ordinal: safe_point.code_unit.ordinal(),
+                    bytecode_offset: safe_point.bytecode_offset,
+                },
+            );
+        let state = state.map_err(BlueJsPageRuntimeError::Runtime)?;
+        Ok(page_debugger_linked_execution_state(
+            realm, tab_id, entry, dependency, state,
         ))
     }
 
@@ -1370,6 +1535,48 @@ fn page_debugger_nested_execution_state(
         VmDebuggerNestedExecutionState::Completed => {
             realm.debugger_nested_frame = None;
             BlueJsPageDebuggerNestedExecutionState::Completed
+        }
+    }
+}
+
+fn page_debugger_linked_execution_state(
+    realm: &mut PageRealm,
+    tab_id: u64,
+    entry: BlueJsProgramHandle,
+    dependency: BlueJsProgramHandle,
+    state: VmDebuggerNestedExecutionState,
+) -> BlueJsPageDebuggerLinkedExecutionState {
+    match state {
+        VmDebuggerNestedExecutionState::Paused {
+            frame_serial,
+            code_unit_ordinal,
+            bytecode_offset,
+        } => {
+            let frame = BlueJsPageDebuggerLinkedFrame {
+                tab_id,
+                entry_program: entry,
+                dependency_program: dependency,
+                code_unit_ordinal,
+                invocation_serial: frame_serial,
+            };
+            debug_assert_ne!(frame_serial, 0);
+            realm.debugger_linked_frame = Some(frame);
+            BlueJsPageDebuggerLinkedExecutionState::Paused {
+                frame,
+                bytecode_offset,
+            }
+        }
+        VmDebuggerNestedExecutionState::FrameReturned {
+            root_bytecode_offset,
+        } => {
+            realm.debugger_linked_frame = None;
+            BlueJsPageDebuggerLinkedExecutionState::FrameReturned {
+                root_bytecode_offset,
+            }
+        }
+        VmDebuggerNestedExecutionState::Completed => {
+            realm.debugger_linked_frame = None;
+            BlueJsPageDebuggerLinkedExecutionState::Completed
         }
     }
 }
@@ -1842,6 +2049,169 @@ mod tests {
             runtime.execute_program(7, answer_reader),
             Ok(Value::Number(5.0))
         );
+    }
+
+    #[test]
+    fn linked_module_frame_keeps_both_page_programs_and_expires_on_resume() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        runtime.open_realm(8, origin()).unwrap();
+        let dependency = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///linked-dep.mjs"),
+                &BlueJsProgramV1::Module(
+                    parse_module("export function inner() { return 41; }").unwrap(),
+                ),
+            )
+            .unwrap();
+        let entry = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///linked-entry.mjs"),
+                &BlueJsProgramV1::Module(
+                    parse_module("import { inner } from './linked-dep.mjs'; export const answer = inner() + 1;")
+                        .unwrap(),
+                ),
+            )
+            .unwrap();
+        let point = first_nested_point(&runtime, 7, dependency);
+        let BlueJsPageDebuggerLinkedExecutionState::Paused { frame, .. } = runtime
+            .execute_module_graph_until_linked_nested_debugger_pause(
+                7,
+                entry,
+                dependency,
+                [dependency, entry],
+                point,
+            )
+            .unwrap()
+        else {
+            panic!("entry must pause in its dependency child");
+        };
+        assert_eq!(frame.entry_program(), entry);
+        assert_eq!(frame.dependency_program(), dependency);
+        assert_eq!(frame.tab_id(), 7);
+        let snapshot = runtime
+            .debugger_linked_stack_snapshot(7, frame, 2, 256)
+            .unwrap();
+        assert_eq!(snapshot.program_generation, entry.generation().as_u64());
+        assert_eq!(
+            snapshot.frames[0].program_generation,
+            dependency.generation().as_u64()
+        );
+        assert_eq!(
+            snapshot.frames[1].program_generation,
+            entry.generation().as_u64()
+        );
+        assert!(runtime
+            .debugger_stack_snapshot(7, entry, None, 2, 256)
+            .is_err());
+        assert!(runtime
+            .debugger_linked_stack_snapshot(8, frame, 2, 256)
+            .is_err());
+        assert!(runtime
+            .debugger_linked_stack_snapshot(7, frame, 1, 256)
+            .is_err());
+        let wrong_dependency = BlueJsPageDebuggerLinkedFrame {
+            dependency_program: entry,
+            ..frame
+        };
+        assert!(runtime
+            .debugger_linked_stack_snapshot(7, wrong_dependency, 2, 256)
+            .is_err());
+        assert!(runtime
+            .resume_debugger_linked_nested_execution(wrong_dependency)
+            .is_err());
+        let wrong_serial = BlueJsPageDebuggerLinkedFrame {
+            invocation_serial: frame.invocation_serial() + 1,
+            ..frame
+        };
+        assert!(runtime
+            .resume_debugger_linked_nested_execution(wrong_serial)
+            .is_err());
+        assert!(matches!(
+            runtime.resume_debugger_linked_nested_execution(frame),
+            Ok(BlueJsPageDebuggerLinkedExecutionState::FrameReturned { .. })
+        ));
+        assert!(runtime
+            .debugger_linked_stack_snapshot(7, frame, 2, 256)
+            .is_err());
+        assert_eq!(
+            runtime.resume_debugger_module_execution(7),
+            Ok(BlueJsPageDebuggerExecutionState::Completed)
+        );
+        assert!(runtime
+            .resume_debugger_linked_nested_execution(frame)
+            .is_err());
+    }
+
+    #[test]
+    fn linked_module_page_target_refuses_unrelated_and_stale_handles() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        let dependency = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///linked-dep.mjs"),
+                &BlueJsProgramV1::Module(
+                    parse_module("export function inner() { return 41; }").unwrap(),
+                ),
+            )
+            .unwrap();
+        let entry = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///linked-entry.mjs"),
+                &BlueJsProgramV1::Module(
+                    parse_module("import { inner } from './linked-dep.mjs'; export const answer = inner() + 1;")
+                        .unwrap(),
+                ),
+            )
+            .unwrap();
+        let unrelated = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///unrelated.mjs"),
+                &BlueJsProgramV1::Module(
+                    parse_module("export function other() { return 1; }").unwrap(),
+                ),
+            )
+            .unwrap();
+        let point = first_nested_point(&runtime, 7, dependency);
+        assert!(runtime
+            .execute_module_graph_until_linked_nested_debugger_pause(
+                7,
+                entry,
+                dependency,
+                [entry, unrelated],
+                point,
+            )
+            .is_err());
+        let unrelated_point = first_nested_point(&runtime, 7, unrelated);
+        assert!(runtime
+            .execute_module_graph_until_linked_nested_debugger_pause(
+                7,
+                entry,
+                unrelated,
+                [entry, dependency, unrelated],
+                unrelated_point,
+            )
+            .is_err());
+        runtime.navigate(7, origin()).unwrap();
+        assert!(runtime
+            .execute_module_graph_until_linked_nested_debugger_pause(
+                7,
+                entry,
+                dependency,
+                [entry, dependency],
+                point,
+            )
+            .is_err());
     }
 
     #[test]

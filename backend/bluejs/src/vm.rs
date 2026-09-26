@@ -50,9 +50,9 @@ use debugger::{
     NestedDebuggerContinuation, NestedDebuggerPauseRequest,
 };
 pub use debugger::{
-    VmDebuggerExecutionState, VmDebuggerNestedExecutionState, VmDebuggerScopeEntry,
-    VmDebuggerStackFrame, VmDebuggerStackSnapshot, VmDebuggerThrowSite, VmDebuggerValuePreview,
-    VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
+    VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState,
+    VmDebuggerScopeEntry, VmDebuggerStackFrame, VmDebuggerStackSnapshot, VmDebuggerThrowSite,
+    VmDebuggerValuePreview, VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
     VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
 };
 use host_objects::{

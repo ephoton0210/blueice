@@ -83,6 +83,7 @@ pub use compiler::{
 pub use heap::{Heap, HeapConfig, HeapError, HeapStats, RootId};
 pub use page_runtime::{
     BlueJsHostBindingRegistrar, BlueJsPageDebuggerExecutionState, BlueJsPageDebuggerFrame,
+    BlueJsPageDebuggerLinkedExecutionState, BlueJsPageDebuggerLinkedFrame,
     BlueJsPageDebuggerNestedExecutionState, BlueJsPageDebuggerValueTarget, BlueJsPageOrigin,
     BlueJsPageRealmStats, BlueJsPageRuntime, BlueJsPageRuntimeConfig, BlueJsPageRuntimeError,
     BLUEJS_PAGE_RUNTIME_ABI_V1,
@@ -101,8 +102,8 @@ pub use value::{ObjectId, Value};
 pub use vm::{
     HostFunction, HostFunctionError, HostObject, HostObjectFactory, HostObjectFamily,
     HostObjectKey, HostObjectMethod, HostObjectPairMethod, HostValue, RuntimeError, Vm, VmConfig,
-    VmDebuggerExecutionState, VmDebuggerNestedExecutionState, VmDebuggerScopeEntry,
-    VmDebuggerStackFrame, VmDebuggerStackSnapshot, VmDebuggerThrowSite, VmDebuggerValuePreview,
-    VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
+    VmDebuggerExecutionState, VmDebuggerLinkedPauseTarget, VmDebuggerNestedExecutionState,
+    VmDebuggerScopeEntry, VmDebuggerStackFrame, VmDebuggerStackSnapshot, VmDebuggerThrowSite,
+    VmDebuggerValuePreview, VM_DEBUGGER_MAX_SCOPE_ENTRIES, VM_DEBUGGER_MAX_STACK_FRAMES,
     VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
 };
