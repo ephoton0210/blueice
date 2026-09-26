@@ -1987,6 +1987,18 @@ realms, and document cutover without a partial reply. The full Launcher
 115-test suite, workspace Clippy, and formatting pass; public debugger v40
 and the independent `Value` route are unchanged.
 
+**C3.1.3.3.4 linked child relation:** A linked static-scope request first
+validates the exact child-minted dependency/entry invocation. The child then
+reacquires a complete two-program stack using the caller's original bounded
+scope budget and compares the entire safe-point/slot snapshot, not merely the
+selected entry frame. Only the entry root at index one may join to the entry
+program's live, metadata-owned retained root-slot map; the dependency child
+and its captures cannot borrow that metadata or map. Swapped program or
+metadata identities, forged invocation/slot, moved dependency or entry safe
+points, and stale document cutover all produce typed errors without partial
+symbol/type IDs. The full Launcher 116-test suite, workspace Clippy, and
+formatting pass. Public debugger v40 and `Value` remain unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

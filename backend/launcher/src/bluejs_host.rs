@@ -4403,9 +4403,8 @@ impl BlueJsChildHost {
         }
     }
 
-    /// Joins one freshly active ordinary root slot to its retained compiler
-    /// symbol/type IDs. Linked stacks stay denied until the separate
-    /// cross-program handler is implemented; no VM value is inspected here.
+    /// Joins one freshly active root slot to its retained compiler
+    /// symbol/type IDs without inspecting a VM value.
     fn debugger_static_scope_relation(
         &self,
         target: PageHostDebuggerStaticScopeTarget,
@@ -4417,7 +4416,9 @@ impl BlueJsChildHost {
             PageHostDebuggerStaticScopeTarget::Ordinary { metadata, target } => {
                 (*metadata, *target)
             }
-            PageHostDebuggerStaticScopeTarget::Linked { .. } => return invalid_debugger_state(),
+            PageHostDebuggerStaticScopeTarget::Linked { .. } => {
+                return self.debugger_static_scope_linked_relation(target);
+            }
         };
         let stack = match self.debugger_stack_snapshot(
             scope_target.tab_id,
@@ -4479,6 +4480,77 @@ impl BlueJsChildHost {
         let mut matching = slots.iter().filter(|slot| {
             slot.code_unit.ordinal() == 0
                 && slot.slot_ordinal == scope_target.scope_entry.slot_ordinal
+        });
+        let Some(slot) = matching.next() else {
+            return invalid_debugger_state();
+        };
+        if matching.next().is_some() {
+            return invalid_debugger_state();
+        }
+        PageHostReply::DebuggerStaticScopeRelation(Box::new(PageHostDebuggerStaticScopeRelation {
+            target,
+            symbol_type: PageHostDebuggerBlueTsMetadataSymbolType {
+                symbol_id: slot.symbol_id.0,
+                type_id: slot.type_id.0,
+            },
+        }))
+    }
+
+    /// Reacquires and compares the *entire* dependency/entry stack before
+    /// mapping an entry-root slot. Dependency locals/captures, stale child
+    /// frames, and cross-program metadata can never choose this map.
+    fn debugger_static_scope_linked_relation(
+        &self,
+        target: PageHostDebuggerStaticScopeTarget,
+    ) -> PageHostReply {
+        let PageHostDebuggerStaticScopeTarget::Linked {
+            frame,
+            expected_stack,
+            frame_index,
+            metadata,
+            scope_entry,
+        } = &target
+        else {
+            return invalid_request();
+        };
+        let active = match self.exact_linked_runtime_frame(*frame) {
+            Ok(active) => active,
+            Err(reply) => return reply,
+        };
+        let current = match self.debugger_linked_stack_snapshot(
+            frame.tab_id,
+            frame.document_generation,
+            frame.entry_program,
+            active,
+            expected_stack.max_scope_entries,
+        ) {
+            Ok(current) => current.to_wire(),
+            Err(reply) => return reply,
+        };
+        if current != **expected_stack || !current.is_well_formed(*frame) {
+            return invalid_debugger_state();
+        }
+        let selected = &current.frames[*frame_index as usize];
+        if selected
+            .scope_entries
+            .iter()
+            .filter(|entry| entry.slot_ordinal == scope_entry.slot_ordinal)
+            .count()
+            != 1
+        {
+            return invalid_debugger_state();
+        }
+        let slots = match self.live_bluets_root_symbol_slots(
+            frame.tab_id,
+            frame.document_generation,
+            frame.entry_program,
+            *metadata,
+        ) {
+            Ok(slots) => slots,
+            Err(_) => return invalid_debugger_state(),
+        };
+        let mut matching = slots.iter().filter(|slot| {
+            slot.code_unit.ordinal() == 0 && slot.slot_ordinal == scope_entry.slot_ordinal
         });
         let Some(slot) = matching.next() else {
             return invalid_debugger_state();
@@ -11045,6 +11117,252 @@ mod tests {
                 .is_err());
         }
         assert!(host.debug_registry.is_empty());
+    }
+
+    #[test]
+    fn private_static_scope_linked_entry_root_requires_complete_live_stack_and_owner() {
+        let entry = "blueice://page/static-entry.ts";
+        let dependency = "blueice://page/static-dependency.ts";
+        let mut module = PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Module,
+            graph: graph(
+                entry,
+                vec![
+                    PageHostSource::new(
+                        entry,
+                        "import { inner } from './static-dependency.ts'; const seed: number = 7; export const answer: number = seed + inner();",
+                    ),
+                    PageHostSource::new(
+                        dependency,
+                        "export function inner(): number { let local: number = 41; return local; }",
+                    ),
+                ],
+            ),
+        };
+        module.graph.resolutions.push(PageHostStaticResolution {
+            from_module: entry.to_string(),
+            specifier: "./static-dependency.ts".to_string(),
+            canonical_target: dependency.to_string(),
+        });
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(1, vec![module]),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let pending = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap();
+        let entry_program = pending.program.unwrap();
+        let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
+            panic!("the linked module remains pending");
+        };
+        let dependency_handle = attachment.modules[dependency].handle;
+        let dependency_program = host.documents[&7]
+            .debugger_programs
+            .iter()
+            .find(|(_, record)| record.runtime_handle == dependency_handle)
+            .map(|(handle, record)| PageHostDebuggerProgram {
+                program_handle: *handle,
+                program_generation: record.program_generation,
+            })
+            .unwrap();
+        let metadata_for = |host: &mut BlueJsChildHost, program| match host.handle_request(
+            PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            },
+        ) {
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+            reply => panic!("expected per-program metadata: {reply:?}"),
+        };
+        let entry_metadata = metadata_for(&mut host, entry_program);
+        let dependency_metadata = metadata_for(&mut host, dependency_program);
+        let point = host
+            .runtime
+            .safe_points(7, dependency_handle, 1024)
+            .unwrap()
+            .into_iter()
+            .find(|point| point.code_unit.ordinal() == 1 && point.bytecode_offset == 0)
+            .unwrap();
+        assert!(matches!(
+            host.handle_request(
+                PageHostRequest::ArmDebuggerLinkedNestedSafePointBreakpoint {
+                    tab_id: 7,
+                    document_generation: 1,
+                    entry_program,
+                    safe_point: PageHostDebuggerSafePoint {
+                        program: dependency_program,
+                        code_unit_ordinal: 1,
+                        bytecode_offset: point.bytecode_offset,
+                    },
+                }
+            ),
+            PageHostReply::DebuggerLinkedNestedSafePointBreakpointArmed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let frame = match host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+            tab_id: 7,
+            document_generation: 1,
+            program: entry_program,
+        }) {
+            PageHostReply::DebuggerLinkedExecutionState {
+                frame,
+                state: PageHostDebuggerLinkedExecutionState::Paused { .. },
+            } => frame,
+            reply => panic!("expected linked pause: {reply:?}"),
+        };
+        let stack = match host.handle_request(PageHostRequest::GetDebuggerLinkedStackSnapshot {
+            frame,
+            max_scope_entries: 256,
+        }) {
+            PageHostReply::DebuggerLinkedStackSnapshot { snapshot, .. } => *snapshot,
+            reply => panic!("expected complete linked stack: {reply:?}"),
+        };
+        let slots = host
+            .live_bluets_root_symbol_slots(7, 1, entry_program, entry_metadata)
+            .unwrap();
+        let (slot, scope_entry) = stack.frames[1]
+            .scope_entries
+            .iter()
+            .find_map(|entry| {
+                slots
+                    .iter()
+                    .find(|slot| slot.slot_ordinal == entry.slot_ordinal)
+                    .map(|slot| (*slot, *entry))
+            })
+            .expect("the linked entry root retains a compiler-bound slot");
+        let target = PageHostDebuggerStaticScopeTarget::Linked {
+            frame,
+            expected_stack: Box::new(stack.clone()),
+            frame_index: 1,
+            metadata: entry_metadata,
+            scope_entry,
+        };
+        assert!(target.is_well_formed());
+        let request = |target| PageHostRequest::DescribeDebuggerStaticScopeRelation {
+            target: Box::new(target),
+        };
+        assert_eq!(
+            host.handle_request(request(target.clone())),
+            PageHostReply::DebuggerStaticScopeRelation(Box::new(
+                PageHostDebuggerStaticScopeRelation {
+                    target: target.clone(),
+                    symbol_type: PageHostDebuggerBlueTsMetadataSymbolType {
+                        symbol_id: slot.symbol_id.0,
+                        type_id: slot.type_id.0,
+                    },
+                }
+            ))
+        );
+        for denied in [
+            PageHostDebuggerStaticScopeTarget::Linked {
+                frame,
+                expected_stack: Box::new(stack.clone()),
+                frame_index: 1,
+                metadata: dependency_metadata,
+                scope_entry,
+            },
+            PageHostDebuggerStaticScopeTarget::Linked {
+                frame,
+                expected_stack: Box::new(stack.clone()),
+                frame_index: 1,
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_generation: entry_metadata.metadata_generation + 1,
+                    ..entry_metadata
+                },
+                scope_entry,
+            },
+            PageHostDebuggerStaticScopeTarget::Linked {
+                frame,
+                expected_stack: Box::new(stack.clone()),
+                frame_index: 0,
+                metadata: dependency_metadata,
+                scope_entry,
+            },
+            PageHostDebuggerStaticScopeTarget::Linked {
+                frame: PageHostDebuggerLinkedFrame {
+                    entry_program: dependency_program,
+                    dependency_program: entry_program,
+                    ..frame
+                },
+                expected_stack: Box::new(stack.clone()),
+                frame_index: 1,
+                metadata: entry_metadata,
+                scope_entry,
+            },
+            PageHostDebuggerStaticScopeTarget::Linked {
+                frame: PageHostDebuggerLinkedFrame {
+                    invocation_serial: frame.invocation_serial + 1,
+                    ..frame
+                },
+                expected_stack: Box::new(stack.clone()),
+                frame_index: 1,
+                metadata: entry_metadata,
+                scope_entry,
+            },
+            PageHostDebuggerStaticScopeTarget::Linked {
+                frame,
+                expected_stack: Box::new({
+                    let mut moved = stack.clone();
+                    moved.frames[1].safe_point.bytecode_offset += 1;
+                    moved
+                }),
+                frame_index: 1,
+                metadata: entry_metadata,
+                scope_entry,
+            },
+            PageHostDebuggerStaticScopeTarget::Linked {
+                frame,
+                expected_stack: Box::new(stack.clone()),
+                frame_index: 1,
+                metadata: entry_metadata,
+                scope_entry: PageHostDebuggerScopeEntry {
+                    slot_ordinal: scope_entry.slot_ordinal + 256,
+                    ..scope_entry
+                },
+            },
+            PageHostDebuggerStaticScopeTarget::Linked {
+                frame,
+                expected_stack: Box::new({
+                    let mut moved = stack.clone();
+                    moved.frames[0].safe_point.bytecode_offset += 1;
+                    moved
+                }),
+                frame_index: 1,
+                metadata: entry_metadata,
+                scope_entry,
+            },
+        ] {
+            assert!(matches!(
+                host.handle_request(request(denied)),
+                PageHostReply::Error { .. }
+            ));
+        }
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(2, vec![]),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(request(target)),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
     }
 
     #[test]
