@@ -68,6 +68,13 @@ fn assert_type_error(source: &str) {
     );
 }
 
+#[test]
+fn date_and_year_month_strings_reject_invalid_offsets_and_annotations() {
+    assert_range_error("Temporal.PlainDate.from('2000-05-02T12:34+25:00')");
+    assert_range_error("Temporal.PlainDateTime.from('2000-05-02T12:34+01:99')");
+    assert_range_error("Temporal.PlainYearMonth.from('2000-05[!foo=bar]')");
+}
+
 /// The time-of-day in a string argument is ignored by `PlainDate.compare`, in
 /// either position, for every date/time separator and for a leap second.
 #[test]
