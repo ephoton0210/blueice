@@ -1206,6 +1206,42 @@ impl BlueJsPageRuntime {
         ))
     }
 
+    /// Preflights one linked arm against the exact live page programs and
+    /// closed reachable module graph, without reserving or executing it.
+    pub fn validate_linked_nested_debugger_target(
+        &self,
+        tab_id: u64,
+        entry: BlueJsProgramHandle,
+        dependency: BlueJsProgramHandle,
+        modules: impl IntoIterator<Item = BlueJsProgramHandle>,
+        safe_point: BlueJsSafePoint,
+    ) -> Result<(), BlueJsPageRuntimeError> {
+        if entry == dependency || safe_point.code_unit.ordinal() == 0 {
+            return Err(BlueJsPageRuntimeError::DebuggerNestedCodeUnitOnly);
+        }
+        self.validate_safe_point(tab_id, dependency, safe_point)?;
+        let dependency_module = self
+            .registry
+            .get(dependency)
+            .map_err(BlueJsPageRuntimeError::ProgramRegistry)?
+            .source()
+            .canonical_module_id()
+            .to_string();
+        let (entry_module, module_bytecode) = self.module_graph_bytecode(tab_id, entry, modules)?;
+        Vm::validate_linked_nested_debugger_target(
+            &entry_module,
+            &dependency_module,
+            &module_bytecode,
+            VmDebuggerLinkedPauseTarget {
+                entry_generation: entry.generation().as_u64(),
+                dependency_generation: dependency.generation().as_u64(),
+                code_unit_ordinal: safe_point.code_unit.ordinal(),
+                bytecode_offset: safe_point.bytecode_offset,
+            },
+        )
+        .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
     /// Resumes the retained ESM entry frame in one exact live page realm.
     pub fn resume_debugger_module_execution(
         &mut self,
@@ -2194,6 +2230,15 @@ mod tests {
             .is_err());
         let unrelated_point = first_nested_point(&runtime, 7, unrelated);
         assert!(runtime
+            .validate_linked_nested_debugger_target(
+                7,
+                entry,
+                unrelated,
+                [entry, dependency, unrelated],
+                unrelated_point,
+            )
+            .is_err());
+        assert!(runtime
             .execute_module_graph_until_linked_nested_debugger_pause(
                 7,
                 entry,
@@ -2202,7 +2247,26 @@ mod tests {
                 unrelated_point,
             )
             .is_err());
+        assert_eq!(
+            runtime.validate_linked_nested_debugger_target(
+                7,
+                entry,
+                dependency,
+                [entry, dependency],
+                point,
+            ),
+            Ok(())
+        );
         runtime.navigate(7, origin()).unwrap();
+        assert!(runtime
+            .validate_linked_nested_debugger_target(
+                7,
+                entry,
+                dependency,
+                [entry, dependency],
+                point
+            )
+            .is_err());
         assert!(runtime
             .execute_module_graph_until_linked_nested_debugger_pause(
                 7,

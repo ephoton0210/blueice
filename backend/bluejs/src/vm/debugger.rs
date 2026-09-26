@@ -601,7 +601,7 @@ impl Vm {
     /// Pauses a direct synchronous dependency closure called by this exact
     /// entry module. Both installed generations are supplied by the owning
     /// page runtime; unrelated graph members and stale handles fail before
-    /// the graph executes. This native route has no IPC exposure yet.
+    /// the graph executes.
     pub fn execute_module_graph_until_linked_nested_debugger_pause(
         &mut self,
         entry: &str,
@@ -610,6 +610,25 @@ impl Vm {
         target: VmDebuggerLinkedPauseTarget,
     ) -> Result<VmDebuggerNestedExecutionState, RuntimeError> {
         self.ensure_no_debugger_continuation()?;
+        Self::validate_linked_nested_debugger_target(entry, dependency, modules, target)?;
+        self.run_module_graph_until_nested_debugger_pause(
+            entry,
+            modules,
+            target.dependency_generation,
+            target.entry_generation,
+            target.code_unit_ordinal,
+            target.bytecode_offset,
+        )
+    }
+
+    /// Validates a closed linked target without executing or reserving a
+    /// module. A page host uses this before acknowledging an arm request.
+    pub fn validate_linked_nested_debugger_target(
+        entry: &str,
+        dependency: &str,
+        modules: &HashMap<String, Bytecode>,
+        target: VmDebuggerLinkedPauseTarget,
+    ) -> Result<(), RuntimeError> {
         if entry == dependency {
             return Err(RuntimeError::Unsupported(
                 "linked debugger child must belong to a separate dependency",
@@ -641,14 +660,7 @@ impl Vm {
                 "linked debugger target belongs to another installed generation",
             ));
         }
-        self.run_module_graph_until_nested_debugger_pause(
-            entry,
-            modules,
-            generation,
-            target.entry_generation,
-            target.code_unit_ordinal,
-            target.bytecode_offset,
-        )
+        Ok(())
     }
 
     fn run_module_graph_until_nested_debugger_pause(

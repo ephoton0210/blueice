@@ -1548,6 +1548,22 @@ The real imported-dependency test verifies the dependency and entry source
 provenance names remain separate. Private and public protocol versions remain
 v39 until their complete linked routes are implemented.
 
+**C3.1.1.2.2.2.3 private v40 route:** The page-host wire now has a separate
+linked-module arm, execution-state reply, two-frame stack, two-source span
+read, and exact-frame resume family. Each frame carries its own child program
+safe point; the span reply contains only the complete pair of compiler-bound
+original spans, never a partial vector. Large stack/span replies are boxed so
+the existing error-returning child helpers keep their bounded enum size.
+Before acknowledging an arm, BlueJS validates entry-to-dependency graph
+reachability and both exact installed generations without executing or
+reserving the graph. Child requests reject malformed/wrong serials, stale
+documents, moved stacks, swapped metadata, and either unbound source ID.
+Private protocol v40 is enabled only with these handlers and round-trip
+coverage; the public debugger protocol remains v39 until core remints and
+independently authorizes this route. The IPC library suite passes 111 tests;
+the wider launcher host suite has the same two isolated source-offset failures
+recorded above and no new linked-route failure.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -119,9 +119,10 @@ use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-/// V34 carries a document-bound script handle, not a raw core NodeId, in
-/// `DispatchClick` so its target matches child-owned listener identities.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 39;
+/// V40 adds the complete linked-module private debugger frame, stack,
+/// per-program source-span, arm, and resume family. The public debugger wire
+/// remains independently versioned.
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 40;
 
 pub const PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -434,6 +435,68 @@ pub struct PageHostDebuggerStackSnapshot {
     pub stack_truncated: bool,
 }
 
+/// Exact cross-program invocation retained by the private page host. The
+/// dependency child and entry caller are separate installed programs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PageHostDebuggerLinkedFrame {
+    pub tab_id: u64,
+    pub document_generation: u64,
+    pub entry_program: PageHostDebuggerProgram,
+    pub dependency_program: PageHostDebuggerProgram,
+    pub code_unit_ordinal: u32,
+    pub invocation_serial: u64,
+}
+
+impl PageHostDebuggerLinkedFrame {
+    pub fn is_well_formed(self) -> bool {
+        self.tab_id != 0
+            && self.document_generation != 0
+            && self.entry_program.is_well_formed()
+            && self.dependency_program.is_well_formed()
+            && self.entry_program != self.dependency_program
+            && self.code_unit_ordinal != 0
+            && self.invocation_serial != 0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerLinkedStackFrame {
+    pub safe_point: PageHostDebuggerSafePoint,
+    pub scope_entries: Vec<PageHostDebuggerScopeEntry>,
+    pub scope_truncated: bool,
+}
+
+/// Complete child-first dependency/entry stack. The original scope budget is
+/// retained so an expected stack can be reacquired without truncation drift.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerLinkedStackSnapshot {
+    pub frames: [PageHostDebuggerLinkedStackFrame; 2],
+    pub stack_truncated: bool,
+    pub max_scope_entries: u32,
+}
+
+impl PageHostDebuggerLinkedStackSnapshot {
+    pub fn is_well_formed(&self, frame: PageHostDebuggerLinkedFrame) -> bool {
+        frame.is_well_formed()
+            && (1..=PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES).contains(&self.max_scope_entries)
+            && !self.stack_truncated
+            && self.frames[0].safe_point.program == frame.dependency_program
+            && self.frames[0].safe_point.code_unit_ordinal == frame.code_unit_ordinal
+            && self.frames[1].safe_point.program == frame.entry_program
+            && self.frames[1].safe_point.code_unit_ordinal == 0
+            && self.frames.iter().all(|frame| {
+                frame.scope_entries.len() <= self.max_scope_entries as usize
+                    && frame.safe_point.is_well_formed()
+            })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerLinkedSource {
+    pub metadata: PageHostDebuggerMetadataHandle,
+    pub source_id: u32,
+}
+
 /// One exact active slot in a retained debugger continuation. Core and child
 /// must revalidate the entire target against the live paused stack; these
 /// fields are identities, not authority tokens or heap-object handles.
@@ -605,6 +668,14 @@ pub enum PageHostDebuggerExecutionState {
     },
     Resuming,
     Completed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PageHostDebuggerLinkedExecutionState {
+    Paused {
+        safe_point: PageHostDebuggerSafePoint,
+    },
+    Resuming,
 }
 
 impl PageHostDebuggerSafePoint {
@@ -808,7 +879,9 @@ pub enum PageHostRequest {
     /// Applies a new document only if its generation succeeds the tab's
     /// current child-owned generation. Repeating the current generation is
     /// idempotent and never re-runs page code.
-    SynchronizeDocument { document: PageHostDocument },
+    SynchronizeDocument {
+        document: PageHostDocument,
+    },
     /// Delivers one core-hit-tested node to the exact live child document.
     /// `node_id` is the child-private script handle for that hit, not its raw
     /// core DOM NodeId. The child returns only whether a listener canceled
@@ -1067,6 +1140,13 @@ pub enum PageHostRequest {
         document_generation: u64,
         safe_point: PageHostDebuggerSafePoint,
     },
+    /// Arms a dependency child under an exact pending BlueTS module entry.
+    ArmDebuggerLinkedNestedSafePointBreakpoint {
+        tab_id: u64,
+        document_generation: u64,
+        entry_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     /// Reads only source-free lifecycle state for one exact child-private
     /// program generation in the opt-in root-classic continuation seam.
     GetDebuggerExecutionState {
@@ -1090,10 +1170,17 @@ pub enum PageHostRequest {
     },
     /// Steps only the exact currently paused nested invocation on a later
     /// child advance turn; a static safe point is never sufficient.
-    StepDebuggerNestedInstruction { frame: PageHostDebuggerFrame },
+    StepDebuggerNestedInstruction {
+        frame: PageHostDebuggerFrame,
+    },
     /// Resumes only the exact retained nested invocation on a later child
     /// advance turn; the waiting root remains separately paused on return.
-    ResumeDebuggerNestedExecution { frame: PageHostDebuggerFrame },
+    ResumeDebuggerNestedExecution {
+        frame: PageHostDebuggerFrame,
+    },
+    ResumeDebuggerLinkedNestedExecution {
+        frame: PageHostDebuggerLinkedFrame,
+    },
     /// Inspects only the exact paused root (`None`) or the currently active
     /// nested invocation (`Some`). Zero or over-cap limits are invalid.
     GetDebuggerStackSnapshot {
@@ -1104,9 +1191,22 @@ pub enum PageHostRequest {
         max_frames: u32,
         max_scope_entries: u32,
     },
+    GetDebuggerLinkedStackSnapshot {
+        frame: PageHostDebuggerLinkedFrame,
+        max_scope_entries: u32,
+    },
+    /// Checks the whole expected linked stack and both independently bound
+    /// metadata/source pairs before returning any original coordinate.
+    DescribeDebuggerLinkedStackSpans {
+        frame: PageHostDebuggerLinkedFrame,
+        expected_stack: PageHostDebuggerLinkedStackSnapshot,
+        sources: [PageHostDebuggerLinkedSource; 2],
+    },
     /// Copies only one exact active lexical slot in a paused BlueTS frame.
     /// This private route does not accept an object handle or run JavaScript.
-    GetDebuggerValueSnapshot { target: PageHostDebuggerValueTarget },
+    GetDebuggerValueSnapshot {
+        target: PageHostDebuggerValueTarget,
+    },
     /// Requires an exact paused BlueTS classic safe point, live metadata,
     /// and its compiler-minted source ID. The child derives the current span
     /// from its retained map; no source text or caller-selected stop span is
@@ -1368,11 +1468,21 @@ pub enum PageHostReply {
         document_generation: u64,
         safe_point: PageHostDebuggerSafePoint,
     },
+    DebuggerLinkedNestedSafePointBreakpointArmed {
+        tab_id: u64,
+        document_generation: u64,
+        entry_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     DebuggerExecutionState {
         tab_id: u64,
         document_generation: u64,
         program: PageHostDebuggerProgram,
         state: PageHostDebuggerExecutionState,
+    },
+    DebuggerLinkedExecutionState {
+        frame: PageHostDebuggerLinkedFrame,
+        state: PageHostDebuggerLinkedExecutionState,
     },
     DebuggerExecutionResumed {
         tab_id: u64,
@@ -1390,12 +1500,24 @@ pub enum PageHostReply {
     DebuggerNestedResumeRequested {
         frame: PageHostDebuggerFrame,
     },
+    DebuggerLinkedNestedResumeRequested {
+        frame: PageHostDebuggerLinkedFrame,
+    },
     DebuggerStackSnapshot {
         tab_id: u64,
         document_generation: u64,
         program: PageHostDebuggerProgram,
         frame: Option<PageHostDebuggerFrame>,
         snapshot: PageHostDebuggerStackSnapshot,
+    },
+    DebuggerLinkedStackSnapshot {
+        frame: PageHostDebuggerLinkedFrame,
+        snapshot: Box<PageHostDebuggerLinkedStackSnapshot>,
+    },
+    DebuggerLinkedStackSpans {
+        frame: PageHostDebuggerLinkedFrame,
+        snapshot: Box<PageHostDebuggerLinkedStackSnapshot>,
+        spans: Box<[PageHostDebuggerBlueTsSafePointSpan; 2]>,
     },
     DebuggerValueSnapshot(Box<PageHostDebuggerValueSnapshot>),
     DebuggerBlueTsSourceStepRequested {
@@ -1565,7 +1687,141 @@ mod tests {
         target.safe_point.program.program_generation -= 1;
         target.frame_index = 2;
         assert!(!target.is_well_formed());
-        assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 39);
+        assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 40);
+    }
+
+    #[test]
+    fn linked_module_private_wire_preserves_two_programs_and_sources() {
+        let entry_program = PageHostDebuggerProgram {
+            program_handle: 7,
+            program_generation: 9,
+        };
+        let dependency_program = PageHostDebuggerProgram {
+            program_handle: 8,
+            program_generation: 10,
+        };
+        let frame = PageHostDebuggerLinkedFrame {
+            tab_id: 3,
+            document_generation: 4,
+            entry_program,
+            dependency_program,
+            code_unit_ordinal: 1,
+            invocation_serial: 11,
+        };
+        let child_point = PageHostDebuggerSafePoint {
+            program: dependency_program,
+            code_unit_ordinal: 1,
+            bytecode_offset: 5,
+        };
+        let root_point = PageHostDebuggerSafePoint {
+            program: entry_program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 13,
+        };
+        let snapshot = PageHostDebuggerLinkedStackSnapshot {
+            frames: [
+                PageHostDebuggerLinkedStackFrame {
+                    safe_point: child_point,
+                    scope_entries: vec![],
+                    scope_truncated: false,
+                },
+                PageHostDebuggerLinkedStackFrame {
+                    safe_point: root_point,
+                    scope_entries: vec![],
+                    scope_truncated: false,
+                },
+            ],
+            stack_truncated: false,
+            max_scope_entries: 256,
+        };
+        let sources = [
+            PageHostDebuggerLinkedSource {
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 100,
+                    metadata_generation: 101,
+                },
+                source_id: 1,
+            },
+            PageHostDebuggerLinkedSource {
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 102,
+                    metadata_generation: 103,
+                },
+                source_id: 2,
+            },
+        ];
+        assert!(snapshot.is_well_formed(frame));
+        assert!(!snapshot.is_well_formed(PageHostDebuggerLinkedFrame {
+            dependency_program: entry_program,
+            ..frame
+        }));
+        for request in [
+            PageHostRequest::ArmDebuggerLinkedNestedSafePointBreakpoint {
+                tab_id: 3,
+                document_generation: 4,
+                entry_program,
+                safe_point: child_point,
+            },
+            PageHostRequest::GetDebuggerLinkedStackSnapshot {
+                frame,
+                max_scope_entries: 256,
+            },
+            PageHostRequest::DescribeDebuggerLinkedStackSpans {
+                frame,
+                expected_stack: snapshot.clone(),
+                sources,
+            },
+            PageHostRequest::ResumeDebuggerLinkedNestedExecution { frame },
+        ] {
+            let (mut writer, mut reader) = UnixStream::pair().unwrap();
+            write_page_host_request(&mut writer, &request).unwrap();
+            assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+        }
+        let span = PageHostDebuggerBlueTsSafePointSpan {
+            source_id: 1,
+            start_byte: 0,
+            end_byte: 1,
+            coordinates: DebuggerSourceCoordinates {
+                start_line: 1,
+                start_column_utf16: 0,
+                end_line: 1,
+                end_column_utf16: 1,
+            },
+        };
+        for reply in [
+            PageHostReply::DebuggerLinkedNestedSafePointBreakpointArmed {
+                tab_id: 3,
+                document_generation: 4,
+                entry_program,
+                safe_point: child_point,
+            },
+            PageHostReply::DebuggerLinkedExecutionState {
+                frame,
+                state: PageHostDebuggerLinkedExecutionState::Paused {
+                    safe_point: child_point,
+                },
+            },
+            PageHostReply::DebuggerLinkedStackSnapshot {
+                frame,
+                snapshot: Box::new(snapshot.clone()),
+            },
+            PageHostReply::DebuggerLinkedStackSpans {
+                frame,
+                snapshot: Box::new(snapshot),
+                spans: Box::new([
+                    span,
+                    PageHostDebuggerBlueTsSafePointSpan {
+                        source_id: 2,
+                        ..span
+                    },
+                ]),
+            },
+            PageHostReply::DebuggerLinkedNestedResumeRequested { frame },
+        ] {
+            let (mut writer, mut reader) = UnixStream::pair().unwrap();
+            write_page_host_reply(&mut writer, &reply).unwrap();
+            assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+        }
     }
 
     #[test]

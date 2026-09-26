@@ -62,16 +62,18 @@ use blueice_ipc::page_host::{
     PageHostDebuggerBlueTsMetadataSymbolId, PageHostDebuggerBlueTsMetadataSymbolLocation,
     PageHostDebuggerBlueTsMetadataSymbolType, PageHostDebuggerBlueTsMetadataTypeDisplay,
     PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerBlueTsSafePointSpan,
-    PageHostDebuggerExecutionState, PageHostDebuggerFrame, PageHostDebuggerMetadataHandle,
-    PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDebuggerScopeEntry,
-    PageHostDebuggerStackFrame, PageHostDebuggerStackSnapshot, PageHostDebuggerValuePreview,
-    PageHostDebuggerValueSnapshot, PageHostDebuggerValueTarget, PageHostDocument,
-    PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph, PageHostRealmStats,
-    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
-    PageHostScriptOutcome, PageHostScriptReport, PageHostSource, PageHostStaticResolution,
-    PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
-    PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES, PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES,
-    PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES, PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
+    PageHostDebuggerExecutionState, PageHostDebuggerFrame, PageHostDebuggerLinkedExecutionState,
+    PageHostDebuggerLinkedFrame, PageHostDebuggerLinkedSource, PageHostDebuggerLinkedStackFrame,
+    PageHostDebuggerLinkedStackSnapshot, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
+    PageHostDebuggerSafePoint, PageHostDebuggerScopeEntry, PageHostDebuggerStackFrame,
+    PageHostDebuggerStackSnapshot, PageHostDebuggerValuePreview, PageHostDebuggerValueSnapshot,
+    PageHostDebuggerValueTarget, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
+    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
+    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
+    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES,
+    PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
+    PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
 use blueice_ipc::script::{
     self, ScriptDocumentTarget, ScriptReply, ScriptRequest, SCRIPT_MAX_NAME_BYTES,
@@ -287,7 +289,6 @@ enum ChildDebuggerExecutionStatus {
         frame: BlueJsPageDebuggerLinkedFrame,
         safe_point: PageHostDebuggerSafePoint,
     },
-    #[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
     LinkedResumeRequested {
         frame: BlueJsPageDebuggerLinkedFrame,
         safe_point: PageHostDebuggerSafePoint,
@@ -304,7 +305,6 @@ enum ChildDebuggerExecutionStatus {
 
 /// A child-local cross-program stack; the v39 same-program wire never sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
 struct ChildLinkedStackFrame {
     safe_point: PageHostDebuggerSafePoint,
     scope_entries: Vec<PageHostDebuggerScopeEntry>,
@@ -312,11 +312,39 @@ struct ChildLinkedStackFrame {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
 struct ChildLinkedStackSnapshot {
     frames: [ChildLinkedStackFrame; 2],
     stack_truncated: bool,
     max_scope_entries: u32,
+}
+
+impl ChildLinkedStackSnapshot {
+    fn to_wire(&self) -> PageHostDebuggerLinkedStackSnapshot {
+        PageHostDebuggerLinkedStackSnapshot {
+            frames: self
+                .frames
+                .clone()
+                .map(|frame| PageHostDebuggerLinkedStackFrame {
+                    safe_point: frame.safe_point,
+                    scope_entries: frame.scope_entries,
+                    scope_truncated: frame.scope_truncated,
+                }),
+            stack_truncated: self.stack_truncated,
+            max_scope_entries: self.max_scope_entries,
+        }
+    }
+
+    fn from_wire(snapshot: &PageHostDebuggerLinkedStackSnapshot) -> Self {
+        Self {
+            frames: snapshot.frames.clone().map(|frame| ChildLinkedStackFrame {
+                safe_point: frame.safe_point,
+                scope_entries: frame.scope_entries,
+                scope_truncated: frame.scope_truncated,
+            }),
+            stack_truncated: snapshot.stack_truncated,
+            max_scope_entries: snapshot.max_scope_entries,
+        }
+    }
 }
 
 /// A document-order declaration retained by the child in an explicitly
@@ -1065,6 +1093,17 @@ impl BlueJsChildHost {
                 document_generation,
                 safe_point,
             ),
+            PageHostRequest::ArmDebuggerLinkedNestedSafePointBreakpoint {
+                tab_id,
+                document_generation,
+                entry_program,
+                safe_point,
+            } => self.arm_debugger_linked_safe_point_breakpoint(
+                tab_id,
+                document_generation,
+                entry_program,
+                safe_point,
+            ),
             PageHostRequest::GetDebuggerExecutionState {
                 tab_id,
                 document_generation,
@@ -1086,6 +1125,9 @@ impl BlueJsChildHost {
             PageHostRequest::ResumeDebuggerNestedExecution { frame } => {
                 self.resume_debugger_nested_execution(frame)
             }
+            PageHostRequest::ResumeDebuggerLinkedNestedExecution { frame } => {
+                self.resume_debugger_linked_nested_execution(frame)
+            }
             PageHostRequest::GetDebuggerStackSnapshot {
                 tab_id,
                 document_generation,
@@ -1101,6 +1143,15 @@ impl BlueJsChildHost {
                 max_frames,
                 max_scope_entries,
             ),
+            PageHostRequest::GetDebuggerLinkedStackSnapshot {
+                frame,
+                max_scope_entries,
+            } => self.debugger_linked_stack_reply(frame, max_scope_entries),
+            PageHostRequest::DescribeDebuggerLinkedStackSpans {
+                frame,
+                expected_stack,
+                sources,
+            } => self.debugger_linked_stack_spans_reply(frame, expected_stack, sources),
             PageHostRequest::GetDebuggerValueSnapshot { target } => {
                 self.debugger_value_snapshot(target)
             }
@@ -3567,7 +3618,6 @@ impl BlueJsChildHost {
 
     /// Arms a dependency child only for this entry's pending BlueTS module
     /// graph. This remains child-local until the complete linked wire ships.
-    #[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
     fn arm_debugger_linked_target(
         &mut self,
         tab_id: u64,
@@ -3623,6 +3673,30 @@ impl BlueJsChildHost {
         {
             return Err(invalid_debugger_state());
         }
+        let point = self
+            .runtime
+            .safe_points(
+                tab_id,
+                dependency_handle,
+                usize::try_from(PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM)
+                    .expect("page-host safe-point cap fits usize"),
+            )
+            .map_err(|_| invalid_request())?
+            .into_iter()
+            .find(|point| {
+                point.code_unit.ordinal() == safe_point.code_unit_ordinal
+                    && point.bytecode_offset == safe_point.bytecode_offset
+            })
+            .ok_or_else(invalid_request)?;
+        self.runtime
+            .validate_linked_nested_debugger_target(
+                tab_id,
+                entry_handle,
+                dependency_handle,
+                attachment.modules.values().map(|module| module.handle),
+                point,
+            )
+            .map_err(|_| invalid_request())?;
         let max = usize::try_from(PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
             .expect("page-host debugger breakpoint cap fits usize");
         if !document.debugger_breakpoints.contains(&safe_point)
@@ -3635,7 +3709,154 @@ impl BlueJsChildHost {
         Ok(())
     }
 
-    #[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
+    fn arm_debugger_linked_safe_point_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        entry_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> PageHostReply {
+        match self.arm_debugger_linked_target(
+            tab_id,
+            document_generation,
+            entry_program,
+            safe_point,
+        ) {
+            Ok(()) => PageHostReply::DebuggerLinkedNestedSafePointBreakpointArmed {
+                tab_id,
+                document_generation,
+                entry_program,
+                safe_point,
+            },
+            Err(reply) => reply,
+        }
+    }
+
+    fn exact_linked_runtime_frame(
+        &self,
+        frame: PageHostDebuggerLinkedFrame,
+    ) -> Result<BlueJsPageDebuggerLinkedFrame, PageHostReply> {
+        if !frame.is_well_formed() {
+            return Err(invalid_request());
+        }
+        let document = self.exact_document(frame.tab_id, frame.document_generation)?;
+        if !document.debugger_execution_control
+            || document
+                .pending_debugger_executions
+                .front()
+                .and_then(|pending| pending.program)
+                != Some(frame.entry_program)
+        {
+            return Err(invalid_debugger_state());
+        }
+        let Some(ChildDebuggerExecutionStatus::LinkedPaused {
+            frame: active,
+            safe_point,
+        }) = document
+            .debugger_execution_states
+            .get(&frame.entry_program)
+            .copied()
+        else {
+            return Err(invalid_debugger_state());
+        };
+        if child_debugger_linked_frame(
+            frame.tab_id,
+            frame.document_generation,
+            frame.entry_program,
+            safe_point.program,
+            active,
+        ) != frame
+        {
+            return Err(invalid_debugger_state());
+        }
+        Ok(active)
+    }
+
+    fn resume_debugger_linked_nested_execution(
+        &mut self,
+        frame: PageHostDebuggerLinkedFrame,
+    ) -> PageHostReply {
+        let active = match self.exact_linked_runtime_frame(frame) {
+            Ok(active) => active,
+            Err(reply) => return reply,
+        };
+        match self.request_debugger_linked_resume(
+            frame.tab_id,
+            frame.document_generation,
+            frame.entry_program,
+            active,
+        ) {
+            Ok(()) => PageHostReply::DebuggerLinkedNestedResumeRequested { frame },
+            Err(reply) => reply,
+        }
+    }
+
+    fn debugger_linked_stack_reply(
+        &self,
+        frame: PageHostDebuggerLinkedFrame,
+        max_scope_entries: u32,
+    ) -> PageHostReply {
+        let active = match self.exact_linked_runtime_frame(frame) {
+            Ok(active) => active,
+            Err(reply) => return reply,
+        };
+        let snapshot = match self.debugger_linked_stack_snapshot(
+            frame.tab_id,
+            frame.document_generation,
+            frame.entry_program,
+            active,
+            max_scope_entries,
+        ) {
+            Ok(snapshot) => snapshot.to_wire(),
+            Err(reply) => return reply,
+        };
+        if !snapshot.is_well_formed(frame) {
+            return invalid_debugger_state();
+        }
+        PageHostReply::DebuggerLinkedStackSnapshot {
+            frame,
+            snapshot: Box::new(snapshot),
+        }
+    }
+
+    fn debugger_linked_stack_spans_reply(
+        &self,
+        frame: PageHostDebuggerLinkedFrame,
+        expected_stack: PageHostDebuggerLinkedStackSnapshot,
+        sources: [PageHostDebuggerLinkedSource; 2],
+    ) -> PageHostReply {
+        if !expected_stack.is_well_formed(frame)
+            || sources
+                .iter()
+                .any(|source| !source.metadata.is_well_formed())
+        {
+            return invalid_request();
+        }
+        let active = match self.exact_linked_runtime_frame(frame) {
+            Ok(active) => active,
+            Err(reply) => return reply,
+        };
+        let spans = match self.debugger_linked_source_spans(
+            frame.tab_id,
+            frame.document_generation,
+            frame.entry_program,
+            active,
+            &ChildLinkedStackSnapshot::from_wire(&expected_stack),
+            [
+                (sources[0].metadata, sources[0].source_id),
+                (sources[1].metadata, sources[1].source_id),
+            ],
+        ) {
+            Ok(spans) => spans,
+            Err(reply) => return reply,
+        };
+        PageHostReply::DebuggerLinkedStackSpans {
+            frame,
+            snapshot: Box::new(expected_stack),
+            spans: Box::new(spans),
+        }
+    }
+
     fn request_debugger_linked_resume(
         &mut self,
         tab_id: u64,
@@ -3887,7 +4108,6 @@ impl BlueJsChildHost {
 
     /// Re-maps only an exact retained dependency/entry stack. Every frame
     /// names its own child program; no partial stack is returned on failure.
-    #[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
     fn debugger_linked_stack_snapshot(
         &self,
         tab_id: u64,
@@ -4005,7 +4225,6 @@ impl BlueJsChildHost {
     /// Maps a complete live linked stack through two independent retained
     /// BlueTS attachments. A bad metadata/source pair refuses the whole
     /// vector; numeric source IDs alone are never cross-program authority.
-    #[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
     fn debugger_linked_source_spans(
         &self,
         tab_id: u64,
@@ -4225,6 +4444,43 @@ impl BlueJsChildHost {
         let Some(status) = document.debugger_execution_states.get(&program).copied() else {
             return invalid_debugger_state();
         };
+        match status {
+            ChildDebuggerExecutionStatus::LinkedPaused { frame, safe_point } => {
+                let linked = child_debugger_linked_frame(
+                    tab_id,
+                    document_generation,
+                    program,
+                    safe_point.program,
+                    frame,
+                );
+                if !linked.is_well_formed()
+                    || safe_point.code_unit_ordinal != linked.code_unit_ordinal
+                {
+                    return invalid_debugger_state();
+                }
+                return PageHostReply::DebuggerLinkedExecutionState {
+                    frame: linked,
+                    state: PageHostDebuggerLinkedExecutionState::Paused { safe_point },
+                };
+            }
+            ChildDebuggerExecutionStatus::LinkedResumeRequested { frame, safe_point } => {
+                let linked = child_debugger_linked_frame(
+                    tab_id,
+                    document_generation,
+                    program,
+                    safe_point.program,
+                    frame,
+                );
+                if !linked.is_well_formed() {
+                    return invalid_debugger_state();
+                }
+                return PageHostReply::DebuggerLinkedExecutionState {
+                    frame: linked,
+                    state: PageHostDebuggerLinkedExecutionState::Resuming,
+                };
+            }
+            _ => {}
+        }
         let Some(state) =
             child_debugger_execution_state(tab_id, document_generation, program, status)
         else {
@@ -6528,6 +6784,23 @@ fn child_debugger_frame(
         tab_id,
         document_generation,
         program,
+        code_unit_ordinal: frame.code_unit_ordinal(),
+        invocation_serial: frame.invocation_serial(),
+    }
+}
+
+fn child_debugger_linked_frame(
+    tab_id: u64,
+    document_generation: u64,
+    entry_program: PageHostDebuggerProgram,
+    dependency_program: PageHostDebuggerProgram,
+    frame: BlueJsPageDebuggerLinkedFrame,
+) -> PageHostDebuggerLinkedFrame {
+    PageHostDebuggerLinkedFrame {
+        tab_id,
+        document_generation,
+        entry_program,
+        dependency_program,
         code_unit_ordinal: frame.code_unit_ordinal(),
         invocation_serial: frame.invocation_serial(),
     }
@@ -12502,12 +12775,32 @@ mod tests {
             code_unit_ordinal: point.code_unit.ordinal(),
             bytecode_offset: point.bytecode_offset,
         };
-        assert!(host
-            .arm_debugger_linked_target(7, 1, dependency_program, target)
-            .is_err());
+        assert!(matches!(
+            host.handle_request(
+                PageHostRequest::ArmDebuggerLinkedNestedSafePointBreakpoint {
+                    tab_id: 7,
+                    document_generation: 1,
+                    entry_program: dependency_program,
+                    safe_point: target,
+                }
+            ),
+            PageHostReply::Error { .. }
+        ));
         assert_eq!(
-            host.arm_debugger_linked_target(7, 1, entry_program, target),
-            Ok(())
+            host.handle_request(
+                PageHostRequest::ArmDebuggerLinkedNestedSafePointBreakpoint {
+                    tab_id: 7,
+                    document_generation: 1,
+                    entry_program,
+                    safe_point: target,
+                }
+            ),
+            PageHostReply::DebuggerLinkedNestedSafePointBreakpointArmed {
+                tab_id: 7,
+                document_generation: 1,
+                entry_program,
+                safe_point: target,
+            }
         );
         assert!(matches!(
             host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
@@ -12529,6 +12822,32 @@ mod tests {
             .unwrap();
         assert_eq!(stack.frames[0].safe_point.program, dependency_program);
         assert_eq!(stack.frames[1].safe_point.program, entry_program);
+        let wire_frame =
+            child_debugger_linked_frame(7, 1, entry_program, dependency_program, frame);
+        assert_eq!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program: entry_program,
+            }),
+            PageHostReply::DebuggerLinkedExecutionState {
+                frame: wire_frame,
+                state: PageHostDebuggerLinkedExecutionState::Paused { safe_point },
+            }
+        );
+        let wire_stack =
+            match host.handle_request(PageHostRequest::GetDebuggerLinkedStackSnapshot {
+                frame: wire_frame,
+                max_scope_entries: 256,
+            }) {
+                PageHostReply::DebuggerLinkedStackSnapshot {
+                    frame: returned,
+                    snapshot,
+                } if returned == wire_frame => *snapshot,
+                reply => panic!("expected private linked stack, got {reply:?}"),
+            };
+        assert_eq!(wire_stack.frames[0].safe_point.program, dependency_program);
+        assert_eq!(wire_stack.frames[1].safe_point.program, entry_program);
         let mut source_inventory = |program| {
             let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
                 tab_id: 7,
@@ -12567,6 +12886,54 @@ mod tests {
             .unwrap();
         assert_eq!(spans[0].source_id, child_source.1);
         assert_eq!(spans[1].source_id, entry_source.1);
+        let wire_sources = [
+            PageHostDebuggerLinkedSource {
+                metadata: child_source.0,
+                source_id: child_source.1,
+            },
+            PageHostDebuggerLinkedSource {
+                metadata: entry_source.0,
+                source_id: entry_source.1,
+            },
+        ];
+        assert_eq!(
+            host.handle_request(PageHostRequest::DescribeDebuggerLinkedStackSpans {
+                frame: wire_frame,
+                expected_stack: wire_stack.clone(),
+                sources: wire_sources,
+            }),
+            PageHostReply::DebuggerLinkedStackSpans {
+                frame: wire_frame,
+                snapshot: Box::new(wire_stack.clone()),
+                spans: Box::new(spans),
+            }
+        );
+        for rejected_sources in [
+            [wire_sources[1], wire_sources[0]],
+            [
+                PageHostDebuggerLinkedSource {
+                    source_id: u32::MAX,
+                    ..wire_sources[0]
+                },
+                wire_sources[1],
+            ],
+            [
+                wire_sources[0],
+                PageHostDebuggerLinkedSource {
+                    source_id: u32::MAX,
+                    ..wire_sources[1]
+                },
+            ],
+        ] {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::DescribeDebuggerLinkedStackSpans {
+                    frame: wire_frame,
+                    expected_stack: wire_stack.clone(),
+                    sources: rejected_sources,
+                }),
+                PageHostReply::Error { .. }
+            ));
+        }
         for (program, (metadata, source_id), expected_module) in [
             (dependency_program, child_source, dependency),
             (entry_program, entry_source, entry),
@@ -12634,14 +13001,58 @@ mod tests {
         assert!(host
             .debugger_linked_stack_snapshot(7, 2, entry_program, frame, 256)
             .is_err());
+        let mut moved_stack = wire_stack.clone();
+        moved_stack.frames[0].safe_point.bytecode_offset += 1;
         assert!(matches!(
-            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+            host.handle_request(PageHostRequest::DescribeDebuggerLinkedStackSpans {
+                frame: wire_frame,
+                expected_stack: moved_stack,
+                sources: wire_sources,
+            }),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerStackSnapshot {
                 tab_id: 7,
                 document_generation: 1,
                 program: entry_program,
+                frame: None,
+                max_frames: 2,
+                max_scope_entries: 256,
             }),
             PageHostReply::Error {
                 code: PageHostErrorCode::InvalidDebuggerState,
+                ..
+            }
+        ));
+        let wrong_serial = PageHostDebuggerLinkedFrame {
+            invocation_serial: wire_frame.invocation_serial + 1,
+            ..wire_frame
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerLinkedStackSnapshot {
+                frame: wrong_serial,
+                max_scope_entries: 256,
+            }),
+            PageHostReply::Error { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerLinkedNestedExecution {
+                frame: wrong_serial,
+            }),
+            PageHostReply::Error { .. }
+        ));
+        let stale_document = PageHostDebuggerLinkedFrame {
+            document_generation: 2,
+            ..wire_frame
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerLinkedStackSnapshot {
+                frame: stale_document,
+                max_scope_entries: 256,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
                 ..
             }
         ));
@@ -12649,8 +13060,21 @@ mod tests {
             .request_debugger_linked_resume(7, 1, dependency_program, frame)
             .is_err());
         assert_eq!(
-            host.request_debugger_linked_resume(7, 1, entry_program, frame),
-            Ok(())
+            host.handle_request(PageHostRequest::ResumeDebuggerLinkedNestedExecution {
+                frame: wire_frame,
+            }),
+            PageHostReply::DebuggerLinkedNestedResumeRequested { frame: wire_frame }
+        );
+        assert_eq!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program: entry_program,
+            }),
+            PageHostReply::DebuggerLinkedExecutionState {
+                frame: wire_frame,
+                state: PageHostDebuggerLinkedExecutionState::Resuming,
+            }
         );
         assert!(matches!(
             host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
@@ -12672,6 +13096,12 @@ mod tests {
         assert!(host
             .request_debugger_linked_resume(7, 1, entry_program, frame)
             .is_err());
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerLinkedNestedExecution {
+                frame: wire_frame,
+            }),
+            PageHostReply::Error { .. }
+        ));
         assert!(matches!(
             host.handle_request(PageHostRequest::ResumeDebuggerExecution {
                 tab_id: 7,

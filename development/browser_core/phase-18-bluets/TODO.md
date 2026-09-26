@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.1.2.2.2.3.** Add the complete private linked
-arm/stack/resume and per-frame-source wire, child denial tests, and only then
-bump the private protocol version.
+**Current leaf: C3.1.1.2.2.3.** Remint linked frames and per-program safe
+points in core, add the complete public linked-module family behind the
+existing span grant and independent receipts, and prove IPC/core denial.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -377,12 +377,12 @@ channel with explicit owner/client grants.
       - [x] **C3.1.1.2.1** Decide the paused cross-program stack, per-frame metadata/source receipt, grant, and stale/refusal contract before changing the public wire; keep v39 unchanged in this design leaf. PLAN.md fixes a separate linked-module pause/stack/coordinate family: entry and dependency programs remain distinct opaque identities, each frame carries its own installed generation, and each source must have its own same-stream metadata/source receipt under `OpaqueSafePointSpan`. Malformed/mismatched targets, missing grants/receipts, moved continuations, and stale realms have typed no-partial refusals; v39 is unchanged.
       - [ ] **C3.1.1.2.2** Implement exact child/core and public mapping for the decided cross-program nested-frame source set, with unit and IPC denial coverage.
         - [x] **C3.1.1.2.2.1** Retain each paused frame's installed program generation in BlueJS, accept only a dependency safe point in the entry's live closed module graph, and prove dependency-child/entry-caller identity plus stale and wrong-generation rejection without IPC changes. Native debugger tests prove distinct frame generations and refusal of wrong serials, stale generations, unrelated graph members, and the old same-program stack route; private/public v39 remain unchanged.
-        - [ ] **C3.1.1.2.2.2** Add a complete private page-host linked-module pause/stack/resume and per-frame-source route, with child tests and a private protocol bump only when the route is complete.
+        - [x] **C3.1.1.2.2.2** Add a complete private page-host linked-module pause/stack/resume and per-frame-source route, with child tests and a private protocol bump only when the route is complete.
           - [x] **C3.1.1.2.2.2.1** Bind the native linked pause to a host-neutral page realm and exact entry/dependency handles, retain a distinct linked frame, and prove stack/resume and stale/cross-realm denial without IPC changes. The host-neutral runtime rejects absent/unreachable dependencies, moved or wrong linked frames, cross-realm reads, and navigation-stale handles while preserving the separate same-program API.
           - [x] **C3.1.1.2.2.2.2** Retain distinct entry/dependency child programs and complete source/metadata mapping in the page host's linked pause state, without changing the private wire yet.
             - [x] **C3.1.1.2.2.2.2.1** Add child-local linked-module arm/pause/stack/resume scheduling, preserve both exact child program identities, and refuse stale/wrong-frame state; keep v39 unchanged. A child module test proves the real dependency call, distinct entry/dependency stack programs, denial of wrong entry or document, old v39 state refusal, exact linked resume, and stale frame expiry after return.
             - [x] **C3.1.1.2.2.2.2.2** Map both retained linked frames to their independent child metadata/source attachments and reject a swapped or unbound source without a partial result; then check off C3.1.1.2.2.2.2. The child rereads the complete live stack and validates each frame against its own metadata and source; tests prove distinct provenance, swapped metadata refusal, either unbound source refusal, and mismatched-stack refusal.
-          - [ ] **C3.1.1.2.2.2.3** Add complete private linked arm/stack/resume and per-frame-source requests/replies, child denial tests, and bump the private protocol only when all routes are complete; then check off C3.1.1.2.2.2.
+          - [x] **C3.1.1.2.2.2.3** Add complete private linked arm/stack/resume and per-frame-source requests/replies, child denial tests, and bump the private protocol only when all routes are complete; then check off C3.1.1.2.2.2. Private v40 exposes a distinct linked state/frame/stack family, exact arm prevalidation, and all-or-nothing per-frame span mapping; 111 IPC tests and focused child tests cover round trips and denials while public v39 remains unchanged.
         - [ ] **C3.1.1.2.2.3** Remint linked frames and per-program safe points in core, add the complete public linked-module request/reply family behind the existing span grant and independent per-frame receipts, bump public debugger protocol only with the route, and prove IPC/core denial and exact-span behavior; then check off C3.1.1.2.2.
       - [ ] **C3.1.1.2.3** Prove entry/dependency original spans, distinct source IDs, swapped/unreceipted source refusal, and stale graph expiry on real Launcher-supervised sockets; then check off C3.1.1.2 and C3.1.1.
   - [ ] **C3.1.2** Map breakpoints and symbols for module execution control.
