@@ -2460,6 +2460,13 @@ contracts, and source-span cases now have bounded 184-, 516-, 520-, 690-, and
 tests for the last split. All 116 Launcher library tests pass with one reused
 Cargo target; no wire or runtime behavior changed.
 
+**C3.1.3.4.7.5.4.2.4 Launcher host admission and stepping tests:** Snapshot
+and module admission, module/source-span stepping, and linked-module lifecycle
+cases now live in 533-, 940-, and 417-line modules. The common fixture owner
+is 117 lines; all host test-family files are below 1,300 lines (maximum 940).
+All 116 Launcher library tests pass with one reused target. Production host
+prepare/debugger extraction remains a separate leaf.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

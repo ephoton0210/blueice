@@ -118,3 +118,9 @@ C3.1.3.4.7.5.4.2.3 moved resource accounting, debugger control, metadata
 roots, metadata inventory/contracts, and source-span cases into 184-, 516-,
 520-, 690-, and 289-line modules. The fixture/admission/step parent is now
 1,989 lines; one final test-family split remains.
+
+C3.1.3.4.7.5.4.2.4 completed the Launcher host test-family split. Admission,
+module stepping, and linked-module cases now own 533-, 940-, and 417-line
+children. The fixture parent is 117 lines and the largest file across the
+entire host test family is 940 lines. The 7,709-line production host remains
+for its separate prepare/debugger modularization leaf.
