@@ -1515,6 +1515,28 @@ exercise the real imported dependency call, both generations, old-route
 refusal, wrong dependency/serial, cross-realm read, graph exclusion, unrelated
 member, and navigation expiry. No IPC shape or version changes in this seam.
 
+**C3.1.1.2.2.2.2.1 child scheduling evidence:** The page host retains an
+independent linked target on a pending BlueTS module entry and identifies the
+dependency by its separately registered child program. On advance it pauses
+only the dependency safe point in the entry's attached graph, keeps the exact
+linked runtime frame under the entry's scheduler state, and maps a two-frame
+stack back to distinct child program safe points. Linked resume consumes only
+that frame and restores the verified entry root boundary for the existing
+module resume. Wrong entry/document selectors, moved frames, and attempts to
+read the linked state through the v39 same-program execution route are refused.
+The child test exercises the actual imported function and full return path;
+the private/public wire remains v39. The child-local arm, stack, and resume
+methods are intentionally staged until the complete private v40 route is
+added, so their temporary dead-code allowances are removed at that wiring
+step.
+
+Verification note: the focused linked child test and workspace Clippy pass.
+In the wider 49-test `bluejs_host::tests` run, 47 pass and two existing
+source-breakpoint/source-step cases fail independently with an expected
+bytecode offset of 10 versus the observed 15. Both reproduce in isolation;
+neither uses the linked scheduler. This leaf does not claim to fix those
+source-mapping assertions.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

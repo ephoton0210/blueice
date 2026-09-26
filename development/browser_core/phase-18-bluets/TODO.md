@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.1.2.2.2.2.** Retain distinct entry/dependency child
-programs and complete source/metadata mapping in the page host's linked pause
-state; keep the private wire unchanged.
+**Current leaf: C3.1.1.2.2.2.2.2.** Map each retained linked frame through its
+own child metadata and source attachment, refusing swapped/unbound sources
+without partial results; keep the private wire unchanged.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -380,6 +380,8 @@ channel with explicit owner/client grants.
         - [ ] **C3.1.1.2.2.2** Add a complete private page-host linked-module pause/stack/resume and per-frame-source route, with child tests and a private protocol bump only when the route is complete.
           - [x] **C3.1.1.2.2.2.1** Bind the native linked pause to a host-neutral page realm and exact entry/dependency handles, retain a distinct linked frame, and prove stack/resume and stale/cross-realm denial without IPC changes. The host-neutral runtime rejects absent/unreachable dependencies, moved or wrong linked frames, cross-realm reads, and navigation-stale handles while preserving the separate same-program API.
           - [ ] **C3.1.1.2.2.2.2** Retain distinct entry/dependency child programs and complete source/metadata mapping in the page host's linked pause state, without changing the private wire yet.
+            - [x] **C3.1.1.2.2.2.2.1** Add child-local linked-module arm/pause/stack/resume scheduling, preserve both exact child program identities, and refuse stale/wrong-frame state; keep v39 unchanged. A child module test proves the real dependency call, distinct entry/dependency stack programs, denial of wrong entry or document, old v39 state refusal, exact linked resume, and stale frame expiry after return.
+            - [ ] **C3.1.1.2.2.2.2.2** Map both retained linked frames to their independent child metadata/source attachments and reject a swapped or unbound source without a partial result; then check off C3.1.1.2.2.2.2.
           - [ ] **C3.1.1.2.2.2.3** Add complete private linked arm/stack/resume and per-frame-source requests/replies, child denial tests, and bump the private protocol only when all routes are complete; then check off C3.1.1.2.2.2.
         - [ ] **C3.1.1.2.2.3** Remint linked frames and per-program safe points in core, add the complete public linked-module request/reply family behind the existing span grant and independent per-frame receipts, bump public debugger protocol only with the route, and prove IPC/core denial and exact-span behavior; then check off C3.1.1.2.2.
       - [ ] **C3.1.1.2.3** Prove entry/dependency original spans, distinct source IDs, swapped/unreceipted source refusal, and stale graph expiry on real Launcher-supervised sockets; then check off C3.1.1.2 and C3.1.1.

@@ -16,6 +16,7 @@
 
 use blueice_bluejs::{
     parse, parse_module, BlueJsPageDebuggerExecutionState, BlueJsPageDebuggerFrame,
+    BlueJsPageDebuggerLinkedExecutionState, BlueJsPageDebuggerLinkedFrame,
     BlueJsPageDebuggerNestedExecutionState, BlueJsPageDebuggerValueTarget, BlueJsPageOrigin,
     BlueJsPageRuntime, BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BlueJsProgramHandle,
     BlueJsProgramV1, BlueJsSourceIdentity, CompileError, HeapConfig, HostFunctionError,
@@ -282,6 +283,15 @@ enum ChildDebuggerExecutionStatus {
         frame: BlueJsPageDebuggerFrame,
         safe_point: PageHostDebuggerSafePoint,
     },
+    LinkedPaused {
+        frame: BlueJsPageDebuggerLinkedFrame,
+        safe_point: PageHostDebuggerSafePoint,
+    },
+    #[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
+    LinkedResumeRequested {
+        frame: BlueJsPageDebuggerLinkedFrame,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     StepRequested,
     BlueTsSourceStepRequested {
         origin: BlueTsSourceSpanKey,
@@ -290,6 +300,22 @@ enum ChildDebuggerExecutionStatus {
     SourceStepLimitReached(PageHostDebuggerSafePoint),
     ResumeRequested,
     Completed,
+}
+
+/// A child-local cross-program stack; the v39 same-program wire never sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
+struct ChildLinkedStackFrame {
+    safe_point: PageHostDebuggerSafePoint,
+    scope_entries: Vec<PageHostDebuggerScopeEntry>,
+    scope_truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
+struct ChildLinkedStackSnapshot {
+    frames: [ChildLinkedStackFrame; 2],
+    stack_truncated: bool,
 }
 
 /// A document-order declaration retained by the child in an explicitly
@@ -322,6 +348,7 @@ struct PendingDebuggerExecution {
     kind: PageHostScriptKind,
     program: Option<PageHostDebuggerProgram>,
     nested_safe_point: Option<PageHostDebuggerSafePoint>,
+    linked_safe_point: Option<PageHostDebuggerSafePoint>,
     execution: DeferredChildExecution,
 }
 
@@ -1497,6 +1524,7 @@ impl BlueJsChildHost {
                             kind: PageHostScriptKind::Classic,
                             program: Some(program),
                             nested_safe_point: None,
+                            linked_safe_point: None,
                             execution: DeferredChildExecution::JavaScriptClassic {
                                 handle,
                                 root_safe_point: None,
@@ -1516,6 +1544,7 @@ impl BlueJsChildHost {
                             kind: PageHostScriptKind::Module,
                             program: None,
                             nested_safe_point: None,
+                            linked_safe_point: None,
                             execution: DeferredChildExecution::JavaScriptModule { graph, programs },
                         },
                     );
@@ -1558,6 +1587,7 @@ impl BlueJsChildHost {
                             kind: PageHostScriptKind::Classic,
                             program: Some(program),
                             nested_safe_point: None,
+                            linked_safe_point: None,
                             execution: DeferredChildExecution::BlueTsClassic {
                                 handle: attachment.handle,
                                 root_safe_point: None,
@@ -1604,6 +1634,7 @@ impl BlueJsChildHost {
                             kind: PageHostScriptKind::Module,
                             program: Some(program),
                             nested_safe_point: None,
+                            linked_safe_point: None,
                             execution: DeferredChildExecution::BlueTsModule {
                                 attachment,
                                 root_safe_point: None,
@@ -3441,7 +3472,10 @@ impl BlueJsChildHost {
             }
             DeferredChildExecution::JavaScriptModule { .. } => return invalid_debugger_state(),
         };
-        if root_safe_point.is_some() || pending.nested_safe_point.is_some() {
+        if root_safe_point.is_some()
+            || pending.nested_safe_point.is_some()
+            || pending.linked_safe_point.is_some()
+        {
             return invalid_debugger_state();
         }
         let max = usize::try_from(PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
@@ -3485,6 +3519,7 @@ impl BlueJsChildHost {
             .find(|pending| pending.program == Some(safe_point.program))
             .ok_or_else(invalid_debugger_state)?;
         if pending.nested_safe_point.is_some()
+            || pending.linked_safe_point.is_some()
             || !matches!(
                 pending.execution,
                 DeferredChildExecution::JavaScriptClassic {
@@ -3527,6 +3562,118 @@ impl BlueJsChildHost {
             },
             Err(reply) => reply,
         }
+    }
+
+    /// Arms a dependency child only for this entry's pending BlueTS module
+    /// graph. This remains child-local until the complete linked wire ships.
+    #[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
+    fn arm_debugger_linked_target(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        entry_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> Result<(), PageHostReply> {
+        self.exact_debugger_safe_point(tab_id, document_generation, safe_point)?;
+        if !entry_program.is_well_formed()
+            || entry_program == safe_point.program
+            || safe_point.code_unit_ordinal == 0
+        {
+            return Err(invalid_request());
+        }
+        let document = self.documents.get_mut(&tab_id).expect("validated document");
+        if !document.debugger_execution_control
+            || document.debugger_execution_states.get(&entry_program)
+                != Some(&ChildDebuggerExecutionStatus::Pending)
+        {
+            return Err(invalid_debugger_state());
+        }
+        let entry_handle = document
+            .debugger_programs
+            .get(&entry_program.program_handle)
+            .filter(|record| record.program_generation == entry_program.program_generation)
+            .map(|record| record.runtime_handle)
+            .ok_or_else(invalid_request)?;
+        let dependency_handle = document
+            .debugger_programs
+            .get(&safe_point.program.program_handle)
+            .filter(|record| record.program_generation == safe_point.program.program_generation)
+            .map(|record| record.runtime_handle)
+            .ok_or_else(invalid_request)?;
+        let pending = document
+            .pending_debugger_executions
+            .iter_mut()
+            .find(|pending| pending.program == Some(entry_program))
+            .ok_or_else(invalid_debugger_state)?;
+        let DeferredChildExecution::BlueTsModule {
+            attachment,
+            root_safe_point: None,
+        } = &pending.execution
+        else {
+            return Err(invalid_debugger_state());
+        };
+        if pending.nested_safe_point.is_some()
+            || pending.linked_safe_point.is_some()
+            || attachment.entry.handle != entry_handle
+            || !attachment
+                .modules
+                .values()
+                .any(|module| module.handle == dependency_handle)
+        {
+            return Err(invalid_debugger_state());
+        }
+        let max = usize::try_from(PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
+            .expect("page-host debugger breakpoint cap fits usize");
+        if !document.debugger_breakpoints.contains(&safe_point)
+            && document.debugger_breakpoints.len() == max
+        {
+            return Err(resource_limit());
+        }
+        document.debugger_breakpoints.insert(safe_point);
+        pending.linked_safe_point = Some(safe_point);
+        Ok(())
+    }
+
+    #[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
+    fn request_debugger_linked_resume(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        entry_program: PageHostDebuggerProgram,
+        frame: BlueJsPageDebuggerLinkedFrame,
+    ) -> Result<(), PageHostReply> {
+        let document = self.exact_document(tab_id, document_generation)?;
+        if !document.debugger_execution_control
+            || document
+                .pending_debugger_executions
+                .front()
+                .and_then(|pending| pending.program)
+                != Some(entry_program)
+        {
+            return Err(invalid_debugger_state());
+        }
+        let Some(ChildDebuggerExecutionStatus::LinkedPaused {
+            frame: active,
+            safe_point,
+        }) = document
+            .debugger_execution_states
+            .get(&entry_program)
+            .copied()
+        else {
+            return Err(invalid_debugger_state());
+        };
+        if frame != active || frame.tab_id() != tab_id {
+            return Err(invalid_debugger_state());
+        }
+        self.documents
+            .get_mut(&tab_id)
+            .expect("validated document")
+            .debugger_execution_states
+            .insert(
+                entry_program,
+                ChildDebuggerExecutionStatus::LinkedResumeRequested { frame, safe_point },
+            );
+        Ok(())
     }
 
     /// Schedules one step only for the exact paused child invocation.
@@ -3737,6 +3884,122 @@ impl BlueJsChildHost {
         }
     }
 
+    /// Re-maps only an exact retained dependency/entry stack. Every frame
+    /// names its own child program; no partial stack is returned on failure.
+    #[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
+    fn debugger_linked_stack_snapshot(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+        entry_program: PageHostDebuggerProgram,
+        frame: BlueJsPageDebuggerLinkedFrame,
+        max_scope_entries: u32,
+    ) -> Result<ChildLinkedStackSnapshot, PageHostReply> {
+        if max_scope_entries == 0
+            || max_scope_entries > PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES
+            || max_scope_entries > VM_DEBUGGER_MAX_SCOPE_ENTRIES
+        {
+            return Err(invalid_request());
+        }
+        let document = self.exact_document(tab_id, document_generation)?;
+        if !document.debugger_execution_control
+            || document
+                .pending_debugger_executions
+                .front()
+                .and_then(|pending| pending.program)
+                != Some(entry_program)
+        {
+            return Err(invalid_debugger_state());
+        }
+        let Some(ChildDebuggerExecutionStatus::LinkedPaused {
+            frame: active,
+            safe_point,
+        }) = document
+            .debugger_execution_states
+            .get(&entry_program)
+            .copied()
+        else {
+            return Err(invalid_debugger_state());
+        };
+        if active != frame || safe_point.program == entry_program || frame.tab_id() != tab_id {
+            return Err(invalid_debugger_state());
+        }
+        let entry_handle = document
+            .debugger_programs
+            .get(&entry_program.program_handle)
+            .filter(|record| record.program_generation == entry_program.program_generation)
+            .map(|record| record.runtime_handle)
+            .ok_or_else(invalid_debugger_state)?;
+        let dependency_handle = document
+            .debugger_programs
+            .get(&safe_point.program.program_handle)
+            .filter(|record| record.program_generation == safe_point.program.program_generation)
+            .map(|record| record.runtime_handle)
+            .ok_or_else(invalid_debugger_state)?;
+        if frame.entry_program() != entry_handle
+            || frame.dependency_program() != dependency_handle
+            || frame.code_unit_ordinal() != safe_point.code_unit_ordinal
+        {
+            return Err(invalid_debugger_state());
+        }
+        let snapshot = self
+            .runtime
+            .debugger_linked_stack_snapshot(tab_id, frame, 2, max_scope_entries)
+            .map_err(|_| invalid_debugger_state())?;
+        let [child, root] = snapshot.frames.as_slice() else {
+            return Err(invalid_debugger_state());
+        };
+        let child_point = PageHostDebuggerSafePoint {
+            program: safe_point.program,
+            code_unit_ordinal: child.code_unit_ordinal,
+            bytecode_offset: child.bytecode_offset,
+        };
+        let root_point = PageHostDebuggerSafePoint {
+            program: entry_program,
+            code_unit_ordinal: root.code_unit_ordinal,
+            bytecode_offset: root.bytecode_offset,
+        };
+        if child_point != safe_point
+            || self
+                .exact_debugger_safe_point(tab_id, document_generation, child_point)
+                .is_err()
+            || self
+                .exact_debugger_safe_point(tab_id, document_generation, root_point)
+                .is_err()
+        {
+            return Err(invalid_debugger_state());
+        }
+        Ok(ChildLinkedStackSnapshot {
+            frames: [
+                ChildLinkedStackFrame {
+                    safe_point: child_point,
+                    scope_entries: child
+                        .scope_entries
+                        .iter()
+                        .map(|entry| PageHostDebuggerScopeEntry {
+                            slot_ordinal: entry.slot_ordinal,
+                            scope_depth: entry.scope_depth,
+                        })
+                        .collect(),
+                    scope_truncated: child.scope_truncated,
+                },
+                ChildLinkedStackFrame {
+                    safe_point: root_point,
+                    scope_entries: root
+                        .scope_entries
+                        .iter()
+                        .map(|entry| PageHostDebuggerScopeEntry {
+                            slot_ordinal: entry.slot_ordinal,
+                            scope_depth: entry.scope_depth,
+                        })
+                        .collect(),
+                    scope_truncated: root.scope_truncated,
+                },
+            ],
+            stack_truncated: snapshot.stack_truncated,
+        })
+    }
+
     /// Saves one terminal VM throw under its exact live child program before
     /// the scheduler runs another script in the same realm. A dependency may
     /// own the throwing code unit, so inspect only handles in this pending
@@ -3908,11 +4171,16 @@ impl BlueJsChildHost {
         let Some(status) = document.debugger_execution_states.get(&program).copied() else {
             return invalid_debugger_state();
         };
+        let Some(state) =
+            child_debugger_execution_state(tab_id, document_generation, program, status)
+        else {
+            return invalid_debugger_state();
+        };
         PageHostReply::DebuggerExecutionState {
             tab_id,
             document_generation,
             program,
-            state: child_debugger_execution_state(tab_id, document_generation, program, status),
+            state,
         }
     }
 
@@ -4796,7 +5064,9 @@ impl BlueJsChildHost {
                                 }
                             }
                         }
-                        ChildDebuggerExecutionStatus::Completed => {
+                        ChildDebuggerExecutionStatus::LinkedPaused { .. }
+                        | ChildDebuggerExecutionStatus::LinkedResumeRequested { .. }
+                        | ChildDebuggerExecutionStatus::Completed => {
                             rejected("child debugger execution state was inconsistent")
                         }
                     }
@@ -4823,7 +5093,8 @@ impl BlueJsChildHost {
                             _,
                             ChildDebuggerExecutionStatus::Paused(_)
                             | ChildDebuggerExecutionStatus::SourceStepLimitReached(_)
-                            | ChildDebuggerExecutionStatus::NestedPaused { .. },
+                            | ChildDebuggerExecutionStatus::NestedPaused { .. }
+                            | ChildDebuggerExecutionStatus::LinkedPaused { .. },
                         ) => {
                             paused = true;
                             PageHostScriptOutcome::Executed
@@ -4863,6 +5134,64 @@ impl BlueJsChildHost {
                                 );
                             *root_slot = root_successor;
                             paused = still_paused;
+                            outcome
+                        }
+                        (
+                            root_slot,
+                            ChildDebuggerExecutionStatus::LinkedResumeRequested {
+                                frame,
+                                safe_point,
+                            },
+                        ) => {
+                            let result =
+                                self.runtime.resume_debugger_linked_nested_execution(frame);
+                            let (status, outcome) = match result {
+                                Ok(BlueJsPageDebuggerLinkedExecutionState::FrameReturned {
+                                    root_bytecode_offset,
+                                }) => {
+                                    let successor = PageHostDebuggerSafePoint {
+                                        program,
+                                        code_unit_ordinal: 0,
+                                        bytecode_offset: root_bytecode_offset,
+                                    };
+                                    if self
+                                        .exact_debugger_safe_point(
+                                            tab_id,
+                                            document_generation,
+                                            successor,
+                                        )
+                                        .is_ok()
+                                        && safe_point.program != program
+                                    {
+                                        *root_slot = Some(successor);
+                                        paused = true;
+                                        (
+                                            ChildDebuggerExecutionStatus::Paused(successor),
+                                            PageHostScriptOutcome::Executed,
+                                        )
+                                    } else {
+                                        (
+                                            ChildDebuggerExecutionStatus::Completed,
+                                            rejected(
+                                                "BlueJS linked return lost its entry boundary",
+                                            ),
+                                        )
+                                    }
+                                }
+                                Ok(_) => (
+                                    ChildDebuggerExecutionStatus::Completed,
+                                    rejected("BlueJS linked resume returned an inconsistent frame"),
+                                ),
+                                Err(error) => (
+                                    ChildDebuggerExecutionStatus::Completed,
+                                    rejected(page_runtime_category(error)),
+                                ),
+                            };
+                            self.documents
+                                .get_mut(&tab_id)
+                                .expect("the linked document remains live")
+                                .debugger_execution_states
+                                .insert(program, status);
                             outcome
                         }
                         (Some(target), ChildDebuggerExecutionStatus::StepRequested) => {
@@ -5005,6 +5334,91 @@ impl BlueJsChildHost {
                                     rejected("BlueJS module debugger continuation did not complete")
                                 }
                                 Err(error) => rejected(page_runtime_category(error)),
+                            }
+                        }
+                        (None, ChildDebuggerExecutionStatus::Pending)
+                            if pending.linked_safe_point.is_some() =>
+                        {
+                            let target = pending
+                                .linked_safe_point
+                                .expect("the guarded module has a linked target");
+                            let dependency_handle = self.documents[&tab_id]
+                                .debugger_programs
+                                .get(&target.program.program_handle)
+                                .filter(|record| {
+                                    record.program_generation == target.program.program_generation
+                                })
+                                .map(|record| record.runtime_handle);
+                            let point = dependency_handle.and_then(|handle| {
+                                self.runtime
+                                    .safe_points(
+                                        tab_id,
+                                        handle,
+                                        usize::try_from(
+                                            PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+                                        )
+                                        .expect("page-host safe-point cap fits usize"),
+                                    )
+                                    .ok()
+                                    .and_then(|points| {
+                                        points.into_iter().find(|point| {
+                                            point.code_unit.ordinal() == target.code_unit_ordinal
+                                                && point.bytecode_offset == target.bytecode_offset
+                                        })
+                                    })
+                                    .map(|point| (handle, point))
+                            });
+                            let result = point.map(|(handle, point)| {
+                                self.runtime
+                                    .execute_module_graph_until_linked_nested_debugger_pause(
+                                        tab_id,
+                                        attachment.entry.handle,
+                                        handle,
+                                        attachment.modules.values().map(|module| module.handle),
+                                        point,
+                                    )
+                            });
+                            let status = match result {
+                                Some(Ok(BlueJsPageDebuggerLinkedExecutionState::Paused {
+                                    frame,
+                                    bytecode_offset,
+                                })) if frame.tab_id() == tab_id
+                                    && frame.entry_program() == attachment.entry.handle
+                                    && dependency_handle == Some(frame.dependency_program())
+                                    && frame.code_unit_ordinal() == target.code_unit_ordinal =>
+                                {
+                                    let successor = PageHostDebuggerSafePoint {
+                                        bytecode_offset,
+                                        ..target
+                                    };
+                                    if self
+                                        .exact_debugger_safe_point(
+                                            tab_id,
+                                            document_generation,
+                                            successor,
+                                        )
+                                        .is_ok()
+                                    {
+                                        paused = true;
+                                        ChildDebuggerExecutionStatus::LinkedPaused {
+                                            frame,
+                                            safe_point: successor,
+                                        }
+                                    } else {
+                                        ChildDebuggerExecutionStatus::Completed
+                                    }
+                                }
+                                _ => ChildDebuggerExecutionStatus::Completed,
+                            };
+                            self.documents
+                                .get_mut(&tab_id)
+                                .expect("the advancing linked module document remains live")
+                                .debugger_execution_states
+                                .insert(program, status);
+                            if paused {
+                                PageHostScriptOutcome::Executed
+                            } else {
+                                rejected("BlueJS linked pause rejected its exact dependency target")
                             }
                         }
                         (None, ChildDebuggerExecutionStatus::Pending)
@@ -6102,8 +6516,8 @@ fn child_debugger_execution_state(
     document_generation: u64,
     program: PageHostDebuggerProgram,
     status: ChildDebuggerExecutionStatus,
-) -> PageHostDebuggerExecutionState {
-    match status {
+) -> Option<PageHostDebuggerExecutionState> {
+    Some(match status {
         ChildDebuggerExecutionStatus::Pending => PageHostDebuggerExecutionState::Pending,
         ChildDebuggerExecutionStatus::Paused(safe_point) => {
             PageHostDebuggerExecutionState::Paused { safe_point }
@@ -6124,6 +6538,8 @@ fn child_debugger_execution_state(
                 frame: child_debugger_frame(tab_id, document_generation, program, frame),
             }
         }
+        ChildDebuggerExecutionStatus::LinkedPaused { .. }
+        | ChildDebuggerExecutionStatus::LinkedResumeRequested { .. } => return None,
         ChildDebuggerExecutionStatus::StepRequested
         | ChildDebuggerExecutionStatus::BlueTsSourceStepRequested { .. } => {
             PageHostDebuggerExecutionState::Stepping
@@ -6133,7 +6549,7 @@ fn child_debugger_execution_state(
         }
         ChildDebuggerExecutionStatus::ResumeRequested => PageHostDebuggerExecutionState::Resuming,
         ChildDebuggerExecutionStatus::Completed => PageHostDebuggerExecutionState::Completed,
-    }
+    })
 }
 
 /// The immutable data-only envelope for debugger contract validation. It is
@@ -11964,6 +12380,164 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn linked_module_child_keeps_distinct_programs_and_resumes_its_entry() {
+        let entry = "blueice://page/linked-entry.ts";
+        let dependency = "blueice://page/linked-dependency.ts";
+        let mut module = PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Module,
+            graph: graph(
+                entry,
+                vec![
+                    PageHostSource::new(
+                        entry,
+                        "import { inner } from './linked-dependency.ts'; export const answer: number = inner() + 1;",
+                    ),
+                    PageHostSource::new(
+                        dependency,
+                        "export function inner(): number { return 41; }",
+                    ),
+                ],
+            ),
+        };
+        module.graph.resolutions.push(PageHostStaticResolution {
+            from_module: entry.to_string(),
+            specifier: "./linked-dependency.ts".to_string(),
+            canonical_target: dependency.to_string(),
+        });
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(1, vec![module]),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let pending = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap();
+        let entry_program = pending.program.unwrap();
+        let DeferredChildExecution::BlueTsModule { attachment, .. } = &pending.execution else {
+            panic!("the linked module remains pending");
+        };
+        let entry_handle = attachment.entry.handle;
+        let dependency_handle = attachment.modules[dependency].handle;
+        let dependency_program = host.documents[&7]
+            .debugger_programs
+            .iter()
+            .find(|(_, record)| record.runtime_handle == dependency_handle)
+            .map(|(handle, record)| PageHostDebuggerProgram {
+                program_handle: *handle,
+                program_generation: record.program_generation,
+            })
+            .unwrap();
+        assert_ne!(entry_program, dependency_program);
+        let point = host
+            .runtime
+            .safe_points(7, dependency_handle, 1024)
+            .unwrap()
+            .into_iter()
+            .find(|point| point.code_unit.ordinal() == 1 && point.bytecode_offset == 0)
+            .unwrap();
+        let target = PageHostDebuggerSafePoint {
+            program: dependency_program,
+            code_unit_ordinal: point.code_unit.ordinal(),
+            bytecode_offset: point.bytecode_offset,
+        };
+        assert!(host
+            .arm_debugger_linked_target(7, 1, dependency_program, target)
+            .is_err());
+        assert_eq!(
+            host.arm_debugger_linked_target(7, 1, entry_program, target),
+            Ok(())
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let ChildDebuggerExecutionStatus::LinkedPaused { frame, safe_point } =
+            host.documents[&7].debugger_execution_states[&entry_program]
+        else {
+            panic!("the linked child must be paused");
+        };
+        assert_eq!(frame.entry_program(), entry_handle);
+        assert_eq!(frame.dependency_program(), dependency_handle);
+        assert_eq!(safe_point.program, dependency_program);
+        let stack = host
+            .debugger_linked_stack_snapshot(7, 1, entry_program, frame, 256)
+            .unwrap();
+        assert_eq!(stack.frames[0].safe_point.program, dependency_program);
+        assert_eq!(stack.frames[1].safe_point.program, entry_program);
+        assert!(host
+            .debugger_linked_stack_snapshot(7, 1, dependency_program, frame, 256)
+            .is_err());
+        assert!(host
+            .debugger_linked_stack_snapshot(7, 2, entry_program, frame, 256)
+            .is_err());
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program: entry_program,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidDebuggerState,
+                ..
+            }
+        ));
+        assert!(host
+            .request_debugger_linked_resume(7, 1, dependency_program, frame)
+            .is_err());
+        assert_eq!(
+            host.request_debugger_linked_resume(7, 1, entry_program, frame),
+            Ok(())
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let ChildDebuggerExecutionStatus::Paused(root_point) =
+            host.documents[&7].debugger_execution_states[&entry_program]
+        else {
+            panic!("the linked child must return to its entry");
+        };
+        assert_eq!(root_point.program, entry_program);
+        assert_eq!(root_point.code_unit_ordinal, 0);
+        assert!(host
+            .debugger_linked_stack_snapshot(7, 1, entry_program, frame, 256)
+            .is_err());
+        assert!(host
+            .request_debugger_linked_resume(7, 1, entry_program, frame)
+            .is_err());
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+                program: entry_program,
+            }),
+            PageHostReply::DebuggerExecutionResumed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { .. }
+        ));
+        assert_eq!(
+            host.documents[&7].debugger_execution_states[&entry_program],
+            ChildDebuggerExecutionStatus::Completed
+        );
     }
 
     #[test]
