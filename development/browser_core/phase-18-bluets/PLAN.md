@@ -2215,6 +2215,41 @@ forged or moved stacks, hidden duplicate slots, and unavailable scopes; the
 engine 309-test suite, workspace Clippy, formatting, and diff checks pass.
 There is still no public linked-scopes request or static relation grant.
 
+**C3.1.3.4.6.2 atomic public route decision:** Publish debugger v41 and
+metadata manifest v5 only in the same change as both routes and their
+fail-closed tests. Name the independent metadata capability
+`OpaqueStaticScopeRelation`, map it to a separate public
+`StaticScopeRelation` availability report, and add one default-off Launcher
+owner option forwarded to the core's startup-only option. The canonical
+selection includes opaque metadata, type, and symbol inventories; neither
+`OpaqueSymbolType` nor `BoundedValues` implies it. The report is Available
+only for a live child with Scopes and all three prerequisite inventories,
+and a client must both negotiate that exact grant and retain an Available
+report for its realm. In-process/absent-executor routes deny both new
+requests. An owner option without its socket and inventory prerequisites is
+rejected before listener startup.
+
+`GetLinkedScopes` takes an exact complete linked stack and an entry budget;
+it requires live LinkedModules and Scopes availability and echoes only the
+entry-root slot/depth list. Its complete, well-formed, untruncated reply
+mints a distinct linked receipt only if this stream negotiated the static
+relation grant; an incomplete reply remains inspectable but mints none.
+Ordinary `GetScopes` mints its existing receipt when either the independent
+static relation or bounded-value grant is present. Both receipt families
+share the current pause incarnation and cap, but `GetValue` continues to
+consult only ordinary receipts and its separate value grant.
+`GetStaticScopeRelation` accepts the ordinary or linked exact target. Core
+must validate the public shape, live realm, negotiated capability and
+Available report, exact same-stream pause receipt, metadata receipt, and
+separately receipted symbol/type IDs before returning one complete echoed
+pair. No error path may include one half of the pair. IPC tests cover wrong
+manifest version/order/prerequisites, wrong-version Hello, malformed wire
+targets/replies, and no accidental Value authority. Core tests cover
+default-off owner/client grants, truncated/over-budget scopes, stale pause,
+foreign stream, forged slot or metadata, moved linked stack, and changed
+private echo. Launcher/core startup tests cover prerequisite failures. Real
+Launcher socket acceptance remains C3.1.3.4.7.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

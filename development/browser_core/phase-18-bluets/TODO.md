@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.6.2.** Add the independently negotiated owner/client
-grant, linked-scopes and static-relation wire dispatch, and public
-protocol/manifest bumps together; prove IPC/core denials.
+**Current leaf: C3.1.3.4.6.2.2.** Implement the complete guarded public route
+and protocol/manifest bumps with IPC, core, and owner-option denial tests in
+one commit.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -444,6 +444,8 @@ channel with explicit owner/client grants.
       - [ ] **C3.1.3.4.6** Add the independently negotiated owner/client grant, linked-scopes and static-relation request/reply dispatch, and public protocol/manifest bumps together; prove malformed, unauthorized, stale, cross-stream, and over-budget IPC/core denials.
         - [x] **C3.1.3.4.6.1** Stage a private core linked-scopes dispatcher that checks the full live stack and bounded entry-root slots without a public request or receipt. The helper rechecks the exact two-program live stack and Scopes/LinkedModules availability, validates every private entry before public budget slicing, and returns only entry-root slot/depth with complete-stack echo. Tests deny invalid budgets, forged/moved stacks, duplicate slots hidden beyond a small requested budget, and unavailable scopes; a bounded incomplete reply is marked truncated and cannot mint a receipt. Engine 309-test suite, workspace Clippy, and formatting pass without a public request.
         - [ ] **C3.1.3.4.6.2** Add the independently negotiated owner/client grant, linked-scopes and static-relation wire dispatch, and public protocol/manifest bumps together; prove malformed, unauthorized, stale, cross-stream, and over-budget IPC/core denials.
+          - [x] **C3.1.3.4.6.2.1** Fix the atomic public protocol, owner policy, receipt, availability, and denial matrix before exposing either new request. PLAN.md fixes debugger v41/manifest v5 as one guarded change, a default-off independent owner/client grant with inventory prerequisites, linked/ordinary receipt minting and `Value` separation, realm availability checks, and IPC/core/startup denial cases. No public variant or version change is included in this design-only leaf.
+          - [ ] **C3.1.3.4.6.2.2** Implement the complete guarded public route and protocol/manifest bumps with IPC, core, and owner-option denial tests in one commit.
       - [ ] **C3.1.3.4.7** Prove ordinary classic/module/nested and linked real Launcher sockets, same-stream receipts, no-partial denials, and separate `Value` authority before checking off C3.1.3.4.
     - [ ] **C3.1.3.5** Prove a static type display and independently authorized runtime preview remain distinct, correctly matched to the same paused classic/module/linked slot, and expire after step/reload/cutover on real Launcher sockets; then check off C3.1.3 and C3.1.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
