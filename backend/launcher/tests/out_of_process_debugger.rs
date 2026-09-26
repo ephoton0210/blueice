@@ -122,6 +122,7 @@ struct StaticMetadataPolicy {
     contract_display: bool,
     contract_validation: bool,
     lowering_summary: bool,
+    static_scope_relation: bool,
 }
 
 struct LauncherProcess {
@@ -240,6 +241,9 @@ impl LauncherProcess {
         if policy.lowering_summary {
             command.arg("--debugger-static-metadata-lowering-summary");
         }
+        if policy.static_scope_relation {
+            command.arg("--debugger-static-scope-relation");
+        }
         if let Some(path) = owner_http_policy {
             command.arg("--page-http-policy-file").arg(path);
         }
@@ -346,6 +350,202 @@ fn navigate(browser: &mut UnixStream, url: &str) {
 fn debugger_request(stream: &mut UnixStream, request: DebuggerRequest) -> DebuggerReply {
     write_debugger_request(stream, &request).expect("public debugger request must frame");
     read_debugger_reply(stream).expect("public debugger reply must frame")
+}
+
+#[test]
+fn launcher_relates_classic_and_module_root_scopes_without_value_authority() {
+    for (mime, label) in [
+        ("application/x-blueice-typescript", "classic"),
+        ("application/x-blueice-typescript-module", "module"),
+    ] {
+        let gatekeeper_socket = clearing_gatekeeper();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let fixture = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let body = format!(
+                "<main>{label}-static-scope</main><script type=\"{mime}\">const rootValue: number = 9; globalThis.answer = rootValue;</script>"
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        });
+        let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+            &gatekeeper_socket,
+            StaticMetadataPolicy {
+                inventory: true,
+                type_inventory: true,
+                symbol_inventory: true,
+                static_scope_relation: true,
+                ..Default::default()
+            },
+        );
+        let mut browser = launcher.connect_browser();
+        blueice_ipc::client_handshake(&mut browser).unwrap();
+        navigate(&mut browser, &url);
+        fixture.join().unwrap();
+        let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+        let manifest = DebuggerMetadataCapabilityManifest::opaque_selected(
+            DebuggerMetadataCapabilitySelection {
+                static_scope_relation: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::Hello {
+                    protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    requested_bounded_values: false,
+                    requested_metadata_capabilities: manifest.clone(),
+                }
+            ),
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_bounded_values: false,
+                granted_metadata_capabilities: manifest,
+            }
+        );
+        let realm = one_realm(debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListPageRealms,
+        ));
+        let program = one_program(
+            debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+            realm,
+        );
+        let DebuggerReply::Capabilities(capabilities) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeCapabilities { realm },
+        ) else {
+            panic!("{label} must advertise debugger capabilities");
+        };
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticScopeRelation
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::BoundedValues
+                && report.state == DebuggerCapabilityState::Planned
+        }));
+        let DebuggerReply::StaticMetadata(metadata) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadata { program },
+        ) else {
+            panic!("{label} must expose its opaque metadata handle");
+        };
+        assert_eq!(metadata.len(), 1);
+        let metadata = metadata[0];
+        let DebuggerReply::StaticMetadataTypes(types) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadataTypes { metadata },
+        ) else {
+            panic!("{label} must expose receipted type IDs");
+        };
+        let DebuggerReply::StaticMetadataSymbols(symbols) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadataSymbols { metadata },
+        ) else {
+            panic!("{label} must expose receipted symbol IDs");
+        };
+        assert!(!types.is_empty() && !symbols.is_empty());
+        let root_point = safe_points(
+            debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
+            program,
+        )
+        .into_iter()
+        .find(|point| point.code_unit_ordinal == 0 && point.bytecode_offset != 0)
+        .expect("typed root must have a non-entry safe point");
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::ArmRootSafePointBreakpoint {
+                    safe_point: root_point,
+                },
+            ),
+            DebuggerReply::RootSafePointBreakpointArmed {
+                safe_point: root_point,
+            }
+        );
+        await_paused_execution(&mut debugger, program, root_point);
+        let mut point = root_point;
+        let mut found = None;
+        for _ in 0..64 {
+            let DebuggerReply::Scopes(scopes) = debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetScopes {
+                    program,
+                    frame: None,
+                    frame_index: 0,
+                    expected_safe_point: point,
+                    max_scope_entries: 256,
+                },
+            ) else {
+                panic!("{label} must expose root lexical slots");
+            };
+            for scope_entry in scopes.entries {
+                let value = DebuggerValueTarget {
+                    program,
+                    frame: None,
+                    frame_index: 0,
+                    safe_point: point,
+                    scope_entry,
+                };
+                let target = blueice_ipc::debugger::DebuggerStaticScopeTarget::Ordinary {
+                    metadata,
+                    target: value,
+                };
+                match debugger_request(
+                    &mut debugger,
+                    DebuggerRequest::GetStaticScopeRelation { target },
+                ) {
+                    DebuggerReply::StaticScopeRelation(relation) => {
+                        assert_eq!(relation.target, target);
+                        assert!(relation.is_well_formed());
+                        assert!(types.contains(&relation.static_type));
+                        assert!(symbols.contains(&relation.symbol));
+                        found = Some(value);
+                        break;
+                    }
+                    DebuggerReply::Error {
+                        code:
+                            DebuggerErrorCode::InvalidTarget | DebuggerErrorCode::InvalidExecutionState,
+                        ..
+                    } => {}
+                    other => panic!("{label} root relation must be typed: {other:?}"),
+                }
+            }
+            if found.is_some() {
+                break;
+            }
+            assert_eq!(
+                debugger_request(
+                    &mut debugger,
+                    DebuggerRequest::StepRootInstruction { program }
+                ),
+                DebuggerReply::ExecutionStepRequested { program }
+            );
+            point = await_step_paused_execution(&mut debugger, program, point);
+        }
+        let value = found.expect("classic/module root must expose a bound static slot");
+        assert!(matches!(
+            debugger_request(&mut debugger, DebuggerRequest::GetValue { target: value }),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::CapabilityUnavailable,
+                ..
+            }
+        ));
+        launcher.shutdown();
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
 }
 
 fn assert_exception_refusal(reply: DebuggerReply, expected: DebuggerErrorCode) {
@@ -2889,6 +3089,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             contract_display: true,
             contract_validation: true,
             lowering_summary: true,
+            static_scope_relation: false,
         },
     );
 

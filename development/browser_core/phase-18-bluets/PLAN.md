@@ -2277,6 +2277,18 @@ source-free state while retaining Planned runtime values and the new static
 relation without a grant. Real Launcher public-socket acceptance and
 no-partial lifecycle tests remain C3.1.3.4.7.
 
+**C3.1.3.4.7.1 real ordinary roots:** The Launcher public socket now proves
+the complete static-only relation path for inline BlueTS classic and module
+pages through a real core and supervised child. Each stream independently
+negotiates the static grant without bounded values, inventories one opaque
+metadata handle and its symbol/type IDs, pauses a verified root safe point,
+then selects an exact `GetScopes` lexical slot. A successful relation echoes
+the full ordinary target and only the two IDs already inventoried on that
+same stream; no source, display, or runtime preview is included. The selected
+slot's `GetValue` remains CapabilityUnavailable. The focused two-kind real
+Launcher test passes; nested and linked sockets plus lifecycle refusals
+remain separate leaves.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.7.** Prove ordinary classic/module/nested and linked
-real Launcher sockets, same-stream receipts, no-partial denials, and separate
-`Value` authority before closing C3.1.3.4.
+**Current leaf: C3.1.3.4.7.2.** Prove nested parent-root static relations
+through real Launcher sockets and deny child-local or mismatched parent
+selections.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -447,6 +447,10 @@ channel with explicit owner/client grants.
           - [x] **C3.1.3.4.6.2.1** Fix the atomic public protocol, owner policy, receipt, availability, and denial matrix before exposing either new request. PLAN.md fixes debugger v41/manifest v5 as one guarded change, a default-off independent owner/client grant with inventory prerequisites, linked/ordinary receipt minting and `Value` separation, realm availability checks, and IPC/core/startup denial cases. No public variant or version change is included in this design-only leaf.
           - [x] **C3.1.3.4.6.2.2** Implement the complete guarded public route and protocol/manifest bumps with IPC, core, and owner-option denial tests in one commit. Debugger v41/manifest v5 carry independent `OpaqueStaticScopeRelation` owner/client grant and report, `GetLinkedScopes`/`LinkedScopes`, and exact `GetStaticScopeRelation`/boxed relation. Core mints ordinary receipts under either static or `Value` grant, linked receipts only for complete untruncated replies under the static grant, and never lets them authorize `Value`. IPC/core tests cover malformed, absent grant, missing/foreign/stale receipts, moved/changed echoes, and over-budget denial; Launcher/core option tests require socket and all inventory prerequisites. Full workspace suite, Clippy, formatting, and diff checks pass; the stale core-binary capability expectation was corrected to reflect already available source-free Stack/Scopes.
       - [ ] **C3.1.3.4.7** Prove ordinary classic/module/nested and linked real Launcher sockets, same-stream receipts, no-partial denials, and separate `Value` authority before checking off C3.1.3.4.
+        - [x] **C3.1.3.4.7.1** Prove classic and module root static relations through real Launcher sockets using the independent grant, exact Scopes and metadata/symbol/type receipts, while `Value` stays denied. A real Launcher/core/child tree independently grants static relations and the three inventories, arms each BlueTS root, receives exact Scopes slots, and returns one complete compiler symbol/type pair drawn only from the same stream's inventories. Both classic and module focused tests pass; the same selected slot still refuses `GetValue` without its separate grant.
+        - [ ] **C3.1.3.4.7.2** Prove nested parent-root static relations through real Launcher sockets and deny child-local or mismatched parent selections.
+        - [ ] **C3.1.3.4.7.3** Prove linked entry-root static relations through real Launcher sockets with complete linked-scopes receipts and reject dependency-owned selectors.
+        - [ ] **C3.1.3.4.7.4** Prove no-partial stale/moved/forged/cross-stream denials and separate `Value` authority across real socket pause lifecycles; then close C3.1.3.4.7 and C3.1.3.4.
     - [ ] **C3.1.3.5** Prove a static type display and independently authorized runtime preview remain distinct, correctly matched to the same paused classic/module/linked slot, and expire after step/reload/cutover on real Launcher sockets; then check off C3.1.3 and C3.1.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
   restore the same checked generation; never attach old metadata to a
