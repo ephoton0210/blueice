@@ -28,6 +28,20 @@ fn bare_compiler() -> Compiler {
 }
 
 #[test]
+fn decorated_and_derived_classes_compile_with_function_bindings() {
+    for source in [
+        "function named(value = 1, ...rest) { return value + rest.length; }",
+        "class Base { field = 1; static value = 2; method(value) { return value; } }",
+        "class Derived extends Base { constructor() { super(); } get value() { return this.field; } }",
+        "@decorator class Decorated { @decorator method() {} @decorator field = 1; }",
+        "class Private { #value = 1; read() { return this.#value; } }",
+    ] {
+        let program = crate::parse(source).unwrap();
+        crate::compile(&program).unwrap();
+    }
+}
+
+#[test]
 fn class_lowering_rejects_a_duplicate_private_name_before_emitting_code() {
     let field = ClassElement::Field {
         key: PropertyKey::Identifier("#value".into()),

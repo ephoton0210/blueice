@@ -27,6 +27,18 @@ fn bare_compiler() -> Compiler {
     }
 }
 
+#[test]
+fn optional_spread_calls_and_lexical_iteration_heads_compile() {
+    for source in [
+        "const object = { method(value) { return value; } }; object?.method(...[1]);",
+        "for (let value of [1, 2]) { value; }",
+        "for (const key in { first: 1 }) { key; }",
+    ] {
+        let program = crate::parse(source).unwrap();
+        crate::compile(&program).unwrap();
+    }
+}
+
 fn missing_private_member() -> Expr {
     Expr::Member {
         object: Box::new(Expr::Number(1.0)),

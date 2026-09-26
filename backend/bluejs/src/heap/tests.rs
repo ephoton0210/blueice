@@ -1178,6 +1178,35 @@ fn collection_clear_releases_entry_bytes_and_keeps_positions_valid_for_iterators
 }
 
 #[test]
+fn set_iterator_skips_deleted_entries_and_clear_preserves_its_position() {
+    let mut heap = Heap::default();
+    let prototype = heap.alloc_object(None).unwrap();
+    let set = heap.alloc_set(None).unwrap();
+    heap.set_add(set, Value::Number(1.0)).unwrap();
+    heap.set_add(set, Value::Number(2.0)).unwrap();
+    assert_eq!(heap.set_delete(set, &Value::Number(1.0)), Ok(true));
+    let iterator = heap
+        .alloc_collection_iterator(set, false, ArrayIteratorKind::Values, prototype)
+        .unwrap();
+
+    let (key, value, kind) = heap
+        .collection_iterator_next(iterator, false)
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(key, Value::Number(2.0));
+    assert_eq!(value, Value::Undefined);
+    assert_eq!(kind, ArrayIteratorKind::Values);
+
+    heap.collection_clear(set).unwrap();
+    assert_eq!(heap.set_size(set), Ok(0));
+    assert_eq!(
+        heap.collection_iterator_next(iterator, false),
+        Ok(Some(None))
+    );
+}
+
+#[test]
 fn collection_iteration_rejects_foreign_and_malformed_live_references() {
     let mut heap = Heap::default();
     let mut other = Heap::default();
