@@ -2107,6 +2107,45 @@ suite, workspace Clippy, and formatting pass, closing the private child/core
 static-relation milestone C3.1.3.3. Public same-stream receipts and the
 independent owner/client grant remain C3.1.3.4 work.
 
+**C3.1.3.4.1 public static-scope contract and sequence:** Stage only
+data-only validators and private core checks under public debugger v40. The
+complete public route will use an ordinary selector consisting of an exact
+`DebuggerValueTarget` from `GetScopes` plus its same-program opaque metadata
+handle, or a linked selector consisting of the complete child-first reminted
+`DebuggerLinkedStackSnapshot`, entry-root index one, one selected lexical
+slot, and entry-owned metadata. A new `GetLinkedScopes` request under the
+existing owner-selected LinkedModules and Scopes availability will take an
+exact expected linked stack and bounded scope budget, reacquire the whole
+pause, and return only the entry-root active slot/depth list with that stack
+echoed. It grants no value read. Only a successful complete reply creates a
+distinct same-stream linked scope receipt for those exact stack/slot tuples;
+ordinary `GetScopes` creates ordinary receipts. Both receipt sets are bounded
+and tied to the core-owned pause incarnation; successful arm/step/resume
+invalidates them, and every relation additionally rechecks the live realm,
+program, frame, stack, metadata generation, and active slot. A linked receipt
+cannot satisfy ordinary `GetValue`, and an ordinary receipt cannot select a
+linked slot.
+
+The public `GetStaticScopeRelation` target echoes one of those two shapes.
+It requires a new independently negotiated, default-deny owner/client
+`OpaqueStaticScopeRelation` grant, not `BoundedValues` or the existing
+`OpaqueSymbolType` grant. The canonical manifest includes the prerequisite
+opaque metadata, symbol-inventory, and type-inventory grants; the exact
+metadata, symbol ID, and type ID must already have crossed that same stream's
+inventory receipt boundary before any pair is returned. Core checks the
+metadata receipt and matching program before the private relation; after the
+child's exact static-only echo, core checks the returned symbol and type IDs
+against their separately receipted inventories before emitting a complete
+public reply that echoes the full target and contains only those parent-bound
+opaque IDs. A missing grant, receipt, moved pause, malformed response, or
+unbound slot yields one typed error, never a partial symbol/type pair. Type
+display still needs its independent grant and `Value` remains separately
+granted, Scopes-receipted, bounded, and runtime-only. Add the new public
+request/reply variants, named owner policy, canonical capability identifier,
+manifest version, and debugger protocol bump together only after the staged
+IPC and core denial checks are ready; then prove real socket behavior before
+claiming C3.1.3.4 complete.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

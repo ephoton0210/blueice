@@ -14,10 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.** Add an independently granted public static scope
-relation request/reply with exact ordinary Scopes or linked-stack-derived
-scope receipt plus metadata/type receipts; retain the separate bounded Value
-reply and bump the public protocol only when the complete route passes.
+**Current leaf: C3.1.3.4.2.** Add bounded public data-only linked-scopes and
+static scope target/relation shapes with strict validators, without adding a
+request, grant, or protocol bump yet.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -437,6 +436,13 @@ channel with explicit owner/client grants.
         - [x] **C3.1.3.3.6.2** Prove nested-parent and linked entry-root relations across real child/core pauses, keeping child-local and dependency captures excluded. Real Launcher-supervised classic/module nested pauses return an exact parent-root static relation while child-local selection refuses; a real linked module graph returns an entry-root relation after full-scope reacquisition while dependency metadata/index refuse. Both focused socket tests pass without exposing a public route.
         - [x] **C3.1.3.3.6.3** Prove no-partial stale/moved/forged denials across both real pause shapes, then close C3.1.3.3.6 and C3.1.3.3. Real nested and linked pauses reject forged metadata generations and slots, moved safe points, and old targets after resume; replacement documents reject old ordinary and linked targets. The real child/core tests and full engine 309-test suite, workspace Clippy, and formatting pass without a public static-scope request or grant.
     - [ ] **C3.1.3.4** Add an independently granted public static scope relation request/reply with exact ordinary Scopes or linked-stack-derived scope receipt plus metadata/type receipts; retain the existing separate bounded `Value` reply, bump public protocol only when the complete route and IPC/core denials pass.
+      - [x] **C3.1.3.4.1** Decide ordinary/linked public selectors, linked-scopes receipt, independent grant and metadata/symbol/type receipt contract, no-Value separation, and the protocol-bump point. PLAN.md specifies a linked entry-root Scopes-family reply and distinct same-stream linked receipt, complete target echo, separately inventoried metadata/symbol/type IDs, and a default-deny static grant. Data-only shapes and private core checks precede the final public request/grant; the public protocol changes only with the complete guarded route.
+      - [ ] **C3.1.3.4.2** Add bounded public data-only linked-scopes and static scope target/relation shapes with strict validators and serialization tests; do not add requests, grants, or a protocol bump yet.
+      - [ ] **C3.1.3.4.3** Expose the complete linked entry-root lexical slots through a private core-facing snapshot, rechecking the entire active linked pause without a public wire change.
+      - [ ] **C3.1.3.4.4** Add distinct bounded same-stream ordinary/linked static scope receipts tied to the core pause incarnation; keep linked receipts unusable by `Value` and default-deny relation reads.
+      - [ ] **C3.1.3.4.5** Stage a core static-relation dispatcher that checks the exact scope receipt, live pause, metadata and symbol/type inventory receipts, and full response echo without a public request.
+      - [ ] **C3.1.3.4.6** Add the independently negotiated owner/client grant, linked-scopes and static-relation request/reply dispatch, and public protocol/manifest bumps together; prove malformed, unauthorized, stale, cross-stream, and over-budget IPC/core denials.
+      - [ ] **C3.1.3.4.7** Prove ordinary classic/module/nested and linked real Launcher sockets, same-stream receipts, no-partial denials, and separate `Value` authority before checking off C3.1.3.4.
     - [ ] **C3.1.3.5** Prove a static type display and independently authorized runtime preview remain distinct, correctly matched to the same paused classic/module/linked slot, and expire after step/reload/cutover on real Launcher sockets; then check off C3.1.3 and C3.1.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
   restore the same checked generation; never attach old metadata to a
