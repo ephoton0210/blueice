@@ -864,6 +864,7 @@ fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> b
         && expected.root_statement_offsets() == actual.root_statement_offsets()
         && expected.root_statement_ranges() == actual.root_statement_ranges()
         && expected.root_function_child_indices() == actual.root_function_child_indices()
+        && expected.root_declaration_binding_slots() == actual.root_declaration_binding_slots()
         && expected
             .child_code_units()
             .zip(actual.child_code_units())

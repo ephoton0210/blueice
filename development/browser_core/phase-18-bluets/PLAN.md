@@ -1839,6 +1839,19 @@ static `TypeId` is not a runtime proof. This design does not add general
 watch/evaluate or dynamic type reification; debugger v40 remains unchanged
 until the complete independently gated public relation is ready.
 
+**C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
+compiler-resolved root-scope slot in root statement order only for a
+single-identifier variable or named function declaration. The compiler takes
+the slot from its own root lexical table, not a post-hoc search of binding
+names or an instruction span. Nested blocks, expressions, and compound or
+destructured declarations have no single-slot evidence. Repeated `var`
+declarations may name the same slot; this is deliberately visible evidence
+that a later BlueTS symbol join must reject as ambiguous, not a license to
+choose either declaration. The direct bridge's bytecode equality check also
+includes this new compiler metadata. This leaf does not yet join BlueTS
+symbols or types, retain child mappings, or expose a debugger request; those
+are separate ordered leaves.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

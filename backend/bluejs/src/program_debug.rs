@@ -628,6 +628,48 @@ mod tests {
     }
 
     #[test]
+    fn root_declaration_slots_follow_structural_statements_not_shadowed_names() {
+        let code = script("let value=1; function read(){return value;} { let value=2; } value;")
+            .compile()
+            .unwrap();
+        let slots = code.root_declaration_binding_slots();
+        assert_eq!(slots.len(), 4);
+        let value = slots[0].expect("root variable has a slot");
+        let read = slots[1].expect("root function has a slot");
+        assert_ne!(value, read);
+        assert_eq!(code.bindings[value as usize].name, "value");
+        assert_eq!(code.bindings[read as usize].name, "read");
+        assert_eq!(&slots[2..], &[None, None]);
+        assert!(code.scopes[0].contains(&value));
+        assert!(code.scopes[0].contains(&read));
+    }
+
+    #[test]
+    fn root_declaration_slots_cover_modules_and_leave_non_declarations_unbound() {
+        let module = BlueJsProgramV1::Module(
+            crate::parse_module("export const answer=42; function read(){return answer;} read();")
+                .unwrap(),
+        );
+        let code = module.compile().unwrap();
+        let slots = code.root_declaration_binding_slots();
+        assert_eq!(slots.len(), 3);
+        assert_eq!(code.bindings[slots[0].unwrap() as usize].name, "answer");
+        assert_eq!(code.bindings[slots[1].unwrap() as usize].name, "read");
+        assert_eq!(slots[2], None);
+    }
+
+    #[test]
+    fn compound_declarations_have_no_single_slot_and_duplicate_vars_share_one() {
+        let code = script("let {x}=input; let first=1, second=2; var repeated=1; var repeated=2;")
+            .compile()
+            .unwrap();
+        let slots = code.root_declaration_binding_slots();
+        assert_eq!(&slots[..2], &[None, None]);
+        assert!(slots[2].is_some());
+        assert_eq!(slots[2], slots[3]);
+    }
+
+    #[test]
     fn registry_exposes_and_validates_exact_instruction_boundaries() {
         let mut registry = BlueJsProgramRegistry::default();
         let handle = registry
