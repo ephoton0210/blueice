@@ -1425,6 +1425,21 @@ the checked eval-alias fixture above and also returns `InvalidExecutionState`
 without a partial location. All three focused real-socket denial tests, the
 bridge caught-value regression, workspace Clippy, and formatting checks pass.
 
+**C3.1.1 source-set split:** The existing v36 `GetStackCoordinates` route
+already maps a paused classic or module caller/callee stack within one BlueTS
+program to exact original byte and UTF-16 spans after same-stream receipts.
+C3.1.1.1 strengthens that real-process test: the classic fixture must expose
+a second inventoried source, and substituting it for the caller's correct
+source must return `InvalidTarget`, not merely any non-coordinate reply. The
+module fixture exposes only one source, so its positive nested-stack proof
+cannot establish wrong-but-receipted multi-source behavior. Current
+`DebuggerStackSnapshot` and `DebuggerStackCoordinatesTarget` require every
+frame and source to share one program/metadata parent. A closed module graph
+can retain separate entry and dependency debugger programs; C3.1.1.2 first
+decides how a truly cross-program stack represents and authorizes per-frame
+sources, then implements and proves that contract on real sockets. C3.1.1.1's
+focused Launcher test passes for classic and module without a wire change.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

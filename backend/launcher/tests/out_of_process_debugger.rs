@@ -4831,6 +4831,12 @@ fn launcher_batches_exact_classic_and_module_stack_coordinates_only_with_receipt
         ) else {
             panic!("{slug} source IDs must be inventoried on this stream");
         };
+        if slug == "classic" {
+            assert!(
+                sources.len() >= 2,
+                "the classic source set must include a second inventoried source"
+            );
+        }
         let page_source = sources
             .iter()
             .copied()
@@ -4902,21 +4908,30 @@ fn launcher_batches_exact_classic_and_module_stack_coordinates_only_with_receipt
             ),
             DebuggerReply::Unsupported { .. }
         ));
-        if let Some(wrong) = sources
+        let wrong = sources
             .iter()
             .copied()
-            .find(|source| *source != page_source)
-        {
+            .find(|source| *source != page_source);
+        if slug == "classic" {
+            assert!(
+                wrong.is_some(),
+                "the classic source set must expose another receipted source"
+            );
+        }
+        if let Some(wrong) = wrong {
             let mut wrong_source = target.clone();
             wrong_source.sources[1] = wrong;
-            assert!(!matches!(
+            assert!(matches!(
                 debugger_request(
                     &mut debugger,
                     DebuggerRequest::GetStackCoordinates {
                         target: wrong_source
                     },
                 ),
-                DebuggerReply::StackCoordinates(_)
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    ..
+                }
             ));
         }
         assert_eq!(

@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.1.** Map nested-frame locations to the exact original
-BlueTS source set.
+**Current leaf: C3.1.1.2.1.** Decide the exact cross-program source-set and
+receipt contract for multi-source module nested frames.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -366,11 +366,16 @@ channel with explicit owner/client grants.
 
 - [ ] **C3.1** Map nested/module locations, breakpoints, symbols, and type
   displays to the exact original source set; distinguish static types
-  from runtime values. Partial: exact safe-point span replies now include
-  bounded original UTF-16 coordinates for classic and module roots under the
-  existing default-denied capability and same-stream source receipt; nested
-  frame mapping and complete module execution control remain open.
-  - [ ] **C3.1.1** Map nested-frame locations to the exact original source set.
+  from runtime values. Partial: exact safe-point span replies include bounded
+  original UTF-16 coordinates for classic/module roots and same-program
+  nested stacks under a separate grant and same-stream source receipts;
+  cross-program module source sets and complete module execution control remain open.
+  - [ ] **C3.1.1** Map nested-frame locations to the exact original source set. Same-program classic/module caller-callee spans are covered; a multi-source module dependency can involve distinct debugger programs and needs an explicit source-set contract.
+    - [x] **C3.1.1.1** Verify real classic and module same-program nested frame stacks bind both ordered safe points to exact original UTF-8/UTF-16 spans, and make a wrong-but-receipted classic source a mandatory typed refusal. The existing real Launcher v36 test passes for both script kinds; classic now requires a second source ID and an `InvalidTarget` reply when that ID is substituted for the caller frame.
+    - [ ] **C3.1.1.2** Map and prove a genuinely multi-source module dependency nested frame without conflating entry/dependency program or source identities.
+      - [ ] **C3.1.1.2.1** Decide the paused cross-program stack, per-frame metadata/source receipt, grant, and stale/refusal contract before changing the public wire; keep v39 unchanged in this design leaf.
+      - [ ] **C3.1.1.2.2** Implement exact child/core and public mapping for the decided cross-program nested-frame source set, with unit and IPC denial coverage.
+      - [ ] **C3.1.1.2.3** Prove entry/dependency original spans, distinct source IDs, swapped/unreceipted source refusal, and stale graph expiry on real Launcher-supervised sockets; then check off C3.1.1.2 and C3.1.1.
   - [ ] **C3.1.2** Map breakpoints and symbols for module execution control.
   - [ ] **C3.1.3** Show static types separately from runtime values in every reply.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
