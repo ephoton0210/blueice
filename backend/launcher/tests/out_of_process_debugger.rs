@@ -5860,6 +5860,7 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
             inventory: true,
             source_inventory: true,
             symbol_inventory: true,
+            symbol_display: true,
             symbol_location: true,
             safe_point_span: true,
             source_breakpoint: true,
@@ -5876,6 +5877,7 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
         DebuggerMetadataCapabilityManifest::opaque_selected(DebuggerMetadataCapabilitySelection {
             safe_point_span: true,
             source_breakpoint: true,
+            symbol_display: true,
             symbol_location: true,
             ..DebuggerMetadataCapabilitySelection::default()
         });
@@ -5952,9 +5954,49 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
         panic!("pending dependency must receipt its own original source")
     };
     assert_eq!(dependency_sources.len(), 1);
+    let DebuggerReply::StaticMetadataSymbols(dependency_symbols) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataSymbols {
+            metadata: dependency_metadata[0],
+        },
+    ) else {
+        panic!("pending dependency must receipt its own function symbol")
+    };
+    let (function_symbol, function_display) = dependency_symbols
+        .into_iter()
+        .find_map(|symbol| {
+            let DebuggerReply::StaticMetadataSymbol(display) = debugger_request(
+                &mut debugger,
+                DebuggerRequest::DescribeStaticMetadataSymbol { symbol },
+            ) else {
+                panic!("dependency symbol kind requires its independent display grant")
+            };
+            (display.display == "inner").then_some((symbol, display))
+        })
+        .expect("dependency must retain its executable function symbol");
+    assert_eq!(
+        function_display.kind,
+        DebuggerStaticMetadataSymbolKind::Function
+    );
+    let DebuggerReply::StaticMetadataSymbolLocation(function_location) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+            target: DebuggerStaticMetadataSymbolLocationTarget {
+                symbol: function_symbol,
+                source: dependency_sources[0],
+            },
+        },
+    ) else {
+        panic!("dependency function must own an original declaration range")
+    };
+    assert_eq!(
+        &LINKED_DEPENDENCY_SOURCE
+            [function_location.start_byte as usize..function_location.end_byte as usize],
+        LINKED_DEPENDENCY_SOURCE
+    );
     let source_target = DebuggerStaticMetadataSourceBreakpointTarget {
         source: dependency_sources[0],
-        source_byte: LINKED_DEPENDENCY_SOURCE.find("function inner").unwrap() as u32,
+        source_byte: function_location.start_byte,
     };
     let DebuggerReply::StaticMetadataSourceBreakpoint(binding) = debugger_request(
         &mut debugger,
@@ -5966,9 +6008,30 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
     };
     assert_eq!(binding.target, source_target);
     assert_eq!(binding.safe_point, Some(dependency_safe_point));
+    let DebuggerReply::StaticMetadataSafePointSpan(function_span) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeStaticMetadataSafePointSpan {
+            target: DebuggerStaticMetadataSafePointSpanTarget {
+                safe_point: dependency_safe_point,
+                source: dependency_sources[0],
+            },
+        },
+    ) else {
+        panic!("dependency function candidate requires its exact original span")
+    };
+    assert_eq!(
+        function_location.executable_breakpoint_candidate(
+            &function_display,
+            binding,
+            function_span,
+        ),
+        Some(dependency_safe_point)
+    );
     let arm = DebuggerLinkedArmTarget {
         entry,
-        dependency_safe_point: binding.safe_point.unwrap(),
+        dependency_safe_point: function_location
+            .executable_breakpoint_candidate(&function_display, binding, function_span)
+            .unwrap(),
     };
     assert!(matches!(
         debugger_request(
@@ -6076,7 +6139,7 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
     assert_ne!(metadata[0], metadata[1]);
     let guessed_dependency_source = DebuggerStaticMetadataSourceId {
         metadata: metadata[0],
-        source_id: 0,
+        source_id: u32::MAX,
     };
     assert!(matches!(
         debugger_request(
@@ -6175,7 +6238,7 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
 
         let guessed_symbol = blueice_ipc::debugger::DebuggerStaticMetadataSymbolId {
             metadata: source.metadata,
-            symbol_id: 0,
+            symbol_id: u32::MAX,
         };
         assert!(matches!(
             debugger_request(

@@ -1786,6 +1786,17 @@ unbound candidate leave execution pending. All 114 IPC library tests, the
 focused Launcher test, workspace Clippy, and formatting pass; debugger v40
 is unchanged.
 
+**C3.1.2.3.3.3 dependency symbol control:** The real two-file Launcher
+fixture now inventories the dependency's function symbol while execution is
+pending, verifies its separately granted `Function` display and original
+declaration range, resolves that declaration under the dependency's own
+source receipt, and obtains the exact child span under the independent span
+grant. Only the candidate accepted by the data-only same-program/contained-
+span helper is supplied to the distinct entry's linked arm. The existing
+same-program, wrong-generation, moved-pause, swapped symbol/source, and
+reload-stale checks remain typed refusals. The focused real socket test,
+workspace Clippy, and formatting pass; debugger v40 remains unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
