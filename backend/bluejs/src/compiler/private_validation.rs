@@ -5,9 +5,10 @@
 use super::*;
 
 /// Performs the grammar's lexical PrivateEnvironment checks without lowering
-/// the program.  The parser uses this for parse-only Test262 cases; the
-/// compiler repeats the lookup while assigning hidden owner bindings.
-pub(crate) fn validate_private_early_errors(program: &Program) -> Result<(), CompileError> {
+/// the program. The parser uses this for parse-only Test262 cases. Callers
+/// constructing a [`Program`] directly can run the same check before lowering;
+/// the compiler also resolves private names while assigning owner bindings.
+pub fn validate_private_early_errors(program: &Program) -> Result<(), CompileError> {
     validate_private_statements(&program.body, &HashSet::new())
 }
 

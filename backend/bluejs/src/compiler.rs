@@ -41,7 +41,7 @@ mod expressions;
 mod functions;
 mod private_validation;
 mod statements;
-pub(crate) use private_validation::validate_private_early_errors;
+pub use private_validation::validate_private_early_errors;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompileError {

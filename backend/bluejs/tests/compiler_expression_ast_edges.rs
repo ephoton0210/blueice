@@ -135,6 +135,32 @@ fn malformed_ordinary_and_unbound_private_members_fail_during_compilation() {
 }
 
 #[test]
+fn externally_built_classes_reject_duplicate_private_fields() {
+    let field = ClassElement::Field {
+        key: PropertyKey::Identifier("#value".into()),
+        initializer: None,
+        is_static: false,
+        accessor: false,
+        decorators: Vec::new(),
+    };
+    let class = Class {
+        name: Some("C".into()),
+        extends: None,
+        elements: vec![field.clone(), field],
+        decorators: Vec::new(),
+        source_text: SourceText::default(),
+    };
+    assert!(matches!(
+        compile(&Program {
+            body: vec![Stmt::ClassDecl(class)],
+        }),
+        Err(CompileError::InvalidSyntax(
+            "duplicate private name in class body"
+        ))
+    ));
+}
+
+#[test]
 fn unbound_private_names_in_optional_and_destructuring_asts_fail_at_compilation() {
     let unbound = || Expr::Member {
         object: Box::new(Expr::Number(1.0)),
