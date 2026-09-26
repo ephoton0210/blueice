@@ -82,13 +82,13 @@ use blueice_ipc::page_host::{
     PageHostDebuggerExecutionState, PageHostDebuggerFrame, PageHostDebuggerLinkedExecutionState,
     PageHostDebuggerLinkedFrame, PageHostDebuggerLinkedSource, PageHostDebuggerLinkedStackSnapshot,
     PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
-    PageHostDebuggerScopeEntry, PageHostDebuggerStackSnapshot, PageHostDebuggerValuePreview,
-    PageHostDebuggerValueTarget, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
-    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
-    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource,
-    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
-    PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES,
-    PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES,
+    PageHostDebuggerScopeEntry, PageHostDebuggerStackSnapshot, PageHostDebuggerStaticScopeTarget,
+    PageHostDebuggerValuePreview, PageHostDebuggerValueTarget, PageHostDocument,
+    PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph, PageHostRealmStats,
+    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
+    PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
+    PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+    PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES, PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES,
 };
 use blueice_ipc::script::ScriptDocumentTarget;
 use blueice_net::canonical_http_origin;
@@ -897,6 +897,18 @@ pub trait PageHostClient {
         ))
     }
 
+    /// Private static compiler relation at one exact paused slot. Test
+    /// transports remain default-denied, and this is not a public grant.
+    fn debugger_static_scope_relation(
+        &mut self,
+        _target: PageHostDebuggerStaticScopeTarget,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement static scope relations",
+        ))
+    }
+
     fn arm_debugger_nested_safe_point_breakpoint(
         &mut self,
         _tab_id: u64,
@@ -1066,6 +1078,36 @@ pub trait PageHostClient {
 /// Public identities and grants are deliberately not minted at this seam.
 struct ChildLinkedDebuggerAdapter<'a, C: PageHostClient> {
     child: &'a mut C,
+}
+
+/// Strict private wire boundary for an already core-checked paused slot. No
+/// child handle, partial relation, value, or display can pass an altered echo.
+struct ChildStaticScopeAdapter<'a, C: PageHostClient> {
+    child: &'a mut C,
+}
+
+#[allow(dead_code)] // The core remapping leaves connect this staged adapter.
+impl<C: PageHostClient> ChildStaticScopeAdapter<'_, C> {
+    fn describe(
+        &mut self,
+        target: PageHostDebuggerStaticScopeTarget,
+    ) -> Result<PageHostDebuggerBlueTsMetadataSymbolType, JavaScriptPageDebuggerError> {
+        if !target.is_well_formed() {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let reply = self
+            .child
+            .debugger_static_scope_relation(target.clone())
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerStaticScopeRelation(relation)
+                if relation.is_well_formed() && relation.target == target =>
+            {
+                Ok(relation.symbol_type)
+            }
+            _ => Err(child_debugger_reply_error(&reply)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1874,6 +1916,15 @@ impl PageHostClient for PageHostConnection {
         target: PageHostDebuggerValueTarget,
     ) -> io::Result<PageHostReply> {
         self.request(PageHostRequest::GetDebuggerValueSnapshot { target })
+    }
+
+    fn debugger_static_scope_relation(
+        &mut self,
+        target: PageHostDebuggerStaticScopeTarget,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerStaticScopeRelation {
+            target: Box::new(target),
+        })
     }
 
     fn arm_debugger_nested_safe_point_breakpoint(
@@ -6682,6 +6733,251 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread;
+
+    #[test]
+    fn private_static_scope_adapter_requires_valid_exact_echo_for_both_pause_shapes() {
+        use blueice_ipc::page_host::{
+            PageHostDebuggerLinkedStackFrame, PageHostDebuggerStaticScopeRelation,
+            PageHostDebuggerStaticScopeTarget,
+        };
+
+        struct DenyChild;
+        impl PageHostClient for DenyChild {
+            fn synchronize_document(&mut self, _: PageHostDocument) -> io::Result<PageHostReply> {
+                unreachable!()
+            }
+            fn close_realm(&mut self, _: u64, _: u64) -> io::Result<PageHostReply> {
+                unreachable!()
+            }
+        }
+
+        struct ReplyChild {
+            reply: PageHostReply,
+            seen: Option<PageHostDebuggerStaticScopeTarget>,
+        }
+        impl PageHostClient for ReplyChild {
+            fn synchronize_document(&mut self, _: PageHostDocument) -> io::Result<PageHostReply> {
+                unreachable!()
+            }
+            fn close_realm(&mut self, _: u64, _: u64) -> io::Result<PageHostReply> {
+                unreachable!()
+            }
+            fn debugger_static_scope_relation(
+                &mut self,
+                target: PageHostDebuggerStaticScopeTarget,
+            ) -> io::Result<PageHostReply> {
+                self.seen = Some(target);
+                Ok(self.reply.clone())
+            }
+        }
+
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let dependency = PageHostDebuggerProgram {
+            program_handle: 17,
+            program_generation: 19,
+        };
+        let metadata = PageHostDebuggerMetadataHandle {
+            metadata_handle: 23,
+            metadata_generation: 29,
+        };
+        let entry = PageHostDebuggerScopeEntry {
+            slot_ordinal: 2,
+            scope_depth: 0,
+        };
+        let root_point = PageHostDebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 4,
+        };
+        let ordinary = PageHostDebuggerStaticScopeTarget::Ordinary {
+            metadata,
+            target: PageHostDebuggerValueTarget {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                frame: None,
+                frame_index: 0,
+                safe_point: root_point,
+                scope_entry: entry,
+            },
+        };
+        let linked = PageHostDebuggerStaticScopeTarget::Linked {
+            frame: PageHostDebuggerLinkedFrame {
+                tab_id: 7,
+                document_generation: 3,
+                entry_program: program,
+                dependency_program: dependency,
+                code_unit_ordinal: 1,
+                invocation_serial: 31,
+            },
+            expected_stack: Box::new(PageHostDebuggerLinkedStackSnapshot {
+                frames: [
+                    PageHostDebuggerLinkedStackFrame {
+                        safe_point: PageHostDebuggerSafePoint {
+                            program: dependency,
+                            code_unit_ordinal: 1,
+                            bytecode_offset: 2,
+                        },
+                        scope_entries: vec![],
+                        scope_truncated: false,
+                    },
+                    PageHostDebuggerLinkedStackFrame {
+                        safe_point: root_point,
+                        scope_entries: vec![entry],
+                        scope_truncated: false,
+                    },
+                ],
+                stack_truncated: false,
+                max_scope_entries: 2,
+            }),
+            frame_index: 1,
+            metadata,
+            scope_entry: entry,
+        };
+        let symbol_type = PageHostDebuggerBlueTsMetadataSymbolType {
+            symbol_id: 0,
+            type_id: 1,
+        };
+        assert_eq!(
+            ChildStaticScopeAdapter {
+                child: &mut DenyChild,
+            }
+            .describe(ordinary.clone()),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        for target in [ordinary, linked] {
+            assert!(target.is_well_formed());
+            let relation = |target| {
+                PageHostReply::DebuggerStaticScopeRelation(Box::new(
+                    PageHostDebuggerStaticScopeRelation {
+                        target,
+                        symbol_type,
+                    },
+                ))
+            };
+            let mut child = ReplyChild {
+                reply: relation(target.clone()),
+                seen: None,
+            };
+            assert_eq!(
+                ChildStaticScopeAdapter { child: &mut child }.describe(target.clone()),
+                Ok(symbol_type)
+            );
+            assert_eq!(child.seen, Some(target.clone()));
+            child.reply = relation(match &target {
+                PageHostDebuggerStaticScopeTarget::Ordinary { target, .. } => {
+                    PageHostDebuggerStaticScopeTarget::Ordinary {
+                        metadata: PageHostDebuggerMetadataHandle {
+                            metadata_generation: metadata.metadata_generation + 1,
+                            ..metadata
+                        },
+                        target: *target,
+                    }
+                }
+                PageHostDebuggerStaticScopeTarget::Linked {
+                    frame,
+                    expected_stack,
+                    frame_index,
+                    scope_entry,
+                    ..
+                } => PageHostDebuggerStaticScopeTarget::Linked {
+                    frame: *frame,
+                    expected_stack: expected_stack.clone(),
+                    frame_index: *frame_index,
+                    metadata: PageHostDebuggerMetadataHandle {
+                        metadata_generation: metadata.metadata_generation + 1,
+                        ..metadata
+                    },
+                    scope_entry: *scope_entry,
+                },
+            });
+            assert_eq!(
+                ChildStaticScopeAdapter { child: &mut child }.describe(target.clone()),
+                Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            );
+            child.reply = relation(match &target {
+                PageHostDebuggerStaticScopeTarget::Ordinary { metadata, target } => {
+                    PageHostDebuggerStaticScopeTarget::Ordinary {
+                        metadata: *metadata,
+                        target: PageHostDebuggerValueTarget {
+                            safe_point: PageHostDebuggerSafePoint {
+                                bytecode_offset: target.safe_point.bytecode_offset + 1,
+                                ..target.safe_point
+                            },
+                            ..*target
+                        },
+                    }
+                }
+                PageHostDebuggerStaticScopeTarget::Linked {
+                    frame,
+                    expected_stack,
+                    frame_index,
+                    metadata,
+                    scope_entry,
+                } => {
+                    let mut moved = expected_stack.clone();
+                    moved.frames[1].safe_point.bytecode_offset += 1;
+                    PageHostDebuggerStaticScopeTarget::Linked {
+                        frame: *frame,
+                        expected_stack: moved,
+                        frame_index: *frame_index,
+                        metadata: *metadata,
+                        scope_entry: *scope_entry,
+                    }
+                }
+            });
+            assert_eq!(
+                ChildStaticScopeAdapter { child: &mut child }.describe(target.clone()),
+                Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            );
+            child.reply = PageHostReply::ShutdownAck;
+            assert_eq!(
+                ChildStaticScopeAdapter { child: &mut child }.describe(target.clone()),
+                Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            );
+            child.reply = PageHostReply::Error {
+                code: PageHostErrorCode::InvalidDebuggerState,
+                message: "fixed child error".into(),
+            };
+            assert_eq!(
+                ChildStaticScopeAdapter { child: &mut child }.describe(target.clone()),
+                Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+            );
+            child.seen = None;
+            let malformed = match target {
+                PageHostDebuggerStaticScopeTarget::Ordinary { target, .. } => {
+                    PageHostDebuggerStaticScopeTarget::Ordinary {
+                        metadata: PageHostDebuggerMetadataHandle {
+                            metadata_handle: 0,
+                            ..metadata
+                        },
+                        target,
+                    }
+                }
+                PageHostDebuggerStaticScopeTarget::Linked {
+                    frame,
+                    expected_stack,
+                    metadata,
+                    scope_entry,
+                    ..
+                } => PageHostDebuggerStaticScopeTarget::Linked {
+                    frame,
+                    expected_stack,
+                    frame_index: 0,
+                    metadata,
+                    scope_entry,
+                },
+            };
+            assert_eq!(
+                ChildStaticScopeAdapter { child: &mut child }.describe(malformed),
+                Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+            );
+            assert_eq!(child.seen, None);
+        }
+    }
 
     #[test]
     fn linked_child_adapter_rejects_moved_or_partial_private_replies() {

@@ -2020,6 +2020,19 @@ ordinary `Scopes` and future linked-stack-derived scope receipts, type-ID
 receipt, owner/client grant, and public protocol bump belong to C3.1.3.4;
 this split adds none of those public authorities and never calls `Value`.
 
+**C3.1.3.3.5.2 private transport adapter:** `PageHostClient` now defaults the
+static-scope operation to unsupported; only the authenticated page-host
+connection sends its v41 request. The staged child adapter refuses malformed
+targets before transport and accepts a relation only when the full echoed
+ordinary or linked target is structurally valid and byte-for-byte equivalent
+in its typed fields. Changed metadata, safe points, an unrelated reply, or a
+child error never yields partial symbol/type IDs. Transport-double tests cover
+both pause shapes, including no send on malformed input. After rebuilding the
+workspace's child executable (the prior binary rejected v41 as an old
+protocol), the real Launcher/Core integration case and full engine 306-test
+library suite pass. Workspace Clippy and formatting pass; no public debugger
+request, capability, receipt, or protocol change was added.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

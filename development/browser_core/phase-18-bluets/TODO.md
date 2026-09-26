@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.3.5.2.** Add the default-deny private child-client
-operation and strict adapter request/reply shape, echo, and no-partial error
-tests without exposing a public debugger operation.
+**Current leaf: C3.1.3.3.5.3.** Remap ordinary root/parent targets through
+core-owned program/frame/metadata generations, reacquire the active scope,
+and reject forged/stale/moved replies.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -427,7 +427,7 @@ channel with explicit owner/client grants.
       - [x] **C3.1.3.3.4** Implement the child-private linked entry-root relation against the complete freshly revalidated dependency/entry stack and entry-owned metadata; reject swapped programs/metadata, dependency captures, moved stacks, and stale cutovers without partial replies. The child checks the exact linked invocation, reacquires the whole dependency/entry stack with the original scope budget, compares every frame/slot, and joins only the entry program's live root map. Linked child tests cover swapped programs/metadata, dependency-frame selection, forged invocation/slot, moved child/entry safe points, and document cutover. Launcher 116 tests, workspace Clippy, and formatting pass; no public request/grant was added.
       - [ ] **C3.1.3.3.5** Carry both private relations through the child adapter and core debugger support with exact request/reply echo, generation, metadata, and active-slot checks; do not add a public request or grant yet.
         - [x] **C3.1.3.3.5.1** Decide core-facing ordinary/linked static scope targets, the private adapter's exact-echo contract, and which live identities/slots core revalidates before the future public grant. PLAN.md keeps core-owned ordinary/linked selectors separate from page-host IDs; the adapter requires full-target echo, core rechecks current program/frame/metadata and complete active stack, while same-stream receipts and public authority remain deferred to C3.1.3.4.
-        - [ ] **C3.1.3.3.5.2** Add the default-deny private child-client operation and strict adapter request/reply shape, echo, and no-partial error tests without exposing a public debugger operation.
+        - [x] **C3.1.3.3.5.2** Add the default-deny private child-client operation and strict adapter request/reply shape, echo, and no-partial error tests without exposing a public debugger operation. The real private connection sends v41 requests; the adapter validates the whole target before sending and accepts only a well-formed exact-target echo. Tests cover ordinary/linked success, changed metadata/safe point, wrong reply kind, typed error, malformed unsent targets, and default-denied doubles. After rebuilding all workspace targets to update the child executable, the full engine 306-test suite, workspace Clippy, and formatting pass.
         - [ ] **C3.1.3.3.5.3** Remap ordinary root/parent targets through core-owned program/frame/metadata generations, reacquire the active scope, and reject forged/stale/moved replies.
         - [ ] **C3.1.3.3.5.4** Remap linked entry-root targets through the complete stored/reacquired two-program stack and entry-owned metadata, rejecting swapped/moved/forged targets and replies.
         - [ ] **C3.1.3.3.5.5** Add a private core debugger helper for both verified relations with no public request/grant; test its exact active-slot and generation checks before checking off C3.1.3.3.5.
