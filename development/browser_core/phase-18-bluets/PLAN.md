@@ -1839,6 +1839,45 @@ static `TypeId` is not a runtime proof. This design does not add general
 watch/evaluate or dynamic type reification; debugger v40 remains unchanged
 until the complete independently gated public relation is ready.
 
+**C3.1.3.5.1 same-slot display/value decision:** The client may pair two
+independent successful replies only when they name one exact active slot on
+one debugger stream and one still-live pause. For an ordinary classic or
+module root/parent, `GetStaticScopeRelation` echoes the complete
+`DebuggerValueTarget` inside its static selector; its `static_type` may then
+be passed to `DescribeStaticMetadataType` only after that stream inventories
+the type and negotiates the separate type-display grant. `GetValue` must echo
+the same `DebuggerValueTarget`, after an independently granted bounded-value
+read and a same-stream `GetScopes` receipt. A type display is compiler
+evidence; the bounded value is a copied VM snapshot. They are never merged
+into one reply or used to claim runtime type validation. In particular, a
+declared `number` beside `Undefined` remains two truthful observations.
+
+The existing public `GetValue` target is an ordinary `Scopes` selector and
+cannot name a linked entry-root slot. Add a distinct linked value selector
+using the existing complete `DebuggerLinkedScopeTarget` (exact two-frame
+stack, entry frame index 1, and scope entry), and a distinct echoed snapshot
+with the existing bounded preview vocabulary. The private child route must
+read the retained linked entry root directly from the exact live graph; it
+must not synthesize an ordinary root frame or infer a slot from a name,
+source span, or runtime shape. Core remints the preview under its existing
+depth/node/payload budgets. No new metadata grant is implied: a complete
+`GetLinkedScopes` reply may mint a linked slot receipt for a stream holding
+either the static-relation or bounded-value grant, but `GetLinkedValue`
+requires the bounded-value owner and client grants specifically. The static
+relation still requires its own grant plus metadata, symbol, and type
+inventories; a type display still requires its separate display grant.
+
+Both paths recheck the core-owned pause incarnation and exact child document,
+program generation, linked stack, and active slot before returning a full
+snapshot. Truncated linked scopes, a missing or foreign-stream receipt, a
+swapped frame/program, a moved step or resume, HTTP reload, or supervised
+child cutover yield a typed denial with no partial type/value payload. A
+client must discard an earlier half of a proposed side-by-side display if
+the other half is refused. Stage the private route and native tests before
+adding a callable public linked request; bump private and public protocol
+versions only when each respective route is complete. This design leaf does
+not change debugger v41 or the current metadata manifest.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
