@@ -2146,6 +2146,19 @@ manifest version, and debugger protocol bump together only after the staged
 IPC and core denial checks are ready; then prove real socket behavior before
 claiming C3.1.3.4 complete.
 
+**C3.1.3.4.2 staged public data shapes:** `DebuggerLinkedScopeSnapshot`
+echoes a complete child-first linked stack, fixes selection to entry-root
+index one, and bounds its lexical slot list by the retained scope budget.
+Duplicate slot ordinals, zero/out-of-range budgets, and inconsistent
+truncation are malformed. `DebuggerStaticScopeTarget` holds either an exact
+ordinary root/parent `ValueTarget` with matching metadata owner or an exact
+linked entry-root stack/slot selector with entry-owned metadata. Its static
+relation echoes the whole target and requires both opaque compiler IDs to
+remain under that same metadata parent. Focused malformed-shape and JSON
+round-trip tests, the full IPC 117-test suite, workspace Clippy, and
+formatting pass. These data-only types add no request, reply variant,
+capability, grant, or public protocol change; debugger remains v40.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

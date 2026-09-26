@@ -938,7 +938,7 @@ impl DebuggerLinkedFrame {
 
 /// Source-free location of one retained frame. The top frame is the linked
 /// dependency; the second is its distinct entry-module caller.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DebuggerLinkedStackFrame {
     pub frame: DebuggerLinkedFrame,
     pub safe_point: DebuggerSafePoint,
@@ -946,7 +946,7 @@ pub struct DebuggerLinkedStackFrame {
 
 /// Complete child-first linked stack. An array prevents truncated, reordered,
 /// or partial source disclosures from masquerading as a full graph pause.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DebuggerLinkedStackSnapshot {
     pub frames: [DebuggerLinkedStackFrame; 2],
 }
@@ -1055,6 +1055,50 @@ impl DebuggerLinkedStackCoordinates {
 pub struct DebuggerScopeEntry {
     pub slot_ordinal: u32,
     pub scope_depth: u32,
+}
+
+/// One bounded entry-root scope list for a complete linked pause. It is only
+/// a data shape until the separately gated public linked-scopes route lands;
+/// no dependency child binding, name, value, or source is included.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerLinkedScopeSnapshot {
+    pub stack: DebuggerLinkedStackSnapshot,
+    pub frame_index: u32,
+    pub entries: Vec<DebuggerScopeEntry>,
+    pub scope_truncated: bool,
+    pub max_scope_entries: u32,
+}
+
+impl DebuggerLinkedScopeSnapshot {
+    pub fn is_well_formed(&self) -> bool {
+        if !self.stack.is_well_formed()
+            || self.frame_index != 1
+            || !(1..=DEBUGGER_MAX_SCOPE_ENTRIES).contains(&self.max_scope_entries)
+            || self.entries.len() > self.max_scope_entries as usize
+            || (self.scope_truncated && self.entries.len() != self.max_scope_entries as usize)
+        {
+            return false;
+        }
+        let mut slots = HashSet::with_capacity(self.entries.len());
+        self.entries
+            .iter()
+            .all(|entry| slots.insert(entry.slot_ordinal))
+    }
+}
+
+/// Exact linked entry-root slot selector. An ordinary `Scopes` receipt is
+/// deliberately not interchangeable with this complete-stack identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DebuggerLinkedScopeTarget {
+    pub stack: DebuggerLinkedStackSnapshot,
+    pub frame_index: u32,
+    pub scope_entry: DebuggerScopeEntry,
+}
+
+impl DebuggerLinkedScopeTarget {
+    pub fn is_well_formed(self) -> bool {
+        self.stack.is_well_formed() && self.frame_index == 1
+    }
 }
 
 /// One currently active frame's bounded lexical-slot inventory. It is not a
@@ -1200,6 +1244,65 @@ impl DebuggerValueTarget {
                         && (self.frame_index != 0 || frame.matches_safe_point(self.safe_point))
                 }
             }
+    }
+}
+
+/// A static-only selector for one exact ordinary root/parent or linked entry
+/// root slot. The existing `Value` route has a separate grant and reply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum DebuggerStaticScopeTarget {
+    Ordinary {
+        metadata: DebuggerStaticMetadataHandle,
+        target: DebuggerValueTarget,
+    },
+    Linked {
+        metadata: DebuggerStaticMetadataHandle,
+        target: DebuggerLinkedScopeTarget,
+    },
+}
+
+impl DebuggerStaticScopeTarget {
+    pub fn metadata(self) -> DebuggerStaticMetadataHandle {
+        match self {
+            Self::Ordinary { metadata, .. } | Self::Linked { metadata, .. } => metadata,
+        }
+    }
+
+    pub fn is_well_formed(self) -> bool {
+        match self {
+            Self::Ordinary { metadata, target } => {
+                metadata.is_well_formed()
+                    && target.is_well_formed()
+                    && metadata.program == target.program
+                    && target.safe_point.code_unit_ordinal == 0
+                    && matches!((target.frame, target.frame_index), (None, 0) | (Some(_), 1))
+            }
+            Self::Linked { metadata, target } => {
+                metadata.is_well_formed()
+                    && target.is_well_formed()
+                    && metadata.program == target.stack.frames[1].frame.program
+            }
+        }
+    }
+}
+
+/// An all-or-nothing compiler relation for a previously receipted active
+/// slot. Both IDs stay opaque and parent-bound; no display or runtime value
+/// can appear in this data-only reply shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticScopeRelation {
+    pub target: DebuggerStaticScopeTarget,
+    pub symbol: DebuggerStaticMetadataSymbolId,
+    pub static_type: DebuggerStaticMetadataTypeId,
+}
+
+impl DebuggerStaticScopeRelation {
+    pub fn is_well_formed(self) -> bool {
+        self.target.is_well_formed()
+            && self.symbol.is_well_formed()
+            && self.static_type.is_well_formed()
+            && self.symbol.metadata == self.target.metadata()
+            && self.static_type.metadata == self.target.metadata()
     }
 }
 
@@ -3592,6 +3695,180 @@ mod tests {
         assert_eq!(
             serde_json::from_slice::<DebuggerLinkedExecutionState>(&encoded).unwrap(),
             DebuggerLinkedExecutionState::Paused { stack }
+        );
+    }
+
+    #[test]
+    fn staged_static_scope_shapes_bind_one_exact_root_and_metadata_owner() {
+        let dependency = DebuggerProgram {
+            realm: realm(),
+            program_handle: 11,
+            program_generation: 12,
+        };
+        let entry = DebuggerProgram {
+            realm: realm(),
+            program_handle: 21,
+            program_generation: 22,
+        };
+        let points = [
+            DebuggerSafePoint {
+                program: dependency,
+                code_unit_ordinal: 1,
+                bytecode_offset: 4,
+            },
+            DebuggerSafePoint {
+                program: entry,
+                code_unit_ordinal: 0,
+                bytecode_offset: 8,
+            },
+        ];
+        let stack = DebuggerLinkedStackSnapshot {
+            frames: [0, 1].map(|index| DebuggerLinkedStackFrame {
+                frame: DebuggerLinkedFrame {
+                    program: points[index].program,
+                    code_unit_ordinal: points[index].code_unit_ordinal,
+                    core_instance: [7; 16],
+                    frame_handle: index as u64 + 1,
+                },
+                safe_point: points[index],
+            }),
+        };
+        let slot = DebuggerScopeEntry {
+            slot_ordinal: 0,
+            scope_depth: 0,
+        };
+        let linked_scopes = DebuggerLinkedScopeSnapshot {
+            stack,
+            frame_index: 1,
+            entries: vec![slot],
+            scope_truncated: false,
+            max_scope_entries: 4,
+        };
+        assert!(linked_scopes.is_well_formed());
+        assert!(!DebuggerLinkedScopeSnapshot {
+            frame_index: 0,
+            ..linked_scopes.clone()
+        }
+        .is_well_formed());
+        assert!(!DebuggerLinkedScopeSnapshot {
+            entries: vec![
+                slot,
+                DebuggerScopeEntry {
+                    scope_depth: 1,
+                    ..slot
+                }
+            ],
+            ..linked_scopes.clone()
+        }
+        .is_well_formed());
+        assert!(!DebuggerLinkedScopeSnapshot {
+            max_scope_entries: 0,
+            ..linked_scopes.clone()
+        }
+        .is_well_formed());
+        assert!(!DebuggerLinkedScopeSnapshot {
+            scope_truncated: true,
+            ..linked_scopes.clone()
+        }
+        .is_well_formed());
+        let linked_target = DebuggerLinkedScopeTarget {
+            stack,
+            frame_index: 1,
+            scope_entry: slot,
+        };
+        assert!(linked_target.is_well_formed());
+        let entry_metadata = DebuggerStaticMetadataHandle {
+            program: entry,
+            metadata_handle: 31,
+            metadata_generation: 32,
+        };
+        let dependency_metadata = DebuggerStaticMetadataHandle {
+            program: dependency,
+            metadata_handle: 41,
+            metadata_generation: 42,
+        };
+        let linked = DebuggerStaticScopeTarget::Linked {
+            metadata: entry_metadata,
+            target: linked_target,
+        };
+        assert!(linked.is_well_formed());
+        assert!(!DebuggerStaticScopeTarget::Linked {
+            metadata: dependency_metadata,
+            target: linked_target,
+        }
+        .is_well_formed());
+        assert!(!DebuggerStaticScopeTarget::Linked {
+            metadata: entry_metadata,
+            target: DebuggerLinkedScopeTarget {
+                frame_index: 0,
+                ..linked_target
+            },
+        }
+        .is_well_formed());
+        let ordinary_slot = DebuggerValueTarget {
+            program: entry,
+            frame: None,
+            frame_index: 0,
+            safe_point: points[1],
+            scope_entry: slot,
+        };
+        let ordinary = DebuggerStaticScopeTarget::Ordinary {
+            metadata: entry_metadata,
+            target: ordinary_slot,
+        };
+        assert!(ordinary.is_well_formed());
+        assert!(!DebuggerStaticScopeTarget::Ordinary {
+            metadata: dependency_metadata,
+            target: ordinary_slot,
+        }
+        .is_well_formed());
+        assert!(!DebuggerStaticScopeTarget::Ordinary {
+            metadata: entry_metadata,
+            target: DebuggerValueTarget {
+                safe_point: DebuggerSafePoint {
+                    code_unit_ordinal: 1,
+                    ..points[1]
+                },
+                ..ordinary_slot
+            },
+        }
+        .is_well_formed());
+        let relation = DebuggerStaticScopeRelation {
+            target: linked,
+            symbol: DebuggerStaticMetadataSymbolId {
+                metadata: entry_metadata,
+                symbol_id: 2,
+            },
+            static_type: DebuggerStaticMetadataTypeId {
+                metadata: entry_metadata,
+                type_id: 1,
+            },
+        };
+        assert!(relation.is_well_formed());
+        assert!(!DebuggerStaticScopeRelation {
+            static_type: DebuggerStaticMetadataTypeId {
+                metadata: dependency_metadata,
+                type_id: 1,
+            },
+            ..relation
+        }
+        .is_well_formed());
+        for target in [ordinary, linked] {
+            let encoded = serde_json::to_vec(&target).unwrap();
+            assert_eq!(
+                serde_json::from_slice::<DebuggerStaticScopeTarget>(&encoded).unwrap(),
+                target
+            );
+        }
+        let encoded = serde_json::to_vec(&linked_scopes).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<DebuggerLinkedScopeSnapshot>(&encoded).unwrap(),
+            linked_scopes
+        );
+        let encoded = serde_json::to_vec(&relation).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<DebuggerStaticScopeRelation>(&encoded).unwrap(),
+            relation
         );
     }
 

@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.2.** Add bounded public data-only linked-scopes and
-static scope target/relation shapes with strict validators, without adding a
-request, grant, or protocol bump yet.
+**Current leaf: C3.1.3.4.3.** Expose the complete linked entry-root lexical
+slots through a private core-facing snapshot, rechecking the entire active
+linked pause without a public wire change.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -437,7 +437,7 @@ channel with explicit owner/client grants.
         - [x] **C3.1.3.3.6.3** Prove no-partial stale/moved/forged denials across both real pause shapes, then close C3.1.3.3.6 and C3.1.3.3. Real nested and linked pauses reject forged metadata generations and slots, moved safe points, and old targets after resume; replacement documents reject old ordinary and linked targets. The real child/core tests and full engine 309-test suite, workspace Clippy, and formatting pass without a public static-scope request or grant.
     - [ ] **C3.1.3.4** Add an independently granted public static scope relation request/reply with exact ordinary Scopes or linked-stack-derived scope receipt plus metadata/type receipts; retain the existing separate bounded `Value` reply, bump public protocol only when the complete route and IPC/core denials pass.
       - [x] **C3.1.3.4.1** Decide ordinary/linked public selectors, linked-scopes receipt, independent grant and metadata/symbol/type receipt contract, no-Value separation, and the protocol-bump point. PLAN.md specifies a linked entry-root Scopes-family reply and distinct same-stream linked receipt, complete target echo, separately inventoried metadata/symbol/type IDs, and a default-deny static grant. Data-only shapes and private core checks precede the final public request/grant; the public protocol changes only with the complete guarded route.
-      - [ ] **C3.1.3.4.2** Add bounded public data-only linked-scopes and static scope target/relation shapes with strict validators and serialization tests; do not add requests, grants, or a protocol bump yet.
+      - [x] **C3.1.3.4.2** Add bounded public data-only linked-scopes and static scope target/relation shapes with strict validators and serialization tests; do not add requests, grants, or a protocol bump yet. The staged types bind a complete linked entry-root scope snapshot, ordinary/linked static selectors, and a complete parent-owned symbol/type pair; validators reject wrong owners/index, duplicate lexical slots, impossible budgets/truncation, and mismatched IDs. IPC 117-test suite, workspace Clippy, and formatting pass while public debugger remains v40.
       - [ ] **C3.1.3.4.3** Expose the complete linked entry-root lexical slots through a private core-facing snapshot, rechecking the entire active linked pause without a public wire change.
       - [ ] **C3.1.3.4.4** Add distinct bounded same-stream ordinary/linked static scope receipts tied to the core pause incarnation; keep linked receipts unusable by `Value` and default-deny relation reads.
       - [ ] **C3.1.3.4.5** Stage a core static-relation dispatcher that checks the exact scope receipt, live pause, metadata and symbol/type inventory receipts, and full response echo without a public request.
