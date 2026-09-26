@@ -589,6 +589,41 @@ impl DebuggerStaticMetadataSourceBreakpoint {
     }
 }
 
+impl DebuggerStaticMetadataSymbolLocation {
+    /// Checks whether separately authorized symbol, source, and exact-span
+    /// observations identify one executable declaration. This data-only
+    /// client helper grants nothing: every input must first come from its
+    /// independently gated operation on the same debugger stream, and the
+    /// returned safe point still needs the ordinary live arm validation.
+    pub fn executable_breakpoint_candidate(
+        self,
+        display: &DebuggerStaticMetadataSymbolDisplay,
+        binding: DebuggerStaticMetadataSourceBreakpoint,
+        span: DebuggerStaticMetadataSafePointSpan,
+    ) -> Option<DebuggerSafePoint> {
+        if !self.is_well_formed()
+            || !display.is_well_formed()
+            || !binding.is_well_formed()
+            || !span.is_well_formed()
+            || !matches!(
+                display.kind,
+                DebuggerStaticMetadataSymbolKind::Variable
+                    | DebuggerStaticMetadataSymbolKind::Function
+            )
+            || display.symbol != self.symbol
+            || binding.target.source != self.source
+            || binding.target.source_byte != self.start_byte
+            || span.source != self.source
+            || span.start_byte < self.start_byte
+            || span.end_byte > self.end_byte
+        {
+            return None;
+        }
+        let point = binding.safe_point?;
+        (span.safe_point == point).then_some(point)
+    }
+}
+
 impl DebuggerStaticMetadataSymbolLocationTarget {
     pub fn is_well_formed(self) -> bool {
         self.symbol.is_well_formed()
@@ -3299,6 +3334,138 @@ mod tests {
             tab_id: 7,
             realm_generation: 3,
         }
+    }
+
+    #[test]
+    fn symbol_breakpoint_candidate_requires_executable_kind_and_contained_exact_span() {
+        let program = DebuggerProgram {
+            realm: realm(),
+            program_handle: 11,
+            program_generation: 12,
+        };
+        let metadata = DebuggerStaticMetadataHandle {
+            program,
+            metadata_handle: 21,
+            metadata_generation: 22,
+        };
+        let source = DebuggerStaticMetadataSourceId {
+            metadata,
+            source_id: 2,
+        };
+        let symbol = DebuggerStaticMetadataSymbolId {
+            metadata,
+            symbol_id: 3,
+        };
+        let coordinates = DebuggerSourceCoordinates {
+            start_line: 0,
+            start_column_utf16: 10,
+            end_line: 0,
+            end_column_utf16: 20,
+        };
+        let location = DebuggerStaticMetadataSymbolLocation {
+            symbol,
+            source,
+            start_byte: 10,
+            end_byte: 20,
+            coordinates,
+        };
+        let display = DebuggerStaticMetadataSymbolDisplay {
+            symbol,
+            display: "answer".into(),
+            kind: DebuggerStaticMetadataSymbolKind::Variable,
+            exported: true,
+        };
+        let point = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 4,
+        };
+        let binding = DebuggerStaticMetadataSourceBreakpoint {
+            target: DebuggerStaticMetadataSourceBreakpointTarget {
+                source,
+                source_byte: location.start_byte,
+            },
+            safe_point: Some(point),
+        };
+        let span = DebuggerStaticMetadataSafePointSpan {
+            safe_point: point,
+            source,
+            start_byte: 10,
+            end_byte: 20,
+            coordinates,
+        };
+        assert_eq!(
+            location.executable_breakpoint_candidate(&display, binding, span),
+            Some(point)
+        );
+        for kind in [
+            DebuggerStaticMetadataSymbolKind::Interface,
+            DebuggerStaticMetadataSymbolKind::TypeAlias,
+            DebuggerStaticMetadataSymbolKind::Import,
+        ] {
+            assert_eq!(
+                location.executable_breakpoint_candidate(
+                    &DebuggerStaticMetadataSymbolDisplay {
+                        kind,
+                        ..display.clone()
+                    },
+                    binding,
+                    span,
+                ),
+                None
+            );
+        }
+        assert_eq!(
+            location.executable_breakpoint_candidate(
+                &display,
+                DebuggerStaticMetadataSourceBreakpoint {
+                    safe_point: None,
+                    ..binding
+                },
+                span,
+            ),
+            None
+        );
+        assert_eq!(
+            location.executable_breakpoint_candidate(
+                &display,
+                binding,
+                DebuggerStaticMetadataSafePointSpan {
+                    start_byte: 21,
+                    end_byte: 25,
+                    ..span
+                },
+            ),
+            None
+        );
+        assert_eq!(
+            location.executable_breakpoint_candidate(
+                &display,
+                DebuggerStaticMetadataSourceBreakpoint {
+                    target: DebuggerStaticMetadataSourceBreakpointTarget {
+                        source_byte: 11,
+                        ..binding.target
+                    },
+                    ..binding
+                },
+                span,
+            ),
+            None
+        );
+        assert_eq!(
+            location.executable_breakpoint_candidate(
+                &display,
+                binding,
+                DebuggerStaticMetadataSafePointSpan {
+                    source: DebuggerStaticMetadataSourceId {
+                        source_id: 4,
+                        ..source
+                    },
+                    ..span
+                },
+            ),
+            None
+        );
     }
 
     #[test]

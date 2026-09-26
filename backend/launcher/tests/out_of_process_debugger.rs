@@ -53,6 +53,7 @@ const MODULE_BLUETS_SOURCE: &str = "/* 🚀 */\r\nexport const moduleAnswer: num
 const MODULE_STEP_BLUETS_SOURCE: &str =
     "let first: number = 1; let second: number = first + 1; export const answer: number = second + 1;";
 const STACK_COORDINATE_BLUETS_SOURCE: &str = "/* 🚀 */ function inner(a: number): number { let value: number = a + 1; return value; } globalThis.answer = inner(3);";
+const MODULE_SYMBOL_BREAKPOINT_BLUETS_SOURCE: &str = "export interface Shape { enabled: boolean; } const rootValue: number = 1; function inner(): number { return 41; } globalThis.answer = inner() + rootValue;";
 const BOUNDED_VALUE_BLUETS_SOURCE: &str = "let rootValue: number = 9; function inner(a: number): number { let childValue: number = a + 1; return childValue; } globalThis.answer = inner(3) + rootValue;";
 const CLASSIC_THROW_BLUETS_SOURCE: &str = "/* 🚀 */ function fail(): number { throw 7; } fail();";
 const MODULE_THROW_BLUETS_SOURCE: &str =
@@ -6341,7 +6342,7 @@ fn launcher_arms_only_a_receipted_module_root_source_position() {
         let mut request = [0_u8; 1024];
         let _ = stream.read(&mut request);
         let body = format!(
-            "<script type=\"application/x-blueice-typescript-module\">{STACK_COORDINATE_BLUETS_SOURCE}</script>"
+            "<script type=\"application/x-blueice-typescript-module\">{MODULE_SYMBOL_BREAKPOINT_BLUETS_SOURCE}</script>"
         );
         stream
             .write_all(
@@ -6358,6 +6359,10 @@ fn launcher_arms_only_a_receipted_module_root_source_position() {
         StaticMetadataPolicy {
             inventory: true,
             source_inventory: true,
+            symbol_inventory: true,
+            symbol_display: true,
+            symbol_location: true,
+            safe_point_span: true,
             source_breakpoint: true,
             ..StaticMetadataPolicy::default()
         },
@@ -6367,7 +6372,14 @@ fn launcher_arms_only_a_receipted_module_root_source_position() {
     navigate(&mut browser, &url);
     fixture.join().unwrap();
 
-    let manifest = DebuggerMetadataCapabilityManifest::opaque_source_breakpoint();
+    let manifest =
+        DebuggerMetadataCapabilityManifest::opaque_selected(DebuggerMetadataCapabilitySelection {
+            symbol_display: true,
+            symbol_location: true,
+            safe_point_span: true,
+            source_breakpoint: true,
+            ..DebuggerMetadataCapabilitySelection::default()
+        });
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
     assert_eq!(
         debugger_request(
@@ -6404,8 +6416,8 @@ fn launcher_arms_only_a_receipted_module_root_source_position() {
             metadata: metadata[0],
             source_id: 0,
         },
-        source_byte: STACK_COORDINATE_BLUETS_SOURCE
-            .find("globalThis.answer")
+        source_byte: MODULE_SYMBOL_BREAKPOINT_BLUETS_SOURCE
+            .find("const rootValue")
             .unwrap() as u32,
     };
     assert!(matches!(
@@ -6426,7 +6438,7 @@ fn launcher_arms_only_a_receipted_module_root_source_position() {
     assert_eq!(sources.len(), 1);
     let child = DebuggerStaticMetadataSourceBreakpointTarget {
         source: sources[0],
-        source_byte: STACK_COORDINATE_BLUETS_SOURCE
+        source_byte: MODULE_SYMBOL_BREAKPOINT_BLUETS_SOURCE
             .find("function inner")
             .unwrap() as u32,
     };
@@ -6448,7 +6460,7 @@ fn launcher_arms_only_a_receipted_module_root_source_position() {
         }
     ));
     let unbound = DebuggerStaticMetadataSourceBreakpointTarget {
-        source_byte: STACK_COORDINATE_BLUETS_SOURCE.len() as u32,
+        source_byte: MODULE_SYMBOL_BREAKPOINT_BLUETS_SOURCE.len() as u32,
         ..child
     };
     assert!(matches!(
@@ -6475,12 +6487,127 @@ fn launcher_arms_only_a_receipted_module_root_source_position() {
         source: sources[0],
         ..guessed
     };
+    let DebuggerReply::StaticMetadataSymbols(symbols) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataSymbols {
+            metadata: metadata[0],
+        },
+    ) else {
+        panic!("module symbol composition requires its own inventory receipt")
+    };
+    let mut runtime_symbol = None;
+    let mut type_only_symbol = None;
+    for symbol in symbols {
+        let DebuggerReply::StaticMetadataSymbol(display) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbol { symbol },
+        ) else {
+            panic!("module symbol composition requires a separately granted kind")
+        };
+        let DebuggerReply::StaticMetadataSymbolLocation(location) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+                target: DebuggerStaticMetadataSymbolLocationTarget {
+                    symbol,
+                    source: sources[0],
+                },
+            },
+        ) else {
+            panic!("module symbol composition requires its original declaration")
+        };
+        match display.display.as_str() {
+            "rootValue" => runtime_symbol = Some((display, location)),
+            "Shape" => type_only_symbol = Some((display, location)),
+            _ => {}
+        }
+    }
+    let (root_display, root_location) = runtime_symbol.expect("root variable symbol must exist");
+    assert_eq!(
+        root_display.kind,
+        DebuggerStaticMetadataSymbolKind::Variable
+    );
+    assert_eq!(root_location.source, root.source);
+    assert_eq!(root_location.start_byte, root.source_byte);
+    assert_eq!(
+        &MODULE_SYMBOL_BREAKPOINT_BLUETS_SOURCE
+            [root_location.start_byte as usize..root_location.end_byte as usize],
+        "const rootValue: number = 1;"
+    );
+    let DebuggerReply::StaticMetadataSourceBreakpoint(root_binding) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target: root },
+    ) else {
+        panic!("root symbol declaration must resolve under its own source receipt")
+    };
+    let root_point = root_binding.safe_point.unwrap();
+    let DebuggerReply::StaticMetadataSafePointSpan(root_span) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeStaticMetadataSafePointSpan {
+            target: DebuggerStaticMetadataSafePointSpanTarget {
+                safe_point: root_point,
+                source: root.source,
+            },
+        },
+    ) else {
+        panic!("root symbol candidate requires a separately granted exact span")
+    };
+    assert_eq!(
+        root_location.executable_breakpoint_candidate(&root_display, root_binding, root_span),
+        Some(root_point)
+    );
+    let (type_display, type_location) = type_only_symbol.expect("type-only symbol must exist");
+    assert_eq!(
+        type_display.kind,
+        DebuggerStaticMetadataSymbolKind::Interface
+    );
+    let type_target = DebuggerStaticMetadataSourceBreakpointTarget {
+        source: sources[0],
+        source_byte: type_location.start_byte,
+    };
+    let DebuggerReply::StaticMetadataSourceBreakpoint(type_binding) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ResolveStaticMetadataSourceBreakpoint {
+            target: type_target,
+        },
+    ) else {
+        panic!("type-only source position must return an explicit binding result")
+    };
+    assert_eq!(
+        type_location.executable_breakpoint_candidate(&type_display, type_binding, root_span),
+        None,
+        "an interface must not be retargeted to a later executable declaration"
+    );
+    assert_eq!(
+        root_location.executable_breakpoint_candidate(
+            &root_display,
+            blueice_ipc::debugger::DebuggerStaticMetadataSourceBreakpoint {
+                safe_point: None,
+                ..root_binding
+            },
+            root_span,
+        ),
+        None,
+        "an unbound executable declaration must not arm a later instruction"
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program }
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: DebuggerExecutionState::Pending,
+        }
+    );
     let DebuggerReply::RootSafePointBreakpointArmed { safe_point } = debugger_request(
         &mut debugger,
-        DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target: root },
+        DebuggerRequest::ArmStaticMetadataSourceBreakpoint {
+            target: root_binding.target,
+        },
     ) else {
         panic!("receipted module root position must atomically arm its own safe point")
     };
+    assert_eq!(safe_point, root_point);
     assert_eq!(safe_point.program, program);
     assert_eq!(safe_point.code_unit_ordinal, 0);
     await_paused_execution(&mut debugger, program, safe_point);

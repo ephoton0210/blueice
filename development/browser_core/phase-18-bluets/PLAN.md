@@ -1772,6 +1772,20 @@ request. This is a checked composition of existing v40 operations, not a new
 server-side symbol-arm authority or a wire version change; clients that do
 not negotiate every required surface cannot claim symbol breakpoint control.
 
+**C3.1.2.3.3.2 entry-module symbol control:** A data-only v40 helper now
+checks the separately observed symbol kind, original declaration location,
+source-position binding, and exact safe-point span as one candidate tuple.
+It returns only a safe point already in those observations, or `None` for
+type-only/import kinds, unbound positions, wrong IDs, a moved source byte,
+or a later span outside the declaration. It does not grant any debugger
+operation. The real Launcher socket test loads an inline BlueTS module with
+an interface and a root variable, negotiates all four independent metadata
+surfaces, verifies the variable declaration's original range and contained
+root span, and arms only that exact module root. The interface and an explicit
+unbound candidate leave execution pending. All 114 IPC library tests, the
+focused Launcher test, workspace Clippy, and formatting pass; debugger v40
+is unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
