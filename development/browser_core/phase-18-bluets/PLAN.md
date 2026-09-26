@@ -2445,6 +2445,14 @@ behavior. Production `bluejs_host.rs` fell from 14,133 to 7,709 lines; the
 admission/stepping concern splits. All 116 Launcher library tests pass with
 the reused Cargo target.
 
+**C3.1.3.4.7.5.4.2.2 Launcher host DOM and private debugger tests:** DOM
+transport, nested-frame scheduler, exception locations, and static-scope/value
+cases now have independent 704-, 659-, 261-, and 636-line test modules.
+Shared graph/document/script/value-target fixtures remain in the parent,
+which is 4,158 lines until metadata and admission/step concerns are split.
+All 116 Launcher library tests pass with the reused target; behavior and
+wire contracts remain unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
