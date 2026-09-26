@@ -104,3 +104,7 @@ shared-fixture owner is 407 lines and every child file is below 1,300 lines
 (maximum 1,226). Metadata, span envelopes, nested pause, stack/scope, and
 lifecycle cases are independent modules; the 7,016-line production executor
 still awaits its separate adapter extraction.
+
+C3.1.3.4.7.5.4.2.1 externalized the Launcher host's inline tests without
+rewriting them. The production `bluejs_host.rs` is 7,709 lines and the new
+test owner is 6,394 lines; both require their planned concern-level splits.

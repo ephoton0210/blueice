@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.7.5.4.2.** Split oversized `bluejs_host.rs` inline
-tests into bounded BlueTS host/compiler and shared host concern modules,
-retaining all tests and one reused Cargo target.
+**Current leaf: C3.1.3.4.7.5.4.2.2.** Split host DOM/transport,
+nested-frame scheduler, exception, static-scope, and value tests into bounded
+child modules while retaining the original fixture harness.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -470,6 +470,10 @@ channel with explicit owner/client grants.
               - [x] **C3.1.3.4.7.5.4.1.3** Split child transport, authorization, and resource-accounting tests into bounded test submodules while keeping shared fixtures central. `tests/transport.rs` (432 lines) owns socket/session timing, nested DOM pump, and finite discovery deferrals; `resource_accounting.rs` (294) owns usage snapshots and successor accounting; `authorization.rs` (506) owns closed graph and HTTP authorization cases. The shared-fixture parent is 3,444 lines pending the final real-child concern split. All 309 engine library tests pass with the reused target.
               - [x] **C3.1.3.4.7.5.4.1.4** Split real-child metadata, spans, pause, and navigation tests into bounded test submodules and verify no file in this test family exceeds 1,300 lines. The remaining tests now live in `metadata.rs` (390 lines), `span_contracts.rs` (935), `nested_pause.rs` (647), `stack_scopes.rs` (647), and `lifecycle.rs` (448), while the common fixture owner is 407 lines. The largest file in the complete test family is 1,226 lines. All 309 engine library tests pass without changing the runtime contract.
             - [ ] **C3.1.3.4.7.5.4.2** Split `bluejs_host.rs` inline tests into bounded BlueTS host/compiler and shared host concern modules, retaining all tests.
+              - [x] **C3.1.3.4.7.5.4.2.1** Externalize the inline host tests into an MPL-headed `bluejs_host/tests.rs` with the same parent test module. Production `bluejs_host.rs` fell from 14,133 to 7,709 lines; the extracted test owner is 6,394 lines and still needs concern-level splitting. All 116 Launcher library tests pass with the reused Cargo target.
+              - [ ] **C3.1.3.4.7.5.4.2.2** Split host DOM/transport, nested-frame scheduler, exception, static-scope, and value tests into bounded modules with shared fixture helpers.
+              - [ ] **C3.1.3.4.7.5.4.2.3** Split host resource, debugger configuration, and BlueTS metadata/contract/span tests into bounded modules.
+              - [ ] **C3.1.3.4.7.5.4.2.4** Split host snapshot/admission, module execution, stepping, and lifecycle tests; verify every test-family file is at most 1,300 lines.
             - [ ] **C3.1.3.4.7.5.4.3** Extract BlueTS-owned child-executor adapter logic from `javascript_child.rs` into internal modules.
             - [ ] **C3.1.3.4.7.5.4.4** Extract BlueTS prepare/execute and debugger metadata logic from `bluejs_host.rs` into internal modules.
             - [ ] **C3.1.3.4.7.5.4.5** Group static relation and linked-scope debugger dispatch in `engine/src/debugger.rs` without changing authority checks.

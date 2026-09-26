@@ -2437,6 +2437,14 @@ remain in a 407-line parent, and the largest file across the completed child
 test family is 1,226 lines. All 309 engine library tests pass; production
 adapter extraction remains a separate leaf.
 
+**C3.1.3.4.7.5.4.2.1 Launcher host test boundary:** The existing inline
+test body moved under the same `mod tests` identity to an MPL-headed
+`bluejs_host/tests.rs`, with no rewritten assertions or changed runtime
+behavior. Production `bluejs_host.rs` fell from 14,133 to 7,709 lines; the
+6,394-line test owner proceeds through DOM/scheduler, metadata, and
+admission/stepping concern splits. All 116 Launcher library tests pass with
+the reused Cargo target.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
