@@ -12,8 +12,11 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
-//! Version 39 adds a source-free, exact terminal BlueTS exception-location
-//! route after version 38's paused-slot, bounded plain-data value preview.
+//! Version 41 adds a child-private, static-only paused scope-symbol/type
+//! relation target for ordinary and linked stacks. It does not add a public
+//! debugger grant or a runtime value read. Version 40 adds the linked-module
+//! debugger family. Version 39 adds a source-free, exact terminal BlueTS
+//! exception-location route after version 38's paused-slot, bounded plain-data value preview.
 //! It is child-private and does not itself grant a public debugger client
 //! value access. Version 37 adds a bounded source-free stack/scope snapshot from an exact
 //! paused root or nested frame. It remains private and does not enable a
@@ -119,10 +122,10 @@ use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-/// V40 adds the complete linked-module private debugger frame, stack,
-/// per-program source-span, arm, and resume family. The public debugger wire
-/// remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 40;
+/// V41 adds the private static scope-symbol/type relation wire. V40 adds the
+/// complete linked-module private frame, stack, source-span, arm, and resume
+/// family. The public debugger wire remains independently versioned.
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 41;
 
 pub const PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -532,6 +535,77 @@ impl PageHostDebuggerValueTarget {
                         }
                 }
             }
+    }
+}
+
+/// Exact paused root slot and its separately minted static metadata owner.
+/// The ordinary selector can point at a root pause or the parent root of a
+/// nested pause. A linked pause must use the complete-stack variant instead.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PageHostDebuggerStaticScopeTarget {
+    Ordinary {
+        metadata: PageHostDebuggerMetadataHandle,
+        target: PageHostDebuggerValueTarget,
+    },
+    Linked {
+        frame: PageHostDebuggerLinkedFrame,
+        expected_stack: Box<PageHostDebuggerLinkedStackSnapshot>,
+        /// Only the entry root at index one has a retained root-symbol map.
+        frame_index: u32,
+        metadata: PageHostDebuggerMetadataHandle,
+        scope_entry: PageHostDebuggerScopeEntry,
+    },
+}
+
+impl PageHostDebuggerStaticScopeTarget {
+    /// Checks bounded, unambiguous wire shape. The child must separately
+    /// reacquire the pause, compare the whole stack and check metadata/slot
+    /// ownership before producing a relation.
+    pub fn is_well_formed(&self) -> bool {
+        match self {
+            Self::Ordinary { metadata, target } => {
+                metadata.is_well_formed()
+                    && target.is_well_formed()
+                    && target.safe_point.code_unit_ordinal == 0
+                    && (target.frame.is_none() || target.frame_index == 1)
+            }
+            Self::Linked {
+                frame,
+                expected_stack,
+                frame_index,
+                metadata,
+                scope_entry,
+            } => {
+                metadata.is_well_formed()
+                    && *frame_index == 1
+                    && expected_stack.is_well_formed(*frame)
+                    && expected_stack
+                        .frames
+                        .iter()
+                        .all(|frame| !frame.scope_truncated)
+                    && expected_stack.frames[1]
+                        .scope_entries
+                        .iter()
+                        .filter(|entry| *entry == scope_entry)
+                        .count()
+                        == 1
+            }
+        }
+    }
+}
+
+/// Static compiler symbol/type IDs for exactly one echoed paused slot.
+/// This reply never contains a VM value, type display, source, or name. A
+/// missing, moved, or ambiguous join is a typed error, not a partial relation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerStaticScopeRelation {
+    pub target: PageHostDebuggerStaticScopeTarget,
+    pub symbol_type: PageHostDebuggerBlueTsMetadataSymbolType,
+}
+
+impl PageHostDebuggerStaticScopeRelation {
+    pub fn is_well_formed(&self) -> bool {
+        self.target.is_well_formed()
     }
 }
 
@@ -1207,6 +1281,11 @@ pub enum PageHostRequest {
     GetDebuggerValueSnapshot {
         target: PageHostDebuggerValueTarget,
     },
+    /// Asks only for a compiler symbol/type relation at one exact paused
+    /// root slot. This private wire does not grant a public debugger client.
+    DescribeDebuggerStaticScopeRelation {
+        target: Box<PageHostDebuggerStaticScopeTarget>,
+    },
     /// Requires an exact paused BlueTS classic safe point, live metadata,
     /// and its compiler-minted source ID. The child derives the current span
     /// from its retained map; no source text or caller-selected stop span is
@@ -1520,6 +1599,7 @@ pub enum PageHostReply {
         spans: Box<[PageHostDebuggerBlueTsSafePointSpan; 2]>,
     },
     DebuggerValueSnapshot(Box<PageHostDebuggerValueSnapshot>),
+    DebuggerStaticScopeRelation(Box<PageHostDebuggerStaticScopeRelation>),
     DebuggerBlueTsSourceStepRequested {
         tab_id: u64,
         document_generation: u64,
@@ -1687,7 +1767,345 @@ mod tests {
         target.safe_point.program.program_generation -= 1;
         target.frame_index = 2;
         assert!(!target.is_well_formed());
-        assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 40);
+        assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 41);
+    }
+
+    #[test]
+    fn private_static_scope_targets_reject_non_root_and_incomplete_linked_stacks() {
+        let entry_program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let dependency_program = PageHostDebuggerProgram {
+            program_handle: 17,
+            program_generation: 19,
+        };
+        let metadata = PageHostDebuggerMetadataHandle {
+            metadata_handle: 23,
+            metadata_generation: 29,
+        };
+        let scope_entry = PageHostDebuggerScopeEntry {
+            slot_ordinal: 2,
+            scope_depth: 0,
+        };
+        let value_target = PageHostDebuggerValueTarget {
+            tab_id: 7,
+            document_generation: 3,
+            program: entry_program,
+            frame: None,
+            frame_index: 0,
+            safe_point: PageHostDebuggerSafePoint {
+                program: entry_program,
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            },
+            scope_entry,
+        };
+        let ordinary = PageHostDebuggerStaticScopeTarget::Ordinary {
+            metadata,
+            target: value_target,
+        };
+        assert!(ordinary.is_well_formed());
+        assert!(PageHostDebuggerStaticScopeTarget::Ordinary {
+            metadata,
+            target: PageHostDebuggerValueTarget {
+                frame: Some(PageHostDebuggerFrame {
+                    tab_id: 7,
+                    document_generation: 3,
+                    program: entry_program,
+                    code_unit_ordinal: 1,
+                    invocation_serial: 31,
+                }),
+                frame_index: 1,
+                ..value_target
+            },
+        }
+        .is_well_formed());
+        assert!(!PageHostDebuggerStaticScopeTarget::Ordinary {
+            metadata,
+            target: PageHostDebuggerValueTarget {
+                safe_point: PageHostDebuggerSafePoint {
+                    code_unit_ordinal: 1,
+                    ..value_target.safe_point
+                },
+                ..value_target
+            },
+        }
+        .is_well_formed());
+        assert!(!PageHostDebuggerStaticScopeTarget::Ordinary {
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 0,
+                ..metadata
+            },
+            target: value_target,
+        }
+        .is_well_formed());
+
+        let frame = PageHostDebuggerLinkedFrame {
+            tab_id: 7,
+            document_generation: 3,
+            entry_program,
+            dependency_program,
+            code_unit_ordinal: 1,
+            invocation_serial: 37,
+        };
+        let stack = PageHostDebuggerLinkedStackSnapshot {
+            frames: [
+                PageHostDebuggerLinkedStackFrame {
+                    safe_point: PageHostDebuggerSafePoint {
+                        program: dependency_program,
+                        code_unit_ordinal: 1,
+                        bytecode_offset: 2,
+                    },
+                    scope_entries: vec![],
+                    scope_truncated: false,
+                },
+                PageHostDebuggerLinkedStackFrame {
+                    safe_point: value_target.safe_point,
+                    scope_entries: vec![scope_entry],
+                    scope_truncated: false,
+                },
+            ],
+            stack_truncated: false,
+            max_scope_entries: 2,
+        };
+        let linked = PageHostDebuggerStaticScopeTarget::Linked {
+            frame,
+            expected_stack: Box::new(stack.clone()),
+            frame_index: 1,
+            metadata,
+            scope_entry,
+        };
+        assert!(linked.is_well_formed());
+        for (changed_stack, frame_index, entry) in [
+            (stack.clone(), 0, scope_entry),
+            (
+                stack.clone(),
+                1,
+                PageHostDebuggerScopeEntry {
+                    slot_ordinal: 9,
+                    ..scope_entry
+                },
+            ),
+            (
+                {
+                    let mut s = stack.clone();
+                    s.frames[1].scope_truncated = true;
+                    s
+                },
+                1,
+                scope_entry,
+            ),
+            (
+                {
+                    let mut s = stack.clone();
+                    s.frames[0].scope_truncated = true;
+                    s
+                },
+                1,
+                scope_entry,
+            ),
+            (
+                {
+                    let mut s = stack.clone();
+                    s.frames[1].scope_entries.push(scope_entry);
+                    s
+                },
+                1,
+                scope_entry,
+            ),
+            (
+                {
+                    let mut s = stack.clone();
+                    s.frames[1].safe_point.program = dependency_program;
+                    s
+                },
+                1,
+                scope_entry,
+            ),
+            (
+                {
+                    let mut s = stack.clone();
+                    s.max_scope_entries = 0;
+                    s
+                },
+                1,
+                scope_entry,
+            ),
+            (
+                {
+                    let mut s = stack.clone();
+                    s.stack_truncated = true;
+                    s
+                },
+                1,
+                scope_entry,
+            ),
+            (
+                {
+                    let mut s = stack.clone();
+                    s.max_scope_entries = PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES + 1;
+                    s
+                },
+                1,
+                scope_entry,
+            ),
+        ] {
+            assert!(!PageHostDebuggerStaticScopeTarget::Linked {
+                frame,
+                expected_stack: Box::new(changed_stack),
+                frame_index,
+                metadata,
+                scope_entry: entry,
+            }
+            .is_well_formed());
+        }
+        assert!(!PageHostDebuggerStaticScopeTarget::Linked {
+            frame: PageHostDebuggerLinkedFrame {
+                entry_program: dependency_program,
+                ..frame
+            },
+            expected_stack: Box::new(stack.clone()),
+            frame_index: 1,
+            metadata,
+            scope_entry,
+        }
+        .is_well_formed());
+        assert!(!PageHostDebuggerStaticScopeTarget::Linked {
+            frame,
+            expected_stack: Box::new(stack),
+            frame_index: 1,
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_generation: 0,
+                ..metadata
+            },
+            scope_entry,
+        }
+        .is_well_formed());
+    }
+
+    #[test]
+    fn private_static_scope_relation_round_trips_without_values_or_displays() {
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let target = PageHostDebuggerStaticScopeTarget::Ordinary {
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            target: PageHostDebuggerValueTarget {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                frame: None,
+                frame_index: 0,
+                safe_point: PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 4,
+                },
+                scope_entry: PageHostDebuggerScopeEntry {
+                    slot_ordinal: 2,
+                    scope_depth: 0,
+                },
+            },
+        };
+        let request = PageHostRequest::DescribeDebuggerStaticScopeRelation {
+            target: Box::new(target.clone()),
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_request(&mut writer, &request).unwrap();
+        assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+
+        let relation = PageHostDebuggerStaticScopeRelation {
+            target,
+            symbol_type: PageHostDebuggerBlueTsMetadataSymbolType {
+                symbol_id: 0,
+                type_id: 0,
+            },
+        };
+        assert!(relation.is_well_formed());
+        let reply = PageHostReply::DebuggerStaticScopeRelation(Box::new(relation));
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+        let serialized = serde_json::to_string(&reply).unwrap();
+        for forbidden in ["preview", "display", "source_id", "runtime_type"] {
+            assert!(!serialized.contains(forbidden));
+        }
+
+        let entry_program = program;
+        let dependency_program = PageHostDebuggerProgram {
+            program_handle: 31,
+            program_generation: 37,
+        };
+        let frame = PageHostDebuggerLinkedFrame {
+            tab_id: 7,
+            document_generation: 3,
+            entry_program,
+            dependency_program,
+            code_unit_ordinal: 1,
+            invocation_serial: 41,
+        };
+        let scope_entry = PageHostDebuggerScopeEntry {
+            slot_ordinal: 2,
+            scope_depth: 0,
+        };
+        let linked = PageHostDebuggerStaticScopeTarget::Linked {
+            frame,
+            expected_stack: Box::new(PageHostDebuggerLinkedStackSnapshot {
+                frames: [
+                    PageHostDebuggerLinkedStackFrame {
+                        safe_point: PageHostDebuggerSafePoint {
+                            program: dependency_program,
+                            code_unit_ordinal: 1,
+                            bytecode_offset: 2,
+                        },
+                        scope_entries: vec![],
+                        scope_truncated: false,
+                    },
+                    PageHostDebuggerLinkedStackFrame {
+                        safe_point: PageHostDebuggerSafePoint {
+                            program: entry_program,
+                            code_unit_ordinal: 0,
+                            bytecode_offset: 4,
+                        },
+                        scope_entries: vec![scope_entry],
+                        scope_truncated: false,
+                    },
+                ],
+                stack_truncated: false,
+                max_scope_entries: 1,
+            }),
+            frame_index: 1,
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            scope_entry,
+        };
+        assert!(linked.is_well_formed());
+        let request = PageHostRequest::DescribeDebuggerStaticScopeRelation {
+            target: Box::new(linked.clone()),
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_request(&mut writer, &request).unwrap();
+        assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+        let reply = PageHostReply::DebuggerStaticScopeRelation(Box::new(
+            PageHostDebuggerStaticScopeRelation {
+                target: linked,
+                symbol_type: PageHostDebuggerBlueTsMetadataSymbolType {
+                    symbol_id: 0,
+                    type_id: 0,
+                },
+            },
+        ));
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+        assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 41);
     }
 
     #[test]

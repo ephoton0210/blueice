@@ -1958,6 +1958,21 @@ same-stream receipts. That public leaf must also provide a linked-stack-derived
 scope receipt for index one; the ordinary `Scopes` receipt cannot be silently
 reused for linked pauses. The existing `Value` route and grant remain separate.
 
+**C3.1.3.3.2 private v41 wire:** The page-host protocol now has a bounded
+`StaticScopeTarget` for either an ordinary root (including the parent root of
+an exact nested pause) or a linked entry root with the complete two-program
+stack. The structural validator requires a live-shaped metadata handle,
+root-only frame index, non-truncated linked stack within the original scope
+budget, and exactly one selected entry slot. It rejects malformed frame and
+program pairings before any relation can be returned. The static-only reply
+echoes the entire target and contains only compiler symbol/type IDs; no VM
+preview, runtime tag, type display, name, or source is present. The Launcher
+intentionally returns `InvalidDebuggerState` for this new request until the
+ordinary and linked child handlers land in C3.1.3.3.3–4. Public debugger
+remains v40 with no new grant. Both ordinary and linked socket round trips,
+negative shape cases, the staged child denial, the full IPC (116) and Launcher
+(113) library suites, workspace Clippy, and formatting checks pass.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

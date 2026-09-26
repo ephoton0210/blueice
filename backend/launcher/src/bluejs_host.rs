@@ -1164,6 +1164,10 @@ impl BlueJsChildHost {
             PageHostRequest::GetDebuggerValueSnapshot { target } => {
                 self.debugger_value_snapshot(target)
             }
+            // The v41 private wire is staged before its exact-pause static
+            // relation handler. Until that handler exists, no relation can
+            // be returned from a valid or forged selector.
+            PageHostRequest::DescribeDebuggerStaticScopeRelation { .. } => invalid_debugger_state(),
             PageHostRequest::StepDebuggerBlueTsSourceSpan {
                 tab_id,
                 document_generation,
@@ -9256,6 +9260,47 @@ mod tests {
                 scope_entry,
             })
             .collect()
+    }
+
+    #[test]
+    fn private_static_scope_wire_cannot_return_a_relation_before_child_handler() {
+        let mut host = BlueJsChildHost::default();
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let target = page_host::PageHostDebuggerStaticScopeTarget::Ordinary {
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            target: PageHostDebuggerValueTarget {
+                tab_id: 7,
+                document_generation: 3,
+                program,
+                frame: None,
+                frame_index: 0,
+                safe_point: PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 4,
+                },
+                scope_entry: PageHostDebuggerScopeEntry {
+                    slot_ordinal: 2,
+                    scope_depth: 0,
+                },
+            },
+        };
+        assert!(target.is_well_formed());
+        assert!(matches!(
+            host.handle_request(PageHostRequest::DescribeDebuggerStaticScopeRelation {
+                target: Box::new(target),
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidDebuggerState,
+                ..
+            }
+        ));
     }
 
     #[test]
