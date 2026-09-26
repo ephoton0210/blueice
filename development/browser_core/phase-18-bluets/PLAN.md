@@ -2397,6 +2397,15 @@ it remains available under `#[cfg(test)]` without exposing a production API.
 All 107 bridge crate tests, workspace Clippy, rustfmt, and diff checks pass.
 The remaining over-threshold attachment/map owner is C3.1.3.4.7.5.3.2.
 
+**C3.1.3.4.7.5.3.2 attachment/map owner:** Source identity validation,
+live program attachment, root symbol slots, and safe-point map construction
+and validation moved to `bluets-bluejs/src/attachment.rs` (524 lines).
+The facade is now 866 lines, with its original public bridge types and ABI.
+The page runtime's internal source-identity use remains available through a
+private parent import. All 107 bridge tests, workspace Clippy, rustfmt, and
+diff checks pass. The direct bridge phase is closed; mixed runtime/transport
+files proceed in separately scoped leaves.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

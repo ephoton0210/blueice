@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.7.5.3.2.** Extract safe-point attachment/map
-construction from the BlueTS-to-BlueJS bridge facade.
+**Current leaf: C3.1.3.4.7.5.4.1.** Split the oversized child-executor
+inline tests into bounded concern modules without changing runtime behavior.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -459,10 +459,18 @@ channel with explicit owner/client grants.
             - [x] **C3.1.3.4.7.5.2.1** Move compiler inline tests to `compiler/tests.rs`, keeping the compiler implementation under 1,300 lines and test names/coverage intact. The implementation owner is now 766 lines; its existing tests live in a new MPL-headed 600-line child module with unchanged test names. The complete `blueice-bluets` crate suite, workspace Clippy, formatting, and diff checks pass using the shared target.
             - [x] **C3.1.3.4.7.5.2.2** Split checker tests by syntax/inference versus project/generic contracts, preserving shared fixtures and test names. The 1,469-line checker test module is now a 778-line expression/inference owner plus a 697-line `project_contracts` child for structural, project, generic, and overload cases; test function names and coverage remain intact. The full `blueice-bluets` crate suite, workspace Clippy, formatting, and diff checks pass with the shared target.
             - [x] **C3.1.3.4.7.5.2.3** Extract cohesive checker call-inference/assignability helpers into an internal module, retaining the public checker facade. `checker/type_relations.rs` now owns 301 lines of bounded structural assignability, named-type expansion, generic argument completion/substitution, and diagnostic type labels; `checker.rs` is 1,080 lines. The original `type_label` crate visibility and sibling checker calls remain intact. The full BlueTS crate suite, workspace Clippy, rustfmt, and diff checks pass.
-          - [ ] **C3.1.3.4.7.5.3** Separate oversized BlueTS-to-BlueJS bridge lowering and attachment responsibilities without changing the bridge ABI; split into file-scoped leaves after the inventory.
+          - [x] **C3.1.3.4.7.5.3** Separate oversized BlueTS-to-BlueJS bridge lowering and attachment responsibilities without changing the bridge ABI. `lib.rs` is now an 866-line facade; direct AST lowering/provenance and attachment/safe-point maps live in 342- and 524-line internal modules. Both leaves pass all 107 bridge tests, workspace Clippy, and formatting.
             - [x] **C3.1.3.4.7.5.3.1** Extract direct AST lowering and provenance construction from the bridge facade. `lowering.rs` now owns 342 lines of classic/module AST lowering, function/variable lowering, and original-source provenance construction; `lib.rs` fell from 1,711 to 1,378 lines. A test-only facade import keeps existing expression tests unchanged; the bridge crate's 107 tests, workspace Clippy, rustfmt, and diff checks pass without an ABI change. The facade remains above threshold until the attachment/map leaf.
-            - [ ] **C3.1.3.4.7.5.3.2** Extract safe-point attachment/map construction and re-export the existing public bridge shapes unchanged.
-          - [ ] **C3.1.3.4.7.5.4** Modularize the BlueTS-owned islands in oversized runtime, debugger, protocol, and public-socket test files; preserve exact grants, receipts, and wire formats. Split into file-scoped leaves before implementation.
+            - [x] **C3.1.3.4.7.5.3.2** Extract safe-point attachment/map construction and re-export the existing public bridge shapes unchanged. `attachment.rs` now owns source identity, live program attachment, root symbol slots, and safe-point map construction/validation in 524 lines; `lib.rs` fell to 866 lines. Page runtime retains an internal source-identity import. All 107 bridge tests, workspace Clippy, rustfmt, and diff checks pass; public bridge types and ABI remain unchanged.
+          - [ ] **C3.1.3.4.7.5.4** Modularize the BlueTS-owned islands in oversized runtime, debugger, protocol, compiler-service, and public-socket test files; preserve exact grants, receipts, and wire formats. Refine each file-scoped leaf if one concern still exceeds the reviewable size.
+            - [ ] **C3.1.3.4.7.5.4.1** Split `javascript_child.rs` inline tests into bounded BlueTS debugger/metadata and shared child-execution concern modules, retaining all tests.
+            - [ ] **C3.1.3.4.7.5.4.2** Split `bluejs_host.rs` inline tests into bounded BlueTS host/compiler and shared host concern modules, retaining all tests.
+            - [ ] **C3.1.3.4.7.5.4.3** Extract BlueTS-owned child-executor adapter logic from `javascript_child.rs` into internal modules.
+            - [ ] **C3.1.3.4.7.5.4.4** Extract BlueTS prepare/execute and debugger metadata logic from `bluejs_host.rs` into internal modules.
+            - [ ] **C3.1.3.4.7.5.4.5** Group static relation and linked-scope debugger dispatch in `engine/src/debugger.rs` without changing authority checks.
+            - [ ] **C3.1.3.4.7.5.4.6** Split BlueTS debugger and child protocol shape/validator owners in IPC, preserving exact serialization.
+            - [ ] **C3.1.3.4.7.5.4.7** Split BlueTS compiler IPC, service, and MCP owners by transport/policy/query responsibility without changing public routes.
+            - [ ] **C3.1.3.4.7.5.4.8** Split oversized Launcher and core-binary real-process acceptance tests by BlueTS concern, sharing one fixture harness and preserving coverage.
           - [ ] **C3.1.3.4.7.5.5** Recount affected files, run focused and complete workspace gates with one reused target, then close the audit and C3.1.3.4.7/C3.1.3.4.
     - [ ] **C3.1.3.5** Prove a static type display and independently authorized runtime preview remain distinct, correctly matched to the same paused classic/module/linked slot, and expire after step/reload/cutover on real Launcher sockets; then check off C3.1.3 and C3.1.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or

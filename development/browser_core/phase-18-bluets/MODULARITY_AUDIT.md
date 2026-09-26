@@ -81,3 +81,7 @@ complete without changing public compiler diagnostics or output.
 
 C3.1.3.4.7.5.3.1 moved direct AST lowering and provenance to a 342-line
 module; the bridge facade is now 1,378 lines pending attachment/map extraction.
+
+C3.1.3.4.7.5.3.2 moved attachment and safe-point-map construction to a
+524-line internal module; the bridge facade is now 866 lines. Direct BlueTS
+compiler and bridge files from this audit are all below 1,300 lines.
