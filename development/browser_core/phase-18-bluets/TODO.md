@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.3.** Add a strict child/core static scope-symbol/type
-relation for an exact paused slot, with no-partial stale, moved, or forged
-denials and no runtime value; split the private route before implementation.
+**Current leaf: C3.1.3.3.2.** Add bounded private page-host target/relation
+types and strict validation/serialization tests for ordinary and linked
+pauses; bump only the private page-host protocol with new wire variants.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -421,7 +421,13 @@ channel with explicit owner/client grants.
         - [x] **C3.1.3.2.4.1** Retain the verified slot join with static metadata and expose an exact-live-generation checked registry/owner lookup; prove stale and moved refusal without partial entries. Retention validates the exact live root code unit and slot layout before copying the relation; registry/owner reads recheck liveness, forged slot ordinals refuse, and navigation expires old results even after reinstallation.
         - [x] **C3.1.3.2.4.2** Use the checked lookup inside the supervised BlueJS child for classic and linked modules, refusing forged or cross-program handles and clearing every map on cutover without a public wire change. Child-private lookup requires exact document, program, and minted metadata identity; existing metadata inventory/summary verify the live slot map. Mixed classic, two-file linked, swapped metadata, forged generation, navigation, and close tests pass without adding IPC operations. Full Launcher 112-test library suite and Clippy pass; two older source-debugger tests now select distinct declaration spans from the per-instruction map.
     - [ ] **C3.1.3.3** Add a strict child/core static scope-symbol/type relation for an exact paused slot, never a runtime value or type display, with no-partial stale/moved/forged child denials; split the private route before implementation if needed.
-    - [ ] **C3.1.3.4** Add an independently granted public static scope relation request/reply with exact Scopes and metadata/type receipts; retain the existing separate bounded `Value` reply, bump public protocol only when the complete route and IPC/core denials pass.
+      - [x] **C3.1.3.3.1** Decide ordinary versus linked exact-pause targets, metadata ownership, static-only reply, and no-partial denial contract; leave public debugger v40 unchanged in this design leaf. PLAN.md selects an ordinary active-slot target plus metadata, or a complete linked stack with entry-root index one and owner metadata; only opaque symbol/type IDs return. A private protocol bump occurs with wire variants, while C3.1.3.4 must mint an independently granted linked-stack-derived scope receipt rather than misusing ordinary Scopes.
+      - [ ] **C3.1.3.3.2** Add bounded private page-host target/relation data types and strict validators/serialization tests for ordinary and linked pauses; bump only the private page-host protocol when the new wire variants are added.
+      - [ ] **C3.1.3.3.3** Implement the child-private ordinary root/parent-frame relation using a fresh exact active stack and retained slot map; reject child locals/captures, moved frames, stale metadata, and forged slots without inspecting values.
+      - [ ] **C3.1.3.3.4** Implement the child-private linked entry-root relation against the complete freshly revalidated dependency/entry stack and entry-owned metadata; reject swapped programs/metadata, dependency captures, moved stacks, and stale cutovers without partial replies.
+      - [ ] **C3.1.3.3.5** Carry both private relations through the child adapter and core debugger support with exact request/reply echo, generation, metadata, and active-slot checks; do not add a public request or grant yet.
+      - [ ] **C3.1.3.3.6** Prove classic, module, nested-parent, and linked child/core boundaries plus no-partial stale/moved/forged denials; then check off C3.1.3.3.
+    - [ ] **C3.1.3.4** Add an independently granted public static scope relation request/reply with exact ordinary Scopes or linked-stack-derived scope receipt plus metadata/type receipts; retain the existing separate bounded `Value` reply, bump public protocol only when the complete route and IPC/core denials pass.
     - [ ] **C3.1.3.5** Prove a static type display and independently authorized runtime preview remain distinct, correctly matched to the same paused classic/module/linked slot, and expire after step/reload/cutover on real Launcher sockets; then check off C3.1.3 and C3.1.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
   restore the same checked generation; never attach old metadata to a

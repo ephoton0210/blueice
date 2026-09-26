@@ -1931,6 +1931,33 @@ tests were also corrected to select the next *distinct source declaration*
 from the per-instruction safe-point map; their former `entries[1]` assumption
 mistook another instruction in the first declaration for the second statement.
 
+**C3.1.3.3.1 private static-scope relation contract:** The child/core route
+has two distinct exact-pause targets because the existing ordinary `Scopes`
+snapshot cannot represent a linked dependency/entry pause. The ordinary
+target carries the existing exact active-slot selector shape
+(`PageHostDebuggerValueTarget`) plus the selected program's child-minted
+metadata handle. It may resolve a root frame, including the still-active
+parent root of a nested pause; the child frame's locals and captures remain
+unbound because the current BlueTS inventory has no matching SymbolId. The
+linked target carries the child-minted linked frame, its complete expected
+two-program stack with the original scope-entry budget, the selected frame
+index, the selected program's metadata handle, and one exact active slot.
+The first supported linked relation selects the entry root at index one;
+index zero is a dependency child, not an active dependency root declaration.
+The child reacquires and compares the complete stack before using any slot.
+
+One private reply echoes the entire target and returns only the checked
+opaque `symbol_id` and `type_id`. No source/name/type display, runtime preview,
+runtime type tag, or optional partial result is serialized. Malformed IDs,
+unreceipted/inactive slots, wrong metadata owner, moved safe points or linked
+stacks, stale documents/programs, and missing/ambiguous compiler joins return
+a typed error instead of a relation. A private page-host version bump belongs
+to the leaf that adds request/reply variants; public debugger v40 remains
+unchanged until C3.1.3.4 supplies an independent static-scope grant and
+same-stream receipts. That public leaf must also provide a linked-stack-derived
+scope receipt for index one; the ordinary `Scopes` receipt cannot be silently
+reused for linked pauses. The existing `Value` route and grant remain separate.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
