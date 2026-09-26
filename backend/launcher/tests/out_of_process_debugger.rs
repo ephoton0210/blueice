@@ -543,6 +543,46 @@ fn launcher_relates_classic_and_module_root_scopes_without_value_authority() {
                 ..
             }
         ));
+        drop(debugger);
+        let mut foreign = UnixStream::connect(&launcher.debugger_socket).unwrap();
+        let foreign_manifest = DebuggerMetadataCapabilityManifest::opaque_selected(
+            DebuggerMetadataCapabilitySelection {
+                static_scope_relation: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            debugger_request(
+                &mut foreign,
+                DebuggerRequest::Hello {
+                    protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    requested_bounded_values: false,
+                    requested_metadata_capabilities: foreign_manifest.clone(),
+                },
+            ),
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_bounded_values: false,
+                granted_metadata_capabilities: foreign_manifest,
+            }
+        );
+        let foreign_target = blueice_ipc::debugger::DebuggerStaticScopeTarget::Ordinary {
+            metadata,
+            target: value,
+        };
+        assert!(matches!(
+            debugger_request(
+                &mut foreign,
+                DebuggerRequest::GetStaticScopeRelation {
+                    target: foreign_target,
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget | DebuggerErrorCode::CapabilityUnavailable,
+                ..
+            }
+        ));
+        drop(foreign);
         launcher.shutdown();
         let _ = std::fs::remove_file(gatekeeper_socket);
     }
@@ -6376,6 +6416,53 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
         .iter()
         .find(|program| **program != dependency)
         .unwrap();
+    let arm = DebuggerLinkedArmTarget {
+        entry,
+        dependency_safe_point,
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmLinkedNestedSafePointBreakpoint {
+                target: DebuggerLinkedArmTarget {
+                    entry: dependency,
+                    ..arm
+                },
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmLinkedNestedSafePointBreakpoint {
+                target: DebuggerLinkedArmTarget {
+                    dependency_safe_point: DebuggerSafePoint {
+                        program: DebuggerProgram {
+                            program_generation: dependency.program_generation + 1,
+                            ..dependency
+                        },
+                        ..dependency_safe_point
+                    },
+                    ..arm
+                },
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleProgram | DebuggerErrorCode::InvalidTarget,
+            ..
+        }
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { target: arm },
+        ),
+        DebuggerReply::LinkedNestedSafePointBreakpointArmed { target: arm }
+    );
     let DebuggerReply::StaticMetadata(dependency_metadata) = debugger_request(
         &mut debugger,
         DebuggerRequest::ListStaticMetadata {
@@ -6466,65 +6553,6 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
             function_span,
         ),
         Some(dependency_safe_point)
-    );
-    let arm = DebuggerLinkedArmTarget {
-        entry,
-        dependency_safe_point: function_location
-            .executable_breakpoint_candidate(&function_display, binding, function_span)
-            .unwrap(),
-    };
-    assert!(matches!(
-        debugger_request(
-            &mut debugger,
-            DebuggerRequest::ArmLinkedNestedSafePointBreakpoint {
-                target: DebuggerLinkedArmTarget {
-                    entry: dependency,
-                    ..arm
-                },
-            },
-        ),
-        DebuggerReply::Error {
-            code: DebuggerErrorCode::InvalidTarget,
-            ..
-        }
-    ));
-    assert!(matches!(
-        debugger_request(
-            &mut debugger,
-            DebuggerRequest::ArmLinkedNestedSafePointBreakpoint {
-                target: DebuggerLinkedArmTarget {
-                    dependency_safe_point: DebuggerSafePoint {
-                        program: DebuggerProgram {
-                            program_generation: dependency.program_generation + 1,
-                            ..dependency
-                        },
-                        ..dependency_safe_point
-                    },
-                    ..arm
-                },
-            },
-        ),
-        DebuggerReply::Error {
-            code: DebuggerErrorCode::StaleProgram | DebuggerErrorCode::InvalidTarget,
-            ..
-        }
-    ));
-    assert_eq!(
-        debugger_request(
-            &mut debugger,
-            DebuggerRequest::GetLinkedExecutionState { entry }
-        ),
-        DebuggerReply::LinkedExecutionState {
-            entry,
-            state: Box::new(DebuggerLinkedExecutionState::Pending),
-        }
-    );
-    assert_eq!(
-        debugger_request(
-            &mut debugger,
-            DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { target: arm },
-        ),
-        DebuggerReply::LinkedNestedSafePointBreakpointArmed { target: arm }
     );
     let deadline = Instant::now() + Duration::from_secs(5);
     let stack = loop {
@@ -6637,6 +6665,64 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
         }
     }
     let bound = bound.expect("linked entry root must retain one compiler-bound slot");
+    let receipted_target = blueice_ipc::debugger::DebuggerLinkedScopeTarget {
+        stack,
+        frame_index: 1,
+        scope_entry: bound,
+    };
+    let linked_target = blueice_ipc::debugger::DebuggerStaticScopeTarget::Linked {
+        metadata: metadata[1],
+        target: receipted_target,
+    };
+    for forged in [
+        blueice_ipc::debugger::DebuggerStaticScopeTarget::Linked {
+            metadata: metadata[1],
+            target: blueice_ipc::debugger::DebuggerLinkedScopeTarget {
+                scope_entry: blueice_ipc::debugger::DebuggerScopeEntry {
+                    slot_ordinal: u32::MAX,
+                    ..bound
+                },
+                ..receipted_target
+            },
+        },
+        blueice_ipc::debugger::DebuggerStaticScopeTarget::Linked {
+            metadata: blueice_ipc::debugger::DebuggerStaticMetadataHandle {
+                metadata_generation: metadata[1].metadata_generation + 1,
+                ..metadata[1]
+            },
+            target: blueice_ipc::debugger::DebuggerLinkedScopeTarget {
+                stack,
+                frame_index: 1,
+                scope_entry: bound,
+            },
+        },
+    ] {
+        assert!(forged.is_well_formed());
+        let reply = debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStaticScopeRelation { target: forged },
+        );
+        assert!(
+            matches!(
+                reply,
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget
+                        | DebuggerErrorCode::CapabilityUnavailable,
+                    ..
+                }
+            ),
+            "forged linked selector {forged:?} returned {reply:?}"
+        );
+    }
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStaticScopeRelation {
+                target: linked_target,
+            },
+        ),
+        DebuggerReply::StaticScopeRelation(relation) if relation.target == linked_target
+    ));
     assert!(matches!(
         debugger_request(
             &mut debugger,

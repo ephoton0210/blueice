@@ -2310,6 +2310,19 @@ dependency metadata refuses as InvalidTarget, never returning a partial
 pair. The focused real linked graph test passes. Lifecycle, cross-stream,
 and separate runtime-value grant cases remain C3.1.3.4.7.4.
 
+**C3.1.3.4.7.4.1 forged and cross-stream refusals:** The real linked Launcher
+graph rejects a guessed entry-root slot and a modified metadata generation
+with complete typed errors, never a partially filled symbol/type pair. Its
+breakpoint is now armed immediately after the two program IDs and dependency
+safe point are known; waiting for multiple original-source metadata queries
+could let the graph complete before arming. The real classic/module root
+test first obtains an ordinary static relation, closes that debugger stream,
+then proves a fresh stream with the same static grant cannot borrow the
+old metadata/scope selector. The debugger socket serves streams serially,
+so the cross-stream check is deliberately sequential. Both focused real
+Launcher tests pass. On request, a BlueTS >1,300-line modularity audit and
+justified refactors will follow C3.1.3.4.7.4 before C3.1.3.4 closes.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
