@@ -926,6 +926,55 @@ impl DebuggerLinkedStackSnapshot {
     }
 }
 
+/// One pending entry module and an exact verified dependency boundary. A
+/// same-program nested pause uses the older request family instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerLinkedArmTarget {
+    pub entry: DebuggerProgram,
+    pub dependency_safe_point: DebuggerSafePoint,
+}
+
+impl DebuggerLinkedArmTarget {
+    pub fn is_well_formed(self) -> bool {
+        self.entry.is_well_formed()
+            && self.dependency_safe_point.is_well_formed()
+            && self.dependency_safe_point.code_unit_ordinal != 0
+            && self.entry.realm == self.dependency_safe_point.program.realm
+            && self.entry != self.dependency_safe_point.program
+    }
+}
+
+/// Source-free lifecycle of one linked entry/dependency pause. A paused
+/// result contains the complete two-frame stack, never just the dependency.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DebuggerLinkedExecutionState {
+    Pending,
+    Paused { stack: DebuggerLinkedStackSnapshot },
+    Resuming { frame: DebuggerLinkedFrame },
+    Completed,
+}
+
+impl DebuggerLinkedExecutionState {
+    pub fn is_well_formed(self, entry: DebuggerProgram) -> bool {
+        if !entry.is_well_formed() {
+            return false;
+        }
+        match self {
+            Self::Pending | Self::Completed => true,
+            Self::Paused { stack } => {
+                stack.is_well_formed() && stack.frames[1].frame.program == entry
+            }
+            Self::Resuming { frame } => {
+                frame.is_well_formed()
+                    && frame.code_unit_ordinal != 0
+                    && frame.program.realm == entry.realm
+                    && frame.program != entry
+            }
+        }
+    }
+}
+
 /// An exact previously returned linked stack and independently inventoried
 /// source ID for each frame. Possession of this value grants no span access.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -3239,6 +3288,36 @@ mod tests {
             }),
         };
         assert!(stack.is_well_formed());
+        let arm = DebuggerLinkedArmTarget {
+            entry: programs[1],
+            dependency_safe_point: points[0],
+        };
+        assert!(arm.is_well_formed());
+        assert!(!DebuggerLinkedArmTarget {
+            entry: programs[0],
+            ..arm
+        }
+        .is_well_formed());
+        assert!(!DebuggerLinkedArmTarget {
+            dependency_safe_point: points[1],
+            ..arm
+        }
+        .is_well_formed());
+        for state in [
+            DebuggerLinkedExecutionState::Pending,
+            DebuggerLinkedExecutionState::Paused { stack },
+            DebuggerLinkedExecutionState::Resuming {
+                frame: stack.frames[0].frame,
+            },
+            DebuggerLinkedExecutionState::Completed,
+        ] {
+            assert!(state.is_well_formed(programs[1]));
+        }
+        assert!(!DebuggerLinkedExecutionState::Paused { stack }.is_well_formed(programs[0]));
+        assert!(!DebuggerLinkedExecutionState::Resuming {
+            frame: stack.frames[1].frame,
+        }
+        .is_well_formed(programs[1]));
         assert!(!DebuggerLinkedStackSnapshot {
             frames: [stack.frames[1], stack.frames[0]],
         }
@@ -3297,6 +3376,11 @@ mod tests {
         assert_eq!(
             serde_json::from_slice::<DebuggerLinkedStackCoordinatesTarget>(&encoded).unwrap(),
             target
+        );
+        let encoded = serde_json::to_vec(&DebuggerLinkedExecutionState::Paused { stack }).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<DebuggerLinkedExecutionState>(&encoded).unwrap(),
+            DebuggerLinkedExecutionState::Paused { stack }
         );
     }
 

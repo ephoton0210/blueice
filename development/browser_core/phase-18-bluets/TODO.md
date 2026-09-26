@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.1.2.2.3.3.3.** Add the complete public linked
-request/reply route and dispatcher grant/receipt checks, then verify exact
-spans and no-partial denials before bumping the public protocol version.
+**Current leaf: C3.1.1.2.2.3.3.3.2.** Add the complete public linked
+request/reply family, dispatcher grant/receipt checks, and real IPC/core
+no-partial tests; bump the public debugger protocol only with the full route.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -394,6 +394,8 @@ channel with explicit owner/client grants.
                 - [x] **C3.1.1.2.2.3.3.2.2.1** Expose exact pending/paused/resuming/completed linked state and complete two-frame stack with stable core identities and private state/stack revalidation. Core accepts only exact private lifecycle replies, captures the complete child-first stack before publishing a pause, preserves handles across scope-budget changes, and rejects moved or unregistered frames without partial state.
                 - [x] **C3.1.1.2.2.3.3.2.2.2** Expose exact linked resume and grant/receipt-bound two-source spans through the core-facing trait; then check off C3.1.1.2.2.3.3.2.2 and C3.1.1.2.2.3.3.2. Core revalidates both live program mappings before resuming, demands the complete previously returned public stack for span reads, checks both authorization/receipt sets and metadata attachments before child access, and relies on the private child to atomically re-read the full paused stack and both original spans.
             - [ ] **C3.1.1.2.2.3.3.3** Add complete public linked requests/replies and dispatcher grant/receipt checks, real IPC/core no-partial tests and exact-span coverage, then bump public debugger protocol only with the complete route and check off the parent items.
+              - [x] **C3.1.1.2.2.3.3.3.1** Validate the public linked-arm target and pending/paused/resuming/completed lifecycle state shapes without a callable route; keep v39. Wire data shapes reject same-program/root/cross-realm arms and malformed paused or resuming states; IPC serialization and workspace Clippy pass.
+              - [ ] **C3.1.1.2.2.3.3.3.2** Add the complete linked request/reply family, core dispatcher authorization and receipt checks, real IPC/core exact-span and no-partial tests, then bump public protocol only with the finished route and check off parent items.
       - [ ] **C3.1.1.2.3** Prove entry/dependency original spans, distinct source IDs, swapped/unreceipted source refusal, and stale graph expiry on real Launcher-supervised sockets; then check off C3.1.1.2 and C3.1.1.
   - [ ] **C3.1.2** Map breakpoints and symbols for module execution control.
   - [ ] **C3.1.3** Show static types separately from runtime values in every reply.

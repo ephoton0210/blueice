@@ -1637,6 +1637,14 @@ tests cover successful resume and both spans, stale top frame, forged caller
 stack, swapped attachment, and each missing authorization. The core-facing
 route is complete; no public wire request or version change exists yet.
 
+**C3.1.1.2.2.3.3.3.1 public linked control shapes:** The public linked-arm
+target now requires one exact non-root dependency safe point under a distinct
+entry program in the same realm. The separate linked lifecycle type validates
+Pending/Completed, a complete entry-owned paused stack, and a non-root
+dependency frame while resuming. The IPC test round-trips the paused shape and
+rejects same-program/root targets or role-swapped state. These are data shapes
+only; no request/reply route or public protocol bump has occurred.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
