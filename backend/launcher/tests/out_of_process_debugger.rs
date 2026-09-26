@@ -1925,7 +1925,6 @@ fn launcher_exposes_bluets_metadata_while_its_root_frame_is_pending_and_paused()
 
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
-    navigate(&mut browser, &url);
 
     let mut debugger = UnixStream::connect(&launcher.debugger_socket)
         .expect("launcher public debugger endpoint must accept a peer");
@@ -1947,6 +1946,7 @@ fn launcher_exposes_bluets_metadata_while_its_root_frame_is_pending_and_paused()
             granted_metadata_capabilities: metadata_capabilities,
         }
     );
+    navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,

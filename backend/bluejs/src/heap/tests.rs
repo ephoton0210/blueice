@@ -868,6 +868,541 @@ fn collection_clear_releases_entry_bytes_and_keeps_positions_valid_for_iterators
 }
 
 #[test]
+fn collection_iteration_rejects_foreign_and_malformed_live_references() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    let ordinary = heap.alloc_object(None).unwrap();
+    let prototype = heap.alloc_object(None).unwrap();
+    let set = heap.alloc_set(None).unwrap();
+    let iterator = heap
+        .alloc_collection_iterator(set, false, ArrayIteratorKind::Values, prototype)
+        .unwrap();
+
+    assert!(matches!(
+        heap.collection_entry_at(foreign, 0),
+        Err(HeapError::InvalidObject(id)) if id == foreign
+    ));
+    assert_eq!(
+        heap.collection_iterator_next(foreign, false),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.collection_clear(foreign),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.set_collection_iterator_progress(foreign, 0, false),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.set_collection_iterator_progress(ordinary, 0, false),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+
+    // A malformed iterator must propagate the missing collection error
+    // without consuming or completing its own live state.
+    let ObjectKind::CollectionIterator { collection, .. } =
+        &mut heap.objects.get_mut(&iterator).unwrap().kind
+    else {
+        panic!("the fixture must retain its iterator brand");
+    };
+    *collection = Some(foreign);
+    assert_eq!(
+        heap.collection_iterator_next(iterator, false),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert!(matches!(
+        &heap.objects[&iterator].kind,
+        ObjectKind::CollectionIterator {
+            collection: Some(id),
+            index: 0,
+            ..
+        } if *id == foreign
+    ));
+}
+
+#[test]
+fn collection_accessors_reject_foreign_objects_and_wrong_brands() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    let ordinary = heap.alloc_object(None).unwrap();
+    let map = heap.alloc_map(None).unwrap();
+    let set = heap.alloc_set(None).unwrap();
+    let key = Value::String("key".into());
+    let foreign_value = Value::Object(foreign);
+
+    assert_eq!(
+        heap.is_raw_json(foreign),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(heap.is_map(foreign), Err(HeapError::InvalidObject(foreign)));
+    assert_eq!(heap.is_set(foreign), Err(HeapError::InvalidObject(foreign)));
+    for id in [foreign, ordinary] {
+        let error = if id == foreign {
+            HeapError::InvalidObject(id)
+        } else {
+            HeapError::InvalidInternalSlot(id)
+        };
+        assert_eq!(heap.map_size(id), Err(error));
+        assert_eq!(heap.map_get(id, &key), Err(error));
+        assert_eq!(heap.map_has(id, &key), Err(error));
+        assert_eq!(heap.map_set(id, key.clone(), Value::Null), Err(error));
+        assert_eq!(heap.map_delete(id, &key), Err(error));
+        assert_eq!(heap.set_size(id), Err(error));
+        assert_eq!(heap.set_has(id, &key), Err(error));
+        assert_eq!(heap.set_add(id, key.clone()), Err(error));
+        assert_eq!(heap.set_delete(id, &key), Err(error));
+    }
+    assert_eq!(
+        heap.map_set(map, foreign_value.clone(), Value::Null),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.map_set(map, key.clone(), foreign_value.clone()),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.set_add(set, foreign_value),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(heap.map_size(map), Ok(0));
+    assert_eq!(heap.set_size(set), Ok(0));
+    assert_eq!(heap.map_delete(map, &key), Ok(false));
+    assert_eq!(heap.set_delete(set, &key), Ok(false));
+}
+
+#[test]
+fn module_namespace_sorts_exports_and_rejects_invalid_cells_and_initialization() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    let cell = heap.alloc_object(None).unwrap();
+    assert_eq!(
+        heap.alloc_module_namespace(vec![("bad".into(), foreign)], false),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    let namespace = heap
+        .alloc_module_namespace(vec![("z".into(), cell), ("a".into(), cell)], false)
+        .unwrap();
+    let ObjectKind::ModuleNamespace { exports } = &heap.object(namespace).unwrap().kind else {
+        panic!("expected module namespace");
+    };
+    assert_eq!(exports[0].0, JsString::from("a"));
+    assert_eq!(exports[1].0, JsString::from("z"));
+    assert_eq!(
+        heap.initialize_module_namespace(namespace, vec![]),
+        Err(HeapError::InvalidObject(namespace))
+    );
+    assert_eq!(
+        heap.initialize_module_namespace(namespace, vec![("bad".into(), foreign)]),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    let ordinary = heap.alloc_object(None).unwrap();
+    assert_eq!(
+        heap.initialize_module_namespace(ordinary, vec![]),
+        Err(HeapError::InvalidObject(ordinary))
+    );
+    assert_eq!(
+        heap.initialize_module_namespace(foreign, vec![]),
+        Err(HeapError::InvalidObject(foreign))
+    );
+}
+
+#[test]
+fn weak_storage_and_finalization_reject_invalid_references_and_brands() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    let ordinary = heap.alloc_object(None).unwrap();
+    let key = heap.alloc_object(None).unwrap();
+    let weak_map = heap.alloc_weak_collection(true, None).unwrap();
+    let registry = heap
+        .alloc_finalization_registry(Value::Undefined, None)
+        .unwrap();
+    let object_key = Value::Object(key);
+    let foreign_key = Value::Object(foreign);
+
+    assert_eq!(
+        heap.alloc_weak_ref(Value::Bool(false), None),
+        Err(HeapError::InvalidWeakTarget)
+    );
+    assert_eq!(
+        heap.alloc_weak_ref(foreign_key.clone(), None),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.is_finalization_registry(foreign),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(heap.is_finalization_registry(ordinary), Ok(false));
+    assert_eq!(
+        heap.is_weak_collection(foreign, true),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    for id in [foreign, ordinary] {
+        let error = if id == foreign {
+            HeapError::InvalidObject(id)
+        } else {
+            HeapError::InvalidInternalSlot(id)
+        };
+        assert_eq!(heap.weak_ref_target(id), Err(error));
+        assert_eq!(heap.weak_collection_get(id, &object_key), Err(error));
+        assert_eq!(
+            heap.weak_collection_set(id, object_key.clone(), Value::Null),
+            Err(error)
+        );
+        assert_eq!(heap.weak_collection_delete(id, &object_key), Err(error));
+    }
+    assert_eq!(
+        heap.weak_collection_set(weak_map, Value::Bool(true), Value::Null),
+        Err(HeapError::InvalidInternalSlot(weak_map))
+    );
+    assert_eq!(
+        heap.weak_collection_set(weak_map, foreign_key.clone(), Value::Null),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.weak_collection_delete(weak_map, &Value::Bool(true)),
+        Ok(false)
+    );
+    assert_eq!(
+        heap.weak_collection_delete(weak_map, &object_key),
+        Ok(false)
+    );
+
+    assert_eq!(
+        heap.finalization_registry_register(registry, Value::Bool(true), Value::Null, None,),
+        Err(HeapError::InvalidWeakTarget)
+    );
+    assert_eq!(
+        heap.finalization_registry_register(
+            registry,
+            object_key.clone(),
+            Value::Null,
+            Some(Value::Bool(true)),
+        ),
+        Err(HeapError::InvalidWeakTarget)
+    );
+    assert_eq!(
+        heap.finalization_registry_register(registry, foreign_key.clone(), Value::Null, None),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.finalization_registry_register(
+            registry,
+            object_key.clone(),
+            Value::Null,
+            Some(foreign_key),
+        ),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.finalization_registry_register(ordinary, object_key.clone(), Value::Null, None),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+    assert_eq!(
+        heap.finalization_registry_unregister(registry, Value::Bool(true)),
+        Err(HeapError::InvalidWeakTarget)
+    );
+    assert_eq!(
+        heap.finalization_registry_unregister(foreign, object_key.clone()),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.finalization_registry_unregister(ordinary, object_key),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+}
+
+#[test]
+fn private_sidecar_accessors_validate_references_and_preserve_accessor_halves() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    let owner = heap.alloc_object(None).unwrap();
+    let receiver = heap.alloc_object(None).unwrap();
+    let getter = heap.alloc_object(None).unwrap();
+    let setter = heap.alloc_object(None).unwrap();
+    let name: JsString = "accessor".into();
+    let missing: JsString = "missing".into();
+
+    assert_eq!(
+        heap.ensure_private_data(foreign, &[]),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.define_private_accessor(foreign, name.clone(), Value::Object(getter), false),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.define_private_method(owner, name.clone(), Value::Object(foreign)),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.define_private_field(foreign, name.clone()),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    heap.define_private_accessor(owner, name.clone(), Value::Object(getter), false)
+        .unwrap();
+    heap.define_private_accessor(owner, name.clone(), Value::Object(setter), true)
+        .unwrap();
+    assert!(matches!(
+        heap.private_element(owner, &name),
+        Ok(Some(PrivateElement::Accessor {
+            get: Some(Value::Object(g)),
+            set: Some(Value::Object(s)),
+        })) if g == getter && s == setter
+    ));
+    heap.define_private_field(owner, missing.clone()).unwrap();
+    assert_eq!(
+        heap.define_private_accessor(owner, missing, Value::Object(getter), true),
+        Err(HeapError::ReadOnlyProperty)
+    );
+
+    assert_eq!(
+        heap.add_private_brand(foreign, owner),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.add_private_brand(receiver, foreign),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.has_private_brand(foreign, owner),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert!(matches!(
+        heap.private_element(foreign, &name),
+        Err(HeapError::InvalidObject(id)) if id == foreign
+    ));
+    assert_eq!(
+        heap.private_slot(foreign, owner, &name),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.set_private_slot(foreign, owner, name.clone(), Value::Null),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.set_private_slot(receiver, foreign, name.clone(), Value::Null),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.set_private_slot(receiver, owner, name, Value::Object(foreign)),
+        Err(HeapError::InvalidObject(foreign))
+    );
+}
+
+#[test]
+fn date_and_temporal_accessors_reject_foreign_objects_and_wrong_brands() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    let ordinary = heap.alloc_object(None).unwrap();
+    assert_eq!(
+        heap.is_html_dda(foreign),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.is_error(foreign),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.is_date(foreign),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.temporal_kind(foreign),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert!(matches!(
+        heap.temporal_value(foreign),
+        Err(HeapError::InvalidObject(id)) if id == foreign
+    ));
+    assert_eq!(
+        heap.date_value(foreign),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.set_date_value(foreign, 1.0),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.set_date_value(ordinary, 1.0),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+}
+
+#[test]
+fn heap_growth_operations_preserve_existing_state_when_budget_is_exhausted() {
+    const LIMIT: usize = 4_096;
+    let mut heap = Heap::new(HeapConfig {
+        nursery_capacity: 256,
+        major_threshold_bytes: LIMIT,
+        max_heap_bytes: LIMIT,
+    })
+    .unwrap();
+    let map = heap.alloc_map(None).unwrap();
+    let set = heap.alloc_set(None).unwrap();
+    let weak_map = heap.alloc_weak_collection(true, None).unwrap();
+    let registry = heap
+        .alloc_finalization_registry(Value::Undefined, None)
+        .unwrap();
+    let owner = heap.alloc_object(None).unwrap();
+    let receiver = heap.alloc_object(None).unwrap();
+    let key = heap.alloc_object(None).unwrap();
+    for id in [map, set, weak_map, registry, owner, receiver, key] {
+        heap.root(id).unwrap();
+    }
+    let huge: JsString = "x".repeat(LIMIT).into();
+    let huge_value = Value::String(huge.clone());
+    let exhausted = Err(HeapError::HeapLimitExceeded { limit: LIMIT });
+    assert_eq!(
+        heap.map_set(map, Value::Null, huge_value.clone()),
+        exhausted
+    );
+    assert_eq!(heap.set_add(set, huge_value.clone()), exhausted);
+    assert_eq!(
+        heap.weak_collection_set(weak_map, Value::Object(key), huge_value.clone()),
+        exhausted
+    );
+    assert_eq!(
+        heap.finalization_registry_register(registry, Value::Object(key), huge_value, None),
+        exhausted
+    );
+    assert_eq!(heap.define_private_field(owner, huge.clone()), exhausted);
+    assert_eq!(
+        heap.set_private_slot(receiver, owner, huge.clone(), Value::Null),
+        exhausted
+    );
+    let namespace = heap.alloc_module_namespace(vec![], false).unwrap();
+    heap.root(namespace).unwrap();
+    assert_eq!(
+        heap.initialize_module_namespace(namespace, vec![(huge, key)]),
+        exhausted
+    );
+    assert_eq!(heap.map_size(map), Ok(0));
+    assert_eq!(heap.set_size(set), Ok(0));
+    assert_eq!(
+        heap.weak_collection_get(weak_map, &Value::Object(key)),
+        Ok(None)
+    );
+}
+
+#[test]
+fn allocation_and_private_sidecar_limits_propagate_at_each_growth_stage() {
+    let mut empty = Heap::new(HeapConfig {
+        nursery_capacity: 256,
+        major_threshold_bytes: OBJECT_BYTES,
+        max_heap_bytes: OBJECT_BYTES,
+    })
+    .unwrap();
+    assert_eq!(
+        empty.alloc_module_namespace(vec![], false),
+        Err(HeapError::HeapLimitExceeded {
+            limit: OBJECT_BYTES
+        })
+    );
+
+    let max = OBJECT_BYTES;
+    let mut heap = Heap::new(HeapConfig {
+        nursery_capacity: 256,
+        major_threshold_bytes: max,
+        max_heap_bytes: max,
+    })
+    .unwrap();
+    let prototype = heap.alloc_object(None).unwrap();
+    heap.root(prototype).unwrap();
+    let exhausted = Err(HeapError::HeapLimitExceeded { limit: max });
+    assert_eq!(heap.alloc_module_namespace(vec![], false), exhausted);
+    assert_eq!(
+        heap.alloc_html_dda_object(NativeFunction::Empty, prototype),
+        exhausted
+    );
+
+    let max = 2 * OBJECT_BYTES;
+    let mut heap = Heap::new(HeapConfig {
+        nursery_capacity: 256,
+        major_threshold_bytes: max,
+        max_heap_bytes: max,
+    })
+    .unwrap();
+    let owner = heap.alloc_object(None).unwrap();
+    heap.root(owner).unwrap();
+    let receiver = heap.alloc_object(None).unwrap();
+    heap.root(receiver).unwrap();
+    let exhausted = Err(HeapError::HeapLimitExceeded { limit: max });
+    assert_eq!(heap.define_private_field(owner, "field".into()), exhausted);
+    assert_eq!(heap.add_private_brand(receiver, owner), exhausted);
+    assert_eq!(
+        heap.set_private_slot(receiver, owner, "field".into(), Value::Null),
+        exhausted
+    );
+
+    let max = 2 * OBJECT_BYTES + PRIVATE_DATA_BYTES;
+    let mut heap = Heap::new(HeapConfig {
+        nursery_capacity: 256,
+        major_threshold_bytes: max,
+        max_heap_bytes: max,
+    })
+    .unwrap();
+    let owner = heap.alloc_object(None).unwrap();
+    heap.root(owner).unwrap();
+    let receiver = heap.alloc_object(None).unwrap();
+    heap.root(receiver).unwrap();
+    assert_eq!(
+        heap.add_private_brand(receiver, owner),
+        Err(HeapError::HeapLimitExceeded { limit: max })
+    );
+}
+
+#[test]
+fn heap_identity_exhaustion_and_mutable_collection_parts_have_explicit_errors() {
+    let identities = AtomicU64::new(u64::MAX);
+    assert!(matches!(
+        Heap::new_with_identity_source(HeapConfig::default(), &identities),
+        Err(HeapError::IdExhausted)
+    ));
+    let identities = AtomicU64::new(42);
+    let heap = Heap::new_with_identity_source(HeapConfig::default(), &identities).unwrap();
+    assert_eq!(heap.identity, 42);
+    assert_eq!(identities.load(Ordering::Relaxed), 43);
+
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    let ordinary = heap.alloc_object(None).unwrap();
+    let map = heap.alloc_map(None).unwrap();
+    let set = heap.alloc_set(None).unwrap();
+    let weak_map = heap.alloc_weak_collection(true, None).unwrap();
+    for (object, is_map) in [(map, true), (set, false)] {
+        assert!(heap.ordered_collection_mut(object, is_map).is_ok());
+        assert!(matches!(
+            heap.ordered_collection_mut(object, !is_map),
+            Err(HeapError::InvalidInternalSlot(id)) if id == object
+        ));
+    }
+    assert!(heap.weak_collection_mut(weak_map).is_ok());
+    for object in [foreign, ordinary] {
+        let expected = if object == foreign {
+            HeapError::InvalidObject(object)
+        } else {
+            HeapError::InvalidInternalSlot(object)
+        };
+        assert!(matches!(
+            heap.ordered_collection_mut(object, true),
+            Err(error) if error == expected
+        ));
+        assert!(matches!(
+            heap.weak_collection_mut(object),
+            Err(error) if error == expected
+        ));
+    }
+}
+
+#[test]
 fn own_integer_keys_lists_only_canonical_indices_in_ascending_order() {
     let mut heap = Heap::default();
     let object = heap.alloc_object(None).unwrap();

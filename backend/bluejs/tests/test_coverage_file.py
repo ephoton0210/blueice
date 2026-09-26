@@ -188,8 +188,11 @@ class CoverageFileTests(unittest.TestCase):
             self.assertEqual(files[ast][metric], {"count": expected, "covered": expected})
             self.assertEqual(totals[metric], files[ast][metric])
         row = coverage_file.markdown_row(ast, files[ast])
-        self.assertIn("| ☑ |", row)
-        self.assertIn("raw LLVM summary: lines 2/3", row)
+        self.assertIn("2 / 3 (66.67%)", row)
+        self.assertIn("| ☐ |", row)
+        self.assertIn("Unique source-location union: lines 2/2", row)
+        self.assertFalse(coverage_file.is_complete(files[ast]))
+        self.assertFalse(coverage_file.is_complete(totals))
         with self.assertRaisesRegex(ValueError, "incomplete source-line coverage view"):
             coverage_file.source_union_export(payload, show.splitlines()[0] + "\n")
 
