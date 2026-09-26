@@ -316,6 +316,7 @@ struct ChildLinkedStackFrame {
 struct ChildLinkedStackSnapshot {
     frames: [ChildLinkedStackFrame; 2],
     stack_truncated: bool,
+    max_scope_entries: u32,
 }
 
 /// A document-order declaration retained by the child in an explicitly
@@ -3997,7 +3998,60 @@ impl BlueJsChildHost {
                 },
             ],
             stack_truncated: snapshot.stack_truncated,
+            max_scope_entries,
         })
+    }
+
+    /// Maps a complete live linked stack through two independent retained
+    /// BlueTS attachments. A bad metadata/source pair refuses the whole
+    /// vector; numeric source IDs alone are never cross-program authority.
+    #[allow(dead_code)] // Staged child-local route; v40 wiring is a later leaf.
+    fn debugger_linked_source_spans(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+        entry_program: PageHostDebuggerProgram,
+        frame: BlueJsPageDebuggerLinkedFrame,
+        expected_stack: &ChildLinkedStackSnapshot,
+        sources: [(PageHostDebuggerMetadataHandle, u32); 2],
+    ) -> Result<[PageHostDebuggerBlueTsSafePointSpan; 2], PageHostReply> {
+        let current = self.debugger_linked_stack_snapshot(
+            tab_id,
+            document_generation,
+            entry_program,
+            frame,
+            expected_stack.max_scope_entries,
+        )?;
+        if current != *expected_stack {
+            return Err(invalid_request());
+        }
+        let document = self.exact_document(tab_id, document_generation)?;
+        let resolve = |index: usize| {
+            let safe_point = current.frames[index].safe_point;
+            let (metadata, source_id) = sources[index];
+            if !metadata.is_well_formed() {
+                return Err(invalid_request());
+            }
+            let record = document
+                .debugger_programs
+                .get(&safe_point.program.program_handle)
+                .filter(|record| {
+                    record.program_generation == safe_point.program.program_generation
+                        && record.metadata == Some(metadata)
+                })
+                .ok_or_else(invalid_request)?;
+            let retained = self
+                .debug_registry
+                .get(self.runtime.program_registry(), record.runtime_handle)
+                .map_err(|_| invalid_request())?;
+            let span =
+                exact_bluets_span_for_site(retained, safe_point).ok_or_else(invalid_request)?;
+            if span.source_id != source_id {
+                return Err(invalid_request());
+            }
+            Ok(span)
+        };
+        Ok([resolve(0)?, resolve(1)?])
     }
 
     /// Saves one terminal VM throw under its exact live child program before
@@ -12475,6 +12529,105 @@ mod tests {
             .unwrap();
         assert_eq!(stack.frames[0].safe_point.program, dependency_program);
         assert_eq!(stack.frames[1].safe_point.program, entry_program);
+        let mut source_inventory = |program| {
+            let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }) {
+                PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+                reply => panic!("expected per-program metadata, got {reply:?}"),
+            };
+            let source_id =
+                match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataSources {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                    metadata,
+                }) {
+                    PageHostReply::DebuggerBlueTsMetadataSources { sources, .. } => {
+                        sources[0].source_id
+                    }
+                    reply => panic!("expected per-program source IDs, got {reply:?}"),
+                };
+            (metadata, source_id)
+        };
+        let child_source = source_inventory(dependency_program);
+        let entry_source = source_inventory(entry_program);
+        assert_ne!(child_source.0, entry_source.0);
+        let spans = host
+            .debugger_linked_source_spans(
+                7,
+                1,
+                entry_program,
+                frame,
+                &stack,
+                [child_source, entry_source],
+            )
+            .unwrap();
+        assert_eq!(spans[0].source_id, child_source.1);
+        assert_eq!(spans[1].source_id, entry_source.1);
+        for (program, (metadata, source_id), expected_module) in [
+            (dependency_program, child_source, dependency),
+            (entry_program, entry_source, entry),
+        ] {
+            let provenance =
+                match host.handle_request(PageHostRequest::DescribeDebuggerBlueTsMetadataSource {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                    metadata,
+                    source_id,
+                }) {
+                    PageHostReply::DebuggerBlueTsMetadataSourceProvenance {
+                        provenance, ..
+                    } => provenance,
+                    reply => panic!("expected exact source provenance, got {reply:?}"),
+                };
+            assert_eq!(provenance.module, expected_module);
+        }
+        assert!(host
+            .debugger_linked_source_spans(
+                7,
+                1,
+                entry_program,
+                frame,
+                &stack,
+                [entry_source, child_source],
+            )
+            .is_err());
+        assert!(host
+            .debugger_linked_source_spans(
+                7,
+                1,
+                entry_program,
+                frame,
+                &stack,
+                [(child_source.0, u32::MAX), entry_source],
+            )
+            .is_err());
+        assert!(host
+            .debugger_linked_source_spans(
+                7,
+                1,
+                entry_program,
+                frame,
+                &stack,
+                [child_source, (entry_source.0, u32::MAX)],
+            )
+            .is_err());
+        let mut wrong_stack = stack.clone();
+        wrong_stack.frames[0].safe_point = wrong_stack.frames[1].safe_point;
+        assert!(host
+            .debugger_linked_source_spans(
+                7,
+                1,
+                entry_program,
+                frame,
+                &wrong_stack,
+                [child_source, entry_source],
+            )
+            .is_err());
         assert!(host
             .debugger_linked_stack_snapshot(7, 1, dependency_program, frame, 256)
             .is_err());

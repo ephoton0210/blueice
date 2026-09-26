@@ -1537,6 +1537,17 @@ bytecode offset of 10 versus the observed 15. Both reproduce in isolation;
 neither uses the linked scheduler. This leaf does not claim to fix those
 source-mapping assertions.
 
+**C3.1.1.2.2.2.2.2 child source evidence:** The child-local linked coordinate
+read first reacquires the complete paused two-frame stack with the original
+scope budget and checks it against the caller's full expected snapshot. It
+then resolves each frame's safe point through the independently registered
+BlueTS metadata handle and compiler source ID for that frame's program. The
+result is an all-or-nothing two-span array: a swapped metadata handle, an
+unbound child or entry source ID, or a changed expected stack returns no span.
+The real imported-dependency test verifies the dependency and entry source
+provenance names remain separate. Private and public protocol versions remain
+v39 until their complete linked routes are implemented.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
