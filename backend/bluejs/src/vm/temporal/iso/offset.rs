@@ -217,3 +217,28 @@ pub(crate) fn parse_offset_string_nanoseconds(source: &str) -> Option<i64> {
     let (offset, _) = scan_offset(&mut cursor, true)?;
     cursor.done().then_some(offset)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_time_zone_offset, scan_offset, Cursor};
+    use num_bigint::BigInt;
+
+    #[test]
+    fn malformed_offset_components_and_date_times_fail_at_the_parser_boundary() {
+        for source in ["+01:", "+01:02:", "+01:02:03."] {
+            assert!(
+                scan_offset(&mut Cursor::new(source), true).is_none(),
+                "{source}"
+            );
+        }
+        assert!(scan_offset(&mut Cursor::new("+01:02:03"), false).is_none());
+        let epoch = BigInt::from(0);
+        for source in ["2024-01-01", "2024-01-01T25:00+00:00"] {
+            assert_eq!(
+                resolve_time_zone_offset(source, &epoch),
+                Err(()),
+                "{source}"
+            );
+        }
+    }
+}
