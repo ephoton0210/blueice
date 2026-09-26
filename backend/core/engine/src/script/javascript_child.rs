@@ -29,12 +29,12 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerError, JavaScriptPageDebuggerExceptionLocation,
     JavaScriptPageDebuggerExceptionLocationTarget, JavaScriptPageDebuggerExecutionState,
     JavaScriptPageDebuggerFrame, JavaScriptPageDebuggerLinkedExecutionState,
-    JavaScriptPageDebuggerLinkedSpanAccess, JavaScriptPageDebuggerLinkedStackFrame,
-    JavaScriptPageDebuggerLinkedStackSnapshot, JavaScriptPageDebuggerNestedExecutionState,
-    JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
-    JavaScriptPageDebuggerScopeEntry, JavaScriptPageDebuggerStackFrame,
-    JavaScriptPageDebuggerStackSnapshot, JavaScriptPageDebuggerStaticMetadata,
-    JavaScriptPageDebuggerStaticMetadataContractDisplay,
+    JavaScriptPageDebuggerLinkedScopeSnapshot, JavaScriptPageDebuggerLinkedSpanAccess,
+    JavaScriptPageDebuggerLinkedStackFrame, JavaScriptPageDebuggerLinkedStackSnapshot,
+    JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
+    JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerScopeEntry,
+    JavaScriptPageDebuggerStackFrame, JavaScriptPageDebuggerStackSnapshot,
+    JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataContractDisplay,
     JavaScriptPageDebuggerStaticMetadataContractId,
     JavaScriptPageDebuggerStaticMetadataContractLocation,
     JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
@@ -5064,6 +5064,76 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         Ok(JavaScriptPageDebuggerLinkedStackSnapshot { frames })
     }
 
+    fn debugger_linked_scope_snapshot(
+        &mut self,
+        expected_stack: JavaScriptPageDebuggerLinkedStackSnapshot,
+    ) -> Result<JavaScriptPageDebuggerLinkedScopeSnapshot, JavaScriptPageDebuggerError> {
+        if !self.debugger_linked_frames_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let top = expected_stack.frames[0].frame;
+        let active_before = self
+            .debugger_linked_frames
+            .get(&top.tab_id)
+            .filter(|active| active.frames == expected_stack.frames)
+            .cloned()
+            .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
+        if !self.has_core_live_document(top.tab_id, top.document_generation)
+            || active_before.frames.iter().any(|frame| {
+                frame.frame.tab_id != top.tab_id
+                    || frame.frame.document_generation != top.document_generation
+            })
+            || !active_before
+                .child_stack
+                .is_well_formed(active_before.child)
+        {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let observed =
+            self.debugger_linked_stack_snapshot(top, PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES)?;
+        let active_after = self
+            .debugger_linked_frames
+            .get(&top.tab_id)
+            .filter(|active| {
+                observed == expected_stack
+                    && active.child == active_before.child
+                    && active.frames == expected_stack.frames
+                    && active.child_stack.is_well_formed(active.child)
+                    && active.child_stack.max_scope_entries == PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES
+                    && active
+                        .child_stack
+                        .frames
+                        .iter()
+                        .all(|frame| !frame.scope_truncated)
+                    && (active_before
+                        .child_stack
+                        .frames
+                        .iter()
+                        .any(|frame| frame.scope_truncated)
+                        || active_before.child_stack.frames == active.child_stack.frames)
+            })
+            .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
+        let scope_entries = active_after.child_stack.frames[1]
+            .scope_entries
+            .iter()
+            .map(|entry| JavaScriptPageDebuggerScopeEntry {
+                slot_ordinal: entry.slot_ordinal,
+                scope_depth: entry.scope_depth,
+            })
+            .collect::<Vec<_>>();
+        let mut seen = BTreeSet::new();
+        if !scope_entries
+            .iter()
+            .all(|entry| seen.insert(entry.slot_ordinal))
+        {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        Ok(JavaScriptPageDebuggerLinkedScopeSnapshot {
+            stack: expected_stack,
+            scope_entries,
+        })
+    }
+
     fn resume_debugger_linked_nested_execution(
         &mut self,
         top_frame: JavaScriptPageDebuggerFrame,
@@ -7764,8 +7834,25 @@ mod tests {
         assert_eq!(private_index, 1);
         assert_eq!(private_metadata, child_metadata[1]);
         assert_eq!(private_entry.slot_ordinal, 0);
+        assert_eq!(
+            executor.debugger_linked_scope_snapshot(expected_stack),
+            Ok(JavaScriptPageDebuggerLinkedScopeSnapshot {
+                stack: expected_stack,
+                scope_entries: vec![JavaScriptPageDebuggerScopeEntry {
+                    slot_ordinal: 0,
+                    scope_depth: 0,
+                }],
+            })
+        );
+        assert_eq!(
+            executor.capture_core_linked_pause(tab_id, 1, public_entry, 4),
+            Ok(frames)
+        );
         let mut moved_stack = expected_stack;
         moved_stack.frames[1].safe_point.bytecode_offset += 1;
+        assert!(executor
+            .debugger_linked_scope_snapshot(moved_stack)
+            .is_err());
         let mut swapped_stack = expected_stack;
         swapped_stack.frames.swap(0, 1);
         let linked_target = |metadata, expected_stack, frame_index, scope_entry| {
@@ -7841,9 +7928,63 @@ mod tests {
             snapshot.frames[1].scope_entries[0].scope_depth = 1;
         }
         assert!(executor
+            .debugger_linked_scope_snapshot(expected_stack)
+            .is_err());
+        assert!(executor
             .debugger_static_scope_relation(tab_id, 1, static_target)
             .is_err());
         assert_eq!(executor.child.relation_calls, 2);
+        executor.child.stack = PageHostReply::DebuggerLinkedStackSnapshot {
+            frame: child_frame,
+            snapshot: Box::new(stack.clone()),
+        };
+        assert_eq!(
+            executor.capture_core_linked_pause(tab_id, 1, public_entry, 4),
+            Ok(frames)
+        );
+        for malformed in [
+            PageHostDebuggerLinkedStackSnapshot {
+                frames: [
+                    stack.frames[0].clone(),
+                    PageHostDebuggerLinkedStackFrame {
+                        scope_entries: vec![
+                            PageHostDebuggerScopeEntry {
+                                slot_ordinal: 0,
+                                scope_depth: 0,
+                            },
+                            PageHostDebuggerScopeEntry {
+                                slot_ordinal: 0,
+                                scope_depth: 1,
+                            },
+                        ],
+                        ..stack.frames[1].clone()
+                    },
+                ],
+                ..stack.clone()
+            },
+            PageHostDebuggerLinkedStackSnapshot {
+                frames: [
+                    stack.frames[0].clone(),
+                    PageHostDebuggerLinkedStackFrame {
+                        scope_truncated: true,
+                        ..stack.frames[1].clone()
+                    },
+                ],
+                ..stack.clone()
+            },
+        ] {
+            executor.child.stack = PageHostReply::DebuggerLinkedStackSnapshot {
+                frame: child_frame,
+                snapshot: Box::new(malformed),
+            };
+            assert_eq!(
+                executor.capture_core_linked_pause(tab_id, 1, public_entry, 4),
+                Ok(frames)
+            );
+            assert!(executor
+                .debugger_linked_scope_snapshot(expected_stack)
+                .is_err());
+        }
         executor.child.stack = PageHostReply::DebuggerLinkedStackSnapshot {
             frame: child_frame,
             snapshot: Box::new(stack.clone()),
@@ -8411,11 +8552,8 @@ mod tests {
         });
         assert_ne!(targets[0].0.metadata_handle, targets[1].0.metadata_handle);
         let entry_scope = executor
-            .debugger_linked_frames
-            .get(&tab_id)
+            .debugger_linked_scope_snapshot(stack)
             .unwrap()
-            .child_stack
-            .frames[1]
             .scope_entries
             .first()
             .copied()

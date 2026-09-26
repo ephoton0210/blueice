@@ -2159,6 +2159,20 @@ round-trip tests, the full IPC 117-test suite, workspace Clippy, and
 formatting pass. These data-only types add no request, reply variant,
 capability, grant, or public protocol change; debugger remains v40.
 
+**C3.1.3.4.3 private linked entry-root scopes:** The page-executor trait now
+offers a default-denied complete linked-scope snapshot. The out-of-process
+owner accepts only the exact stored core-reminted two-frame identity and live
+document, reacquires the same child invocation at the fixed maximum scope
+budget, and rejects a changed frame, truncated private scope, or duplicate
+entry-root slot ordinal. If the previously stored private stack was already
+complete, every reacquired frame and scope entry must also match it, even
+when safe points alone are unchanged. Only the complete entry-root
+`(slot_ordinal, scope_depth)` list crosses to the core-facing result; child
+program and invocation IDs remain private. Focused mock drift/forgery and
+real Launcher-child tests, engine 309-test suite, workspace Clippy, and
+formatting pass. No public linked-scopes request, receipt, grant, or version
+change exists in this leaf.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

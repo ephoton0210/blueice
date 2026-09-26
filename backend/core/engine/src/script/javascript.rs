@@ -38,12 +38,13 @@ pub use debugger_support::{
     JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
     JavaScriptPageDebuggerExceptionLocation, JavaScriptPageDebuggerExceptionLocationTarget,
     JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
-    JavaScriptPageDebuggerLinkedExecutionState, JavaScriptPageDebuggerLinkedSpanAccess,
-    JavaScriptPageDebuggerLinkedStackFrame, JavaScriptPageDebuggerLinkedStackSnapshot,
-    JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
-    JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerScopeEntry,
-    JavaScriptPageDebuggerStackFrame, JavaScriptPageDebuggerStackSnapshot,
-    JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataContractDisplay,
+    JavaScriptPageDebuggerLinkedExecutionState, JavaScriptPageDebuggerLinkedScopeSnapshot,
+    JavaScriptPageDebuggerLinkedSpanAccess, JavaScriptPageDebuggerLinkedStackFrame,
+    JavaScriptPageDebuggerLinkedStackSnapshot, JavaScriptPageDebuggerNestedExecutionState,
+    JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
+    JavaScriptPageDebuggerScopeEntry, JavaScriptPageDebuggerStackFrame,
+    JavaScriptPageDebuggerStackSnapshot, JavaScriptPageDebuggerStaticMetadata,
+    JavaScriptPageDebuggerStaticMetadataContractDisplay,
     JavaScriptPageDebuggerStaticMetadataContractId,
     JavaScriptPageDebuggerStaticMetadataContractLocation,
     JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
@@ -598,6 +599,15 @@ pub trait PageJavaScriptDebuggerLocations {
         _top_frame: JavaScriptPageDebuggerFrame,
         _max_scope_entries: u32,
     ) -> Result<JavaScriptPageDebuggerLinkedStackSnapshot, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Private complete entry-root lexical slots under one exact linked
+    /// dependency/entry pause. It never grants public Scopes or Value access.
+    fn debugger_linked_scope_snapshot(
+        &mut self,
+        _expected_stack: JavaScriptPageDebuggerLinkedStackSnapshot,
+    ) -> Result<JavaScriptPageDebuggerLinkedScopeSnapshot, JavaScriptPageDebuggerError> {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 

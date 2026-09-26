@@ -389,6 +389,15 @@ pub struct JavaScriptPageDebuggerLinkedStackSnapshot {
     pub frames: [JavaScriptPageDebuggerLinkedStackFrame; 2],
 }
 
+/// Complete private core-facing entry-root lexical slots for an exact live
+/// linked pause. The dependency frame's captures and all child identities
+/// stay out of this snapshot; public receipt/grant work is separate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerLinkedScopeSnapshot {
+    pub stack: JavaScriptPageDebuggerLinkedStackSnapshot,
+    pub scope_entries: Vec<JavaScriptPageDebuggerScopeEntry>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JavaScriptPageDebuggerLinkedExecutionState {
     Pending,
