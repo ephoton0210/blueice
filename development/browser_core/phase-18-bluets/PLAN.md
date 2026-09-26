@@ -1440,6 +1440,55 @@ decides how a truly cross-program stack represents and authorizes per-frame
 sources, then implements and proves that contract on real sockets. C3.1.1.1's
 focused Launcher test passes for classic and module without a wire change.
 
+**C3.1.1.2.1 linked-module frame decision:** Do not relabel a dependency
+closure as an entry-program code unit. Today the VM snapshot carries one root
+generation and rejects a child with a different installed generation;
+page-runtime and public frame identities similarly use one program, and the
+public stack-coordinate target requires every source to share one metadata
+parent. A distinct linked-module family will preserve the v39 same-program
+route. Its arm target is an inventoried dependency safe point plus an explicit
+entry program in the same live realm; the child must prove the dependency is
+in the entry's closed authorized graph and that the target instruction belongs
+to that exact installed dependency generation. The VM records both entry and
+callee generations in the retained continuation and each stack frame, never
+inferring a callee from a repeated ordinal or a module URL. The initial
+bounded stack is the paused dependency child and its suspended entry caller.
+
+The new public linked-frame identity is core-minted and binds the core
+instance, document generation, entry program, callee program, code-unit
+ordinal, and invocation serial/handle. `GetExecutionState { entry }` will
+report a distinct linked-paused state; separate linked-stack and linked-resume
+requests accept that exact frame. A linked stack carries an ordered safe point
+with its *own* program for each frame, unlike `DebuggerStackSnapshot`. Its
+coordinate request echoes the complete expected stack and one source ID per
+frame. Each source ID must be under a separately inventoried metadata handle
+for that frame's program; the two handles need not match.
+
+The public operations are `ArmLinkedNestedSafePointBreakpoint` (entry and
+safe point), `GetLinkedStack` (frame), `GetLinkedStackCoordinates` (complete
+expected stack and ordered sources), and `ResumeLinkedNestedFrame` (frame),
+with distinct linked-frame and linked-stack result types; none are added to
+v39. Arm, stack, and resume require the existing live nested-frame execution
+capability; coordinate reads additionally require the independent owner/client
+`OpaqueSafePointSpan` grant and same-stream metadata and source receipts for
+**each** frame. Core rereads the complete paused stack, checks exact equality,
+then remints only compiler-bound original byte
+and UTF-16 spans from the corresponding child attachments. One bad frame
+returns no span vector. No source text, module URL, bytecode, or error value
+is added to the public reply.
+
+Malformed, cross-realm, cross-graph, or wrong-generation targets return
+`InvalidTarget`; missing owner/client span grant or a missing same-stream
+receipt returns `CapabilityUnavailable`; a moved or absent continuation
+returns `InvalidExecutionState`; an expired document returns `StaleRealm`.
+A wrong but receipted source for one frame returns `InvalidTarget`, with no
+partial coordinates. The linked family needs a complete private page-host
+v40 route and public debugger v40 route, each bumped only when its corresponding
+route is implemented; both remain v39 during the native-only step. The acceptance
+fixture is an authorized entry module importing a function from a separate
+BlueTS dependency and calling it from the entry body; tests must prove the
+two installed programs and two original source IDs remain distinct.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
