@@ -35,8 +35,8 @@ use blueice_bluets_bluejs::page_host_typings::{
 };
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
-    DirectModuleGraph, DirectPageModuleGraphAttachment, DirectSafePointBinding, DirectScript,
-    RetainedDirectDebugInfo,
+    DirectModuleGraph, DirectPageModuleGraphAttachment, DirectRootSymbolSlot,
+    DirectSafePointBinding, DirectScript, RetainedDirectDebugInfo,
 };
 use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
@@ -259,6 +259,15 @@ struct ChildDebuggerProgram {
     /// Snapshotted before another realm execution can replace the VM sidecar.
     /// The entire record remains private to this document and child program.
     exception_location: Option<ChildDebuggerExceptionLocation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChildRootSlotLookupError {
+    UnknownDocument,
+    StaleDocument,
+    InvalidProgram,
+    InvalidMetadata,
+    Unavailable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1836,6 +1845,42 @@ impl BlueJsChildHost {
         }
     }
 
+    /// Resolves only child-retained, exact-live static root-slot IDs behind a
+    /// previously minted metadata handle. This is an internal relation seed,
+    /// not a page-host request or a runtime value/type assertion.
+    fn live_bluets_root_symbol_slots(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> Result<&[DirectRootSymbolSlot], ChildRootSlotLookupError> {
+        if !program.is_well_formed() {
+            return Err(ChildRootSlotLookupError::InvalidProgram);
+        }
+        if !metadata.is_well_formed() {
+            return Err(ChildRootSlotLookupError::InvalidMetadata);
+        }
+        let document = self
+            .documents
+            .get(&tab_id)
+            .ok_or(ChildRootSlotLookupError::UnknownDocument)?;
+        if document.generation != document_generation {
+            return Err(ChildRootSlotLookupError::StaleDocument);
+        }
+        let record = document
+            .debugger_programs
+            .get(&program.program_handle)
+            .filter(|record| record.program_generation == program.program_generation)
+            .ok_or(ChildRootSlotLookupError::InvalidProgram)?;
+        if record.metadata != Some(metadata) {
+            return Err(ChildRootSlotLookupError::InvalidMetadata);
+        }
+        self.debug_registry
+            .root_symbol_slots(self.runtime.program_registry(), record.runtime_handle)
+            .map_err(|_| ChildRootSlotLookupError::Unavailable)
+    }
+
     /// Enumerates the child-private static-BlueTS association for one exact
     /// currently live program. The association is intentionally minted lazily
     /// on this authenticated inventory request: program discovery itself does
@@ -1871,7 +1916,7 @@ impl BlueJsChildHost {
         // count or compiler detail beyond this program's ineligibility.
         if self
             .debug_registry
-            .get(self.runtime.program_registry(), runtime_handle)
+            .root_symbol_slots(self.runtime.program_registry(), runtime_handle)
             .is_err()
         {
             let document = self
@@ -1960,6 +2005,20 @@ impl BlueJsChildHost {
             }
             record.runtime_handle
         };
+
+        if self
+            .live_bluets_root_symbol_slots(tab_id, document_generation, program, metadata)
+            .is_err()
+        {
+            self.documents
+                .get_mut(&tab_id)
+                .expect("the exact child document remains live after slot validation")
+                .debugger_programs
+                .get_mut(&program.program_handle)
+                .expect("the exact child program remains registered after slot validation")
+                .metadata = None;
+            return invalid_request();
+        }
 
         let summary = match self
             .debug_registry
@@ -10385,6 +10444,176 @@ mod tests {
     }
 
     #[test]
+    fn child_private_root_slots_require_exact_classic_program_and_metadata() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(
+                    1,
+                    vec![
+                        classic(0, "globalThis.other = true;"),
+                        blue_ts_classic(1, "const typedAnswer: number = 42;"),
+                    ],
+                ),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        let programs = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs,
+            reply => panic!("expected child programs, got {reply:?}"),
+        };
+        assert_eq!(programs.len(), 2);
+        let mut typed = None;
+        let mut other = None;
+        for program in programs {
+            let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }) {
+                PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata,
+                reply => panic!("expected metadata inventory, got {reply:?}"),
+            };
+            if let [metadata] = metadata.as_slice() {
+                typed = Some((program, *metadata));
+            } else {
+                assert!(metadata.is_empty());
+                other = Some(program);
+            }
+        }
+        let (program, metadata) = typed.unwrap();
+        let other = other.unwrap();
+        let [slot] = host
+            .live_bluets_root_symbol_slots(7, 1, program, metadata)
+            .unwrap()
+        else {
+            panic!("the typed root declaration has one verified slot");
+        };
+        assert_eq!(slot.code_unit.ordinal(), 0);
+        assert!(host
+            .live_bluets_root_symbol_slots(7, 1, other, metadata)
+            .is_err());
+        assert!(host
+            .live_bluets_root_symbol_slots(
+                7,
+                1,
+                program,
+                PageHostDebuggerMetadataHandle {
+                    metadata_handle: metadata.metadata_handle + 1,
+                    ..metadata
+                },
+            )
+            .is_err());
+        assert!(host
+            .live_bluets_root_symbol_slots(
+                7,
+                1,
+                PageHostDebuggerProgram {
+                    program_generation: program.program_generation + 1,
+                    ..program
+                },
+                metadata,
+            )
+            .is_err());
+
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(2, vec![blue_ts_classic(0, "const next: number = 7;")]),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(host
+            .live_bluets_root_symbol_slots(7, 1, program, metadata)
+            .is_err());
+    }
+
+    #[test]
+    fn child_private_linked_root_slots_refuse_swapped_metadata_and_cutover() {
+        let entry = "blueice://page/entry.ts";
+        let dependency = "blueice://page/dependency.ts";
+        let mut module = PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Module,
+            graph: graph(
+                entry,
+                vec![
+                    PageHostSource::new(
+                        entry,
+                        "import { value } from './dependency.ts'; export const answer: number = value + 1;",
+                    ),
+                    PageHostSource::new(dependency, "export const value: number = 41;"),
+                ],
+            ),
+        };
+        module.graph.resolutions.push(PageHostStaticResolution {
+            from_module: entry.to_string(),
+            specifier: "./dependency.ts".to_string(),
+            canonical_target: dependency.to_string(),
+        });
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(1, vec![module]),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        let programs = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs,
+            reply => panic!("expected linked child programs, got {reply:?}"),
+        };
+        assert_eq!(programs.len(), 2);
+        let mut pairs = Vec::new();
+        for program in programs {
+            let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }) {
+                PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata,
+                reply => panic!("expected linked metadata inventory, got {reply:?}"),
+            };
+            let [metadata] = metadata.as_slice() else {
+                panic!("each linked module needs its exact metadata handle");
+            };
+            pairs.push((program, *metadata));
+        }
+        let first_slot = host
+            .live_bluets_root_symbol_slots(7, 1, pairs[0].0, pairs[0].1)
+            .unwrap()[0];
+        let second_slot = host
+            .live_bluets_root_symbol_slots(7, 1, pairs[1].0, pairs[1].1)
+            .unwrap()[0];
+        assert_ne!(first_slot.program, second_slot.program);
+        assert!(host
+            .live_bluets_root_symbol_slots(7, 1, pairs[0].0, pairs[1].1)
+            .is_err());
+        assert!(host
+            .live_bluets_root_symbol_slots(7, 1, pairs[1].0, pairs[0].1)
+            .is_err());
+
+        assert!(matches!(
+            host.handle_request(PageHostRequest::CloseRealm {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::RealmClosed { .. }
+        ));
+        for (program, metadata) in pairs {
+            assert!(host
+                .live_bluets_root_symbol_slots(7, 1, program, metadata)
+                .is_err());
+        }
+        assert!(host.debug_registry.is_empty());
+    }
+
+    #[test]
     fn child_bluets_metadata_inventory_mints_only_opaque_live_attachment_handles() {
         let mut host = BlueJsChildHost::default();
         assert!(matches!(
@@ -11246,7 +11475,13 @@ mod tests {
                 .get(host.runtime.program_registry(), handle)
                 .unwrap();
             let mut entries = retained.safe_point_map().entries.iter().collect::<Vec<_>>();
-            entries.sort_by_key(|entry| entry.start_byte);
+            entries.sort_by_key(|entry| (entry.start_byte, entry.bytecode_offset));
+            let first = entries[0];
+            let second = entries
+                .iter()
+                .copied()
+                .find(|entry| entry.source == first.source && entry.start_byte >= first.end_byte)
+                .expect("the next distinct declaration has a bound entry");
             (
                 retained
                     .static_info()
@@ -11256,8 +11491,8 @@ mod tests {
                     .expect("the lowered source must have a compiler source ID")
                     .id
                     .0,
-                entries[0].clone(),
-                entries[1].clone(),
+                first.clone(),
+                second.clone(),
             )
         };
         let request = |source_byte| PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
@@ -12416,12 +12651,20 @@ mod tests {
                 .debug_registry
                 .get(host.runtime.program_registry(), handle)
                 .unwrap();
-            let entry = retained
+            let first_start = retained
                 .safe_point_map()
                 .entries
                 .iter()
                 .filter(|entry| entry.code_unit.ordinal() == 0)
-                .nth(1)
+                .map(|entry| entry.start_byte)
+                .min()
+                .expect("the first statement has a root entry");
+            let entry = retained
+                .safe_point_map()
+                .entries
+                .iter()
+                .filter(|entry| entry.code_unit.ordinal() == 0 && entry.start_byte > first_start)
+                .min_by_key(|entry| (entry.start_byte, entry.bytecode_offset))
                 .expect("the long second statement must have a bound root entry");
             let source_id = retained
                 .static_info()

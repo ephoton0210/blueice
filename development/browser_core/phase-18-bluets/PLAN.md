@@ -1914,6 +1914,23 @@ new generation of identical source is installed. No child debugger request or
 public wire is added in this leaf; supervised-child call sites and forged
 handle/source/type denials remain in the next leaf.
 
+**C3.1.3.2.4.2 supervised-child scope provenance:** `BlueJsChildHost` now has
+a child-private lookup that requires the exact live document generation,
+child-minted program tuple, and metadata handle before consulting the direct
+debug registry's checked root-slot map. Existing metadata inventory and
+summary paths use the live-map check without adding a page-host or public
+debugger request. Classic-script tests reject a JavaScript sibling, forged
+program generation and metadata handle, and the old document after cutover;
+two-file linked-module tests reject swapped metadata and both old handles
+after realm close. This lookup accepts no source or type ID from a caller, so
+there is nothing to guess or partially disclose. A later private static-scope
+request (C3.1.3.3) must separately validate any such selector before it can
+return an opaque static relation; no runtime value is produced here.
+The full Launcher library suite (112 tests) passes. Two older source-debugger
+tests were also corrected to select the next *distinct source declaration*
+from the per-instruction safe-point map; their former `entries[1]` assumption
+mistook another instruction in the first declaration for the second statement.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
