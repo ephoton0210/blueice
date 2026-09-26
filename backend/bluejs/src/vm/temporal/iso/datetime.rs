@@ -234,3 +234,14 @@ pub(crate) fn parse_plain_time(source: &str) -> Option<Time> {
     }
     parsed.time
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_month_day_only, parse_time_only};
+
+    #[test]
+    fn invalid_annotations_and_offsets_fail_in_their_respective_date_forms() {
+        assert!(parse_month_day_only("--02-29[!foo=bar]").is_none());
+        assert!(parse_time_only("12:34+25:00").is_none());
+    }
+}
