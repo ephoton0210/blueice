@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.1.2.2.3.2.** Remint opaque linked frames and per-frame
-safe points in core, then stage separate metadata/source receipt and span-grant
-checks without changing the public debugger wire.
+**Current leaf: C3.1.1.2.2.3.3.** Add the complete public linked request/reply
+family, enforce the existing span grant and both independent receipts on each
+coordinate read, and bump the public debugger protocol only with the route.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -385,7 +385,7 @@ channel with explicit owner/client grants.
           - [x] **C3.1.1.2.2.2.3** Add complete private linked arm/stack/resume and per-frame-source requests/replies, child denial tests, and bump the private protocol only when all routes are complete; then check off C3.1.1.2.2.2. Private v40 exposes a distinct linked state/frame/stack family, exact arm prevalidation, and all-or-nothing per-frame span mapping; 111 IPC tests and focused child tests cover round trips and denials while public v39 remains unchanged.
         - [ ] **C3.1.1.2.2.3** Remint linked frames and per-program safe points in core, add the complete public linked-module request/reply family behind the existing span grant and independent per-frame receipts, bump public debugger protocol only with the route, and prove IPC/core denial and exact-span behavior; then check off C3.1.1.2.2.
           - [x] **C3.1.1.2.2.3.1** Add a strict core-side child adapter for the complete private linked arm/state/stack/span/resume family, retaining both child program identities and rejecting malformed or moved private replies; keep public v39 unchanged. Core transport exposes each private request and a strict adapter checks full echoes, generation-bound frame shape, complete stack, both source IDs and spans, and exact resume; fake-child tests reject forged/moved/partial replies.
-          - [ ] **C3.1.1.2.2.3.2** Remint opaque linked frames and per-frame safe points in core with exact live document/program identity, and stage independent metadata/source receipt plus span-grant checks without public wire changes.
+          - [x] **C3.1.1.2.2.3.2** Remint opaque linked frames and per-frame safe points in core with exact live document/program identity, and stage independent metadata/source receipt plus span-grant checks without public wire changes. Core retains a complete child-first stack, remints two distinct process-bound frame handles, maps each safe point to its own public program, and denies unauthorized/swapped/missing metadata or source access before the child; document replacement and program rediscovery invalidate the association.
           - [ ] **C3.1.1.2.2.3.3** Add the complete public linked request/reply family, enforce the existing span grant and both independent receipts on every coordinate read, bump public debugger protocol only with the route, and prove real IPC/core no-partial denials and exact spans; then check off C3.1.1.2.2.3 and C3.1.1.2.2.
       - [ ] **C3.1.1.2.3** Prove entry/dependency original spans, distinct source IDs, swapped/unreceipted source refusal, and stale graph expiry on real Launcher-supervised sockets; then check off C3.1.1.2 and C3.1.1.
   - [ ] **C3.1.2** Map breakpoints and symbols for module execution control.

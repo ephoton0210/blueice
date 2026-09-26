@@ -1580,6 +1580,20 @@ source span, and wrong resume echo are all rejected. The existing coordinate
 validator remains authoritative for byte/UTF-16 bounds; no public source
 identity or capability is created in this leaf.
 
+**C3.1.1.2.2.3.2 core linked-frame reminting:** Core now captures the complete
+private paused stack before minting two distinct, process-bound frame handles.
+Each handle carries its own reminted program and exact safe point; the private
+entry/dependency IDs, invocation serial, and source attachments stay in the
+executor. Re-reading the same pause preserves both handles, while a moved
+invocation remints them and stale document/program mappings discard them.
+Malformed or moved child state/stack replies clear the prior association.
+The staged two-span read requires a separate grant plus both metadata and
+source receipts, checks both ordered public safe points and their independent
+metadata attachments before child access, and emits no partial spans. The
+focused fake-child test proves stable/moved identities, distinct provenance,
+grant/receipt/swapped-attachment denials without child calls, and complete
+two-span success. The public debugger wire remains v39 until the final route.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
