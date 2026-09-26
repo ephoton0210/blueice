@@ -124,3 +124,9 @@ module stepping, and linked-module cases now own 533-, 940-, and 417-line
 children. The fixture parent is 117 lines and the largest file across the
 entire host test family is 940 lines. The 7,709-line production host remains
 for its separate prepare/debugger modularization leaf.
+
+C3.1.3.4.7.5.4.3.1 moved the public child-client transport contract into a
+765-line internal module and kept the original public re-export. The
+production child executor facade is 6,259 lines; socket transport, private
+adapters, core debugger routing, and authorization/reply helpers are distinct
+follow-up seams.

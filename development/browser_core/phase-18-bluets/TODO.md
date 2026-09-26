@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.7.5.4.3.** Extract BlueTS-owned child-executor
-adapter logic from `javascript_child.rs` into internal modules, preserving
-exact debugger grants and the public child route.
+**Current leaf: C3.1.3.4.7.5.4.3.2.** Extract the child socket connection
+transport and its `PageHostClient` implementation into a bounded internal
+module, preserving the public connection type and protocol behavior.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -474,7 +474,12 @@ channel with explicit owner/client grants.
               - [x] **C3.1.3.4.7.5.4.2.2** Split host DOM/transport, nested-frame scheduler, exception, static-scope, and value tests into bounded modules with shared fixture helpers. `dom_transport.rs` (704 lines), `nested_scheduler.rs` (659), `exception_sites.rs` (261), and `static_scope_values.rs` (636) contain the original assertions. `graph`, `document`, `classic`, and value-target fixture helpers remain central in a 4,158-line parent awaiting later splits. All 116 Launcher library tests pass with the reused target.
               - [x] **C3.1.3.4.7.5.4.2.3** Split host resource, debugger configuration, and BlueTS metadata/contract/span tests into bounded modules. The five new modules are `resource_accounting.rs` (184 lines), `debugger_control.rs` (516), `metadata_roots.rs` (520), `metadata_inventory.rs` (690), and `source_spans.rs` (289). The remaining shared-fixture/admission/step parent is 1,989 lines; all 116 Launcher library tests pass with the reused target.
               - [x] **C3.1.3.4.7.5.4.2.4** Split host snapshot/admission, module execution, stepping, and lifecycle tests; verify every test-family file is at most 1,300 lines. `admission.rs` (533 lines), `module_stepping.rs` (940), and `linked_module.rs` (417) contain the remaining tests; the shared fixture parent is 117 lines. The whole test family is below 1,300 lines and all 116 Launcher library tests pass with the reused target.
-            - [ ] **C3.1.3.4.7.5.4.3** Extract BlueTS-owned child-executor adapter logic from `javascript_child.rs` into internal modules.
+            - [ ] **C3.1.3.4.7.5.4.3** Extract BlueTS-owned child-executor adapter logic from `javascript_child.rs` into internal modules. Preserve the public child-client/connection API, exact debugger grants, and child wire replies; subdivide the large core debugger adapter by concern before closing the parent.
+              - [x] **C3.1.3.4.7.5.4.3.1** Move the public `PageHostClient` transport contract unchanged to an internal `client.rs` and re-export it from the original module. The new file is 765 lines and `javascript_child.rs` fell from 7,016 to 6,259 lines. All 309 engine library tests pass with the reused target.
+              - [ ] **C3.1.3.4.7.5.4.3.2** Extract `PageHostConnection` socket transport and its `PageHostClient` implementation into a bounded module without altering deadlines or reply validation.
+              - [ ] **C3.1.3.4.7.5.4.3.3** Extract linked/static-scope private child adapters into a bounded module, preserving exact echo checks.
+              - [ ] **C3.1.3.4.7.5.4.3.4** Split core-side debugger metadata, linked/nested frame, and execution-control adapter responsibilities into reviewable modules, preserving grants and reminting.
+              - [ ] **C3.1.3.4.7.5.4.3.5** Extract authorization/report and child reply-validation helpers; recount the production executor and refine any remaining oversized owner before closing this leaf.
             - [ ] **C3.1.3.4.7.5.4.4** Extract BlueTS prepare/execute and debugger metadata logic from `bluejs_host.rs` into internal modules.
             - [ ] **C3.1.3.4.7.5.4.5** Group static relation and linked-scope debugger dispatch in `engine/src/debugger.rs` without changing authority checks.
             - [ ] **C3.1.3.4.7.5.4.6** Split BlueTS debugger and child protocol shape/validator owners in IPC, preserving exact serialization.

@@ -2467,6 +2467,14 @@ is 117 lines; all host test-family files are below 1,300 lines (maximum 940).
 All 116 Launcher library tests pass with one reused target. Production host
 prepare/debugger extraction remains a separate leaf.
 
+**C3.1.3.4.7.5.4.3.1 child-client contract boundary:** The complete public
+`PageHostClient` transport trait moved unchanged to a 765-line internal
+module and is re-exported through its original path. This leaves the
+production executor facade at 6,259 lines, with separate socket, private
+linked/static adapter, core debugger, and helper seams for later leaves.
+All 309 engine library tests pass with the reused target; the child protocol
+and API are unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
