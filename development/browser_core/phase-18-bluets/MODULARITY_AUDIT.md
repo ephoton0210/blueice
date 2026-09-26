@@ -70,3 +70,7 @@ closing C3.1.3.4.7.5; record any justified deferral explicitly in PLAN.md.
 Progress: C3.1.3.4.7.5.2.1 moved the compiler's inline tests into a
 600-line child module; `compiler.rs` is now 766 lines. Snapshot counts above
 remain the original audit baseline for comparison.
+
+C3.1.3.4.7.5.2.2 split the checker tests into 778-line expression/inference
+and 697-line project-contract modules. The original test functions remain;
+only their Rust module paths for the moved cases changed.

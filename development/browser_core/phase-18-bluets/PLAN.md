@@ -2371,6 +2371,14 @@ BlueTS library tests and the crate's full integration suite pass with their
 original test names, and workspace Clippy, formatting, and diff checks pass.
 No compiler API, cache behavior, or output contract changed.
 
+**C3.1.3.4.7.5.2.2 checker test owners:** The checker tests' structural,
+project, generic, and overload cases moved to `tests/project_contracts.rs`
+with their original function names and an MPL header. The original 1,469-line
+module is now 778 lines and the new child module is 697 lines. The complete
+BlueTS crate suite (including all 156 library tests), workspace Clippy,
+formatting, and diff checks pass. No checker implementation or public
+diagnostic contract changed.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
