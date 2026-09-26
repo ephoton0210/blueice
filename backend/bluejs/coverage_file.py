@@ -5,8 +5,8 @@
 """Run the complete BlueJS Rust coverage suite and inspect one source file.
 
 The test suite is deliberately never filtered by source path: any integration
-test may exercise the requested file. Each invocation starts with fresh LLVM
-coverage artifacts, so the result cannot come from a previous checkout.
+test may exercise the requested file. Each invocation clears the previous LLVM
+execution profiles while reusing Cargo's instrumented build artifacts.
 """
 
 from __future__ import annotations
@@ -286,8 +286,9 @@ def report_section(files: dict[Path, dict], totals: dict, update_option: str) ->
         "It measures the Rust test suite independently of the Test262 "
         "inventory and historical verification above. "
         f"`python3 backend/bluejs/coverage_file.py {update_option}` "
-        "cleaned prior LLVM artifacts, ran the complete default BlueJS Rust "
-        "test suite, and exported fresh per-file JSON and source-line text. "
+        "cleared prior LLVM execution profiles, reused instrumented Cargo "
+        "build artifacts, ran the complete default BlueJS Rust test suite, "
+        "and exported fresh per-file JSON and source-line text. "
         "The opt-in Node "
         "oracle and external full Test262 runner were not included. "
         "Workspace coverage was not remeasured at this revision."
@@ -378,7 +379,9 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
         output = Path(tmp) / "coverage.json"
         text_output = Path(tmp) / "coverage.txt"
         subprocess.run(
-            ["cargo", "llvm-cov", "clean", "--workspace"], cwd=REPO_ROOT, check=True
+            ["cargo", "llvm-cov", "clean", "--profraw-only"],
+            cwd=REPO_ROOT,
+            check=True,
         )
         subprocess.run(
             [
@@ -386,6 +389,7 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
                 "llvm-cov",
                 "-p",
                 "blueice-bluejs",
+                "--no-clean",
                 "--json",
                 "--output-path",
                 str(output),

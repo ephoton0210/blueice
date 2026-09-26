@@ -210,6 +210,17 @@ mod tests {
     }
 
     #[test]
+    fn four_digit_escape_rejects_a_non_scalar_input_point() {
+        assert_eq!(
+            hex4(
+                &[u32::from(b'0'), u32::from(b'0'), u32::from(b'0'), 0x11_0000],
+                0
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn braced_escapes_lose_their_backslash_without_the_u_flag() {
         assert_eq!(adjust(r"\u{41}", ""), r"u{41}");
         assert_eq!(adjust(r"[\u{41}]x\\u{41}", "i"), r"[u{41}]x\\u{41}");

@@ -189,3 +189,28 @@ pub(in super::super) fn temporal_interpret_offset(
     zone.epoch_nanoseconds_for(date, time, disambiguation)
         .map_err(temporal_resolution_error)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::round_offset_nanoseconds_to_minutes;
+
+    #[test]
+    fn minute_offset_rounding_expands_positive_and_negative_halfway_values() {
+        const SECOND: i64 = 1_000_000_000;
+        const MINUTE: i64 = 60 * SECOND;
+
+        assert_eq!(round_offset_nanoseconds_to_minutes(29 * SECOND), 0);
+        assert_eq!(round_offset_nanoseconds_to_minutes(30 * SECOND), MINUTE);
+        assert_eq!(round_offset_nanoseconds_to_minutes(90 * SECOND), 2 * MINUTE);
+        assert_eq!(round_offset_nanoseconds_to_minutes(-29 * SECOND), 0);
+        assert_eq!(round_offset_nanoseconds_to_minutes(-30 * SECOND), -MINUTE);
+        assert_eq!(
+            round_offset_nanoseconds_to_minutes(-90 * SECOND),
+            -2 * MINUTE
+        );
+        assert_eq!(
+            round_offset_nanoseconds_to_minutes(-(44 * MINUTE + 30 * SECOND)),
+            -45 * MINUTE
+        );
+    }
+}

@@ -29,6 +29,8 @@ pub(super) struct Test262AgentControl {
     broadcasts: Mutex<VecDeque<Broadcast>>,
     broadcast_ready: Condvar,
     leaving: AtomicBool,
+    #[cfg(test)]
+    wait_started_for_test: AtomicBool,
 }
 
 /// A host-owned completion queue lets an operating-system waiter thread wake
@@ -119,6 +121,8 @@ impl Test262AgentControl {
             broadcasts: Mutex::new(VecDeque::new()),
             broadcast_ready: Condvar::new(),
             leaving: AtomicBool::new(false),
+            #[cfg(test)]
+            wait_started_for_test: AtomicBool::new(false),
         }
     }
 }
@@ -205,6 +209,8 @@ impl Test262AgentHost {
             {
                 return None;
             }
+            #[cfg(test)]
+            control.wait_started_for_test.store(true, Ordering::Release);
             broadcasts = control
                 .broadcast_ready
                 .wait(broadcasts)
@@ -601,5 +607,31 @@ impl Vm {
             return Ok(());
         };
         host.shutdown()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shutdown_wakes_an_agent_waiting_for_its_first_broadcast() {
+        let host = Arc::new(Test262AgentHost::new());
+        let control = host.register();
+        let waiting_host = Arc::clone(&host);
+        let waiting_control = Arc::clone(&control);
+        let waiter =
+            thread::spawn(move || waiting_host.receive_broadcast(&waiting_control).is_none());
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !control.wait_started_for_test.load(Ordering::Acquire) {
+            assert!(Instant::now() < deadline, "agent did not start waiting");
+            thread::yield_now();
+        }
+        // `Condvar::wait` releases this mutex atomically with entering the
+        // wait. Acquiring it here ensures shutdown cannot notify too early.
+        drop(control.broadcasts.lock().unwrap());
+        host.shutdown().unwrap();
+        assert!(waiter.join().unwrap());
     }
 }
