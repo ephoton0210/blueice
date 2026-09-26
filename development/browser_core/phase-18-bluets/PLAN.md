@@ -1876,6 +1876,21 @@ comparison, not names or runtime values. A regression deliberately installs
 same-shaped code under a forged matching source identity and proves attachment
 refuses before any BlueTS symbol-to-slot join is built.
 
+**C3.1.3.2.3.2 checked root join:** Each direct attachment now builds a
+static-only root-slot inventory from the exact installed bytecode's compiler
+slot record, the corresponding structured root statement, the BlueTS lowering
+span/location, and the compiler's symbol/source/type IDs. A candidate must be
+one single-identifier variable or named function declaration of the matching
+name/kind, with exactly one symbol at that span, one symbol ID, one type ID,
+the matching compiler-options/language/source set, and one owner of the
+lexical slot. Erased type-only declarations, local/parameter/captured slots,
+duplicate `var` slot owners, and absent or inconsistent evidence produce no
+entry. Each entry already carries its installed program and root code-unit
+identity but does not assert any runtime value or expose a public debugger
+request. Classic and module tests exercise valid declarations plus malformed
+name, kind, span/location, source, type, fingerprint, and duplicate evidence;
+the next leaf proves cross-generation and linked-program isolation explicitly.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -15,8 +15,9 @@ use blueice_bluejs as bluejs;
 use blueice_bluets::{
     compile, lex, source_locations_for_spans, BlueTsDebugInfo, CompilerOptions,
     DebugSourceLocation, Declaration, Diagnostic, FunctionBodyItem, FunctionDeclaration,
-    FunctionElseBranch, FunctionIfStatement, Module, ModuleLoader, Project, SourceSpan, Token,
-    TokenKind, VariableDeclaration, VariableKind, LANGUAGE_VERSION,
+    FunctionElseBranch, FunctionIfStatement, Module, ModuleLoader, Project, SourceId, SourceSpan,
+    SymbolId, SymbolKind, Token, TokenKind, TypeId, VariableDeclaration, VariableKind,
+    LANGUAGE_VERSION,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -118,9 +119,30 @@ pub struct DirectProgramAttachment {
     pub provenance: Vec<AttachedLoweringProvenance>,
     /// Deterministic, validated safe-point entries for bound lowering spans.
     pub safe_point_map: BlueTsSafePointMapV1,
+    /// Checked, generation-bound static symbol/type IDs for unambiguous root
+    /// declaration slots. This is not a runtime value or type assertion.
+    root_symbol_slots: Vec<DirectRootSymbolSlot>,
+}
+
+/// One exact root-code-unit lexical slot joined to compiler-owned BlueTS
+/// static evidence. It carries no runtime value or static type display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DirectRootSymbolSlot {
+    pub program: bluejs::BlueJsProgramHandle,
+    pub code_unit: bluejs::BlueJsCodeUnitId,
+    pub slot_ordinal: u32,
+    pub source_id: SourceId,
+    pub symbol_id: SymbolId,
+    pub type_id: TypeId,
 }
 
 impl DirectProgramAttachment {
+    /// Only structurally verified, unambiguous root declaration slots for
+    /// this installed generation; no child capture/local or runtime value.
+    pub fn root_symbol_slots(&self) -> &[DirectRootSymbolSlot] {
+        &self.root_symbol_slots
+    }
+
     /// Resolves a TypeScript UTF-8 byte position in this exact program
     /// generation. A verified nested instruction takes precedence over an
     /// overlapping root declaration; otherwise the nearest following span
@@ -350,6 +372,7 @@ impl DirectScript {
             &self.program,
             &self.provenance,
             &self.compiler_options_fingerprint,
+            &self.debug_info,
         )
     }
 
@@ -366,9 +389,13 @@ impl DirectScript {
             registry,
             handle,
             &self.sources,
-            Some(&self.bytecode),
+            DirectArtifactProgram {
+                program: &self.program,
+                expected_bytecode: Some(&self.bytecode),
+            },
             &self.provenance,
             &self.compiler_options_fingerprint,
+            &self.debug_info,
         )
     }
 
@@ -419,6 +446,7 @@ impl DirectModule {
             &self.program,
             &self.provenance,
             &self.compiler_options_fingerprint,
+            &self.debug_info,
         )
     }
 
@@ -431,9 +459,13 @@ impl DirectModule {
             registry,
             handle,
             &self.sources,
-            Some(&self.bytecode),
+            DirectArtifactProgram {
+                program: &self.program,
+                expected_bytecode: Some(&self.bytecode),
+            },
             &self.provenance,
             &self.compiler_options_fingerprint,
+            &self.debug_info,
         )
     }
 
@@ -764,12 +796,18 @@ fn source_identity(sources: &[BridgeSource]) -> Result<bluejs::BlueJsSourceIdent
         .map_err(BridgeError::BlueJsDebug)
 }
 
+struct DirectArtifactProgram<'a> {
+    program: &'a bluejs::BlueJsProgramV1,
+    expected_bytecode: Option<&'a bluejs::Bytecode>,
+}
+
 fn attach_direct_program(
     registry: &mut bluejs::BlueJsProgramRegistry,
     sources: &[BridgeSource],
     program: &bluejs::BlueJsProgramV1,
     provenance: &[LoweringProvenance],
     compiler_options_fingerprint: &str,
+    static_info: &BlueTsDebugInfo,
 ) -> Result<DirectProgramAttachment, BridgeError> {
     let source = source_identity(sources)?;
     let handle = registry
@@ -779,9 +817,13 @@ fn attach_direct_program(
         registry,
         handle,
         sources,
-        None,
+        DirectArtifactProgram {
+            program,
+            expected_bytecode: None,
+        },
         provenance,
         compiler_options_fingerprint,
+        static_info,
     ) {
         Ok(attachment) => Ok(attachment),
         Err(error) => {
@@ -795,9 +837,10 @@ fn attach_existing_direct_program(
     registry: &bluejs::BlueJsProgramRegistry,
     handle: bluejs::BlueJsProgramHandle,
     sources: &[BridgeSource],
-    expected_bytecode: Option<&bluejs::Bytecode>,
+    artifact: DirectArtifactProgram<'_>,
     provenance: &[LoweringProvenance],
     compiler_options_fingerprint: &str,
+    static_info: &BlueTsDebugInfo,
 ) -> Result<DirectProgramAttachment, BridgeError> {
     let source = source_identity(sources)?;
     let compiled = registry.get(handle).map_err(BridgeError::BlueJsDebug)?;
@@ -806,7 +849,10 @@ fn attach_existing_direct_program(
             "the live program source identity does not match this direct artifact".to_string(),
         ));
     }
-    if expected_bytecode.is_some_and(|expected| !bytecode_matches(expected, compiled.bytecode())) {
+    if artifact
+        .expected_bytecode
+        .is_some_and(|expected| !bytecode_matches(expected, compiled.bytecode()))
+    {
         return Err(BridgeError::ProvenanceAttachment(
             "the live program bytecode does not match this direct artifact".to_string(),
         ));
@@ -851,10 +897,20 @@ fn attach_existing_direct_program(
         &attached_provenance,
         compiled,
     )?;
+    let root_symbol_slots = build_root_symbol_slots(
+        handle,
+        compiled,
+        artifact.program,
+        sources,
+        &attached_provenance,
+        compiler_options_fingerprint,
+        static_info,
+    );
     Ok(DirectProgramAttachment {
         handle,
         provenance: attached_provenance,
         safe_point_map,
+        root_symbol_slots,
     })
 }
 
@@ -871,6 +927,131 @@ fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> b
             .zip(actual.child_code_units())
             .all(|(expected, actual)| bytecode_matches(expected, actual))
         && expected.child_code_units().count() == actual.child_code_units().count()
+}
+
+fn build_root_symbol_slots(
+    handle: bluejs::BlueJsProgramHandle,
+    compiled: &bluejs::BlueJsCompiledProgram,
+    program: &bluejs::BlueJsProgramV1,
+    sources: &[BridgeSource],
+    provenance: &[AttachedLoweringProvenance],
+    compiler_options_fingerprint: &str,
+    static_info: &BlueTsDebugInfo,
+) -> Vec<DirectRootSymbolSlot> {
+    let body = match program {
+        bluejs::BlueJsProgramV1::Script(program) => &program.body,
+        bluejs::BlueJsProgramV1::Module(module) => &module.body,
+    };
+    let slots = compiled.bytecode().root_declaration_binding_slots();
+    if body.len() != provenance.len()
+        || body.len() != slots.len()
+        || static_info.compiler_options_hash != compiler_options_fingerprint
+        || static_info.language_version != LANGUAGE_VERSION
+        || !debug_attachment::source_sets_match(&static_info.sources, sources)
+    {
+        return Vec::new();
+    }
+    let Some(code_unit) = compiled.code_units().first().map(|unit| unit.id()) else {
+        return Vec::new();
+    };
+    let mut slot_counts = BTreeMap::<u32, usize>::new();
+    for slot in slots.iter().flatten() {
+        *slot_counts.entry(*slot).or_default() += 1;
+    }
+    let mut symbols_by_span = BTreeMap::<(&str, usize, usize), Vec<_>>::new();
+    let mut symbol_id_counts = BTreeMap::<SymbolId, usize>::new();
+    for symbol in &static_info.symbols {
+        symbols_by_span
+            .entry((
+                symbol.span.module.as_str(),
+                symbol.span.start,
+                symbol.span.end,
+            ))
+            .or_default()
+            .push(symbol);
+        *symbol_id_counts.entry(symbol.id).or_default() += 1;
+    }
+    let mut source_records = BTreeMap::<SourceId, Vec<_>>::new();
+    for source in &static_info.sources {
+        source_records.entry(source.id).or_default().push(source);
+    }
+    let mut type_counts = BTreeMap::<TypeId, usize>::new();
+    for static_type in &static_info.types {
+        *type_counts.entry(static_type.id).or_default() += 1;
+    }
+    let mut bridge_sources = BTreeMap::<&str, Vec<_>>::new();
+    for source in sources {
+        bridge_sources
+            .entry(source.module.as_str())
+            .or_default()
+            .push(source);
+    }
+
+    body.iter()
+        .zip(provenance)
+        .zip(slots)
+        .filter_map(|((statement, provenance), slot)| {
+            let slot = (*slot)?;
+            if slot_counts.get(&slot) != Some(&1)
+                || provenance.kind != LoweringProvenanceKind::LoweredSyntax
+            {
+                return None;
+            }
+            let (name, kind) = match statement {
+                bluejs::Stmt::VarDecl(_, declarations) => match declarations.as_slice() {
+                    [declaration] => match &declaration.pattern {
+                        bluejs::Pattern::Identifier(name) => (name.as_str(), SymbolKind::Variable),
+                        _ => return None,
+                    },
+                    _ => return None,
+                },
+                bluejs::Stmt::FunctionDecl(function) => {
+                    (function.name.as_deref()?, SymbolKind::Function)
+                }
+                _ => return None,
+            };
+            let [symbol] = symbols_by_span
+                .get(&(
+                    provenance.source.module.as_str(),
+                    provenance.source.start,
+                    provenance.source.end,
+                ))?
+                .as_slice()
+            else {
+                return None;
+            };
+            if symbol.name != name
+                || symbol.kind != kind
+                || symbol.location != provenance.location
+                || symbol_id_counts.get(&symbol.id) != Some(&1)
+            {
+                return None;
+            }
+            let type_id = symbol.static_type?;
+            if type_counts.get(&type_id) != Some(&1) {
+                return None;
+            }
+            let [source] = source_records.get(&symbol.source)?.as_slice() else {
+                return None;
+            };
+            let [bridge_source] = bridge_sources.get(source.module.as_str())?.as_slice() else {
+                return None;
+            };
+            if source.module != provenance.source.module
+                || source.content_hash != bridge_source.content_hash
+            {
+                return None;
+            }
+            Some(DirectRootSymbolSlot {
+                program: handle,
+                code_unit,
+                slot_ordinal: slot,
+                source_id: symbol.source,
+                symbol_id: symbol.id,
+                type_id,
+            })
+        })
+        .collect()
 }
 
 impl BlueTsSafePointMapV1 {

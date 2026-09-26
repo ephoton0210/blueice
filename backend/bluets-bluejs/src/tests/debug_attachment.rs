@@ -88,6 +88,127 @@ fn retains_only_static_metadata_for_one_live_direct_generation() {
 }
 
 #[test]
+fn direct_root_symbol_slots_join_only_checked_executable_declarations() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "type Shape = number; const answer: Shape = 42; function read(): number { return answer; } read();",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut programs = bluejs::BlueJsProgramRegistry::default();
+    let attachment = artifact.attach_in(&mut programs).unwrap();
+    let slots = attachment.root_symbol_slots();
+    assert_eq!(slots.len(), 2);
+    for slot in slots {
+        assert_eq!(slot.program, attachment.handle);
+        assert_eq!(slot.code_unit.generation(), attachment.handle.generation());
+        assert_eq!(slot.code_unit.ordinal(), 0);
+        let symbol = artifact
+            .debug_info
+            .symbols
+            .iter()
+            .find(|symbol| symbol.id == slot.symbol_id)
+            .unwrap();
+        assert_eq!(symbol.static_type, Some(slot.type_id));
+        assert_eq!(symbol.source, slot.source_id);
+    }
+    assert_eq!(slots[0].symbol_id, artifact.debug_info.symbols[1].id);
+    assert_eq!(slots[1].symbol_id, artifact.debug_info.symbols[2].id);
+    assert_eq!(
+        slots[0].slot_ordinal,
+        artifact.bytecode.root_declaration_binding_slots()[0].unwrap()
+    );
+    assert_eq!(
+        slots[1].slot_ordinal,
+        artifact.bytecode.root_declaration_binding_slots()[1].unwrap()
+    );
+}
+
+#[test]
+fn direct_root_symbol_slots_refuse_mismatched_or_ambiguous_static_evidence() {
+    let artifact = artifact();
+    for case in 0..13 {
+        let mut altered = artifact.clone();
+        match case {
+            0 => altered.debug_info.symbols[0].name.push_str("_wrong"),
+            1 => altered.debug_info.symbols[0].kind = blueice_bluets::SymbolKind::Import,
+            2 => altered.debug_info.symbols[0].span.start += 1,
+            3 => altered.debug_info.symbols[0].source = blueice_bluets::SourceId(u32::MAX),
+            4 => altered.debug_info.symbols[0].static_type = None,
+            5 => altered.debug_info.types.clear(),
+            6 => altered.debug_info.sources[0]
+                .content_hash
+                .push_str("-wrong"),
+            7 => altered
+                .debug_info
+                .symbols
+                .push(altered.debug_info.symbols[0].clone()),
+            8 => altered.debug_info.symbols[0].location.start.column_utf16 += 1,
+            9 => altered
+                .debug_info
+                .types
+                .push(altered.debug_info.types[0].clone()),
+            10 => altered
+                .debug_info
+                .sources
+                .push(altered.debug_info.sources[0].clone()),
+            11 => altered.debug_info.compiler_options_hash.push_str("-wrong"),
+            12 => altered.debug_info.language_version.push_str("-wrong"),
+            _ => unreachable!(),
+        }
+        let mut programs = bluejs::BlueJsProgramRegistry::default();
+        let attachment = altered.attach_in(&mut programs).unwrap();
+        assert!(attachment.root_symbol_slots().is_empty(), "case {case}");
+    }
+}
+
+#[test]
+fn direct_module_root_symbol_slots_preserve_module_declarations() {
+    let artifact = compile_direct_module(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "export const answer: number = 42; export function read(): number { return answer; }",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut programs = bluejs::BlueJsProgramRegistry::default();
+    let attachment = artifact.attach_in(&mut programs).unwrap();
+    let slots = attachment.root_symbol_slots();
+    assert_eq!(slots.len(), 2);
+    assert_eq!(slots[0].symbol_id, artifact.debug_info.symbols[0].id);
+    assert_eq!(slots[1].symbol_id, artifact.debug_info.symbols[1].id);
+    assert!(slots.iter().all(|slot| slot.program == attachment.handle));
+}
+
+#[test]
+fn duplicate_root_declarations_cannot_claim_one_static_slot() {
+    let mut artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, "var answer: number = 42;")]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Script(program) = &mut artifact.program else {
+        unreachable!();
+    };
+    program.body.push(program.body[0].clone());
+    artifact.provenance.push(artifact.provenance[0].clone());
+    artifact.bytecode = artifact.program.compile().unwrap();
+    assert_eq!(
+        artifact.bytecode.root_declaration_binding_slots()[0],
+        artifact.bytecode.root_declaration_binding_slots()[1]
+    );
+    let mut programs = bluejs::BlueJsProgramRegistry::default();
+    let attachment = artifact.attach_in(&mut programs).unwrap();
+    assert!(attachment.root_symbol_slots().is_empty());
+}
+
+#[test]
 fn mismatched_metadata_fails_closed_and_invalidates_the_new_generation() {
     let mut artifact = artifact();
     artifact.debug_info.compiler_options_hash.push_str("-wrong");

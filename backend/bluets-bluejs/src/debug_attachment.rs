@@ -319,7 +319,7 @@ fn enforce_limit(
     Ok(())
 }
 
-fn source_sets_match(
+pub(super) fn source_sets_match(
     debug_sources: &[blueice_bluets::DebugSource],
     bridge_sources: &[BridgeSource],
 ) -> bool {
