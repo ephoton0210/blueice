@@ -1614,6 +1614,17 @@ arms, stale documents, same-program targets, and a forged arm echo. The
 existing core pause collector now keeps stable frame handles when only the
 requested scope budget changes. Public v39 remains unchanged.
 
+**C3.1.1.2.2.3.3.2.2.1 core-facing linked state/stack:** The strict private
+adapter distinguishes exact entry-bound Pending and Completed replies from
+linked Paused and Resuming replies. Core publishes a linked pause only after
+the complete dependency/entry stack is re-read and both program generations
+are found in the current document's remint map; an unregistered frame clears
+the old association. A repeated pause or different scope budget preserves
+both core frame handles, whereas a moved invocation remints both and makes
+the old top frame unusable. Focused tests cover all four lifecycle states,
+complete stack reads, stale-frame refusal, and malformed/missing child data.
+No public request/reply variant exists yet; the debugger wire remains v39.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.1.2.2.3.3.2.2.** Expose linked paused/resuming state,
-complete stack, exact resume, and grant/receipt-bound two-source spans through
-the core-facing trait, without opening the public debugger route yet.
+**Current leaf: C3.1.1.2.2.3.3.2.2.2.** Expose exact linked resume and
+grant/receipt-bound two-source spans through the core-facing trait, then
+check off the core-facing linked route; keep the public wire unchanged.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -391,6 +391,8 @@ channel with explicit owner/client grants.
             - [ ] **C3.1.1.2.2.3.3.2** Connect complete core-facing linked arm/state/stack/resume and coordinate operations to the private child adapter, retaining per-frame public identities without public wire exposure.
               - [x] **C3.1.1.2.2.3.3.2.1** Add the core-facing linked model, distinct capability probe, and exact linked arm operation with both live public program identities; no public wire exposure. Core checks exact live entry/dependency mappings and a verified dependency safe point before the private graph-validation arm; fake-child tests cover valid, same-program, stale-document, and forged-acknowledgement paths.
               - [ ] **C3.1.1.2.2.3.3.2.2** Expose paused/resuming state, complete stack, exact resume, and grant/receipt-bound two-source spans through the core-facing trait; then check off C3.1.1.2.2.3.3.2.
+                - [x] **C3.1.1.2.2.3.3.2.2.1** Expose exact pending/paused/resuming/completed linked state and complete two-frame stack with stable core identities and private state/stack revalidation. Core accepts only exact private lifecycle replies, captures the complete child-first stack before publishing a pause, preserves handles across scope-budget changes, and rejects moved or unregistered frames without partial state.
+                - [ ] **C3.1.1.2.2.3.3.2.2.2** Expose exact linked resume and grant/receipt-bound two-source spans through the core-facing trait; then check off C3.1.1.2.2.3.3.2.2 and C3.1.1.2.2.3.3.2.
             - [ ] **C3.1.1.2.2.3.3.3** Add complete public linked requests/replies and dispatcher grant/receipt checks, real IPC/core no-partial tests and exact-span coverage, then bump public debugger protocol only with the complete route and check off the parent items.
       - [ ] **C3.1.1.2.3** Prove entry/dependency original spans, distinct source IDs, swapped/unreceipted source refusal, and stale graph expiry on real Launcher-supervised sockets; then check off C3.1.1.2 and C3.1.1.
   - [ ] **C3.1.2** Map breakpoints and symbols for module execution control.

@@ -583,6 +583,23 @@ pub trait PageJavaScriptDebuggerLocations {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 
+    fn debugger_linked_execution_state(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _entry: JavaScriptPageDebuggerProgram,
+    ) -> Result<JavaScriptPageDebuggerLinkedExecutionState, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    fn debugger_linked_stack_snapshot(
+        &mut self,
+        _top_frame: JavaScriptPageDebuggerFrame,
+        _max_scope_entries: u32,
+    ) -> Result<JavaScriptPageDebuggerLinkedStackSnapshot, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
     fn arm_debugger_nested_safe_point_breakpoint(
         &mut self,
         _tab_id: TabId,
