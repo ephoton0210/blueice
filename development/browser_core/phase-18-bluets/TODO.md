@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.2.3.3.** Compose a separately receipted module symbol
-declaration range with source resolution and the correct root or linked
-control route, preserving explicit unbound/type-only refusals.
+**Current leaf: C3.1.2.3.3.2.** Prove an executable entry-module symbol maps
+through its original declaration and same-source safe-point span to the exact
+root arm; type-only and unbound declarations must not arm.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -404,6 +404,9 @@ channel with explicit owner/client grants.
       - [x] **C3.1.2.3.1** Prove a separately receipted original module-entry root position atomically arms only that entry's pending root frame; unbound or dependency child positions must refuse without starting the declaration. A real Launcher public-socket module test verifies missing source receipt refusal, child-entry and source-end refusal while the module stays pending, exact root safe-point arm, pause, resume, and completion. The existing atomic source-arm route serves classic and module roots without a protocol bump.
       - [x] **C3.1.2.3.2** Connect a receipted dependency source position to the distinct live entry's linked arm, rechecking the exact generation, verified child safe point, and closed graph at arm time; add core/child denial coverage and change the public wire only if the existing two-step route cannot preserve the contract. The real Launcher socket first resolves the dependency's own receipted original position to its verified child safe point, then arms the distinct entry; same-program, wrong-generation, and moved-pause arms refuse, while the existing child graph validator remains the final authority. Immutable generation-bound source maps and arm-time safe-point/graph checks preserve this two-step composition without a v41 wire.
       - [ ] **C3.1.2.3.3** Compose a separately receipted module symbol declaration range with source resolution and the appropriate root/linked control route; preserve explicit unbound/type-only results and no cross-program aliasing, then check off C3.1.2.3.
+        - [x] **C3.1.2.3.3.1** Decide the separately granted symbol-kind and declaration-location evidence required before a symbol can be treated as a candidate executable breakpoint; specify type-only/import/unbound refusal without changing debugger v40. PLAN.md requires independent display, location, source-breakpoint, and exact safe-point-span grants/receipts; only `Variable` or `Function` with a same-source bound span inside the declaration may compose with root/linked arm. `Interface`, `TypeAlias`, `Import`, unbound, and later non-overlapping spans refuse. No new wire authority is added.
+        - [ ] **C3.1.2.3.3.2** Prove a receipted executable entry-module symbol resolves its original declaration position to the exact root safe point and arms that module only; type-only and unbound symbols must not arm.
+        - [ ] **C3.1.2.3.3.3** Prove a receipted dependency function symbol resolves to its own verified child entry and arms only the distinct linked entry, with swapped/cross-program and stale refusal; then check off C3.1.2.3.3 and C3.1.2.3.
     - [ ] **C3.1.2.4** Prove module entry/dependency source and symbol breakpoint behavior, typed denials, and stale expiry through real Launcher-supervised public sockets; then check off C3.1.2.
   - [ ] **C3.1.3** Show static types separately from runtime values in every reply.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or

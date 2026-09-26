@@ -1752,6 +1752,26 @@ within a retained program generation, the two-step source discovery plus
 arm-time generation/graph validation preserves the contract without adding an
 atomic source-specific public operation or bumping debugger v40.
 
+**C3.1.2.3.3.1 symbol-to-control decision:** A symbol location is only an
+original declaration range; source-position lookup may legitimately return a
+later instruction, so its result alone cannot prove that a symbol is
+executable. The supported composed workflow independently negotiates
+`OpaqueSymbolDisplay`, `OpaqueSymbolLocation`, `OpaqueSourceBreakpoint`, and
+`OpaqueSafePointSpan` with their inventory prerequisites. It accepts only a
+same-stream, same-program symbol/source pair whose compiler-owned kind is
+`Variable` or `Function`. `Interface`, `TypeAlias`, and `Import` are not local
+executable breakpoint candidates in this slice, even if a later statement is
+available; a missing display/location/span grant or receipt also refuses.
+For a value candidate, resolve the declaration start under the same source
+receipt, then require a separately authorized exact safe-point span under
+that source to lie within the declaration's half-open range before choosing
+root or linked control by its code-unit ordinal. Explicit unbound results and
+non-overlapping later spans do not arm. Both control arms still revalidate
+the generation-bound safe point and pending graph at the owning core/child
+request. This is a checked composition of existing v40 operations, not a new
+server-side symbol-arm authority or a wire version change; clients that do
+not negotiate every required surface cannot claim symbol breakpoint control.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
