@@ -78,3 +78,6 @@ only their Rust module paths for the moved cases changed.
 C3.1.3.4.7.5.2.3 moved type-relation helpers into a 301-line internal
 module; `checker.rs` is now 1,080 lines. The direct compiler/checker phase is
 complete without changing public compiler diagnostics or output.
+
+C3.1.3.4.7.5.3.1 moved direct AST lowering and provenance to a 342-line
+module; the bridge facade is now 1,378 lines pending attachment/map extraction.

@@ -2388,6 +2388,15 @@ diagnostic text are unchanged. `checker.rs` fell from 1,368 to 1,080 lines;
 the new module is 301 lines. The complete BlueTS crate suite, workspace
 Clippy, rustfmt, and diff checks pass.
 
+**C3.1.3.4.7.5.3.1 direct lowering owner:** Classic/module AST lowering,
+function and variable conversion, and original-source provenance generation
+now live in `bluets-bluejs/src/lowering.rs` (342 lines). The facade fell
+from 1,711 to 1,378 lines and retains its public bridge ABI/types. Existing
+expression tests depended on the facade's private `ExpressionLowerer` import;
+it remains available under `#[cfg(test)]` without exposing a production API.
+All 107 bridge crate tests, workspace Clippy, rustfmt, and diff checks pass.
+The remaining over-threshold attachment/map owner is C3.1.3.4.7.5.3.2.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
