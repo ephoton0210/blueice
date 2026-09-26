@@ -8384,7 +8384,7 @@ mod tests {
         assert_eq!(stack.frames[1].frame.program_handle, entry.program_handle);
         assert_eq!(
             executor
-                .debugger_linked_stack_snapshot(stack.frames[0].frame, 1)
+                .debugger_linked_stack_snapshot(stack.frames[0].frame, 256)
                 .unwrap(),
             stack
         );
@@ -8410,6 +8410,54 @@ mod tests {
             (metadata, source)
         });
         assert_ne!(targets[0].0.metadata_handle, targets[1].0.metadata_handle);
+        let entry_scope = executor
+            .debugger_linked_frames
+            .get(&tab_id)
+            .unwrap()
+            .child_stack
+            .frames[1]
+            .scope_entries
+            .first()
+            .copied()
+            .expect("linked entry root must retain an active lexical slot");
+        let static_target = JavaScriptPageDebuggerStaticScopeTarget::Linked {
+            metadata: targets[1].0,
+            expected_stack: stack,
+            frame_index: 1,
+            scope_entry: JavaScriptPageDebuggerScopeEntry {
+                slot_ordinal: entry_scope.slot_ordinal,
+                scope_depth: entry_scope.scope_depth,
+            },
+        };
+        assert_eq!(
+            executor
+                .debugger_static_scope_relation(tab_id, 1, static_target)
+                .unwrap()
+                .target,
+            static_target
+        );
+        let scope_entry = JavaScriptPageDebuggerScopeEntry {
+            slot_ordinal: entry_scope.slot_ordinal,
+            scope_depth: entry_scope.scope_depth,
+        };
+        for denied in [
+            JavaScriptPageDebuggerStaticScopeTarget::Linked {
+                metadata: targets[0].0,
+                expected_stack: stack,
+                frame_index: 1,
+                scope_entry,
+            },
+            JavaScriptPageDebuggerStaticScopeTarget::Linked {
+                metadata: targets[1].0,
+                expected_stack: stack,
+                frame_index: 0,
+                scope_entry,
+            },
+        ] {
+            assert!(executor
+                .debugger_static_scope_relation(tab_id, 1, denied)
+                .is_err());
+        }
         let access = JavaScriptPageDebuggerLinkedSpanAccess {
             granted: true,
             metadata_receipted: [true; 2],
@@ -13277,6 +13325,47 @@ mod tests {
                     "{slug} frame {index} must expose its own exact active number: {reads:?}"
                 );
             }
+            let parent_slot = stack.frames[1]
+                .scope_entries
+                .iter()
+                .copied()
+                .find(|entry| {
+                    executor.debugger_value_snapshot(tab_id, 1, target_for(1, *entry))
+                        == Ok(JavaScriptPageDebuggerValuePreview::NumberBits(
+                            9.0_f64.to_bits(),
+                        ))
+                })
+                .expect("nested parent root must retain the initialized BlueTS binding");
+            let metadata = executor
+                .debugger_static_metadata(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap()[0];
+            let parent_static = JavaScriptPageDebuggerStaticScopeTarget::Ordinary {
+                metadata,
+                target: target_for(1, parent_slot),
+            };
+            assert_eq!(
+                executor
+                    .debugger_static_scope_relation(tab_id, 1, parent_static)
+                    .unwrap()
+                    .target,
+                parent_static,
+                "{slug} nested parent root must cross the real child/core route"
+            );
+            assert!(executor
+                .debugger_static_scope_relation(
+                    tab_id,
+                    1,
+                    JavaScriptPageDebuggerStaticScopeTarget::Ordinary {
+                        metadata,
+                        target: target_for(0, stack.frames[0].scope_entries[0]),
+                    },
+                )
+                .is_err());
             let selected = target_for(0, stack.frames[0].scope_entries[0]);
             assert_eq!(
                 executor.debugger_value_snapshot(

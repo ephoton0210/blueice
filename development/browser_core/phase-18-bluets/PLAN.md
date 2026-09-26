@@ -2088,6 +2088,15 @@ opaque compiler symbol/type IDs. Replacing the document makes the same
 target fail with no partial relation. The focused real-child test passes;
 public debugger routing and grants remain unchanged.
 
+**C3.1.3.3.6.2 nested/linked boundary:** Real Launcher-supervised classic
+and module nested pauses now verify the initialized parent-root binding's
+static relation through core reminting, while selecting a child-local slot
+for that root-owned metadata fails. A real linked dependency/entry module
+graph reacquires the full private linked scope budget, relates the entry
+root's active slot through its entry-owned metadata, and refuses dependency
+metadata or frame index zero. The two focused child/core socket tests pass;
+neither shape adds a public static-scope request or grant.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
