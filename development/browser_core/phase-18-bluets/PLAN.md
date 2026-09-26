@@ -2289,6 +2289,17 @@ slot's `GetValue` remains CapabilityUnavailable. The focused two-kind real
 Launcher test passes; nested and linked sockets plus lifecycle refusals
 remain separate leaves.
 
+**C3.1.3.4.7.2 real nested parents:** On both classic and module pages, the
+real Launcher socket pauses inside a verified nested BlueTS function. The
+active child argument can be inspected as a source-free Scopes slot but is
+not a valid static-only selector; the caller-root frame's own slot, frame
+identity, safe point, and metadata yield one complete parent-bound symbol/type
+pair from the same stream's inventories. A guessed parent slot refuses.
+The test deliberately inventories metadata after the final `ListPrograms`:
+that operation invalidates the core's previous private metadata mapping,
+even if old numeric handles happen to match. The focused two-kind real
+socket test passes. Linked and lifecycle cases remain separate leaves.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

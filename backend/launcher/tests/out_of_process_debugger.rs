@@ -548,6 +548,240 @@ fn launcher_relates_classic_and_module_root_scopes_without_value_authority() {
     }
 }
 
+#[test]
+fn launcher_relates_nested_parent_roots_but_not_child_local_slots() {
+    for (mime, label) in [
+        ("application/x-blueice-typescript", "classic"),
+        ("application/x-blueice-typescript-module", "module"),
+    ] {
+        let gatekeeper_socket = clearing_gatekeeper();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let fixture = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let body = format!(
+                "<main>{label}-nested-scope</main><script type=\"{mime}\">{BOUNDED_VALUE_BLUETS_SOURCE}</script>"
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        });
+        let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+            &gatekeeper_socket,
+            StaticMetadataPolicy {
+                inventory: true,
+                type_inventory: true,
+                symbol_inventory: true,
+                static_scope_relation: true,
+                ..Default::default()
+            },
+        );
+        let mut browser = launcher.connect_browser();
+        blueice_ipc::client_handshake(&mut browser).unwrap();
+        navigate(&mut browser, &url);
+        fixture.join().unwrap();
+        let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+        let manifest = DebuggerMetadataCapabilityManifest::opaque_selected(
+            DebuggerMetadataCapabilitySelection {
+                static_scope_relation: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::Hello {
+                    protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    requested_bounded_values: false,
+                    requested_metadata_capabilities: manifest.clone(),
+                }
+            ),
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_bounded_values: false,
+                granted_metadata_capabilities: manifest,
+            }
+        );
+        let realm = one_realm(debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListPageRealms,
+        ));
+        let program = one_program(
+            debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+            realm,
+        );
+        let (paused_program, frame) = arm_first_nested_frame(&mut debugger, realm);
+        assert_eq!(paused_program, program);
+        let DebuggerReply::StaticMetadata(metadata) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadata { program },
+        ) else {
+            panic!("{label} nested program must expose metadata");
+        };
+        assert_eq!(metadata.len(), 1);
+        let metadata = metadata[0];
+        let DebuggerReply::StaticMetadataTypes(types) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadataTypes { metadata },
+        ) else {
+            panic!("{label} nested program must expose type IDs");
+        };
+        let DebuggerReply::StaticMetadataSymbols(symbols) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadataSymbols { metadata },
+        ) else {
+            panic!("{label} nested program must expose symbol IDs");
+        };
+        let DebuggerReply::Stack(stack) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetStack {
+                program,
+                frame: Some(frame),
+                max_frames: 2,
+            },
+        ) else {
+            panic!("{label} nested pause must expose both frames");
+        };
+        assert_eq!(stack.safe_points.len(), 2);
+        let mut child_point = stack.safe_points[0];
+        let parent_point = stack.safe_points[1];
+        let mut child_entry = None;
+        for _ in 0..96 {
+            let DebuggerReply::Scopes(child_scopes) = debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetScopes {
+                    program,
+                    frame: Some(frame),
+                    frame_index: 0,
+                    expected_safe_point: child_point,
+                    max_scope_entries: 256,
+                },
+            ) else {
+                panic!("{label} nested child must expose source-free slots");
+            };
+            if let Some(entry) = child_scopes.entries.first() {
+                child_entry = Some(*entry);
+                break;
+            }
+            assert_eq!(
+                debugger_request(
+                    &mut debugger,
+                    DebuggerRequest::StepNestedInstruction { frame },
+                ),
+                DebuggerReply::NestedStepRequested { frame }
+            );
+            let (same_frame, next_point) = await_nested_paused_execution(&mut debugger, program);
+            assert_eq!(same_frame, frame);
+            child_point = next_point;
+        }
+        let child_entry = child_entry.expect("nested child must eventually expose an active slot");
+        let child_local = blueice_ipc::debugger::DebuggerStaticScopeTarget::Ordinary {
+            metadata,
+            target: DebuggerValueTarget {
+                program,
+                frame: Some(frame),
+                frame_index: 0,
+                safe_point: child_point,
+                scope_entry: child_entry,
+            },
+        };
+        assert!(matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetStaticScopeRelation {
+                    target: child_local,
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+        let DebuggerReply::Scopes(parent_scopes) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetScopes {
+                program,
+                frame: Some(frame),
+                frame_index: 1,
+                expected_safe_point: parent_point,
+                max_scope_entries: 256,
+            },
+        ) else {
+            panic!("{label} nested caller must expose parent-root slots");
+        };
+        let mut found = None;
+        let mut denials = Vec::new();
+        for scope_entry in parent_scopes.entries {
+            let target = blueice_ipc::debugger::DebuggerStaticScopeTarget::Ordinary {
+                metadata,
+                target: DebuggerValueTarget {
+                    program,
+                    frame: Some(frame),
+                    frame_index: 1,
+                    safe_point: parent_point,
+                    scope_entry,
+                },
+            };
+            match debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetStaticScopeRelation { target },
+            ) {
+                DebuggerReply::StaticScopeRelation(relation) => {
+                    assert_eq!(relation.target, target);
+                    assert!(relation.is_well_formed());
+                    assert!(types.contains(&relation.static_type));
+                    assert!(symbols.contains(&relation.symbol));
+                    found = Some(target);
+                    break;
+                }
+                reply @ DebuggerReply::Error {
+                    code:
+                        DebuggerErrorCode::InvalidTarget | DebuggerErrorCode::InvalidExecutionState,
+                    ..
+                } => denials.push((scope_entry, reply)),
+                other => panic!("{label} parent relation must be typed: {other:?}"),
+            }
+        }
+        let found = found
+            .unwrap_or_else(|| panic!("nested caller must retain a bound root slot: {denials:?}"));
+        let blueice_ipc::debugger::DebuggerStaticScopeTarget::Ordinary { target, .. } = found
+        else {
+            unreachable!();
+        };
+        assert!(matches!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetStaticScopeRelation {
+                    target: blueice_ipc::debugger::DebuggerStaticScopeTarget::Ordinary {
+                        metadata,
+                        target: DebuggerValueTarget {
+                            scope_entry: blueice_ipc::debugger::DebuggerScopeEntry {
+                                slot_ordinal: u32::MAX,
+                                ..target.scope_entry
+                            },
+                            ..target
+                        },
+                    },
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+        launcher.shutdown();
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+}
+
 fn assert_exception_refusal(reply: DebuggerReply, expected: DebuggerErrorCode) {
     let DebuggerReply::Error { code, message } = reply else {
         panic!("exception location must be refused without a partial position: {reply:?}")
