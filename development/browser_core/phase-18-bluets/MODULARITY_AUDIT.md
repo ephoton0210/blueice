@@ -136,3 +136,8 @@ child-client implementation to a 901-line internal module. Existing private
 transport tests retain parent-only access; the public connection type is
 re-exported unchanged. The production executor facade is 5,365 lines and
 still needs private adapter and core debugger concern splits.
+
+C3.1.3.4.7.5.4.3.3 moved strict private linked/static-scope child reply
+adapters to a 277-line internal module. The production facade is 5,097 lines;
+the large core debugger trait implementation and authorization/report helpers
+remain under audit.

@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.7.5.4.3.3.** Extract linked/static-scope private
-child adapters into a bounded internal module while preserving exact echo
-checks and the existing public connection API.
+**Current leaf: C3.1.3.4.7.5.4.3.4.** Split core-side debugger metadata,
+linked/nested frame, and execution-control adapter responsibilities into
+reviewable modules while preserving grants and handle reminting.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -477,7 +477,7 @@ channel with explicit owner/client grants.
             - [ ] **C3.1.3.4.7.5.4.3** Extract BlueTS-owned child-executor adapter logic from `javascript_child.rs` into internal modules. Preserve the public child-client/connection API, exact debugger grants, and child wire replies; subdivide the large core debugger adapter by concern before closing the parent.
               - [x] **C3.1.3.4.7.5.4.3.1** Move the public `PageHostClient` transport contract unchanged to an internal `client.rs` and re-export it from the original module. The new file is 765 lines and `javascript_child.rs` fell from 7,016 to 6,259 lines. All 309 engine library tests pass with the reused target.
               - [x] **C3.1.3.4.7.5.4.3.2** Extract `PageHostConnection` socket transport and its `PageHostClient` implementation into a bounded module without altering deadlines or reply validation. `connection.rs` is 901 lines and the public type remains re-exported from the original path; private request helpers and stream retain only parent-module visibility for the existing transport tests. `javascript_child.rs` is 5,365 lines. All 309 engine library tests pass with the reused target.
-              - [ ] **C3.1.3.4.7.5.4.3.3** Extract linked/static-scope private child adapters into a bounded module, preserving exact echo checks.
+              - [x] **C3.1.3.4.7.5.4.3.3** Extract linked/static-scope private child adapters into a bounded module, preserving exact echo checks. `private_debugger_adapter.rs` is 277 lines and exposes only parent-module visibility for its strict linked state/stack/span/resume and static relation queries. `javascript_child.rs` is 5,097 lines. All 309 engine library tests pass with the reused target.
               - [ ] **C3.1.3.4.7.5.4.3.4** Split core-side debugger metadata, linked/nested frame, and execution-control adapter responsibilities into reviewable modules, preserving grants and reminting.
               - [ ] **C3.1.3.4.7.5.4.3.5** Extract authorization/report and child reply-validation helpers; recount the production executor and refine any remaining oversized owner before closing this leaf.
             - [ ] **C3.1.3.4.7.5.4.4** Extract BlueTS prepare/execute and debugger metadata logic from `bluejs_host.rs` into internal modules.

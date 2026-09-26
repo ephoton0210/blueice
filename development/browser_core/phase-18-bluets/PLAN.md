@@ -2483,6 +2483,13 @@ stream visibility extend only to the parent so existing transport tests keep
 their exact assertions. The executor facade is 5,365 lines. All 309 engine
 library tests pass with the reused target; protocol behavior is unchanged.
 
+**C3.1.3.4.7.5.4.3.3 private debugger reply adapters:** Exact linked arm,
+state, stack, spans, resume, and static-scope relation checks moved together
+to a 277-line internal module. The adapters expose only parent-module access,
+leaving public grants, reminted handles, and wire replies unchanged. The
+production child-executor facade is 5,097 lines; all 309 engine library tests
+pass with the reused target.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
