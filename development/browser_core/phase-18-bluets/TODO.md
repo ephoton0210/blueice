@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.7.5.2.1.** Move inline compiler tests into their
-own module while preserving compiler behavior and test coverage.
+**Current leaf: C3.1.3.4.7.5.2.2.** Split oversized checker tests by
+syntax/inference versus project/generic contract concern.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -456,7 +456,7 @@ channel with explicit owner/client grants.
         - [ ] **C3.1.3.4.7.5** Audit BlueTS source and test file responsibilities after C3.1.3.4.7.4. Assess each file over 1,300 lines for cohesive module boundaries, refactor oversized files where a maintainable split is justified, preserve coverage and public behavior, then close C3.1.3.4.7 and C3.1.3.4.
           - [x] **C3.1.3.4.7.5.1** Inventory BlueTS-owned and mixed runtime files over 1,300 lines, record split/defer decisions and invariants, and order file-scoped refactor leaves. `MODULARITY_AUDIT.md` records 27 over-threshold BlueTS-owning, integration, and adjacent files, their measured sizes, proposed concern boundaries, and explicit deferrals for generic browser/BlueJS owners. The direct compiler and bridge splits precede mixed runtime/IPC work; wire/ABI contracts and tests must stay unchanged.
           - [ ] **C3.1.3.4.7.5.2** Separate oversized BlueTS compiler/checker implementation and test responsibilities without changing the public compiler contract; split into file-scoped leaves after the inventory.
-            - [ ] **C3.1.3.4.7.5.2.1** Move compiler inline tests to `compiler/tests.rs`, keeping the compiler implementation under 1,300 lines and test names/coverage intact.
+            - [x] **C3.1.3.4.7.5.2.1** Move compiler inline tests to `compiler/tests.rs`, keeping the compiler implementation under 1,300 lines and test names/coverage intact. The implementation owner is now 766 lines; its existing tests live in a new MPL-headed 600-line child module with unchanged test names. The complete `blueice-bluets` crate suite, workspace Clippy, formatting, and diff checks pass using the shared target.
             - [ ] **C3.1.3.4.7.5.2.2** Split checker tests by syntax/inference versus project/generic contracts, preserving shared fixtures and test names.
             - [ ] **C3.1.3.4.7.5.2.3** Extract cohesive checker call-inference/assignability helpers into an internal module, retaining the public checker facade.
           - [ ] **C3.1.3.4.7.5.3** Separate oversized BlueTS-to-BlueJS bridge lowering and attachment responsibilities without changing the bridge ABI; split into file-scoped leaves after the inventory.

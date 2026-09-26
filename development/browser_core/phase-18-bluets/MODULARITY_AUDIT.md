@@ -66,3 +66,7 @@ Order: split compiler/checker tests and helpers, then the direct bridge,
 then mixed runtime/IPC and public acceptance files in file-scoped leaves.
 Recount after each leaf. Complete the listed BlueTS-owned boundaries before
 closing C3.1.3.4.7.5; record any justified deferral explicitly in PLAN.md.
+
+Progress: C3.1.3.4.7.5.2.1 moved the compiler's inline tests into a
+600-line child module; `compiler.rs` is now 766 lines. Snapshot counts above
+remain the original audit baseline for comparison.

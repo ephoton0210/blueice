@@ -2363,6 +2363,14 @@ large body is not BlueTS-owned. The first implementation leaf moves the
 compiler's inline tests to their own module; subsequent compiler, bridge,
 and mixed-runtime work stays file-scoped and runs focused gates.
 
+**C3.1.3.4.7.5.2.1 compiler test owner:** The compiler's inline `#[cfg(test)]`
+block moved unchanged to `compiler/tests.rs` with an MPL header, while
+`compiler.rs` now names the child test module. The implementation file fell
+from 1,364 to 766 lines; the relocated test file is 600 lines. All 156
+BlueTS library tests and the crate's full integration suite pass with their
+original test names, and workspace Clippy, formatting, and diff checks pass.
+No compiler API, cache behavior, or output contract changed.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
