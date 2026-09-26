@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.1.2.2.3.3.2.** Connect complete core-facing linked
-arm/state/stack/resume and coordinate operations to the private child adapter,
-without exposing a callable public route yet.
+**Current leaf: C3.1.1.2.2.3.3.2.2.** Expose linked paused/resuming state,
+complete stack, exact resume, and grant/receipt-bound two-source spans through
+the core-facing trait, without opening the public debugger route yet.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -389,6 +389,8 @@ channel with explicit owner/client grants.
           - [ ] **C3.1.1.2.2.3.3** Add the complete public linked request/reply family, enforce the existing span grant and both independent receipts on every coordinate read, bump public debugger protocol only with the route, and prove real IPC/core no-partial denials and exact spans; then check off C3.1.1.2.2.3 and C3.1.1.2.2.
             - [x] **C3.1.1.2.2.3.3.1** Define source-free public linked frame/stack and receipt-bound two-source coordinate data shapes with strict per-frame validation; add no callable public route and keep v39. Fixed two-frame shapes reject swapped roles, duplicate frame handles, cross-program source attachments, and reordered spans; IPC round-trip and workspace Clippy pass.
             - [ ] **C3.1.1.2.2.3.3.2** Connect complete core-facing linked arm/state/stack/resume and coordinate operations to the private child adapter, retaining per-frame public identities without public wire exposure.
+              - [x] **C3.1.1.2.2.3.3.2.1** Add the core-facing linked model, distinct capability probe, and exact linked arm operation with both live public program identities; no public wire exposure. Core checks exact live entry/dependency mappings and a verified dependency safe point before the private graph-validation arm; fake-child tests cover valid, same-program, stale-document, and forged-acknowledgement paths.
+              - [ ] **C3.1.1.2.2.3.3.2.2** Expose paused/resuming state, complete stack, exact resume, and grant/receipt-bound two-source spans through the core-facing trait; then check off C3.1.1.2.2.3.3.2.
             - [ ] **C3.1.1.2.2.3.3.3** Add complete public linked requests/replies and dispatcher grant/receipt checks, real IPC/core no-partial tests and exact-span coverage, then bump public debugger protocol only with the complete route and check off the parent items.
       - [ ] **C3.1.1.2.3** Prove entry/dependency original spans, distinct source IDs, swapped/unreceipted source refusal, and stale graph expiry on real Launcher-supervised sockets; then check off C3.1.1.2 and C3.1.1.
   - [ ] **C3.1.2** Map breakpoints and symbols for module execution control.

@@ -1604,6 +1604,16 @@ swapped pair or reordered span. A focused IPC serialization/denial test passes.
 No request/reply variant or callable route was added, and public v39 stays
 unchanged until the complete authorized handler is ready.
 
+**C3.1.1.2.2.3.3.2.1 core-facing linked arm:** A distinct default-deny linked
+capability and core-facing frame/stack/state/authorization types are staged for
+the public dispatcher. The out-of-process arm resolves both independently
+reminted live programs, rejects a same-program or root dependency target,
+revalidates the dependency safe point, and accepts only the private child's
+exact graph-validated acknowledgement. Focused fake-child tests cover valid
+arms, stale documents, same-program targets, and a forged arm echo. The
+existing core pause collector now keeps stable frame handles when only the
+requested scope budget changes. Public v39 remains unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

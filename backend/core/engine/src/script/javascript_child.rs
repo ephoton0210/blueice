@@ -28,7 +28,8 @@ use crate::script::javascript::{
     AuthorizedJavaScriptModuleGraph, BlueTsPageExecutionReport, JavaScriptPageDebuggerBreakpoint,
     JavaScriptPageDebuggerError, JavaScriptPageDebuggerExceptionLocation,
     JavaScriptPageDebuggerExceptionLocationTarget, JavaScriptPageDebuggerExecutionState,
-    JavaScriptPageDebuggerFrame, JavaScriptPageDebuggerNestedExecutionState,
+    JavaScriptPageDebuggerFrame, JavaScriptPageDebuggerLinkedSpanAccess,
+    JavaScriptPageDebuggerLinkedStackFrame, JavaScriptPageDebuggerNestedExecutionState,
     JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
     JavaScriptPageDebuggerScopeEntry, JavaScriptPageDebuggerStackFrame,
     JavaScriptPageDebuggerStackSnapshot, JavaScriptPageDebuggerStaticMetadata,
@@ -855,6 +856,10 @@ pub trait PageHostClient {
     }
 
     fn debugger_nested_frames_available(&self) -> bool {
+        false
+    }
+
+    fn debugger_linked_frames_available(&self) -> bool {
         false
     }
 
@@ -1768,6 +1773,10 @@ impl PageHostClient for PageHostConnection {
         true
     }
 
+    fn debugger_linked_frames_available(&self) -> bool {
+        true
+    }
+
     fn debugger_stack_snapshot_available(&self) -> bool {
         true
     }
@@ -2059,28 +2068,11 @@ struct ActiveDebuggerFrame {
 
 /// Both identities belong to one complete child-first linked stack. Neither
 /// child program nor invocation serial is exposed through these core frames.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct CoreLinkedDebuggerStackFrame {
-    frame: JavaScriptPageDebuggerFrame,
-    safe_point: JavaScriptPageDebuggerSafePoint,
-}
-
 #[derive(Debug, Clone)]
 struct ActiveLinkedDebuggerPause {
     child: PageHostDebuggerLinkedFrame,
     child_stack: PageHostDebuggerLinkedStackSnapshot,
-    frames: [CoreLinkedDebuggerStackFrame; 2],
-}
-
-/// Authorization facts are supplied by the debugger stream, never by the
-/// child. The next public-wire leaf will construct them from its grant and
-/// two independent metadata/source receipt ledgers.
-#[derive(Debug, Clone, Copy)]
-struct LinkedSpanAccess {
-    granted: bool,
-    metadata_receipted: [bool; 2],
-    source_receipted: [bool; 2],
-    targets: [JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget; 2],
+    frames: [JavaScriptPageDebuggerLinkedStackFrame; 2],
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2143,7 +2135,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         document_generation: u64,
         entry: JavaScriptPageDebuggerProgram,
         max_scope_entries: u32,
-    ) -> Result<[CoreLinkedDebuggerStackFrame; 2], JavaScriptPageDebuggerError> {
+    ) -> Result<[JavaScriptPageDebuggerLinkedStackFrame; 2], JavaScriptPageDebuggerError> {
         let child_entry = self.child_program_for_core(
             tab_id,
             document_generation,
@@ -2181,14 +2173,18 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             .map(|program| self.core_program_for_child(tab_id, document_generation, program));
         let [dependency, caller] = programs;
         let programs = [dependency?, caller?];
-        if let Some(active) = self.debugger_linked_frames.get(&tab_id) {
+        if let Some(active) = self.debugger_linked_frames.get_mut(&tab_id) {
             if active.child == child_frame
-                && active.child_stack == child_stack
                 && active.frames.iter().enumerate().all(|(index, frame)| {
                     frame.frame.program_handle == programs[index].program_handle
                         && frame.frame.program_generation == programs[index].program_generation
+                        && frame.safe_point.code_unit_ordinal
+                            == child_stack.frames[index].safe_point.code_unit_ordinal
+                        && frame.safe_point.bytecode_offset
+                            == child_stack.frames[index].safe_point.bytecode_offset
                 })
             {
+                active.child_stack = child_stack;
                 return Ok(active.frames);
             }
         }
@@ -2200,7 +2196,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 })
                 .map_err(|_| JavaScriptPageDebuggerError::ResourceLimit)?;
             let point = child_stack.frames[index].safe_point;
-            Ok(CoreLinkedDebuggerStackFrame {
+            Ok(JavaScriptPageDebuggerLinkedStackFrame {
                 frame: JavaScriptPageDebuggerFrame {
                     tab_id,
                     document_generation,
@@ -2231,7 +2227,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
     fn core_linked_stack_spans(
         &mut self,
         top_frame: JavaScriptPageDebuggerFrame,
-        access: LinkedSpanAccess,
+        access: JavaScriptPageDebuggerLinkedSpanAccess,
     ) -> Result<[JavaScriptPageDebuggerStaticMetadataSafePointSpan; 2], JavaScriptPageDebuggerError>
     {
         if !access.granted
@@ -4663,6 +4659,53 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         self.debugger_execution_control_available() && self.child.debugger_nested_frames_available()
     }
 
+    fn debugger_linked_frames_available(&self) -> bool {
+        self.debugger_execution_control_available() && self.child.debugger_linked_frames_available()
+    }
+
+    fn arm_debugger_linked_nested_safe_point_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        entry: JavaScriptPageDebuggerProgram,
+        dependency: JavaScriptPageDebuggerProgram,
+        safe_point: JavaScriptPageDebuggerSafePoint,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_linked_frames_available() || safe_point.code_unit_ordinal == 0 {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let child_entry = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            entry.program_handle,
+            entry.program_generation,
+        )?;
+        let child_dependency = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            dependency.program_handle,
+            dependency.program_generation,
+        )?;
+        if child_entry == child_dependency {
+            return Err(JavaScriptPageDebuggerError::InvalidSafePoint);
+        }
+        let child_point = PageHostDebuggerSafePoint {
+            program: child_dependency,
+            code_unit_ordinal: safe_point.code_unit_ordinal,
+            bytecode_offset: safe_point.bytecode_offset,
+        };
+        validate_child_safe_point_reply(self, tab_id, document_generation, child_point)?;
+        ChildLinkedDebuggerAdapter {
+            child: &mut self.child,
+        }
+        .arm(
+            tab_id.as_u64(),
+            document_generation,
+            child_entry,
+            child_point,
+        )
+    }
+
     fn arm_debugger_nested_safe_point_breakpoint(
         &mut self,
         tab_id: TabId,
@@ -6832,22 +6875,22 @@ mod tests {
                 bytecode_offset: 8,
             },
         ];
-        let access = LinkedSpanAccess {
+        let access = JavaScriptPageDebuggerLinkedSpanAccess {
             granted: true,
             metadata_receipted: [true; 2],
             source_receipted: [true; 2],
             targets,
         };
         for denied in [
-            LinkedSpanAccess {
+            JavaScriptPageDebuggerLinkedSpanAccess {
                 granted: false,
                 ..access
             },
-            LinkedSpanAccess {
+            JavaScriptPageDebuggerLinkedSpanAccess {
                 metadata_receipted: [true, false],
                 ..access
             },
-            LinkedSpanAccess {
+            JavaScriptPageDebuggerLinkedSpanAccess {
                 source_receipted: [false, true],
                 ..access
             },
@@ -6861,7 +6904,7 @@ mod tests {
         assert_eq!(
             executor.core_linked_stack_spans(
                 frames[0].frame,
-                LinkedSpanAccess {
+                JavaScriptPageDebuggerLinkedSpanAccess {
                     targets: [
                         JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
                             metadata_handle: targets[1].metadata_handle,
@@ -6879,7 +6922,7 @@ mod tests {
         assert_eq!(
             executor.core_linked_stack_spans(
                 frames[0].frame,
-                LinkedSpanAccess {
+                JavaScriptPageDebuggerLinkedSpanAccess {
                     targets: [targets[1], targets[0]],
                     ..access
                 }
@@ -6947,6 +6990,167 @@ mod tests {
             Err(JavaScriptPageDebuggerError::NoLiveRealm)
         );
         assert!(!executor.debugger_linked_frames.contains_key(&tab_id));
+    }
+
+    #[test]
+    fn core_linked_arm_requires_two_live_programs_and_exact_child_acknowledgement() {
+        struct LinkedArmChild {
+            arm_calls: usize,
+            bad_acknowledgement: bool,
+        }
+        impl PageHostClient for LinkedArmChild {
+            fn synchronize_document(&mut self, _: PageHostDocument) -> io::Result<PageHostReply> {
+                Err(io::Error::new(io::ErrorKind::Unsupported, "unused"))
+            }
+
+            fn close_realm(&mut self, _: u64, _: u64) -> io::Result<PageHostReply> {
+                Err(io::Error::new(io::ErrorKind::Unsupported, "unused"))
+            }
+
+            fn debugger_execution_control_available(&self) -> bool {
+                true
+            }
+
+            fn debugger_linked_frames_available(&self) -> bool {
+                true
+            }
+
+            fn validate_debugger_safe_point(
+                &mut self,
+                tab_id: u64,
+                document_generation: u64,
+                safe_point: PageHostDebuggerSafePoint,
+            ) -> io::Result<PageHostReply> {
+                Ok(PageHostReply::DebuggerSafePointValidated {
+                    tab_id,
+                    document_generation,
+                    safe_point,
+                })
+            }
+
+            fn arm_debugger_linked_nested_safe_point_breakpoint(
+                &mut self,
+                tab_id: u64,
+                document_generation: u64,
+                entry_program: PageHostDebuggerProgram,
+                safe_point: PageHostDebuggerSafePoint,
+            ) -> io::Result<PageHostReply> {
+                self.arm_calls += 1;
+                Ok(
+                    PageHostReply::DebuggerLinkedNestedSafePointBreakpointArmed {
+                        tab_id,
+                        document_generation,
+                        entry_program,
+                        safe_point: if self.bad_acknowledgement {
+                            PageHostDebuggerSafePoint {
+                                bytecode_offset: safe_point.bytecode_offset + 1,
+                                ..safe_point
+                            }
+                        } else {
+                            safe_point
+                        },
+                    },
+                )
+            }
+        }
+        let tab_id = TabId::from_u64(7);
+        let child_entry = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 12,
+        };
+        let child_dependency = PageHostDebuggerProgram {
+            program_handle: 21,
+            program_generation: 22,
+        };
+        let public_entry = JavaScriptPageDebuggerProgram {
+            program_handle: 101,
+            program_generation: 102,
+        };
+        let public_dependency = JavaScriptPageDebuggerProgram {
+            program_handle: 201,
+            program_generation: 202,
+        };
+        let point = JavaScriptPageDebuggerSafePoint {
+            code_unit_ordinal: 1,
+            bytecode_offset: 0,
+        };
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new_with_debugger_execution_control(
+            LinkedArmChild {
+                arm_calls: 0,
+                bad_acknowledgement: false,
+            },
+        );
+        assert!(executor.debugger_linked_frames_available());
+        executor.live_documents.insert(
+            tab_id,
+            LiveDocument {
+                document_generation: 1,
+                origin: "https://example.test".into(),
+            },
+        );
+        executor.debugger_programs.insert(
+            tab_id,
+            BTreeMap::from([
+                (
+                    child_entry,
+                    CoreDebuggerProgram {
+                        program_handle: public_entry.program_handle,
+                        program_generation: public_entry.program_generation,
+                    },
+                ),
+                (
+                    child_dependency,
+                    CoreDebuggerProgram {
+                        program_handle: public_dependency.program_handle,
+                        program_generation: public_dependency.program_generation,
+                    },
+                ),
+            ]),
+        );
+        assert_eq!(
+            executor.arm_debugger_linked_nested_safe_point_breakpoint(
+                tab_id,
+                1,
+                public_entry,
+                public_dependency,
+                point,
+            ),
+            Ok(())
+        );
+        assert_eq!(executor.child.arm_calls, 1);
+        assert_eq!(
+            executor.arm_debugger_linked_nested_safe_point_breakpoint(
+                tab_id,
+                1,
+                public_entry,
+                public_entry,
+                point,
+            ),
+            Err(JavaScriptPageDebuggerError::InvalidSafePoint)
+        );
+        assert_eq!(
+            executor.arm_debugger_linked_nested_safe_point_breakpoint(
+                tab_id,
+                2,
+                public_entry,
+                public_dependency,
+                point,
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(executor.child.arm_calls, 1);
+        executor.child.bad_acknowledgement = true;
+        assert_eq!(
+            executor.arm_debugger_linked_nested_safe_point_breakpoint(
+                tab_id,
+                1,
+                public_entry,
+                public_dependency,
+                point,
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(executor.child.arm_calls, 2);
     }
 
     #[test]

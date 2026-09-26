@@ -38,6 +38,8 @@ pub use debugger_support::{
     JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
     JavaScriptPageDebuggerExceptionLocation, JavaScriptPageDebuggerExceptionLocationTarget,
     JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
+    JavaScriptPageDebuggerLinkedExecutionState, JavaScriptPageDebuggerLinkedSpanAccess,
+    JavaScriptPageDebuggerLinkedStackFrame, JavaScriptPageDebuggerLinkedStackSnapshot,
     JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
     JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerScopeEntry,
     JavaScriptPageDebuggerStackFrame, JavaScriptPageDebuggerStackSnapshot,
@@ -559,6 +561,26 @@ pub trait PageJavaScriptDebuggerLocations {
     /// follows automatically from root execution control or safe-point lists.
     fn debugger_nested_frames_available(&self) -> bool {
         false
+    }
+
+    /// Linked-module control is a separate owner-selected capability. It
+    /// never follows automatically from same-program nested-frame support.
+    fn debugger_linked_frames_available(&self) -> bool {
+        false
+    }
+
+    /// Arms an exact dependency safe point under one separately identified
+    /// entry module. The child validates their installed graph relation before
+    /// acknowledging; no public route is opened by this core-facing method.
+    fn arm_debugger_linked_nested_safe_point_breakpoint(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _entry: JavaScriptPageDebuggerProgram,
+        _dependency: JavaScriptPageDebuggerProgram,
+        _safe_point: JavaScriptPageDebuggerSafePoint,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 
     fn arm_debugger_nested_safe_point_breakpoint(

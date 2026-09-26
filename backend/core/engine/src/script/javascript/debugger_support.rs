@@ -375,6 +375,42 @@ pub struct JavaScriptPageDebuggerStackSnapshot {
     pub stack_truncated: bool,
 }
 
+/// One frame and exact safe point in a complete linked dependency/entry
+/// pause. The entry caller may have root ordinal zero; both identities remain
+/// core-reminted and contain no child program or invocation serial.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerLinkedStackFrame {
+    pub frame: JavaScriptPageDebuggerFrame,
+    pub safe_point: JavaScriptPageDebuggerSafePoint,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerLinkedStackSnapshot {
+    pub frames: [JavaScriptPageDebuggerLinkedStackFrame; 2],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JavaScriptPageDebuggerLinkedExecutionState {
+    Pending,
+    Paused {
+        stack: JavaScriptPageDebuggerLinkedStackSnapshot,
+    },
+    Resuming {
+        frame: JavaScriptPageDebuggerFrame,
+    },
+    Completed,
+}
+
+/// Facts checked by the owner-selected debugger stream before an exact
+/// two-source coordinate read. Core still revalidates every live attachment.
+#[derive(Debug, Clone, Copy)]
+pub struct JavaScriptPageDebuggerLinkedSpanAccess {
+    pub granted: bool,
+    pub metadata_receipted: [bool; 2],
+    pub source_receipted: [bool; 2],
+    pub targets: [JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget; 2],
+}
+
 /// Exact core-owned selection of one active binding in a paused stack. This
 /// carries no child program, frame, or heap-object handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
