@@ -2475,6 +2475,14 @@ linked/static adapter, core debugger, and helper seams for later leaves.
 All 309 engine library tests pass with the reused target; the child protocol
 and API are unchanged.
 
+**C3.1.3.4.7.5.4.3.2 child connection transport:** The authenticated
+`PageHostConnection`, fixed-deadline socket request/pump, and its full
+`PageHostClient` implementation moved to a 901-line internal module. The
+original public connection path remains a re-export; request helpers and
+stream visibility extend only to the parent so existing transport tests keep
+their exact assertions. The executor facade is 5,365 lines. All 309 engine
+library tests pass with the reused target; protocol behavior is unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

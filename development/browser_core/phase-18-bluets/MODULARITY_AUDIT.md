@@ -130,3 +130,9 @@ C3.1.3.4.7.5.4.3.1 moved the public child-client transport contract into a
 production child executor facade is 6,259 lines; socket transport, private
 adapters, core debugger routing, and authorization/reply helpers are distinct
 follow-up seams.
+
+C3.1.3.4.7.5.4.3.2 moved the authenticated socket transport and its full
+child-client implementation to a 901-line internal module. Existing private
+transport tests retain parent-only access; the public connection type is
+re-exported unchanged. The production executor facade is 5,365 lines and
+still needs private adapter and core debugger concern splits.
