@@ -89,3 +89,8 @@ compiler and bridge files from this audit are all below 1,300 lines.
 C3.1.3.4.7.5.4.1.1 externalized the child executor's inline tests with their
 original paths. `javascript_child.rs` is 7,016 lines and its new test module
 is 7,344 lines; both still need the planned concern-level splits.
+
+C3.1.3.4.7.5.4.1.2 separated the private static/linked adapter, linked pause,
+and scope/value cases into 486-, 1,226-, and 992-line test children. The
+shared fixture and remaining integration-test owner is 4,658 lines; it still
+requires the planned transport/authorization and real-child metadata splits.

@@ -2414,6 +2414,14 @@ production `javascript_child.rs` fell from 14,468 to 7,016 lines; the
 the test owner is considered modular. All 309 engine library tests, workspace
 Clippy, rustfmt, and diff checks pass. No runtime or debugger behavior changed.
 
+**C3.1.3.4.7.5.4.1.2 child-executor debugger test owners:** The exact private
+static/linked adapter, linked pause, and scope/value test bodies now live in
+three bounded child modules (486, 1,226, and 992 lines). The parent test file
+retains one shared socket/child fixture harness and the remaining integration
+tests; it is 4,658 lines until the transport/authorization and real-child
+metadata leaves. All 309 engine library tests pass with the reused target;
+runtime and debugger contracts are unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
