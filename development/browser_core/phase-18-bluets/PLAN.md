@@ -1397,9 +1397,12 @@ UTF-8 byte and UTF-16 column positions and the returned child code-unit
 ordinal (C2.3.1.5.1). Then prove the negative owner/client grant, source
 receipt, caught/normal execution, and successor-document cases on real
 sockets (C2.3.1.5.2). Direct BlueTS lowering does not admit top-level
-`throw` or `try/catch`; a caught BlueTS function call can instead be exercised
-from a later JavaScript declaration's `try/catch` in the same page realm,
-while the BlueTS program itself retains no uncaught location.
+`throw` or `try/catch`. For caught-throw proof under the page's
+`require_declared_global_calls` policy, the BlueTS source declares the
+throwing function, exposes it on `globalThis`, and calls a locally declared
+eval alias whose JavaScript `try/catch` invokes that function. The direct
+bridge regression verifies that this exact source evaluates to `true` after
+catching the original thrown value.
 
 **C2.3.1.5.1 real-socket evidence:** The Launcher-supervised public debugger
 test exercises classic and module BlueTS nested throws through separate
@@ -1409,6 +1412,18 @@ the public inventory, and the original function declaration's exact UTF-8 byte
 span and UTF-16 columns. An astral prefix makes byte and UTF-16 columns
 different; the second module source ID receives `InvalidTarget` instead of a
 partial location. The focused real-socket test passes.
+
+**C2.3.1.5.2 real-socket evidence:** Separate Launcher/core/child socket
+sessions prove that absent owner or client `OpaqueSafePointSpan` grant returns
+`CapabilityUnavailable` even after source inventory. With both grants, a
+fresh stream refuses the same valid source as `InvalidTarget` until it has
+independently inventoried both metadata and source IDs; the exact source then
+returns a location. A successor document refuses the predecessor's receipted
+source as `StaleRealm`, while a newly receipted normally completed BlueTS
+program returns `InvalidExecutionState`. The caught-throw BlueTS program uses
+the checked eval-alias fixture above and also returns `InvalidExecutionState`
+without a partial location. All three focused real-socket denial tests, the
+bridge caught-value regression, workspace Clippy, and formatting checks pass.
 
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant

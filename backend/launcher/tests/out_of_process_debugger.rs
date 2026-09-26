@@ -52,6 +52,7 @@ const BOUNDED_VALUE_BLUETS_SOURCE: &str = "let rootValue: number = 9; function i
 const CLASSIC_THROW_BLUETS_SOURCE: &str = "/* 🚀 */ function fail(): number { throw 7; } fail();";
 const MODULE_THROW_BLUETS_SOURCE: &str =
     "/* 🚀 */ function fail(): number { throw 9; } export const answer: number = fail();";
+const CAUGHT_THROW_BLUETS_SOURCE: &str = "function fail(): number { throw 11; } globalThis.fail = fail; const evaluate = eval; evaluate('try { globalThis.fail(); } catch (error) { globalThis.caughtBlueTsThrow = error === 11; }'); globalThis.caughtBlueTsThrow;";
 
 fn unique_path(label: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -327,6 +328,18 @@ fn debugger_request(stream: &mut UnixStream, request: DebuggerRequest) -> Debugg
     read_debugger_reply(stream).expect("public debugger reply must frame")
 }
 
+fn assert_exception_refusal(reply: DebuggerReply, expected: DebuggerErrorCode) {
+    let DebuggerReply::Error { code, message } = reply else {
+        panic!("exception location must be refused without a partial position: {reply:?}")
+    };
+    assert_eq!(code, expected);
+    assert!(
+        !message.contains("throw 7")
+            && !message.contains("throw 11")
+            && !message.contains("function fail")
+    );
+}
+
 fn one_realm(reply: DebuggerReply) -> DebuggerPageRealm {
     let DebuggerReply::PageRealms(realms) = reply else {
         panic!("expected source-free page realm inventory")
@@ -347,6 +360,70 @@ fn one_program(reply: DebuggerReply, realm: DebuggerPageRealm) -> DebuggerProgra
     assert!(programs[0].is_well_formed());
     assert_eq!(programs[0].realm, realm);
     programs[0]
+}
+
+fn one_receipted_typed_program(
+    debugger: &mut UnixStream,
+    stage: &str,
+) -> (DebuggerProgram, Vec<DebuggerStaticMetadataSourceId>) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let (program, metadata) = loop {
+        let realm = one_realm(debugger_request(debugger, DebuggerRequest::ListPageRealms));
+        let DebuggerReply::Programs(programs) =
+            debugger_request(debugger, DebuggerRequest::ListPrograms { realm })
+        else {
+            panic!("page must expose its program inventory")
+        };
+        let mut typed = Vec::new();
+        let mut inventory = format!("programs={programs:?}");
+        for program in programs {
+            let reply = debugger_request(debugger, DebuggerRequest::ListStaticMetadata { program });
+            inventory.push_str(&format!(" {program:?}={reply:?}"));
+            match reply {
+                DebuggerReply::StaticMetadata(metadata) if metadata.is_empty() => {}
+                DebuggerReply::StaticMetadata(metadata) => typed.push((program, metadata)),
+                reply => panic!("program metadata inventory must remain typed: {reply:?}"),
+            }
+        }
+        if typed.len() == 1 {
+            break typed.pop().unwrap();
+        }
+        assert!(typed.is_empty(), "fixture must contain one BlueTS program");
+        assert!(
+            Instant::now() < deadline,
+            "{stage} fixture did not install its BlueTS program: {inventory}"
+        );
+        thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(metadata.len(), 1);
+    let source_reply = debugger_request(
+        debugger,
+        DebuggerRequest::ListStaticMetadataSources {
+            metadata: metadata[0],
+        },
+    );
+    let DebuggerReply::StaticMetadataSources(sources) = source_reply else {
+        panic!("{stage} BlueTS program must expose source IDs: {source_reply:?}")
+    };
+    assert!(!sources.is_empty());
+    (program, sources)
+}
+
+fn await_terminal_bluets_execution(debugger: &mut UnixStream, program: DebuggerProgram) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match debugger_request(debugger, DebuggerRequest::GetExecutionState { program }) {
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::Completed,
+                ..
+            } => break,
+            DebuggerReply::ExecutionState {
+                state: DebuggerExecutionState::Pending,
+                ..
+            } if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+            reply => panic!("BlueTS execution did not complete: {reply:?}"),
+        }
+    }
 }
 
 fn safe_points(reply: DebuggerReply, program: DebuggerProgram) -> Vec<DebuggerSafePoint> {
@@ -4034,6 +4111,367 @@ fn launcher_reports_original_classic_and_module_nested_exception_positions() {
         launcher.shutdown();
         let _ = std::fs::remove_file(gatekeeper_socket);
     }
+}
+
+#[test]
+fn launcher_refuses_exception_locations_without_owner_client_grants_or_source_receipts() {
+    for (owner_span, client_span) in [(false, true), (true, false), (true, true)] {
+        let gatekeeper_socket = clearing_gatekeeper();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let fixture = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let body = format!(
+                "<script type=\"application/x-blueice-typescript\">{CLASSIC_THROW_BLUETS_SOURCE}</script>"
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        });
+        let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+            &gatekeeper_socket,
+            StaticMetadataPolicy {
+                inventory: true,
+                source_inventory: true,
+                safe_point_span: owner_span,
+                ..StaticMetadataPolicy::default()
+            },
+        );
+        let mut browser = launcher.connect_browser();
+        blueice_ipc::client_handshake(&mut browser).unwrap();
+        navigate(&mut browser, &url);
+        fixture.join().unwrap();
+
+        let requested = if client_span {
+            DebuggerMetadataCapabilityManifest::opaque_safe_point_span()
+        } else {
+            DebuggerMetadataCapabilityManifest::opaque_source_inventory()
+        };
+        let granted = if owner_span && client_span {
+            DebuggerMetadataCapabilityManifest::opaque_safe_point_span()
+        } else {
+            DebuggerMetadataCapabilityManifest::opaque_source_inventory()
+        };
+        let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+        assert_eq!(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::Hello {
+                    protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    requested_bounded_values: false,
+                    requested_metadata_capabilities: requested,
+                },
+            ),
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_bounded_values: false,
+                granted_metadata_capabilities: granted,
+            }
+        );
+        let realm = one_realm(debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListPageRealms,
+        ));
+        let program = one_program(
+            debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+            realm,
+        );
+        let DebuggerReply::StaticMetadata(metadata) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadata { program },
+        ) else {
+            panic!("the BlueTS program must expose a metadata handle")
+        };
+        assert_eq!(metadata.len(), 1);
+        let DebuggerReply::StaticMetadataSources(sources) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadataSources {
+                metadata: metadata[0],
+            },
+        ) else {
+            panic!("the BlueTS program must expose source IDs")
+        };
+        assert!(!sources.is_empty());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match debugger_request(
+                &mut debugger,
+                DebuggerRequest::GetExecutionState { program },
+            ) {
+                DebuggerReply::ExecutionState {
+                    state: DebuggerExecutionState::Completed,
+                    ..
+                } => break,
+                DebuggerReply::ExecutionState {
+                    state: DebuggerExecutionState::Pending,
+                    ..
+                } if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+                reply => panic!("throw did not complete: {reply:?}"),
+            }
+        }
+        if !owner_span || !client_span {
+            let source = sources[0];
+            assert_exception_refusal(
+                debugger_request(
+                    &mut debugger,
+                    DebuggerRequest::DescribeExceptionLocation { source },
+                ),
+                DebuggerErrorCode::CapabilityUnavailable,
+            );
+            drop(debugger);
+        } else {
+            let valid_sources = sources
+                .iter()
+                .copied()
+                .filter(|source| {
+                    matches!(
+                        debugger_request(
+                            &mut debugger,
+                            DebuggerRequest::DescribeExceptionLocation { source: *source },
+                        ),
+                        DebuggerReply::ExceptionLocation(_)
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(valid_sources.len(), 1);
+            let source = valid_sources[0];
+            drop(debugger);
+            let mut separate = UnixStream::connect(&launcher.debugger_socket).unwrap();
+            let manifest = DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
+            assert_eq!(
+                debugger_request(
+                    &mut separate,
+                    DebuggerRequest::Hello {
+                        protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                        requested_bounded_values: false,
+                        requested_metadata_capabilities: manifest.clone(),
+                    },
+                ),
+                DebuggerReply::HelloAck {
+                    protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    granted_bounded_values: false,
+                    granted_metadata_capabilities: manifest,
+                }
+            );
+            assert_exception_refusal(
+                debugger_request(
+                    &mut separate,
+                    DebuggerRequest::DescribeExceptionLocation { source },
+                ),
+                DebuggerErrorCode::InvalidTarget,
+            );
+            assert_eq!(
+                debugger_request(
+                    &mut separate,
+                    DebuggerRequest::ListStaticMetadata { program },
+                ),
+                DebuggerReply::StaticMetadata(metadata.clone())
+            );
+            assert_exception_refusal(
+                debugger_request(
+                    &mut separate,
+                    DebuggerRequest::DescribeExceptionLocation { source },
+                ),
+                DebuggerErrorCode::InvalidTarget,
+            );
+            assert_eq!(
+                debugger_request(
+                    &mut separate,
+                    DebuggerRequest::ListStaticMetadataSources {
+                        metadata: metadata[0],
+                    },
+                ),
+                DebuggerReply::StaticMetadataSources(sources)
+            );
+            assert!(matches!(
+                debugger_request(
+                    &mut separate,
+                    DebuggerRequest::DescribeExceptionLocation { source },
+                ),
+                DebuggerReply::ExceptionLocation(_)
+            ));
+        }
+        launcher.shutdown();
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+}
+
+#[test]
+fn launcher_refuses_normal_and_stale_exception_locations() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        for body in [
+            format!(
+                "<script type=\"application/x-blueice-typescript\">{CLASSIC_THROW_BLUETS_SOURCE}</script>"
+            ),
+            "<script type=\"application/x-blueice-typescript\">const answer: number = 3;</script>"
+                .to_string(),
+        ] {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
+    });
+    let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            inventory: true,
+            source_inventory: true,
+            safe_point_span: true,
+            ..StaticMetadataPolicy::default()
+        },
+    );
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    navigate(&mut browser, &format!("{base_url}/throw"));
+
+    let manifest = DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
+                requested_metadata_capabilities: manifest.clone(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
+            granted_metadata_capabilities: manifest,
+        }
+    );
+    let (throw_program, throw_sources) = one_receipted_typed_program(&mut debugger, "throw");
+    await_terminal_bluets_execution(&mut debugger, throw_program);
+    let throw_locations = throw_sources
+        .iter()
+        .copied()
+        .filter(|source| {
+            matches!(
+                debugger_request(
+                    &mut debugger,
+                    DebuggerRequest::DescribeExceptionLocation { source: *source },
+                ),
+                DebuggerReply::ExceptionLocation(_)
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(throw_locations.len(), 1);
+    let old_source = throw_locations[0];
+
+    navigate(&mut browser, &format!("{base_url}/normal"));
+    assert_exception_refusal(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeExceptionLocation { source: old_source },
+        ),
+        DebuggerErrorCode::StaleRealm,
+    );
+    let (normal_program, normal_sources) = one_receipted_typed_program(&mut debugger, "normal");
+    assert_ne!(normal_program, throw_program);
+    await_terminal_bluets_execution(&mut debugger, normal_program);
+    for source in normal_sources {
+        assert_exception_refusal(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::DescribeExceptionLocation { source },
+            ),
+            DebuggerErrorCode::InvalidExecutionState,
+        );
+    }
+
+    fixture.join().unwrap();
+    drop(debugger);
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_refuses_caught_bluets_exception_locations() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        let body = format!(
+            "<script type=\"application/x-blueice-typescript\">{CAUGHT_THROW_BLUETS_SOURCE}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+    let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            inventory: true,
+            source_inventory: true,
+            safe_point_span: true,
+            ..StaticMetadataPolicy::default()
+        },
+    );
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    navigate(&mut browser, &url);
+    fixture.join().unwrap();
+    let manifest = DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
+                requested_metadata_capabilities: manifest.clone(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
+            granted_metadata_capabilities: manifest,
+        }
+    );
+    let (program, sources) = one_receipted_typed_program(&mut debugger, "caught");
+    await_terminal_bluets_execution(&mut debugger, program);
+    for source in sources {
+        assert_exception_refusal(
+            debugger_request(
+                &mut debugger,
+                DebuggerRequest::DescribeExceptionLocation { source },
+            ),
+            DebuggerErrorCode::InvalidExecutionState,
+        );
+    }
+    drop(debugger);
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
 }
 
 #[test]

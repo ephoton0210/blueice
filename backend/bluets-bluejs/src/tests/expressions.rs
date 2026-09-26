@@ -398,6 +398,25 @@ fn lowers_throw_statements_in_direct_functions() {
 }
 
 #[test]
+fn direct_script_catches_bluets_throw_through_declared_eval_alias() {
+    let source = "function fail(): number { throw 11; } globalThis.fail = fail; const evaluate = eval; evaluate('try { globalThis.fail(); } catch (error) { globalThis.caughtBlueTsThrow = error === 11; }'); globalThis.caughtBlueTsThrow;";
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            require_declared_global_calls: true,
+            ..CompilerOptions::default()
+        },
+    );
+    let artifact =
+        result.unwrap_or_else(|error| panic!("caught throw fixture must lower: {error:?}"));
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode),
+        Ok(bluejs::Value::Bool(true))
+    );
+}
+
+#[test]
 fn lowers_braced_if_else_statements_in_direct_functions() {
     let artifact = compile_direct_script(
             ENTRY,
