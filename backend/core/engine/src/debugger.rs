@@ -27,7 +27,8 @@ use crate::{
         JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
         JavaScriptPageDebuggerStaticMetadataSymbolTarget,
         JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
-        JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageDebuggerValuePreview,
+        JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageDebuggerStaticScopeRelation,
+        JavaScriptPageDebuggerStaticScopeTarget, JavaScriptPageDebuggerValuePreview,
         JavaScriptPageDebuggerValueTarget, JavaScriptPageExecutor, PageJavaScriptDebuggerLocations,
         PageJavaScriptExecutor,
     },
@@ -3823,6 +3824,110 @@ fn child_scopes(
             .collect(),
         scope_truncated: selected.scope_truncated,
     })
+}
+
+/// Core-session staging point for a static-only paused-slot relation. It is
+/// deliberately not dispatched by any public request: C3.1.3.4 must supply
+/// independent owner/client grants and same-stream scope/type receipts first.
+#[allow(dead_code)]
+fn private_core_static_scope_relation(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    realm: DebuggerPageRealm,
+    target: JavaScriptPageDebuggerStaticScopeTarget,
+) -> Result<JavaScriptPageDebuggerStaticScopeRelation, Box<DebuggerReply>> {
+    let invalid = || {
+        Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "static scope target is not the exact active paused slot".to_string(),
+        })
+    };
+    let tab_id = resolve_live_realm(tabs, realm)?;
+    if !locations.debugger_has_live_realm(tab_id, realm.realm_generation) {
+        return Err(Box::new(unavailable_scopes()));
+    }
+    match target {
+        JavaScriptPageDebuggerStaticScopeTarget::Ordinary { metadata, target } => {
+            let frame_count = match (target.frame, target.frame_index) {
+                (None, 0) => 1,
+                (Some(_), 1) => 2,
+                _ => return Err(invalid()),
+            };
+            if metadata.metadata_handle == 0
+                || metadata.metadata_generation == 0
+                || target.program.program_handle == 0
+                || target.program.program_generation == 0
+                || target.safe_point.code_unit_ordinal != 0
+                || target.frame.is_some_and(|frame| {
+                    frame.tab_id != tab_id
+                        || frame.document_generation != realm.realm_generation
+                        || frame.program_handle != target.program.program_handle
+                        || frame.program_generation != target.program.program_generation
+                        || frame.code_unit_ordinal == 0
+                })
+            {
+                return Err(invalid());
+            }
+            let snapshot = locations
+                .debugger_stack_snapshot(
+                    tab_id,
+                    realm.realm_generation,
+                    target.program,
+                    target.frame,
+                    frame_count,
+                    MAX_SCOPE_BINDINGS,
+                )
+                .map_err(|error| Box::new(debugger_program_error(error)))?;
+            if snapshot.stack_truncated
+                || snapshot.frames.len() != frame_count as usize
+                || snapshot.frames.iter().any(|frame| frame.scope_truncated)
+            {
+                return Err(invalid());
+            }
+            let selected = &snapshot.frames[target.frame_index as usize];
+            if selected.code_unit_ordinal != 0
+                || selected.bytecode_offset != target.safe_point.bytecode_offset
+                || selected
+                    .scope_entries
+                    .iter()
+                    .filter(|entry| entry.slot_ordinal == target.scope_entry.slot_ordinal)
+                    .count()
+                    != 1
+                || !selected.scope_entries.contains(&target.scope_entry)
+            {
+                return Err(invalid());
+            }
+        }
+        JavaScriptPageDebuggerStaticScopeTarget::Linked {
+            metadata,
+            expected_stack,
+            frame_index,
+            ..
+        } => {
+            if metadata.metadata_handle == 0
+                || metadata.metadata_generation == 0
+                || frame_index != 1
+                || public_linked_stack(tab_id, realm, expected_stack).is_none()
+            {
+                return Err(invalid());
+            }
+            let current = locations
+                .debugger_linked_stack_snapshot(expected_stack.frames[0].frame, MAX_SCOPE_BINDINGS)
+                .map_err(|error| Box::new(debugger_program_error(error)))?;
+            if current != expected_stack {
+                return Err(invalid());
+            }
+            // The executor also checks the complete private two-program scope
+            // stack and entry-root slot before it forwards this target.
+        }
+    }
+    let relation = locations
+        .debugger_static_scope_relation(tab_id, realm.realm_generation, target)
+        .map_err(|error| Box::new(debugger_program_error(error)))?;
+    if relation.target != target {
+        return Err(invalid());
+    }
+    Ok(relation)
 }
 
 /// Private core-side half of the public value route. The caller must
@@ -10569,5 +10674,230 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn private_static_scope_helper_rechecks_ordinary_and_linked_pauses() {
+        use crate::script::javascript::{
+            JavaScriptPageDebuggerLinkedStackFrame, JavaScriptPageDebuggerStackFrame,
+            JavaScriptPageDebuggerStackSnapshot, JavaScriptPageDebuggerStaticMetadata,
+            JavaScriptPageDebuggerStaticMetadataSymbolType,
+        };
+
+        struct StaticLocations {
+            tab_id: TabId,
+            generation: u64,
+            ordinary: JavaScriptPageDebuggerStackSnapshot,
+            linked: JavaScriptPageDebuggerLinkedStackSnapshot,
+            relation_calls: usize,
+            changed_echo: Option<JavaScriptPageDebuggerStaticScopeTarget>,
+        }
+        impl PageJavaScriptDebuggerLocations for StaticLocations {
+            fn debugger_has_live_realm(&mut self, tab_id: TabId, generation: u64) -> bool {
+                tab_id == self.tab_id && generation == self.generation
+            }
+
+            fn max_debugger_safe_points_per_program(&self) -> usize {
+                1
+            }
+
+            fn debugger_programs(
+                &mut self,
+                _: TabId,
+                _: u64,
+            ) -> Result<Vec<JavaScriptPageDebuggerProgram>, JavaScriptPageDebuggerError>
+            {
+                Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+            }
+
+            fn debugger_safe_points(
+                &mut self,
+                _: TabId,
+                _: u64,
+                _: u64,
+                _: u64,
+            ) -> Result<Vec<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError>
+            {
+                Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+            }
+
+            fn validate_debugger_safe_point(
+                &mut self,
+                _: TabId,
+                _: u64,
+                _: u64,
+                _: u64,
+                _: u32,
+                _: u32,
+            ) -> Result<(), JavaScriptPageDebuggerError> {
+                Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+            }
+
+            fn debugger_stack_snapshot(
+                &mut self,
+                _: TabId,
+                _: u64,
+                _: JavaScriptPageDebuggerProgram,
+                _: Option<JavaScriptPageDebuggerFrame>,
+                _: u32,
+                _: u32,
+            ) -> Result<JavaScriptPageDebuggerStackSnapshot, JavaScriptPageDebuggerError>
+            {
+                Ok(self.ordinary.clone())
+            }
+
+            fn debugger_linked_stack_snapshot(
+                &mut self,
+                _: JavaScriptPageDebuggerFrame,
+                _: u32,
+            ) -> Result<JavaScriptPageDebuggerLinkedStackSnapshot, JavaScriptPageDebuggerError>
+            {
+                Ok(self.linked)
+            }
+
+            fn debugger_static_scope_relation(
+                &mut self,
+                _: TabId,
+                _: u64,
+                target: JavaScriptPageDebuggerStaticScopeTarget,
+            ) -> Result<JavaScriptPageDebuggerStaticScopeRelation, JavaScriptPageDebuggerError>
+            {
+                self.relation_calls += 1;
+                Ok(JavaScriptPageDebuggerStaticScopeRelation {
+                    target: self.changed_echo.unwrap_or(target),
+                    symbol_type: JavaScriptPageDebuggerStaticMetadataSymbolType {
+                        symbol_id: 2,
+                        type_id: 1,
+                    },
+                })
+            }
+        }
+
+        let (tabs, realm) = loaded_tabs();
+        let tab_id = TabId::from_u64(realm.tab_id);
+        let entry = JavaScriptPageDebuggerProgram {
+            program_handle: 7,
+            program_generation: 3,
+        };
+        let slot = JavaScriptPageDebuggerScopeEntry {
+            slot_ordinal: 0,
+            scope_depth: 0,
+        };
+        let metadata = JavaScriptPageDebuggerStaticMetadata {
+            metadata_handle: 11,
+            metadata_generation: 12,
+        };
+        let ordinary = JavaScriptPageDebuggerStaticScopeTarget::Ordinary {
+            metadata,
+            target: JavaScriptPageDebuggerValueTarget {
+                program: entry,
+                frame: None,
+                frame_index: 0,
+                safe_point: JavaScriptPageDebuggerSafePoint {
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 41,
+                },
+                scope_entry: slot,
+            },
+        };
+        let frame =
+            |program: JavaScriptPageDebuggerProgram, ordinal, handle| JavaScriptPageDebuggerFrame {
+                tab_id,
+                document_generation: realm.realm_generation,
+                program_handle: program.program_handle,
+                program_generation: program.program_generation,
+                code_unit_ordinal: ordinal,
+                core_instance: [7; 16],
+                frame_handle: handle,
+            };
+        let dependency = JavaScriptPageDebuggerProgram {
+            program_handle: 17,
+            program_generation: 4,
+        };
+        let linked_stack = JavaScriptPageDebuggerLinkedStackSnapshot {
+            frames: [
+                JavaScriptPageDebuggerLinkedStackFrame {
+                    frame: frame(dependency, 1, 19),
+                    safe_point: JavaScriptPageDebuggerSafePoint {
+                        code_unit_ordinal: 1,
+                        bytecode_offset: 5,
+                    },
+                },
+                JavaScriptPageDebuggerLinkedStackFrame {
+                    frame: frame(entry, 0, 20),
+                    safe_point: JavaScriptPageDebuggerSafePoint {
+                        code_unit_ordinal: 0,
+                        bytecode_offset: 41,
+                    },
+                },
+            ],
+        };
+        let linked = JavaScriptPageDebuggerStaticScopeTarget::Linked {
+            metadata,
+            expected_stack: linked_stack,
+            frame_index: 1,
+            scope_entry: slot,
+        };
+        let mut locations = StaticLocations {
+            tab_id,
+            generation: realm.realm_generation,
+            ordinary: JavaScriptPageDebuggerStackSnapshot {
+                frames: vec![JavaScriptPageDebuggerStackFrame {
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 41,
+                    scope_entries: vec![slot],
+                    scope_truncated: false,
+                }],
+                stack_truncated: false,
+            },
+            linked: linked_stack,
+            relation_calls: 0,
+            changed_echo: None,
+        };
+        for target in [ordinary, linked] {
+            assert_eq!(
+                private_core_static_scope_relation(&tabs, &mut locations, realm, target)
+                    .unwrap()
+                    .target,
+                target
+            );
+        }
+        assert_eq!(locations.relation_calls, 2);
+        let JavaScriptPageDebuggerStaticScopeTarget::Ordinary {
+            target: mut ordinary_slot,
+            ..
+        } = ordinary
+        else {
+            unreachable!();
+        };
+        ordinary_slot.scope_entry.slot_ordinal = 9;
+        let forged = JavaScriptPageDebuggerStaticScopeTarget::Ordinary {
+            metadata,
+            target: ordinary_slot,
+        };
+        assert!(private_core_static_scope_relation(&tabs, &mut locations, realm, forged).is_err());
+        assert_eq!(locations.relation_calls, 2);
+        locations.ordinary.frames[0].scope_entries.push(slot);
+        assert!(
+            private_core_static_scope_relation(&tabs, &mut locations, realm, ordinary).is_err()
+        );
+        locations.ordinary.frames[0].scope_entries.pop();
+        assert_eq!(locations.relation_calls, 2);
+        let stale_realm = DebuggerPageRealm {
+            realm_generation: realm.realm_generation + 1,
+            ..realm
+        };
+        assert!(
+            private_core_static_scope_relation(&tabs, &mut locations, stale_realm, ordinary)
+                .is_err()
+        );
+        assert_eq!(locations.relation_calls, 2);
+        locations.linked.frames[1].safe_point.bytecode_offset += 1;
+        assert!(private_core_static_scope_relation(&tabs, &mut locations, realm, linked).is_err());
+        locations.linked = linked_stack;
+        assert_eq!(locations.relation_calls, 2);
+        locations.changed_echo = Some(ordinary);
+        assert!(private_core_static_scope_relation(&tabs, &mut locations, realm, linked).is_err());
+        assert_eq!(locations.relation_calls, 3);
     }
 }

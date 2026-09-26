@@ -2064,6 +2064,21 @@ workspace Clippy, and formatting pass. Neither the public debugger wire nor
 its receipt/grant authority changes here; a shared private core helper remains
 the next leaf.
 
+**C3.1.3.3.5.5 private core staging helper:** Before any future public
+dispatch, the debugger session can resolve one exact live realm and request a
+static-only relation through a private helper shared by ordinary and linked
+targets. The ordinary branch reacquires a complete root/parent stack and
+requires one unique active lexical slot at the expected root safe point. The
+linked branch validates the reminted two-program frame shape and reacquires
+the exact two-frame pause; the out-of-process executor then performs the
+complete private scope/slot recheck before the child adapter's exact echo.
+The session helper also refuses a changed core-target echo, so no partial
+relation is exposed on stale or forged input. Tests cover both successful
+shapes, forged/duplicated ordinary slots, stale realm generation, moved linked
+stack, and altered echo. The engine 309-test suite, workspace Clippy, and
+formatting pass. This staging helper is not wired to a public debugger
+request, capability, or grant; those remain C3.1.3.4 work.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
