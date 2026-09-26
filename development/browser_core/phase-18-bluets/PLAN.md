@@ -1999,6 +1999,27 @@ points, and stale document cutover all produce typed errors without partial
 symbol/type IDs. The full Launcher 116-test suite, workspace Clippy, and
 formatting pass. Public debugger v40 and `Value` remain unchanged.
 
+**C3.1.3.3.5.1 core/adapter split:** Keep the core-facing target separate
+from the page-host wire. The ordinary form carries the existing core-owned
+paused `ValueTarget` selector plus the independently reminted metadata
+identity; this is only a slot selector, never a request for a value. The
+linked form carries the exact core-reminted two-frame pause snapshot, entry
+metadata identity, entry-root index one, and selected lexical slot. Its
+stored child stack includes the complete scope entries and original budget;
+core must reacquire and compare it before constructing the private child
+target. A result contains only compiler symbol/type IDs tied to the input
+target. The page-host adapter is default-deny for test doubles, validates the
+whole request before sending, and accepts only a structurally valid reply
+whose entire target exactly echoes the request; an error or any changed field
+has no partial relation. The out-of-process executor separately resolves
+core program, nested/linked frame, document generation, and metadata handles
+to current child identities, then verifies the selected slot against a fresh
+active ordinary or linked stack. A private core debugger helper can consume
+that result only after its own live pause and scope checks. Same-stream
+ordinary `Scopes` and future linked-stack-derived scope receipts, type-ID
+receipt, owner/client grant, and public protocol bump belong to C3.1.3.4;
+this split adds none of those public authorities and never calls `Value`.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

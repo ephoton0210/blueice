@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.3.5.** Carry both private relations through the child
-adapter and core debugger support with exact request/reply echo, generation,
-metadata, and active-slot checks; do not add a public request or grant yet.
+**Current leaf: C3.1.3.3.5.2.** Add the default-deny private child-client
+operation and strict adapter request/reply shape, echo, and no-partial error
+tests without exposing a public debugger operation.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -426,6 +426,11 @@ channel with explicit owner/client grants.
       - [x] **C3.1.3.3.3** Implement the child-private ordinary root/parent-frame relation using a fresh exact active stack and retained slot map; reject child locals/captures, moved frames, stale metadata, and forged slots without inspecting values. The child reacquires a complete bounded same-program stack, requires the exact root safe point and one unambiguous active slot, then joins only the live generation's verified root map. Classic root and nested parent-root tests cover success and typed denials for child slots, forged frame/metadata/slot/depth/offset, absent realm, and navigation; Launcher 115 tests, workspace Clippy, and formatting pass. Linked remains denied pending C3.1.3.3.4.
       - [x] **C3.1.3.3.4** Implement the child-private linked entry-root relation against the complete freshly revalidated dependency/entry stack and entry-owned metadata; reject swapped programs/metadata, dependency captures, moved stacks, and stale cutovers without partial replies. The child checks the exact linked invocation, reacquires the whole dependency/entry stack with the original scope budget, compares every frame/slot, and joins only the entry program's live root map. Linked child tests cover swapped programs/metadata, dependency-frame selection, forged invocation/slot, moved child/entry safe points, and document cutover. Launcher 116 tests, workspace Clippy, and formatting pass; no public request/grant was added.
       - [ ] **C3.1.3.3.5** Carry both private relations through the child adapter and core debugger support with exact request/reply echo, generation, metadata, and active-slot checks; do not add a public request or grant yet.
+        - [x] **C3.1.3.3.5.1** Decide core-facing ordinary/linked static scope targets, the private adapter's exact-echo contract, and which live identities/slots core revalidates before the future public grant. PLAN.md keeps core-owned ordinary/linked selectors separate from page-host IDs; the adapter requires full-target echo, core rechecks current program/frame/metadata and complete active stack, while same-stream receipts and public authority remain deferred to C3.1.3.4.
+        - [ ] **C3.1.3.3.5.2** Add the default-deny private child-client operation and strict adapter request/reply shape, echo, and no-partial error tests without exposing a public debugger operation.
+        - [ ] **C3.1.3.3.5.3** Remap ordinary root/parent targets through core-owned program/frame/metadata generations, reacquire the active scope, and reject forged/stale/moved replies.
+        - [ ] **C3.1.3.3.5.4** Remap linked entry-root targets through the complete stored/reacquired two-program stack and entry-owned metadata, rejecting swapped/moved/forged targets and replies.
+        - [ ] **C3.1.3.3.5.5** Add a private core debugger helper for both verified relations with no public request/grant; test its exact active-slot and generation checks before checking off C3.1.3.3.5.
       - [ ] **C3.1.3.3.6** Prove classic, module, nested-parent, and linked child/core boundaries plus no-partial stale/moved/forged denials; then check off C3.1.3.3.
     - [ ] **C3.1.3.4** Add an independently granted public static scope relation request/reply with exact ordinary Scopes or linked-stack-derived scope receipt plus metadata/type receipts; retain the existing separate bounded `Value` reply, bump public protocol only when the complete route and IPC/core denials pass.
     - [ ] **C3.1.3.5** Prove a static type display and independently authorized runtime preview remain distinct, correctly matched to the same paused classic/module/linked slot, and expire after step/reload/cutover on real Launcher sockets; then check off C3.1.3 and C3.1.
