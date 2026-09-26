@@ -5,6 +5,19 @@
 use super::*;
 
 #[test]
+fn module_validation_rejects_invalid_super_private_names_and_duplicate_names() {
+    for source in [
+        "super.value;",
+        "class C { method() { return this.#missing; } }",
+        "export { first as duplicate }; export { second as duplicate };",
+        "class C {} class C {}",
+    ] {
+        let error = parse_module(source).expect_err(source);
+        assert!(error.known_syntax, "{source}: {error:?}");
+    }
+}
+
+#[test]
 fn regexp_lexical_goals_are_visible_in_the_public_ast() {
     use crate::{parse, Expr, Stmt};
     let program = parse("/a/g").unwrap();

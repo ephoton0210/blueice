@@ -22,6 +22,18 @@ fn assert_script_syntax_error(source: &str) {
 }
 
 #[test]
+fn module_validation_rejects_invalid_super_private_names_and_duplicate_names() {
+    for source in [
+        "super.value;",
+        "class C { method() { return this.#missing; } }",
+        "export { first as duplicate }; export { second as duplicate };",
+        "class C {} class C {}",
+    ] {
+        assert_module_syntax_error(source);
+    }
+}
+
+#[test]
 fn contextual_keywords_in_import_and_export_declarations_reject_escapes() {
     for source in [
         "import {a \\u0061s b} from './m.js';",

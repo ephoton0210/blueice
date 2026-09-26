@@ -525,9 +525,7 @@ impl Vm {
         data: &intl::Segments,
         index: usize,
     ) -> Result<Value, RuntimeError> {
-        let (segment, start, is_word_like) = data
-            .record(index)
-            .expect("segment iterator index is bounded by its data");
+        let (segment, start, is_word_like) = data.record(index);
         let prototype = self.object_prototype;
         let record = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         self.stack.push(Value::Object(record));

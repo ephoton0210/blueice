@@ -4,6 +4,48 @@
 
 use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
 
+#[test]
+fn locale_case_mapping_enforces_the_output_limit_for_runs_and_surrogates() {
+    use blueice_bluejs::VmConfig;
+
+    for source in [
+        format!("'{}'.toLocaleUpperCase('de')", "ß".repeat(32)),
+        format!("'{}'.toLocaleLowerCase('en')", "İ".repeat(32)),
+        format!("'{}\\ud800'.toLocaleUpperCase('de')", "ß".repeat(16)),
+        format!("'{}\\ud800'.toLocaleUpperCase('de')", "ß".repeat(17)),
+    ] {
+        let code = compile(&parse(&source).unwrap()).unwrap();
+        let mut vm = Vm::new(VmConfig {
+            max_string_bytes: 64,
+            ..VmConfig::default()
+        })
+        .unwrap();
+        assert!(
+            matches!(
+                vm.execute(&code),
+                Err(RuntimeError::StringLimit { limit: 64 })
+            ),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn segment_iterator_next_rejects_non_iterator_receivers() {
+    for receiver in ["0", "{}"] {
+        let source = format!(
+            "let iterator = new Intl.Segmenter().segment('A')[Symbol.iterator](); iterator.next.call({receiver})"
+        );
+        match evaluate(&source) {
+            Err(RuntimeError::TypeError(message)) => assert!(
+                message.contains("Segmenter iterator next requires"),
+                "{source}: {message}"
+            ),
+            other => panic!("{source}: {other:?}"),
+        }
+    }
+}
+
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
 }

@@ -103,15 +103,16 @@ impl Segments {
         Self { input, records }
     }
 
-    pub fn record(&self, index: usize) -> Option<(JsString, usize, Option<bool>)> {
-        let record = self.records.get(index)?;
-        Some((
+    /// `index` comes from `containing` or a bounded segment iterator step.
+    pub fn record(&self, index: usize) -> (JsString, usize, Option<bool>) {
+        let record = &self.records[index];
+        (
             JsString::from_code_units(
                 self.input.as_code_units()[record.start..record.end].to_vec(),
             ),
             record.start,
             record.is_word_like,
-        ))
+        )
     }
 
     pub fn containing(&self, index: usize) -> Option<usize> {
@@ -189,7 +190,7 @@ mod tests {
     use crate::{JsString, RuntimeError};
 
     #[test]
-    fn segments_return_none_past_the_last_record() {
+    fn containing_returns_none_past_the_last_record() {
         let segments = Segments {
             input: JsString::from("a"),
             records: vec![SegmentRecord {
@@ -198,7 +199,8 @@ mod tests {
                 is_word_like: None,
             }],
         };
-        assert!(segments.record(1).is_none());
+        assert_eq!(segments.containing(1), None);
+        assert_eq!(segments.record(0).0, JsString::from("a"));
     }
 
     #[test]
