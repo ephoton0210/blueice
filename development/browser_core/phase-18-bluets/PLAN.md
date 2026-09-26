@@ -1625,6 +1625,18 @@ the old top frame unusable. Focused tests cover all four lifecycle states,
 complete stack reads, stale-frame refusal, and malformed/missing child data.
 No public request/reply variant exists yet; the debugger wire remains v39.
 
+**C3.1.1.2.2.3.3.2.2.2 core-facing linked resume/spans:** Exact resume now
+requires the active top core frame and rechecks both independent live program
+mappings before asking the child to resume the matching private invocation.
+The two-source span operation requires a complete previously returned public
+stack, a separate span grant, and independent metadata/source receipts for
+both frames. It rejects any changed caller location, swapped metadata, or
+missing grant/receipt before the child is contacted, then asks the strict
+private adapter for all-or-nothing original byte/UTF-16 spans. Fake-child
+tests cover successful resume and both spans, stale top frame, forged caller
+stack, swapped attachment, and each missing authorization. The core-facing
+route is complete; no public wire request or version change exists yet.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

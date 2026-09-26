@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.1.2.2.3.3.2.2.2.** Expose exact linked resume and
-grant/receipt-bound two-source spans through the core-facing trait, then
-check off the core-facing linked route; keep the public wire unchanged.
+**Current leaf: C3.1.1.2.2.3.3.3.** Add the complete public linked
+request/reply route and dispatcher grant/receipt checks, then verify exact
+spans and no-partial denials before bumping the public protocol version.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -388,11 +388,11 @@ channel with explicit owner/client grants.
           - [x] **C3.1.1.2.2.3.2** Remint opaque linked frames and per-frame safe points in core with exact live document/program identity, and stage independent metadata/source receipt plus span-grant checks without public wire changes. Core retains a complete child-first stack, remints two distinct process-bound frame handles, maps each safe point to its own public program, and denies unauthorized/swapped/missing metadata or source access before the child; document replacement and program rediscovery invalidate the association.
           - [ ] **C3.1.1.2.2.3.3** Add the complete public linked request/reply family, enforce the existing span grant and both independent receipts on every coordinate read, bump public debugger protocol only with the route, and prove real IPC/core no-partial denials and exact spans; then check off C3.1.1.2.2.3 and C3.1.1.2.2.
             - [x] **C3.1.1.2.2.3.3.1** Define source-free public linked frame/stack and receipt-bound two-source coordinate data shapes with strict per-frame validation; add no callable public route and keep v39. Fixed two-frame shapes reject swapped roles, duplicate frame handles, cross-program source attachments, and reordered spans; IPC round-trip and workspace Clippy pass.
-            - [ ] **C3.1.1.2.2.3.3.2** Connect complete core-facing linked arm/state/stack/resume and coordinate operations to the private child adapter, retaining per-frame public identities without public wire exposure.
+            - [x] **C3.1.1.2.2.3.3.2** Connect complete core-facing linked arm/state/stack/resume and coordinate operations to the private child adapter, retaining per-frame public identities without public wire exposure.
               - [x] **C3.1.1.2.2.3.3.2.1** Add the core-facing linked model, distinct capability probe, and exact linked arm operation with both live public program identities; no public wire exposure. Core checks exact live entry/dependency mappings and a verified dependency safe point before the private graph-validation arm; fake-child tests cover valid, same-program, stale-document, and forged-acknowledgement paths.
-              - [ ] **C3.1.1.2.2.3.3.2.2** Expose paused/resuming state, complete stack, exact resume, and grant/receipt-bound two-source spans through the core-facing trait; then check off C3.1.1.2.2.3.3.2.
+              - [x] **C3.1.1.2.2.3.3.2.2** Expose paused/resuming state, complete stack, exact resume, and grant/receipt-bound two-source spans through the core-facing trait; then check off C3.1.1.2.2.3.3.2.
                 - [x] **C3.1.1.2.2.3.3.2.2.1** Expose exact pending/paused/resuming/completed linked state and complete two-frame stack with stable core identities and private state/stack revalidation. Core accepts only exact private lifecycle replies, captures the complete child-first stack before publishing a pause, preserves handles across scope-budget changes, and rejects moved or unregistered frames without partial state.
-                - [ ] **C3.1.1.2.2.3.3.2.2.2** Expose exact linked resume and grant/receipt-bound two-source spans through the core-facing trait; then check off C3.1.1.2.2.3.3.2.2 and C3.1.1.2.2.3.3.2.
+                - [x] **C3.1.1.2.2.3.3.2.2.2** Expose exact linked resume and grant/receipt-bound two-source spans through the core-facing trait; then check off C3.1.1.2.2.3.3.2.2 and C3.1.1.2.2.3.3.2. Core revalidates both live program mappings before resuming, demands the complete previously returned public stack for span reads, checks both authorization/receipt sets and metadata attachments before child access, and relies on the private child to atomically re-read the full paused stack and both original spans.
             - [ ] **C3.1.1.2.2.3.3.3** Add complete public linked requests/replies and dispatcher grant/receipt checks, real IPC/core no-partial tests and exact-span coverage, then bump public debugger protocol only with the complete route and check off the parent items.
       - [ ] **C3.1.1.2.3** Prove entry/dependency original spans, distinct source IDs, swapped/unreceipted source refusal, and stale graph expiry on real Launcher-supervised sockets; then check off C3.1.1.2 and C3.1.1.
   - [ ] **C3.1.2** Map breakpoints and symbols for module execution control.

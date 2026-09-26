@@ -2318,7 +2318,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
 
     fn core_linked_stack_spans(
         &mut self,
-        top_frame: JavaScriptPageDebuggerFrame,
+        expected_stack: JavaScriptPageDebuggerLinkedStackSnapshot,
         access: JavaScriptPageDebuggerLinkedSpanAccess,
     ) -> Result<[JavaScriptPageDebuggerStaticMetadataSafePointSpan; 2], JavaScriptPageDebuggerError>
     {
@@ -2328,10 +2328,11 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         {
             return Err(JavaScriptPageDebuggerError::NoLiveRealm);
         }
+        let top_frame = expected_stack.frames[0].frame;
         let active = self
             .debugger_linked_frames
             .get(&top_frame.tab_id)
-            .filter(|active| active.frames[0].frame == top_frame)
+            .filter(|active| active.frames == expected_stack.frames)
             .cloned()
             .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
         if !self.has_core_live_document(top_frame.tab_id, top_frame.document_generation) {
@@ -4886,6 +4887,64 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         Ok(JavaScriptPageDebuggerLinkedStackSnapshot { frames })
     }
 
+    fn resume_debugger_linked_nested_execution(
+        &mut self,
+        top_frame: JavaScriptPageDebuggerFrame,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_linked_frames_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let active = self
+            .debugger_linked_frames
+            .get(&top_frame.tab_id)
+            .filter(|active| active.frames[0].frame == top_frame)
+            .cloned()
+            .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
+        for (index, frame) in active.frames.iter().enumerate() {
+            let child = match self.child_program_for_core(
+                top_frame.tab_id,
+                top_frame.document_generation,
+                frame.frame.program_handle,
+                frame.frame.program_generation,
+            ) {
+                Ok(child) => child,
+                Err(error) => {
+                    self.debugger_linked_frames.remove(&top_frame.tab_id);
+                    return Err(error);
+                }
+            };
+            let expected = if index == 0 {
+                active.child.dependency_program
+            } else {
+                active.child.entry_program
+            };
+            if child != expected {
+                self.debugger_linked_frames.remove(&top_frame.tab_id);
+                return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+            }
+        }
+        let result = (ChildLinkedDebuggerAdapter {
+            child: &mut self.child,
+        })
+        .resume(active.child);
+        if result.is_err() {
+            self.debugger_linked_frames.remove(&top_frame.tab_id);
+        }
+        result
+    }
+
+    fn debugger_linked_stack_spans(
+        &mut self,
+        expected_stack: JavaScriptPageDebuggerLinkedStackSnapshot,
+        access: JavaScriptPageDebuggerLinkedSpanAccess,
+    ) -> Result<[JavaScriptPageDebuggerStaticMetadataSafePointSpan; 2], JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_linked_frames_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        self.core_linked_stack_spans(expected_stack, access)
+    }
+
     fn arm_debugger_nested_safe_point_breakpoint(
         &mut self,
         tab_id: TabId,
@@ -6863,7 +6922,9 @@ mod tests {
             state: PageHostReply,
             stack: PageHostReply,
             spans: PageHostReply,
+            resume: PageHostReply,
             span_calls: usize,
+            resume_calls: usize,
         }
         impl PageHostClient for LinkedCoreChild {
             fn synchronize_document(&mut self, _: PageHostDocument) -> io::Result<PageHostReply> {
@@ -6911,6 +6972,14 @@ mod tests {
             ) -> io::Result<PageHostReply> {
                 self.span_calls += 1;
                 Ok(self.spans.clone())
+            }
+
+            fn resume_debugger_linked_nested_execution(
+                &mut self,
+                _: PageHostDebuggerLinkedFrame,
+            ) -> io::Result<PageHostReply> {
+                self.resume_calls += 1;
+                Ok(self.resume.clone())
             }
         }
 
@@ -6979,7 +7048,9 @@ mod tests {
                 snapshot: Box::new(stack.clone()),
                 spans: Box::new([span(13), span(16)]),
             },
+            resume: PageHostReply::DebuggerLinkedNestedResumeRequested { frame: child_frame },
             span_calls: 0,
+            resume_calls: 0,
         };
         let mut executor =
             OutOfProcessJavaScriptPageExecutor::new_with_debugger_execution_control(child);
@@ -7088,6 +7159,7 @@ mod tests {
             source_receipted: [true; 2],
             targets,
         };
+        let expected_stack = JavaScriptPageDebuggerLinkedStackSnapshot { frames };
         for denied in [
             JavaScriptPageDebuggerLinkedSpanAccess {
                 granted: false,
@@ -7103,14 +7175,14 @@ mod tests {
             },
         ] {
             assert_eq!(
-                executor.core_linked_stack_spans(frames[0].frame, denied),
+                executor.debugger_linked_stack_spans(expected_stack, denied),
                 Err(JavaScriptPageDebuggerError::NoLiveRealm)
             );
         }
         assert_eq!(executor.child.span_calls, 0);
         assert_eq!(
-            executor.core_linked_stack_spans(
-                frames[0].frame,
+            executor.debugger_linked_stack_spans(
+                expected_stack,
                 JavaScriptPageDebuggerLinkedSpanAccess {
                     targets: [
                         JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
@@ -7127,8 +7199,8 @@ mod tests {
         );
         assert_eq!(executor.child.span_calls, 0);
         assert_eq!(
-            executor.core_linked_stack_spans(
-                frames[0].frame,
+            executor.debugger_linked_stack_spans(
+                expected_stack,
                 JavaScriptPageDebuggerLinkedSpanAccess {
                     targets: [targets[1], targets[0]],
                     ..access
@@ -7137,8 +7209,15 @@ mod tests {
             Err(JavaScriptPageDebuggerError::InvalidSafePoint)
         );
         assert_eq!(executor.child.span_calls, 0);
+        let mut forged_stack = expected_stack;
+        forged_stack.frames[1].safe_point.bytecode_offset += 1;
         assert_eq!(
-            executor.core_linked_stack_spans(frames[0].frame, access),
+            executor.debugger_linked_stack_spans(forged_stack, access),
+            Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+        );
+        assert_eq!(executor.child.span_calls, 0);
+        assert_eq!(
+            executor.debugger_linked_stack_spans(expected_stack, access),
             Ok([span(13), span(16)].map(|span| {
                 JavaScriptPageDebuggerStaticMetadataSafePointSpan {
                     source_id: span.source_id,
@@ -7149,6 +7228,11 @@ mod tests {
             }))
         );
         assert_eq!(executor.child.span_calls, 1);
+        assert_eq!(
+            executor.resume_debugger_linked_nested_execution(frames[0].frame),
+            Ok(())
+        );
+        assert_eq!(executor.child.resume_calls, 1);
 
         let moved = PageHostDebuggerLinkedFrame {
             invocation_serial: 32,
@@ -7179,6 +7263,17 @@ mod tests {
             executor.debugger_linked_stack_snapshot(frames[0].frame, 4),
             Err(JavaScriptPageDebuggerError::InvalidExecutionState)
         );
+        assert_eq!(
+            executor.resume_debugger_linked_nested_execution(frames[0].frame),
+            Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+        );
+        assert_eq!(executor.child.resume_calls, 1);
+        executor.child.resume = PageHostReply::DebuggerLinkedNestedResumeRequested { frame: moved };
+        assert_eq!(
+            executor.resume_debugger_linked_nested_execution(moved_frames[0].frame),
+            Ok(())
+        );
+        assert_eq!(executor.child.resume_calls, 2);
         executor.child.state = PageHostReply::DebuggerLinkedExecutionState {
             frame: moved,
             state: PageHostDebuggerLinkedExecutionState::Resuming,
@@ -7196,7 +7291,7 @@ mod tests {
             },
         };
         assert_eq!(
-            executor.core_linked_stack_spans(frames[0].frame, access),
+            executor.debugger_linked_stack_spans(expected_stack, access),
             Err(JavaScriptPageDebuggerError::InvalidExecutionState)
         );
         assert_eq!(executor.child.span_calls, 1);

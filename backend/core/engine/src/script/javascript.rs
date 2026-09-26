@@ -600,6 +600,24 @@ pub trait PageJavaScriptDebuggerLocations {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 
+    fn resume_debugger_linked_nested_execution(
+        &mut self,
+        _top_frame: JavaScriptPageDebuggerFrame,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Reads two coordinates atomically only after the debugger stream has
+    /// separately authorized the grant and both metadata/source receipts.
+    fn debugger_linked_stack_spans(
+        &mut self,
+        _expected_stack: JavaScriptPageDebuggerLinkedStackSnapshot,
+        _access: JavaScriptPageDebuggerLinkedSpanAccess,
+    ) -> Result<[JavaScriptPageDebuggerStaticMetadataSafePointSpan; 2], JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
     fn arm_debugger_nested_safe_point_breakpoint(
         &mut self,
         _tab_id: TabId,
