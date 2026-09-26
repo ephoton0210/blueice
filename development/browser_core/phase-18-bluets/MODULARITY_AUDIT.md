@@ -141,3 +141,8 @@ C3.1.3.4.7.5.4.3.3 moved strict private linked/static-scope child reply
 adapters to a 277-line internal module. The production facade is 5,097 lines;
 the large core debugger trait implementation and authorization/report helpers
 remain under audit.
+
+C3.1.3.4.7.5.4.3.4.1 moved the intact core debugger trait implementation
+to its own 2,865-line internal owner, separating it from the 2,238-line
+executor facade. Both remain above threshold; metadata, linked/nested
+frame/scope, and root execution methods require bounded delegated owners.

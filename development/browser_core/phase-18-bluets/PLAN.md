@@ -2490,6 +2490,13 @@ leaving public grants, reminted handles, and wire replies unchanged. The
 production child-executor facade is 5,097 lines; all 309 engine library tests
 pass with the reused target.
 
+**C3.1.3.4.7.5.4.3.4.1 core debugger trait boundary:** The complete
+`PageJavaScriptDebuggerLocations` implementation moved intact to an internal
+`debugger.rs`; no grant, remint, validation, or reply path was rewritten.
+The executor facade is 2,238 lines and the debugger owner is 2,865 lines.
+Both still require bounded concern-level delegations and helper extraction.
+All 309 engine library tests pass with the reused target.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

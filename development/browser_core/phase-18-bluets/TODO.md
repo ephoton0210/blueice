@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.7.5.4.3.4.** Split core-side debugger metadata,
-linked/nested frame, and execution-control adapter responsibilities into
-reviewable modules while preserving grants and handle reminting.
+**Current leaf: C3.1.3.4.7.5.4.3.4.2.** Delegate core-side static metadata
+query and contract methods to bounded internal owners, preserving their exact
+grant checks and handle reminting.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -478,7 +478,11 @@ channel with explicit owner/client grants.
               - [x] **C3.1.3.4.7.5.4.3.1** Move the public `PageHostClient` transport contract unchanged to an internal `client.rs` and re-export it from the original module. The new file is 765 lines and `javascript_child.rs` fell from 7,016 to 6,259 lines. All 309 engine library tests pass with the reused target.
               - [x] **C3.1.3.4.7.5.4.3.2** Extract `PageHostConnection` socket transport and its `PageHostClient` implementation into a bounded module without altering deadlines or reply validation. `connection.rs` is 901 lines and the public type remains re-exported from the original path; private request helpers and stream retain only parent-module visibility for the existing transport tests. `javascript_child.rs` is 5,365 lines. All 309 engine library tests pass with the reused target.
               - [x] **C3.1.3.4.7.5.4.3.3** Extract linked/static-scope private child adapters into a bounded module, preserving exact echo checks. `private_debugger_adapter.rs` is 277 lines and exposes only parent-module visibility for its strict linked state/stack/span/resume and static relation queries. `javascript_child.rs` is 5,097 lines. All 309 engine library tests pass with the reused target.
-              - [ ] **C3.1.3.4.7.5.4.3.4** Split core-side debugger metadata, linked/nested frame, and execution-control adapter responsibilities into reviewable modules, preserving grants and reminting.
+              - [ ] **C3.1.3.4.7.5.4.3.4** Split core-side debugger metadata, linked/nested frame, and execution-control adapter responsibilities into reviewable modules, preserving grants and reminting. The Rust trait implementation remains one syntactic block, so move it first, then delegate cohesive method bodies to bounded inherent-impl owners.
+                - [x] **C3.1.3.4.7.5.4.3.4.1** Move the complete `PageJavaScriptDebuggerLocations` implementation intact to a separate internal `debugger.rs` owner. The executor facade fell from 5,097 to 2,238 lines; `debugger.rs` is 2,865 lines and remains oversized until the following delegation leaves. All 309 engine library tests pass with the reused target.
+                - [ ] **C3.1.3.4.7.5.4.3.4.2** Delegate static metadata inventory, provenance, type, symbol, and contract query bodies to bounded inherent-impl modules; preserve exact child replies, grants, and reminted IDs.
+                - [ ] **C3.1.3.4.7.5.4.3.4.3** Delegate linked/nested frame, static-scope, and value-snapshot body logic to bounded inherent-impl modules.
+                - [ ] **C3.1.3.4.7.5.4.3.4.4** Delegate root execution, source span, breakpoint, and safe-point validation bodies; recount the trait owner and refine any module still above 1,300 lines.
               - [ ] **C3.1.3.4.7.5.4.3.5** Extract authorization/report and child reply-validation helpers; recount the production executor and refine any remaining oversized owner before closing this leaf.
             - [ ] **C3.1.3.4.7.5.4.4** Extract BlueTS prepare/execute and debugger metadata logic from `bluejs_host.rs` into internal modules.
             - [ ] **C3.1.3.4.7.5.4.5** Group static relation and linked-scope debugger dispatch in `engine/src/debugger.rs` without changing authority checks.
