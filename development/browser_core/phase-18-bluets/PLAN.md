@@ -1973,6 +1973,20 @@ remains v40 with no new grant. Both ordinary and linked socket round trips,
 negative shape cases, the staged child denial, the full IPC (116) and Launcher
 (113) library suites, workspace Clippy, and formatting checks pass.
 
+**C3.1.3.3.3 ordinary child relation:** For an ordinary root pause or the
+parent root of an exact nested invocation, the child reacquires the current
+two-frame-capable stack without reading a VM binding. It rejects any stack or
+scope truncation, a missing/moved root safe point, a changed nested invocation,
+and a selected slot that is absent, duplicated, or at a different lexical
+depth. Only then does it use the exact document/program/metadata-owned,
+generation-checked root-slot map and return that slot's compiler symbol/type
+IDs. Child-local and capture frames remain ineligible; linked targets still
+return a typed error. The classic-root and nested-parent tests include
+forged slots, scope depths, safe points, invocation serials, metadata, missing
+realms, and document cutover without a partial reply. The full Launcher
+115-test suite, workspace Clippy, and formatting pass; public debugger v40
+and the independent `Value` route are unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

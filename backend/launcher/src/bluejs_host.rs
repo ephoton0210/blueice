@@ -66,7 +66,8 @@ use blueice_ipc::page_host::{
     PageHostDebuggerLinkedFrame, PageHostDebuggerLinkedSource, PageHostDebuggerLinkedStackFrame,
     PageHostDebuggerLinkedStackSnapshot, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
     PageHostDebuggerSafePoint, PageHostDebuggerScopeEntry, PageHostDebuggerStackFrame,
-    PageHostDebuggerStackSnapshot, PageHostDebuggerValuePreview, PageHostDebuggerValueSnapshot,
+    PageHostDebuggerStackSnapshot, PageHostDebuggerStaticScopeRelation,
+    PageHostDebuggerStaticScopeTarget, PageHostDebuggerValuePreview, PageHostDebuggerValueSnapshot,
     PageHostDebuggerValueTarget, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
     PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
     PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
@@ -1164,10 +1165,9 @@ impl BlueJsChildHost {
             PageHostRequest::GetDebuggerValueSnapshot { target } => {
                 self.debugger_value_snapshot(target)
             }
-            // The v41 private wire is staged before its exact-pause static
-            // relation handler. Until that handler exists, no relation can
-            // be returned from a valid or forged selector.
-            PageHostRequest::DescribeDebuggerStaticScopeRelation { .. } => invalid_debugger_state(),
+            PageHostRequest::DescribeDebuggerStaticScopeRelation { target } => {
+                self.debugger_static_scope_relation(*target)
+            }
             PageHostRequest::StepDebuggerBlueTsSourceSpan {
                 tab_id,
                 document_generation,
@@ -4401,6 +4401,98 @@ impl BlueJsChildHost {
             record.exception_location = Some(ChildDebuggerExceptionLocation { safe_point, span });
             return;
         }
+    }
+
+    /// Joins one freshly active ordinary root slot to its retained compiler
+    /// symbol/type IDs. Linked stacks stay denied until the separate
+    /// cross-program handler is implemented; no VM value is inspected here.
+    fn debugger_static_scope_relation(
+        &self,
+        target: PageHostDebuggerStaticScopeTarget,
+    ) -> PageHostReply {
+        if !target.is_well_formed() {
+            return invalid_request();
+        }
+        let (metadata, scope_target) = match &target {
+            PageHostDebuggerStaticScopeTarget::Ordinary { metadata, target } => {
+                (*metadata, *target)
+            }
+            PageHostDebuggerStaticScopeTarget::Linked { .. } => return invalid_debugger_state(),
+        };
+        let stack = match self.debugger_stack_snapshot(
+            scope_target.tab_id,
+            scope_target.document_generation,
+            scope_target.program,
+            scope_target.frame,
+            2,
+            PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES,
+        ) {
+            PageHostReply::DebuggerStackSnapshot {
+                tab_id,
+                document_generation,
+                program,
+                frame,
+                snapshot,
+            } if tab_id == scope_target.tab_id
+                && document_generation == scope_target.document_generation
+                && program == scope_target.program
+                && frame == scope_target.frame =>
+            {
+                snapshot
+            }
+            PageHostReply::Error { code, message } => {
+                return PageHostReply::Error { code, message };
+            }
+            _ => return invalid_debugger_state(),
+        };
+        if stack.stack_truncated
+            || stack.frames.iter().any(|frame| frame.scope_truncated)
+            || stack.frames.len() != if scope_target.frame.is_some() { 2 } else { 1 }
+        {
+            return invalid_debugger_state();
+        }
+        let Some(frame) = stack.frames.get(scope_target.frame_index as usize) else {
+            return invalid_debugger_state();
+        };
+        if frame.scope_truncated
+            || frame.code_unit_ordinal != 0
+            || frame.bytecode_offset != scope_target.safe_point.bytecode_offset
+            || frame
+                .scope_entries
+                .iter()
+                .filter(|entry| entry.slot_ordinal == scope_target.scope_entry.slot_ordinal)
+                .count()
+                != 1
+            || !frame.scope_entries.contains(&scope_target.scope_entry)
+        {
+            return invalid_debugger_state();
+        }
+        let slots = match self.live_bluets_root_symbol_slots(
+            scope_target.tab_id,
+            scope_target.document_generation,
+            scope_target.program,
+            metadata,
+        ) {
+            Ok(slots) => slots,
+            Err(_) => return invalid_debugger_state(),
+        };
+        let mut matching = slots.iter().filter(|slot| {
+            slot.code_unit.ordinal() == 0
+                && slot.slot_ordinal == scope_target.scope_entry.slot_ordinal
+        });
+        let Some(slot) = matching.next() else {
+            return invalid_debugger_state();
+        };
+        if matching.next().is_some() {
+            return invalid_debugger_state();
+        }
+        PageHostReply::DebuggerStaticScopeRelation(Box::new(PageHostDebuggerStaticScopeRelation {
+            target,
+            symbol_type: PageHostDebuggerBlueTsMetadataSymbolType {
+                symbol_id: slot.symbol_id.0,
+                type_id: slot.type_id.0,
+            },
+        }))
     }
 
     fn debugger_value_snapshot(&self, target: PageHostDebuggerValueTarget) -> PageHostReply {
@@ -9263,7 +9355,7 @@ mod tests {
     }
 
     #[test]
-    fn private_static_scope_wire_cannot_return_a_relation_before_child_handler() {
+    fn private_static_scope_wire_rejects_missing_realm() {
         let mut host = BlueJsChildHost::default();
         let program = PageHostDebuggerProgram {
             program_handle: 11,
@@ -9297,10 +9389,307 @@ mod tests {
                 target: Box::new(target),
             }),
             PageHostReply::Error {
-                code: PageHostErrorCode::InvalidDebuggerState,
+                code: PageHostErrorCode::UnknownRealm,
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn private_static_scope_ordinary_root_relates_only_one_live_compiler_slot() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(
+                    1,
+                    vec![blue_ts_classic(0, "let answer: number = 41;")],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap()
+            .program
+            .unwrap();
+        let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+            reply => panic!("expected metadata attachment: {reply:?}"),
+        };
+        let slot = host
+            .live_bluets_root_symbol_slots(7, 1, program, metadata)
+            .unwrap()[0];
+        let halt = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .filter(|point| point.code_unit_ordinal == 0)
+                .max_by_key(|point| point.bytecode_offset)
+                .unwrap(),
+            reply => panic!("expected root safe points: {reply:?}"),
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: halt,
+            }),
+            PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let target = paused_value_targets(&mut host, program, None, 0)
+            .into_iter()
+            .find(|target| target.scope_entry.slot_ordinal == slot.slot_ordinal)
+            .expect("the compiled root declaration occupies an active slot");
+        let static_target =
+            page_host::PageHostDebuggerStaticScopeTarget::Ordinary { metadata, target };
+        let request = |target| PageHostRequest::DescribeDebuggerStaticScopeRelation {
+            target: Box::new(target),
+        };
+        assert_eq!(
+            host.handle_request(request(static_target.clone())),
+            PageHostReply::DebuggerStaticScopeRelation(Box::new(
+                page_host::PageHostDebuggerStaticScopeRelation {
+                    target: static_target.clone(),
+                    symbol_type: PageHostDebuggerBlueTsMetadataSymbolType {
+                        symbol_id: slot.symbol_id.0,
+                        type_id: slot.type_id.0,
+                    },
+                }
+            ))
+        );
+        for forged in [
+            page_host::PageHostDebuggerStaticScopeTarget::Ordinary {
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_generation: metadata.metadata_generation + 1,
+                    ..metadata
+                },
+                target,
+            },
+            page_host::PageHostDebuggerStaticScopeTarget::Ordinary {
+                metadata,
+                target: PageHostDebuggerValueTarget {
+                    scope_entry: PageHostDebuggerScopeEntry {
+                        slot_ordinal: target.scope_entry.slot_ordinal + 1,
+                        ..target.scope_entry
+                    },
+                    ..target
+                },
+            },
+            page_host::PageHostDebuggerStaticScopeTarget::Ordinary {
+                metadata,
+                target: PageHostDebuggerValueTarget {
+                    scope_entry: PageHostDebuggerScopeEntry {
+                        scope_depth: target.scope_entry.scope_depth + 1,
+                        ..target.scope_entry
+                    },
+                    ..target
+                },
+            },
+            page_host::PageHostDebuggerStaticScopeTarget::Ordinary {
+                metadata,
+                target: PageHostDebuggerValueTarget {
+                    safe_point: PageHostDebuggerSafePoint {
+                        bytecode_offset: target.safe_point.bytecode_offset + 1,
+                        ..target.safe_point
+                    },
+                    ..target
+                },
+            },
+        ] {
+            assert!(matches!(
+                host.handle_request(request(forged)),
+                PageHostReply::Error { .. }
+            ));
+        }
+        assert!(matches!(
+            host.handle_request(request(
+                page_host::PageHostDebuggerStaticScopeTarget::Ordinary {
+                    metadata,
+                    target: PageHostDebuggerValueTarget {
+                        document_generation: 2,
+                        ..target
+                    },
+                }
+            )),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(2, vec![blue_ts_classic(0, "let next: number = 7;")],),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(request(static_target)),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn private_static_scope_ordinary_nested_pause_selects_only_parent_root() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(
+                    1,
+                    vec![blue_ts_classic(
+                        0,
+                        "let seed: number = 7; function inner(value: number): number { let local: number = value; return local; } inner(seed);",
+                    )],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = host.documents[&7]
+            .pending_debugger_executions
+            .front()
+            .unwrap()
+            .program
+            .unwrap();
+        let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+            reply => panic!("expected metadata attachment: {reply:?}"),
+        };
+        let point = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+                .into_iter()
+                .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+                .unwrap(),
+            reply => panic!("expected nested safe point: {reply:?}"),
+        };
+        host.arm_debugger_nested_target(7, 1, point).unwrap();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let frame = match host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::NestedPaused { frame, .. },
+                ..
+            } => frame,
+            reply => panic!("expected nested pause: {reply:?}"),
+        };
+        for _ in 0..64 {
+            if !paused_value_targets(&mut host, program, Some(frame), 0).is_empty() {
+                break;
+            }
+            assert!(matches!(
+                host.handle_request(PageHostRequest::StepDebuggerNestedInstruction { frame }),
+                PageHostReply::DebuggerNestedStepRequested { .. }
+            ));
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+        }
+        let slots = host
+            .live_bluets_root_symbol_slots(7, 1, program, metadata)
+            .unwrap()
+            .to_vec();
+        let (slot, parent) = paused_value_targets(&mut host, program, Some(frame), 1)
+            .into_iter()
+            .find_map(|target| {
+                slots
+                    .iter()
+                    .find(|slot| slot.slot_ordinal == target.scope_entry.slot_ordinal)
+                    .map(|slot| (*slot, target))
+            })
+            .expect("one compiled parent-root declaration remains active");
+        let parent_target = PageHostDebuggerStaticScopeTarget::Ordinary {
+            metadata,
+            target: parent,
+        };
+        assert_eq!(
+            host.handle_request(PageHostRequest::DescribeDebuggerStaticScopeRelation {
+                target: Box::new(parent_target.clone()),
+            }),
+            PageHostReply::DebuggerStaticScopeRelation(Box::new(
+                PageHostDebuggerStaticScopeRelation {
+                    target: parent_target,
+                    symbol_type: PageHostDebuggerBlueTsMetadataSymbolType {
+                        symbol_id: slot.symbol_id.0,
+                        type_id: slot.type_id.0,
+                    },
+                }
+            ))
+        );
+        let child = paused_value_targets(&mut host, program, Some(frame), 0)
+            .into_iter()
+            .next()
+            .expect("the child has an active local or capture slot");
+        for denied in [
+            PageHostDebuggerStaticScopeTarget::Ordinary {
+                metadata,
+                target: child,
+            },
+            PageHostDebuggerStaticScopeTarget::Ordinary {
+                metadata,
+                target: PageHostDebuggerValueTarget {
+                    frame_index: 0,
+                    safe_point: PageHostDebuggerSafePoint {
+                        code_unit_ordinal: 1,
+                        ..parent.safe_point
+                    },
+                    ..parent
+                },
+            },
+            PageHostDebuggerStaticScopeTarget::Ordinary {
+                metadata,
+                target: PageHostDebuggerValueTarget {
+                    frame: Some(PageHostDebuggerFrame {
+                        invocation_serial: frame.invocation_serial + 1,
+                        ..frame
+                    }),
+                    ..parent
+                },
+            },
+        ] {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::DescribeDebuggerStaticScopeRelation {
+                    target: Box::new(denied),
+                }),
+                PageHostReply::Error { .. }
+            ));
+        }
     }
 
     #[test]

@@ -14,10 +14,10 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.3.3.** Implement the child-private ordinary
-root/parent-frame relation using a fresh exact active stack and retained slot
-map; reject child locals/captures, moved frames, stale metadata, and forged
-slots without inspecting values.
+**Current leaf: C3.1.3.3.4.** Implement the child-private linked entry-root
+relation against the complete freshly revalidated dependency/entry stack and
+entry-owned metadata; reject swapped programs/metadata, dependency captures,
+moved stacks, and stale cutovers without partial replies.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -424,7 +424,7 @@ channel with explicit owner/client grants.
     - [ ] **C3.1.3.3** Add a strict child/core static scope-symbol/type relation for an exact paused slot, never a runtime value or type display, with no-partial stale/moved/forged child denials; split the private route before implementation if needed.
       - [x] **C3.1.3.3.1** Decide ordinary versus linked exact-pause targets, metadata ownership, static-only reply, and no-partial denial contract; leave public debugger v40 unchanged in this design leaf. PLAN.md selects an ordinary active-slot target plus metadata, or a complete linked stack with entry-root index one and owner metadata; only opaque symbol/type IDs return. A private protocol bump occurs with wire variants, while C3.1.3.4 must mint an independently granted linked-stack-derived scope receipt rather than misusing ordinary Scopes.
       - [x] **C3.1.3.3.2** Add bounded private page-host target/relation data types and strict validators/serialization tests for ordinary and linked pauses; bump only the private page-host protocol when the new wire variants are added. Private v41 carries exact ordinary root/parent or complete linked entry-root selectors and only opaque symbol/type IDs; malformed/truncated/ambiguous targets refuse. The staged child handler returns a typed error until C3.1.3.3.3–4, while public debugger stays v40. IPC 116-test and Launcher 113-test suites, workspace Clippy, and formatting pass.
-      - [ ] **C3.1.3.3.3** Implement the child-private ordinary root/parent-frame relation using a fresh exact active stack and retained slot map; reject child locals/captures, moved frames, stale metadata, and forged slots without inspecting values.
+      - [x] **C3.1.3.3.3** Implement the child-private ordinary root/parent-frame relation using a fresh exact active stack and retained slot map; reject child locals/captures, moved frames, stale metadata, and forged slots without inspecting values. The child reacquires a complete bounded same-program stack, requires the exact root safe point and one unambiguous active slot, then joins only the live generation's verified root map. Classic root and nested parent-root tests cover success and typed denials for child slots, forged frame/metadata/slot/depth/offset, absent realm, and navigation; Launcher 115 tests, workspace Clippy, and formatting pass. Linked remains denied pending C3.1.3.3.4.
       - [ ] **C3.1.3.3.4** Implement the child-private linked entry-root relation against the complete freshly revalidated dependency/entry stack and entry-owned metadata; reject swapped programs/metadata, dependency captures, moved stacks, and stale cutovers without partial replies.
       - [ ] **C3.1.3.3.5** Carry both private relations through the child adapter and core debugger support with exact request/reply echo, generation, metadata, and active-slot checks; do not add a public request or grant yet.
       - [ ] **C3.1.3.3.6** Prove classic, module, nested-parent, and linked child/core boundaries plus no-partial stale/moved/forged denials; then check off C3.1.3.3.
