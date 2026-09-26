@@ -14,8 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.4.7.5.4.1.** Split the oversized child-executor
-inline tests into bounded concern modules without changing runtime behavior.
+**Current leaf: C3.1.3.4.7.5.4.1.2.** Split private static/linked debugger
+adapter and scope/value tests into bounded child-executor test modules.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -464,6 +464,10 @@ channel with explicit owner/client grants.
             - [x] **C3.1.3.4.7.5.3.2** Extract safe-point attachment/map construction and re-export the existing public bridge shapes unchanged. `attachment.rs` now owns source identity, live program attachment, root symbol slots, and safe-point map construction/validation in 524 lines; `lib.rs` fell to 866 lines. Page runtime retains an internal source-identity import. All 107 bridge tests, workspace Clippy, rustfmt, and diff checks pass; public bridge types and ABI remain unchanged.
           - [ ] **C3.1.3.4.7.5.4** Modularize the BlueTS-owned islands in oversized runtime, debugger, protocol, compiler-service, and public-socket test files; preserve exact grants, receipts, and wire formats. Refine each file-scoped leaf if one concern still exceeds the reviewable size.
             - [ ] **C3.1.3.4.7.5.4.1** Split `javascript_child.rs` inline tests into bounded BlueTS debugger/metadata and shared child-execution concern modules, retaining all tests.
+              - [x] **C3.1.3.4.7.5.4.1.1** Move the existing inline test body to `javascript_child/tests.rs` unchanged so the production owner and test harness have separate files. The production file fell from 14,468 to 7,016 lines, and the unchanged test body is in a new MPL-headed 7,344-line child module with its original Rust test paths. Engine library 309/309, workspace Clippy, rustfmt, and diff checks pass. The test module remains oversized until the following concern splits.
+              - [ ] **C3.1.3.4.7.5.4.1.2** Split private static/linked debugger adapter and scope/value tests into bounded test submodules.
+              - [ ] **C3.1.3.4.7.5.4.1.3** Split child transport, authorization, and resource-accounting tests into bounded test submodules while keeping shared fixtures central.
+              - [ ] **C3.1.3.4.7.5.4.1.4** Split real-child metadata, spans, pause, and navigation tests into bounded test submodules and verify no file in this test family exceeds 1,300 lines.
             - [ ] **C3.1.3.4.7.5.4.2** Split `bluejs_host.rs` inline tests into bounded BlueTS host/compiler and shared host concern modules, retaining all tests.
             - [ ] **C3.1.3.4.7.5.4.3** Extract BlueTS-owned child-executor adapter logic from `javascript_child.rs` into internal modules.
             - [ ] **C3.1.3.4.7.5.4.4** Extract BlueTS prepare/execute and debugger metadata logic from `bluejs_host.rs` into internal modules.

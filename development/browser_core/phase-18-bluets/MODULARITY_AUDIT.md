@@ -85,3 +85,7 @@ module; the bridge facade is now 1,378 lines pending attachment/map extraction.
 C3.1.3.4.7.5.3.2 moved attachment and safe-point-map construction to a
 524-line internal module; the bridge facade is now 866 lines. Direct BlueTS
 compiler and bridge files from this audit are all below 1,300 lines.
+
+C3.1.3.4.7.5.4.1.1 externalized the child executor's inline tests with their
+original paths. `javascript_child.rs` is 7,016 lines and its new test module
+is 7,344 lines; both still need the planned concern-level splits.

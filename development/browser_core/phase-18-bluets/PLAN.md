@@ -2406,6 +2406,14 @@ private parent import. All 107 bridge tests, workspace Clippy, rustfmt, and
 diff checks pass. The direct bridge phase is closed; mixed runtime/transport
 files proceed in separately scoped leaves.
 
+**C3.1.3.4.7.5.4.1.1 child-executor test boundary:** The entire existing
+inline test body moved, without rewriting the tests, to
+`javascript_child/tests.rs` under the same `mod tests` identity. The
+production `javascript_child.rs` fell from 14,468 to 7,016 lines; the
+7,344-line extracted test file still needs concern-level submodules before
+the test owner is considered modular. All 309 engine library tests, workspace
+Clippy, rustfmt, and diff checks pass. No runtime or debugger behavior changed.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
