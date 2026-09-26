@@ -1671,6 +1671,17 @@ library tests passed with one test thread. All 305 engine library tests passed
 with local socket access and one test thread. Focused linked IPC, core, and
 real child tests and workspace Clippy also passed.
 
+**C3.1.1.2.3 real Launcher source-set proof:** An owner-manifest-authorized
+HTTP page now loads a two-file BlueTS module graph through the actual
+Launcher/core/child processes. The public debugger socket arms a dependency
+function entry, observes distinct dependency and entry program/frame handles,
+and returns two source-bound spans matching the exact original text and UTF-16
+columns. A missing entry-source receipt refuses the whole request; swapped
+source handles return a typed invalid-target reply; an HTTP reload expires
+the old arm, state, and coordinate targets as stale realms. This closes the
+cross-program nested source-set mapping without exposing either module's text
+or private child handles in the protocol.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

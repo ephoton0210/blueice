@@ -16,12 +16,16 @@
 use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
     read_debugger_reply, write_debugger_request, DebuggerCapability, DebuggerCapabilityState,
-    DebuggerErrorCode, DebuggerExecutionState, DebuggerMetadataCapabilityManifest,
-    DebuggerMetadataCapabilitySelection, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
-    DebuggerRequest, DebuggerSafePoint, DebuggerStackCoordinatesTarget,
-    DebuggerStaticMetadataSafePointSpanTarget, DebuggerStaticMetadataSourceId,
-    DebuggerStaticMetadataSymbolKind, DebuggerValuePreview, DebuggerValueTarget,
-    DEBUGGER_PROTOCOL_VERSION,
+    DebuggerErrorCode, DebuggerExecutionState, DebuggerLinkedArmTarget,
+    DebuggerLinkedExecutionState, DebuggerLinkedStackCoordinatesTarget,
+    DebuggerMetadataCapabilityManifest, DebuggerMetadataCapabilitySelection, DebuggerPageRealm,
+    DebuggerProgram, DebuggerReply, DebuggerRequest, DebuggerSafePoint,
+    DebuggerStackCoordinatesTarget, DebuggerStaticMetadataSafePointSpanTarget,
+    DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSymbolKind, DebuggerValuePreview,
+    DebuggerValueTarget, DEBUGGER_PROTOCOL_VERSION,
+};
+use blueice_ipc::owner_bootstrap::{
+    OwnerHttpOriginRule, OwnerHttpPolicyBootstrap, OwnerHttpResource,
 };
 use blueice_ipc::{read_server_message, write_client_message, ClientMessage, ServerMessage};
 use blueice_launcher::control::{
@@ -33,7 +37,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{mpsc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -53,6 +57,9 @@ const CLASSIC_THROW_BLUETS_SOURCE: &str = "/* 🚀 */ function fail(): number { 
 const MODULE_THROW_BLUETS_SOURCE: &str =
     "/* 🚀 */ function fail(): number { throw 9; } export const answer: number = fail();";
 const CAUGHT_THROW_BLUETS_SOURCE: &str = "function fail(): number { throw 11; } globalThis.fail = fail; const evaluate = eval; evaluate('try { globalThis.fail(); } catch (error) { globalThis.caughtBlueTsThrow = error === 11; }'); globalThis.caughtBlueTsThrow;";
+const LINKED_ENTRY_SOURCE: &str =
+    "import { inner } from './linked-dependency.ts'; export const answer: number = inner() + 1;";
+const LINKED_DEPENDENCY_SOURCE: &str = "export function inner(): number { return 41; }";
 
 fn unique_path(label: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -132,6 +139,14 @@ impl LauncherProcess {
     fn spawn_with_static_metadata_policy(
         gatekeeper_socket: &Path,
         policy: StaticMetadataPolicy,
+    ) -> Self {
+        Self::spawn_with_owner_http_policy(gatekeeper_socket, policy, None)
+    }
+
+    fn spawn_with_owner_http_policy(
+        gatekeeper_socket: &Path,
+        policy: StaticMetadataPolicy,
+        owner_http_policy: Option<&Path>,
     ) -> Self {
         let test_guard = LAUNCHER_DEBUGGER_TEST_LOCK
             .lock()
@@ -222,6 +237,9 @@ impl LauncherProcess {
         }
         if policy.lowering_summary {
             command.arg("--debugger-static-metadata-lowering-summary");
+        }
+        if let Some(path) = owner_http_policy {
+            command.arg("--page-http-policy-file").arg(path);
         }
         let child = command.spawn().expect("blueice-launcher must spawn");
         let mut process = Self {
@@ -5773,5 +5791,295 @@ fn launcher_steps_only_receipted_paused_bluets_source_spans() {
     ));
     drop(separate);
     launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload() {
+    const DOCUMENT: &str = "<script type=\"application/x-blueice-typescript-module\" src=\"/linked-entry.ts\"></script>";
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let policy = OwnerHttpPolicyBootstrap {
+        origin_rule: OwnerHttpOriginRule::SameDocumentOrigin,
+        resources: vec![
+            OwnerHttpResource {
+                canonical_url: format!("{origin}/linked-entry.ts"),
+                integrity:
+                    "sha256:0e2a801c62c1a42cfef5afc39c6ad266dba586c6a834679a43adf674cf89f942".into(),
+            },
+            OwnerHttpResource {
+                canonical_url: format!("{origin}/linked-dependency.ts"),
+                integrity:
+                    "sha256:cb66277fc65ebe92e842330a18b6dc5dfba68a2a09a5e2c546eafdb835830d9d".into(),
+            },
+        ],
+    };
+    let policy_file = unique_path("linked-owner-policy");
+    std::fs::write(&policy_file, serde_json::to_vec(&policy).unwrap()).unwrap();
+    let (stop_tx, stop_rx) = mpsc::channel();
+    let fixture = thread::spawn(move || {
+        let mut requested = Vec::new();
+        while matches!(stop_rx.try_recv(), Err(mpsc::TryRecvError::Empty)) {
+            let Ok((mut stream, _)) = listener.accept() else {
+                thread::sleep(Duration::from_millis(10));
+                continue;
+            };
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = [0_u8; 2048];
+            let count = stream.read(&mut request).unwrap();
+            let request = std::str::from_utf8(&request[..count]).unwrap();
+            let path = request.split_whitespace().nth(1).unwrap();
+            let (mime, body) = match path {
+                "/" => ("text/html", DOCUMENT),
+                "/linked-entry.ts" => ("text/typescript", LINKED_ENTRY_SOURCE),
+                "/linked-dependency.ts" => ("text/typescript", LINKED_DEPENDENCY_SOURCE),
+                other => panic!("unexpected linked graph resource {other}"),
+            };
+            requested.push(path.to_string());
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
+        requested
+    });
+    let mut launcher = LauncherProcess::spawn_with_owner_http_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            inventory: true,
+            source_inventory: true,
+            safe_point_span: true,
+            ..StaticMetadataPolicy::default()
+        },
+        Some(&policy_file),
+    );
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    let url = format!("{origin}/");
+    navigate(&mut browser, &url);
+
+    let manifest = DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_bounded_values: false,
+                requested_metadata_capabilities: manifest.clone(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_bounded_values: false,
+            granted_metadata_capabilities: manifest,
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let DebuggerReply::Capabilities(capabilities) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeCapabilities { realm },
+    ) else {
+        panic!("the live launcher must report linked debugger capability")
+    };
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == DebuggerCapability::LinkedModules
+            && report.state == DebuggerCapabilityState::Available
+    }));
+    let DebuggerReply::Programs(programs) =
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm })
+    else {
+        panic!("linked BlueTS graph must expose separate programs")
+    };
+    assert_eq!(programs.len(), 2);
+    let (dependency, dependency_safe_point) = programs
+        .iter()
+        .find_map(|program| {
+            safe_points(
+                debugger_request(
+                    &mut debugger,
+                    DebuggerRequest::ListSafePoints { program: *program },
+                ),
+                *program,
+            )
+            .into_iter()
+            .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+            .map(|point| (*program, point))
+        })
+        .expect("dependency function must expose its verified entry boundary");
+    let entry = *programs
+        .iter()
+        .find(|program| **program != dependency)
+        .unwrap();
+    let arm = DebuggerLinkedArmTarget {
+        entry,
+        dependency_safe_point,
+    };
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { target: arm },
+        ),
+        DebuggerReply::LinkedNestedSafePointBreakpointArmed { target: arm }
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let stack = loop {
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetLinkedExecutionState { entry },
+        ) {
+            DebuggerReply::LinkedExecutionState {
+                entry: actual,
+                state,
+            } if actual == entry => match *state {
+                DebuggerLinkedExecutionState::Paused { stack } => break stack,
+                DebuggerLinkedExecutionState::Pending if Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                other => panic!("linked graph did not pause in its dependency: {other:?}"),
+            },
+            other => panic!("linked graph did not return an exact state: {other:?}"),
+        }
+    };
+    assert_eq!(stack.frames[0].frame.program, dependency);
+    assert_eq!(stack.frames[1].frame.program, entry);
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetLinkedStack {
+                top_frame: stack.frames[0].frame,
+            },
+        ),
+        DebuggerReply::LinkedStack(Box::new(stack))
+    );
+    let metadata = [dependency, entry].map(|program| {
+        let DebuggerReply::StaticMetadata(handles) = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadata { program },
+        ) else {
+            panic!("each linked program must own its metadata receipt")
+        };
+        assert_eq!(handles.len(), 1);
+        handles[0]
+    });
+    assert_ne!(metadata[0], metadata[1]);
+    let source_for = |debugger: &mut UnixStream, metadata| {
+        let DebuggerReply::StaticMetadataSources(sources) = debugger_request(
+            debugger,
+            DebuggerRequest::ListStaticMetadataSources { metadata },
+        ) else {
+            panic!("each linked program must own its source receipt")
+        };
+        assert_eq!(sources.len(), 1);
+        sources[0]
+    };
+    let dependency_source = source_for(&mut debugger, metadata[0]);
+    let unreceipted = DebuggerLinkedStackCoordinatesTarget {
+        expected_stack: stack,
+        sources: [
+            dependency_source,
+            blueice_ipc::debugger::DebuggerStaticMetadataSourceId {
+                metadata: metadata[1],
+                source_id: dependency_source.source_id,
+            },
+        ],
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetLinkedStackCoordinates {
+                target: unreceipted
+            },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
+    let entry_source = source_for(&mut debugger, metadata[1]);
+    assert_ne!(dependency_source, entry_source);
+    let target = DebuggerLinkedStackCoordinatesTarget {
+        expected_stack: stack,
+        sources: [dependency_source, entry_source],
+    };
+    let swapped = DebuggerLinkedStackCoordinatesTarget {
+        sources: [entry_source, dependency_source],
+        ..target
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetLinkedStackCoordinates { target: swapped },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            ..
+        }
+    ));
+    let DebuggerReply::LinkedStackCoordinates(coordinates) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::GetLinkedStackCoordinates { target },
+    ) else {
+        panic!("both receipted linked programs must return exact original spans")
+    };
+    assert!(coordinates.is_well_formed());
+    assert_eq!(coordinates.stack, stack);
+    assert_eq!(coordinates.spans[0].source, dependency_source);
+    assert_eq!(coordinates.spans[1].source, entry_source);
+    for (span, (original, expected)) in coordinates.spans.iter().zip([
+        (
+            LINKED_DEPENDENCY_SOURCE,
+            "export function inner(): number { return 41; }",
+        ),
+        (
+            LINKED_ENTRY_SOURCE,
+            "export const answer: number = inner() + 1;",
+        ),
+    ]) {
+        let selected = &original[span.start_byte as usize..span.end_byte as usize];
+        assert_eq!(selected, expected);
+        assert_eq!(span.coordinates.start_line, 0);
+        assert_eq!(
+            span.coordinates.start_column_utf16,
+            original[..span.start_byte as usize].encode_utf16().count() as u32
+        );
+        assert_eq!(
+            span.coordinates.end_column_utf16,
+            original[..span.end_byte as usize].encode_utf16().count() as u32
+        );
+    }
+    assert!(!format!("{coordinates:?}").contains("linked-dependency.ts"));
+
+    navigate(&mut browser, &url);
+    for request in [
+        DebuggerRequest::GetLinkedExecutionState { entry },
+        DebuggerRequest::GetLinkedStackCoordinates { target },
+        DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { target: arm },
+    ] {
+        assert!(matches!(
+            debugger_request(&mut debugger, request),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::StaleRealm,
+                ..
+            }
+        ));
+    }
+    stop_tx.send(()).unwrap();
+    let requested = fixture.join().unwrap();
+    assert!(requested.iter().filter(|path| path.as_str() == "/").count() >= 2);
+    assert!(requested.contains(&"/linked-entry.ts".to_string()));
+    assert!(requested.contains(&"/linked-dependency.ts".to_string()));
+    drop(debugger);
+    launcher.shutdown();
+    let _ = std::fs::remove_file(policy_file);
     let _ = std::fs::remove_file(gatekeeper_socket);
 }

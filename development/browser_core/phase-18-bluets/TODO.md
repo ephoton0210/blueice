@@ -14,9 +14,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.1.2.3.** Prove entry/dependency original spans, distinct
-source IDs, swapped/unreceipted source refusal, and stale graph expiry on real
-Launcher-supervised sockets.
+**Current leaf: C3.1.2.** Map breakpoints and symbols for module execution
+control; split this heading into ordered, testable leaves before implementation.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -31,8 +30,8 @@ expose boolean/opaque lookup probes or the exact typed `document` lookup and
 pause/resume and bounded BlueTS source-span stepping work; nested-frame
 pause/step/resume now have distinct public identities and capabilities.
 Bounded, source-free Stack and Scopes inspection is available on the opt-in
-debugger socket; original BlueTS frame coordinates and runtime values remain
-disabled. The
+debugger socket; original BlueTS frame coordinates and bounded runtime values
+require separate owner/client grants and same-stream receipts. The
 compiler/MCP route supports sealed projects and read-only queries, with no
 client registration, build output, or write authority.
 
@@ -367,13 +366,13 @@ channel with explicit owner/client grants.
 
 - [ ] **C3.1** Map nested/module locations, breakpoints, symbols, and type
   displays to the exact original source set; distinguish static types
-  from runtime values. Partial: exact safe-point span replies include bounded
-  original UTF-16 coordinates for classic/module roots and same-program
-  nested stacks under a separate grant and same-stream source receipts;
-  cross-program module source sets and complete module execution control remain open.
-  - [ ] **C3.1.1** Map nested-frame locations to the exact original source set. Same-program classic/module caller-callee spans are covered; a multi-source module dependency can involve distinct debugger programs and needs an explicit source-set contract.
+  from runtime values. Partial: classic/module root, same-program nested, and
+  two-source linked dependency/caller stacks have exact receipt-bound original
+  spans; module breakpoint/symbol control and static/runtime display separation
+  remain open.
+  - [x] **C3.1.1** Map nested-frame locations to the exact original source set. Same-program classic/module and distinct-program dependency/caller frames now bind to their own original sources on real Launcher sockets.
     - [x] **C3.1.1.1** Verify real classic and module same-program nested frame stacks bind both ordered safe points to exact original UTF-8/UTF-16 spans, and make a wrong-but-receipted classic source a mandatory typed refusal. The existing real Launcher v36 test passes for both script kinds; classic now requires a second source ID and an `InvalidTarget` reply when that ID is substituted for the caller frame.
-    - [ ] **C3.1.1.2** Map and prove a genuinely multi-source module dependency nested frame without conflating entry/dependency program or source identities.
+    - [x] **C3.1.1.2** Map and prove a genuinely multi-source module dependency nested frame without conflating entry/dependency program or source identities.
       - [x] **C3.1.1.2.1** Decide the paused cross-program stack, per-frame metadata/source receipt, grant, and stale/refusal contract before changing the public wire; keep v39 unchanged in this design leaf. PLAN.md fixes a separate linked-module pause/stack/coordinate family: entry and dependency programs remain distinct opaque identities, each frame carries its own installed generation, and each source must have its own same-stream metadata/source receipt under `OpaqueSafePointSpan`. Malformed/mismatched targets, missing grants/receipts, moved continuations, and stale realms have typed no-partial refusals; v39 is unchanged.
       - [x] **C3.1.1.2.2** Implement exact child/core and public mapping for the decided cross-program nested-frame source set, with unit and IPC denial coverage.
         - [x] **C3.1.1.2.2.1** Retain each paused frame's installed program generation in BlueJS, accept only a dependency safe point in the entry's live closed module graph, and prove dependency-child/entry-caller identity plus stale and wrong-generation rejection without IPC changes. Native debugger tests prove distinct frame generations and refusal of wrong serials, stale generations, unrelated graph members, and the old same-program stack route; private/public v39 remain unchanged.
@@ -396,7 +395,7 @@ channel with explicit owner/client grants.
             - [x] **C3.1.1.2.2.3.3.3** Add complete public linked requests/replies and dispatcher grant/receipt checks, real IPC/core no-partial tests and exact-span coverage, then bump public debugger protocol only with the complete route and check off the parent items.
               - [x] **C3.1.1.2.2.3.3.3.1** Validate the public linked-arm target and pending/paused/resuming/completed lifecycle state shapes without a callable route; keep v39. Wire data shapes reject same-program/root/cross-realm arms and malformed paused or resuming states; IPC serialization and workspace Clippy pass.
               - [x] **C3.1.1.2.2.3.3.3.2** Add the complete linked request/reply family, core dispatcher authorization and receipt checks, real IPC/core exact-span and no-partial tests, then bump public protocol only with the finished route and check off parent items. Public v40 has all five operations, two per-program receipt checks, real socket round trips, and core/child exact-span and no-partial denial tests.
-      - [ ] **C3.1.1.2.3** Prove entry/dependency original spans, distinct source IDs, swapped/unreceipted source refusal, and stale graph expiry on real Launcher-supervised sockets; then check off C3.1.1.2 and C3.1.1.
+      - [x] **C3.1.1.2.3** Prove entry/dependency original spans, distinct source IDs, swapped/unreceipted source refusal, and stale graph expiry on real Launcher-supervised sockets; then check off C3.1.1.2 and C3.1.1. The public socket test loads a manifest-authorized two-file BlueTS graph through HTTP, checks exact original slices and UTF-16 columns for both frames, refuses a missing second receipt and swapped handles, and rejects old graph targets after HTTP reload.
   - [ ] **C3.1.2** Map breakpoints and symbols for module execution control.
   - [ ] **C3.1.3** Show static types separately from runtime values in every reply.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
