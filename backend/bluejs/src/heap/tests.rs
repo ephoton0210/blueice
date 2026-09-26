@@ -3,6 +3,157 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::vm::VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES;
+
+#[test]
+fn shared_buffer_preserves_notification_before_wait_begins() {
+    let buffer = SharedBuffer::new(4);
+    for timeout in [None, Some(Duration::ZERO)] {
+        let waiter = buffer.register_waiter(0);
+        assert_eq!(buffer.notify(0, 1), 1);
+        assert_eq!(buffer.wait_for(waiter, timeout), SharedWaitResult::Ok);
+        assert_eq!(buffer.notify(0, 1), 0);
+    }
+}
+
+#[test]
+fn debugger_preview_rejects_symbols_foreign_objects_and_host_brands() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let object_prototype = heap.alloc_object(None).unwrap();
+    let array_prototype = heap.alloc_object(None).unwrap();
+    let foreign = other.alloc_object(None).unwrap();
+    let branded = heap.alloc_object(None).unwrap();
+    heap.objects.get_mut(&branded).unwrap().is_html_dda = true;
+
+    for (value, expected) in [
+        (
+            Value::Symbol(JsSymbol::new(Some("secret".into()))),
+            "debugger value is not plain data",
+        ),
+        (
+            Value::Object(foreign),
+            "debugger value object is not in the paused heap",
+        ),
+        (Value::Object(branded), "debugger value is not plain data"),
+    ] {
+        assert_eq!(
+            heap.debugger_value_preview(&value, object_prototype, array_prototype),
+            Err(expected)
+        );
+    }
+}
+
+#[test]
+fn debugger_preview_rejects_stored_keys_that_cannot_be_copied_as_plain_data() {
+    let mut heap = Heap::default();
+    let object_prototype = heap.alloc_object(None).unwrap();
+    let array_prototype = heap.alloc_object(None).unwrap();
+
+    let symbol_record = heap.alloc_object(None).unwrap();
+    let symbol = PropertyName::Symbol(JsSymbol::new(Some("secret".into())));
+    let object = heap.objects.get_mut(&symbol_record).unwrap();
+    object.order.push(symbol.clone());
+    object.properties.insert(symbol, Value::Number(1.0));
+    assert_eq!(
+        heap.debugger_value_preview(
+            &Value::Object(symbol_record),
+            object_prototype,
+            array_prototype,
+        ),
+        Err("debugger record has a symbol key")
+    );
+
+    // Preserve the cardinality while corrupting the stored key mapping: the
+    // preview must never perform a lookup or invent a value for that key.
+    let mismatched_record = heap.alloc_object(None).unwrap();
+    let object = heap.objects.get_mut(&mismatched_record).unwrap();
+    object.order.push("expected".into());
+    object.properties.insert("other".into(), Value::Number(2.0));
+    assert_eq!(
+        heap.debugger_value_preview(
+            &Value::Object(mismatched_record),
+            object_prototype,
+            array_prototype,
+        ),
+        Err("debugger value has no stored own data")
+    );
+
+    let non_index_array = heap.alloc_array(1, Some(array_prototype)).unwrap();
+    let object = heap.objects.get_mut(&non_index_array).unwrap();
+    object.order.push("extra".into());
+    object.properties.insert("extra".into(), Value::Number(3.0));
+    assert_eq!(
+        heap.debugger_value_preview(
+            &Value::Object(non_index_array),
+            object_prototype,
+            array_prototype,
+        ),
+        Err("debugger array has non-index own data")
+    );
+
+    let wide_record = heap.alloc_object(None).unwrap();
+    let object = heap.objects.get_mut(&wide_record).unwrap();
+    for index in 0..33 {
+        let key: PropertyName = index.to_string().into();
+        object.order.push(key.clone());
+        object.properties.insert(key, Value::Number(index as f64));
+    }
+    assert_eq!(
+        heap.debugger_value_preview(
+            &Value::Object(wide_record),
+            object_prototype,
+            array_prototype,
+        ),
+        Err("debugger record exceeds its entry limit or stored shape")
+    );
+}
+
+#[test]
+fn debugger_preview_accounts_for_a_positive_bigint_sign_byte() {
+    let mut heap = Heap::default();
+    let object_prototype = heap.alloc_object(None).unwrap();
+    let array_prototype = heap.alloc_object(None).unwrap();
+    let record = heap.alloc_object(None).unwrap();
+    let name = JsString::from("x".repeat(VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES / 2 - 1));
+    let value = Value::BigInt(BigInt::from(1u32 << 15));
+    assert_eq!(name.byte_len(), VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES - 2);
+    let Value::BigInt(bigint) = &value else {
+        unreachable!("the fixture is a BigInt");
+    };
+    assert_eq!(bigint.to_signed_bytes_le().len(), 3);
+    let key = PropertyName::String(name);
+    let object = heap.objects.get_mut(&record).unwrap();
+    object.order.push(key.clone());
+    object.properties.insert(key, value);
+    assert_eq!(
+        heap.debugger_value_preview(&Value::Object(record), object_prototype, array_prototype),
+        Err("debugger value exceeds the payload byte budget")
+    );
+}
+
+#[test]
+fn debugger_preview_counts_sparse_array_holes_against_the_node_budget() {
+    let mut heap = Heap::default();
+    let object_prototype = heap.alloc_object(None).unwrap();
+    let array_prototype = heap.alloc_object(None).unwrap();
+    let rows: Vec<_> = (0..9)
+        .map(|_| heap.alloc_array(32, Some(array_prototype)).unwrap())
+        .collect();
+    let outer = heap
+        .alloc_array(rows.len() as u32, Some(array_prototype))
+        .unwrap();
+    let object = heap.objects.get_mut(&outer).unwrap();
+    for (index, row) in rows.into_iter().enumerate() {
+        let key: PropertyName = index.to_string().into();
+        object.order.push(key.clone());
+        object.properties.insert(key, Value::Object(row));
+    }
+    assert_eq!(
+        heap.debugger_value_preview(&Value::Object(outer), object_prototype, array_prototype),
+        Err("debugger value exceeds the tree depth or node budget")
+    );
+}
 
 #[test]
 fn closure_metadata_validates_its_receiver_and_is_reclaimed_with_a_young_closure() {
