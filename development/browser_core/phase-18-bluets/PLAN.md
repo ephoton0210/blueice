@@ -1682,6 +1682,29 @@ the old arm, state, and coordinate targets as stale realms. This closes the
 cross-program nested source-set mapping without exposing either module's text
 or private child handles in the protocol.
 
+**C3.1.2.1 module breakpoint/symbol contract:** A module entry and each
+dependency remain separate generation-bound public programs. Source-position
+resolution accepts only a source ID under that program's own metadata and a
+bounded original byte offset, with the independent `OpaqueSourceBreakpoint`
+owner/client grant and same-stream metadata/source receipts. It yields either
+one verified safe point in that same program or an explicit unbound result;
+an unrelated program's source never substitutes. A static symbol location is
+a declaration range, not an executable breakpoint: it separately requires
+`OpaqueSymbolLocation` plus same-stream symbol and source receipts under one
+program's metadata. A client may resolve a receipted declaration position,
+but an unbound/type-only symbol must not be rounded to a nearby instruction.
+Neither operation leaks a source path, text, symbol name, runtime value, or
+child handle. Module-root points use the root execution-control family only
+when their ordinal is zero; dependency function points use the linked family
+only with an exact, distinct entry program and a live closed-graph check.
+Any source-to-control path must revalidate the program generation, verified
+safe point, pending execution state, and graph at arm time; stale, swapped,
+cross-program, unreceipted, or moved targets return typed no-partial refusals.
+The existing two-step resolve/arm composition remains available for discovery;
+the implementation leaf will decide whether it needs an atomic source-arm
+request after proving the existing module behavior. This decision changes no
+wire or capability and leaves public debugger v40 unchanged.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -14,8 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.2.** Map breakpoints and symbols for module execution
-control; split this heading into ordered, testable leaves before implementation.
+**Current leaf: C3.1.2.2.** Prove source-position and symbol-location mapping
+for separate entry/dependency programs, including unbound and receipt-denied
+targets; keep public debugger v40 unchanged.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -397,6 +398,10 @@ channel with explicit owner/client grants.
               - [x] **C3.1.1.2.2.3.3.3.2** Add the complete linked request/reply family, core dispatcher authorization and receipt checks, real IPC/core exact-span and no-partial tests, then bump public protocol only with the finished route and check off parent items. Public v40 has all five operations, two per-program receipt checks, real socket round trips, and core/child exact-span and no-partial denial tests.
       - [x] **C3.1.1.2.3** Prove entry/dependency original spans, distinct source IDs, swapped/unreceipted source refusal, and stale graph expiry on real Launcher-supervised sockets; then check off C3.1.1.2 and C3.1.1. The public socket test loads a manifest-authorized two-file BlueTS graph through HTTP, checks exact original slices and UTF-16 columns for both frames, refuses a missing second receipt and swapped handles, and rejects old graph targets after HTTP reload.
   - [ ] **C3.1.2** Map breakpoints and symbols for module execution control.
+    - [x] **C3.1.2.1** Decide the exact entry/dependency program, source/symbol receipt, and safe-point arm contract for module execution control before changing implementation; preserve public debugger v40 in this design leaf. PLAN.md fixes per-program metadata/source/symbol receipt identity, explicit unbound resolution, distinct root-versus-linked arm ownership, and arm-time generation/graph revalidation; whether a new atomic source-arm request is necessary stays with the implementation leaf.
+    - [ ] **C3.1.2.2** Prove existing source-position resolution and symbol locations bind to their own original entry/dependency source and exact verified safe points; preserve explicit unbound results and reject cross-program, swapped, stale, and missing-receipt targets.
+    - [ ] **C3.1.2.3** Connect the verified source/symbol mapping to module-root and linked-dependency breakpoint control, with atomic revalidation and no program/source aliasing; split this implementation leaf before broad wire or runtime changes.
+    - [ ] **C3.1.2.4** Prove module entry/dependency source and symbol breakpoint behavior, typed denials, and stale expiry through real Launcher-supervised public sockets; then check off C3.1.2.
   - [ ] **C3.1.3** Show static types separately from runtime values in every reply.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
   restore the same checked generation; never attach old metadata to a
