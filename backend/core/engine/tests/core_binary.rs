@@ -270,7 +270,9 @@ fn navigate_default_tab(frontend: &mut UnixStream, url: String) {
     )
     .unwrap();
     loop {
-        match blueice_ipc::read_server_message(frontend).unwrap() {
+        let reply = blueice_ipc::read_server_message(frontend)
+            .unwrap_or_else(|error| panic!("navigation to {url} failed: {error}"));
+        match reply {
             blueice_ipc::ServerMessage::Navigated { url: navigated } => {
                 assert_eq!(navigated, url);
                 break;
@@ -731,7 +733,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     assert!(wait_for(&script_path, Duration::from_secs(15)));
     let mut frontend = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     frontend
-        .set_read_timeout(Some(Duration::from_secs(10)))
+        .set_read_timeout(Some(Duration::from_secs(30)))
         .unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
     navigate_default_tab(&mut frontend, format!("http://{first_addr}"));
@@ -1006,7 +1008,7 @@ fn real_script_socket_denials_preserve_each_live_dom_across_tabs_navigation_and_
     assert!(wait_for(&script_path, Duration::from_secs(15)));
     let mut successor_frontend = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     successor_frontend
-        .set_read_timeout(Some(Duration::from_secs(10)))
+        .set_read_timeout(Some(Duration::from_secs(30)))
         .unwrap();
     blueice_ipc::client_handshake(&mut successor_frontend).unwrap();
     navigate_default_tab(&mut successor_frontend, format!("http://{successor_addr}"));

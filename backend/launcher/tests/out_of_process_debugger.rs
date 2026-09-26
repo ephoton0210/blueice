@@ -6158,6 +6158,23 @@ fn launcher_steps_only_receipted_paused_bluets_source_spans() {
         debugger_request(&mut debugger, DebuggerRequest::ListSafePoints { program }),
         program,
     );
+    let arm_point = points
+        .iter()
+        .copied()
+        .find(|point| point.code_unit_ordinal == 0 && point.bytecode_offset != 0)
+        .expect("source-step fixture must expose an executable root point");
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmRootSafePointBreakpoint {
+                safe_point: arm_point,
+            },
+        ),
+        DebuggerReply::RootSafePointBreakpointArmed {
+            safe_point: arm_point,
+        }
+    );
+    await_paused_execution(&mut debugger, program, arm_point);
     let guessed = DebuggerStaticMetadataSafePointSpanTarget {
         safe_point: points[0],
         source: DebuggerStaticMetadataSourceId {
@@ -6199,26 +6216,15 @@ fn launcher_steps_only_receipted_paused_bluets_source_spans() {
     }
     let (target, original_span) = mapped
         .iter()
-        .find(|(_, span)| {
-            mapped.iter().any(|(_, later)| {
-                later.safe_point.bytecode_offset > span.safe_point.bytecode_offset
-                    && (later.start_byte, later.end_byte) != (span.start_byte, span.end_byte)
-            })
+        .find(|(candidate, span)| {
+            candidate.safe_point == arm_point
+                && mapped.iter().any(|(_, later)| {
+                    later.safe_point.bytecode_offset > span.safe_point.bytecode_offset
+                        && (later.start_byte, later.end_byte) != (span.start_byte, span.end_byte)
+                })
         })
         .copied()
-        .expect("fixture must expose two distinct bound root spans");
-    assert_eq!(
-        debugger_request(
-            &mut debugger,
-            DebuggerRequest::ArmRootSafePointBreakpoint {
-                safe_point: target.safe_point,
-            },
-        ),
-        DebuggerReply::RootSafePointBreakpointArmed {
-            safe_point: target.safe_point,
-        }
-    );
-    await_paused_execution(&mut debugger, program, target.safe_point);
+        .expect("armed root point must have a later distinct bound span");
     assert_eq!(
         debugger_request(
             &mut debugger,

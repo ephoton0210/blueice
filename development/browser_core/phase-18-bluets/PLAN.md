@@ -2337,6 +2337,20 @@ cannot use a well-formed static selector without the separate grant. All
 three focused real Launcher tests pass against the shared Cargo target;
 complete socket/workspace gates remain C3.1.3.4.7.4.3.
 
+**C3.1.3.4.7.4.3 public acceptance:** The complete serial workspace suite
+now exits successfully, including all 27 real Launcher debugger socket
+tests, 309 engine unit tests, and 19 core-binary integration tests. Workspace
+Clippy and rustfmt checks pass. Two existing real-process tests exposed
+time-sensitive setup while running the full gate: the source-span test now
+arms its root breakpoint immediately after safe-point inventory, before
+longer source-metadata queries, and the DOM socket core-replacement test
+allows both frontend navigation phases a 30-second read window while
+retaining a URL-specific timeout diagnostic. No production behavior changed.
+All checks reused the workspace `target/`; one verified obsolete Launcher
+test executable was removed, retaining both currently used package and
+workspace variants. C3.1.3.4.7.4 is closed. The requested BlueTS file-size
+and module-boundary audit is C3.1.3.4.7.5 before the parent closes.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
