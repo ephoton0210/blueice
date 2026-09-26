@@ -901,7 +901,7 @@ enum ObjectKind {
     String(JsString),
     NativeFunction {
         function: NativeFunction,
-        initial_name: JsString,
+        initial_name: String,
     },
     Closure {
         code: Rc<Bytecode>,

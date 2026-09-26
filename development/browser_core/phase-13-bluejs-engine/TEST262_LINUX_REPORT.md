@@ -124,7 +124,7 @@ The compile break the source-text feature caused in `blueice-bluets-bluejs` (a `
 
 ## Later BlueJS per-file coverage (2026-09-27)
 
-This is a separate BlueJS coverage measurement at commit `c2b3991e` with uncommitted changes on Linux 6.6.87.2-microsoft-standard-WSL2 (`x86_64`), rustc 1.95.0 (59807616e 2026-04-14) and `cargo-llvm-cov 0.9.1`. It measures the Rust test suite independently of the Test262 inventory and historical verification above. The `backend/bluejs/coverage_file.py` workflow cleared prior LLVM execution profiles, reused instrumented Cargo build artifacts, ran the complete default BlueJS Rust test suite, and exported fresh per-file JSON and source-line text. The opt-in Node oracle and external full Test262 runner were not included. Workspace coverage was not remeasured at this revision.
+This is a separate BlueJS coverage measurement at commit `9029b818` with uncommitted changes on Linux 6.6.87.2-microsoft-standard-WSL2 (`x86_64`), rustc 1.95.0 (59807616e 2026-04-14) and `cargo-llvm-cov 0.9.1`. It measures the Rust test suite independently of the Test262 inventory and historical verification above. `python3 backend/bluejs/coverage_file.py --update-linux-report` cleared prior LLVM execution profiles, reused instrumented Cargo build artifacts, ran the complete default BlueJS Rust test suite, and exported fresh per-file JSON and source-line text. The opt-in Node oracle and external full Test262 runner were not included. Workspace coverage was not remeasured at this revision.
 
 Each measured cell shows LLVM JSON's raw covered / instrumented counts and the coverage rate. All 177 Rust files under `backend/bluejs/src/` are listed: 160 have LLVM counters; 17 use `-` with an individual reason in `Note`. A `0%` result requires a positive instrumented denominator and zero covered units. `☑` means **lines, functions and regions all reach 100%**; `☐` means at least one is below 100%. The total aggregates only instrumented files. LLVM can count separate compiled instances of the same source in different test binaries. `Note` shows the union across those binaries when its counts differ: each source location is counted once and considered covered if any binary executes it. The raw LLVM counts in the main columns determine completion. Region coverage is separate from branch coverage. To rerun any one file independently, use `python3 backend/bluejs/coverage_file.py ast.rs` (replace `ast.rs` with its source path). Each invocation reruns the entire test suite, since tests outside a file can still exercise it.
 
@@ -150,7 +150,7 @@ Each measured cell shows LLVM JSON's raw covered / instrumented counts and the c
 | [`heap/debugger.rs`](../../../backend/bluejs/src/heap/debugger.rs) | 163 / 163 (100.00%) | 10 / 10 (100.00%) | 239 / 239 (100.00%) | ☑ | Unique source-location union: lines 161/161, functions 10/10, regions 239/239 |
 | [`heap/exotic.rs`](../../../backend/bluejs/src/heap/exotic.rs) | 931 / 938 (99.25%) | 94 / 94 (100.00%) | 1,076 / 1,112 (96.76%) | ☐ | Unique source-location union: lines 933/933, functions 94/94, regions 1,109/1,112 |
 | [`heap/lifecycle.rs`](../../../backend/bluejs/src/heap/lifecycle.rs) | 281 / 298 (94.30%) | 30 / 31 (96.77%) | 474 / 517 (91.68%) | ☐ | Unique source-location union: lines 272/283, functions 30/31, regions 480/517 |
-| [`heap/object_storage.rs`](../../../backend/bluejs/src/heap/object_storage.rs) | 713 / 744 (95.83%) | 56 / 57 (98.25%) | 1,198 / 1,327 (90.28%) | ☐ | Unique source-location union: lines 684/714, functions 56/57, regions 1,199/1,327 |
+| [`heap/object_storage.rs`](../../../backend/bluejs/src/heap/object_storage.rs) | 714 / 745 (95.84%) | 56 / 57 (98.25%) | 1,198 / 1,327 (90.28%) | ☐ | Unique source-location union: lines 685/715, functions 56/57, regions 1,199/1,327 |
 | [`heap/tests.rs`](../../../backend/bluejs/src/heap/tests.rs) | - | - | - | - | Test source; not a coverage target |
 | [`intl.rs`](../../../backend/bluejs/src/intl.rs) | 124 / 124 (100.00%) | 19 / 19 (100.00%) | 188 / 188 (100.00%) | ☑ | Unique source-location union: lines 118/118, functions 19/19, regions 188/188 |
 | [`lib.rs`](../../../backend/bluejs/src/lib.rs) | - | - | - | - | Declarations/re-exports only; no executable code |
@@ -176,7 +176,7 @@ Each measured cell shows LLVM JSON's raw covered / instrumented counts and the c
 | [`regex_worker.rs`](../../../backend/bluejs/src/regex_worker.rs) | 412 / 412 (100.00%) | 50 / 50 (100.00%) | 587 / 599 (98.00%) | ☐ | Unique source-location union: lines 383/383, functions 50/50, regions 588/599 |
 | [`regexp.rs`](../../../backend/bluejs/src/regexp.rs) | 292 / 301 (97.01%) | 27 / 27 (100.00%) | 452 / 463 (97.62%) | ☐ | Unique source-location union: lines 280/289, functions 27/27, regions 452/463 |
 | [`source_encoding.rs`](../../../backend/bluejs/src/source_encoding.rs) | 153 / 153 (100.00%) | 20 / 20 (100.00%) | 295 / 295 (100.00%) | ☑ | Unique source-location union: lines 151/151, functions 20/20, regions 295/295 |
-| [`string.rs`](../../../backend/bluejs/src/string.rs) | 106 / 107 (99.07%) | 22 / 22 (100.00%) | 171 / 173 (98.84%) | ☐ | Unique source-location union: lines 105/105, functions 22/22, regions 173/173 |
+| [`string.rs`](../../../backend/bluejs/src/string.rs) | 104 / 104 (100.00%) | 22 / 22 (100.00%) | 168 / 168 (100.00%) | ☑ | Unique source-location union: lines 102/102, functions 22/22, regions 168/168 |
 | [`token.rs`](../../../backend/bluejs/src/token.rs) | 1,249 / 1,257 (99.36%) | 104 / 104 (100.00%) | 1,972 / 1,989 (99.15%) | ☐ | Unique source-location union: lines 1,220/1,226, functions 104/104, regions 1,976/1,989 |
 | [`value.rs`](../../../backend/bluejs/src/value.rs) | 12 / 12 (100.00%) | 2 / 2 (100.00%) | 20 / 20 (100.00%) | ☑ | Unique source-location union: lines 12/12, functions 2/2, regions 20/20 |
 | [`vm.rs`](../../../backend/bluejs/src/vm.rs) | 599 / 599 (100.00%) | 57 / 57 (100.00%) | 881 / 907 (97.13%) | ☐ | Unique source-location union: lines 568/568, functions 57/57, regions 881/907 |
@@ -307,7 +307,7 @@ Each measured cell shows LLVM JSON's raw covered / instrumented counts and the c
 | [`vm/test262/reverse.rs`](../../../backend/bluejs/src/vm/test262/reverse.rs) | 260 / 270 (96.30%) | 24 / 26 (92.31%) | 427 / 464 (92.03%) | ☐ | Unique source-location union: lines 249/256, functions 24/26, regions 427/464 |
 | [`vm/test262_agents.rs`](../../../backend/bluejs/src/vm/test262_agents.rs) | 460 / 490 (93.88%) | 45 / 52 (86.54%) | 658 / 719 (91.52%) | ☐ | Unique source-location union: lines 450/469, functions 45/52, regions 660/719 |
 | [`vm/tests.rs`](../../../backend/bluejs/src/vm/tests.rs) | - | - | - | - | Test source; not a coverage target |
-| **Total (160 instrumented files)** | **72,450 / 77,594 (93.37%)** | **5,236 / 5,600 (93.50%)** | **121,013 / 132,401 (91.40%)** | ☐ |  |
+| **Total (160 instrumented files)** | **72,449 / 77,592 (93.37%)** | **5,236 / 5,600 (93.50%)** | **121,010 / 132,396 (91.40%)** | ☐ |  |
 
 ## Historical differences from the other platforms (2026-09-21)
 

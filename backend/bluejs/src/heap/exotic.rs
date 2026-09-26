@@ -103,7 +103,7 @@ impl Heap {
         self.alloc(
             ObjectKind::NativeFunction {
                 function,
-                initial_name: name.into(),
+                initial_name: name.to_owned(),
             },
             Some(prototype),
         )
@@ -122,9 +122,9 @@ impl Heap {
     pub(crate) fn function_initial_name(
         &self,
         object: ObjectId,
-    ) -> Result<Option<&JsString>, HeapError> {
+    ) -> Result<Option<&str>, HeapError> {
         Ok(match &self.object(object)?.kind {
-            ObjectKind::NativeFunction { initial_name, .. } => Some(initial_name),
+            ObjectKind::NativeFunction { initial_name, .. } => Some(initial_name.as_str()),
             // Anonymous NativeFunction syntax is valid for every callable that
             // is not a built-in function.
             _ => None,

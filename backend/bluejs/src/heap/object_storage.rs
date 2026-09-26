@@ -388,7 +388,10 @@ impl Heap {
                 ObjectKind::IntlLocale(data) => data.bytes(),
                 ObjectKind::Temporal(value) => value.bytes(),
                 ObjectKind::BoxedPrimitive(value) => value.payload_bytes(),
-                ObjectKind::NativeFunction { initial_name, .. } => initial_name.byte_len(),
+                ObjectKind::NativeFunction { initial_name, .. } => {
+                    // Preserve the same managed UTF-16 charge as JsString.
+                    initial_name.encode_utf16().count() * size_of::<u16>()
+                }
                 ObjectKind::Closure { captures, this, .. } => {
                     captures.len() * size_of::<ObjectId>() + this.payload_bytes()
                 }
