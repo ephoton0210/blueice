@@ -860,6 +860,7 @@ fn attach_existing_direct_program(
 
 fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> bool {
     expected.bytes() == actual.bytes()
+        && expected.debugger_binding_layout_matches(actual)
         && expected.constants() == actual.constants()
         && expected.root_statement_offsets() == actual.root_statement_offsets()
         && expected.root_statement_ranges() == actual.root_statement_ranges()

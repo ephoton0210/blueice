@@ -381,7 +381,7 @@ pub struct Instruction {
     pub operand: Option<u32>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Binding {
     pub name: String,
     pub mutable: bool,
@@ -721,6 +721,19 @@ impl Bytecode {
     /// checked source declaration; a matching name alone is not proof.
     pub fn root_declaration_binding_slots(&self) -> &[Option<u32>] {
         &self.root_declaration_binding_slots
+    }
+
+    /// Whether two code units retain exactly the same lexical binding and
+    /// activation layout. Equal instruction bytes or slot ordinals alone do
+    /// not prove that a slot still names the same declaration. This exposes
+    /// only equality, never binding names or runtime values.
+    pub fn debugger_binding_layout_matches(&self, other: &Self) -> bool {
+        self.bindings == other.bindings
+            && self.scopes == other.scopes
+            && self.captures == other.captures
+            && self.dynamic_eval_slots == other.dynamic_eval_slots
+            && self.global_function_names == other.global_function_names
+            && self.variable_scope == other.variable_scope
     }
 
     pub fn constants(&self) -> &[Value] {

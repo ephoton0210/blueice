@@ -1865,6 +1865,17 @@ future local-symbol metadata would require its own compiler provenance and
 grant review. A parent frame shown alongside the child can still be queried
 through its own active slot and exact frame receipt.
 
+**C3.1.3.2.3.1 binding-layout attachment guard:** An already-installed
+BlueJS program could previously pass direct attachment when its instruction
+bytes, constants, root statement offsets, and root declaration slot ordinals
+matched but its binding name differed. The bridge now also requires exact
+compiler-owned binding metadata, scope membership, capture ordering, dynamic
+eval slots, global function names, and variable-scope identity for every
+recursively compared code unit. The BlueJS API reveals only a boolean layout
+comparison, not names or runtime values. A regression deliberately installs
+same-shaped code under a forged matching source identity and proves attachment
+refuses before any BlueTS symbol-to-slot join is built.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

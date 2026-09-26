@@ -116,6 +116,32 @@ fn installs_direct_bytecode_with_its_checked_canonical_source_identity() {
 }
 
 #[test]
+fn existing_program_with_same_instructions_but_different_binding_refuses_attachment() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, "const answer: number = 42;")]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut registry = bluejs::BlueJsProgramRegistry::default();
+    let identity =
+        bluejs::BlueJsSourceIdentity::new(ENTRY, artifact.sources[0].content_hash.clone()).unwrap();
+    let replacement = bluejs::BlueJsProgramV1::Script(bluejs::parse("const other=42;").unwrap());
+    let handle = registry.install(identity, &replacement).unwrap();
+    let installed = registry.get(handle).unwrap().bytecode();
+    assert_eq!(installed.bytes(), artifact.bytecode.bytes());
+    assert_eq!(installed.constants(), artifact.bytecode.constants());
+    assert_eq!(
+        installed.root_declaration_binding_slots(),
+        artifact.bytecode.root_declaration_binding_slots()
+    );
+    assert!(matches!(
+        artifact.attach_existing_in(&registry, handle),
+        Err(BridgeError::ProvenanceAttachment(_))
+    ));
+}
+
+#[test]
 fn resolves_a_ts_byte_position_to_the_next_verified_safe_point_or_unbound() {
     let artifact = compile_direct_script(
         ENTRY,
