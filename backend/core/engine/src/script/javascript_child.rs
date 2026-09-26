@@ -77,14 +77,16 @@ use blueice_ipc::debugger::{
 use blueice_ipc::page_host::{
     self, PageHostChildStats, PageHostDebuggerBlueTsMetadataSymbolContract,
     PageHostDebuggerBlueTsMetadataSymbolLocation, PageHostDebuggerBlueTsMetadataSymbolType,
-    PageHostDebuggerExecutionState, PageHostDebuggerFrame, PageHostDebuggerMetadataHandle,
-    PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDebuggerScopeEntry,
-    PageHostDebuggerStackSnapshot, PageHostDebuggerValuePreview, PageHostDebuggerValueTarget,
-    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
-    PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
-    PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
-    PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES, PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES,
+    PageHostDebuggerExecutionState, PageHostDebuggerFrame, PageHostDebuggerLinkedExecutionState,
+    PageHostDebuggerLinkedFrame, PageHostDebuggerLinkedSource, PageHostDebuggerLinkedStackSnapshot,
+    PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
+    PageHostDebuggerScopeEntry, PageHostDebuggerStackSnapshot, PageHostDebuggerValuePreview,
+    PageHostDebuggerValueTarget, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
+    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
+    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource,
+    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES,
+    PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES,
 };
 use blueice_ipc::script::ScriptDocumentTarget;
 use blueice_net::canonical_http_origin;
@@ -921,6 +923,52 @@ pub trait PageHostClient {
         ))
     }
 
+    fn arm_debugger_linked_nested_safe_point_breakpoint(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _entry_program: PageHostDebuggerProgram,
+        _safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement linked debugger control",
+        ))
+    }
+
+    fn debugger_linked_stack_snapshot(
+        &mut self,
+        _frame: PageHostDebuggerLinkedFrame,
+        _max_scope_entries: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement linked debugger stack inspection",
+        ))
+    }
+
+    fn debugger_linked_stack_spans(
+        &mut self,
+        _frame: PageHostDebuggerLinkedFrame,
+        _expected_stack: PageHostDebuggerLinkedStackSnapshot,
+        _sources: [PageHostDebuggerLinkedSource; 2],
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement linked debugger source spans",
+        ))
+    }
+
+    fn resume_debugger_linked_nested_execution(
+        &mut self,
+        _frame: PageHostDebuggerLinkedFrame,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement linked debugger resume",
+        ))
+    }
+
     fn arm_debugger_root_safe_point_breakpoint(
         &mut self,
         _tab_id: u64,
@@ -1005,6 +1053,185 @@ pub trait PageHostClient {
         _pump: &mut dyn FnMut() -> io::Result<()>,
     ) -> io::Result<PageHostReply> {
         self.advance_debugger_execution(tab_id, document_generation)
+    }
+}
+
+/// Strict core-side validator for the complete private linked-module route.
+/// Public identities and grants are deliberately not minted at this seam.
+struct ChildLinkedDebuggerAdapter<'a, C: PageHostClient> {
+    child: &'a mut C,
+}
+
+#[allow(dead_code)] // The core reminting leaf connects this staged adapter.
+impl<C: PageHostClient> ChildLinkedDebuggerAdapter<'_, C> {
+    fn arm(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        entry_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if tab_id == 0
+            || document_generation == 0
+            || !entry_program.is_well_formed()
+            || !safe_point.is_well_formed()
+            || safe_point.program == entry_program
+            || safe_point.code_unit_ordinal == 0
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let reply = self
+            .child
+            .arm_debugger_linked_nested_safe_point_breakpoint(
+                tab_id,
+                document_generation,
+                entry_program,
+                safe_point,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerLinkedNestedSafePointBreakpointArmed {
+                tab_id: echoed_tab,
+                document_generation: echoed_generation,
+                entry_program: echoed_entry,
+                safe_point: echoed_point,
+            } if echoed_tab == tab_id
+                && echoed_generation == document_generation
+                && echoed_entry == entry_program
+                && echoed_point == safe_point =>
+            {
+                Ok(())
+            }
+            _ => Err(child_debugger_reply_error(&reply)),
+        }
+    }
+
+    fn state(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        entry_program: PageHostDebuggerProgram,
+        expected_frame: Option<PageHostDebuggerLinkedFrame>,
+    ) -> Result<
+        (
+            PageHostDebuggerLinkedFrame,
+            PageHostDebuggerLinkedExecutionState,
+        ),
+        JavaScriptPageDebuggerError,
+    > {
+        let reply = self
+            .child
+            .debugger_execution_state(tab_id, document_generation, entry_program)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerLinkedExecutionState { frame, state } = reply else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if !frame.is_well_formed()
+            || frame.tab_id != tab_id
+            || frame.document_generation != document_generation
+            || frame.entry_program != entry_program
+            || expected_frame.is_some_and(|expected| expected != frame)
+            || matches!(
+                state,
+                PageHostDebuggerLinkedExecutionState::Paused { safe_point }
+                    if safe_point.program != frame.dependency_program
+                        || safe_point.code_unit_ordinal != frame.code_unit_ordinal
+            )
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok((frame, state))
+    }
+
+    fn stack(
+        &mut self,
+        frame: PageHostDebuggerLinkedFrame,
+        max_scope_entries: u32,
+    ) -> Result<PageHostDebuggerLinkedStackSnapshot, JavaScriptPageDebuggerError> {
+        if !frame.is_well_formed()
+            || !(1..=PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES).contains(&max_scope_entries)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let reply = self
+            .child
+            .debugger_linked_stack_snapshot(frame, max_scope_entries)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerLinkedStackSnapshot {
+            frame: echoed_frame,
+            snapshot,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if echoed_frame != frame
+            || snapshot.max_scope_entries != max_scope_entries
+            || !snapshot.is_well_formed(frame)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(*snapshot)
+    }
+
+    fn spans(
+        &mut self,
+        frame: PageHostDebuggerLinkedFrame,
+        expected_stack: PageHostDebuggerLinkedStackSnapshot,
+        sources: [PageHostDebuggerLinkedSource; 2],
+    ) -> Result<[page_host::PageHostDebuggerBlueTsSafePointSpan; 2], JavaScriptPageDebuggerError>
+    {
+        if !expected_stack.is_well_formed(frame)
+            || sources
+                .iter()
+                .any(|source| !source.metadata.is_well_formed())
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let reply = self
+            .child
+            .debugger_linked_stack_spans(frame, expected_stack.clone(), sources)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerLinkedStackSpans {
+            frame: echoed_frame,
+            snapshot,
+            spans,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if echoed_frame != frame
+            || *snapshot != expected_stack
+            || spans.iter().enumerate().any(|(index, span)| {
+                span.source_id != sources[index].source_id
+                    || !span
+                        .coordinates
+                        .is_well_formed_for_range(span.start_byte, span.end_byte)
+            })
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(*spans)
+    }
+
+    fn resume(
+        &mut self,
+        frame: PageHostDebuggerLinkedFrame,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !frame.is_well_formed() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let reply = self
+            .child
+            .resume_debugger_linked_nested_execution(frame)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerLinkedNestedResumeRequested { frame: echoed }
+                if echoed == frame =>
+            {
+                Ok(())
+            }
+            _ => Err(child_debugger_reply_error(&reply)),
+        }
     }
 }
 
@@ -1600,6 +1827,54 @@ impl PageHostClient for PageHostConnection {
         frame: PageHostDebuggerFrame,
     ) -> io::Result<PageHostReply> {
         self.request(PageHostRequest::ResumeDebuggerNestedExecution { frame })
+    }
+
+    fn arm_debugger_linked_nested_safe_point_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        entry_program: PageHostDebuggerProgram,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        self.request(
+            PageHostRequest::ArmDebuggerLinkedNestedSafePointBreakpoint {
+                tab_id,
+                document_generation,
+                entry_program,
+                safe_point,
+            },
+        )
+    }
+
+    fn debugger_linked_stack_snapshot(
+        &mut self,
+        frame: PageHostDebuggerLinkedFrame,
+        max_scope_entries: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::GetDebuggerLinkedStackSnapshot {
+            frame,
+            max_scope_entries,
+        })
+    }
+
+    fn debugger_linked_stack_spans(
+        &mut self,
+        frame: PageHostDebuggerLinkedFrame,
+        expected_stack: PageHostDebuggerLinkedStackSnapshot,
+        sources: [PageHostDebuggerLinkedSource; 2],
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerLinkedStackSpans {
+            frame,
+            expected_stack,
+            sources,
+        })
+    }
+
+    fn resume_debugger_linked_nested_execution(
+        &mut self,
+        frame: PageHostDebuggerLinkedFrame,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ResumeDebuggerLinkedNestedExecution { frame })
     }
 
     fn arm_debugger_root_safe_point_breakpoint(
@@ -5904,6 +6179,238 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread;
+
+    #[test]
+    fn linked_child_adapter_rejects_moved_or_partial_private_replies() {
+        use blueice_ipc::debugger::DebuggerSourceCoordinates;
+        use blueice_ipc::page_host::{
+            PageHostDebuggerBlueTsSafePointSpan, PageHostDebuggerLinkedStackFrame,
+        };
+
+        #[derive(Clone)]
+        struct LinkedReplies {
+            arm: PageHostReply,
+            state: PageHostReply,
+            stack: PageHostReply,
+            spans: PageHostReply,
+            resume: PageHostReply,
+        }
+
+        impl PageHostClient for LinkedReplies {
+            fn synchronize_document(&mut self, _: PageHostDocument) -> io::Result<PageHostReply> {
+                Err(io::Error::new(io::ErrorKind::Unsupported, "unused"))
+            }
+
+            fn close_realm(&mut self, _: u64, _: u64) -> io::Result<PageHostReply> {
+                Err(io::Error::new(io::ErrorKind::Unsupported, "unused"))
+            }
+
+            fn arm_debugger_linked_nested_safe_point_breakpoint(
+                &mut self,
+                _: u64,
+                _: u64,
+                _: PageHostDebuggerProgram,
+                _: PageHostDebuggerSafePoint,
+            ) -> io::Result<PageHostReply> {
+                Ok(self.arm.clone())
+            }
+
+            fn debugger_execution_state(
+                &mut self,
+                _: u64,
+                _: u64,
+                _: PageHostDebuggerProgram,
+            ) -> io::Result<PageHostReply> {
+                Ok(self.state.clone())
+            }
+
+            fn debugger_linked_stack_snapshot(
+                &mut self,
+                _: PageHostDebuggerLinkedFrame,
+                _: u32,
+            ) -> io::Result<PageHostReply> {
+                Ok(self.stack.clone())
+            }
+
+            fn debugger_linked_stack_spans(
+                &mut self,
+                _: PageHostDebuggerLinkedFrame,
+                _: PageHostDebuggerLinkedStackSnapshot,
+                _: [PageHostDebuggerLinkedSource; 2],
+            ) -> io::Result<PageHostReply> {
+                Ok(self.spans.clone())
+            }
+
+            fn resume_debugger_linked_nested_execution(
+                &mut self,
+                _: PageHostDebuggerLinkedFrame,
+            ) -> io::Result<PageHostReply> {
+                Ok(self.resume.clone())
+            }
+        }
+
+        let entry = PageHostDebuggerProgram {
+            program_handle: 1,
+            program_generation: 2,
+        };
+        let dependency = PageHostDebuggerProgram {
+            program_handle: 3,
+            program_generation: 4,
+        };
+        let frame = PageHostDebuggerLinkedFrame {
+            tab_id: 7,
+            document_generation: 1,
+            entry_program: entry,
+            dependency_program: dependency,
+            code_unit_ordinal: 1,
+            invocation_serial: 5,
+        };
+        let child_point = PageHostDebuggerSafePoint {
+            program: dependency,
+            code_unit_ordinal: 1,
+            bytecode_offset: 0,
+        };
+        let root_point = PageHostDebuggerSafePoint {
+            program: entry,
+            code_unit_ordinal: 0,
+            bytecode_offset: 8,
+        };
+        let snapshot = PageHostDebuggerLinkedStackSnapshot {
+            frames: [
+                PageHostDebuggerLinkedStackFrame {
+                    safe_point: child_point,
+                    scope_entries: vec![],
+                    scope_truncated: false,
+                },
+                PageHostDebuggerLinkedStackFrame {
+                    safe_point: root_point,
+                    scope_entries: vec![],
+                    scope_truncated: false,
+                },
+            ],
+            stack_truncated: false,
+            max_scope_entries: 256,
+        };
+        let sources = [
+            PageHostDebuggerLinkedSource {
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 11,
+                    metadata_generation: 12,
+                },
+                source_id: 13,
+            },
+            PageHostDebuggerLinkedSource {
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 14,
+                    metadata_generation: 15,
+                },
+                source_id: 16,
+            },
+        ];
+        let span = |source_id| PageHostDebuggerBlueTsSafePointSpan {
+            source_id,
+            start_byte: 0,
+            end_byte: 1,
+            coordinates: DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 0,
+                end_line: 0,
+                end_column_utf16: 1,
+            },
+        };
+        let spans = [span(13), span(16)];
+        let mut replies = LinkedReplies {
+            arm: PageHostReply::DebuggerLinkedNestedSafePointBreakpointArmed {
+                tab_id: 7,
+                document_generation: 1,
+                entry_program: entry,
+                safe_point: child_point,
+            },
+            state: PageHostReply::DebuggerLinkedExecutionState {
+                frame,
+                state: PageHostDebuggerLinkedExecutionState::Paused {
+                    safe_point: child_point,
+                },
+            },
+            stack: PageHostReply::DebuggerLinkedStackSnapshot {
+                frame,
+                snapshot: Box::new(snapshot.clone()),
+            },
+            spans: PageHostReply::DebuggerLinkedStackSpans {
+                frame,
+                snapshot: Box::new(snapshot.clone()),
+                spans: Box::new(spans),
+            },
+            resume: PageHostReply::DebuggerLinkedNestedResumeRequested { frame },
+        };
+        {
+            let mut adapter = ChildLinkedDebuggerAdapter {
+                child: &mut replies,
+            };
+            assert_eq!(adapter.arm(7, 1, entry, child_point), Ok(()));
+            assert_eq!(
+                adapter.state(7, 1, entry, None),
+                Ok((
+                    frame,
+                    PageHostDebuggerLinkedExecutionState::Paused {
+                        safe_point: child_point
+                    }
+                ))
+            );
+            assert_eq!(adapter.stack(frame, 256), Ok(snapshot.clone()));
+            assert_eq!(adapter.spans(frame, snapshot.clone(), sources), Ok(spans));
+            assert_eq!(adapter.resume(frame), Ok(()));
+        }
+        let moved = PageHostDebuggerLinkedFrame {
+            invocation_serial: frame.invocation_serial + 1,
+            ..frame
+        };
+        replies.arm = PageHostReply::DebuggerLinkedNestedSafePointBreakpointArmed {
+            tab_id: 7,
+            document_generation: 1,
+            entry_program: entry,
+            safe_point: root_point,
+        };
+        replies.state = PageHostReply::DebuggerLinkedExecutionState {
+            frame: moved,
+            state: PageHostDebuggerLinkedExecutionState::Paused {
+                safe_point: child_point,
+            },
+        };
+        replies.stack = PageHostReply::DebuggerLinkedStackSnapshot {
+            frame: moved,
+            snapshot: Box::new(snapshot.clone()),
+        };
+        replies.spans = PageHostReply::DebuggerLinkedStackSpans {
+            frame,
+            snapshot: Box::new(snapshot.clone()),
+            spans: Box::new([span(13), span(u32::MAX)]),
+        };
+        replies.resume = PageHostReply::DebuggerLinkedNestedResumeRequested { frame: moved };
+        let mut adapter = ChildLinkedDebuggerAdapter {
+            child: &mut replies,
+        };
+        assert_eq!(
+            adapter.arm(7, 1, entry, child_point),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            adapter.state(7, 1, entry, Some(frame)),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            adapter.stack(frame, 256),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            adapter.spans(frame, snapshot, sources),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            adapter.resume(frame),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+    }
 
     #[test]
     fn core_rejects_malformed_child_stack_shapes_and_scope_budgets() {

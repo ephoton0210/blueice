@@ -1564,6 +1564,22 @@ independently authorizes this route. The IPC library suite passes 111 tests;
 the wider launcher host suite has the same two isolated source-offset failures
 recorded above and no new linked-route failure.
 
+**C3.1.1.2.2.3.1 core child adapter:** The core transport can now send each
+private linked arm/stack/span/resume request, while a separate adapter accepts
+only exact echoes of the entry/dependency programs, document, invocation,
+complete two-frame stack, ordered source IDs, and compiler-valid byte/UTF-16
+span ranges. A moved or malformed private reply returns a typed core failure
+with no partial data. The adapter deliberately does not mint public frame IDs
+or authorize span access; those are the next core leaf. The public debugger
+wire remains v39.
+
+The adapter's focused fake-child test passes after checking the valid
+arm/state/stack/span/resume sequence and then altering each reply in turn:
+wrong arm safe point, moved frame serial, swapped stack frame, bad second
+source span, and wrong resume echo are all rejected. The existing coordinate
+validator remains authoritative for byte/UTF-16 bounds; no public source
+identity or capability is created in this leaf.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
