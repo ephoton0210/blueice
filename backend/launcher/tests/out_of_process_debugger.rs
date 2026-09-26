@@ -6369,10 +6369,22 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
                 source_byte: LINKED_DEPENDENCY_SOURCE.find("function inner").unwrap() as u32,
             },
         },
+        DebuggerRequest::ResolveStaticMetadataSourceBreakpoint {
+            target: DebuggerStaticMetadataSourceBreakpointTarget {
+                source: entry_source,
+                source_byte: LINKED_ENTRY_SOURCE.find("export const answer").unwrap() as u32,
+            },
+        },
         DebuggerRequest::DescribeStaticMetadataSymbolLocation {
             target: DebuggerStaticMetadataSymbolLocationTarget {
                 symbol: matched_symbols[0],
                 source: dependency_source,
+            },
+        },
+        DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+            target: DebuggerStaticMetadataSymbolLocationTarget {
+                symbol: matched_symbols[1],
+                source: entry_source,
             },
         },
     ] {
@@ -6456,7 +6468,7 @@ fn launcher_arms_only_a_receipted_module_root_source_position() {
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
             granted_bounded_values: false,
-            granted_metadata_capabilities: manifest,
+            granted_metadata_capabilities: manifest.clone(),
         }
     );
     let realm = one_realm(debugger_request(
@@ -6680,6 +6692,55 @@ fn launcher_arms_only_a_receipted_module_root_source_position() {
     );
     await_completed_execution(&mut debugger, program);
     drop(debugger);
+    for requested in [DebuggerMetadataCapabilityManifest::empty(), manifest] {
+        let mut separate = UnixStream::connect(&launcher.debugger_socket).unwrap();
+        assert_eq!(
+            debugger_request(
+                &mut separate,
+                DebuggerRequest::Hello {
+                    protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                    requested_bounded_values: false,
+                    requested_metadata_capabilities: requested.clone(),
+                },
+            ),
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_bounded_values: false,
+                granted_metadata_capabilities: requested,
+            }
+        );
+        for request in [
+            DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target: root },
+            DebuggerRequest::DescribeStaticMetadataSymbol {
+                symbol: root_display.symbol,
+            },
+            DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+                target: DebuggerStaticMetadataSymbolLocationTarget {
+                    symbol: root_display.symbol,
+                    source: root.source,
+                },
+            },
+            DebuggerRequest::DescribeStaticMetadataSafePointSpan {
+                target: DebuggerStaticMetadataSafePointSpanTarget {
+                    safe_point: root_point,
+                    source: root.source,
+                },
+            },
+        ] {
+            let reply = debugger_request(&mut separate, request.clone());
+            assert!(
+                matches!(
+                    reply,
+                    DebuggerReply::Unsupported { .. }
+                        | DebuggerReply::Error {
+                            code: DebuggerErrorCode::CapabilityUnavailable,
+                            ..
+                        }
+                ),
+                "{request:?} returned {reply:?}"
+            );
+        }
+    }
     launcher.shutdown();
     let _ = std::fs::remove_file(gatekeeper_socket);
 }

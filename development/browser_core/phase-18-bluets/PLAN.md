@@ -1797,6 +1797,20 @@ same-program, wrong-generation, moved-pause, swapped symbol/source, and
 reload-stale checks remain typed refusals. The focused real socket test,
 workspace Clippy, and formatting pass; debugger v40 remains unchanged.
 
+**C3.1.2.4 real module breakpoint/symbol acceptance:** The inline module
+root and two-file linked dependency now each have a focused Launcher/core/
+child public-socket test of independently granted source, symbol, and exact
+span evidence feeding their appropriate execution-control arm. A second
+debugger stream opened after the first closes cannot reuse its source,
+symbol, or span handles, whether it requests no metadata grants or all of
+them without same-stream inventory receipts; refusal is typed and returns no
+partial payload. The two-file stream additionally proves both entry and
+dependency source/symbol targets expire after real HTTP reload, alongside
+the linked frame and coordinate targets. Concurrent servicing of two debugger
+streams is not guaranteed, so the second-stream probe closes the first before
+connecting. Both focused real-socket tests, workspace Clippy, and
+formatting pass; public debugger remains v40.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

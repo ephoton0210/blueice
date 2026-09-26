@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.2.4.** Prove the complete entry/dependency source and
-symbol breakpoint workflow, typed denials, and stale expiry on real
-Launcher-supervised public sockets; then check off C3.1.2.
+**Current leaf: C3.1.3.** Show static types separately from runtime values in
+every reply; split this heading into ordered, testable leaves before changing
+runtime or public wire.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -369,8 +369,8 @@ channel with explicit owner/client grants.
   displays to the exact original source set; distinguish static types
   from runtime values. Partial: classic/module root, same-program nested, and
   two-source linked dependency/caller stacks have exact receipt-bound original
-  spans; module breakpoint/symbol control and static/runtime display separation
-  remain open.
+  spans and original source/symbol breakpoint control; static/runtime display
+  separation remains open.
   - [x] **C3.1.1** Map nested-frame locations to the exact original source set. Same-program classic/module and distinct-program dependency/caller frames now bind to their own original sources on real Launcher sockets.
     - [x] **C3.1.1.1** Verify real classic and module same-program nested frame stacks bind both ordered safe points to exact original UTF-8/UTF-16 spans, and make a wrong-but-receipted classic source a mandatory typed refusal. The existing real Launcher v36 test passes for both script kinds; classic now requires a second source ID and an `InvalidTarget` reply when that ID is substituted for the caller frame.
     - [x] **C3.1.1.2** Map and prove a genuinely multi-source module dependency nested frame without conflating entry/dependency program or source identities.
@@ -397,7 +397,7 @@ channel with explicit owner/client grants.
               - [x] **C3.1.1.2.2.3.3.3.1** Validate the public linked-arm target and pending/paused/resuming/completed lifecycle state shapes without a callable route; keep v39. Wire data shapes reject same-program/root/cross-realm arms and malformed paused or resuming states; IPC serialization and workspace Clippy pass.
               - [x] **C3.1.1.2.2.3.3.3.2** Add the complete linked request/reply family, core dispatcher authorization and receipt checks, real IPC/core exact-span and no-partial tests, then bump public protocol only with the finished route and check off parent items. Public v40 has all five operations, two per-program receipt checks, real socket round trips, and core/child exact-span and no-partial denial tests.
       - [x] **C3.1.1.2.3** Prove entry/dependency original spans, distinct source IDs, swapped/unreceipted source refusal, and stale graph expiry on real Launcher-supervised sockets; then check off C3.1.1.2 and C3.1.1. The public socket test loads a manifest-authorized two-file BlueTS graph through HTTP, checks exact original slices and UTF-16 columns for both frames, refuses a missing second receipt and swapped handles, and rejects old graph targets after HTTP reload.
-  - [ ] **C3.1.2** Map breakpoints and symbols for module execution control.
+  - [x] **C3.1.2** Map breakpoints and symbols for module execution control. Entry root and linked dependency source/symbol workflows now use separate receipt-bound original positions and exact safe-point spans, generation/graph-checked arms, and real Launcher public-socket denial/stale tests.
     - [x] **C3.1.2.1** Decide the exact entry/dependency program, source/symbol receipt, and safe-point arm contract for module execution control before changing implementation; preserve public debugger v40 in this design leaf. PLAN.md fixes per-program metadata/source/symbol receipt identity, explicit unbound resolution, distinct root-versus-linked arm ownership, and arm-time generation/graph revalidation; whether a new atomic source-arm request is necessary stays with the implementation leaf.
     - [x] **C3.1.2.2** Prove existing source-position resolution and symbol locations bind to their own original entry/dependency source and exact verified safe points; preserve explicit unbound results and reject cross-program, swapped, stale, and missing-receipt targets. A bridge regression found that the retained resolver indexed only root provenance, so a dependency function's original position selected the root; it now also consults the already-verified nested safe-point map, preferring the most specific overlapping span and child entry. The real Launcher test verifies both programs' original declaration ranges and bound safe points, explicit source-end unbound results, absent source/symbol receipts, cross-program symbol/source refusal, and reload-stale targets. Public debugger remains v40.
     - [x] **C3.1.2.3** Connect the verified source/symbol mapping to module-root and linked-dependency breakpoint control, with atomic revalidation and no program/source aliasing.
@@ -407,7 +407,7 @@ channel with explicit owner/client grants.
         - [x] **C3.1.2.3.3.1** Decide the separately granted symbol-kind and declaration-location evidence required before a symbol can be treated as a candidate executable breakpoint; specify type-only/import/unbound refusal without changing debugger v40. PLAN.md requires independent display, location, source-breakpoint, and exact safe-point-span grants/receipts; only `Variable` or `Function` with a same-source bound span inside the declaration may compose with root/linked arm. `Interface`, `TypeAlias`, `Import`, unbound, and later non-overlapping spans refuse. No new wire authority is added.
         - [x] **C3.1.2.3.3.2** Prove a receipted executable entry-module symbol resolves its original declaration position to the exact root safe point and arms that module only; type-only and unbound symbols must not arm. A v40 data-only helper accepts only executable symbol kinds with same-program/source, declaration-start binding, and separately receipted exact span contained in the declaration; IPC tests reject type-only/import, unbound, moved, and wrong-source candidates. A real Launcher module test reads `rootValue` and `Shape` displays/locations under separate grants, binds only the variable's original declaration to its root span, leaves the type-only candidate and unbound candidate unarmed, then pauses/resumes the exact module root. All 114 IPC tests and workspace Clippy pass.
         - [x] **C3.1.2.3.3.3** Prove a receipted dependency function symbol resolves to its own verified child entry and arms only the distinct linked entry, with swapped/cross-program and stale refusal; then check off C3.1.2.3.3 and C3.1.2.3. The real Launcher test now composes the dependency's `Function` display, original declaration range, source binding, and exact contained child span before arming its distinct entry. Same-program/wrong-generation/moved arms, cross-program symbol/source pairing, and stale reload targets refuse without a partial source or frame. No new wire is needed.
-    - [ ] **C3.1.2.4** Prove module entry/dependency source and symbol breakpoint behavior, typed denials, and stale expiry through real Launcher-supervised public sockets; then check off C3.1.2.
+    - [x] **C3.1.2.4** Prove module entry/dependency source and symbol breakpoint behavior, typed denials, and stale expiry through real Launcher-supervised public sockets; then check off C3.1.2. The entry test proves granted root-variable control, type-only/unbound refusal, and no-grant or fresh-stream no-receipt denials while the module remains live; the two-file test proves dependency function linked control, cross-program/moved denials, and both programs' source/symbol expiry after HTTP reload. Both focused real-socket tests and workspace Clippy pass.
   - [ ] **C3.1.3** Show static types separately from runtime values in every reply.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
   restore the same checked generation; never attach old metadata to a
