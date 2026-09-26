@@ -3338,7 +3338,15 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             .debugger_static_metadata
             .remove(&tab_id)
             .unwrap_or_default();
-        let mut current = BTreeMap::new();
+        // Inventory refresh replaces only this program's attachments. A
+        // linked dependency and its entry have separate compiler records;
+        // discovering one must not erase the other's already receipted core
+        // mapping within the same live document.
+        let mut current: BTreeMap<_, _> = previous
+            .iter()
+            .filter(|(_, public)| public.program != child_program)
+            .map(|(child, public)| (*child, *public))
+            .collect();
         let mut public_metadata = Vec::with_capacity(metadata.len());
         for child_metadata in metadata {
             let public = match previous.get(&child_metadata).copied() {
@@ -7521,6 +7529,293 @@ mod tests {
             Err(JavaScriptPageDebuggerError::NoLiveRealm)
         );
         assert_eq!(executor.child.arm_calls, 2);
+    }
+
+    #[test]
+    fn real_child_linked_modules_return_two_exact_original_spans() {
+        use blueice_ipc::debugger::{
+            DebuggerLinkedArmTarget, DebuggerLinkedExecutionState,
+            DebuggerLinkedStackCoordinatesTarget, DebuggerPageRealm, DebuggerProgram,
+            DebuggerReply, DebuggerRequest, DebuggerSafePoint, DebuggerStaticMetadataHandle,
+            DebuggerStaticMetadataSourceId,
+        };
+
+        struct LinkedGraphAuthorizer;
+
+        impl OutOfProcessPageScriptSourceAuthorizer for LinkedGraphAuthorizer {
+            fn authorize(
+                &self,
+                request: &OutOfProcessPageScriptSourceRequest,
+            ) -> Result<
+                AuthorizedOutOfProcessPageScriptGraph,
+                OutOfProcessPageScriptSourceAuthorizationError,
+            > {
+                if request.document_generation != 1
+                    || request.ordinal != 0
+                    || request.language
+                        != CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Module)
+                    || request.declared_src != "/assets/linked-entry.ts"
+                {
+                    return Err(OutOfProcessPageScriptSourceAuthorizationError::new(
+                        "unexpected linked graph request",
+                    ));
+                }
+                let entry = "https://cdn.example.test/assets/linked-entry.ts";
+                let dependency = "https://cdn.example.test/assets/linked-dependency.ts";
+                let loader = AuthorizedModuleLoader::new(
+                    [
+                        AuthorizedModule::new(
+                            entry,
+                            "import { inner } from './linked-dependency.ts'; export const answer: number = inner() + 1;",
+                        ),
+                        AuthorizedModule::new(
+                            dependency,
+                            "export function inner(): number { return 41; }",
+                        ),
+                    ],
+                    [AuthorizedModuleResolution::new(
+                        entry,
+                        "./linked-dependency.ts",
+                        dependency,
+                    )],
+                )
+                .unwrap();
+                Ok(AuthorizedOutOfProcessPageScriptGraph::BlueTs(
+                    AuthorizedPageScriptGraph::new(entry, loader, "core-linked-test-policy-v1")
+                        .unwrap(),
+                ))
+            }
+        }
+
+        let (path, token, child) = spawn_child();
+        let (tabs, tab_id) = loaded_tabs(
+            "<script type=\"application/x-blueice-typescript-module\" src=\"/assets/linked-entry.ts\"></script>",
+            "https://example.test/app/index.html",
+        );
+        let mut executor =
+            OutOfProcessJavaScriptPageExecutor::connect_with_external_source_authorizer(
+                &path,
+                &token,
+                LinkedGraphAuthorizer,
+            )
+            .unwrap();
+        executor.enable_debugger_execution_control();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let programs = executor.debugger_programs(tab_id, 1).unwrap();
+        assert_eq!(programs.len(), 2);
+        let (dependency, point) = programs
+            .iter()
+            .find_map(|program| {
+                executor
+                    .debugger_safe_points(
+                        tab_id,
+                        1,
+                        program.program_handle,
+                        program.program_generation,
+                    )
+                    .ok()?
+                    .into_iter()
+                    .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+                    .map(|point| (*program, point))
+            })
+            .expect("the linked dependency has a verified function entry");
+        let entry = *programs
+            .iter()
+            .find(|program| **program != dependency)
+            .unwrap();
+        let realm = DebuggerPageRealm {
+            browser_context_id: crate::debugger::DEFAULT_BROWSER_CONTEXT_ID,
+            tab_id: tab_id.as_u64(),
+            realm_generation: 1,
+        };
+        let public_entry = DebuggerProgram {
+            realm,
+            program_handle: entry.program_handle,
+            program_generation: entry.program_generation,
+        };
+        let public_dependency = DebuggerProgram {
+            realm,
+            program_handle: dependency.program_handle,
+            program_generation: dependency.program_generation,
+        };
+        let arm = DebuggerLinkedArmTarget {
+            entry: public_entry,
+            dependency_safe_point: DebuggerSafePoint {
+                program: public_dependency,
+                code_unit_ordinal: point.code_unit_ordinal,
+                bytecode_offset: point.bytecode_offset,
+            },
+        };
+        assert_eq!(
+            crate::debugger::handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { target: arm },
+            ),
+            DebuggerReply::LinkedNestedSafePointBreakpointArmed { target: arm }
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let DebuggerReply::LinkedExecutionState { state, .. } =
+            crate::debugger::handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetLinkedExecutionState {
+                    entry: public_entry,
+                },
+            )
+        else {
+            panic!("the public route must return linked state")
+        };
+        let DebuggerLinkedExecutionState::Paused {
+            stack: public_stack,
+        } = *state
+        else {
+            panic!("the public route must return both paused frames")
+        };
+        assert_eq!(public_stack.frames[0].frame.program, public_dependency);
+        assert_eq!(public_stack.frames[1].frame.program, public_entry);
+        assert_eq!(
+            crate::debugger::handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetLinkedStack {
+                    top_frame: public_stack.frames[0].frame,
+                },
+            ),
+            DebuggerReply::LinkedStack(Box::new(public_stack))
+        );
+        let JavaScriptPageDebuggerLinkedExecutionState::Paused { stack } = executor
+            .debugger_linked_execution_state(tab_id, 1, entry)
+            .unwrap()
+        else {
+            panic!("the linked child must pause in its dependency")
+        };
+        assert_eq!(
+            stack.frames[0].frame.program_handle,
+            dependency.program_handle
+        );
+        assert_eq!(stack.frames[1].frame.program_handle, entry.program_handle);
+        assert_eq!(
+            executor
+                .debugger_linked_stack_snapshot(stack.frames[0].frame, 1)
+                .unwrap(),
+            stack
+        );
+        let targets = [dependency, entry].map(|program| {
+            let metadata = executor
+                .debugger_static_metadata(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap()[0];
+            let source = executor
+                .debugger_static_metadata_sources(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                    metadata.metadata_handle,
+                    metadata.metadata_generation,
+                )
+                .unwrap()[0];
+            (metadata, source)
+        });
+        assert_ne!(targets[0].0.metadata_handle, targets[1].0.metadata_handle);
+        let access = JavaScriptPageDebuggerLinkedSpanAccess {
+            granted: true,
+            metadata_receipted: [true; 2],
+            source_receipted: [true; 2],
+            targets: [0, 1].map(|index| {
+                let frame = stack.frames[index];
+                let (metadata, source) = targets[index];
+                JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+                    program_handle: frame.frame.program_handle,
+                    program_generation: frame.frame.program_generation,
+                    metadata_handle: metadata.metadata_handle,
+                    metadata_generation: metadata.metadata_generation,
+                    source_id: source.source_id,
+                    code_unit_ordinal: frame.safe_point.code_unit_ordinal,
+                    bytecode_offset: frame.safe_point.bytecode_offset,
+                }
+            }),
+        };
+        let public_sources = [0, 1].map(|index| DebuggerStaticMetadataSourceId {
+            metadata: DebuggerStaticMetadataHandle {
+                program: public_stack.frames[index].frame.program,
+                metadata_handle: targets[index].0.metadata_handle,
+                metadata_generation: targets[index].0.metadata_generation,
+            },
+            source_id: targets[index].1.source_id,
+        });
+        let ungranted = crate::debugger::handle_debugger_request_with_page_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::GetLinkedStackCoordinates {
+                target: DebuggerLinkedStackCoordinatesTarget {
+                    expected_stack: public_stack,
+                    sources: public_sources,
+                },
+            },
+        );
+        assert!(
+            matches!(ungranted, DebuggerReply::Unsupported { .. }),
+            "ungranted linked coordinates returned {ungranted:?}"
+        );
+        let spans = executor.debugger_linked_stack_spans(stack, access).unwrap();
+        assert!(spans.iter().all(|span| span
+            .coordinates
+            .is_well_formed_for_range(span.start_byte, span.end_byte)));
+        assert_eq!(spans[0].source_id, targets[0].1.source_id);
+        assert_eq!(spans[1].source_id, targets[1].1.source_id);
+        assert_eq!(
+            executor.debugger_linked_stack_spans(
+                stack,
+                JavaScriptPageDebuggerLinkedSpanAccess {
+                    targets: [access.targets[1], access.targets[0]],
+                    ..access
+                }
+            ),
+            Err(JavaScriptPageDebuggerError::InvalidSafePoint)
+        );
+        assert_eq!(
+            crate::debugger::handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ResumeLinkedNestedExecution {
+                    top_frame: public_stack.frames[0].frame,
+                },
+            ),
+            DebuggerReply::LinkedNestedResumeRequested {
+                top_frame: public_stack.frames[0].frame,
+            }
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert!(matches!(
+            executor.debugger_execution_state(
+                tab_id,
+                1,
+                entry.program_handle,
+                entry.program_generation
+            ),
+            Ok(JavaScriptPageDebuggerExecutionState::Paused {
+                code_unit_ordinal: 0,
+                ..
+            })
+        ));
+        executor
+            .resume_debugger_execution(tab_id, 1, entry.program_handle, entry.program_generation)
+            .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.debugger_linked_execution_state(tab_id, 1, entry),
+            Ok(JavaScriptPageDebuggerLinkedExecutionState::Completed)
+        );
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

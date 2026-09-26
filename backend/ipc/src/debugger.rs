@@ -9,7 +9,11 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version thirty-nine adds an
+//! and an opt-in root-code-unit pause/resume seam. Version forty adds a complete
+//! linked dependency/entry module pause family: two separately reminted
+//! program frames, a fixed complete stack, exact resume, and all-or-nothing
+//! original coordinates under the existing span grant and two independent
+//! same-stream metadata/source receipts. Version thirty-nine adds an
 //! independently granted, source-receipted terminal BlueTS exception location
 //! with an exact core-reminted safe point. Version thirty-seven adds
 //! independently owner/client-gated, same-stream Scopes-receipted bounded
@@ -85,7 +89,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 39;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 40;
 
 pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -1206,6 +1210,9 @@ pub enum DebuggerCapability {
     /// Exact pause and single-instruction step for one live synchronous
     /// nested invocation. Root-frame controls do not imply this capability.
     NestedFrames,
+    /// A direct dependency/entry module pause with two separate reminted
+    /// program identities and an all-or-nothing linked stack.
+    LinkedModules,
     Stack,
     Scopes,
     ExceptionPolicy,
@@ -2902,6 +2909,11 @@ pub enum DebuggerRequest {
     ArmNestedSafePointBreakpoint {
         safe_point: DebuggerSafePoint,
     },
+    /// Arms one pending entry module at an exact safe point in its directly
+    /// linked dependency. Both installed generations are independently bound.
+    ArmLinkedNestedSafePointBreakpoint {
+        target: DebuggerLinkedArmTarget,
+    },
     /// Lists only exact breakpoint records currently retained by one live
     /// realm. The records carry no source, bytecode, VM object, or value.
     ListBreakpoints {
@@ -2936,6 +2948,20 @@ pub enum DebuggerRequest {
     /// original root remains paused, with its own separate resume command.
     ResumeNestedExecution {
         frame: DebuggerFrame,
+    },
+    GetLinkedExecutionState {
+        entry: DebuggerProgram,
+    },
+    GetLinkedStack {
+        top_frame: DebuggerLinkedFrame,
+    },
+    ResumeLinkedNestedExecution {
+        top_frame: DebuggerLinkedFrame,
+    },
+    /// Exact two-source read under the existing independent span grant and
+    /// each frame's metadata/source receipts on this debugger stream.
+    GetLinkedStackCoordinates {
+        target: DebuggerLinkedStackCoordinatesTarget,
     },
     /// Reads only paused frame locations. Scopes require their own gate.
     GetStack {
@@ -2997,6 +3023,18 @@ pub enum DebuggerReply {
     PageRealms(Vec<DebuggerPageRealm>),
     Capabilities(DebuggerCapabilities),
     Programs(Vec<DebuggerProgram>),
+    LinkedNestedSafePointBreakpointArmed {
+        target: DebuggerLinkedArmTarget,
+    },
+    LinkedExecutionState {
+        entry: DebuggerProgram,
+        state: Box<DebuggerLinkedExecutionState>,
+    },
+    LinkedStack(Box<DebuggerLinkedStackSnapshot>),
+    LinkedNestedResumeRequested {
+        top_frame: DebuggerLinkedFrame,
+    },
+    LinkedStackCoordinates(Box<DebuggerLinkedStackCoordinates>),
     /// Reply to [`DebuggerRequest::ListStaticMetadata`]. Every handle is
     /// opaque and bound to the exact program generation supplied by the
     /// request; this is not a metadata payload or a read capability.
@@ -3203,6 +3241,7 @@ pub fn negotiate_with_values(
         | DebuggerRequest::ArmEntryBreakpoint { .. }
         | DebuggerRequest::ArmRootSafePointBreakpoint { .. }
         | DebuggerRequest::ArmNestedSafePointBreakpoint { .. }
+        | DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { .. }
         | DebuggerRequest::ListBreakpoints { .. }
         | DebuggerRequest::ClearBreakpoint { .. }
         | DebuggerRequest::GetExecutionState { .. }
@@ -3210,6 +3249,10 @@ pub fn negotiate_with_values(
         | DebuggerRequest::StepRootInstruction { .. }
         | DebuggerRequest::StepNestedInstruction { .. }
         | DebuggerRequest::ResumeNestedExecution { .. }
+        | DebuggerRequest::GetLinkedExecutionState { .. }
+        | DebuggerRequest::GetLinkedStack { .. }
+        | DebuggerRequest::ResumeLinkedNestedExecution { .. }
+        | DebuggerRequest::GetLinkedStackCoordinates { .. }
         | DebuggerRequest::GetStack { .. }
         | DebuggerRequest::GetStackCoordinates { .. }
         | DebuggerRequest::GetScopes { .. }
@@ -3382,6 +3425,106 @@ mod tests {
             serde_json::from_slice::<DebuggerLinkedExecutionState>(&encoded).unwrap(),
             DebuggerLinkedExecutionState::Paused { stack }
         );
+    }
+
+    #[test]
+    fn linked_control_family_round_trips_on_one_real_socket() {
+        let dependency = DebuggerProgram {
+            realm: realm(),
+            program_handle: 11,
+            program_generation: 12,
+        };
+        let entry = DebuggerProgram {
+            realm: realm(),
+            program_handle: 21,
+            program_generation: 22,
+        };
+        let points = [
+            DebuggerSafePoint {
+                program: dependency,
+                code_unit_ordinal: 1,
+                bytecode_offset: 0,
+            },
+            DebuggerSafePoint {
+                program: entry,
+                code_unit_ordinal: 0,
+                bytecode_offset: 8,
+            },
+        ];
+        let stack = DebuggerLinkedStackSnapshot {
+            frames: [0, 1].map(|index| DebuggerLinkedStackFrame {
+                frame: DebuggerLinkedFrame {
+                    program: points[index].program,
+                    code_unit_ordinal: points[index].code_unit_ordinal,
+                    core_instance: [7; 16],
+                    frame_handle: index as u64 + 1,
+                },
+                safe_point: points[index],
+            }),
+        };
+        let sources = [0, 1].map(|index| DebuggerStaticMetadataSourceId {
+            metadata: DebuggerStaticMetadataHandle {
+                program: points[index].program,
+                metadata_handle: index as u64 + 31,
+                metadata_generation: index as u64 + 41,
+            },
+            source_id: index as u32,
+        });
+        let arm = DebuggerLinkedArmTarget {
+            entry,
+            dependency_safe_point: points[0],
+        };
+        let target = DebuggerLinkedStackCoordinatesTarget {
+            expected_stack: stack,
+            sources,
+        };
+        let requests = [
+            DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { target: arm },
+            DebuggerRequest::GetLinkedExecutionState { entry },
+            DebuggerRequest::GetLinkedStack {
+                top_frame: stack.frames[0].frame,
+            },
+            DebuggerRequest::ResumeLinkedNestedExecution {
+                top_frame: stack.frames[0].frame,
+            },
+            DebuggerRequest::GetLinkedStackCoordinates { target },
+        ];
+        let spans = [0, 1].map(|index| DebuggerStaticMetadataSafePointSpan {
+            safe_point: points[index],
+            source: sources[index],
+            start_byte: 0,
+            end_byte: 1,
+            coordinates: DebuggerSourceCoordinates {
+                start_line: 0,
+                start_column_utf16: 0,
+                end_line: 0,
+                end_column_utf16: 1,
+            },
+        });
+        let replies = [
+            DebuggerReply::LinkedNestedSafePointBreakpointArmed { target: arm },
+            DebuggerReply::LinkedExecutionState {
+                entry,
+                state: Box::new(DebuggerLinkedExecutionState::Paused { stack }),
+            },
+            DebuggerReply::LinkedStack(Box::new(stack)),
+            DebuggerReply::LinkedNestedResumeRequested {
+                top_frame: stack.frames[0].frame,
+            },
+            DebuggerReply::LinkedStackCoordinates(Box::new(DebuggerLinkedStackCoordinates {
+                stack,
+                spans,
+            })),
+        ];
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        for request in requests {
+            write_debugger_request(&mut writer, &request).unwrap();
+            assert_eq!(read_debugger_request(&mut reader).unwrap(), request);
+        }
+        for reply in replies {
+            write_debugger_reply(&mut writer, &reply).unwrap();
+            assert_eq!(read_debugger_reply(&mut reader).unwrap(), reply);
+        }
     }
 
     #[test]

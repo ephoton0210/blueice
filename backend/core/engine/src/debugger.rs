@@ -14,6 +14,8 @@ use crate::{
     script::javascript::{
         JavaScriptPageDebuggerError, JavaScriptPageDebuggerExceptionLocationTarget,
         JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerFrame,
+        JavaScriptPageDebuggerLinkedExecutionState, JavaScriptPageDebuggerLinkedSpanAccess,
+        JavaScriptPageDebuggerLinkedStackFrame, JavaScriptPageDebuggerLinkedStackSnapshot,
         JavaScriptPageDebuggerNestedExecutionState, JavaScriptPageDebuggerProgram,
         JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerScopeEntry,
         JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
@@ -35,25 +37,28 @@ use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
     DebuggerCapabilities, DebuggerCapability, DebuggerCapabilityReport, DebuggerCapabilityState,
     DebuggerErrorCode, DebuggerExceptionLocation, DebuggerExecutionState, DebuggerFrame,
-    DebuggerMetadataCapability, DebuggerMetadataSessionAuthorization, DebuggerPageRealm,
-    DebuggerProgram, DebuggerReply, DebuggerRequest, DebuggerSafePoint, DebuggerScopeEntry,
-    DebuggerScopeSnapshot, DebuggerStackCoordinates, DebuggerStackCoordinatesTarget,
-    DebuggerStackSnapshot, DebuggerStaticMetadataContractDisplay, DebuggerStaticMetadataContractId,
-    DebuggerStaticMetadataContractLocation, DebuggerStaticMetadataContractLocationTarget,
-    DebuggerStaticMetadataContractValidation, DebuggerStaticMetadataHandle,
-    DebuggerStaticMetadataLoweringSummary, DebuggerStaticMetadataSafePointSpan,
-    DebuggerStaticMetadataSafePointSpanTarget, DebuggerStaticMetadataSourceBreakpoint,
-    DebuggerStaticMetadataSourceBreakpointTarget, DebuggerStaticMetadataSourceId,
-    DebuggerStaticMetadataSourceProvenance, DebuggerStaticMetadataSummary,
-    DebuggerStaticMetadataSymbolContract, DebuggerStaticMetadataSymbolDisplay,
-    DebuggerStaticMetadataSymbolId, DebuggerStaticMetadataSymbolLocation,
-    DebuggerStaticMetadataSymbolLocationTarget, DebuggerStaticMetadataSymbolType,
-    DebuggerStaticMetadataTypeDisplay, DebuggerStaticMetadataTypeId, DebuggerValuePreview,
-    DebuggerValueSnapshot, DebuggerValueTarget, DEBUGGER_MAX_SCOPE_ENTRIES,
-    DEBUGGER_MAX_STACK_FRAMES, DEBUGGER_MAX_VALUE_CONTAINER_LENGTH, DEBUGGER_MAX_VALUE_DEPTH,
-    DEBUGGER_MAX_VALUE_NODES, DEBUGGER_MAX_VALUE_PAYLOAD_BYTES, DEBUGGER_PROTOCOL_VERSION,
-    DEBUGGER_STATIC_METADATA_MAX_CONTRACTS, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
-    DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
+    DebuggerLinkedArmTarget, DebuggerLinkedExecutionState, DebuggerLinkedFrame,
+    DebuggerLinkedStackCoordinates, DebuggerLinkedStackCoordinatesTarget, DebuggerLinkedStackFrame,
+    DebuggerLinkedStackSnapshot, DebuggerMetadataCapability, DebuggerMetadataSessionAuthorization,
+    DebuggerPageRealm, DebuggerProgram, DebuggerReply, DebuggerRequest, DebuggerSafePoint,
+    DebuggerScopeEntry, DebuggerScopeSnapshot, DebuggerStackCoordinates,
+    DebuggerStackCoordinatesTarget, DebuggerStackSnapshot, DebuggerStaticMetadataContractDisplay,
+    DebuggerStaticMetadataContractId, DebuggerStaticMetadataContractLocation,
+    DebuggerStaticMetadataContractLocationTarget, DebuggerStaticMetadataContractValidation,
+    DebuggerStaticMetadataHandle, DebuggerStaticMetadataLoweringSummary,
+    DebuggerStaticMetadataSafePointSpan, DebuggerStaticMetadataSafePointSpanTarget,
+    DebuggerStaticMetadataSourceBreakpoint, DebuggerStaticMetadataSourceBreakpointTarget,
+    DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSourceProvenance,
+    DebuggerStaticMetadataSummary, DebuggerStaticMetadataSymbolContract,
+    DebuggerStaticMetadataSymbolDisplay, DebuggerStaticMetadataSymbolId,
+    DebuggerStaticMetadataSymbolLocation, DebuggerStaticMetadataSymbolLocationTarget,
+    DebuggerStaticMetadataSymbolType, DebuggerStaticMetadataTypeDisplay,
+    DebuggerStaticMetadataTypeId, DebuggerValuePreview, DebuggerValueSnapshot, DebuggerValueTarget,
+    DEBUGGER_MAX_SCOPE_ENTRIES, DEBUGGER_MAX_STACK_FRAMES, DEBUGGER_MAX_VALUE_CONTAINER_LENGTH,
+    DEBUGGER_MAX_VALUE_DEPTH, DEBUGGER_MAX_VALUE_NODES, DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
+    DEBUGGER_PROTOCOL_VERSION, DEBUGGER_STATIC_METADATA_MAX_CONTRACTS,
+    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_SYMBOLS,
+    DEBUGGER_STATIC_METADATA_MAX_TYPES,
 };
 use std::cell::Cell;
 use std::collections::HashSet;
@@ -175,10 +180,12 @@ impl DebuggerRequestReceiver {
             DebuggerReply::BreakpointArmed { .. }
                 | DebuggerReply::RootSafePointBreakpointArmed { .. }
                 | DebuggerReply::NestedSafePointBreakpointArmed { .. }
+                | DebuggerReply::LinkedNestedSafePointBreakpointArmed { .. }
                 | DebuggerReply::ExecutionResumed { .. }
                 | DebuggerReply::ExecutionStepRequested { .. }
                 | DebuggerReply::NestedStepRequested { .. }
                 | DebuggerReply::NestedResumeRequested { .. }
+                | DebuggerReply::LinkedNestedResumeRequested { .. }
                 | DebuggerReply::ExecutionSourceSpanStepRequested { .. }
         ) {
             let current = self.pause_incarnation.get();
@@ -211,11 +218,13 @@ impl DebuggerRequestReceiver {
                 DebuggerRequest::ArmEntryBreakpoint { .. }
                     | DebuggerRequest::ArmRootSafePointBreakpoint { .. }
                     | DebuggerRequest::ArmNestedSafePointBreakpoint { .. }
+                    | DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { .. }
                     | DebuggerRequest::ArmStaticMetadataSourceBreakpoint { .. }
                     | DebuggerRequest::ResumeExecution { .. }
                     | DebuggerRequest::StepRootInstruction { .. }
                     | DebuggerRequest::StepNestedInstruction { .. }
                     | DebuggerRequest::ResumeNestedExecution { .. }
+                    | DebuggerRequest::ResumeLinkedNestedExecution { .. }
                     | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
             );
             let reply = handle_debugger_request_with_page_javascript_executor_and_metadata_session(
@@ -236,10 +245,12 @@ impl DebuggerRequestReceiver {
                     DebuggerReply::BreakpointArmed { .. }
                         | DebuggerReply::RootSafePointBreakpointArmed { .. }
                         | DebuggerReply::NestedSafePointBreakpointArmed { .. }
+                        | DebuggerReply::LinkedNestedSafePointBreakpointArmed { .. }
                         | DebuggerReply::ExecutionResumed { .. }
                         | DebuggerReply::ExecutionStepRequested { .. }
                         | DebuggerReply::NestedStepRequested { .. }
                         | DebuggerReply::NestedResumeRequested { .. }
+                        | DebuggerReply::LinkedNestedResumeRequested { .. }
                         | DebuggerReply::ExecutionSourceSpanStepRequested { .. }
                 );
             // A state observation after the bounded lifecycle has already
@@ -261,6 +272,10 @@ impl DebuggerRequestReceiver {
                         | DebuggerExecutionState::Completed,
                     ..
                 }
+            ) && !matches!(
+                &reply,
+                DebuggerReply::LinkedExecutionState { state, .. }
+                    if !matches!(state.as_ref(), DebuggerLinkedExecutionState::Pending)
             );
             // `Resuming` is a public, source-free state rather than a reply
             // synonym. Preserve it for one owner-session turn after the
@@ -274,6 +289,7 @@ impl DebuggerRequestReceiver {
                     | DebuggerReply::ExecutionStepRequested { .. }
                     | DebuggerReply::NestedStepRequested { .. }
                     | DebuggerReply::NestedResumeRequested { .. }
+                    | DebuggerReply::LinkedNestedResumeRequested { .. }
                     | DebuggerReply::ExecutionSourceSpanStepRequested { .. }
             );
             let _ = envelope.reply.send(reply);
@@ -396,6 +412,11 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::ArmNestedSafePointBreakpoint { .. }
         | DebuggerRequest::StepNestedInstruction { .. }
         | DebuggerRequest::ResumeNestedExecution { .. } => unavailable_nested_frames(),
+        DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { .. }
+        | DebuggerRequest::GetLinkedExecutionState { .. }
+        | DebuggerRequest::GetLinkedStack { .. }
+        | DebuggerRequest::ResumeLinkedNestedExecution { .. }
+        | DebuggerRequest::GetLinkedStackCoordinates { .. } => unavailable_linked_modules(),
         DebuggerRequest::ListBreakpoints { realm } => {
             list_breakpoints(tabs, javascript_executor.as_deref(), realm)
         }
@@ -632,6 +653,9 @@ fn handle_debugger_request_with_child_locations_and_pause(
         DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point } => {
             arm_child_nested_safe_point_breakpoint(tabs, locations, safe_point)
         }
+        DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { target } => {
+            arm_child_linked_nested_safe_point_breakpoint(tabs, locations, target)
+        }
         DebuggerRequest::GetExecutionState { program } => {
             child_execution_state(tabs, locations, program)
         }
@@ -646,6 +670,18 @@ fn handle_debugger_request_with_child_locations_and_pause(
         }
         DebuggerRequest::ResumeNestedExecution { frame } => {
             resume_child_nested_execution(tabs, locations, frame)
+        }
+        DebuggerRequest::GetLinkedExecutionState { entry } => {
+            child_linked_execution_state(tabs, locations, entry)
+        }
+        DebuggerRequest::GetLinkedStack { top_frame } => {
+            child_linked_stack(tabs, locations, top_frame)
+        }
+        DebuggerRequest::ResumeLinkedNestedExecution { top_frame } => {
+            resume_child_linked_nested_execution(tabs, locations, top_frame)
+        }
+        DebuggerRequest::GetLinkedStackCoordinates { target } => {
+            child_linked_stack_coordinates(tabs, locations, metadata_session, target)
         }
         DebuggerRequest::GetStack {
             program,
@@ -877,6 +913,8 @@ fn describe_child_location_capabilities(
                 && locations.debugger_stepping_available(),
             nested_frames_available: execution_control_available
                 && locations.debugger_nested_frames_available(),
+            linked_modules_available: execution_control_available
+                && locations.debugger_linked_frames_available(),
             stack_available,
             scopes_available,
             values_available,
@@ -2942,6 +2980,362 @@ fn arm_child_nested_safe_point_breakpoint(
     }
 }
 
+fn arm_child_linked_nested_safe_point_breakpoint(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    target: DebuggerLinkedArmTarget,
+) -> DebuggerReply {
+    if !target.is_well_formed() {
+        return invalid_linked_target();
+    }
+    let realm = target.entry.realm;
+    let tab_id = match resolve_live_realm(tabs, realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, realm.realm_generation)
+        || !locations.debugger_linked_frames_available()
+    {
+        return unavailable_linked_modules();
+    }
+    let point = target.dependency_safe_point;
+    if let Err(error) = locations.validate_debugger_safe_point(
+        tab_id,
+        realm.realm_generation,
+        point.program.program_handle,
+        point.program.program_generation,
+        point.code_unit_ordinal,
+        point.bytecode_offset,
+    ) {
+        return debugger_program_error(error);
+    }
+    match locations.arm_debugger_linked_nested_safe_point_breakpoint(
+        tab_id,
+        realm.realm_generation,
+        JavaScriptPageDebuggerProgram {
+            program_handle: target.entry.program_handle,
+            program_generation: target.entry.program_generation,
+        },
+        JavaScriptPageDebuggerProgram {
+            program_handle: point.program.program_handle,
+            program_generation: point.program.program_generation,
+        },
+        JavaScriptPageDebuggerSafePoint {
+            code_unit_ordinal: point.code_unit_ordinal,
+            bytecode_offset: point.bytecode_offset,
+        },
+    ) {
+        Ok(()) => DebuggerReply::LinkedNestedSafePointBreakpointArmed { target },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn public_linked_stack(
+    tab_id: TabId,
+    realm: DebuggerPageRealm,
+    internal: JavaScriptPageDebuggerLinkedStackSnapshot,
+) -> Option<DebuggerLinkedStackSnapshot> {
+    let frames = internal.frames.map(|entry| {
+        let frame = entry.frame;
+        if frame.tab_id != tab_id || frame.document_generation != realm.realm_generation {
+            return None;
+        }
+        let program = DebuggerProgram {
+            realm,
+            program_handle: frame.program_handle,
+            program_generation: frame.program_generation,
+        };
+        Some(DebuggerLinkedStackFrame {
+            frame: DebuggerLinkedFrame {
+                program,
+                code_unit_ordinal: frame.code_unit_ordinal,
+                core_instance: frame.core_instance,
+                frame_handle: frame.frame_handle,
+            },
+            safe_point: DebuggerSafePoint {
+                program,
+                code_unit_ordinal: entry.safe_point.code_unit_ordinal,
+                bytecode_offset: entry.safe_point.bytecode_offset,
+            },
+        })
+    });
+    let [Some(dependency), Some(caller)] = frames else {
+        return None;
+    };
+    let stack = DebuggerLinkedStackSnapshot {
+        frames: [dependency, caller],
+    };
+    stack.is_well_formed().then_some(stack)
+}
+
+fn internal_linked_stack(
+    tab_id: TabId,
+    public: DebuggerLinkedStackSnapshot,
+) -> JavaScriptPageDebuggerLinkedStackSnapshot {
+    JavaScriptPageDebuggerLinkedStackSnapshot {
+        frames: public
+            .frames
+            .map(|entry| JavaScriptPageDebuggerLinkedStackFrame {
+                frame: JavaScriptPageDebuggerFrame {
+                    tab_id,
+                    document_generation: entry.frame.program.realm.realm_generation,
+                    program_handle: entry.frame.program.program_handle,
+                    program_generation: entry.frame.program.program_generation,
+                    code_unit_ordinal: entry.frame.code_unit_ordinal,
+                    core_instance: entry.frame.core_instance,
+                    frame_handle: entry.frame.frame_handle,
+                },
+                safe_point: JavaScriptPageDebuggerSafePoint {
+                    code_unit_ordinal: entry.safe_point.code_unit_ordinal,
+                    bytecode_offset: entry.safe_point.bytecode_offset,
+                },
+            }),
+    }
+}
+
+fn child_linked_execution_state(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    entry: DebuggerProgram,
+) -> DebuggerReply {
+    if !entry.is_well_formed() {
+        return invalid_linked_target();
+    }
+    let realm = entry.realm;
+    let tab_id = match resolve_live_realm(tabs, realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, realm.realm_generation)
+        || !locations.debugger_linked_frames_available()
+    {
+        return unavailable_linked_modules();
+    }
+    let state = match locations.debugger_linked_execution_state(
+        tab_id,
+        realm.realm_generation,
+        JavaScriptPageDebuggerProgram {
+            program_handle: entry.program_handle,
+            program_generation: entry.program_generation,
+        },
+    ) {
+        Ok(JavaScriptPageDebuggerLinkedExecutionState::Pending) => {
+            DebuggerLinkedExecutionState::Pending
+        }
+        Ok(JavaScriptPageDebuggerLinkedExecutionState::Completed) => {
+            DebuggerLinkedExecutionState::Completed
+        }
+        Ok(JavaScriptPageDebuggerLinkedExecutionState::Paused { stack }) => {
+            let Some(stack) = public_linked_stack(tab_id, realm, stack) else {
+                return invalid_linked_target();
+            };
+            DebuggerLinkedExecutionState::Paused { stack }
+        }
+        Ok(JavaScriptPageDebuggerLinkedExecutionState::Resuming { frame }) => {
+            if frame.tab_id != tab_id || frame.document_generation != realm.realm_generation {
+                return invalid_linked_target();
+            }
+            DebuggerLinkedExecutionState::Resuming {
+                frame: DebuggerLinkedFrame {
+                    program: DebuggerProgram {
+                        realm,
+                        program_handle: frame.program_handle,
+                        program_generation: frame.program_generation,
+                    },
+                    code_unit_ordinal: frame.code_unit_ordinal,
+                    core_instance: frame.core_instance,
+                    frame_handle: frame.frame_handle,
+                },
+            }
+        }
+        Err(error) => return debugger_program_error(error),
+    };
+    if !state.is_well_formed(entry) {
+        return invalid_linked_target();
+    }
+    DebuggerReply::LinkedExecutionState {
+        entry,
+        state: Box::new(state),
+    }
+}
+
+fn child_linked_stack(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    top_frame: DebuggerLinkedFrame,
+) -> DebuggerReply {
+    if !top_frame.is_well_formed() || top_frame.code_unit_ordinal == 0 {
+        return invalid_linked_target();
+    }
+    let realm = top_frame.program.realm;
+    let tab_id = match resolve_live_realm(tabs, realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, realm.realm_generation)
+        || !locations.debugger_linked_frames_available()
+    {
+        return unavailable_linked_modules();
+    }
+    let internal = JavaScriptPageDebuggerFrame {
+        tab_id,
+        document_generation: realm.realm_generation,
+        program_handle: top_frame.program.program_handle,
+        program_generation: top_frame.program.program_generation,
+        code_unit_ordinal: top_frame.code_unit_ordinal,
+        core_instance: top_frame.core_instance,
+        frame_handle: top_frame.frame_handle,
+    };
+    let stack = match locations.debugger_linked_stack_snapshot(internal, 1) {
+        Ok(stack) => stack,
+        Err(error) => return debugger_program_error(error),
+    };
+    let Some(stack) = public_linked_stack(tab_id, realm, stack) else {
+        return invalid_linked_target();
+    };
+    if stack.frames[0].frame != top_frame {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "linked debugger stack moved".to_string(),
+        };
+    }
+    DebuggerReply::LinkedStack(Box::new(stack))
+}
+
+fn resume_child_linked_nested_execution(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    top_frame: DebuggerLinkedFrame,
+) -> DebuggerReply {
+    if !top_frame.is_well_formed() || top_frame.code_unit_ordinal == 0 {
+        return invalid_linked_target();
+    }
+    let realm = top_frame.program.realm;
+    let tab_id = match resolve_live_realm(tabs, realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, realm.realm_generation)
+        || !locations.debugger_linked_frames_available()
+    {
+        return unavailable_linked_modules();
+    }
+    let internal = JavaScriptPageDebuggerFrame {
+        tab_id,
+        document_generation: realm.realm_generation,
+        program_handle: top_frame.program.program_handle,
+        program_generation: top_frame.program.program_generation,
+        code_unit_ordinal: top_frame.code_unit_ordinal,
+        core_instance: top_frame.core_instance,
+        frame_handle: top_frame.frame_handle,
+    };
+    match locations.resume_debugger_linked_nested_execution(internal) {
+        Ok(()) => DebuggerReply::LinkedNestedResumeRequested { top_frame },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn child_linked_stack_coordinates(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    target: DebuggerLinkedStackCoordinatesTarget,
+) -> DebuggerReply {
+    if !target.is_well_formed() {
+        return invalid_linked_target();
+    }
+    let Some(session) = metadata_session else {
+        return unavailable_static_metadata_safe_point_span();
+    };
+    if !session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !session.permits(DebuggerMetadataCapability::OpaqueSourceInventory)
+        || !target.sources.iter().all(|source| {
+            session.observed_metadata(source.metadata) && session.observed_source(*source)
+        })
+    {
+        return unavailable_static_metadata_safe_point_span();
+    }
+    let expected = target.expected_stack;
+    let realm = expected.frames[0].frame.program.realm;
+    let capabilities = describe_child_location_capabilities(tabs, locations, Some(session), realm);
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) =
+        capabilities.authorize_metadata(session, DebuggerMetadataCapability::OpaqueSafePointSpan)
+    else {
+        return unavailable_static_metadata_safe_point_span();
+    };
+    if !authorization.permits(realm, DebuggerMetadataCapability::OpaqueSafePointSpan) {
+        return unavailable_static_metadata_safe_point_span();
+    }
+    let current = match child_linked_stack(tabs, locations, expected.frames[0].frame) {
+        DebuggerReply::LinkedStack(stack) => *stack,
+        other => return other,
+    };
+    if current != expected {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "linked debugger stack moved from expected safe points".to_string(),
+        };
+    }
+    let tab_id = match resolve_live_realm(tabs, realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    let access = JavaScriptPageDebuggerLinkedSpanAccess {
+        granted: true,
+        metadata_receipted: [true; 2],
+        source_receipted: [true; 2],
+        targets: [0, 1].map(|index| {
+            let frame = current.frames[index];
+            let source = target.sources[index];
+            JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+                program_handle: frame.frame.program.program_handle,
+                program_generation: frame.frame.program.program_generation,
+                metadata_handle: source.metadata.metadata_handle,
+                metadata_generation: source.metadata.metadata_generation,
+                source_id: source.source_id,
+                code_unit_ordinal: frame.safe_point.code_unit_ordinal,
+                bytecode_offset: frame.safe_point.bytecode_offset,
+            }
+        }),
+    };
+    let spans = match locations
+        .debugger_linked_stack_spans(internal_linked_stack(tab_id, current), access)
+    {
+        Ok(spans) => spans,
+        Err(error) => return debugger_program_error(error),
+    };
+    let result = DebuggerLinkedStackCoordinates {
+        stack: current,
+        spans: [0, 1].map(|index| DebuggerStaticMetadataSafePointSpan {
+            safe_point: current.frames[index].safe_point,
+            source: target.sources[index],
+            start_byte: spans[index].start_byte,
+            end_byte: spans[index].end_byte,
+            coordinates: spans[index].coordinates,
+        }),
+    };
+    if !result.is_well_formed()
+        || result
+            .spans
+            .iter()
+            .enumerate()
+            .any(|(index, span)| span.source.source_id != spans[index].source_id)
+    {
+        return invalid_linked_target();
+    }
+    DebuggerReply::LinkedStackCoordinates(Box::new(result))
+}
+
+fn invalid_linked_target() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::InvalidTarget,
+        message: "invalid linked debugger target".to_string(),
+    }
+}
+
 fn child_execution_state(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,
@@ -3723,6 +4117,7 @@ fn describe_capabilities(
             entry_execution_control_available,
             stepping_available: entry_execution_control_available,
             nested_frames_available: false,
+            linked_modules_available: false,
             stack_available: false,
             scopes_available: false,
             values_available: false,
@@ -4367,6 +4762,13 @@ fn unavailable_nested_frames() -> DebuggerReply {
     }
 }
 
+fn unavailable_linked_modules() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "linked module debugger control is unavailable".to_string(),
+    }
+}
+
 fn unavailable_stack() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
@@ -4477,6 +4879,7 @@ struct DebuggerCapabilityAvailability {
     entry_execution_control_available: bool,
     stepping_available: bool,
     nested_frames_available: bool,
+    linked_modules_available: bool,
     stack_available: bool,
     scopes_available: bool,
     values_available: bool,
@@ -4508,6 +4911,7 @@ fn capability_reports(
         entry_execution_control_available,
         stepping_available,
         nested_frames_available,
+        linked_modules_available,
         stack_available,
         scopes_available,
         values_available,
@@ -4609,6 +5013,19 @@ fn capability_reports(
                 "one exact synchronous nested invocation can pause, step, and resume under a core-owned frame handle"
             } else {
                 "nested-frame pause, step, and resume are not installed for this page-host route"
+            },
+        ),
+        (
+            DebuggerCapability::LinkedModules,
+            if linked_modules_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if linked_modules_available {
+                "one linked dependency/entry pause retains two separate core-owned program frames"
+            } else {
+                "linked module pause and complete two-frame stack are not installed"
             },
         ),
         (
@@ -8989,6 +9406,544 @@ mod tests {
                 },
             )
         }
+    }
+
+    struct LinkedLocations {
+        moved_caller: bool,
+        bad_second_source: bool,
+        arm_calls: usize,
+        span_calls: usize,
+        resume_calls: usize,
+    }
+
+    impl LinkedLocations {
+        fn stack(
+            &self,
+            tab_id: TabId,
+            generation: u64,
+        ) -> JavaScriptPageDebuggerLinkedStackSnapshot {
+            JavaScriptPageDebuggerLinkedStackSnapshot {
+                frames: [
+                    (7, 3, 1, 0, 19),
+                    (8, 4, 0, if self.moved_caller { 9 } else { 8 }, 29),
+                ]
+                .map(
+                    |(
+                        program_handle,
+                        program_generation,
+                        code_unit_ordinal,
+                        bytecode_offset,
+                        frame_handle,
+                    )| {
+                        JavaScriptPageDebuggerLinkedStackFrame {
+                            frame: JavaScriptPageDebuggerFrame {
+                                tab_id,
+                                document_generation: generation,
+                                program_handle,
+                                program_generation,
+                                code_unit_ordinal,
+                                core_instance: [7; 16],
+                                frame_handle,
+                            },
+                            safe_point: JavaScriptPageDebuggerSafePoint {
+                                code_unit_ordinal,
+                                bytecode_offset,
+                            },
+                        }
+                    },
+                ),
+            }
+        }
+    }
+
+    impl PageJavaScriptDebuggerLocations for LinkedLocations {
+        fn debugger_has_live_realm(&mut self, _: TabId, _: u64) -> bool {
+            true
+        }
+
+        fn max_debugger_safe_points_per_program(&self) -> usize {
+            2
+        }
+
+        fn debugger_programs(
+            &mut self,
+            _: TabId,
+            _: u64,
+        ) -> Result<Vec<JavaScriptPageDebuggerProgram>, JavaScriptPageDebuggerError> {
+            Ok([(7, 3), (8, 4)]
+                .map(
+                    |(program_handle, program_generation)| JavaScriptPageDebuggerProgram {
+                        program_handle,
+                        program_generation,
+                    },
+                )
+                .to_vec())
+        }
+
+        fn debugger_safe_points(
+            &mut self,
+            _: TabId,
+            _: u64,
+            _: u64,
+            _: u64,
+        ) -> Result<Vec<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+            Ok(vec![])
+        }
+
+        fn validate_debugger_safe_point(
+            &mut self,
+            _: TabId,
+            _: u64,
+            program_handle: u64,
+            program_generation: u64,
+            code_unit_ordinal: u32,
+            bytecode_offset: u32,
+        ) -> Result<(), JavaScriptPageDebuggerError> {
+            if (
+                program_handle,
+                program_generation,
+                code_unit_ordinal,
+                bytecode_offset,
+            ) == (7, 3, 1, 0)
+            {
+                Ok(())
+            } else {
+                Err(JavaScriptPageDebuggerError::InvalidSafePoint)
+            }
+        }
+
+        fn debugger_execution_control_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_linked_frames_available(&self) -> bool {
+            true
+        }
+
+        fn arm_debugger_linked_nested_safe_point_breakpoint(
+            &mut self,
+            _: TabId,
+            _: u64,
+            entry: JavaScriptPageDebuggerProgram,
+            dependency: JavaScriptPageDebuggerProgram,
+            point: JavaScriptPageDebuggerSafePoint,
+        ) -> Result<(), JavaScriptPageDebuggerError> {
+            self.arm_calls += 1;
+            if (
+                entry.program_handle,
+                dependency.program_handle,
+                point.code_unit_ordinal,
+            ) == (8, 7, 1)
+            {
+                Ok(())
+            } else {
+                Err(JavaScriptPageDebuggerError::InvalidSafePoint)
+            }
+        }
+
+        fn debugger_linked_execution_state(
+            &mut self,
+            tab_id: TabId,
+            generation: u64,
+            _: JavaScriptPageDebuggerProgram,
+        ) -> Result<JavaScriptPageDebuggerLinkedExecutionState, JavaScriptPageDebuggerError>
+        {
+            Ok(JavaScriptPageDebuggerLinkedExecutionState::Paused {
+                stack: self.stack(tab_id, generation),
+            })
+        }
+
+        fn debugger_linked_stack_snapshot(
+            &mut self,
+            top: JavaScriptPageDebuggerFrame,
+            _: u32,
+        ) -> Result<JavaScriptPageDebuggerLinkedStackSnapshot, JavaScriptPageDebuggerError>
+        {
+            if top.frame_handle != 19 {
+                return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+            }
+            Ok(self.stack(top.tab_id, top.document_generation))
+        }
+
+        fn resume_debugger_linked_nested_execution(
+            &mut self,
+            top: JavaScriptPageDebuggerFrame,
+        ) -> Result<(), JavaScriptPageDebuggerError> {
+            self.resume_calls += 1;
+            if top.frame_handle == 19 {
+                Ok(())
+            } else {
+                Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+            }
+        }
+
+        fn debugger_static_metadata_inventory_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_source_inventory_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_safe_point_span_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata(
+            &mut self,
+            _: TabId,
+            _: u64,
+            program_handle: u64,
+            _: u64,
+        ) -> Result<
+            Vec<crate::script::javascript::JavaScriptPageDebuggerStaticMetadata>,
+            JavaScriptPageDebuggerError,
+        > {
+            Ok(vec![
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadata {
+                    metadata_handle: program_handle + 40,
+                    metadata_generation: 9,
+                },
+            ])
+        }
+
+        fn debugger_static_metadata_sources(
+            &mut self,
+            _: TabId,
+            _: u64,
+            _: u64,
+            _: u64,
+            _: u64,
+            _: u64,
+        ) -> Result<
+            Vec<crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSourceId>,
+            JavaScriptPageDebuggerError,
+        > {
+            Ok(vec![
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSourceId {
+                    source_id: 0,
+                },
+            ])
+        }
+
+        fn debugger_linked_stack_spans(
+            &mut self,
+            expected: JavaScriptPageDebuggerLinkedStackSnapshot,
+            access: JavaScriptPageDebuggerLinkedSpanAccess,
+        ) -> Result<
+            [crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSafePointSpan; 2],
+            JavaScriptPageDebuggerError,
+        > {
+            self.span_calls += 1;
+            if expected.frames
+                != self
+                    .stack(
+                        expected.frames[0].frame.tab_id,
+                        expected.frames[0].frame.document_generation,
+                    )
+                    .frames
+                || !access.granted
+                || access.metadata_receipted != [true; 2]
+                || access.source_receipted != [true; 2]
+                || access.targets[0].metadata_handle != 47
+                || access.targets[1].metadata_handle != 48
+            {
+                return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+            }
+            Ok([8, 20].map(|start_byte| {
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSafePointSpan {
+                    source_id: if start_byte == 20 && self.bad_second_source {
+                        1
+                    } else {
+                        0
+                    },
+                    start_byte,
+                    end_byte: start_byte + 2,
+                    coordinates: blueice_ipc::debugger::DebuggerSourceCoordinates {
+                        start_line: 0,
+                        start_column_utf16: start_byte,
+                        end_line: 0,
+                        end_column_utf16: start_byte + 2,
+                    },
+                }
+            }))
+        }
+    }
+
+    #[test]
+    fn linked_public_route_requires_both_receipts_and_never_returns_partial_spans() {
+        let (tabs, realm) = loaded_tabs();
+        let dependency = DebuggerProgram {
+            realm,
+            program_handle: 7,
+            program_generation: 3,
+        };
+        let entry = DebuggerProgram {
+            realm,
+            program_handle: 8,
+            program_generation: 4,
+        };
+        let point = DebuggerSafePoint {
+            program: dependency,
+            code_unit_ordinal: 1,
+            bytecode_offset: 0,
+        };
+        let arm = DebuggerLinkedArmTarget {
+            entry,
+            dependency_safe_point: point,
+        };
+        let mut locations = LinkedLocations {
+            moved_caller: false,
+            bad_second_source: false,
+            arm_calls: 0,
+            span_calls: 0,
+            resume_calls: 0,
+        };
+        let DebuggerReply::Capabilities(capabilities) =
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                None,
+                DebuggerRequest::DescribeCapabilities { realm },
+            )
+        else {
+            panic!("linked capability report is required")
+        };
+        assert!(capabilities.reports.iter().any(|report| report.capability
+            == DebuggerCapability::LinkedModules
+            && report.state == DebuggerCapabilityState::Available));
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                None,
+                DebuggerRequest::ArmLinkedNestedSafePointBreakpoint {
+                    target: DebuggerLinkedArmTarget {
+                        entry: dependency,
+                        ..arm
+                    }
+                }
+            ),
+            invalid_linked_target()
+        );
+        assert_eq!(locations.arm_calls, 0);
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                None,
+                DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { target: arm }
+            ),
+            DebuggerReply::LinkedNestedSafePointBreakpointArmed { target: arm }
+        );
+        assert_eq!(locations.arm_calls, 1);
+        let DebuggerReply::LinkedExecutionState { state, .. } =
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                None,
+                DebuggerRequest::GetLinkedExecutionState { entry },
+            )
+        else {
+            panic!("linked state must carry the complete stack")
+        };
+        let DebuggerLinkedExecutionState::Paused { stack } = *state else {
+            panic!("expected paused linked stack")
+        };
+        assert_eq!(stack.frames[0].frame.program, dependency);
+        assert_eq!(stack.frames[1].frame.program, entry);
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                None,
+                DebuggerRequest::GetLinkedStack {
+                    top_frame: stack.frames[0].frame
+                }
+            ),
+            DebuggerReply::LinkedStack(Box::new(stack))
+        );
+        let sources = [dependency, entry].map(|program| DebuggerStaticMetadataSourceId {
+            metadata: DebuggerStaticMetadataHandle {
+                program,
+                metadata_handle: program.program_handle + 40,
+                metadata_generation: 9,
+            },
+            source_id: 0,
+        });
+        let target = DebuggerLinkedStackCoordinatesTarget {
+            expected_stack: stack,
+            sources,
+        };
+        let request = DebuggerRequest::GetLinkedStackCoordinates { target };
+        let manifest =
+            blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
+        let hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
+            requested_metadata_capabilities: manifest.clone(),
+        };
+        let reply = blueice_ipc::debugger::negotiate(&hello, &manifest);
+        let session =
+            blueice_ipc::debugger::metadata_session_authorization(&hello, &reply).unwrap();
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone()
+            ),
+            unavailable_static_metadata_safe_point_span()
+        );
+        assert_eq!(locations.span_calls, 0);
+        for (index, (program, source)) in [(dependency, sources[0]), (entry, sources[1])]
+            .into_iter()
+            .enumerate()
+        {
+            assert_eq!(
+                handle_debugger_request_with_child_locations(
+                    &tabs,
+                    &mut locations,
+                    Some(&session),
+                    DebuggerRequest::ListStaticMetadata { program }
+                ),
+                DebuggerReply::StaticMetadata(vec![source.metadata])
+            );
+            assert_eq!(
+                handle_debugger_request_with_child_locations(
+                    &tabs,
+                    &mut locations,
+                    Some(&session),
+                    DebuggerRequest::ListStaticMetadataSources {
+                        metadata: source.metadata
+                    }
+                ),
+                DebuggerReply::StaticMetadataSources(vec![source])
+            );
+            if index == 0 {
+                assert_eq!(
+                    handle_debugger_request_with_child_locations(
+                        &tabs,
+                        &mut locations,
+                        Some(&session),
+                        request.clone()
+                    ),
+                    unavailable_static_metadata_safe_point_span()
+                );
+                assert_eq!(locations.span_calls, 0);
+            }
+        }
+        let DebuggerReply::LinkedStackCoordinates(result) =
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone(),
+            )
+        else {
+            panic!("both independently receipted sources must yield both spans")
+        };
+        assert_eq!(result.stack, stack);
+        assert_eq!(result.spans.map(|span| span.source), sources);
+        assert_eq!(locations.span_calls, 1);
+        let inventory_manifest =
+            blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_inventory();
+        let inventory_hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_bounded_values: false,
+            requested_metadata_capabilities: inventory_manifest.clone(),
+        };
+        let inventory_reply =
+            blueice_ipc::debugger::negotiate(&inventory_hello, &inventory_manifest);
+        let no_span_session = blueice_ipc::debugger::metadata_session_authorization(
+            &inventory_hello,
+            &inventory_reply,
+        )
+        .unwrap();
+        for (program, source) in [(dependency, sources[0]), (entry, sources[1])] {
+            assert_eq!(
+                handle_debugger_request_with_child_locations(
+                    &tabs,
+                    &mut locations,
+                    Some(&no_span_session),
+                    DebuggerRequest::ListStaticMetadata { program }
+                ),
+                DebuggerReply::StaticMetadata(vec![source.metadata])
+            );
+            assert_eq!(
+                handle_debugger_request_with_child_locations(
+                    &tabs,
+                    &mut locations,
+                    Some(&no_span_session),
+                    DebuggerRequest::ListStaticMetadataSources {
+                        metadata: source.metadata
+                    }
+                ),
+                DebuggerReply::StaticMetadataSources(vec![source])
+            );
+        }
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&no_span_session),
+                request.clone()
+            ),
+            unavailable_static_metadata_safe_point_span()
+        );
+        assert_eq!(locations.span_calls, 1);
+        let other_session =
+            blueice_ipc::debugger::metadata_session_authorization(&hello, &reply).unwrap();
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&other_session),
+                request.clone()
+            ),
+            unavailable_static_metadata_safe_point_span()
+        );
+        assert_eq!(locations.span_calls, 1);
+        locations.moved_caller = true;
+        assert!(matches!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone()
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidExecutionState,
+                ..
+            }
+        ));
+        assert_eq!(locations.span_calls, 1);
+        locations.moved_caller = false;
+        locations.bad_second_source = true;
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request
+            ),
+            invalid_linked_target()
+        );
+        assert_eq!(locations.span_calls, 2);
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                None,
+                DebuggerRequest::ResumeLinkedNestedExecution {
+                    top_frame: stack.frames[0].frame
+                }
+            ),
+            DebuggerReply::LinkedNestedResumeRequested {
+                top_frame: stack.frames[0].frame
+            }
+        );
+        assert_eq!(locations.resume_calls, 1);
     }
 
     #[test]

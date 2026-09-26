@@ -1645,6 +1645,32 @@ dependency frame while resuming. The IPC test round-trips the paused shape and
 rejects same-program/root targets or role-swapped state. These are data shapes
 only; no request/reply route or public protocol bump has occurred.
 
+**C3.1.1.2.2.3.3.3.2 public linked v40 route:** The public debugger now has a
+distinct `LinkedModules` capability and complete linked arm, state, stack,
+resume, and two-source coordinate request/reply family. Core remints both
+programs and both active frames, checks the complete previously returned
+stack against the current pause, and requires the existing independent
+`OpaqueSafePointSpan` grant plus separate same-stream metadata and source-ID
+receipts for each program before contacting the child. Child span mapping
+revalidates the whole live stack and both source attachments atomically; no
+partial span vector is returned. An IPC socket test round-trips every new
+request/reply. The core dispatcher fake-child test proves same-program arm
+denial, missing second receipt, absent span grant, a fresh unreceipted stream,
+moved caller, and corrupt second span all fail without a partial response.
+The real launcher-supervised BlueTS graph test proves the public arm/state/
+stack/resume path over the child socket and independently reads exact original
+dependency and entry spans. It exposed and fixed a core inventory issue:
+refreshing one module's metadata formerly erased its sibling's mapping;
+inventory now replaces only the selected program's attachments. The linked
+resume returns to the entry root, which remains under its separate root
+resume control until completion. Public debugger protocol v40 is enabled only
+with this complete route; private PageHost remains v40.
+The workspace test run stopped after three BlueJS regex-deadline failures
+under concurrent build load; each passed in isolation, and all 576 BlueJS
+library tests passed with one test thread. All 305 engine library tests passed
+with local socket access and one test thread. Focused linked IPC, core, and
+real child tests and workspace Clippy also passed.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
