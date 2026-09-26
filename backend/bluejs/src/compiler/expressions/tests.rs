@@ -161,10 +161,8 @@ fn internal_member_helpers_reject_invalid_shapes_and_unresolved_private_names() 
         ))
     ));
     assert!(matches!(
-        bare_compiler().assign_prepared_pattern_target(&Expr::Number(1.0)),
-        Err(CompileError::InvalidSyntax(
-            "prepared destructuring target must be a member reference"
-        ))
+        bare_compiler().member_reference_uncoerced(&Expr::Number(1.0)),
+        Err(CompileError::InvalidSyntax("invalid assignment/member AST"))
     ));
 
     let private = missing_private_member();
@@ -178,7 +176,7 @@ fn internal_member_helpers_reject_invalid_shapes_and_unresolved_private_names() 
         Err(CompileError::InvalidSyntax(message)) if message == expected
     ));
     assert!(matches!(
-        bare_compiler().assign_prepared_pattern_target(&private),
+        bare_compiler().member_reference_uncoerced(&private),
         Err(CompileError::InvalidSyntax(message)) if message == expected
     ));
 
