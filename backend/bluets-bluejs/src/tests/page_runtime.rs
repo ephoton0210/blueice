@@ -267,6 +267,62 @@ fn direct_module_graph_retains_exact_static_metadata_for_every_page_generation()
 }
 
 #[test]
+fn linked_root_symbol_slots_stay_in_their_own_module_generation() {
+    let graph = module_graph();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let attachment = graph
+        .attach_in_page_realm(&mut runtime, 7, &origin())
+        .unwrap();
+    assert_eq!(attachment.modules.len(), 2);
+    let mut code_units = Vec::new();
+    for (module_id, module_attachment) in &attachment.modules {
+        let [slot] = module_attachment
+            .live_root_symbol_slots(runtime.program_registry())
+            .unwrap()
+        else {
+            panic!("each linked module has one verified root symbol slot");
+        };
+        assert_eq!(slot.program, module_attachment.handle);
+        assert_eq!(
+            slot.code_unit.generation(),
+            module_attachment.handle.generation()
+        );
+        assert_eq!(slot.code_unit.ordinal(), 0);
+        let symbol = graph.modules[module_id]
+            .debug_info
+            .symbols
+            .iter()
+            .find(|symbol| symbol.kind == blueice_bluets::SymbolKind::Variable)
+            .unwrap();
+        assert_eq!(slot.symbol_id, symbol.id);
+        assert_eq!(symbol.span.module, *module_id);
+        code_units.push(slot.code_unit);
+    }
+    assert_ne!(code_units[0], code_units[1]);
+
+    let modules = attachment.modules.values().collect::<Vec<_>>();
+    let mut swapped = (*modules[0]).clone();
+    swapped.handle = modules[1].handle;
+    swapped.safe_point_map.program_generation = modules[1].handle.generation().as_u64();
+    swapped.safe_point_map.entries.clear();
+    assert!(matches!(
+        swapped.live_root_symbol_slots(runtime.program_registry()),
+        Err(BridgeError::ProvenanceAttachment(_))
+    ));
+
+    runtime.navigate(7, origin()).unwrap();
+    for module_attachment in attachment.modules.values() {
+        assert!(matches!(
+            module_attachment.live_root_symbol_slots(runtime.program_registry()),
+            Err(BridgeError::BlueJsDebug(
+                bluejs::BlueJsProgramDebugError::UnknownProgram
+            ))
+        ));
+    }
+}
+
+#[test]
 fn realm_owner_prunes_every_graph_record_as_part_of_close() {
     let graph = module_graph();
     let mut owner = DirectPageRealmOwner::default();

@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.2.3.3.** Prove the installed root-slot join remains
-generation-bound across classic, module, and linked direct programs and
-refuses stale or cross-program reuse.
+**Current leaf: C3.1.3.2.4.** Retain and revalidate the joined root-slot map
+in the supervised child against its exact live program generation, with
+no-partial stale, moved, and forged denials and no public wire change.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -413,10 +413,10 @@ channel with explicit owner/client grants.
     - [ ] **C3.1.3.2** Retain only verified, generation-bound BlueTS symbol/type to BlueJS lexical-slot provenance for supported declarations in the direct bridge and child; reject unbound, shadowed, erased, and cross-program guesses with unit tests, without public wire changes.
       - [x] **C3.1.3.2.1** Retain compiler-owned root declaration to lexical-slot evidence for supported single-identifier variables and functions; explicitly leave other root statements unbound, with BlueJS unit tests. BlueJS records root-scope slots in statement order, leaves blocks/expressions/destructuring/multiple declarators unbound, and exposes duplicate `var` slot collisions for later join refusal. BlueJS 579 library tests, bridge 97 tests, focused Clippy, and formatting pass; no public wire change.
       - [x] **C3.1.3.2.2** Prove BlueTS has no compiler-minted SymbolId for function parameters or nested/local declarations, and that captured bindings do not appear as active child `Scopes` slots; explicitly exclude both from the first static-scope join with focused tests. BlueTS debug-info and real paused BlueJS child-snapshot tests pass; first join is root-code-unit-only, and a still-active parent frame requires its own exact receipt.
-      - [ ] **C3.1.3.2.3** Join checked top-level BlueTS symbols/types to exact structural BlueJS root declaration slots and installed code-unit generation in the direct bridge; reject ambiguous, erased, mismatched, and cross-program joins in bridge tests.
+      - [x] **C3.1.3.2.3** Join checked top-level BlueTS symbols/types to exact structural BlueJS root declaration slots and installed code-unit generation in the direct bridge; reject ambiguous, erased, mismatched, and cross-program joins in bridge tests.
         - [x] **C3.1.3.2.3.1** Require exact compiler binding/scope/capture layout equality when attaching an already-installed direct program; prove equal instructions with changed binding identity refuse. Direct attachment now checks a BlueJS-owned boolean comparison of binding metadata, scopes, captures, dynamic-eval/global-function slots and variable-scope identity in every compared code unit; same-bytecode/slot but changed binding name refuses.
         - [x] **C3.1.3.2.3.2** Build the checked top-level BlueTS symbol/type to structural BlueJS root-slot join; reject unsupported declaration shapes, erased records, ambiguous slots, and mismatched source/name/kind/type evidence. Direct attachments now carry only exact root declaration slots paired with unique compiler symbol/source/type IDs and checked source/options/language identity; script, module, erased, duplicate-slot, and malformed-evidence bridge tests pass. No public debugger wire or runtime-value claim is added.
-        - [ ] **C3.1.3.2.3.3** Bind the verified join to the installed root code unit and program generation in direct attachments; prove classic, module, linked, stale, and cross-program isolation.
+        - [x] **C3.1.3.2.3.3** Bind the verified join to the installed root code unit and program generation in direct attachments; prove classic, module, linked, stale, and cross-program isolation. Live reads now revalidate the installed handle, safe-point map generation, and each slot's root code-unit/program ID; classic sibling generations, two-file linked modules, swapped handles, and reload expiry pass bridge tests.
       - [ ] **C3.1.3.2.4** Retain and revalidate that joined slot map in the child against the live program generation, with no-partial stale/moved/forged denials and no public wire changes.
     - [ ] **C3.1.3.3** Add a strict child/core static scope-symbol/type relation for an exact paused slot, never a runtime value or type display, with no-partial stale/moved/forged child denials; split the private route before implementation if needed.
     - [ ] **C3.1.3.4** Add an independently granted public static scope relation request/reply with exact Scopes and metadata/type receipts; retain the existing separate bounded `Value` reply, bump public protocol only when the complete route and IPC/core denials pass.

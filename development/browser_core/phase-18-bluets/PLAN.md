@@ -1891,6 +1891,18 @@ request. Classic and module tests exercise valid declarations plus malformed
 name, kind, span/location, source, type, fingerprint, and duplicate evidence;
 the next leaf proves cross-generation and linked-program isolation explicitly.
 
+**C3.1.3.2.3.3 live generation isolation:** The attachment no longer exposes
+its static slot list through an unchecked getter. Reading it requires the
+BlueJS program registry to confirm the handle is still live, the attached
+safe-point map still belongs to that generation, and every slot's program and
+root code-unit IDs match the installed program. Two identical classic
+installations yield distinct generation/code-unit IDs; invalidating one does
+not affect the other, while a moved handle refuses. In a two-file linked
+module graph, each source's top-level variable maps only to its own module
+generation. Swapped module attachments refuse; navigation invalidates both.
+The bridge still does not retain this relation in the child or expose it on a
+debugger wire.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

@@ -100,7 +100,7 @@ fn direct_root_symbol_slots_join_only_checked_executable_declarations() {
     .unwrap();
     let mut programs = bluejs::BlueJsProgramRegistry::default();
     let attachment = artifact.attach_in(&mut programs).unwrap();
-    let slots = attachment.root_symbol_slots();
+    let slots = attachment.live_root_symbol_slots(&programs).unwrap();
     assert_eq!(slots.len(), 2);
     for slot in slots {
         assert_eq!(slot.program, attachment.handle);
@@ -161,7 +161,13 @@ fn direct_root_symbol_slots_refuse_mismatched_or_ambiguous_static_evidence() {
         }
         let mut programs = bluejs::BlueJsProgramRegistry::default();
         let attachment = altered.attach_in(&mut programs).unwrap();
-        assert!(attachment.root_symbol_slots().is_empty(), "case {case}");
+        assert!(
+            attachment
+                .live_root_symbol_slots(&programs)
+                .unwrap()
+                .is_empty(),
+            "case {case}"
+        );
     }
 }
 
@@ -178,7 +184,7 @@ fn direct_module_root_symbol_slots_preserve_module_declarations() {
     .unwrap();
     let mut programs = bluejs::BlueJsProgramRegistry::default();
     let attachment = artifact.attach_in(&mut programs).unwrap();
-    let slots = attachment.root_symbol_slots();
+    let slots = attachment.live_root_symbol_slots(&programs).unwrap();
     assert_eq!(slots.len(), 2);
     assert_eq!(slots[0].symbol_id, artifact.debug_info.symbols[0].id);
     assert_eq!(slots[1].symbol_id, artifact.debug_info.symbols[1].id);
@@ -205,7 +211,43 @@ fn duplicate_root_declarations_cannot_claim_one_static_slot() {
     );
     let mut programs = bluejs::BlueJsProgramRegistry::default();
     let attachment = artifact.attach_in(&mut programs).unwrap();
-    assert!(attachment.root_symbol_slots().is_empty());
+    assert!(attachment
+        .live_root_symbol_slots(&programs)
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn root_symbol_slots_expire_with_their_exact_installed_generation() {
+    let artifact = artifact();
+    let mut programs = bluejs::BlueJsProgramRegistry::default();
+    let first = artifact.attach_in(&mut programs).unwrap();
+    let second = artifact.attach_in(&mut programs).unwrap();
+    let first_slot = first.live_root_symbol_slots(&programs).unwrap()[0];
+    let second_slot = second.live_root_symbol_slots(&programs).unwrap()[0];
+    assert_ne!(first_slot.program, second_slot.program);
+    assert_ne!(first_slot.code_unit, second_slot.code_unit);
+
+    let mut forged = first.clone();
+    forged.handle = second.handle;
+    forged.safe_point_map.program_generation = second.handle.generation().as_u64();
+    forged.safe_point_map.entries.clear();
+    assert!(matches!(
+        forged.live_root_symbol_slots(&programs),
+        Err(BridgeError::ProvenanceAttachment(_))
+    ));
+
+    assert!(programs.invalidate(first.handle));
+    assert!(matches!(
+        first.live_root_symbol_slots(&programs),
+        Err(BridgeError::BlueJsDebug(
+            bluejs::BlueJsProgramDebugError::UnknownProgram
+        ))
+    ));
+    assert_eq!(
+        second.live_root_symbol_slots(&programs).unwrap()[0],
+        second_slot
+    );
 }
 
 #[test]

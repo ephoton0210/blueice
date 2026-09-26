@@ -137,10 +137,33 @@ pub struct DirectRootSymbolSlot {
 }
 
 impl DirectProgramAttachment {
-    /// Only structurally verified, unambiguous root declaration slots for
-    /// this installed generation; no child capture/local or runtime value.
-    pub fn root_symbol_slots(&self) -> &[DirectRootSymbolSlot] {
-        &self.root_symbol_slots
+    /// Returns only structurally verified root declaration slots after
+    /// rechecking the exact installed generation. A stale or moved attachment
+    /// refuses before returning any static IDs; no runtime value is read.
+    pub fn live_root_symbol_slots(
+        &self,
+        registry: &bluejs::BlueJsProgramRegistry,
+    ) -> Result<&[DirectRootSymbolSlot], BridgeError> {
+        let compiled = registry
+            .get(self.handle)
+            .map_err(BridgeError::BlueJsDebug)?;
+        self.safe_point_map
+            .validate_against(registry, self.handle)?;
+        let root = compiled.code_units().first().ok_or_else(|| {
+            BridgeError::ProvenanceAttachment(
+                "the installed program has no root code unit".to_string(),
+            )
+        })?;
+        if self
+            .root_symbol_slots
+            .iter()
+            .any(|slot| slot.program != self.handle || slot.code_unit != root.id())
+        {
+            return Err(BridgeError::ProvenanceAttachment(
+                "root symbol slots do not belong to this live program".to_string(),
+            ));
+        }
+        Ok(&self.root_symbol_slots)
     }
 
     /// Resolves a TypeScript UTF-8 byte position in this exact program
