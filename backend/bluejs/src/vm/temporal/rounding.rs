@@ -627,6 +627,13 @@ mod tests {
         let wide = (1_i128 << 60) + 1;
         assert_eq!(exact_ratio_to_f64(wide, 1), wide as f64);
         assert_eq!(exact_ratio_to_f64(2 * wide + 1, 2), (wide as f64) + 0.5);
+        // At this magnitude adjacent doubles differ by one. Exact half-way
+        // quotients must select the even neighbor on either side.
+        assert_eq!(exact_ratio_to_f64((1_i128 << 53) + 1, 2), 2_f64.powi(52));
+        assert_eq!(
+            exact_ratio_to_f64((1_i128 << 53) + 3, 2),
+            2_f64.powi(52) + 2.0
+        );
     }
 
     #[test]

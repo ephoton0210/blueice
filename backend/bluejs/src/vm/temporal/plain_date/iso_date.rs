@@ -196,3 +196,14 @@ pub(super) fn surpasses(sign: i64, one: (i64, i64, i64), two: (i64, i64, i64)) -
     };
     cmp * sign > 0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::iso_days_in_month;
+
+    #[test]
+    #[should_panic(expected = "Temporal ISO months are regulated to 1..=12")]
+    fn an_unregulated_iso_month_violates_the_internal_invariant() {
+        iso_days_in_month(2024, 13);
+    }
+}
