@@ -1903,6 +1903,17 @@ generation. Swapped module attachments refuse; navigation invalidates both.
 The bridge still does not retain this relation in the child or expose it on a
 debugger wire.
 
+**C3.1.3.2.4.1 retained live slot map:** The direct debug registry now copies
+only a live-validated root-slot join alongside the corresponding static
+metadata, safe-point map, and breakpoint spans. Retention rejects a forged
+slot ordinal or moved generation before installing any partial record; the
+registry's lookup checks the live BlueJS handle and revalidates the root
+code-unit/slot layout before returning IDs. The page-realm owner exposes the
+same checked lookup, so navigation invalidates old slot results even after a
+new generation of identical source is installed. No child debugger request or
+public wire is added in this leaf; supervised-child call sites and forged
+handle/source/type denials remain in the next leaf.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

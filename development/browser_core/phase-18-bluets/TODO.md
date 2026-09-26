@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.2.4.** Retain and revalidate the joined root-slot map
-in the supervised child against its exact live program generation, with
-no-partial stale, moved, and forged denials and no public wire change.
+**Current leaf: C3.1.3.2.4.2.** Use the checked static root-slot lookup in the
+supervised BlueJS child for classic and linked modules, refusing forged or
+cross-program handles and clearing maps on cutover without public wire changes.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -418,6 +418,8 @@ channel with explicit owner/client grants.
         - [x] **C3.1.3.2.3.2** Build the checked top-level BlueTS symbol/type to structural BlueJS root-slot join; reject unsupported declaration shapes, erased records, ambiguous slots, and mismatched source/name/kind/type evidence. Direct attachments now carry only exact root declaration slots paired with unique compiler symbol/source/type IDs and checked source/options/language identity; script, module, erased, duplicate-slot, and malformed-evidence bridge tests pass. No public debugger wire or runtime-value claim is added.
         - [x] **C3.1.3.2.3.3** Bind the verified join to the installed root code unit and program generation in direct attachments; prove classic, module, linked, stale, and cross-program isolation. Live reads now revalidate the installed handle, safe-point map generation, and each slot's root code-unit/program ID; classic sibling generations, two-file linked modules, swapped handles, and reload expiry pass bridge tests.
       - [ ] **C3.1.3.2.4** Retain and revalidate that joined slot map in the child against the live program generation, with no-partial stale/moved/forged denials and no public wire changes.
+        - [x] **C3.1.3.2.4.1** Retain the verified slot join with static metadata and expose an exact-live-generation checked registry/owner lookup; prove stale and moved refusal without partial entries. Retention validates the exact live root code unit and slot layout before copying the relation; registry/owner reads recheck liveness, forged slot ordinals refuse, and navigation expires old results even after reinstallation.
+        - [ ] **C3.1.3.2.4.2** Use the checked lookup inside the supervised BlueJS child for classic and linked modules, refusing forged or cross-program handles and clearing every map on cutover without a public wire change.
     - [ ] **C3.1.3.3** Add a strict child/core static scope-symbol/type relation for an exact paused slot, never a runtime value or type display, with no-partial stale/moved/forged child denials; split the private route before implementation if needed.
     - [ ] **C3.1.3.4** Add an independently granted public static scope relation request/reply with exact Scopes and metadata/type receipts; retain the existing separate bounded `Value` reply, bump public protocol only when the complete route and IPC/core denials pass.
     - [ ] **C3.1.3.5** Prove a static type display and independently authorized runtime preview remain distinct, correctly matched to the same paused classic/module/linked slot, and expire after step/reload/cutover on real Launcher sockets; then check off C3.1.3 and C3.1.

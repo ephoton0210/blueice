@@ -46,6 +46,7 @@ pub struct RetainedDirectDebugInfo {
     static_info: BlueTsDebugInfo,
     safe_point_map: BlueTsSafePointMapV1,
     breakpoint_spans: Vec<RetainedBreakpointSpan>,
+    root_symbol_slots: Vec<DirectRootSymbolSlot>,
 }
 
 impl RetainedDirectDebugInfo {
@@ -142,6 +143,24 @@ impl DirectDebugRegistry {
             .ok_or(DirectDebugAttachmentError::MetadataUnavailable)
     }
 
+    /// Only exact-live root slots retained with this program's static
+    /// metadata. Refusal returns no partial source, symbol, or type IDs.
+    pub fn root_symbol_slots<'a>(
+        &'a self,
+        registry: &bluejs::BlueJsProgramRegistry,
+        handle: bluejs::BlueJsProgramHandle,
+    ) -> Result<&'a [DirectRootSymbolSlot], DirectDebugAttachmentError> {
+        let retained = self.get(registry, handle)?;
+        validate_live_root_symbol_slots(
+            registry,
+            handle,
+            &retained.safe_point_map,
+            &retained.root_symbol_slots,
+        )
+        .map_err(|error| DirectDebugAttachmentError::SlotMap(error.to_string()))?;
+        Ok(&retained.root_symbol_slots)
+    }
+
     /// Removes the exact generation record. It is safe to call after BlueJS
     /// has already invalidated the program.
     pub fn forget(&mut self, handle: bluejs::BlueJsProgramHandle) -> bool {
@@ -217,6 +236,10 @@ impl DirectDebugRegistry {
                 "retained lowering spans do not match the verified safe-point map".to_string(),
             ));
         }
+        let root_symbol_slots = attachment
+            .live_root_symbol_slots(registry)
+            .map_err(|error| DirectDebugAttachmentError::SlotMap(error.to_string()))?
+            .to_vec();
 
         let breakpoint_spans = attachment
             .provenance
@@ -234,6 +257,7 @@ impl DirectDebugRegistry {
                 static_info: static_info.clone(),
                 safe_point_map: attachment.safe_point_map.clone(),
                 breakpoint_spans: breakpoint_spans.clone(),
+                root_symbol_slots: root_symbol_slots.clone(),
             };
             if existing == &replacement {
                 return Ok(());
@@ -252,6 +276,7 @@ impl DirectDebugRegistry {
                 static_info: static_info.clone(),
                 safe_point_map: attachment.safe_point_map.clone(),
                 breakpoint_spans,
+                root_symbol_slots,
             },
         );
         Ok(())
@@ -264,6 +289,7 @@ impl DirectDebugRegistry {
 pub enum DirectDebugAttachmentError {
     BlueJsProgram(bluejs::BlueJsProgramDebugError),
     SafePointMap(String),
+    SlotMap(String),
     LanguageVersionMismatch,
     CompilerOptionsMismatch,
     SourceSetMismatch,
@@ -282,6 +308,7 @@ impl fmt::Display for DirectDebugAttachmentError {
                 write!(formatter, "BlueJS program is unavailable: {error}")
             }
             Self::SafePointMap(error) => write!(formatter, "safe-point map is invalid: {error}"),
+            Self::SlotMap(error) => write!(formatter, "root symbol-slot map is invalid: {error}"),
             Self::LanguageVersionMismatch => {
                 formatter.write_str("BlueTS language version does not match direct program")
             }

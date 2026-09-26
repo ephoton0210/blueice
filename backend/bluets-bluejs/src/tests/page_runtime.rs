@@ -171,6 +171,33 @@ fn realm_owner_prunes_classic_script_metadata_as_part_of_navigation() {
 }
 
 #[test]
+fn realm_owner_keeps_only_live_root_symbol_slots_after_navigation() {
+    let artifact = artifact();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let first = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    let first_slot = owner.debug_root_symbol_slots(first.handle).unwrap()[0];
+    assert_eq!(first_slot.program, first.handle);
+
+    owner.navigate(7, origin()).unwrap();
+    assert!(matches!(
+        owner.debug_root_symbol_slots(first.handle),
+        Err(DirectDebugAttachmentError::BlueJsProgram(
+            bluejs::BlueJsProgramDebugError::UnknownProgram
+        ))
+    ));
+    let second = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    let second_slot = owner.debug_root_symbol_slots(second.handle).unwrap()[0];
+    assert_ne!(first_slot.code_unit, second_slot.code_unit);
+    assert!(matches!(
+        owner.debug_root_symbol_slots(first.handle),
+        Err(DirectDebugAttachmentError::BlueJsProgram(
+            bluejs::BlueJsProgramDebugError::UnknownProgram
+        ))
+    ));
+}
+
+#[test]
 fn provenance_mismatch_discards_the_just_installed_page_program() {
     let mut artifact = artifact();
     artifact.bytecode = bluejs::BlueJsProgramV1::Script(bluejs::Program {

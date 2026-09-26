@@ -155,6 +155,16 @@ impl DirectPageRealmOwner {
             .get(self.runtime.program_registry(), handle)
     }
 
+    /// Checks that one root-slot relation remains paired with exact live
+    /// static metadata and the realm's installed BlueJS generation.
+    pub fn debug_root_symbol_slots(
+        &self,
+        handle: bluejs::BlueJsProgramHandle,
+    ) -> Result<&[DirectRootSymbolSlot], DirectDebugAttachmentError> {
+        self.debug_registry
+            .root_symbol_slots(self.runtime.program_registry(), handle)
+    }
+
     /// Number of static metadata records whose generations remain live.
     pub fn debug_record_count(&self) -> usize {
         self.debug_registry.len()

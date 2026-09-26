@@ -251,6 +251,52 @@ fn root_symbol_slots_expire_with_their_exact_installed_generation() {
 }
 
 #[test]
+fn retained_root_symbol_slots_recheck_live_generation_without_partial_results() {
+    let artifact = artifact();
+    let mut programs = bluejs::BlueJsProgramRegistry::default();
+    let mut debug = DirectDebugRegistry::default();
+    let first = artifact.attach_debug_in(&mut programs, &mut debug).unwrap();
+    let second = artifact.attach_debug_in(&mut programs, &mut debug).unwrap();
+    let first_slot = debug.root_symbol_slots(&programs, first.handle).unwrap()[0];
+    let second_slot = debug.root_symbol_slots(&programs, second.handle).unwrap()[0];
+    assert_ne!(first_slot.program, second_slot.program);
+    assert_ne!(first_slot.code_unit, second_slot.code_unit);
+
+    assert!(programs.invalidate(first.handle));
+    assert!(matches!(
+        debug.root_symbol_slots(&programs, first.handle),
+        Err(DirectDebugAttachmentError::BlueJsProgram(
+            bluejs::BlueJsProgramDebugError::UnknownProgram
+        ))
+    ));
+    assert_eq!(
+        debug.root_symbol_slots(&programs, second.handle).unwrap()[0],
+        second_slot
+    );
+}
+
+#[test]
+fn forged_root_slot_map_refuses_registry_retention() {
+    let artifact = artifact();
+    let mut programs = bluejs::BlueJsProgramRegistry::default();
+    let mut debug = DirectDebugRegistry::default();
+    let mut attachment = artifact.attach_in(&mut programs).unwrap();
+    attachment.root_symbol_slots[0].slot_ordinal = u32::MAX;
+    assert!(matches!(
+        debug.retain(
+            &programs,
+            &attachment,
+            &artifact.language_version,
+            &artifact.compiler_options_fingerprint,
+            &artifact.sources,
+            &artifact.debug_info,
+        ),
+        Err(DirectDebugAttachmentError::SlotMap(_))
+    ));
+    assert!(debug.is_empty());
+}
+
+#[test]
 fn mismatched_metadata_fails_closed_and_invalidates_the_new_generation() {
     let mut artifact = artifact();
     artifact.debug_info.compiler_options_hash.push_str("-wrong");

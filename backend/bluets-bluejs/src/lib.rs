@@ -144,25 +144,12 @@ impl DirectProgramAttachment {
         &self,
         registry: &bluejs::BlueJsProgramRegistry,
     ) -> Result<&[DirectRootSymbolSlot], BridgeError> {
-        let compiled = registry
-            .get(self.handle)
-            .map_err(BridgeError::BlueJsDebug)?;
-        self.safe_point_map
-            .validate_against(registry, self.handle)?;
-        let root = compiled.code_units().first().ok_or_else(|| {
-            BridgeError::ProvenanceAttachment(
-                "the installed program has no root code unit".to_string(),
-            )
-        })?;
-        if self
-            .root_symbol_slots
-            .iter()
-            .any(|slot| slot.program != self.handle || slot.code_unit != root.id())
-        {
-            return Err(BridgeError::ProvenanceAttachment(
-                "root symbol slots do not belong to this live program".to_string(),
-            ));
-        }
+        validate_live_root_symbol_slots(
+            registry,
+            self.handle,
+            &self.safe_point_map,
+            &self.root_symbol_slots,
+        )?;
         Ok(&self.root_symbol_slots)
     }
 
@@ -192,6 +179,32 @@ impl DirectProgramAttachment {
             source_byte,
         )
     }
+}
+
+fn validate_live_root_symbol_slots(
+    registry: &bluejs::BlueJsProgramRegistry,
+    handle: bluejs::BlueJsProgramHandle,
+    safe_point_map: &BlueTsSafePointMapV1,
+    slots: &[DirectRootSymbolSlot],
+) -> Result<(), BridgeError> {
+    let compiled = registry.get(handle).map_err(BridgeError::BlueJsDebug)?;
+    safe_point_map.validate_against(registry, handle)?;
+    let root = compiled.code_units().first().ok_or_else(|| {
+        BridgeError::ProvenanceAttachment("the installed program has no root code unit".to_string())
+    })?;
+    let root_slots = compiled.bytecode().root_declaration_binding_slots();
+    let mut seen = BTreeSet::new();
+    if slots.iter().any(|slot| {
+        slot.program != handle
+            || slot.code_unit != root.id()
+            || !root_slots.contains(&Some(slot.slot_ordinal))
+            || !seen.insert(slot.slot_ordinal)
+    }) {
+        return Err(BridgeError::ProvenanceAttachment(
+            "root symbol slots do not belong to this live program".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn verified_child_breakpoint_spans(
