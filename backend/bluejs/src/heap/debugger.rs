@@ -117,7 +117,7 @@ impl Heap {
             ObjectKind::Ordinary
                 if obj.prototype.is_none() || obj.prototype == Some(prototypes.object) =>
             {
-                self.preview_record(obj, id, depth, prototypes, budget, ancestors)
+                self.preview_record(obj, depth, prototypes, budget, ancestors)
             }
             ObjectKind::Array { length } if obj.prototype == Some(prototypes.array) => {
                 self.preview_array(obj, *length, depth, prototypes, budget, ancestors)
@@ -131,7 +131,6 @@ impl Heap {
     fn preview_record(
         &self,
         obj: &Object,
-        id: ObjectId,
         depth: u32,
         prototypes: PreviewPrototypes,
         budget: &mut PreviewBudget,
@@ -140,11 +139,9 @@ impl Heap {
         if obj.order.len() > MAX_CONTAINER_LENGTH || obj.properties.len() != obj.order.len() {
             return Err("debugger record exceeds its entry limit or stored shape");
         }
-        // OrdinaryOwnPropertyKeys is a heap-only sort for this verified
-        // ordinary kind. It never runs a user trap or walks a prototype.
-        let keys = self
-            .own_property_keys(id)
-            .map_err(|_| "debugger record keys are unavailable")?;
+        // The ordinary kind was validated by preview_object. Sorting its
+        // stored keys cannot fail or run a user trap.
+        let keys = object_storage::ordered_stored_property_keys(&obj.order, Vec::new(), Vec::new());
         let mut entries = Vec::with_capacity(keys.len());
         for key in keys {
             let PropertyName::String(name) = &key else {

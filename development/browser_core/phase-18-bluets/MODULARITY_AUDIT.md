@@ -8,6 +8,13 @@ duplicating private validation logic. Run focused tests after each move and
 the serial workspace gate before closing this checkpoint. Reuse `target/` and
 prune only verified obsolete compiled test executables, not source tests.
 
+The remaining completion batch is committed only after the complete BlueTS
+audit, all required splits, and the full workspace test gate. No remaining
+over-1,300-line file is approved as an exception. The adjacent-file deferrals
+below are historical candidates for review, not exemptions; any file that
+still exceeds the threshold must be split or reported for user discussion
+before the audit can close. Recount from the worktree, not the original table.
+
 ## Direct BlueTS owners: split
 
 | File | Lines | Boundary |
@@ -40,14 +47,12 @@ change wire variants to achieve a line-count target.
 | `backend/mcp-server/src/lib.rs` | 1,748 | Separate compiler setup/routing from generic MCP startup. |
 | `backend/mcp-server/tests/core_process.rs` | 1,646 | Group compiler public-process cases by session/authorization concern. |
 
-## Reviewed adjacent files: defer a BlueTS-specific split
+## Originally reviewed adjacent files: now split
 
-The following exceed 1,300 lines and mention BlueTS, but their large body is
-primarily shared browser/BlueJS lifecycle or debugger machinery. Extracting
-only scattered BlueTS references would increase coupling. Re-evaluate each
-after the direct-owner and mixed-transport splits; any remaining general
-monolith should get its own repository-wide maintenance task, rather than be
-silently relabeled BlueTS work.
+The following were initially identified as adjacent browser/BlueJS owners.
+Their counts below are the original baseline, not approved exceptions. The
+complete audit subsequently split each by test family or cohesive production
+responsibility, including the shared lifecycle code where necessary.
 
 | File | Lines | Current owner |
 | --- | ---: | --- |
@@ -146,3 +151,37 @@ C3.1.3.4.7.5.4.3.4.1 moved the intact core debugger trait implementation
 to its own 2,865-line internal owner, separating it from the 2,238-line
 executor facade. Both remain above threshold; metadata, linked/nested
 frame/scope, and root execution methods require bounded delegated owners.
+
+## Complete worktree recount
+
+All 27 originally listed BlueTS-owning, mixed, and adjacent files are now at
+most 1,300 lines. The largest is `script/javascript_child.rs` at 1,294 lines;
+the Launcher host and browser session owner are 1,284 and 1,277 lines. No
+over-threshold exception is requested. Every newly extracted Rust module is
+also below the threshold. This recount uses the current worktree rather than
+the original baseline counts in the tables above.
+
+The final pass separated the child debugger's static metadata, linked/nested
+frames, scope/value operations, and reply validation; the engine debugger's
+test families and production routing; the IPC protocol's wire shapes and
+authorization; and compiler/MCP transport and acceptance-test families.
+The adjacent owners were also split: VM debugger inspection/tests, core and
+Launcher CLI argument/tests, session scripting/tests, JavaScript debugger
+locations/execution, and the Launcher broker's options, relay, and child
+supervisor. The 7,709-line child host now has separate lifecycle, BlueTS
+metadata catalog/detail, debugger control/inspection/mapping, execution
+driver, script preparation, and process-supervisor modules; its facade is
+1,284 lines. Existing source tests were retained and share the workspace's
+single `target/` directory.
+
+Final gate after integrating `feature/test262-remaining-failures`: the serial
+workspace test suite, workspace Clippy with warnings denied, `cargo fmt`
+check, and `git diff --check` all pass. The branch's source-breakpoint and
+module-stepping test corrections were retained in their new test modules;
+the real Launcher debugger suite passes 27/27 after the debugger handshake
+was moved ahead of navigation for the source-span step case.
+Cargo's current `--no-run` manifest names 304 test executables. Across the
+final rebuilds, 324 older same-name hashed executables absent from the
+then-current manifest were removed from `target/debug/deps` (59.11 GB of file
+bytes); all 304 current executables remain, and `target/` is about 90 GB.
+No source test or reusable incremental cache was deleted.

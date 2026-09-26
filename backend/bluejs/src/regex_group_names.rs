@@ -387,6 +387,17 @@ mod tests {
         assert_eq!(decoded(r"\u00"), r"\u00");
         // A lead surrogate with no trail after it is not a scalar value.
         assert_eq!(decoded(r"\uD835\u0041"), "\u{FFFD}A");
+        assert_eq!(
+            decode_name(&[
+                BACKSLASH,
+                u32::from(b'u'),
+                0x11_0000,
+                u32::from(b'0'),
+                u32::from(b'0'),
+                u32::from(b'0'),
+            ]),
+            "\\u\u{FFFD}000"
+        );
     }
 
     #[test]

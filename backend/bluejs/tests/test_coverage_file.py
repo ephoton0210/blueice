@@ -156,8 +156,9 @@ class CoverageFileTests(unittest.TestCase):
         with patch.object(coverage_file.subprocess, "run", side_effect=fake_run):
             files, _ = coverage_file.run_coverage()
         self.assertEqual(len(files), 1)
-        self.assertEqual(calls[0], ["cargo", "llvm-cov", "clean", "--workspace"])
+        self.assertEqual(calls[0], ["cargo", "llvm-cov", "clean", "--profraw-only"])
         self.assertEqual(calls[1][:4], ["cargo", "llvm-cov", "-p", "blueice-bluejs"])
+        self.assertIn("--no-clean", calls[1])
         self.assertNotIn("--test", calls[1])
         self.assertNotIn("--ignore-filename-regex", calls[1])
         self.assertEqual(calls[2][:5], ["cargo", "llvm-cov", "report", "-p", "blueice-bluejs"])
@@ -188,8 +189,11 @@ class CoverageFileTests(unittest.TestCase):
             self.assertEqual(files[ast][metric], {"count": expected, "covered": expected})
             self.assertEqual(totals[metric], files[ast][metric])
         row = coverage_file.markdown_row(ast, files[ast])
-        self.assertIn("| ☑ |", row)
-        self.assertIn("raw LLVM summary: lines 2/3", row)
+        self.assertIn("2 / 3 (66.67%)", row)
+        self.assertIn("| ☐ |", row)
+        self.assertIn("Unique source-location union: lines 2/2", row)
+        self.assertFalse(coverage_file.is_complete(files[ast]))
+        self.assertFalse(coverage_file.is_complete(totals))
         with self.assertRaisesRegex(ValueError, "incomplete source-line coverage view"):
             coverage_file.source_union_export(payload, show.splitlines()[0] + "\n")
 

@@ -26,3 +26,27 @@ fn decoder_rejects_unknown_opcodes_and_truncated_operands() {
     assert_eq!(instruction.operand, Some(0x1234_5678));
     assert_eq!(code.instruction(code.code.len()), None);
 }
+
+#[test]
+fn compiled_root_ranges_and_child_indices_match_the_executable_statements() {
+    let program = crate::parse(
+        "function first() { return 1; } let answer = 2; function second() { return answer; }",
+    )
+    .unwrap();
+    let code = crate::compile(&program).unwrap();
+    let ranges = code.root_statement_ranges();
+    let children = code.root_function_child_indices();
+    assert_eq!(ranges.len(), 3);
+    assert_eq!(children, &[Some(0), None, Some(1)]);
+    assert_eq!(code.root_statement_offsets().len(), ranges.len());
+    for (offset, range) in code.root_statement_offsets().iter().zip(ranges) {
+        let (start, end) = range.expect("each executable root statement has a range");
+        assert_eq!(*offset, Some(start));
+        assert!(start < end);
+        assert!(end as usize <= code.bytes().len());
+    }
+    assert!(children
+        .iter()
+        .flatten()
+        .all(|&index| (index as usize) < code.functions.len()));
+}

@@ -1099,21 +1099,21 @@ impl SharedBuffer {
         timeout: Option<Duration>,
     ) -> SharedWaitResult {
         let (status_lock, ready) = &*waiter.signal;
-        let mut status = status_lock
+        let status = status_lock
             .lock()
             .expect("SharedArrayBuffer waiter status lock poisoned");
-        if status.is_none() {
-            if let Some(timeout) = timeout {
-                let (next, _) = ready
-                    .wait_timeout_while(status, timeout, |status| status.is_none())
-                    .expect("SharedArrayBuffer waiter condition poisoned");
-                status = next;
-            } else {
-                status = ready
-                    .wait_while(status, |status| status.is_none())
-                    .expect("SharedArrayBuffer waiter condition poisoned");
-            }
-        }
+        // Both predicate waits return immediately when notify already set
+        // the status before this waiter acquired its condition lock.
+        let status = if let Some(timeout) = timeout {
+            let (status, _) = ready
+                .wait_timeout_while(status, timeout, |status| status.is_none())
+                .expect("SharedArrayBuffer waiter condition poisoned");
+            status
+        } else {
+            ready
+                .wait_while(status, |status| status.is_none())
+                .expect("SharedArrayBuffer waiter condition poisoned")
+        };
         let result = status.unwrap_or(SharedWaitResult::TimedOut);
         drop(status);
         self.waiters

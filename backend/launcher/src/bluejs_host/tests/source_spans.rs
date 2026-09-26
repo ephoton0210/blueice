@@ -167,7 +167,7 @@ fn child_bluets_source_breakpoint_is_bound_to_a_live_source_and_generation() {
         PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
         reply => panic!("expected private BlueTS metadata, got {reply:?}"),
     };
-    let (source_id, first, second) = {
+    let (source_id, expected_breakpoints, past_last_byte) = {
         let handle = host.documents[&7].debugger_programs[&program.program_handle].runtime_handle;
         let retained = host
             .debug_registry
@@ -175,23 +175,27 @@ fn child_bluets_source_breakpoint_is_bound_to_a_live_source_and_generation() {
             .unwrap();
         let mut entries = retained.safe_point_map().entries.iter().collect::<Vec<_>>();
         entries.sort_by_key(|entry| (entry.start_byte, entry.bytecode_offset));
-        let first = entries[0];
-        let second = entries
+        let source = retained
+            .static_info()
+            .sources
             .iter()
-            .copied()
-            .find(|entry| entry.source == first.source && entry.start_byte >= first.end_byte)
-            .expect("the next distinct declaration has a bound entry");
+            .find(|source| source.module == entries[0].source)
+            .expect("the lowered source must have a compiler source ID");
+        let expected_breakpoints = [entries[0].start_byte, entries[0].end_byte].map(|byte| {
+            let safe_point = match retained.breakpoint_at_or_after(&source.module, byte) {
+                DirectSafePointBinding::Bound(bound) => Some(PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: bound.code_unit.ordinal(),
+                    bytecode_offset: bound.bytecode_offset,
+                }),
+                DirectSafePointBinding::Unbound => None,
+            };
+            (u32::try_from(byte).unwrap(), safe_point)
+        });
         (
-            retained
-                .static_info()
-                .sources
-                .iter()
-                .find(|source| source.module == entries[0].source)
-                .expect("the lowered source must have a compiler source ID")
-                .id
-                .0,
-            first.clone(),
-            second.clone(),
+            source.id.0,
+            expected_breakpoints,
+            u32::try_from(entries.iter().map(|entry| entry.end_byte).max().unwrap()).unwrap() + 10,
         )
     };
     let request = |source_byte| PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
@@ -202,10 +206,7 @@ fn child_bluets_source_breakpoint_is_bound_to_a_live_source_and_generation() {
         source_id,
         source_byte,
     };
-    for (source_byte, entry) in [
-        (u32::try_from(first.start_byte).unwrap(), &first),
-        (u32::try_from(first.end_byte).unwrap(), &second),
-    ] {
+    for (source_byte, safe_point) in expected_breakpoints {
         assert_eq!(
             host.handle_request(request(source_byte)),
             PageHostReply::DebuggerBlueTsSourceBreakpoint {
@@ -215,23 +216,19 @@ fn child_bluets_source_breakpoint_is_bound_to_a_live_source_and_generation() {
                 metadata,
                 source_id,
                 source_byte,
-                safe_point: Some(PageHostDebuggerSafePoint {
-                    program,
-                    code_unit_ordinal: entry.code_unit.ordinal(),
-                    bytecode_offset: entry.bytecode_offset,
-                }),
+                safe_point,
             }
         );
     }
     assert_eq!(
-        host.handle_request(request(u32::try_from(second.end_byte).unwrap() + 10)),
+        host.handle_request(request(past_last_byte)),
         PageHostReply::DebuggerBlueTsSourceBreakpoint {
             tab_id: 7,
             document_generation: 1,
             program,
             metadata,
             source_id,
-            source_byte: u32::try_from(second.end_byte).unwrap() + 10,
+            source_byte: past_last_byte,
             safe_point: None,
         }
     );

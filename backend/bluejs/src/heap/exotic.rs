@@ -213,6 +213,23 @@ impl Heap {
         Ok(matches!(**state, GeneratorState::Done))
     }
 
+    fn generator_state_slots_mut(
+        &mut self,
+        object: ObjectId,
+    ) -> Result<(&mut Box<GeneratorState>, &mut usize, &mut usize), HeapError> {
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        let ObjectKind::Generator {
+            state, state_bytes, ..
+        } = &mut entry.kind
+        else {
+            return Err(HeapError::InvalidObject(object));
+        };
+        Ok((state, state_bytes, &mut entry.bytes))
+    }
+
     pub(crate) fn set_generator_state(
         &mut self,
         object: ObjectId,
@@ -224,15 +241,7 @@ impl Heap {
         // remembered-set barrier as an ordinary property write.
         let references = state.references();
         let state_bytes = state.managed_bytes();
-        let old_state_bytes = match &self
-            .objects
-            .get(&object)
-            .ok_or(HeapError::InvalidObject(object))?
-            .kind
-        {
-            ObjectKind::Generator { state_bytes, .. } => *state_bytes,
-            _ => return Err(HeapError::InvalidObject(object)),
-        };
+        let old_state_bytes = *self.generator_state_slots_mut(object)?.1;
         // Collection may be needed before a suspended frame is restored.
         // Keep both the generator and its incoming references alive across it.
         let protected: Vec<_> = std::iter::once(object)
@@ -240,21 +249,10 @@ impl Heap {
             .collect();
         self.ensure_room(state_bytes.saturating_sub(old_state_bytes), &protected)?;
         {
-            let entry = self
-                .objects
-                .get_mut(&object)
-                .ok_or(HeapError::InvalidObject(object))?;
-            let ObjectKind::Generator {
-                state: current,
-                state_bytes: current_bytes,
-                ..
-            } = &mut entry.kind
-            else {
-                return Err(HeapError::InvalidObject(object));
-            };
+            let (current, current_bytes, entry_bytes) = self.generator_state_slots_mut(object)?;
             **current = state;
             *current_bytes = state_bytes;
-            entry.bytes = entry.bytes - old_state_bytes + state_bytes;
+            *entry_bytes = *entry_bytes - old_state_bytes + state_bytes;
         }
         self.managed_bytes = self.managed_bytes - old_state_bytes + state_bytes;
         for reference in references {
@@ -290,6 +288,25 @@ impl Heap {
         Ok(async_control.clone())
     }
 
+    fn async_generator_slots_mut(
+        &mut self,
+        object: ObjectId,
+    ) -> Result<(&mut Option<AsyncGeneratorControl>, &mut usize, &mut usize), HeapError> {
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        let ObjectKind::Generator {
+            async_control,
+            async_control_bytes,
+            ..
+        } = &mut entry.kind
+        else {
+            return Err(HeapError::InvalidObject(object));
+        };
+        Ok((async_control, async_control_bytes, &mut entry.bytes))
+    }
+
     /// Replaces the async-generator queue and performs the same accounting
     /// and old-to-young barriers as a suspended frame restoration.
     pub(crate) fn set_async_generator_control(
@@ -299,24 +316,15 @@ impl Heap {
     ) -> Result<(), HeapError> {
         let references = control.references();
         let control_bytes = control.managed_bytes();
-        let (old_bytes, old_references) = match &self
-            .objects
-            .get(&object)
-            .ok_or(HeapError::InvalidObject(object))?
-            .kind
-        {
-            ObjectKind::Generator {
-                async_control,
-                async_control_bytes,
-                ..
-            } => (
+        let (old_bytes, old_references) = {
+            let (async_control, async_control_bytes, _) = self.async_generator_slots_mut(object)?;
+            (
                 *async_control_bytes,
                 async_control
                     .iter()
                     .flat_map(AsyncGeneratorControl::references)
                     .collect::<Vec<_>>(),
-            ),
-            _ => return Err(HeapError::InvalidObject(object)),
+            )
         };
         let protected: Vec<_> = std::iter::once(object)
             .chain(references.iter().copied())
@@ -324,21 +332,11 @@ impl Heap {
             .collect();
         self.ensure_room(control_bytes.saturating_sub(old_bytes), &protected)?;
         {
-            let entry = self
-                .objects
-                .get_mut(&object)
-                .ok_or(HeapError::InvalidObject(object))?;
-            let ObjectKind::Generator {
-                async_control,
-                async_control_bytes,
-                ..
-            } = &mut entry.kind
-            else {
-                return Err(HeapError::InvalidObject(object));
-            };
+            let (async_control, async_control_bytes, entry_bytes) =
+                self.async_generator_slots_mut(object)?;
             *async_control = Some(control);
             *async_control_bytes = control_bytes;
-            entry.bytes = entry.bytes - old_bytes + control_bytes;
+            *entry_bytes = *entry_bytes - old_bytes + control_bytes;
         }
         self.managed_bytes = self.managed_bytes - old_bytes + control_bytes;
         for reference in references {
@@ -388,18 +386,19 @@ impl Heap {
         })
     }
     pub(crate) fn collator_compare(&self, object: ObjectId) -> Option<ObjectId> {
-        let ObjectKind::Collator { compare, .. } = &self.objects.get(&object).unwrap().kind else {
-            unreachable!("VM checks the Collator brand")
+        let ObjectKind::Collator { compare, .. } = &self.objects.get(&object)?.kind else {
+            return None;
         };
         *compare
     }
     pub(crate) fn set_collator_compare(&mut self, object: ObjectId, function: ObjectId) {
-        if let ObjectKind::Collator { compare, .. } =
-            &mut self.objects.get_mut(&object).unwrap().kind
-        {
+        let Some(entry) = self.objects.get_mut(&object) else {
+            return;
+        };
+        if let ObjectKind::Collator { compare, .. } = &mut entry.kind {
             *compare = Some(function);
+            self.write_barrier(object, Some(function));
         }
-        self.write_barrier(object, Some(function));
     }
 
     pub(crate) fn alloc_number_format(
@@ -424,20 +423,20 @@ impl Heap {
     }
 
     pub(crate) fn number_format_format(&self, object: ObjectId) -> Option<ObjectId> {
-        let ObjectKind::NumberFormat { format, .. } = &self.objects.get(&object).unwrap().kind
-        else {
-            unreachable!("VM checks the NumberFormat brand")
+        let ObjectKind::NumberFormat { format, .. } = &self.objects.get(&object)?.kind else {
+            return None;
         };
         *format
     }
 
     pub(crate) fn set_number_format_format(&mut self, object: ObjectId, function: ObjectId) {
-        if let ObjectKind::NumberFormat { format, .. } =
-            &mut self.objects.get_mut(&object).unwrap().kind
-        {
+        let Some(entry) = self.objects.get_mut(&object) else {
+            return;
+        };
+        if let ObjectKind::NumberFormat { format, .. } = &mut entry.kind {
             *format = Some(function);
+            self.write_barrier(object, Some(function));
         }
-        self.write_barrier(object, Some(function));
     }
 
     pub(crate) fn alloc_date_time_format(
@@ -462,20 +461,20 @@ impl Heap {
     }
 
     pub(crate) fn date_time_format_format(&self, object: ObjectId) -> Option<ObjectId> {
-        let ObjectKind::DateTimeFormat { format, .. } = &self.objects.get(&object).unwrap().kind
-        else {
-            unreachable!("VM checks the DateTimeFormat brand")
+        let ObjectKind::DateTimeFormat { format, .. } = &self.objects.get(&object)?.kind else {
+            return None;
         };
         *format
     }
 
     pub(crate) fn set_date_time_format_format(&mut self, object: ObjectId, function: ObjectId) {
-        if let ObjectKind::DateTimeFormat { format, .. } =
-            &mut self.objects.get_mut(&object).unwrap().kind
-        {
+        let Some(entry) = self.objects.get_mut(&object) else {
+            return;
+        };
+        if let ObjectKind::DateTimeFormat { format, .. } = &mut entry.kind {
             *format = Some(function);
+            self.write_barrier(object, Some(function));
         }
-        self.write_barrier(object, Some(function));
     }
 
     pub(crate) fn alloc_display_names(
@@ -706,11 +705,14 @@ impl Heap {
         })
     }
     pub(crate) fn advance_array_iterator(&mut self, id: ObjectId, done: bool) {
+        let Some(entry) = self.objects.get_mut(&id) else {
+            return;
+        };
         if let ObjectKind::ArrayIterator {
             index,
             done: finished,
             ..
-        } = &mut self.objects.get_mut(&id).unwrap().kind
+        } = &mut entry.kind
         {
             *index += 1;
             *finished = done;
@@ -842,6 +844,21 @@ impl Heap {
             .expect("take helper is consumed only with a positive remainder");
         Ok(())
     }
+
+    fn regexp_slot_mut(
+        &mut self,
+        object: ObjectId,
+    ) -> Result<(&mut Rc<crate::regexp::RegExp>, &mut usize), HeapError> {
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        let ObjectKind::RegExp(current) = &mut entry.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok((current, &mut entry.bytes))
+    }
+
     /// Replaces a RegExp object's [[RegExpMatcher]], [[OriginalSource]] and
     /// [[OriginalFlags]] in place (Annex B `RegExp.prototype.compile`).
     pub(crate) fn set_regexp(
@@ -849,18 +866,12 @@ impl Heap {
         object: ObjectId,
         regexp: Rc<crate::regexp::RegExp>,
     ) -> Result<(), HeapError> {
-        let ObjectKind::RegExp(current) = &self.object(object)?.kind else {
-            return Err(HeapError::InvalidInternalSlot(object));
-        };
-        let old_bytes = regexp_bytes(current);
+        let old_bytes = regexp_bytes(self.regexp_slot_mut(object)?.0);
         let new_bytes = regexp_bytes(&regexp);
         self.ensure_room(new_bytes.saturating_sub(old_bytes), &[object])?;
-        let entry = self
-            .objects
-            .get_mut(&object)
-            .ok_or(HeapError::InvalidObject(object))?;
-        entry.kind = ObjectKind::RegExp(regexp);
-        entry.bytes = entry.bytes - old_bytes + new_bytes;
+        let (current, entry_bytes) = self.regexp_slot_mut(object)?;
+        *current = regexp;
+        *entry_bytes = *entry_bytes - old_bytes + new_bytes;
         self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
         Ok(())
     }
@@ -908,9 +919,10 @@ impl Heap {
         })
     }
     pub(crate) fn finish_regexp_iterator(&mut self, object: ObjectId) {
-        if let ObjectKind::RegExpIterator { done, .. } =
-            &mut self.objects.get_mut(&object).unwrap().kind
-        {
+        let Some(entry) = self.objects.get_mut(&object) else {
+            return;
+        };
+        if let ObjectKind::RegExpIterator { done, .. } = &mut entry.kind {
             *done = true;
         }
     }

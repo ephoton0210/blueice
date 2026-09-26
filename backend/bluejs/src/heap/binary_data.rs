@@ -416,40 +416,8 @@ impl Heap {
         byte_length: usize,
         shared_operation: bool,
     ) -> Result<(), HeapError> {
-        let current = self.buffer_byte_length(object)?;
-        let (detached, shared, maximum, immutable) = match &self.object(object)?.kind {
-            ObjectKind::ArrayBuffer {
-                detached,
-                shared,
-                max_byte_length,
-                immutable,
-                ..
-            } => (*detached, *shared, *max_byte_length, *immutable),
-            _ => return Err(HeapError::InvalidInternalSlot(object)),
-        };
-        if shared != shared_operation || (!shared && detached) {
-            return Err(HeapError::InvalidInternalSlot(object));
-        }
-        if immutable {
-            return Err(HeapError::ImmutableArrayBuffer);
-        }
-        let Some(maximum) = maximum else {
-            return Err(HeapError::InvalidBufferRange);
-        };
-        if byte_length > maximum || (shared && byte_length < current) {
-            return Err(HeapError::InvalidBufferRange);
-        }
-        let growth = byte_length.saturating_sub(current);
-        if growth
-            > self
-                .config
-                .max_heap_bytes
-                .saturating_sub(self.managed_bytes)
-        {
-            return Err(HeapError::HeapLimitExceeded {
-                limit: self.config.max_heap_bytes,
-            });
-        }
+        let limit = self.config.max_heap_bytes;
+        let available = limit.saturating_sub(self.managed_bytes);
         let obj = self
             .objects
             .get_mut(&object)
@@ -457,11 +425,33 @@ impl Heap {
         let ObjectKind::ArrayBuffer {
             bytes,
             shared_backing,
-            ..
+            detached,
+            max_byte_length,
+            shared,
+            immutable,
         } = &mut obj.kind
         else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
+        let current = shared_backing
+            .as_ref()
+            .map_or_else(|| bytes.len(), |backing| backing.byte_length());
+        if *shared != shared_operation || (!*shared && *detached) {
+            return Err(HeapError::InvalidInternalSlot(object));
+        }
+        if *immutable {
+            return Err(HeapError::ImmutableArrayBuffer);
+        }
+        let Some(maximum) = *max_byte_length else {
+            return Err(HeapError::InvalidBufferRange);
+        };
+        if byte_length > maximum || (*shared && byte_length < current) {
+            return Err(HeapError::InvalidBufferRange);
+        }
+        let growth = byte_length.saturating_sub(current);
+        if growth > available {
+            return Err(HeapError::HeapLimitExceeded { limit });
+        }
         // Another agent may already have grown the shared backing. This
         // wrapper's Vec exists only for its local heap accounting, so update
         // that accounting from its own previous length rather than the global
@@ -551,7 +541,10 @@ impl Heap {
         if self.buffer_is_detached(buffer)? {
             return Err(HeapError::DetachedArrayBuffer);
         }
-        let available = self.buffer_byte_length(buffer)?;
+        // The detach check above already verified the same live buffer slot.
+        let available = self
+            .buffer_byte_length(buffer)
+            .expect("validated DataView backing remains a buffer");
         if byte_offset > available
             || (!length_tracking && byte_offset.saturating_add(byte_length) > available)
         {
@@ -590,7 +583,9 @@ impl Heap {
         if self.buffer_is_detached(buffer)? {
             return Ok((buffer, byte_offset, 0, kind));
         }
-        let available = self.buffer_byte_length(buffer)?;
+        let available = self
+            .buffer_byte_length(buffer)
+            .expect("validated TypedArray backing remains a buffer");
         if byte_offset > available {
             return Ok((buffer, byte_offset, 0, kind));
         }
@@ -618,7 +613,9 @@ impl Heap {
         if self.buffer_is_detached(buffer)? {
             return Ok(true);
         }
-        let available = self.buffer_byte_length(buffer)?;
+        let available = self
+            .buffer_byte_length(buffer)
+            .expect("validated TypedArray backing remains a buffer");
         if byte_offset > available {
             return Ok(true);
         }
@@ -656,7 +653,12 @@ impl Heap {
         else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
-        Ok(!(self.buffer_resizable(buffer)? || length_tracking && self.buffer_growable(buffer)?))
+        let resizable = self.buffer_resizable(buffer)?;
+        Ok(!(resizable
+            || length_tracking
+                && self
+                    .buffer_growable(buffer)
+                    .expect("resizability check verified the same backing buffer")))
     }
 
     pub(crate) fn typed_array_numeric_key(
@@ -679,9 +681,8 @@ impl Heap {
             return Ok(None);
         }
         let (buffer, byte_offset, length, kind) = self.typed_array_info(object)?;
-        if self.buffer_is_detached(buffer)? {
-            return Ok(None);
-        }
+        // typed_array_info reports a detached view with zero accessible
+        // elements, so the index check below also handles detachment.
         if index >= length {
             return Ok(None);
         }
@@ -689,10 +690,12 @@ impl Heap {
         if let Ok(backing) = self.shared_buffer_backing(buffer) {
             let bytes = backing
                 .copy(start, kind.byte_width())
-                .ok_or(HeapError::InvalidBufferRange)?;
+                .expect("validated shared index remains in a grow-only backing");
             return Ok(Some(typed_read(kind, &bytes)));
         }
-        let bytes = self.buffer_bytes(buffer)?;
+        let bytes = self
+            .buffer_bytes(buffer)
+            .expect("validated non-shared index has an attached backing");
         Ok(Some(typed_read(kind, &bytes[start..])))
     }
 
@@ -710,12 +713,12 @@ impl Heap {
         if let Ok(backing) = self.shared_buffer_backing(buffer) {
             let mut bytes = backing
                 .copy(start, kind.byte_width())
-                .ok_or(HeapError::InvalidBufferRange)?;
+                .expect("validated shared index remains in a grow-only backing");
             typed_write(kind, &mut bytes, value);
             backing
                 .write(start, &bytes)
                 .then_some(())
-                .ok_or(HeapError::InvalidBufferRange)?;
+                .expect("validated shared index remains in a grow-only backing");
             return Ok(true);
         }
         let bytes = self.buffer_bytes_mut(buffer)?;
@@ -774,7 +777,12 @@ impl Heap {
         // `Atomics.load` reaches this helper with no replacement, and must
         // keep working on an immutable buffer; only an actual store needs
         // the mutable byte access an immutable buffer refuses.
-        let current = typed_read(kind, &self.buffer_bytes(buffer)?[start..]);
+        let current = typed_read(
+            kind,
+            &self
+                .buffer_bytes(buffer)
+                .expect("validated non-shared index has an attached backing")[start..],
+        );
         let (replacement, result) = modify(current);
         if let Some(replacement) = replacement {
             typed_write(
@@ -851,10 +859,10 @@ pub(super) fn typed_array_numeric_key(key: &PropertyName) -> Option<TypedArrayNu
     if !number.is_finite() || !canonical_numeric_string_matches(number, &key) {
         return None;
     }
-    if number < 0.0 || number.fract() != 0.0 || number > usize::MAX as f64 {
-        return Some(TypedArrayNumericKey::Invalid);
-    }
-    Some(TypedArrayNumericKey::Index(number as usize))
+    // A canonical nonnegative integer that fits in usize was already
+    // recognized by JsString::index above. Every other canonical numeric
+    // spelling names an invalid integer-indexed property.
+    Some(TypedArrayNumericKey::Invalid)
 }
 
 pub(super) fn canonical_numeric_string_matches(number: f64, key: &str) -> bool {
@@ -875,6 +883,12 @@ pub(super) fn ecmascript_number_string(number: f64) -> String {
     if magnitude != 0.0 && !rendered.contains('e') {
         return fixed_to_scientific(&rendered).unwrap_or(rendered);
     }
+    normalize_scientific_rendering(rendered)
+}
+
+/// Preserve Rust's decimal mantissa while spelling an exponent the way
+/// ECMAScript does if a formatter supplies scientific notation.
+pub(super) fn normalize_scientific_rendering(rendered: String) -> String {
     let Some((mantissa, exponent)) = rendered.split_once('e') else {
         return rendered;
     };
@@ -1052,20 +1066,19 @@ pub(super) fn typed_read(kind: TypedArrayKind, bytes: &[u8]) -> Value {
 
 pub(super) fn typed_write(kind: TypedArrayKind, bytes: &mut [u8], value: &Value) {
     if matches!(kind, TypedArrayKind::BigInt64 | TypedArrayKind::BigUint64) {
-        let Value::BigInt(value) = value else {
-            unreachable!("BigInt typed arrays receive a BigInt element value");
-        };
-        let source = value.to_signed_bytes_le();
-        let fill = if value.sign() == num_bigint::Sign::Minus {
-            0xff
-        } else {
-            0
-        };
-        let mut result = [fill; 8];
-        let copied = source.len().min(result.len());
-        result[..copied].copy_from_slice(&source[..copied]);
-        bytes[..8].copy_from_slice(&result);
-        return;
+        if let Value::BigInt(value) = value {
+            let source = value.to_signed_bytes_le();
+            let fill = if value.sign() == num_bigint::Sign::Minus {
+                0xff
+            } else {
+                0
+            };
+            let mut result = [fill; 8];
+            let copied = source.len().min(result.len());
+            result[..copied].copy_from_slice(&source[..copied]);
+            bytes[..8].copy_from_slice(&result);
+            return;
+        }
     }
     let Value::Number(value) = value else {
         unreachable!("numeric typed arrays receive a Number element value");
@@ -1105,7 +1118,7 @@ pub(super) fn typed_write(kind: TypedArrayKind, bytes: &mut [u8], value: &Value)
         TypedArrayKind::Float32 => bytes[..4].copy_from_slice(&(value as f32).to_le_bytes()),
         TypedArrayKind::Float64 => bytes[..8].copy_from_slice(&value.to_le_bytes()),
         TypedArrayKind::BigInt64 | TypedArrayKind::BigUint64 => {
-            unreachable!("BigInt typed arrays return before numeric coercion")
+            unreachable!("BigInt typed arrays receive a BigInt element value")
         }
     }
 }

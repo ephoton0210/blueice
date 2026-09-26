@@ -828,20 +828,17 @@ fn child_source_span_step_yields_at_its_fixed_root_instruction_limit() {
             .debug_registry
             .get(host.runtime.program_registry(), handle)
             .unwrap();
-        let first_start = retained
-            .safe_point_map()
-            .entries
-            .iter()
-            .filter(|entry| entry.code_unit.ordinal() == 0)
-            .map(|entry| entry.start_byte)
-            .min()
-            .expect("the first statement has a root entry");
+        let slow_start = source.find("let slow:").unwrap();
         let entry = retained
             .safe_point_map()
             .entries
             .iter()
-            .filter(|entry| entry.code_unit.ordinal() == 0 && entry.start_byte > first_start)
-            .min_by_key(|entry| (entry.start_byte, entry.bytecode_offset))
+            .filter(|entry| {
+                entry.code_unit.ordinal() == 0
+                    && entry.start_byte <= slow_start
+                    && slow_start < entry.end_byte
+            })
+            .min_by_key(|entry| entry.bytecode_offset)
             .expect("the long second statement must have a bound root entry");
         let source_id = retained
             .static_info()

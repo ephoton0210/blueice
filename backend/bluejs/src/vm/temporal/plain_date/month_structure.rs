@@ -96,7 +96,7 @@ pub(super) fn calendar_ordinal_to_iso(
     let mut fields = DateFields::default();
     fields.extended_year = Some(year);
     fields.ordinal_month = Some(ordinal_month);
-    fields.day = Some(u8::try_from(day.clamp(1, 31)).ok()?);
+    fields.day = Some(day.clamp(1, 31) as u8);
     let mut options = DateFromFieldsOptions::default();
     options.overflow = Some(IcuOverflow::Constrain);
     let landed = Date::try_from_fields(fields, options, AnyCalendar::new(calendar)).ok()?;
@@ -170,7 +170,7 @@ pub(super) fn calendar_date_from_month(
     let mut fields = DateFields::default();
     fields.extended_year = Some(year);
     fields.month = Some(month);
-    fields.day = Some(u8::try_from(day.clamp(1, 31)).ok()?);
+    fields.day = Some(day.clamp(1, 31) as u8);
     let mut options = DateFromFieldsOptions::default();
     options.overflow = Some(overflow);
     Date::try_from_fields(fields, options, AnyCalendar::new(calendar)).ok()
@@ -193,7 +193,7 @@ pub(super) fn calendar_date_from_ordinal(
     let mut fields = DateFields::default();
     fields.extended_year = Some(year);
     fields.ordinal_month = Some(ordinal_month);
-    fields.day = Some(u8::try_from(day.clamp(1, 31)).ok()?);
+    fields.day = Some(day.clamp(1, 31) as u8);
     let mut options = DateFromFieldsOptions::default();
     options.overflow = Some(IcuOverflow::Constrain);
     Date::try_from_fields(fields, options, AnyCalendar::new(calendar)).ok()
@@ -233,4 +233,35 @@ pub(super) fn surpasses_identity(
         Ordering::Greater => 1,
     };
     cmp * sign > 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn calendar_constructors_reject_unrepresentable_years_and_months() {
+        let outside_year = i64::from(i32::MAX) + 1;
+        let outside_month = i64::from(u8::MAX) + 1;
+        let calendar = AnyCalendarKind::Iso;
+
+        assert!(calendar_ordinal_to_iso(calendar, outside_year, 1, 1).is_none());
+        assert!(calendar_ordinal_to_iso(calendar, 2024, outside_month, 1).is_none());
+        // This year fits in i32 but lies outside ICU's supported calendar range.
+        assert!(calendar_ordinal_to_iso(calendar, i64::from(i32::MAX), 1, 1).is_none());
+        assert!(calendar_date_from_month(
+            calendar,
+            outside_year,
+            Month::new(1),
+            1,
+            IcuOverflow::Reject
+        )
+        .is_none());
+        assert!(calendar_date_from_ordinal(calendar, outside_year, 1, 1).is_none());
+        assert!(calendar_date_from_ordinal(calendar, 2024, outside_month, 1).is_none());
+        assert!(
+            calendar_date_from_month(calendar, 2024, Month::new(13), 1, IcuOverflow::Reject)
+                .is_none()
+        );
+    }
 }

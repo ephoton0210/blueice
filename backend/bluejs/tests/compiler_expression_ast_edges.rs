@@ -7,8 +7,9 @@
 
 use blueice_bluejs::{
     compile, compile_module, compile_with_limit, parse, parse_module, Argument, ArrowBody,
-    AssignOp, Bytecode, Class, ClassElement, CompileError, Expr, ForHead, Function, Pattern,
-    Program, PropertyKey, RuntimeError, SourceText, Stmt, UnaryOp, UpdateOp, Value, Vm,
+    AssignOp, AssignmentPattern, AssignmentPatternElement, Bytecode, Class, ClassElement,
+    CompileError, Expr, ForHead, Function, Pattern, Program, PropertyKey, RuntimeError, SourceText,
+    Stmt, UnaryOp, UpdateOp, Value, Vm,
 };
 
 fn expression_program(expr: Expr) -> Program {
@@ -130,6 +131,78 @@ fn malformed_ordinary_and_unbound_private_members_fail_during_compilation() {
             compile(&expression_program(expr)),
             Err(CompileError::InvalidSyntax(message)) if message == expected
         ));
+    }
+}
+
+#[test]
+fn unbound_private_names_in_optional_and_destructuring_asts_fail_at_compilation() {
+    let unbound = || Expr::Member {
+        object: Box::new(Expr::Number(1.0)),
+        property: Box::new(Expr::Identifier("#missing".into())),
+        computed: false,
+    };
+    let optional = Expr::OptionalMember {
+        object: Box::new(Expr::Number(1.0)),
+        property: Box::new(Expr::Identifier("#missing".into())),
+        computed: false,
+    };
+    let chained = Expr::Member {
+        object: Box::new(Expr::OptionalMember {
+            object: Box::new(Expr::Number(1.0)),
+            property: Box::new(Expr::Identifier("present".into())),
+            computed: false,
+        }),
+        property: Box::new(Expr::Identifier("#missing".into())),
+        computed: false,
+    };
+    let array_target = AssignmentPattern::Array(vec![Some(AssignmentPatternElement {
+        pattern: AssignmentPattern::Target(Box::new(unbound())),
+        default: None,
+        rest: false,
+    })]);
+    for expr in [
+        optional.clone(),
+        chained,
+        Expr::Call {
+            callee: Box::new(Expr::Parenthesized(Box::new(optional))),
+            args: Vec::new(),
+        },
+        Expr::DestructureAssign {
+            pattern: AssignmentPattern::Target(Box::new(unbound())),
+            value: Box::new(Expr::Number(1.0)),
+        },
+        Expr::DestructureAssign {
+            pattern: array_target,
+            value: Box::new(Expr::Number(1.0)),
+        },
+    ] {
+        assert!(matches!(
+            compile(&expression_program(expr)),
+            Err(CompileError::InvalidSyntax(
+                "private name is not declared in an enclosing class"
+            ))
+        ));
+    }
+}
+
+#[test]
+fn prepared_destructuring_members_preserve_private_and_super_receivers() {
+    for (source, expected) in [
+        (
+            "class C { #value = 0; set(v) { [this.#value] = [v]; return this.#value; } } new C().set(7);",
+            7.0,
+        ),
+        (
+            "class Base { set value(v) { this.saved = v; } } class Derived extends Base { set(v) { [super.value] = [v]; return this.saved; } } new Derived().set(8);",
+            8.0,
+        ),
+    ] {
+        let program = parse(source).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+        assert_eq!(
+            Vm::default().execute(&compile(&program).unwrap()),
+            Ok(Value::Number(expected)),
+            "{source}"
+        );
     }
 }
 

@@ -166,3 +166,23 @@ impl PartialEq<&str> for JsString {
         self == *other
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::JsString;
+
+    #[test]
+    fn invalid_utf16_cannot_be_a_native_function_name() {
+        let invalid_name = JsString::from_code_units(vec![0xD800]);
+        assert_eq!(
+            JsString::native_function_source(Some(&invalid_name)),
+            JsString::native_function_source(None)
+        );
+    }
+
+    #[test]
+    fn an_array_index_rejects_addition_overflow() {
+        let overflow = (usize::MAX as u128 + 1).to_string();
+        assert_eq!(JsString::from(overflow).index(), None);
+    }
+}

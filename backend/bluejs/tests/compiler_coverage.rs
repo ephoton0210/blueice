@@ -67,7 +67,7 @@ fn metadata_limits_reject_each_table_before_an_index_overflows() {
         max_metadata_entries: 1,
         ..CompileLimits::default()
     };
-    for source in ["let first, second;", "1; 2;", "{}"] {
+    for source in ["let first, second;", "1; 2;", "{}", "1; missing++;"] {
         assert!(
             matches!(
                 compile_with_limits(&parse(source).unwrap(), limits),
@@ -77,6 +77,14 @@ fn metadata_limits_reject_each_table_before_an_index_overflows() {
         );
     }
     assert!(compile_with_limits(&parse("1;").unwrap(), limits).is_ok());
+    let no_metadata = CompileLimits {
+        max_metadata_entries: 0,
+        ..CompileLimits::default()
+    };
+    assert!(matches!(
+        compile_with_limits(&parse("missing++;").unwrap(), no_metadata),
+        Err(CompileError::ProgramTooLarge)
+    ));
     assert!(matches!(
         compile_module_with_limits(&parse_module("let first, second;").unwrap(), limits),
         Err(CompileError::ProgramTooLarge)

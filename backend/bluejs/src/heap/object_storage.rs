@@ -6,6 +6,34 @@
 
 use super::*;
 
+/// Apply OrdinaryOwnPropertyKeys ordering to stored keys, after any exotic
+/// virtual indices and strings have been supplied by the caller.
+pub(super) fn ordered_stored_property_keys(
+    order: &[PropertyName],
+    mut indices: Vec<(usize, PropertyName)>,
+    mut strings: Vec<PropertyName>,
+) -> Vec<PropertyName> {
+    let mut symbols = Vec::new();
+    for key in order {
+        if matches!(key, PropertyName::Symbol(_)) {
+            symbols.push(key.clone());
+            continue;
+        }
+        match array_index(key) {
+            Some(index) => indices.push((index as usize, key.clone())),
+            None => strings.push(key.clone()),
+        }
+    }
+    indices.sort_unstable_by_key(|(index, _)| *index);
+    let mut keys = Vec::with_capacity(indices.len() + strings.len() + symbols.len());
+    for (_, key) in indices {
+        keys.push(key);
+    }
+    keys.extend(strings);
+    keys.extend(symbols);
+    keys
+}
+
 impl Heap {
     pub(super) fn get_own_property_descriptor_key(
         &self,
@@ -687,7 +715,6 @@ impl Heap {
         }
         let mut indices = Vec::new();
         let mut strings = Vec::new();
-        let mut symbols = Vec::new();
         if let ObjectKind::String(string) = &obj.kind {
             for index in 0..string.len() {
                 indices.push((index, index.to_string().into()));
@@ -704,24 +731,7 @@ impl Heap {
         if matches!(obj.kind, ObjectKind::Array { .. } | ObjectKind::String(_)) {
             strings.push("length".into());
         }
-        for key in &obj.order {
-            if matches!(key, PropertyName::Symbol(_)) {
-                symbols.push(key.clone());
-                continue;
-            }
-            match array_index(key) {
-                Some(index) => indices.push((index as usize, key.clone())),
-                None => strings.push(key.clone()),
-            }
-        }
-        indices.sort_unstable_by_key(|(index, _)| *index);
-        let mut keys = Vec::with_capacity(indices.len() + strings.len() + symbols.len());
-        for (_, key) in indices {
-            keys.push(key);
-        }
-        keys.extend(strings);
-        keys.extend(symbols);
-        Ok(keys)
+        Ok(ordered_stored_property_keys(&obj.order, indices, strings))
     }
 
     /// Ascending canonical integer-index keys (`"0"`, `"1"`, ...) of every own

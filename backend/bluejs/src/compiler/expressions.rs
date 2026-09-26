@@ -31,6 +31,13 @@ fn private_update_operand(owner: u32, op: UpdateOp, prefix: bool) -> Result<u32,
     Ok(owner | u32::from(op == UpdateOp::Dec) | (u32::from(prefix) << 1))
 }
 
+#[derive(Clone, Copy)]
+enum PreparedMemberKind {
+    Ordinary,
+    Super,
+    Private(u32),
+}
+
 impl Compiler {
     fn tagged_template_expression(
         &mut self,
@@ -1713,8 +1720,9 @@ impl Compiler {
                                 let target = strip_target_parentheses(target);
                                 self.emit(Opcode::Dup, 0)?;
                                 self.member_reference_uncoerced(target)?;
+                                let prepared = self.prepared_member_kind(target);
                                 self.emit(Opcode::IteratorRestReference, 0)?;
-                                self.assign_prepared_pattern_target(target)?;
+                                self.assign_prepared_pattern_target(prepared)?;
                                 // IteratorRestReference keeps the original
                                 // record below the prepared reference while
                                 // collecting. Rest exhaustion marks it done,
@@ -1735,8 +1743,9 @@ impl Compiler {
                             let target = strip_target_parentheses(target);
                             self.emit(Opcode::Dup, 0)?;
                             self.member_reference_uncoerced(target)?;
+                            let prepared = self.prepared_member_kind(target);
                             self.array_pattern_reference_value()?;
-                            Some(target)
+                            Some(prepared)
                         }
                         _ => {
                             self.array_pattern_value()?;
@@ -1744,8 +1753,8 @@ impl Compiler {
                         }
                     };
                     self.assignment_pattern_default(element.default.as_ref(), &element.pattern)?;
-                    if let Some(target) = prepared_member_target {
-                        self.assign_prepared_pattern_target(target)?;
+                    if let Some(prepared) = prepared_member_target {
+                        self.assign_prepared_pattern_target(prepared)?;
                     } else {
                         self.assign_pattern(&element.pattern)?;
                     }
@@ -1778,8 +1787,9 @@ impl Compiler {
                                     // Evaluation requires.
                                     self.emit(Opcode::Dup, 0)?;
                                     self.member_reference_uncoerced(target)?;
+                                    let prepared = self.prepared_member_kind(target);
                                     self.emit(Opcode::DestructurePropertyReference, 0)?;
-                                    Some(target)
+                                    Some(prepared)
                                 }
                                 _ => {
                                     self.emit(Opcode::DestructureProperty, 0)?;
@@ -1787,8 +1797,8 @@ impl Compiler {
                                 }
                             };
                             self.assignment_pattern_default(default.as_ref(), value)?;
-                            if let Some(target) = prepared_member_target {
-                                self.assign_prepared_pattern_target(target)?;
+                            if let Some(prepared) = prepared_member_target {
+                                self.assign_prepared_pattern_target(prepared)?;
                             } else {
                                 self.assign_pattern(value)?;
                             }
@@ -1836,23 +1846,36 @@ impl Compiler {
     /// Completes a member assignment whose object and raw key were evaluated
     /// before IteratorStep. Destructuring requires that ordering, while
     /// ToPropertyKey and PutValue happen only after the element is obtained.
-    pub(super) fn assign_prepared_pattern_target(
-        &mut self,
-        target: &Expr,
-    ) -> Result<(), CompileError> {
-        if !matches!(target, Expr::Member { .. }) {
-            return Err(CompileError::InvalidSyntax(
-                "prepared destructuring target must be a member reference",
-            ));
-        }
+    fn prepared_member_kind(&self, target: &Expr) -> PreparedMemberKind {
         if is_super_member(target) {
-            self.emit_this()?;
-            self.emit(Opcode::SuperSet, 0)?;
+            PreparedMemberKind::Super
         } else if let Some(name) = private_member_name(target) {
-            let owner = self.resolve_private_name(name)?;
-            self.emit(Opcode::PrivateSet, owner)?;
+            // member_reference_uncoerced already resolved this name. A
+            // destructuring assignment cannot change the private scope.
+            PreparedMemberKind::Private(
+                self.resolve_private_name(name)
+                    .expect("prepared private member keeps its owner"),
+            )
         } else {
-            self.emit(Opcode::SetDestructurePropertyReference, 0)?;
+            PreparedMemberKind::Ordinary
+        }
+    }
+
+    fn assign_prepared_pattern_target(
+        &mut self,
+        prepared: PreparedMemberKind,
+    ) -> Result<(), CompileError> {
+        match prepared {
+            PreparedMemberKind::Super => {
+                self.emit_this()?;
+                self.emit(Opcode::SuperSet, 0)?;
+            }
+            PreparedMemberKind::Private(owner) => {
+                self.emit(Opcode::PrivateSet, owner)?;
+            }
+            PreparedMemberKind::Ordinary => {
+                self.emit(Opcode::SetDestructurePropertyReference, 0)?;
+            }
         }
         self.emit(Opcode::Pop, 0)?;
         Ok(())

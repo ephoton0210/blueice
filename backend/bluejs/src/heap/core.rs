@@ -4,8 +4,17 @@
 
 use super::*;
 
+static NEXT_HEAP: AtomicU64 = AtomicU64::new(1);
+
 impl Heap {
     pub fn new(config: HeapConfig) -> Result<Self, HeapError> {
+        Self::new_with_identity_source(config, &NEXT_HEAP)
+    }
+
+    pub(super) fn new_with_identity_source(
+        config: HeapConfig,
+        identities: &AtomicU64,
+    ) -> Result<Self, HeapError> {
         if config.nursery_capacity == 0
             || config.major_threshold_bytes == 0
             || config.max_heap_bytes < OBJECT_BYTES
@@ -13,8 +22,7 @@ impl Heap {
         {
             return Err(HeapError::InvalidConfig);
         }
-        static NEXT_HEAP: AtomicU64 = AtomicU64::new(1);
-        let identity = NEXT_HEAP
+        let identity = identities
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .map_err(|_| HeapError::IdExhausted)?;
         Ok(Self {
@@ -136,32 +144,23 @@ impl Heap {
         if let Some(reference) = value.object_id() {
             self.object(reference)?;
         }
-        let existing = match &self.object(object)?.kind {
-            ObjectKind::Map { entries } => entries.find_index(&key),
+        let old_bytes = match &self.object(object)?.kind {
+            ObjectKind::Map { entries } => entries
+                .get(&key)
+                .map_or(0, |old_value| map_entry_bytes(&key, old_value)),
             _ => return Err(HeapError::InvalidInternalSlot(object)),
         };
-        let old_bytes = existing.map_or(0, |index| match &self.objects[&object].kind {
-            ObjectKind::Map { entries } => entries.entries[index]
-                .as_ref()
-                .map(|(stored_key, stored_value)| map_entry_bytes(stored_key, stored_value))
-                .expect("Map index was found above"),
-            _ => unreachable!("Map brand was checked above"),
-        });
         let new_bytes = map_entry_bytes(&key, &value);
         let protected: Vec<_> = std::iter::once(object)
             .chain(key.object_id())
             .chain(value.object_id())
             .collect();
         self.ensure_room(new_bytes.saturating_sub(old_bytes), &protected)?;
-        let entry = self
-            .objects
-            .get_mut(&object)
+        let (entries, entry_bytes) = self
+            .ordered_collection_mut(object, true)
             .expect("Map was protected across collection");
-        let ObjectKind::Map { entries } = &mut entry.kind else {
-            return Err(HeapError::InvalidInternalSlot(object));
-        };
         entries.set(key.clone(), value.clone());
-        entry.bytes = entry.bytes - old_bytes + new_bytes;
+        *entry_bytes = *entry_bytes - old_bytes + new_bytes;
         self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
         self.write_barrier(object, key.object_id());
         self.write_barrier(object, value.object_id());
@@ -213,15 +212,11 @@ impl Heap {
             let protected: Vec<_> = std::iter::once(object).chain(key.object_id()).collect();
             self.ensure_room(bytes, &protected)?;
         }
-        let entry = self
-            .objects
-            .get_mut(&object)
+        let (entries, entry_bytes) = self
+            .ordered_collection_mut(object, false)
             .expect("Set was protected across collection");
-        let ObjectKind::Set { entries } = &mut entry.kind else {
-            return Err(HeapError::InvalidInternalSlot(object));
-        };
         if entries.set(key.clone(), Value::Undefined).is_none() {
-            entry.bytes += bytes;
+            *entry_bytes += bytes;
             self.managed_bytes += bytes;
         }
         self.write_barrier(object, key.object_id());
@@ -243,6 +238,22 @@ impl Heap {
         entry.bytes -= bytes;
         self.managed_bytes -= bytes;
         Ok(true)
+    }
+
+    pub(super) fn ordered_collection_mut(
+        &mut self,
+        object: ObjectId,
+        map: bool,
+    ) -> Result<(&mut OrderedCollection, &mut usize), HeapError> {
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        let entries = match (&mut entry.kind, map) {
+            (ObjectKind::Map { entries }, true) | (ObjectKind::Set { entries }, false) => entries,
+            _ => return Err(HeapError::InvalidInternalSlot(object)),
+        };
+        Ok((entries, &mut entry.bytes))
     }
 
     pub(crate) fn alloc_weak_ref(
@@ -474,20 +485,11 @@ impl Heap {
             .chain(value.object_id())
             .collect();
         self.ensure_room(new_bytes.saturating_sub(old_bytes), &protected)?;
-        let ObjectKind::WeakCollection { entries, .. } = &mut self
-            .objects
-            .get_mut(&object)
-            .expect("WeakCollection is protected across collection")
-            .kind
-        else {
-            return Err(HeapError::InvalidInternalSlot(object));
-        };
+        let (entries, entry_bytes) = self
+            .weak_collection_mut(object)
+            .expect("WeakCollection is protected across collection");
         entries.insert(key, value);
-        let entry = self
-            .objects
-            .get_mut(&object)
-            .expect("WeakCollection exists");
-        entry.bytes = entry.bytes - old_bytes + new_bytes;
+        *entry_bytes = *entry_bytes - old_bytes + new_bytes;
         self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
         self.remembered.insert(object);
         Ok(())
@@ -521,7 +523,21 @@ impl Heap {
         Ok(deleted)
     }
 
-    fn ensure_private_data(
+    pub(super) fn weak_collection_mut(
+        &mut self,
+        object: ObjectId,
+    ) -> Result<(&mut HashMap<WeakCollectionKey, Value>, &mut usize), HeapError> {
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        let ObjectKind::WeakCollection { entries, .. } = &mut entry.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok((entries, &mut entry.bytes))
+    }
+
+    pub(super) fn ensure_private_data(
         &mut self,
         object: ObjectId,
         protected: &[ObjectId],
@@ -785,7 +801,8 @@ impl Heap {
                 false,
             ),
         )?;
-        self.prevent_extensions(namespace)?;
+        self.prevent_extensions(namespace)
+            .expect("newly allocated namespace remains live");
         Ok(namespace)
     }
 

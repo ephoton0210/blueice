@@ -11,6 +11,30 @@ use blueice_bluejs::{
 };
 
 #[test]
+fn heap_error_messages_remain_specific_at_the_public_boundary() {
+    for (error, message) in [
+        (
+            HeapError::InvalidWeakTarget,
+            "value cannot be used as a weak target",
+        ),
+        (
+            HeapError::InvalidBufferRange,
+            "invalid ArrayBuffer view range",
+        ),
+        (
+            HeapError::DetachedArrayBuffer,
+            "ArrayBuffer has been detached",
+        ),
+        (
+            HeapError::UninitializedModuleExport,
+            "module namespace export is uninitialized",
+        ),
+    ] {
+        assert_eq!(error.to_string(), message);
+    }
+}
+
+#[test]
 fn ordinary_properties_distinguish_missing_from_undefined_and_preserve_values() {
     let mut heap = Heap::default();
     let object = heap.alloc_object(None).unwrap();

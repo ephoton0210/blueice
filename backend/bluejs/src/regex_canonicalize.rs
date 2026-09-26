@@ -264,7 +264,7 @@ fn escape(
                 out.extend([BACKSLASH, escaped]);
                 return Some(next);
             }
-            let (unit, end) = octal(points, at + 1)?;
+            let (unit, end) = octal(points, at + 1).expect("checked leading octal zero");
             push_escaped_literal(out, unit);
             Some(end)
         }
@@ -317,7 +317,7 @@ fn escape(
                 push_escaped_literal(out, escaped as u16);
                 Some(next)
             } else {
-                let (unit, end) = octal(points, at + 1)?;
+                let (unit, end) = octal(points, at + 1).expect("checked leading octal digit");
                 push_escaped_literal(out, unit);
                 Some(end)
             }
@@ -412,7 +412,7 @@ fn class_atom(points: &[u32], index: &mut usize, named: bool) -> Option<Atom> {
         Some('f') => (Atom::Unit(0x0c), next),
         Some('r') => (Atom::Unit(0x0d), next),
         Some('0'..='7') => {
-            let (unit, end) = octal(points, *index + 1)?;
+            let (unit, end) = octal(points, *index + 1).expect("matched octal escape digit");
             (Atom::Unit(unit), end)
         }
         Some('c') => match points.get(next).copied().and_then(ascii_char) {
@@ -860,5 +860,25 @@ mod tests {
             assert_eq!(rewrite(pattern), None, "{pattern}");
         }
         assert_eq!(rewrite("[\u{17f}-\u{131}]"), None);
+    }
+
+    #[test]
+    fn malformed_code_points_fail_at_each_escape_and_class_boundary() {
+        const INVALID: u32 = 0x11_0000;
+        assert_eq!(hex(&[INVALID], 0, 1), None);
+        assert_eq!(octal(&[], 0), None);
+        assert_eq!(
+            escape(&[BACKSLASH, INVALID], 0, 0, false, &mut Vec::new()),
+            None
+        );
+        assert!(class_atom(&[INVALID], &mut 0, false).is_none());
+        assert!(class_atom(&[BACKSLASH, INVALID], &mut 0, false).is_none());
+        assert!(class(
+            &[u32::from(b'['), u32::from(b'a'), u32::from(b'-'), INVALID],
+            0,
+            false,
+            &mut Vec::new()
+        )
+        .is_none());
     }
 }

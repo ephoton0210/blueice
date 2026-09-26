@@ -100,22 +100,36 @@ impl Heap {
                 CollectionEntry::End => break None,
             }
         };
+        // Entry lookup above established the iterator brand. Reading the
+        // collection cannot change that object before this update.
+        self.set_collection_iterator_progress(id, index, step.is_none())
+            .expect("validated collection iterator remains live");
+        Ok(Some(step))
+    }
+
+    pub(super) fn set_collection_iterator_progress(
+        &mut self,
+        id: ObjectId,
+        index: usize,
+        finished: bool,
+    ) -> Result<(), HeapError> {
         let entry = self
             .objects
             .get_mut(&id)
             .ok_or(HeapError::InvalidObject(id))?;
-        if let ObjectKind::CollectionIterator {
+        let ObjectKind::CollectionIterator {
             collection: iterated,
             index: position,
             ..
         } = &mut entry.kind
-        {
-            *position = index;
-            if step.is_none() {
-                *iterated = None;
-            }
+        else {
+            return Err(HeapError::InvalidInternalSlot(id));
+        };
+        *position = index;
+        if finished {
+            *iterated = None;
         }
-        Ok(Some(step))
+        Ok(())
     }
 
     /// `Map.prototype.clear` / `Set.prototype.clear`: every entry becomes a

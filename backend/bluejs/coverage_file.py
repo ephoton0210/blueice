@@ -5,8 +5,8 @@
 """Run the complete BlueJS Rust coverage suite and inspect one source file.
 
 The test suite is deliberately never filtered by source path: any integration
-test may exercise the requested file. Each invocation starts with fresh LLVM
-coverage artifacts, so the result cannot come from a previous checkout.
+test may exercise the requested file. Each invocation clears the previous LLVM
+execution profiles while reusing Cargo's instrumented build artifacts.
 """
 
 from __future__ import annotations
@@ -121,7 +121,7 @@ def checked_export(payload: dict) -> tuple[dict[Path, dict], dict]:
 
 def source_union_export(payload: dict, show_text: str) -> tuple[dict[Path, dict], dict]:
     """Count each source location once across unit and integration binaries."""
-    raw_files, _ = checked_export(payload)
+    raw_files, raw_totals = checked_export(payload)
     regions: dict[Path, dict[tuple[int, ...], int]] = {
         path: {} for path in raw_files
     }
@@ -204,6 +204,7 @@ def source_union_export(payload: dict, show_text: str) -> tuple[dict[Path, dict]
             totals[metric]["covered"] += covered
         summary["_raw"] = raw
         summaries[path] = summary
+    totals["_raw"] = raw_totals
     return summaries, totals
 
 
@@ -220,9 +221,12 @@ def metric_cell(metric: dict) -> str:
 
 
 def is_complete(summary: dict | None) -> bool:
-    return summary is not None and all(
-        summary[metric]["count"] > 0
-        and summary[metric]["covered"] == summary[metric]["count"]
+    if summary is None:
+        return False
+    authoritative = summary.get("_raw", summary)
+    return all(
+        authoritative[metric]["count"] > 0
+        and authoritative[metric]["covered"] == authoritative[metric]["count"]
         for metric in METRICS
     )
 
@@ -233,16 +237,16 @@ def markdown_row(path: Path, summary: dict | None) -> str:
     if summary is None:
         note = NO_COUNTER_REASONS[relative]
         return f"| {link} | - | - | - | - | {note} |"
-    cells = " | ".join(metric_cell(summary[metric]) for metric in METRICS)
+    raw = summary.get("_raw", summary)
+    cells = " | ".join(metric_cell(raw[metric]) for metric in METRICS)
     completed = "☑" if is_complete(summary) else "☐"
-    raw = summary.get("_raw")
     note = ""
-    if raw is not None and is_complete(summary) and not is_complete(raw):
-        raw_counts = ", ".join(
-            f"{metric} {raw[metric]['covered']:,}/{raw[metric]['count']:,}"
+    if summary is not raw and any(summary[metric] != raw[metric] for metric in METRICS):
+        union_counts = ", ".join(
+            f"{metric} {summary[metric]['covered']:,}/{summary[metric]['count']:,}"
             for metric in METRICS
         )
-        note = f"Combined test coverage is complete; raw LLVM summary: {raw_counts}"
+        note = f"Unique source-location union: {union_counts}"
     return f"| {link} | {cells} | {completed} | {note} |"
 
 
@@ -271,7 +275,8 @@ def report_section(files: dict[Path, dict], totals: dict, update_option: str) ->
     )
     unmeasured = len(sources) - len(files)
     rows = [markdown_row(path, files.get(path)) for path in sources]
-    total_cells = " | ".join(f"**{metric_cell(totals[metric])}**" for metric in METRICS)
+    raw_totals = totals.get("_raw", totals)
+    total_cells = " | ".join(f"**{metric_cell(raw_totals[metric])}**" for metric in METRICS)
     total_complete = "☑" if is_complete(totals) else "☐"
     rows.append(
         f"| **Total ({len(files)} instrumented files)** | {total_cells} | {total_complete} |  |"
@@ -281,28 +286,27 @@ def report_section(files: dict[Path, dict], totals: dict, update_option: str) ->
         "It measures the Rust test suite independently of the Test262 "
         "inventory and historical verification above. "
         f"`python3 backend/bluejs/coverage_file.py {update_option}` "
-        "cleaned prior LLVM artifacts, ran the complete default BlueJS Rust "
-        "test suite, and exported fresh per-file JSON and source-line text. "
+        "cleared prior LLVM execution profiles, reused instrumented Cargo "
+        "build artifacts, ran the complete default BlueJS Rust test suite, "
+        "and exported fresh per-file JSON and source-line text. "
         "The opt-in Node "
         "oracle and external full Test262 runner were not included. "
         "Workspace coverage was not remeasured at this revision."
     )
     table_note = (
-        "Each measured cell shows covered / instrumented and the coverage "
+        "Each measured cell shows LLVM JSON's raw covered / instrumented "
+        "counts and the coverage "
         f"rate. All {len(sources)} Rust files under `backend/bluejs/src/` are "
         f"listed: {len(files)} have LLVM counters; {unmeasured} use `-` with "
         "an individual reason in `Note`. A `0%` result requires a positive "
         "instrumented denominator and zero covered units. `☑` means "
         "**lines, functions and regions all reach 100%**; `☐` means at least "
         "one is below 100%. The total aggregates only instrumented files. "
-        "Source lines and regions are counted once per file location: a "
-        "location is covered when any unit or integration test binary executes "
-        "it. Function and region denominators are checked against LLVM JSON; "
-        "line hits come from LLVM's source-line view. These per-source "
-        "counts can differ from LLVM's raw summary for multiply compiled "
-        "source files; they are not the CI raw summary coverage metric. "
-        "Any file that reaches 100% with combined results while its raw LLVM "
-        "summary is lower includes the raw counts in `Note`. Region coverage "
+        "LLVM can count separate compiled instances of the same source in "
+        "different test binaries. `Note` shows the union across those binaries "
+        "when its counts differ: each source location is counted once and "
+        "considered covered if any binary executes it. The raw LLVM counts "
+        "in the main columns determine completion. Region coverage "
         "is separate from branch coverage. "
         "To rerun any one "
         "file independently, use `python3 backend/bluejs/coverage_file.py ast.rs` "
@@ -375,7 +379,9 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
         output = Path(tmp) / "coverage.json"
         text_output = Path(tmp) / "coverage.txt"
         subprocess.run(
-            ["cargo", "llvm-cov", "clean", "--workspace"], cwd=REPO_ROOT, check=True
+            ["cargo", "llvm-cov", "clean", "--profraw-only"],
+            cwd=REPO_ROOT,
+            check=True,
         )
         subprocess.run(
             [
@@ -383,6 +389,7 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
                 "llvm-cov",
                 "-p",
                 "blueice-bluejs",
+                "--no-clean",
                 "--json",
                 "--output-path",
                 str(output),
