@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.** Show static types separately from runtime values in
-every reply; split this heading into ordered, testable leaves before changing
-runtime or public wire.
+**Current leaf: C3.1.3.2.** Retain a verified BlueTS symbol/type to installed
+BlueJS lexical-slot mapping for supported declarations, with exact generation
+and shadowing refusal, without public wire changes.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -408,7 +408,12 @@ channel with explicit owner/client grants.
         - [x] **C3.1.2.3.3.2** Prove a receipted executable entry-module symbol resolves its original declaration position to the exact root safe point and arms that module only; type-only and unbound symbols must not arm. A v40 data-only helper accepts only executable symbol kinds with same-program/source, declaration-start binding, and separately receipted exact span contained in the declaration; IPC tests reject type-only/import, unbound, moved, and wrong-source candidates. A real Launcher module test reads `rootValue` and `Shape` displays/locations under separate grants, binds only the variable's original declaration to its root span, leaves the type-only candidate and unbound candidate unarmed, then pauses/resumes the exact module root. All 114 IPC tests and workspace Clippy pass.
         - [x] **C3.1.2.3.3.3** Prove a receipted dependency function symbol resolves to its own verified child entry and arms only the distinct linked entry, with swapped/cross-program and stale refusal; then check off C3.1.2.3.3 and C3.1.2.3. The real Launcher test now composes the dependency's `Function` display, original declaration range, source binding, and exact contained child span before arming its distinct entry. Same-program/wrong-generation/moved arms, cross-program symbol/source pairing, and stale reload targets refuse without a partial source or frame. No new wire is needed.
     - [x] **C3.1.2.4** Prove module entry/dependency source and symbol breakpoint behavior, typed denials, and stale expiry through real Launcher-supervised public sockets; then check off C3.1.2. The entry test proves granted root-variable control, type-only/unbound refusal, and no-grant or fresh-stream no-receipt denials while the module remains live; the two-file test proves dependency function linked control, cross-program/moved denials, and both programs' source/symbol expiry after HTTP reload. Both focused real-socket tests and workspace Clippy pass.
-  - [ ] **C3.1.3** Show static types separately from runtime values in every reply.
+  - [ ] **C3.1.3** Show static types separately from runtime values in every relevant debugger reply.
+    - [x] **C3.1.3.1** Decide the checked compiler-symbol to active BlueJS lexical-slot relation, per-frame/program generation identity, and separate static/runtime grant and pause-receipt contract; keep debugger v40 unchanged in this design leaf. PLAN.md rules out name/source-span/runtime-shape guesses, keeps `Value` independent, and requires a new separately granted static-only scope relation over a same-stream Scopes receipt and internally checked pause incarnation. Missing, ambiguous, erased, moved, or stale mappings refuse rather than inventing a runtime type proof.
+    - [ ] **C3.1.3.2** Retain only verified, generation-bound BlueTS symbol/type to BlueJS lexical-slot provenance for supported declarations in the direct bridge and child; reject unbound, shadowed, erased, and cross-program guesses with unit tests, without public wire changes.
+    - [ ] **C3.1.3.3** Add a strict child/core static scope-symbol/type relation for an exact paused slot, never a runtime value or type display, with no-partial stale/moved/forged child denials; split the private route before implementation if needed.
+    - [ ] **C3.1.3.4** Add an independently granted public static scope relation request/reply with exact Scopes and metadata/type receipts; retain the existing separate bounded `Value` reply, bump public protocol only when the complete route and IPC/core denials pass.
+    - [ ] **C3.1.3.5** Prove a static type display and independently authorized runtime preview remain distinct, correctly matched to the same paused classic/module/linked slot, and expire after step/reload/cutover on real Launcher sockets; then check off C3.1.3 and C3.1.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
   restore the same checked generation; never attach old metadata to a
   successor.

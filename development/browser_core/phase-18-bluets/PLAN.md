@@ -1811,6 +1811,34 @@ streams is not guaranteed, so the second-stream probe closes the first before
 connecting. Both focused real-socket tests, workspace Clippy, and
 formatting pass; public debugger remains v40.
 
+**C3.1.3.1 static/runtime scope contract:** The existing public `Scopes`
+inventory exposes only active `(scope_depth, slot_ordinal)` selectors;
+`Value` returns a separately granted bounded runtime preview, while
+`DescribeStaticMetadataType` and `DescribeStaticMetadataSymbolType` report
+compiler-owned static evidence. None currently binds an active VM slot to a
+specific checked BlueTS symbol, so equal names, inferred value shapes, or a
+nearby source span are not acceptable joins. The bridge must retain a
+verified, generation-bound mapping from a supported lowered declaration's
+compiler symbol to its installed BlueJS code unit and lexical slot. A query
+for one previously receipted active `Scopes` slot must repeat its exact
+realm/program/frame/safe-point/slot target and metadata attachment; core
+checks the receipt's internal pause incarnation and child rechecks the live
+mapping before returning only
+opaque symbol and type IDs under a new independent owner/client static-scope
+grant. The symbol/type relation and optional type display still require
+their own same-stream inventories and grants. No runtime preview, value
+handle, type name, source text, or claim of runtime type validation belongs
+in this static relation reply. Conversely `Value` remains the only bounded
+runtime-preview reply under its separate grant and scope receipt; possessing
+a static type grant never authorizes it. A client may present both replies
+side by side only for the same live pause incarnation. Unsupported, erased,
+ambiguous/shadowed without exact slot provenance, cross-program, moved,
+cutover, and stale targets refuse without a guessed type or partial value.
+An `Undefined` runtime preview does not erase a declared static type, and a
+static `TypeId` is not a runtime proof. This design does not add general
+watch/evaluate or dynamic type reification; debugger v40 remains unchanged
+until the complete independently gated public relation is ready.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
