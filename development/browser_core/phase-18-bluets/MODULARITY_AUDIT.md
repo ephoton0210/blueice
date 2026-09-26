@@ -74,3 +74,7 @@ remain the original audit baseline for comparison.
 C3.1.3.4.7.5.2.2 split the checker tests into 778-line expression/inference
 and 697-line project-contract modules. The original test functions remain;
 only their Rust module paths for the moved cases changed.
+
+C3.1.3.4.7.5.2.3 moved type-relation helpers into a 301-line internal
+module; `checker.rs` is now 1,080 lines. The direct compiler/checker phase is
+complete without changing public compiler diagnostics or output.

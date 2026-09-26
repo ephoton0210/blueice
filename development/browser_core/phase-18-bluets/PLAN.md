@@ -2379,6 +2379,15 @@ BlueTS crate suite (including all 156 library tests), workspace Clippy,
 formatting, and diff checks pass. No checker implementation or public
 diagnostic contract changed.
 
+**C3.1.3.4.7.5.2.3 checker type relations:** Structural assignability,
+named-type expansion, defaulted generic argument completion, type
+substitution, and type labels moved together to the internal
+`checker/type_relations.rs` module. The parent keeps its original crate-level
+`type_label` import and sibling helper visibility, so checker call sites and
+diagnostic text are unchanged. `checker.rs` fell from 1,368 to 1,080 lines;
+the new module is 301 lines. The complete BlueTS crate suite, workspace
+Clippy, rustfmt, and diff checks pass.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
