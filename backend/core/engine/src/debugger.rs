@@ -40,27 +40,28 @@ use blueice_ipc::debugger::{
     DebuggerCapabilities, DebuggerCapability, DebuggerCapabilityReport, DebuggerCapabilityState,
     DebuggerErrorCode, DebuggerExceptionLocation, DebuggerExecutionState, DebuggerFrame,
     DebuggerLinkedArmTarget, DebuggerLinkedExecutionState, DebuggerLinkedFrame,
-    DebuggerLinkedStackCoordinates, DebuggerLinkedStackCoordinatesTarget, DebuggerLinkedStackFrame,
-    DebuggerLinkedStackSnapshot, DebuggerMetadataCapability, DebuggerMetadataSessionAuthorization,
-    DebuggerPageRealm, DebuggerProgram, DebuggerReply, DebuggerRequest, DebuggerSafePoint,
-    DebuggerScopeEntry, DebuggerScopeSnapshot, DebuggerStackCoordinates,
-    DebuggerStackCoordinatesTarget, DebuggerStackSnapshot, DebuggerStaticMetadataContractDisplay,
-    DebuggerStaticMetadataContractId, DebuggerStaticMetadataContractLocation,
-    DebuggerStaticMetadataContractLocationTarget, DebuggerStaticMetadataContractValidation,
-    DebuggerStaticMetadataHandle, DebuggerStaticMetadataLoweringSummary,
-    DebuggerStaticMetadataSafePointSpan, DebuggerStaticMetadataSafePointSpanTarget,
-    DebuggerStaticMetadataSourceBreakpoint, DebuggerStaticMetadataSourceBreakpointTarget,
-    DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSourceProvenance,
-    DebuggerStaticMetadataSummary, DebuggerStaticMetadataSymbolContract,
-    DebuggerStaticMetadataSymbolDisplay, DebuggerStaticMetadataSymbolId,
-    DebuggerStaticMetadataSymbolLocation, DebuggerStaticMetadataSymbolLocationTarget,
-    DebuggerStaticMetadataSymbolType, DebuggerStaticMetadataTypeDisplay,
-    DebuggerStaticMetadataTypeId, DebuggerStaticScopeRelation, DebuggerStaticScopeTarget,
-    DebuggerValuePreview, DebuggerValueSnapshot, DebuggerValueTarget, DEBUGGER_MAX_SCOPE_ENTRIES,
-    DEBUGGER_MAX_STACK_FRAMES, DEBUGGER_MAX_VALUE_CONTAINER_LENGTH, DEBUGGER_MAX_VALUE_DEPTH,
-    DEBUGGER_MAX_VALUE_NODES, DEBUGGER_MAX_VALUE_PAYLOAD_BYTES, DEBUGGER_PROTOCOL_VERSION,
-    DEBUGGER_STATIC_METADATA_MAX_CONTRACTS, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
-    DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
+    DebuggerLinkedScopeSnapshot, DebuggerLinkedStackCoordinates,
+    DebuggerLinkedStackCoordinatesTarget, DebuggerLinkedStackFrame, DebuggerLinkedStackSnapshot,
+    DebuggerMetadataCapability, DebuggerMetadataSessionAuthorization, DebuggerPageRealm,
+    DebuggerProgram, DebuggerReply, DebuggerRequest, DebuggerSafePoint, DebuggerScopeEntry,
+    DebuggerScopeSnapshot, DebuggerStackCoordinates, DebuggerStackCoordinatesTarget,
+    DebuggerStackSnapshot, DebuggerStaticMetadataContractDisplay, DebuggerStaticMetadataContractId,
+    DebuggerStaticMetadataContractLocation, DebuggerStaticMetadataContractLocationTarget,
+    DebuggerStaticMetadataContractValidation, DebuggerStaticMetadataHandle,
+    DebuggerStaticMetadataLoweringSummary, DebuggerStaticMetadataSafePointSpan,
+    DebuggerStaticMetadataSafePointSpanTarget, DebuggerStaticMetadataSourceBreakpoint,
+    DebuggerStaticMetadataSourceBreakpointTarget, DebuggerStaticMetadataSourceId,
+    DebuggerStaticMetadataSourceProvenance, DebuggerStaticMetadataSummary,
+    DebuggerStaticMetadataSymbolContract, DebuggerStaticMetadataSymbolDisplay,
+    DebuggerStaticMetadataSymbolId, DebuggerStaticMetadataSymbolLocation,
+    DebuggerStaticMetadataSymbolLocationTarget, DebuggerStaticMetadataSymbolType,
+    DebuggerStaticMetadataTypeDisplay, DebuggerStaticMetadataTypeId, DebuggerStaticScopeRelation,
+    DebuggerStaticScopeTarget, DebuggerValuePreview, DebuggerValueSnapshot, DebuggerValueTarget,
+    DEBUGGER_MAX_SCOPE_ENTRIES, DEBUGGER_MAX_STACK_FRAMES, DEBUGGER_MAX_VALUE_CONTAINER_LENGTH,
+    DEBUGGER_MAX_VALUE_DEPTH, DEBUGGER_MAX_VALUE_NODES, DEBUGGER_MAX_VALUE_PAYLOAD_BYTES,
+    DEBUGGER_PROTOCOL_VERSION, DEBUGGER_STATIC_METADATA_MAX_CONTRACTS,
+    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_SYMBOLS,
+    DEBUGGER_STATIC_METADATA_MAX_TYPES,
 };
 use std::cell::Cell;
 use std::collections::HashSet;
@@ -3825,6 +3826,75 @@ fn child_scopes(
             .collect(),
         scope_truncated: selected.scope_truncated,
     })
+}
+
+/// Staged core-side linked entry-root scopes. A later public request must
+/// mint a same-stream receipt only for a complete result; this helper neither
+/// grants a static relation nor returns dependency captures.
+#[allow(dead_code)]
+fn staged_child_linked_scopes(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    expected_stack: DebuggerLinkedStackSnapshot,
+    max_scope_entries: u32,
+) -> Result<DebuggerLinkedScopeSnapshot, Box<DebuggerReply>> {
+    if !expected_stack.is_well_formed() {
+        return Err(Box::new(invalid_linked_target()));
+    }
+    if !(1..=MAX_SCOPE_BINDINGS).contains(&max_scope_entries) {
+        return Err(Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::ResourceLimit,
+            message: "linked debugger scope entry limit exceeds its fixed budget".to_string(),
+        }));
+    }
+    let realm = expected_stack.frames[1].frame.program.realm;
+    let tab_id = resolve_live_realm(tabs, realm)?;
+    if !locations.debugger_has_live_realm(tab_id, realm.realm_generation)
+        || !locations.debugger_linked_frames_available()
+        || !locations.debugger_scopes_available()
+    {
+        return Err(Box::new(unavailable_scopes()));
+    }
+    let internal = internal_linked_stack(tab_id, expected_stack);
+    let private = locations
+        .debugger_linked_scope_snapshot(internal)
+        .map_err(|error| Box::new(debugger_program_error(error)))?;
+    let mut unique_slots = HashSet::with_capacity(private.scope_entries.len());
+    if private.stack != internal
+        || private.scope_entries.len() > MAX_SCOPE_BINDINGS as usize
+        || !private
+            .scope_entries
+            .iter()
+            .all(|entry| unique_slots.insert(entry.slot_ordinal))
+    {
+        return Err(Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "linked debugger scope changed or exceeded the private budget".to_string(),
+        }));
+    }
+    let scope_truncated = private.scope_entries.len() > max_scope_entries as usize;
+    let snapshot = DebuggerLinkedScopeSnapshot {
+        stack: expected_stack,
+        frame_index: 1,
+        entries: private
+            .scope_entries
+            .into_iter()
+            .take(max_scope_entries as usize)
+            .map(|entry| DebuggerScopeEntry {
+                slot_ordinal: entry.slot_ordinal,
+                scope_depth: entry.scope_depth,
+            })
+            .collect(),
+        scope_truncated,
+        max_scope_entries,
+    };
+    if !snapshot.is_well_formed() {
+        return Err(Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "invalid linked debugger scope snapshot".to_string(),
+        }));
+    }
+    Ok(snapshot)
 }
 
 /// Core-session staging point for a static-only paused-slot relation. It is
@@ -10787,9 +10857,9 @@ mod tests {
     #[test]
     fn private_static_scope_helper_and_staged_receipts_recheck_both_pauses() {
         use crate::script::javascript::{
-            JavaScriptPageDebuggerLinkedStackFrame, JavaScriptPageDebuggerStackFrame,
-            JavaScriptPageDebuggerStackSnapshot, JavaScriptPageDebuggerStaticMetadata,
-            JavaScriptPageDebuggerStaticMetadataSymbolType,
+            JavaScriptPageDebuggerLinkedScopeSnapshot, JavaScriptPageDebuggerLinkedStackFrame,
+            JavaScriptPageDebuggerStackFrame, JavaScriptPageDebuggerStackSnapshot,
+            JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataSymbolType,
         };
 
         struct StaticLocations {
@@ -10797,6 +10867,8 @@ mod tests {
             generation: u64,
             ordinary: JavaScriptPageDebuggerStackSnapshot,
             linked: JavaScriptPageDebuggerLinkedStackSnapshot,
+            linked_scope: JavaScriptPageDebuggerLinkedScopeSnapshot,
+            scopes_available: bool,
             relation_calls: usize,
             changed_echo: Option<JavaScriptPageDebuggerStaticScopeTarget>,
         }
@@ -10854,6 +10926,14 @@ mod tests {
                 Ok(self.ordinary.clone())
             }
 
+            fn debugger_linked_frames_available(&self) -> bool {
+                true
+            }
+
+            fn debugger_scopes_available(&self) -> bool {
+                self.scopes_available
+            }
+
             fn debugger_linked_stack_snapshot(
                 &mut self,
                 _: JavaScriptPageDebuggerFrame,
@@ -10861,6 +10941,14 @@ mod tests {
             ) -> Result<JavaScriptPageDebuggerLinkedStackSnapshot, JavaScriptPageDebuggerError>
             {
                 Ok(self.linked)
+            }
+
+            fn debugger_linked_scope_snapshot(
+                &mut self,
+                _: JavaScriptPageDebuggerLinkedStackSnapshot,
+            ) -> Result<JavaScriptPageDebuggerLinkedScopeSnapshot, JavaScriptPageDebuggerError>
+            {
+                Ok(self.linked_scope.clone())
             }
 
             fn debugger_static_scope_relation(
@@ -10959,6 +11047,11 @@ mod tests {
                 stack_truncated: false,
             },
             linked: linked_stack,
+            linked_scope: JavaScriptPageDebuggerLinkedScopeSnapshot {
+                stack: linked_stack,
+                scope_entries: vec![slot],
+            },
+            scopes_available: true,
             relation_calls: 0,
             changed_echo: None,
         };
@@ -11198,5 +11291,43 @@ mod tests {
             public_targets[1],
         )
         .is_err());
+
+        let expected = public_linked_stack(tab_id, realm, linked_stack).unwrap();
+        let complete = staged_child_linked_scopes(&tabs, &mut locations, expected, 2).unwrap();
+        assert_eq!(complete.stack, expected);
+        assert_eq!(complete.entries, vec![public_slot]);
+        assert!(!complete.scope_truncated);
+        assert_eq!(complete.max_scope_entries, 2);
+        assert!(staged_child_linked_scopes(&tabs, &mut locations, expected, 0).is_err());
+        assert!(staged_child_linked_scopes(
+            &tabs,
+            &mut locations,
+            expected,
+            MAX_SCOPE_BINDINGS + 1
+        )
+        .is_err());
+        let mut forged = expected;
+        forged.frames[0].safe_point.bytecode_offset += 1;
+        assert!(staged_child_linked_scopes(&tabs, &mut locations, forged, 2).is_err());
+        locations
+            .linked_scope
+            .scope_entries
+            .push(JavaScriptPageDebuggerScopeEntry {
+                slot_ordinal: 1,
+                scope_depth: 1,
+            });
+        let bounded = staged_child_linked_scopes(&tabs, &mut locations, expected, 1).unwrap();
+        assert_eq!(bounded.entries, vec![public_slot]);
+        assert!(bounded.scope_truncated);
+        locations.linked_scope.scope_entries.push(slot);
+        assert!(staged_child_linked_scopes(&tabs, &mut locations, expected, 2).is_err());
+        locations.linked_scope.scope_entries.pop();
+        locations.linked_scope.stack.frames[1]
+            .safe_point
+            .bytecode_offset += 1;
+        assert!(staged_child_linked_scopes(&tabs, &mut locations, expected, 2).is_err());
+        locations.linked_scope.stack = linked_stack;
+        locations.scopes_available = false;
+        assert!(staged_child_linked_scopes(&tabs, &mut locations, expected, 2).is_err());
     }
 }

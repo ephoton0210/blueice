@@ -2202,6 +2202,19 @@ formatting, and diff checks pass. No public request, owner policy, manifest
 or protocol change exists yet; the explicit grant parameter must be derived
 from the actual owner/client negotiation in C3.1.3.4.6.
 
+**C3.1.3.4.6.1 staged linked scopes:** A core-only helper accepts an exact
+complete public linked stack and a bounded entry budget, resolves the live
+realm, requires LinkedModules and Scopes availability, and remaps the full
+stack to the private core identity. The private executor reacquires the whole
+pause; core requires its exact stack echo and validates the entire complete
+entry-root slot list, including duplicate ordinals beyond the caller's
+display budget, before returning only entry-root slot/depth. A smaller
+requested budget may produce a marked-truncated public shape, which the
+session receipt logic will not accept. Focused tests reject invalid budgets,
+forged or moved stacks, hidden duplicate slots, and unavailable scopes; the
+engine 309-test suite, workspace Clippy, formatting, and diff checks pass.
+There is still no public linked-scopes request or static relation grant.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact
