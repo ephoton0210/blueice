@@ -2434,6 +2434,124 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             }),
         )
     }
+
+    fn core_linked_static_scope_relation(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticScopeTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticScopeRelation, JavaScriptPageDebuggerError> {
+        if !self.debugger_linked_frames_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let JavaScriptPageDebuggerStaticScopeTarget::Linked {
+            metadata,
+            expected_stack,
+            frame_index: 1,
+            scope_entry,
+        } = target
+        else {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        };
+        let active_before = self
+            .debugger_linked_frames
+            .get(&tab_id)
+            .filter(|active| active.frames == expected_stack.frames)
+            .cloned()
+            .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
+        if !self.has_core_live_document(tab_id, document_generation)
+            || active_before.frames.iter().any(|frame| {
+                frame.frame.tab_id != tab_id
+                    || frame.frame.document_generation != document_generation
+            })
+            || !active_before
+                .child_stack
+                .is_well_formed(active_before.child)
+            || active_before
+                .child_stack
+                .frames
+                .iter()
+                .any(|frame| frame.scope_truncated)
+        {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        for index in 0..2 {
+            let frame = active_before.frames[index];
+            let child_program = self.child_program_for_core(
+                tab_id,
+                document_generation,
+                frame.frame.program_handle,
+                frame.frame.program_generation,
+            )?;
+            let expected_program = if index == 0 {
+                active_before.child.dependency_program
+            } else {
+                active_before.child.entry_program
+            };
+            if child_program != expected_program {
+                return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+            }
+        }
+        let root = &active_before.child_stack.frames[1];
+        let child_scope_entry = PageHostDebuggerScopeEntry {
+            slot_ordinal: scope_entry.slot_ordinal,
+            scope_depth: scope_entry.scope_depth,
+        };
+        if root
+            .scope_entries
+            .iter()
+            .filter(|entry| entry.slot_ordinal == child_scope_entry.slot_ordinal)
+            .count()
+            != 1
+            || !root.scope_entries.contains(&child_scope_entry)
+        {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let entry = JavaScriptPageDebuggerProgram {
+            program_handle: active_before.frames[1].frame.program_handle,
+            program_generation: active_before.frames[1].frame.program_generation,
+        };
+        let observed = self.capture_core_linked_pause(
+            tab_id,
+            document_generation,
+            entry,
+            active_before.child_stack.max_scope_entries,
+        )?;
+        let active_after = self
+            .debugger_linked_frames
+            .get(&tab_id)
+            .filter(|active| {
+                observed == expected_stack.frames
+                    && active.child == active_before.child
+                    && active.child_stack == active_before.child_stack
+            })
+            .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            active_after.child.entry_program,
+            metadata.metadata_handle,
+            metadata.metadata_generation,
+        )?;
+        let child_target = PageHostDebuggerStaticScopeTarget::Linked {
+            frame: active_after.child,
+            expected_stack: Box::new(active_after.child_stack.clone()),
+            frame_index: 1,
+            metadata: child_metadata,
+            scope_entry: child_scope_entry,
+        };
+        let symbol_type = (ChildStaticScopeAdapter {
+            child: &mut self.child,
+        })
+        .describe(child_target)?;
+        Ok(JavaScriptPageDebuggerStaticScopeRelation {
+            target,
+            symbol_type: JavaScriptPageDebuggerStaticMetadataSymbolType {
+                symbol_id: symbol_type.symbol_id,
+                type_id: symbol_type.type_id,
+            },
+        })
+    }
 }
 
 impl<C> OutOfProcessJavaScriptPageExecutor<C> {
@@ -5416,19 +5534,19 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         document_generation: u64,
         target: JavaScriptPageDebuggerStaticScopeTarget,
     ) -> Result<JavaScriptPageDebuggerStaticScopeRelation, JavaScriptPageDebuggerError> {
-        if !self.debugger_execution_control_available()
-            || !self.child.debugger_stack_snapshot_available()
-        {
-            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
-        }
         let (metadata, slot) = match target {
             JavaScriptPageDebuggerStaticScopeTarget::Ordinary { metadata, target } => {
                 (metadata, target)
             }
             JavaScriptPageDebuggerStaticScopeTarget::Linked { .. } => {
-                return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+                return self.core_linked_static_scope_relation(tab_id, document_generation, target);
             }
         };
+        if !self.debugger_execution_control_available()
+            || !self.child.debugger_stack_snapshot_available()
+        {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
         let frame_count = match (slot.frame, slot.frame_index) {
             (None, 0) => 1,
             (Some(_), 1) => 2,
@@ -7340,6 +7458,9 @@ mod tests {
             resume: PageHostReply,
             span_calls: usize,
             resume_calls: usize,
+            relation_reply: Option<PageHostReply>,
+            relation_calls: usize,
+            relation_target: Option<PageHostDebuggerStaticScopeTarget>,
         }
         impl PageHostClient for LinkedCoreChild {
             fn synchronize_document(&mut self, _: PageHostDocument) -> io::Result<PageHostReply> {
@@ -7396,6 +7517,25 @@ mod tests {
                 self.resume_calls += 1;
                 Ok(self.resume.clone())
             }
+
+            fn debugger_static_scope_relation(
+                &mut self,
+                target: PageHostDebuggerStaticScopeTarget,
+            ) -> io::Result<PageHostReply> {
+                self.relation_calls += 1;
+                self.relation_target = Some(target.clone());
+                Ok(self.relation_reply.clone().unwrap_or_else(|| {
+                    PageHostReply::DebuggerStaticScopeRelation(Box::new(
+                        page_host::PageHostDebuggerStaticScopeRelation {
+                            target,
+                            symbol_type: PageHostDebuggerBlueTsMetadataSymbolType {
+                                symbol_id: 2,
+                                type_id: 1,
+                            },
+                        },
+                    ))
+                }))
+            }
         }
 
         let tab_id = TabId::from_u64(7);
@@ -7430,7 +7570,14 @@ mod tests {
         let stack = PageHostDebuggerLinkedStackSnapshot {
             frames: points.map(|safe_point| PageHostDebuggerLinkedStackFrame {
                 safe_point,
-                scope_entries: vec![],
+                scope_entries: if safe_point.program == entry {
+                    vec![PageHostDebuggerScopeEntry {
+                        slot_ordinal: 0,
+                        scope_depth: 0,
+                    }]
+                } else {
+                    vec![]
+                },
                 scope_truncated: false,
             }),
             stack_truncated: false,
@@ -7466,6 +7613,9 @@ mod tests {
             resume: PageHostReply::DebuggerLinkedNestedResumeRequested { frame: child_frame },
             span_calls: 0,
             resume_calls: 0,
+            relation_reply: None,
+            relation_calls: 0,
+            relation_target: None,
         };
         let mut executor =
             OutOfProcessJavaScriptPageExecutor::new_with_debugger_execution_control(child);
@@ -7575,6 +7725,133 @@ mod tests {
             targets,
         };
         let expected_stack = JavaScriptPageDebuggerLinkedStackSnapshot { frames };
+        let static_target = JavaScriptPageDebuggerStaticScopeTarget::Linked {
+            metadata: JavaScriptPageDebuggerStaticMetadata {
+                metadata_handle: 401,
+                metadata_generation: 402,
+            },
+            expected_stack,
+            frame_index: 1,
+            scope_entry: JavaScriptPageDebuggerScopeEntry {
+                slot_ordinal: 0,
+                scope_depth: 0,
+            },
+        };
+        assert_eq!(
+            executor
+                .debugger_static_scope_relation(tab_id, 1, static_target)
+                .unwrap(),
+            JavaScriptPageDebuggerStaticScopeRelation {
+                target: static_target,
+                symbol_type: JavaScriptPageDebuggerStaticMetadataSymbolType {
+                    symbol_id: 2,
+                    type_id: 1,
+                },
+            }
+        );
+        let PageHostDebuggerStaticScopeTarget::Linked {
+            frame: private_frame,
+            expected_stack: private_stack,
+            frame_index: private_index,
+            metadata: private_metadata,
+            scope_entry: private_entry,
+        } = executor.child.relation_target.clone().unwrap()
+        else {
+            panic!("linked core target must stay linked across the private boundary");
+        };
+        assert_eq!(private_frame, child_frame);
+        assert_eq!(*private_stack, stack);
+        assert_eq!(private_index, 1);
+        assert_eq!(private_metadata, child_metadata[1]);
+        assert_eq!(private_entry.slot_ordinal, 0);
+        let mut moved_stack = expected_stack;
+        moved_stack.frames[1].safe_point.bytecode_offset += 1;
+        let mut swapped_stack = expected_stack;
+        swapped_stack.frames.swap(0, 1);
+        let linked_target = |metadata, expected_stack, frame_index, scope_entry| {
+            JavaScriptPageDebuggerStaticScopeTarget::Linked {
+                metadata,
+                expected_stack,
+                frame_index,
+                scope_entry,
+            }
+        };
+        let JavaScriptPageDebuggerStaticScopeTarget::Linked {
+            metadata,
+            expected_stack,
+            frame_index,
+            scope_entry,
+        } = static_target
+        else {
+            unreachable!();
+        };
+        for denied in [
+            linked_target(
+                JavaScriptPageDebuggerStaticMetadata {
+                    metadata_handle: 301,
+                    metadata_generation: 302,
+                },
+                expected_stack,
+                frame_index,
+                scope_entry,
+            ),
+            linked_target(metadata, expected_stack, 0, scope_entry),
+            linked_target(
+                metadata,
+                expected_stack,
+                frame_index,
+                JavaScriptPageDebuggerScopeEntry {
+                    slot_ordinal: 9,
+                    scope_depth: 0,
+                },
+            ),
+            linked_target(metadata, moved_stack, frame_index, scope_entry),
+            linked_target(metadata, swapped_stack, frame_index, scope_entry),
+        ] {
+            assert!(executor
+                .debugger_static_scope_relation(tab_id, 1, denied)
+                .is_err());
+        }
+        assert_eq!(executor.child.relation_calls, 1);
+        executor.child.relation_reply = Some(PageHostReply::DebuggerStaticScopeRelation(Box::new(
+            page_host::PageHostDebuggerStaticScopeRelation {
+                target: PageHostDebuggerStaticScopeTarget::Linked {
+                    frame: private_frame,
+                    expected_stack: private_stack,
+                    frame_index: 1,
+                    metadata: child_metadata[0],
+                    scope_entry: private_entry,
+                },
+                symbol_type: PageHostDebuggerBlueTsMetadataSymbolType {
+                    symbol_id: 2,
+                    type_id: 1,
+                },
+            },
+        )));
+        assert!(executor
+            .debugger_static_scope_relation(tab_id, 1, static_target)
+            .is_err());
+        executor.child.relation_reply = None;
+        assert!(executor
+            .debugger_static_scope_relation(tab_id, 2, static_target)
+            .is_err());
+        if let PageHostReply::DebuggerLinkedStackSnapshot { snapshot, .. } =
+            &mut executor.child.stack
+        {
+            snapshot.frames[1].scope_entries[0].scope_depth = 1;
+        }
+        assert!(executor
+            .debugger_static_scope_relation(tab_id, 1, static_target)
+            .is_err());
+        assert_eq!(executor.child.relation_calls, 2);
+        executor.child.stack = PageHostReply::DebuggerLinkedStackSnapshot {
+            frame: child_frame,
+            snapshot: Box::new(stack.clone()),
+        };
+        assert_eq!(
+            executor.capture_core_linked_pause(tab_id, 1, public_entry, 4),
+            Ok(frames)
+        );
         for denied in [
             JavaScriptPageDebuggerLinkedSpanAccess {
                 granted: false,
@@ -7709,6 +7986,9 @@ mod tests {
             executor.debugger_linked_stack_spans(expected_stack, access),
             Err(JavaScriptPageDebuggerError::InvalidExecutionState)
         );
+        assert!(executor
+            .debugger_static_scope_relation(tab_id, 1, static_target)
+            .is_err());
         assert_eq!(executor.child.span_calls, 1);
         executor.child.stack = PageHostReply::DebuggerLinkedStackSnapshot {
             frame: child_frame,

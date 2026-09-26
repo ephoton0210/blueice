@@ -2048,6 +2048,22 @@ and altered child replies. Linked targets remain denied pending the next
 leaf. The engine 308-test library suite, workspace Clippy, and formatting
 pass; the public debugger protocol and grants are unchanged.
 
+**C3.1.3.3.5.4 linked core remap:** A core-owned linked selector names the
+two reminted frames, entry-root index one, one active lexical slot, and its
+static metadata generation. The out-of-process executor requires the stored
+complete child-first stack and both current core-to-child program mappings,
+then reacquires the same linked invocation using the original scope budget.
+It compares the entire private stack, not just frame safe points, so scope
+drift at unchanged offsets cannot turn an old selector into a new relation.
+Only the entry program's metadata can reach the strict private adapter, whose
+full-target echo is required before reminting the opaque symbol/type IDs.
+The linked core regression covers success and dependency-owned metadata,
+swapped/moved public frames, forged slot/index, stale document, private scope
+drift, moved invocation, and changed child echo. The engine 308-test suite,
+workspace Clippy, and formatting pass. Neither the public debugger wire nor
+its receipt/grant authority changes here; a shared private core helper remains
+the next leaf.
+
 **Native nested-frame checkpoints (C1.2.1.2):** Stamp the same deterministic
 pre-order code-unit ordinal into installed bytecode and each closure descendant
 before exposing its inventory (C1.2.1.2.1). This gives the VM an exact

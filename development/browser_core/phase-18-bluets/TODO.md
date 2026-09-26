@@ -14,9 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.3.5.4.** Remap linked entry-root targets through the
-complete stored/reacquired two-program stack and entry-owned metadata,
-rejecting swapped/moved/forged targets and replies.
+**Current leaf: C3.1.3.3.5.5.** Add a private core debugger helper for both
+verified relations with no public request/grant; test its exact active-slot
+and generation checks before checking off C3.1.3.3.5.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -429,7 +429,7 @@ channel with explicit owner/client grants.
         - [x] **C3.1.3.3.5.1** Decide core-facing ordinary/linked static scope targets, the private adapter's exact-echo contract, and which live identities/slots core revalidates before the future public grant. PLAN.md keeps core-owned ordinary/linked selectors separate from page-host IDs; the adapter requires full-target echo, core rechecks current program/frame/metadata and complete active stack, while same-stream receipts and public authority remain deferred to C3.1.3.4.
         - [x] **C3.1.3.3.5.2** Add the default-deny private child-client operation and strict adapter request/reply shape, echo, and no-partial error tests without exposing a public debugger operation. The real private connection sends v41 requests; the adapter validates the whole target before sending and accepts only a well-formed exact-target echo. Tests cover ordinary/linked success, changed metadata/safe point, wrong reply kind, typed error, malformed unsent targets, and default-denied doubles. After rebuilding all workspace targets to update the child executable, the full engine 306-test suite, workspace Clippy, and formatting pass.
         - [x] **C3.1.3.3.5.3** Remap ordinary root/parent targets through core-owned program/frame/metadata generations, reacquire the active scope, and reject forged/stale/moved replies. The core-facing static-only target/relation types are separate from page-host IDs. Ordinary root and nested-parent tests recheck a complete live scope, unique exact slot, program/frame/metadata ownership, and private exact echo; forged slot/depth, moved pause, sibling metadata, stale generation/document, truncation, and altered replies refuse. Linked stays default-denied until C3.1.3.3.5.4. Engine 308-test suite, workspace Clippy, and formatting pass without a public debugger request or grant.
-        - [ ] **C3.1.3.3.5.4** Remap linked entry-root targets through the complete stored/reacquired two-program stack and entry-owned metadata, rejecting swapped/moved/forged targets and replies.
+        - [x] **C3.1.3.3.5.4** Remap linked entry-root targets through the complete stored/reacquired two-program stack and entry-owned metadata, rejecting swapped/moved/forged targets and replies. The core checks both reminted program identities, full untruncated child-first stack and unique entry-root slot, reacquires the exact invocation/stack with its original budget, then maps only entry-owned metadata. Tests reject dependency metadata/index, swapped or moved core stacks, forged slots, stale document, scope drift at unchanged safe points, moved invocation, and altered private echo. The engine 308-test suite, workspace Clippy, and formatting pass without a public request or grant.
         - [ ] **C3.1.3.3.5.5** Add a private core debugger helper for both verified relations with no public request/grant; test its exact active-slot and generation checks before checking off C3.1.3.3.5.
       - [ ] **C3.1.3.3.6** Prove classic, module, nested-parent, and linked child/core boundaries plus no-partial stale/moved/forged denials; then check off C3.1.3.3.
     - [ ] **C3.1.3.4** Add an independently granted public static scope relation request/reply with exact ordinary Scopes or linked-stack-derived scope receipt plus metadata/type receipts; retain the existing separate bounded `Value` reply, bump public protocol only when the complete route and IPC/core denials pass.
