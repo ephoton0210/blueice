@@ -55,6 +55,69 @@ fn emitted(source: &str) -> String {
 }
 
 #[test]
+fn braced_try_catch_finally_retains_the_catch_name_bodies_and_source_span() {
+    let source =
+        "function f(): void { try { throw 1; } catch (caught) { throw caught; } finally { 0; } }";
+    let module = parse_module(ENTRY, source).unwrap();
+    let [Declaration::Function(function)] = module.declarations.as_slice() else {
+        panic!("expected one named function");
+    };
+    let [FunctionBodyItem::Try(statement)] = function.body.as_slice() else {
+        panic!("the selected try/catch/finally form must be structured");
+    };
+    assert!(matches!(
+        statement.block.as_slice(),
+        [FunctionBodyItem::Throw { .. }]
+    ));
+    let handler = statement.handler.as_ref().expect("catch must be retained");
+    assert_eq!(handler.binding, "caught");
+    assert!(matches!(
+        handler.body.as_slice(),
+        [FunctionBodyItem::Throw { .. }]
+    ));
+    assert!(matches!(
+        statement.finalizer.as_deref(),
+        Some([FunctionBodyItem::Expression { .. }])
+    ));
+    assert_eq!(
+        &source[statement.span.start..statement.span.end],
+        "try { throw 1; } catch (caught) { throw caught; } finally { 0; }"
+    );
+
+    for source in [
+        "function f(): void { try { throw 1; } catch (caught) { throw caught; } }",
+        "function f(): void { try { 1; } finally { 2; } }",
+    ] {
+        let module = parse_module(ENTRY, source).unwrap();
+        let [Declaration::Function(function)] = module.declarations.as_slice() else {
+            panic!("expected one named function");
+        };
+        assert!(matches!(
+            function.body.as_slice(),
+            [FunctionBodyItem::Try(_)]
+        ));
+    }
+}
+
+#[test]
+fn excluded_try_shapes_remain_opaque_to_the_bounded_function_parser() {
+    for source in [
+        "function f(): void { try { 1; } catch { 2; } }",
+        "function f(): void { try { 1; } catch (caught: any) { 2; } }",
+        "function f(): void { try { 1; } }",
+    ] {
+        let module = parse_module(ENTRY, source).unwrap();
+        let [Declaration::Function(function)] = module.declarations.as_slice() else {
+            panic!("expected one named function");
+        };
+        assert!(matches!(
+            function.body.first(),
+            Some(FunctionBodyItem::Opaque(_))
+        ));
+    }
+}
+
+#[test]
 fn braced_while_retains_its_condition_and_body_without_proving_a_return() {
     let source =
         "function count(value: number): number { while (value > 0) { value -= 1; } return value; }";

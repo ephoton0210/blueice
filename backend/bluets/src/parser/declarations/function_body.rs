@@ -46,6 +46,15 @@ impl Parser {
                 ));
                 continue;
             }
+            if parentheses == 0
+                && brackets == 0
+                && is_direct_braced_try_statement(&self.tokens, self.index)
+            {
+                body.push(FunctionBodyItem::Try(
+                    self.parse_direct_braced_try_statement(returns, locals),
+                ));
+                continue;
+            }
             if self.consume("{") {
                 depth += 1;
                 body.push(FunctionBodyItem::Opaque(self.previous().span(&self.id)));
@@ -225,6 +234,41 @@ impl Parser {
             test,
             body,
             span: SourceSpan::new(&self.id, while_start, self.previous().end),
+        }
+    }
+
+    pub(in crate::parser::implementation) fn parse_direct_braced_try_statement(
+        &mut self,
+        returns: &mut Vec<Vec<Token>>,
+        locals: &mut Vec<VariableDeclaration>,
+    ) -> FunctionTryStatement {
+        debug_assert!(is_direct_braced_try_statement(&self.tokens, self.index));
+        let try_start = self.current().start;
+        self.bump();
+        let block = self.parse_direct_function_block(returns, locals);
+        let handler = if self.consume("catch") {
+            let catch_start = self.previous().start;
+            self.expect("(");
+            let binding = self.current().text.clone();
+            self.bump();
+            self.expect(")");
+            let body = self.parse_direct_function_block(returns, locals);
+            Some(FunctionCatchClause {
+                binding,
+                body,
+                span: SourceSpan::new(&self.id, catch_start, self.previous().end),
+            })
+        } else {
+            None
+        };
+        let finalizer = self
+            .consume("finally")
+            .then(|| self.parse_direct_function_block(returns, locals));
+        FunctionTryStatement {
+            block,
+            handler,
+            finalizer,
+            span: SourceSpan::new(&self.id, try_start, self.previous().end),
         }
     }
 

@@ -51,10 +51,11 @@ pub use emitter::{
     SourceMap,
 };
 pub use parser::{
-    parse_module, Declaration, FunctionBodyItem, FunctionDeclaration, FunctionElseBranch,
-    FunctionIfStatement, FunctionWhileStatement, ImportDeclaration, InterfaceDeclaration, Module,
-    Parameter, ParserLimits, RawDeclaration, TypeAliasDeclaration, TypeExportDeclaration,
-    TypeParameter, ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
+    parse_module, Declaration, FunctionBodyItem, FunctionCatchClause, FunctionDeclaration,
+    FunctionElseBranch, FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement,
+    ImportDeclaration, InterfaceDeclaration, Module, Parameter, ParserLimits, RawDeclaration,
+    TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, ValueExportBinding,
+    ValueExportDeclaration, VariableDeclaration, VariableKind,
 };
 pub use syntax::{lex, Token, TokenKind};
 

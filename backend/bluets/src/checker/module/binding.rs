@@ -828,7 +828,8 @@ impl<'a> ModuleChecker<'a> {
                 FunctionBodyItem::Opaque(_) => return StructuredTermination::Opaque,
                 FunctionBodyItem::Variable(_)
                 | FunctionBodyItem::Expression { .. }
-                | FunctionBodyItem::While(_) => {}
+                | FunctionBodyItem::While(_)
+                | FunctionBodyItem::Try(_) => {}
             }
         }
         StructuredTermination::FallsThrough

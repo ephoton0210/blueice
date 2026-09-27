@@ -4485,6 +4485,8 @@ For ordinary JavaScript completion, catch handles a thrown value from the try bo
 
 This form excludes bare `catch {}`, typed or destructured catch bindings, a second catch, nested try, loop statements or local declarations inside any of the three blocks, and top-level or anonymous/arrow-function try statements. Excluded shapes remain opaque to the direct bridge and fail closed. Their scope, abrupt-completion, and debugger effects need their own checker and runtime evidence before extension.
 
+H.2.2.1 preflights only a complete braced try followed by a single identifier catch, a braced finally, or both. BlueTSC retains separate structured try/catch/finally body items and their original source spans; bare or typed catch bindings and a try without handler/finalizer stay opaque. The direct bridge explicitly rejects even a structured try at its original span until H.2.2.2 checks catch scope and H.2.2.3 installs lowering. Public parser and direct-bridge regressions cover these boundaries; this intermediate parser representation alone does not claim executable try support.
+
 The direct bridge lowers template substitutions containing supported direct expressions to BlueJS expression slots. It tokenizes the original substitution with BlueTS's lexer and constructs BlueJS AST directly; it never calls a BlueJS source parser on BlueTSC output. Nested templates and embedded expressions outside the direct subset remain excluded.
 
 Non-substituted template literals use the same ordinary escape decoder as quoted strings.

@@ -597,6 +597,25 @@ fn lowers_braced_while_to_a_real_bluejs_loop_and_block() {
 }
 
 #[test]
+fn structured_try_remains_closed_to_the_direct_bridge_until_checker_and_lowering() {
+    let source = "function f(): void { try { throw 1; } catch (caught) { throw caught; } finally { 0; } } f();";
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    );
+    let Err(BridgeError::UnsupportedRuntimeTarget { span, message }) = result else {
+        panic!("the direct bridge must keep structured try closed until lowering");
+    };
+    assert_eq!(span.module, ENTRY);
+    assert_eq!(
+        &source[span.start..span.end],
+        "try { throw 1; } catch (caught) { throw caught; } finally { 0; }"
+    );
+    assert!(message.contains("try"));
+}
+
+#[test]
 fn direct_while_rejects_local_declarations_and_nested_loops() {
     for source in [
         "function f(value: number): number { while (value > 0) { let inner = 1; value -= 1; } return value; } f(2);",

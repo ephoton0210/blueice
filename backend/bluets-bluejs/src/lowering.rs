@@ -288,6 +288,12 @@ fn lower_function_body(
             FunctionBodyItem::While(statement) => {
                 body.push(lower_function_while(module, statement)?)
             }
+            FunctionBodyItem::Try(statement) => {
+                return Err(unsupported(
+                    statement.span.clone(),
+                    "braced try execution awaits catch-scope checking and direct AST lowering",
+                ));
+            }
             FunctionBodyItem::Opaque(span) => {
                 return Err(unsupported(
                     span.clone(),
@@ -350,6 +356,12 @@ fn ensure_supported_while_body(items: &[FunctionBodyItem]) -> Result<(), BridgeE
                 return Err(unsupported(
                     statement.span.clone(),
                     "nested loops are outside the direct while subset",
+                ));
+            }
+            FunctionBodyItem::Try(statement) => {
+                return Err(unsupported(
+                    statement.span.clone(),
+                    "try statements are outside the direct while body subset",
                 ));
             }
             FunctionBodyItem::If(statement) => {

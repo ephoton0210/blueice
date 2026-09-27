@@ -315,6 +315,43 @@ pub(super) fn is_direct_braced_while_statement(tokens: &[Token], start: usize) -
         && matching_closing_delimiter(tokens, test_end + 1, limit, "{", "}").is_some()
 }
 
+/// Preflights the first structured try form without consuming a partial
+/// handler or finalizer. Unsupported catch bindings remain opaque.
+pub(super) fn is_direct_braced_try_statement(tokens: &[Token], start: usize) -> bool {
+    if !tokens.get(start).is_some_and(|token| token.is("try"))
+        || !tokens.get(start + 1).is_some_and(|token| token.is("{"))
+    {
+        return false;
+    }
+    let limit = tokens.len().saturating_sub(1);
+    let Some(try_end) = matching_closing_delimiter(tokens, start + 1, limit, "{", "}") else {
+        return false;
+    };
+    let mut next = try_end + 1;
+    let mut has_catch = false;
+    if tokens.get(next).is_some_and(|token| token.is("catch")) {
+        if !tokens.get(next + 1).is_some_and(|token| token.is("("))
+            || !tokens
+                .get(next + 2)
+                .is_some_and(|token| token.kind == TokenKind::Identifier)
+            || !tokens.get(next + 3).is_some_and(|token| token.is(")"))
+            || !tokens.get(next + 4).is_some_and(|token| token.is("{"))
+        {
+            return false;
+        }
+        let Some(catch_end) = matching_closing_delimiter(tokens, next + 4, limit, "{", "}") else {
+            return false;
+        };
+        next = catch_end + 1;
+        has_catch = true;
+    }
+    if tokens.get(next).is_some_and(|token| token.is("finally")) {
+        return tokens.get(next + 1).is_some_and(|token| token.is("{"))
+            && matching_closing_delimiter(tokens, next + 1, limit, "{", "}").is_some();
+    }
+    has_catch
+}
+
 pub(super) fn matching_closing_delimiter(
     tokens: &[Token],
     start: usize,

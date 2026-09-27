@@ -264,6 +264,9 @@ pub enum FunctionBodyItem {
     /// A braced `while` in a named function body. Runtime lowering remains
     /// separately gated by the direct bridge.
     While(FunctionWhileStatement),
+    /// A braced `try` with a single identifier catch, a finalizer, or both.
+    /// The direct bridge separately gates checker scope and runtime lowering.
+    Try(FunctionTryStatement),
     Return {
         tokens: Vec<Token>,
         span: SourceSpan,
@@ -284,6 +287,23 @@ pub struct FunctionIfStatement {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionWhileStatement {
     pub test: Vec<Token>,
+    pub body: Vec<FunctionBodyItem>,
+    pub span: SourceSpan,
+}
+
+/// The bounded function-body representation for one braced `try` statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionTryStatement {
+    pub block: Vec<FunctionBodyItem>,
+    pub handler: Option<FunctionCatchClause>,
+    pub finalizer: Option<Vec<FunctionBodyItem>>,
+    pub span: SourceSpan,
+}
+
+/// One unannotated identifier binding, visible only in the catch body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionCatchClause {
+    pub binding: String,
     pub body: Vec<FunctionBodyItem>,
     pub span: SourceSpan,
 }
