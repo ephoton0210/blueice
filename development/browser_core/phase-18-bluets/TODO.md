@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E2.1.1.** Validate an admitted boundary before its value
-enters the VM.
+**Current leaf: E2.1.2.** Prove no getter, proxy trap, page callback, or
+fetch runs during validation.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -584,7 +584,7 @@ channel with explicit owner/client grants.
 
 - [ ] **E2.1** Run the pure bounded validator before data enters the VM; invoke
   no getter, proxy, page callback, or fetch during validation.
-  - [ ] **E2.1.1** Validate before the value enters the VM.
+  - [x] **E2.1.1** Validate before the value enters the VM. The live direct-page host validates the copied document-text and origin snapshots with pure bounded plans before calling BlueJS's realm binding registrar. A strict-runtime regression now rejects an oversized document result with zero programs and no bound profile, then successfully installs a same-name callback in that exact realm; BlueJS would reject it if the failed boundary had already installed a callback or copied the value into the VM. The focused test passes with the shared target cache.
   - [ ] **E2.1.2** Prove no getter, proxy trap, page callback, or fetch runs during validation.
 - [ ] **E2.2** Attribute validation/cache cost to the initiating tab and report
   policy plus source position without protected content.

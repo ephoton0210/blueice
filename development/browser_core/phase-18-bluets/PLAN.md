@@ -2237,6 +2237,17 @@ diff, and the 1,300-line source audit, using the shared target cache. This
 closes E1.3 for the currently installed immutable direct-page result
 boundaries; emitted strict-runtime artifacts remain unavailable until E3.
 
+**E2.1.1 validation precedes VM capture:** The current immutable snapshot
+paths validate copied document text and canonical origin against their pure,
+bounded core-selected contract plans before they call the BlueJS realm binding
+registrar. The strict-runtime loaded-page regression now rejects an oversized
+document-text result with no program, debug attachment, or bound host profile,
+then installs a callback with the same global name in that exact still-live
+realm. BlueJS rejects duplicate host globals, so successful registration
+proves that the failed result never installed its callback or copied its value
+into the VM. The focused test passes with the shared target cache; E2.1.2
+will separately prove validation does not invoke active page behavior.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

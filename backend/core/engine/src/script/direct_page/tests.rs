@@ -395,6 +395,22 @@ fn strict_runtime_admits_reviewed_snapshot_contracts_and_validates_before_captur
     ));
     assert_eq!(bounded.debug_record_count(), 0);
     assert_eq!(bounded.realm_stats(tab_id).unwrap().program_count, 0);
+    assert!(!bounded.bound_profiles.contains_key(&tab_id));
+    // BlueJS rejects duplicate host globals. Successful same-name registration
+    // in this exact live realm proves the rejected snapshot never installed
+    // its callback or copied its value into the VM.
+    bounded
+        .realms
+        .configure_realm_bindings(tab_id.as_u64(), |bindings| {
+            bindings.install_global_function(
+                "blueiceDocumentText",
+                0,
+                |_args: &[blueice_bluejs::HostValue]| {
+                    Ok(blueice_bluejs::HostValue::String("safe".into()))
+                },
+            )
+        })
+        .expect("the rejected snapshot must not have installed its host global");
 }
 
 #[test]
