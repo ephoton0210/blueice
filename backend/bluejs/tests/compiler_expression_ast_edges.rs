@@ -18,6 +18,33 @@ fn expression_program(expr: Expr) -> Program {
     }
 }
 
+#[test]
+fn malformed_internal_class_fields_return_compile_errors() {
+    let field = |target| {
+        Stmt::ClassField(Box::new(Stmt::Expr(Expr::Assign {
+            op: AssignOp::Assign,
+            target: Box::new(target),
+            value: Box::new(Expr::Number(1.0)),
+        })))
+    };
+    for statement in [
+        Stmt::ClassField(Box::new(Stmt::Empty)),
+        field(Expr::Identifier("value".into())),
+        field(Expr::Member {
+            object: Box::new(Expr::Identifier("other".into())),
+            property: Box::new(Expr::Identifier("value".into())),
+            computed: false,
+        }),
+    ] {
+        assert!(matches!(
+            compile(&Program {
+                body: vec![statement],
+            }),
+            Err(CompileError::InvalidSyntax("invalid class field AST"))
+        ));
+    }
+}
+
 fn total_compiled_bytes(code: &Bytecode) -> usize {
     code.bytes().len()
         + code

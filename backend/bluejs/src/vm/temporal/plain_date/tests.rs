@@ -969,6 +969,12 @@ fn non_iso_date_addition_rejects_years_outside_the_icu_field_range() {
 }
 
 #[test]
+fn non_iso_date_addition_carries_a_negative_month_into_the_previous_year() {
+    let result = calendar_add_date(AnyCalendarKind::Indian, (2020, 6, 1), 0, -3, 0, 0, false);
+    assert!(result.is_some());
+}
+
+#[test]
 fn calendar_rounding_handles_ties_equal_dates_and_unrepresentable_windows() {
     use blueice_ecma402::NumberRoundingMode::{HalfEven, Trunc};
     assert_eq!(

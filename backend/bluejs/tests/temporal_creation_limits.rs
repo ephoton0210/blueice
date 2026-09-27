@@ -287,6 +287,30 @@ fn arithmetic_at_the_edges_is_a_range_error() {
     );
 }
 
+/// Non-ISO date addition must reject a landing year outside ICU's field or
+/// date-construction range, including both month-carry directions.
+#[test]
+fn non_iso_date_addition_rejects_unrepresentable_calendar_years() {
+    let start =
+        "Temporal.PlainDate.from({ year: 1970, monthCode: 'M03', day: 1, calendar: 'indian' })";
+    assert_range_error(&format!("{start}.add({{ years: 2147483648 }})"));
+    assert_range_error(&format!(
+        "{start}.add({{ years: -2147490000, months: -3 }})"
+    ));
+    assert_range_error(&format!(
+        "{start}.add({{ years: -2147490000, months: -1 }})"
+    ));
+    assert_range_error(&format!("{start}.add({{ years: 1000000000 }})"));
+    assert_range_error(&format!(
+        "{start}.add({{ years: -1000000000, months: -1 }})"
+    ));
+    // The year still fits in i32 after crossing the month boundary, but ICU
+    // cannot construct that calendar year's first month.
+    assert_range_error(&format!(
+        "const start = {start}; start.add({{ years: 2147483648 - start.year, months: -3 }})"
+    ));
+}
+
 /// The year-month range (`ISOYearMonthWithinLimits`) is checked at creation
 /// too, for every route into a `PlainYearMonth`: a property bag with either
 /// overflow mode, `with`, and `PlainDate.toPlainYearMonth`.
