@@ -23,7 +23,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch validated the ZonedDateTime receiver");
         self.instant_from_epoch_nanoseconds(existing.epoch_nanoseconds)
     }
 
@@ -31,7 +33,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch validated the ZonedDateTime receiver");
         let value = Self::temporal_date_value(
             TemporalKind::PlainDate,
             existing.calendar,
@@ -44,7 +48,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch validated the ZonedDateTime receiver");
         let fields = (
             existing.hour,
             existing.minute,
@@ -60,7 +66,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch validated the ZonedDateTime receiver");
         let value = Self::temporal_date_time_value(
             TemporalKind::PlainDateTime,
             existing.calendar,
@@ -81,7 +89,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let mut existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let mut existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch validated the ZonedDateTime receiver");
         let zone = temporal_zoned_date_time_zone(&existing);
         let date = (existing.year, existing.month, existing.day);
         existing.epoch_nanoseconds = temporal_checked_start_of_day(&zone, date)?;
@@ -104,30 +114,23 @@ impl Vm {
         receiver: &Value,
         direction_param: &Value,
     ) -> Result<Value, RuntimeError> {
-        let mut existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let mut existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native dispatch validated the ZonedDateTime receiver");
         if *direction_param == Value::Undefined {
             return Err(RuntimeError::TypeError(
                 "Temporal.ZonedDateTime.prototype.getTimeZoneTransition requires a direction"
                     .into(),
             ));
         }
-        let options = if matches!(direction_param, Value::String(_)) {
-            let object = self.with_roots(|heap| heap.alloc_object(None))?;
-            let result = Value::Object(object);
-            self.stack.push(result.clone());
-            self.define_data(
-                object,
-                "direction",
-                direction_param.clone(),
-                true,
-                true,
-                true,
-            )?;
-            result
+        let direction_v = if matches!(direction_param, Value::String(_)) {
+            // The shorthand's fresh single-property options object is not
+            // observable, so use the string directly without allocating it.
+            direction_param.clone()
         } else {
-            self.temporal_options(direction_param)?
+            let options = self.temporal_options(direction_param)?;
+            self.get_property(&options, &"direction".into())?
         };
-        let direction_v = self.get_property(&options, &"direction".into())?;
         if direction_v == Value::Undefined {
             return Err(RuntimeError::RangeError(
                 "Temporal.ZonedDateTime.prototype.getTimeZoneTransition requires a direction \

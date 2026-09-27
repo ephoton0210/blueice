@@ -338,3 +338,28 @@ fn get_time_zone_transition_finds_adjacent_offset_changes() {
       same(() => Z.prototype.getTimeZoneTransition.length, 1);
     "#);
 }
+
+#[test]
+fn get_time_zone_transition_propagates_option_getter_and_rejects_unpaired_surrogates() {
+    run(r#"
+      const instance = Z.from("2020-06-15T12:00[America/New_York]");
+      const expected = {};
+      const options = {};
+      Object.defineProperty(options, "direction", { get() { throw expected; } });
+      let caught = false;
+      try { instance.getTimeZoneTransition(options); }
+      catch (error) { caught = error === expected; }
+      same(() => caught, true);
+      const coercionError = {};
+      let coercionCaught = false;
+      try {
+        instance.getTimeZoneTransition({
+          direction: { toString() { throw coercionError; } },
+        });
+      } catch (error) {
+        coercionCaught = error === coercionError;
+      }
+      same(() => coercionCaught, true);
+      range(() => instance.getTimeZoneTransition({ direction: "\uD800" }));
+    "#);
+}
