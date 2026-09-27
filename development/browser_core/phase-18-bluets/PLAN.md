@@ -2195,6 +2195,18 @@ checks both records and proves a tighter owner-selected text limit is carried
 into the record. This defines the shape; E1.2.2 will enforce completeness
 against the installed runtime bindings.
 
+**E1.2.2 installed-boundary completeness gate:** Core now compares each
+installed runtime value in the document-text and document-context generated
+profiles with a reviewed boundary record, matching stable ID, runtime ID,
+capability, nonempty contract ID, and fixed failure category. Type-only
+declarations do not cross a runtime value boundary. A focused regression
+requires both actual snapshot profiles to pass, then removes the origin record
+and adds a previously unrecorded runtime value; both mutations fail with a
+typed `MissingRecord`. This catches a future snapshot binding added without
+its contract inventory entry. The focused test passes with the shared target
+cache. E1.3 will apply the gate during strict-runtime admission and add
+separate diagnostics for missing, unreifiable, and unchecked boundaries.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

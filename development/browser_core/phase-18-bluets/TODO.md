@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E1.2.2.** Add a test that fails when an installed boundary
-lacks an inventory record.
+**Current leaf: E1.3.1.** Reject a missing contract, an unreifiable type, and
+an unchecked boundary with separate strict-runtime diagnostics.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -561,10 +561,14 @@ channel with explicit owner/client grants.
 #### E1. Inventory only implemented boundaries.
 
 - [x] **E1.1** Name and validate the copied document-text and origin results.
-- [ ] **E1.2** For each new ingress/egress, record owner, source position when
-  available, contract ID, limits, failure category, and capability.
+- [x] **E1.2** For each new ingress/egress, record owner, source position when
+  available, contract ID, limits, failure category, and capability. The current
+  copied document-result boundaries carry complete core-only records; the
+  inventory gate compares them with the installed snapshot-profile runtime
+  value bindings. Future strict-runtime crossings must extend this reviewed
+  inventory before their profile can pass the gate.
   - [x] **E1.2.1** Define the inventory record shape (owner, source position, contract ID, limits, failure category, capability). The core-only `HostBindingBoundaryRecordV1` now carries stable/runtime binding IDs, owner, optional original source span, ingress/egress direction, reviewed contract ID, the owner's actual validation limits, fixed failure category, and capability. The current immutable document-text and origin result boundaries produce records without claiming unavailable call-site spans. A focused inventory test checks every field and tighter owner limit using the shared target cache.
-  - [ ] **E1.2.2** Add a test that fails when a boundary lacks a record.
+  - [x] **E1.2.2** Add a test that fails when a boundary lacks a record. The inventory gate checks each installed snapshot-profile runtime value against a reviewed record's stable ID, runtime ID, capability, contract ID, and fixed failure category. A focused regression accepts the actual document-text and document-context profiles, then requires a missing origin record and a newly installed but unrecorded value to fail with `MissingRecord`. The focused test passes using the shared target cache; the gate is not yet wired to strict-runtime admission, which is E1.3.
 - [ ] **E1.3** Make strict-runtime reject a missing, unreifiable, or unchecked
   boundary unless a reviewed contract is authorized.
   - [ ] **E1.3.1** Reject a missing contract, an unreifiable type, and an unchecked boundary, each with its own diagnostic.

@@ -10,6 +10,7 @@
 //! callback captures it. It does not claim contracts for absent DOM, Fetch,
 //! storage, messaging, JSON, or extension APIs.
 
+use super::host_typings::{HostBindingRoleV1, HostRuntimeBindingV1};
 use blueice_bluets::{
     ContractPlan, ContractValue, SourceSpan, Type, ValidationError, ValidationLimits,
 };
@@ -52,6 +53,52 @@ pub struct HostBindingBoundaryRecordV1 {
     pub validation_limits: ValidationLimits,
     pub failure_category: &'static str,
     pub capability: &'static str,
+}
+
+/// An installed runtime value may not silently acquire an inferred contract.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HostBindingBoundaryInventoryError {
+    MissingRecord(String),
+    DuplicateRecord(String),
+    MismatchedRecord(String),
+}
+
+/// Requires an exact reviewed record for every installed runtime value in a
+/// selected host profile. Type-only declarations are not runtime crossings.
+/// The caller supplies the profile's actual generated runtime bindings, so a
+/// newly installed value fails until the boundary inventory is extended.
+pub fn validate_host_binding_boundary_inventory(
+    bindings: &[HostRuntimeBindingV1],
+    records: &[HostBindingBoundaryRecordV1],
+) -> Result<(), HostBindingBoundaryInventoryError> {
+    let mut by_id = BTreeMap::new();
+    for record in records {
+        if by_id.insert(record.stable_binding_id, record).is_some() {
+            return Err(HostBindingBoundaryInventoryError::DuplicateRecord(
+                record.stable_binding_id.to_string(),
+            ));
+        }
+    }
+    for binding in bindings
+        .iter()
+        .filter(|binding| binding.role == HostBindingRoleV1::Value)
+    {
+        let Some(record) = by_id.get(binding.stable_id.as_str()) else {
+            return Err(HostBindingBoundaryInventoryError::MissingRecord(
+                binding.stable_id.clone(),
+            ));
+        };
+        if record.runtime_binding_id != binding.runtime_binding_id
+            || record.capability != binding.capability
+            || record.contract_id.is_empty()
+            || record.failure_category.is_empty()
+        {
+            return Err(HostBindingBoundaryInventoryError::MismatchedRecord(
+                binding.stable_id.clone(),
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// A named, reifiable live binding boundary. `stable_binding_id` must be the
@@ -167,6 +214,10 @@ pub fn core_script_binding_contract(binding_id: &str) -> Option<HostBindingContr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::script::host_typings::{
+        core_script_host_type_catalog, CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1,
+        CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
+    };
 
     #[test]
     fn inventory_names_only_installed_string_result_boundaries() {
@@ -232,5 +283,46 @@ mod tests {
             );
             assert_eq!(record.capability, "dom-read");
         }
+    }
+
+    #[test]
+    fn installed_snapshot_value_without_a_reviewed_record_fails_inventory_gate() {
+        let catalog = core_script_host_type_catalog();
+        let records =
+            core_script_binding_boundary_records(CoreScriptBindingContractLimits::default());
+        for profile in [
+            CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
+            CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1,
+        ] {
+            let artifact = catalog.generate(profile).unwrap();
+            assert_eq!(
+                validate_host_binding_boundary_inventory(&artifact.runtime_bindings, &records),
+                Ok(())
+            );
+        }
+        let context = catalog
+            .generate(CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1)
+            .unwrap();
+        assert_eq!(
+            validate_host_binding_boundary_inventory(&context.runtime_bindings, &records[1..]),
+            Err(HostBindingBoundaryInventoryError::MissingRecord(
+                "dom.document-origin".into()
+            ))
+        );
+        let mut new_value = context.runtime_bindings.clone();
+        new_value.push(HostRuntimeBindingV1 {
+            stable_id: "dom.future-value".into(),
+            role: HostBindingRoleV1::Value,
+            runtime_binding_id: "global.futureValue".into(),
+            capability: "dom-read".into(),
+            feature_flag: "future-value".into(),
+            first_host_api_version: "blueice-core-script-v1".into(),
+        });
+        assert_eq!(
+            validate_host_binding_boundary_inventory(&new_value, &records),
+            Err(HostBindingBoundaryInventoryError::MissingRecord(
+                "dom.future-value".into()
+            ))
+        );
     }
 }
