@@ -40,6 +40,149 @@ fn make_project(directory: &Path, name: &str) -> (std::path::PathBuf, std::path:
 }
 
 #[test]
+fn output_owner_inventories_only_exposed_grants_and_requires_its_own_receipt() {
+    let directory = std::env::temp_dir().join(format!(
+        "blueice-output-owner-session-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&directory).unwrap();
+    let directory = directory.canonicalize().unwrap();
+    let (plain_root, plain_output) = make_project(&directory, "plain");
+    let (granted_root, granted_output) = make_project(&directory, "granted");
+    let (private_root, private_output) = make_project(&directory, "private");
+    let (invalid_root, invalid_output) = make_project(&directory, "invalid");
+    let invalid_source = "export const answer: number = 'wrong';";
+    std::fs::write(invalid_root.join("main.ts"), invalid_source).unwrap();
+    let mut catalog = CoreCompilerProjectCatalog::default();
+    let plain = catalog
+        .register_startup_project(registration(&plain_root, &plain_output))
+        .unwrap();
+    let granted = catalog
+        .register_startup_project_with_output_write_grant(registration(
+            &granted_root,
+            &granted_output,
+        ))
+        .unwrap();
+    let private = catalog
+        .register_startup_project_private_with_output_write_grant(registration(
+            &private_root,
+            &private_output,
+        ))
+        .unwrap();
+    let invalid = catalog
+        .register_startup_project_with_output_write_grant(registration_with_source(
+            &invalid_root,
+            &invalid_output,
+            invalid_source,
+        ))
+        .unwrap();
+    let mut owner = catalog.seal();
+    let receipt = CompilerOutputSessionReceipt {
+        id: format!("ow-{}", "a1".repeat(32)),
+    };
+    let other = CompilerOutputSessionReceipt {
+        id: format!("ow-{}", "b2".repeat(32)),
+    };
+    let build = |receipt: &CompilerOutputSessionReceipt, project| CompilerOutputRequest::Build {
+        receipt: receipt.clone(),
+        project,
+    };
+    assert!(matches!(
+        owner.handle_output_request(&receipt, build(&receipt, granted)),
+        CompilerOutputReply::Error {
+            code: CompilerOutputErrorCode::UnobservedProject,
+            ..
+        }
+    ));
+    assert!(matches!(
+        owner.handle_output_request(
+            &receipt,
+            CompilerOutputRequest::ListProjects {
+                receipt: CompilerOutputSessionReceipt {
+                    id: "a1".repeat(32),
+                },
+            },
+        ),
+        CompilerOutputReply::Error {
+            code: CompilerOutputErrorCode::InvalidReceipt,
+            ..
+        }
+    ));
+    let CompilerOutputReply::Projects(inventory) = owner.handle_output_request(
+        &receipt,
+        CompilerOutputRequest::ListProjects {
+            receipt: receipt.clone(),
+        },
+    ) else {
+        panic!("output owner must list only its granted public projects")
+    };
+    assert_eq!(inventory.projects, vec![granted, invalid]);
+    for denied in [plain, private] {
+        assert!(matches!(
+            owner.handle_output_request(&receipt, build(&receipt, denied)),
+            CompilerOutputReply::Error {
+                code: CompilerOutputErrorCode::UnobservedProject,
+                ..
+            }
+        ));
+    }
+    assert!(matches!(
+        owner.handle_output_request(&other, build(&receipt, granted)),
+        CompilerOutputReply::Error {
+            code: CompilerOutputErrorCode::InvalidReceipt,
+            ..
+        }
+    ));
+    let CompilerReply::Check(prior_check) = owner
+        .adapter
+        .handle(CompilerRequest::Check { project: granted })
+    else {
+        panic!("the query owner must check its exposed project")
+    };
+    let CompilerOutputReply::Build(result) =
+        owner.handle_output_request(&receipt, build(&receipt, granted))
+    else {
+        panic!("an inventoried grant must publish")
+    };
+    assert!(result.is_well_formed_for_project(granted));
+    assert!(result.published);
+    assert_ne!(result.generation, prior_check.generation);
+    assert!(matches!(
+        owner.adapter.handle(CompilerRequest::ListDiagnostics {
+            generation: prior_check.generation,
+            cursor: None,
+            limit: Some(1),
+        }),
+        CompilerReply::Error {
+            code: CompilerErrorCode::StaleGeneration,
+            ..
+        }
+    ));
+    assert_eq!(std::fs::read_dir(&granted_output).unwrap().count(), 1);
+    let CompilerOutputReply::Build(diagnostic) =
+        owner.handle_output_request(&receipt, build(&receipt, invalid))
+    else {
+        panic!("a diagnostic build must return its no-output result")
+    };
+    assert!(diagnostic.has_errors);
+    assert!(!diagnostic.published);
+    assert_eq!(std::fs::read_dir(&invalid_output).unwrap().count(), 0);
+    owner.end_output_session(&receipt);
+    assert!(matches!(
+        owner.handle_output_request(&receipt, build(&receipt, granted)),
+        CompilerOutputReply::Error {
+            code: CompilerOutputErrorCode::UnobservedProject,
+            ..
+        }
+    ));
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn output_write_grant_is_separate_default_denied_and_bound_to_physical_owner_roots() {
     let directory = std::env::temp_dir().join(format!(
         "blueice-owner-output-grant-{}-{}",

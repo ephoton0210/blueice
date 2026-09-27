@@ -4112,6 +4112,17 @@ bounded project fingerprint, diagnostic status, and publication bit. No
 listener consumes this new vocabulary yet; F3.2.1.2.2 must bind it to the
 sealed owner's grant map and staging method.
 
+**F3.2.1.2.2.1 sealed output owner:** The sealed core compiler session now
+handles output-protocol requests independently of its query adapter. A
+stream's output receipt must match exactly before its inventory is created;
+that inventory contains only publicly exposed projects with separate
+physical output grants. Build requires that same stream's inventoried ID,
+uses the existing staged owner build, returns only generation/fingerprint and
+publication status, and revokes old query cursor evidence because the build
+may advance the compiler generation. Diagnostic-bearing builds publish
+nothing. Closing the output session drops its project inventory. No socket
+can reach this owner handler until F3.2.1.2.2.2 connects it.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

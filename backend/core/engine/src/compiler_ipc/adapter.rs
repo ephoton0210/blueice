@@ -381,7 +381,7 @@ impl CompilerServiceIpcAdapter {
         CompilerReply::Projects(inventory)
     }
 
-    fn revoke_project_session_cursors(&mut self, project_id: u64) {
+    pub(super) fn revoke_project_session_cursors(&mut self, project_id: u64) {
         let mut revoked = BTreeSet::new();
         self.session_cursors.retain(|_, receipts| {
             receipts.retain(|receipt| {

@@ -38,6 +38,10 @@ use blueice_ipc::compiler::{
     CompilerStaticType, CompilerSymbolKind, CompilerWorkSetCursor, CompilerWorkSetKind,
     CompilerWorkSetPage, COMPILER_DIAGNOSTIC_MAX_CODE_BYTES, COMPILER_MAX_PROJECT_INVENTORY,
 };
+use blueice_ipc::compiler_output::{
+    CompilerOutputBuildResult, CompilerOutputErrorCode, CompilerOutputReply, CompilerOutputRequest,
+    CompilerOutputSessionReceipt,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::io;
@@ -508,6 +512,7 @@ impl CoreCompilerProjectCatalog {
             adapter: self.adapter,
             registered_project_count: self.registered_projects.len(),
             output_write_grants: self.output_write_grants,
+            output_session_projects: BTreeMap::new(),
         }
     }
 }
@@ -520,9 +525,112 @@ pub struct CoreCompilerServiceSession {
     adapter: CompilerServiceIpcAdapter,
     registered_project_count: usize,
     output_write_grants: BTreeMap<RegisteredProjectId, OwnerOutputWriteGrant>,
+    output_session_projects: BTreeMap<String, BTreeSet<u64>>,
 }
 
 impl CoreCompilerServiceSession {
+    /// Handles an already accepted output stream on the core owner thread.
+    /// Only a separately minted output receipt and this stream's inventory
+    /// can reach the startup owner grant; the query adapter remains read-only.
+    pub fn handle_output_request(
+        &mut self,
+        session: &CompilerOutputSessionReceipt,
+        request: CompilerOutputRequest,
+    ) -> CompilerOutputReply {
+        let presented = match &request {
+            CompilerOutputRequest::ListProjects { receipt }
+            | CompilerOutputRequest::Build { receipt, .. } => receipt,
+            CompilerOutputRequest::Hello { .. } | CompilerOutputRequest::Unknown => {
+                return output_error(
+                    CompilerOutputErrorCode::Unsupported,
+                    "compiler output Hello is valid only as the first request",
+                );
+            }
+        };
+        if !session.is_well_formed() || presented != session {
+            return output_error(
+                CompilerOutputErrorCode::InvalidReceipt,
+                "compiler output receipt does not belong to this stream",
+            );
+        }
+        match request {
+            CompilerOutputRequest::ListProjects { .. } => {
+                let projects = self
+                    .adapter
+                    .registered_projects
+                    .iter()
+                    .copied()
+                    .filter(|id| {
+                        RegisteredProjectId::from_wire(*id)
+                            .is_some_and(|id| self.output_write_grants.contains_key(&id))
+                    })
+                    .collect::<BTreeSet<_>>();
+                self.output_session_projects
+                    .insert(session.id.clone(), projects.clone());
+                CompilerOutputReply::Projects(CompilerProjectInventory {
+                    projects: projects
+                        .into_iter()
+                        .map(|id| CompilerProject { id })
+                        .collect(),
+                })
+            }
+            CompilerOutputRequest::Build { project, .. } => {
+                if !project.is_well_formed()
+                    || !self
+                        .output_session_projects
+                        .get(&session.id)
+                        .is_some_and(|projects| projects.contains(&project.id))
+                {
+                    return output_error(
+                        CompilerOutputErrorCode::UnobservedProject,
+                        "compiler output project was not inventoried on this stream",
+                    );
+                }
+                let Some(project_id) = RegisteredProjectId::from_wire(project.id) else {
+                    return output_error(
+                        CompilerOutputErrorCode::UnobservedProject,
+                        "invalid compiler output project",
+                    );
+                };
+                let build = self.build_and_stage_owner_output(project_id);
+                // The build can advance the service generation even when
+                // publication later fails. Revoke query pagination evidence.
+                self.adapter.revoke_project_session_cursors(project.id);
+                match build {
+                    Ok((check, published)) => {
+                        let result = CompilerOutputBuildResult {
+                            generation: generation_to_wire(check.generation),
+                            project_fingerprint: check.project_fingerprint,
+                            has_errors: check.has_errors,
+                            published: published.is_some(),
+                        };
+                        if !result.is_well_formed_for_project(project) {
+                            return output_error(
+                                CompilerOutputErrorCode::BuildFailed,
+                                "compiler output result failed structural validation",
+                            );
+                        }
+                        CompilerOutputReply::Build(result)
+                    }
+                    Err(OwnerBuildStageError::NotGranted) => output_error(
+                        CompilerOutputErrorCode::NotGranted,
+                        "compiler output write was not granted",
+                    ),
+                    Err(_) => output_error(
+                        CompilerOutputErrorCode::BuildFailed,
+                        "compiler output build or staging failed",
+                    ),
+                }
+            }
+            CompilerOutputRequest::Hello { .. } | CompilerOutputRequest::Unknown => unreachable!(),
+        }
+    }
+
+    /// Releases the project inventory when an accepted output stream closes.
+    pub fn end_output_session(&mut self, session: &CompilerOutputSessionReceipt) {
+        self.output_session_projects.remove(&session.id);
+    }
+
     /// Drains a bounded batch on the core session thread. The listener worker
     /// owns framing/handshake only and never obtains this adapter or its
     /// incremental compiler state.
@@ -610,6 +718,13 @@ impl CoreCompilerServiceSession {
             .stage_owner_output(check.generation, |stage| planned.write_to(stage))
             .map_err(OwnerBuildStageError::Io)?;
         Ok((check, Some(published)))
+    }
+}
+
+fn output_error(code: CompilerOutputErrorCode, message: &'static str) -> CompilerOutputReply {
+    CompilerOutputReply::Error {
+        code,
+        message: message.to_string(),
     }
 }
 
