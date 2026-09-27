@@ -2451,6 +2451,25 @@ execution replies have no public position; the child runtime policy is the
 fixed checked mode. Real launcher-supervised two-tab, navigation, authorized
 external failure, and core-binary/browser-IPC tests exercise these boundaries.
 
+**E2.3.1.1 live-value boundary inventory:** The installed page contract
+crossings are the core-owned document-text and canonical-origin results.
+They copy Rust strings, run a pure bounded `ContractValue::String` validation,
+then permit BlueJS callback capture. This real path can exercise accepted
+strings, string-size limits, and selected node/work budgets. Its `string`
+contract accepts every in-budget Rust string, so it cannot exercise a
+type-malformed value. It also cannot receive an array, object, or cyclic
+runtime reference, so a validator-only nested-value test cannot establish
+the E2.3 live-boundary claim. The compiler and debugger validation protocols
+accept a caller-supplied, data-only `CompilerContractValue` tree for static
+plans; that protocol explicitly never describes a live BlueJS value, and its
+owned recursive enum cannot encode a cycle. E2.3.1 therefore separates
+string-boundary regressions from the work needed to identify or add a
+reviewed structured runtime crossing for malformed, deep, and cyclic values.
+The latter must preserve pure bounded
+validation, explicit owner capability, and rejection before host/VM effects;
+no test may claim cyclic/deep live coverage by fabricating an impossible
+snapshot or calling the plan validator in isolation.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

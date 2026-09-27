@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E2.3.1.** Cover each value class at a live boundary; split
-its six classes into independently reviewable steps before implementation.
+**Current leaf: E2.3.1.2.** Test representable string-value classes at the
+existing live page boundary before adding a structured boundary.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -620,6 +620,10 @@ channel with explicit owner/client grants.
 - [ ] **E2.3** Test valid, malformed, cyclic, deep, oversized, and exhausting
   values at a live boundary.
   - [ ] **E2.3.1** One live-boundary test per value class: valid, malformed, cyclic, deep, oversized, exhausting.
+    - [x] **E2.3.1.1** Inventory the actual live value crossings and map each required class to a representable boundary. The installed page contract crossings copy only document-text and origin strings before BlueJS capture. The static compiler/debugger `CompilerContractValue` tree can hold nested data but cannot encode a cycle and is explicitly not a live runtime value. PLAN.md records which tests can use the current page boundary and why cyclic/deep values need a reviewed structured runtime crossing rather than a synthetic validator-only test.
+    - [ ] **E2.3.1.2** Exercise valid, oversized, and resource-exhausting values at the existing copied-string page boundary, with fixed source-free reports, exact owner attribution, and no VM capture after refusal. The current `string` contract accepts every in-budget Rust string, so a type-malformed value cannot be claimed here.
+    - [ ] **E2.3.1.3** Add or identify a reviewed, bounded structured live crossing that can actually receive malformed, nested, and cyclic runtime values. Keep its capability explicit, reject a cycle before any VM/host side effect, and prove a deep value stops at the selected limit. Do not widen the page API solely to make a test pass; if the existing runtime cannot supply such a crossing, split the required production boundary work first.
+    - [ ] **E2.3.1.4** Run one focused live-boundary regression per required class, then close E2.3.1 and E2.3 after verifying the six cases use actual owner-selected contracts and no protected value text reaches public reports.
 
 #### E3. Preserve strict policy in emitted output.
 
