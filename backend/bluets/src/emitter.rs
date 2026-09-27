@@ -99,6 +99,15 @@ pub(crate) fn emit(
         .filter(|(id, _)| !is_declaration_module(id))
         .map(|(id, checked_module)| {
             let (emitted, strict_runtime) = emit_javascript(&checked_module.module, options)?;
+            if options.source_map
+                && emitted.provenance.len() > options.limits.max_source_map_segments
+            {
+                return Err(Diagnostic::error(
+                    DiagnosticCode::ResourceLimit,
+                    SourceSpan::new(id, 0, 0),
+                    "emitted source map exceeded the segment limit",
+                ));
+            }
             let source_map = options
                 .source_map
                 .then(|| source_map(id, &checked_module.module.source, &emitted));
@@ -144,8 +153,9 @@ pub(crate) fn emit(
 /// boundaries are the only sites that can add a mapping segment.
 pub(crate) fn validate_source_map_limits(
     checked: &CheckedProject,
-    max_segments: usize,
+    options: &CompilerOptions,
 ) -> Vec<Diagnostic> {
+    let max_segments = options.limits.max_source_map_segments;
     checked
         .modules
         .iter()
@@ -165,13 +175,34 @@ pub(crate) fn validate_source_map_limits(
                     matches!(declaration, Declaration::Import(import) if !import.type_only)
                 })
                 .count();
+            let strict_functions = module
+                .declarations
+                .iter()
+                .filter_map(|declaration| match declaration {
+                    Declaration::Function(function) if options.strict_runtime_boundaries.iter().any(
+                        |boundary| boundary.span == function.span && boundary.function == function.name,
+                    ) => Some(function.parameters.len()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            let strict_edits = if strict_functions.is_empty() {
+                0
+            } else {
+                1usize.saturating_add(strict_functions.len().saturating_mul(3))
+            };
+            let inserted_line_breaks = if strict_functions.is_empty() {
+                0
+            } else {
+                1usize.saturating_add(strict_functions.iter().sum::<usize>())
+            };
             let bound = physical_lines.saturating_add(
                 module
                     .edits
                     .len()
                     .saturating_add(rewritten_imports)
+                    .saturating_add(strict_edits)
                     .saturating_mul(2),
-            );
+            ).saturating_add(inserted_line_breaks);
             (bound > max_segments).then(|| {
                 Diagnostic::error(
                     DiagnosticCode::ResourceLimit,
@@ -615,7 +646,11 @@ impl<'a> ProvenanceEmitter<'a> {
         self.mark(source_offset);
         let mut characters = value.chars().peekable();
         while let Some(character) = characters.next() {
-            self.push(character, characters.peek().copied());
+            let next = characters.peek().copied();
+            self.push(character, next);
+            if is_line_break(character, next) {
+                self.mark(source_offset);
+            }
         }
     }
 

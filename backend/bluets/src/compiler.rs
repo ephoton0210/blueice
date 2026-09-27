@@ -360,10 +360,7 @@ fn compile_with_cache(
     diagnostics.extend(checker_diagnostics);
     diagnostics.extend(strict_boundaries::validate_descriptors(&project, &options));
     if options.source_map {
-        diagnostics.extend(emitter::validate_source_map_limits(
-            &checked,
-            options.limits.max_source_map_segments,
-        ));
+        diagnostics.extend(emitter::validate_source_map_limits(&checked, &options));
     }
     diagnostics.sort_by(|left, right| {
         (&left.span.module, left.span.start, left.code.to_string()).cmp(&(

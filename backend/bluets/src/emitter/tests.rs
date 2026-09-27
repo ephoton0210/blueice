@@ -1,7 +1,11 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-use crate::{compile, CompilerOptions, MapLoader, ModuleSource};
+
+use crate::{
+    compile, CompilerLimits, CompilerOptions, MapLoader, ModuleSource, RuntimePolicy, SourceSpan,
+    StrictRuntimeBoundary,
+};
 
 use super::source_line_column;
 
@@ -96,6 +100,168 @@ fn source_map_tracks_columns_across_erased_annotations() {
     assert!(mappings
         .iter()
         .any(|mapping| { *mapping == (0, expected_generated_column, 0, expected_source_column) }));
+}
+
+fn strict_boundary(
+    module: &str,
+    source: &str,
+    function: &str,
+    contract_id: &str,
+    budget: usize,
+) -> StrictRuntimeBoundary {
+    let start = source.find("export function").unwrap();
+    let end = start + source[start..].find('}').unwrap() + 1;
+    StrictRuntimeBoundary {
+        contract_id: contract_id.to_string(),
+        function: function.to_string(),
+        span: SourceSpan::new(module, start, end),
+        max_string_bytes: budget,
+        helper_version: "bluets-runtime-helper-v1".to_string(),
+    }
+}
+
+#[test]
+fn strict_calls_keep_ingress_and_egress_source_map_positions() {
+    let module = "src/main.ts";
+    let source =
+        "export function join(left: string, right: string): string { return left + right; }";
+    let loader = MapLoader::from([ModuleSource::new(module, source)]);
+    let boundary = strict_boundary(module, source, "join", "join-v1", 32);
+    let options = CompilerOptions {
+        runtime_policy: RuntimePolicy::StrictRuntime,
+        strict_runtime_boundaries: vec![boundary.clone()],
+        source_map: true,
+        ..CompilerOptions::default()
+    };
+    let result = compile(module, &loader, options.clone());
+    assert!(!result.has_errors(), "{:?}", result.diagnostics);
+    let output = result.output.unwrap();
+    let artifact = &output.artifacts[module];
+    let record = artifact.strict_runtime.as_ref().unwrap();
+    assert_eq!(record.boundaries[0].source_span, boundary.span);
+    assert_eq!(record.boundaries[0].ingress.len(), 2);
+    let mappings = decode_mappings(&artifact.source_map.as_ref().unwrap().mappings);
+    for site in &record.boundaries[0].ingress {
+        let (generated_line, _) = source_line_column(&artifact.javascript, site.generated_start);
+        let (source_line, source_column) =
+            source_line_column(source, source.find('{').unwrap() + 1);
+        assert!(
+            mappings
+                .iter()
+                .any(|mapping| { *mapping == (generated_line, 0, source_line, source_column) }),
+            "missing ingress map for {site:?}: {mappings:?}"
+        );
+    }
+    let egress = &record.boundaries[0].egress;
+    let (generated_line, generated_column) =
+        source_line_column(&artifact.javascript, egress.generated_start);
+    let (source_line, source_column) = source_line_column(source, egress.source_span.start);
+    assert!(
+        mappings.iter().any(|mapping| {
+            *mapping == (generated_line, generated_column, source_line, source_column)
+        }),
+        "missing egress map: {mappings:?}"
+    );
+
+    let checked = compile(
+        module,
+        &loader,
+        CompilerOptions {
+            source_map: true,
+            limits: CompilerLimits {
+                max_source_map_segments: 10,
+                ..CompilerLimits::default()
+            },
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!checked.has_errors(), "{:?}", checked.diagnostics);
+    let bounded = compile(
+        module,
+        &loader,
+        CompilerOptions {
+            limits: CompilerLimits {
+                max_source_map_segments: 10,
+                ..CompilerLimits::default()
+            },
+            ..options
+        },
+    );
+    assert!(bounded.output.is_none());
+    assert!(bounded
+        .diagnostics
+        .iter()
+        .any(|diagnostic| { diagnostic.code == crate::DiagnosticCode::ResourceLimit }));
+}
+
+#[test]
+fn strict_helper_calls_survive_in_every_type_imported_module() {
+    let main_id = "src/main.ts";
+    let other_id = "src/nested/other.ts";
+    let main = "import type { Marker } from './nested/other.ts';\nexport function echo(value: string): string { return value; }";
+    let other = "export interface Marker { value: string }\nexport function more(value: string): string { return value + '!'; }";
+    let loader = MapLoader::from([
+        ModuleSource::new(main_id, main),
+        ModuleSource::new(other_id, other),
+    ]);
+    let result = compile(
+        main_id,
+        &loader,
+        CompilerOptions {
+            runtime_policy: RuntimePolicy::StrictRuntime,
+            strict_runtime_boundaries: vec![
+                strict_boundary(main_id, main, "echo", "echo-v1", 16),
+                strict_boundary(other_id, other, "more", "more-v1", 16),
+            ],
+            source_map: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!result.has_errors(), "{:?}", result.diagnostics);
+    let output = result.output.unwrap();
+    assert_eq!(output.artifacts.len(), 2);
+    for (module, expected_path) in [
+        (main_id, "../bluets.runtime-helper.v1.mjs"),
+        (other_id, "../../bluets.runtime-helper.v1.mjs"),
+    ] {
+        let artifact = &output.artifacts[module];
+        let record = artifact.strict_runtime.as_ref().unwrap();
+        assert!(record.helper_import.expected_text.contains(expected_path));
+        assert_eq!(record.boundaries.len(), 1);
+        assert_eq!(record.boundaries[0].ingress.len(), 1);
+        for site in record.boundaries[0]
+            .ingress
+            .iter()
+            .chain(std::iter::once(&record.boundaries[0].egress))
+        {
+            assert!(artifact.javascript[site.generated_start..].starts_with(&site.expected_text));
+        }
+        assert!(artifact.source_map.is_some());
+    }
+    assert!(!output.artifacts[main_id].javascript.contains("import type"));
+}
+
+#[test]
+fn unsupported_typed_strict_crossing_never_reaches_emission() {
+    let module = "src/main.ts";
+    let source = "export function wrong(value: number): string { return 'ok'; }";
+    let loader = MapLoader::from([ModuleSource::new(module, source)]);
+    let result = compile(
+        module,
+        &loader,
+        CompilerOptions {
+            runtime_policy: RuntimePolicy::StrictRuntime,
+            strict_runtime_boundaries: vec![strict_boundary(
+                module, source, "wrong", "wrong-v1", 16,
+            )],
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(result.output.is_none());
+    assert!(result.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == crate::DiagnosticCode::InvalidContract
+            && diagnostic.span == SourceSpan::new(module, 0, source.len())
+    }));
 }
 
 #[test]

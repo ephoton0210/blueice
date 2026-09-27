@@ -2696,6 +2696,23 @@ the MPL-licensed `emitter/tests.rs` submodule. The owner file fell from
 tests pass using the same target directory. The following leaf adds the
 strict crossing and provenance cases in the bounded test module.
 
+**E3.2.3.2.3.3.3.2 emitted crossing proof:** Inserted multiline helper code
+now contributes a source-map segment at each generated line start, anchored
+to the function body's opening source byte. The return wrapper maps its
+generated call directly to the return expression's source byte. The
+pre-emission source-map bound includes strict insertions and their newlines;
+the emitter also checks the actual segment count before returning an
+artifact. A focused test decodes mappings for two ingress calls and one
+egress call, and proves a cap that permits the checked source refuses the
+additional strict segments. Another test compiles a two-module graph linked
+through an erased type-only import and checks that each module retains its
+own root-relative helper path and exact recorded calls. A typed wrong
+parameter fails with `InvalidContract` at the function span and no output.
+All 165 BlueTS library tests, 12 BlueTSC binary tests, workspace Clippy, and
+formatting pass in the same target directory. This closes the supported
+crossing insertion leaf; strict standalone publication remains closed until
+E3.2.3.3 audits target retention and publisher/manifest consistency.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
