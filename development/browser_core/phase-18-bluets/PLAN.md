@@ -4085,6 +4085,22 @@ project identity containing JSON delimiters, a forged session field, the
 marker, and an instruction remains a single encoded value; parsing the
 result still yields the genuine session receipt.
 
+**F3.2.1.1 independent build-authority decision:** The existing compiler
+query socket and its exact fixed manifest stay read-only. An owner must
+separately configure an output-write endpoint, which binds only physical
+projects that received `grant_output_write` at sealed startup. A dedicated
+output protocol will mint its own per-stream receipt and inventory only the
+granted, publicly exposed project IDs. A build request accepts the output
+receipt and opaque project ID, then calls the already gated core owner
+build/staging method on the session thread. Its bounded reply contains a
+compiler check and publication status, never emitted artifacts, output paths,
+or a caller-supplied destination. MCP will attach this endpoint only through
+an explicit owner path and advertise its build tool only when that attachment
+is present. A successful or failed build revokes prior query-generation
+evidence for that project; the independent receipt prevents a query session
+from being interpreted as write authority. The launcher relay, if used for
+this endpoint, must pin accepted output streams to one core generation.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
