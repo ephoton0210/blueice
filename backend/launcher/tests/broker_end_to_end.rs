@@ -542,9 +542,22 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
         ])
     );
     write_client_message(&mut frontend, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    let reply = read_server_message(&mut frontend).unwrap();
+    let ServerMessage::BlueTsScriptReports(reports) = reply else {
+        panic!("expected BlueTS script reports: {reply:?}");
+    };
+    let position = reports[2]
+        .source_position
+        .expect("an inline compiler rejection has a verified source position");
+    assert!(position.start < position.end);
+    assert!(position.end as usize <= "blueiceDocumentText(1);".len());
+    let mut without_positions = reports;
+    for report in &mut without_positions {
+        report.source_position = None;
+    }
     assert_eq!(
-        read_server_message(&mut frontend).unwrap(),
-        ServerMessage::BlueTsScriptReports(vec![
+        without_positions,
+        vec![
             blueice_ipc::BlueTsScriptExecutionReport {
                 tab_id: 1,
                 document_generation: 1,
@@ -574,7 +587,7 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
                     category: "BlueTS compilation rejected the page script".to_string(),
                 },
             },
-        ])
+        ]
     );
 
     // The only public operation here is normal frontend shutdown. It neither

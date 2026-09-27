@@ -4186,6 +4186,14 @@ client now also sends a contract string one byte over the MCP adapter's 256 KiB
 limit. The adapter returns invalid parameters before compiler validation, and
 the same session can still validate the inventoried contract afterward.
 
+**G.1.1 workspace test gate:** A full `cargo test --workspace` run exposed
+one outdated launcher assertion in the supervised-child end-to-end fixture:
+an inline BlueTS compiler rejection now carries a verified original-source
+range. The test now checks that the range is nonempty and within the exact
+inline source, then compares the other report fields as before. Its focused
+real-process test and the full workspace rerun pass. Both runs reused the
+workspace's existing target directory.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
