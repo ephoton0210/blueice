@@ -649,6 +649,9 @@ channel with explicit owner/client grants.
             - [x] **E3.2.3.2.3.3.3.1** Move the emitter's existing tests to an MPL-licensed submodule before adding strict source-map and multi-module cases; retain all 15 emitter tests and keep the owner file below 1,300 lines.
             - [x] **E3.2.3.2.3.3.3.2** Add strict call-placement, source-map, typed-refusal, and multi-module regressions, then close E3.2.3.2.3.3.3. The 165 BlueTS library tests, 12 binary tests, workspace Clippy, and formatting pass with the reused target.
     - [ ] **E3.2.3.3** Audit ES2020/ES2022 emitted modules and source maps for retained exact helper calls, verify publisher/manifest consistency, and open standalone strict build only for fully covered targets. Prove unsupported output fails before publication and then close E3.2.3 and E3.2.
+      - [x] **E3.2.3.3.1** Compare both supported ECMAScript targets with source maps and exact strict call records; document why the admitted syntax is retained by both targets. ES2020 and ES2022 yield byte-identical modules, maps, and crossing records for the admitted primitive-string function while retaining distinct target fingerprints.
+      - [ ] **E3.2.3.3.2** Bind owner descriptors to the manifest and add a publisher audit of helper identity, module imports, recorded call sites, output fingerprint, and requested maps before staging.
+      - [ ] **E3.2.3.3.3** Open standalone strict builds only with a complete admitted descriptor set; test successful publication and unsupported/ambient failure without replacing a prior output directory, then close E3.2.3.3.
 - [ ] **E3.3** Make direct-page and emitted ESM reject the same malformed value;
   a weaker artifact must never claim strict-runtime.
   - [ ] **E3.3.1** Run one malformed value through both paths and assert the same rejection.

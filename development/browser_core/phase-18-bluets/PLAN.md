@@ -2713,6 +2713,16 @@ formatting pass in the same target directory. This closes the supported
 crossing insertion leaf; strict standalone publication remains closed until
 E3.2.3.3 audits target retention and publisher/manifest consistency.
 
+**E3.2.3.3.1 target retention:** The admitted emitted profile uses only ESM
+named function exports, primitive string parameters, string literals,
+parentheses, and string concatenation. Its generated validation calls and
+static helper import are valid in both declared targets without syntax
+downleveling. A focused ES2020/ES2022 test compiles the same owner descriptor
+with source maps and proves byte-identical JavaScript, source maps, and
+strict crossing records while the target-bound fingerprints differ. This
+proves compiler retention for the current narrow profile; publisher
+consistency and public strict build admission remain separate gates.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

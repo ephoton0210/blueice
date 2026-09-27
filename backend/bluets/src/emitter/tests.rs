@@ -3,8 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{
-    compile, CompilerLimits, CompilerOptions, MapLoader, ModuleSource, RuntimePolicy, SourceSpan,
-    StrictRuntimeBoundary,
+    compile, CompilerLimits, CompilerOptions, EcmaTarget, MapLoader, ModuleSource, RuntimePolicy,
+    SourceSpan, StrictRuntimeBoundary,
 };
 
 use super::source_line_column;
@@ -262,6 +262,52 @@ fn unsupported_typed_strict_crossing_never_reaches_emission() {
         diagnostic.code == crate::DiagnosticCode::InvalidContract
             && diagnostic.span == SourceSpan::new(module, 0, source.len())
     }));
+}
+
+#[test]
+fn both_ecmascript_targets_retain_identical_strict_calls_and_maps() {
+    let module = "src/main.ts";
+    let source =
+        "export function join(left: string, right: string): string { return left + right; }";
+    let loader = MapLoader::from([ModuleSource::new(module, source)]);
+    let boundary = strict_boundary(module, source, "join", "join-v1", 32);
+    let mut outputs = Vec::new();
+    for target in [EcmaTarget::Es2020, EcmaTarget::Es2022] {
+        let result = compile(
+            module,
+            &loader,
+            CompilerOptions {
+                target,
+                runtime_policy: RuntimePolicy::StrictRuntime,
+                source_map: true,
+                strict_runtime_boundaries: vec![boundary.clone()],
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(!result.has_errors(), "{target:?}: {:?}", result.diagnostics);
+        let output = result.output.unwrap();
+        let artifact = &output.artifacts[module];
+        assert_eq!(
+            artifact.strict_runtime.as_ref().unwrap().boundaries.len(),
+            1
+        );
+        assert_eq!(
+            artifact.strict_runtime.as_ref().unwrap().boundaries[0]
+                .ingress
+                .len(),
+            2
+        );
+        outputs.push((
+            output.fingerprint,
+            artifact.javascript.clone(),
+            artifact.source_map.clone().unwrap(),
+            artifact.strict_runtime.clone().unwrap(),
+        ));
+    }
+    assert_ne!(outputs[0].0, outputs[1].0);
+    assert_eq!(outputs[0].1, outputs[1].1);
+    assert_eq!(outputs[0].2, outputs[1].2);
+    assert_eq!(outputs[0].3, outputs[1].3);
 }
 
 #[test]
