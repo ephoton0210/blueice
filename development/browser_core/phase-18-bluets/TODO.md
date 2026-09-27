@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: H.4.1.** Define bounded callback/method overload resolution
-and the diagnostic for calls that cannot select a unique signature.
+**Current leaf: H.4.2.** Implement and verify the selected two-tag,
+callback-bearing method overload form through the four gates.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -790,7 +790,7 @@ Keep check read-only and owner registration sealed before listeners.
     - [x] **H.3.2.2** Verify erased JavaScript emission and direct-page execution for the selected true/false, inequality, and guard-return paths; keep unsupported shapes outside the new narrowing claim. Public compiler tests confirm erased annotations and preserved `typeof`; page-realm tests execute both equality branches, inequality early return, and string throw, while mutable/parameter obligations reject before direct execution. BlueTS and bridge crate tests and all-target Clippy pass under the disk guard.
     - [x] **H.3.2.3** Compare accepted behavior and rejected diagnostics with pinned TypeScript 5.9.3, verify debugger provenance and stale-generation behavior, and run workspace gates under the shared-target disk budget. Two new oracle fixtures pass in the full pinned matrix; a direct-page nested frame retains original function provenance and expires on navigation. Workspace tests, all-target build and Clippy, rustfmt, and whitespace checks pass with one 13 GiB target and about 628 GiB host space free.
 - [ ] **H.4** Define callback/method overload resolution with the same four gates.
-  - [ ] **H.4.1** Define resolution rules and the ambiguous-call diagnostic.
+  - [x] **H.4.1** Define resolution rules and the ambiguous-call diagnostic. [PLAN.md](PLAN.md#h41-first-callback-bearing-method-overload-form) selects exactly two same-named interface/record methods with distinct string-literal first arguments and one named primitive callback each. An exact tag selects one callback signature; a union of both tags yields one stable `BTS3003` ambiguous-call diagnostic at the call, an unrelated tag has a distinct no-match diagnostic, and a wrong callback remains an argument mismatch. Overlaps, larger/generic/optional/rest sets, anonymous callbacks, inherited/intersection receivers, and optional calls remain outside this first form. H.4.2 owns parser, checker, emitted/direct runtime, debugger, and oracle evidence.
   - [ ] **H.4.2** Test with the same four gates: checker, emitter, direct execution, oracle.
 
 ### I. Grow expressions one form at a time.
