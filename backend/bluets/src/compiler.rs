@@ -9,6 +9,7 @@ use crate::debug_info;
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::emitter;
 use crate::parser::{parse_module, parse_module_with_limits, Module, ParserLimits};
+use crate::strict_boundaries;
 use crate::{Compilation, LANGUAGE_VERSION};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
@@ -64,6 +65,17 @@ pub enum RuntimePolicy {
     StrictRuntime,
 }
 
+/// An owner-selected source crossing for the first emitted strict-runtime
+/// profile. The source span must match a named exported function exactly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StrictRuntimeBoundary {
+    pub contract_id: String,
+    pub function: String,
+    pub span: SourceSpan,
+    pub max_string_bytes: usize,
+    pub helper_version: String,
+}
+
 impl RuntimePolicy {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -96,6 +108,9 @@ pub struct CompilerOptions {
     /// host-supplied ambient function. Page hosts enable this so a TypeScript
     /// profile cannot silently compile a call to a missing runtime binding.
     pub require_declared_global_calls: bool,
+    /// Explicit emitted crossings. Direct page hosts leave this empty because
+    /// their runtime contract inventory is owned and checked separately.
+    pub strict_runtime_boundaries: Vec<StrictRuntimeBoundary>,
     pub limits: CompilerLimits,
 }
 
@@ -109,6 +124,7 @@ impl Default for CompilerOptions {
             resolver_fingerprint: "relative-v1".to_string(),
             ambient_declaration_modules: Vec::new(),
             require_declared_global_calls: false,
+            strict_runtime_boundaries: Vec::new(),
             limits: CompilerLimits::default(),
         }
     }
@@ -342,6 +358,7 @@ fn compile_with_cache(
         options.limits.max_type_expansions,
     );
     diagnostics.extend(checker_diagnostics);
+    diagnostics.extend(strict_boundaries::validate_descriptors(&project, &options));
     if options.source_map {
         diagnostics.extend(emitter::validate_source_map_limits(
             &checked,
@@ -732,6 +749,15 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(options.runtime_policy.as_str());
     add(&options.resolver_fingerprint);
     add(&options.require_declared_global_calls.to_string());
+    for boundary in &options.strict_runtime_boundaries {
+        add(&boundary.contract_id);
+        add(&boundary.function);
+        add(&boundary.span.module);
+        add(&boundary.span.start.to_string());
+        add(&boundary.span.end.to_string());
+        add(&boundary.max_string_bytes.to_string());
+        add(&boundary.helper_version);
+    }
     for declaration in &options.ambient_declaration_modules {
         add(&declaration.id);
         add(&declaration.text);

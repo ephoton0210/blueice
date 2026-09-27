@@ -25,6 +25,7 @@ mod debug_info;
 mod diagnostic;
 mod emitter;
 mod parser;
+mod strict_boundaries;
 mod syntax;
 
 pub use authorized_loader::{
@@ -34,7 +35,7 @@ pub use authorized_loader::{
 pub use checker::{CheckedModule, CheckedProject, Symbol, SymbolKind, Type};
 pub use compiler::{
     compile, CompilerLimits, CompilerOptions, EcmaTarget, IncrementalCompiler, IncrementalResult,
-    MapLoader, ModuleLoader, ModuleSource, Project, RuntimePolicy,
+    MapLoader, ModuleLoader, ModuleSource, Project, RuntimePolicy, StrictRuntimeBoundary,
 };
 pub use contracts::{
     Contract, ContractError, ContractPlan, ContractValue, ValidationError, ValidationLimits,

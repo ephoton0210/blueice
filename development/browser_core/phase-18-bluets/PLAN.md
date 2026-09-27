@@ -2625,6 +2625,20 @@ turn an unsupported crossing into a successful strict artifact merely by
 erasing its syntax. Until all of these checks run, standalone strict build
 continues to refuse before publication.
 
+**E3.2.3.2.3.1 descriptor plumbing:** `bluetsc.json` now accepts an owner
+`strictBoundaries` array with root-confined source paths, exact declaration
+byte spans, contract IDs, function names, UTF-8 byte limits, and helper
+versions. The compiler option carries the same records and fingerprints every
+field in owner order. Before emission, it rejects records that do not match
+an exact named exported function, repeat a contract ID or function, select a
+different policy/helper version, or exceed helper v1's safe-integer limit.
+Direct page hosts leave the emitted descriptor list empty because their live
+boundary inventory is a separate owner-selected route. This leaf only binds
+descriptors; emitted JavaScript still has no inserted helper calls and the
+standalone strict build refusal remains in force. Two focused compiler tests,
+one config path/span test, all 158 BlueTS library tests, workspace Clippy,
+and formatting pass against the reused target directory.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

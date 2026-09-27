@@ -6,7 +6,7 @@
 
 use blueice_bluets::{
     compile, BuildArtifact, CompilerLimits, CompilerOptions, EcmaTarget, ModuleLoader,
-    ModuleSource, RuntimePolicy,
+    ModuleSource, RuntimePolicy, SourceSpan, StrictRuntimeBoundary,
 };
 use ring::digest::{digest, SHA256};
 use serde::{Deserialize, Serialize};
@@ -72,6 +72,20 @@ struct BlueTscConfig {
     runtime_policy: Option<String>,
     #[serde(default)]
     imports: BTreeMap<String, String>,
+    #[serde(default)]
+    strict_boundaries: Vec<StrictBoundaryConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StrictBoundaryConfig {
+    contract_id: String,
+    module: String,
+    function: String,
+    source_start: usize,
+    source_end: usize,
+    max_string_bytes: usize,
+    helper_version: String,
 }
 
 fn main() -> ExitCode {
@@ -512,6 +526,11 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         }
         imports.insert(specifier, target);
     }
+    let strict_runtime_boundaries = config
+        .strict_boundaries
+        .into_iter()
+        .map(|boundary| configured_strict_boundary(&root, boundary))
+        .collect::<Result<Vec<_>, _>>()?;
     let options = CompilerOptions {
         target: parse_target(config.target.as_deref())?,
         runtime_policy: parse_runtime_policy(config.runtime_policy.as_deref())?,
@@ -523,6 +542,7 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         // declarations through the library API.
         ambient_declaration_modules: Vec::new(),
         require_declared_global_calls: false,
+        strict_runtime_boundaries,
         limits: CompilerLimits::default(),
     };
     Ok(Invocation {
@@ -531,6 +551,44 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         out_dir,
         options,
         imports,
+    })
+}
+
+fn configured_strict_boundary(
+    root: &Path,
+    boundary: StrictBoundaryConfig,
+) -> Result<StrictRuntimeBoundary, String> {
+    let relative = Path::new(&boundary.module);
+    if relative.as_os_str().is_empty()
+        || relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err("strict boundary module must be a root-relative source path".to_string());
+    }
+    let module = absolute_existing_path(&root.join(relative))
+        .map_err(|error| format!("cannot read strict boundary module: {error}"))?;
+    ensure_within(&module, root, "strict boundary module")?;
+    if !module.is_file()
+        || !matches!(
+            module.extension().and_then(|value| value.to_str()),
+            Some("ts" | "tsx")
+        )
+        || is_declaration_path(&module)
+    {
+        return Err("strict boundary module must be a .ts or .tsx source file".to_string());
+    }
+    Ok(StrictRuntimeBoundary {
+        contract_id: boundary.contract_id,
+        function: boundary.function,
+        span: SourceSpan::new(
+            project_module_id(root, &module),
+            boundary.source_start,
+            boundary.source_end,
+        ),
+        max_string_bytes: boundary.max_string_bytes,
+        helper_version: boundary.helper_version,
     })
 }
 

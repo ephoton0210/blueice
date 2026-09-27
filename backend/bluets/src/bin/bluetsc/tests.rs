@@ -104,6 +104,41 @@ fn project_module_ids_are_root_relative() {
     );
 }
 
+#[test]
+fn configured_strict_boundary_is_confined_and_keeps_exact_source_span() {
+    let temporary = unique_test_directory("strict-boundary-config");
+    let module = temporary.join("main.ts");
+    fs::write(
+        &module,
+        "export function echo(value: string): string { return value; }",
+    )
+    .unwrap();
+    let config = temporary.join("bluetsc.json");
+    fs::write(
+        &config,
+        r#"{"entries":["main.ts"],"runtimePolicy":"strict-runtime","strictBoundaries":[{"contractId":"echo-string-v1","module":"main.ts","function":"echo","sourceStart":0,"sourceEnd":61,"maxStringBytes":64,"helperVersion":"bluets-runtime-helper-v1"}]}"#,
+    )
+    .unwrap();
+    let invocation = resolve_config_invocation(config).unwrap();
+    let boundary = &invocation.options.strict_runtime_boundaries[0];
+    assert_eq!(boundary.span.module, "main.ts");
+    assert_eq!(boundary.span.start, 0);
+    assert_eq!(boundary.span.end, 61);
+    assert_eq!(boundary.max_string_bytes, 64);
+
+    let invalid = StrictBoundaryConfig {
+        contract_id: "x".to_string(),
+        module: "../outside.ts".to_string(),
+        function: "echo".to_string(),
+        source_start: 0,
+        source_end: 1,
+        max_string_bytes: 1,
+        helper_version: RUNTIME_HELPER_V1_VERSION.to_string(),
+    };
+    assert!(configured_strict_boundary(&temporary, invalid).is_err());
+    fs::remove_dir_all(temporary).unwrap();
+}
+
 fn test_metadata() -> BuildMetadata {
     BuildMetadata {
         language_version: "blue-ts-test",
