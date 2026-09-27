@@ -874,6 +874,7 @@ fn real_subprocess_keeps_opted_in_inline_bluets_reports_isolated_by_tab() {
         blueice_ipc::ServerMessage::TabOpened { tab_id, .. } => tab_id,
         other => panic!("expected TabOpened, got {other:?}"),
     };
+    assert_ne!(tab_two, 1, "the second page must own a distinct tab ID");
     assert!(matches!(
         blueice_ipc::read_server_message(&mut stream).unwrap(),
         blueice_ipc::ServerMessage::FrameReady { .. }
@@ -898,6 +899,21 @@ fn real_subprocess_keeps_opted_in_inline_bluets_reports_isolated_by_tab() {
                 outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
             },
         ])
+    );
+
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueTsScriptReports,
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message_with_ids(&mut stream).unwrap(),
+        (
+            Some(1),
+            None,
+            blueice_ipc::ServerMessage::BlueTsScriptReports(Vec::new()),
+        ),
+        "draining tab one must neither replay its result nor drain tab two"
     );
 
     blueice_ipc::write_client_message_with_ids(

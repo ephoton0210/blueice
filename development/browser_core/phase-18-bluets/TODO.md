@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: D.3.1.** Prove separate results and attribution for multiple
-tabs at the public boundary.
+**Current leaf: D.3.2.** Prove a reload carries no state across document
+generations at the public boundary.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -545,7 +545,7 @@ channel with explicit owner/client grants.
 - [ ] **D.3** Public-boundary tests cover multiple tabs, reload, policy isolation,
   and tab/child resource attribution; no required result depends only on a
   host-neutral unit test.
-  - [ ] **D.3.1** Multiple tabs: separate results and attribution.
+  - [x] **D.3.1** Multiple tabs: separate results and attribution. An existing real core-binary test navigates two independent HTTP pages, then uses public IPC envelopes to retrieve each BlueTS report under its own tab ID and document generation. It now requires distinct tab IDs and proves a second tab-one read is empty before tab two is drained, so tab-one consumption cannot replay or take tab-two results. The focused subprocess test, formatting, and diff checks pass with the shared target cache.
   - [ ] **D.3.2** Reload: no state carried across generations.
   - [ ] **D.3.3** Policy isolation between tabs and children.
   - [ ] **D.3.4** Tab/child resource attribution.

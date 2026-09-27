@@ -2134,6 +2134,16 @@ source or diagnostic field. The focused real core-binary test, formatting,
 and diff checks pass with the shared target cache; D.2 is complete for this
 declared immutable document-text boundary.
 
+**D.3.1 public two-tab attribution:** The existing real `blueice-core`
+binary regression navigates two separate HTTP pages through one public IPC
+session. It requires distinct tab IDs, one source-free BlueTS report with the
+exact requested tab/document/script tuple for each page, and the proper tab
+ID in each public reply envelope. A repeated tab-one query returns an empty
+report before tab two is read, proving the first drain cannot replay its own
+result or consume the second tab's result. The focused subprocess test passes
+with the shared target cache; later D.3 leaves cover reload, policy, and
+resource accounting separately.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
