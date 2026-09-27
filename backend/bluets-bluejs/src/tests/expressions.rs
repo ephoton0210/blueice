@@ -569,22 +569,70 @@ fn refuses_to_silently_drop_an_unstructured_function_body_statement() {
 }
 
 #[test]
-fn structured_while_remains_closed_to_the_direct_bridge_until_lowering() {
+fn lowers_braced_while_to_a_real_bluejs_loop_and_block() {
     let source = "function count(value: number): number { while (value > 0) { value -= 1; } return value; } count(2);";
-    let result = compile_direct_script(
+    let artifact = compile_direct_script(
         ENTRY,
         &MapLoader::from([ModuleSource::new(ENTRY, source)]),
         CompilerOptions::default(),
-    );
-    let Err(BridgeError::UnsupportedRuntimeTarget { span, message }) = result else {
-        panic!("the direct bridge must keep a structured loop closed until lowering");
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+        panic!("expected a direct script");
     };
-    assert_eq!(span.module, ENTRY);
+    assert!(matches!(
+        program.body.as_slice(),
+        [bluejs::Stmt::FunctionDecl(bluejs::Function { body, .. }), bluejs::Stmt::Expr(_)]
+            if matches!(
+                body.as_slice(),
+                [bluejs::Stmt::While { body, .. }, bluejs::Stmt::Return(Some(_))]
+                    if matches!(body.as_ref(), bluejs::Stmt::Block(items)
+                        if matches!(items.as_slice(), [bluejs::Stmt::Expr(_)]))
+            )
+    ));
     assert_eq!(
-        &source[span.start..span.end],
-        "while (value > 0) { value -= 1; }"
+        bluejs::Vm::default().execute(&artifact.bytecode),
+        Ok(bluejs::Value::Number(0.0))
     );
-    assert!(message.contains("while"));
+}
+
+#[test]
+fn direct_while_rejects_local_declarations_and_nested_loops() {
+    for source in [
+        "function f(value: number): number { while (value > 0) { let inner = 1; value -= 1; } return value; } f(2);",
+        "function f(value: number): number { while (value > 0) { while (value > 1) { value -= 1; } value -= 1; } return value; } f(2);",
+        "function f(value: number): number { while (value > 0) { if (value > 1) { const inner = 1; } value -= 1; } return value; } f(2);",
+    ] {
+        let result = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        let Err(BridgeError::UnsupportedRuntimeTarget { span, .. }) = result else {
+            panic!("excluded while body must fail closed: {source}");
+        };
+        assert_eq!(span.module, ENTRY);
+        assert!(span.start < span.end);
+    }
+}
+
+#[test]
+fn direct_while_rejects_unbraced_and_abrupt_control_forms() {
+    for source in [
+        "function f(value: number): number { while (value > 0) value -= 1; return value; } f(2);",
+        "function f(value: number): number { while (value > 0) { break; } return value; } f(2);",
+        "function f(value: number): number { while (value > 0) { continue; } return value; } f(2);",
+        "function f(value: number): number { while (value > 0) { loop: value -= 1; } return value; } f(2);",
+        "function f(value: number): number { do { value -= 1; } while (value > 0); return value; } f(2);",
+        "function f(value: number): number { for (value = 2; value > 0; value -= 1) {} return value; } f(2);",
+    ] {
+        let result = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(result.is_err(), "excluded loop control must fail closed: {source}");
+    }
 }
 
 #[test]

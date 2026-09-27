@@ -81,6 +81,109 @@ fn direct_script_uses_the_page_realms_exact_generation_and_static_metadata() {
 }
 
 #[test]
+fn direct_page_while_runs_zero_and_multiple_iterations() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "function sum(value: number): number { let total: number = 0; while (value) { total += value; value -= 1; } return total; } sum(0) + sum(3);",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    assert_eq!(
+        owner.execute_program(7, &attachment).unwrap(),
+        bluejs::Value::Number(6.0)
+    );
+}
+
+#[test]
+fn direct_page_while_runs_inside_an_existing_braced_if_branch() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "function count(value: number): number { if (value > 0) { while (value > 0) { value -= 1; } } return value; } count(3);",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    assert_eq!(
+        owner.execute_program(7, &attachment).unwrap(),
+        bluejs::Value::Number(0.0)
+    );
+}
+
+#[test]
+fn direct_page_while_preserves_return_and_throw_completion() {
+    let returned = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "function find(value: number): number { while (value > 0) { if (value === 2) { return value; } value -= 1; } return 0; } find(3);",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let thrown = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "function fail(): void { while (true) { throw 7; } } fail();",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let returned = owner.attach_script(&returned, 7, &origin()).unwrap();
+    assert_eq!(
+        owner.execute_program(7, &returned).unwrap(),
+        bluejs::Value::Number(2.0)
+    );
+    let thrown = owner.attach_script(&thrown, 7, &origin()).unwrap();
+    assert!(matches!(
+        owner.execute_program(7, &thrown),
+        Err(BridgeError::PageRuntime(
+            bluejs::BlueJsPageRuntimeError::Runtime(bluejs::RuntimeError::Thrown(
+                bluejs::Value::Number(7.0)
+            ))
+        ))
+    ));
+}
+
+#[test]
+fn direct_page_endless_while_exhausts_its_vm_instruction_budget() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "function spin(): void { while (true) {} } spin();",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut runtime_config = bluejs::BlueJsPageRuntimeConfig::default();
+    runtime_config.vm.instruction_budget = 128;
+    let mut owner =
+        DirectPageRealmOwner::new(runtime_config, DirectDebugRetentionLimits::default()).unwrap();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    assert!(matches!(
+        owner.execute_program(7, &attachment),
+        Err(BridgeError::PageRuntime(
+            bluejs::BlueJsPageRuntimeError::Runtime(bluejs::RuntimeError::InstructionLimit)
+        ))
+    ));
+}
+
+#[test]
 fn direct_script_keeps_ambient_host_typings_static_without_making_them_a_program_source() {
     let artifact = compile_direct_script(
         ENTRY,

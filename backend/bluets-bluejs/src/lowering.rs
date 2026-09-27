@@ -286,10 +286,7 @@ fn lower_function_body(
             }
             FunctionBodyItem::If(statement) => body.push(lower_function_if(module, statement)?),
             FunctionBodyItem::While(statement) => {
-                return Err(unsupported(
-                    statement.span.clone(),
-                    "braced while execution awaits direct AST lowering",
-                ));
+                body.push(lower_function_while(module, statement)?)
             }
             FunctionBodyItem::Opaque(span) => {
                 return Err(unsupported(
@@ -325,6 +322,60 @@ fn lower_function_if(
         consequent,
         alternate,
     })
+}
+
+fn lower_function_while(
+    module: &Module,
+    statement: &FunctionWhileStatement,
+) -> Result<bluejs::Stmt, BridgeError> {
+    ensure_supported_while_body(&statement.body)?;
+    let test = ExpressionLowerer::new(&module.id, &statement.test).parse()?;
+    let body = bluejs::Stmt::Block(lower_function_body(module, &statement.body)?);
+    Ok(bluejs::Stmt::While {
+        test,
+        body: Box::new(body),
+    })
+}
+
+fn ensure_supported_while_body(items: &[FunctionBodyItem]) -> Result<(), BridgeError> {
+    for item in items {
+        match item {
+            FunctionBodyItem::Variable(variable) => {
+                return Err(unsupported(
+                    variable.span.clone(),
+                    "loop-local declarations are outside the direct while subset",
+                ));
+            }
+            FunctionBodyItem::While(statement) => {
+                return Err(unsupported(
+                    statement.span.clone(),
+                    "nested loops are outside the direct while subset",
+                ));
+            }
+            FunctionBodyItem::If(statement) => {
+                ensure_supported_while_if(statement)?;
+            }
+            FunctionBodyItem::Opaque(span) => {
+                return Err(unsupported(
+                    span.clone(),
+                    "loop body syntax is outside the direct while subset",
+                ));
+            }
+            FunctionBodyItem::Expression { .. }
+            | FunctionBodyItem::Throw { .. }
+            | FunctionBodyItem::Return { .. } => {}
+        }
+    }
+    Ok(())
+}
+
+fn ensure_supported_while_if(statement: &FunctionIfStatement) -> Result<(), BridgeError> {
+    ensure_supported_while_body(&statement.consequent)?;
+    match &statement.alternate {
+        Some(FunctionElseBranch::Braced(body)) => ensure_supported_while_body(body),
+        Some(FunctionElseBranch::ElseIf(branch)) => ensure_supported_while_if(branch),
+        None => Ok(()),
+    }
 }
 
 fn lower_variable(
