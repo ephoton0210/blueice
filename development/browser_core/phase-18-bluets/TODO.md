@@ -18,7 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.2.1.** Invalidate retained metadata on reload and tab close.
+**Current leaf: C3.2.2.** Invalidate or restore the same checked metadata
+generation on cache eviction and hibernation.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -510,7 +511,7 @@ channel with explicit owner/client grants.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
   restore the same checked generation; never attach old metadata to a
   successor.
-  - [ ] **C3.2.1** Invalidate metadata on reload and tab close.
+  - [x] **C3.2.1** Invalidate metadata on reload and tab close. Existing real Launcher metadata-policy coverage rejects old inventory, derived type/symbol/contract/source, and lowering requests after HTTP reload. A new real Launcher socket test closes the sole BlueTS tab and proves the realm inventory becomes empty and old metadata/type queries return typed no-payload refusals. The core child-executor test now remints successor metadata after reload, closes that tab, verifies the retained live-document and metadata maps are empty, and rejects the old successor summary. Both focused tests and affected engine/Launcher Clippy/format checks pass.
   - [ ] **C3.2.2** Invalidate or restore the same checked generation on cache eviction and hibernation.
   - [ ] **C3.2.3** Assert a successor never receives the predecessor's metadata.
 

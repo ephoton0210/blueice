@@ -2014,6 +2014,20 @@ checks pass after the split. No affected BlueTS/debugger source or test owner
 exceeds 1,300 lines. C3.1.3.5, C3.1.3, and C3.1 are complete; metadata
 invalidation and successor isolation continue under C3.2.
 
+**C3.2.1 reload and tab-close metadata invalidation:** Reload already clears
+the child executor's retained metadata and makes old public inventory,
+derived type/symbol/contract/source, and lowering requests return typed
+stale-realm refusals on a real Launcher stream. A new real socket test closes
+the only BlueTS tab after receipting and displaying its `number` compiler
+type. The public realm inventory then becomes empty, and old metadata and
+type requests return typed `InvalidTarget` or `StaleRealm` errors with no
+payload. The core child-executor test additionally mints successor metadata
+after reload, closes that tab, checks both retained live-document and
+metadata maps are empty, and rejects its former summary. The existing
+`close_removed_tabs` lifecycle cleanup supplies the behavior; no public wire
+change is needed. Focused core and Launcher tests, affected Clippy, and
+formatting pass with the ordinary shared target cache.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

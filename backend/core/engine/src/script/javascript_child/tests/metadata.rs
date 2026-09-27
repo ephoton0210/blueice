@@ -383,6 +383,38 @@ fn core_remints_real_child_bluets_metadata_handles_and_discards_them_on_navigati
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     ));
 
+    let successor = executor
+        .debugger_programs(tab_id, 2)
+        .unwrap()
+        .into_iter()
+        .find_map(|program| {
+            executor
+                .debugger_static_metadata(
+                    tab_id,
+                    2,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .ok()
+                .and_then(|handles| handles.into_iter().next().map(|handle| (program, handle)))
+        })
+        .expect("successor must retain its own compiler metadata before close");
+    assert!(tabs.close_tab(tab_id));
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert!(!executor.live_documents.contains_key(&tab_id));
+    assert!(!executor.debugger_static_metadata.contains_key(&tab_id));
+    assert!(matches!(
+        executor.debugger_static_metadata_summary(
+            tab_id,
+            2,
+            successor.0.program_handle,
+            successor.0.program_generation,
+            successor.1.metadata_handle,
+            successor.1.metadata_generation,
+        ),
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    ));
+
     drop(executor);
     shutdown_child(&path, &token);
     child.join().unwrap();

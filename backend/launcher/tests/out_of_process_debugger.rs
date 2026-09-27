@@ -47,6 +47,8 @@ mod exceptions;
 mod linked_runtime_display;
 #[path = "out_of_process_debugger/linked_sources.rs"]
 mod linked_sources;
+#[path = "out_of_process_debugger/metadata_lifecycle.rs"]
+mod metadata_lifecycle;
 #[path = "out_of_process_debugger/metadata_policy.rs"]
 mod metadata_policy;
 #[path = "out_of_process_debugger/module_lifecycle.rs"]
