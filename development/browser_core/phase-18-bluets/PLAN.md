@@ -2287,6 +2287,30 @@ in the existing document-admission submodule; the production executor facade
 is below the 1,300-line threshold. Retained compiler/contract/debug cache
 bytes remain E2.2.1.3.
 
+**E2.2.1.3.1 live-page cache ownership decision:** Account bounded retained
+payload bytes, not allocator overhead or process RSS. Count each owned source,
+metadata, contract-plan, and deferred graph copy once at the owner that retains
+it; keep VM bytecode and heap in their existing realm statistics. The charge
+belongs to the exact initiating tab and document generation and disappears
+when that owner replaces or closes the document. A source cache hit within the
+same document reuses its charge. A different tab or generation gets a separate
+cache entry so a shared retained source is never left billed to a closed tab.
+New retained-byte counters use checked arithmetic and fail admission or
+caching on overflow.
+
+| Current owner | Retention and identity | Required accounting |
+| --- | --- | --- |
+| Direct page compilation and primitive `HostBindingContractV1::plan` | The direct bridge calls stateless `compile`, and primitive plans are built for one validation then dropped. No live page compiler or primitive-plan cache survives the call. | Prove zero retained cache in the final audit; keep validation work in E2.2.1.1. |
+| `DirectPageRealmOwner::debug_registry` | Static BlueTS source/type/symbol/contract plans and safe-point maps remain under live BlueJS program generations. The realm maps those generations to a tab. | Sum retained metadata payload for that tab, including contract plans; release on realm navigation/close. |
+| `BlueJsChildHost` debug registry and deferred execution | Child-private BlueTS metadata and some source-bearing deferred module graphs remain under a document/program generation. | Include both in exact child realm accounting, carry only bounded numeric totals to core, and release with the document. |
+| Core out-of-process debugger maps | Opaque program, metadata, linked, and nested records are already keyed by tab but have no byte charge. | Count retained payload per exact live generation and discard it on failed admission, replacement, or close. |
+| `HttpOutOfProcessPageScriptSourceAuthorizer` verified cache | Up to 4 MiB of verified source payload is now keyed by URL/integrity/MIME and shared across documents; it has no tab owner or lifecycle release. | Partition entries by initiating tab/document, retain same-document hits, and add a core lifecycle release hook. Preserve manifest and response integrity checks. |
+| `RegisteredProjectCompilerService::IncrementalCompiler` | Cache belongs to an owner-registered sealed compiler project, not to a page script or a page tab. | Keep it under the project's separate compiler-service limits; do not invent a tab charge until a page-owned project registration route exists. |
+
+The retained-byte counter measures the concrete payload held by these owners;
+it is not a claim about allocator metadata or VM heap. The remaining subleaves
+implement each retained owner and close with a real-process two-tab audit.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
