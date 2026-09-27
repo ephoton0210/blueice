@@ -2144,6 +2144,18 @@ result or consume the second tab's result. The focused subprocess test passes
 with the shared target cache; later D.3 leaves cover reload, policy, and
 resource accounting separately.
 
+**D.3.2 public reload isolation:** Two existing subprocess cases form the
+public boundary proof. `page_execution::real_subprocess_reexecutes_opted_in_inline_bluets_for_a_replacement_document`
+serves two HTTP replacements to the real core binary and requires a fresh
+BlueTS execution report with document generation 1 then 2 for the same tab.
+`module_lifecycle::launcher_steps_a_real_bluets_module_then_rejects_stale_generation`
+uses a real Launcher/core/child debugger socket after HTTP reload: predecessor
+breakpoint, instruction-step, and original source-span-step targets all fail
+with `StaleRealm`, while a successor realm/program for the same tab is
+inventoried under a different realm generation. Both focused tests pass with
+the shared target cache. Together they prove the old execution and debugger
+identities cannot be carried into the successor document.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
