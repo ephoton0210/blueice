@@ -2028,6 +2028,22 @@ metadata maps are empty, and rejects its former summary. The existing
 change is needed. Focused core and Launcher tests, affected Clippy, and
 formatting pass with the ordinary shared target cache.
 
+**C3.2.2 cache and hibernation generation rule:** Current BlueIce has no page
+cache or hibernation restore route, so no static BlueTS metadata can be
+serialized and revived by either event. The existing HTTP source cache owns
+only verified source bytes; eviction causes a refetch and fresh integrity
+check, not an installed-program or metadata generation change. For a future
+page eviction or hibernation, the supported fail-closed operation is BlueJS
+program invalidation followed by `DirectDebugRegistry::prune_invalid` or
+`forget`; a restoration path would require proof that the same checked
+generation survived. The direct-bridge regression now invalidates a live
+program, prunes its static metadata, reinstalls identical source with a new
+generation, rejects the predecessor handle, and explicitly forgets the new
+generation. The existing HTTP cache test covers refetch integrity after
+eviction. The focused bridge test, Clippy, and format checks pass. This closes
+the current no-restore contract without claiming that page-cache or
+hibernation features are implemented.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

@@ -85,6 +85,26 @@ fn retains_only_static_metadata_for_one_live_direct_generation() {
     ));
     assert_eq!(debug.prune_invalid(&programs), 1);
     assert!(debug.is_empty());
+
+    // Page cache eviction or hibernation has no restore path in this owner:
+    // after invalidation, even reinstalling identical source mints a new
+    // generation and cannot revive the predecessor's static metadata.
+    let successor = artifact.attach_debug_in(&mut programs, &mut debug).unwrap();
+    assert_ne!(successor.handle, attachment.handle);
+    assert_eq!(debug.len(), 1);
+    assert_eq!(
+        debug.get(&programs, successor.handle).unwrap().handle(),
+        successor.handle
+    );
+    assert!(matches!(
+        debug.get(&programs, attachment.handle),
+        Err(DirectDebugAttachmentError::BlueJsProgram(
+            bluejs::BlueJsProgramDebugError::UnknownProgram
+        ))
+    ));
+    assert!(programs.invalidate(successor.handle));
+    assert!(debug.forget(successor.handle));
+    assert!(debug.is_empty());
 }
 
 #[test]
