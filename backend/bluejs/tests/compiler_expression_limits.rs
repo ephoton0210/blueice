@@ -161,6 +161,27 @@ fn expression_families_reject_every_truncated_metadata_budget() {
 }
 
 #[test]
+fn named_function_expression_needs_room_for_its_captured_and_self_bindings() {
+    let program = parse("let outer = 1; (function self() { return outer; });").unwrap();
+    let limits = CompileLimits {
+        max_metadata_entries: 1,
+        ..CompileLimits::default()
+    };
+    assert!(matches!(
+        compile_with_limits(&program, limits),
+        Err(CompileError::ProgramTooLarge)
+    ));
+    assert!(compile_with_limits(
+        &program,
+        CompileLimits {
+            max_metadata_entries: 2,
+            ..CompileLimits::default()
+        }
+    )
+    .is_ok());
+}
+
+#[test]
 fn direct_eval_var_deletion_rejects_each_truncated_bytecode_budget() {
     let outer = compile(&parse("eval('var x = 1; delete x; typeof x;');").unwrap()).unwrap();
     let mut first_success = None;

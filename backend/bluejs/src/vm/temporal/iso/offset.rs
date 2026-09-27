@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn malformed_offset_components_and_date_times_fail_at_the_parser_boundary() {
-        for source in ["+01:", "+01:02:", "+01:02:03."] {
+        for source in ["", "+", "+0", "+01:", "+01:02:", "+01:02:03."] {
             assert!(
                 scan_offset(&mut Cursor::new(source), true).is_none(),
                 "{source}"
