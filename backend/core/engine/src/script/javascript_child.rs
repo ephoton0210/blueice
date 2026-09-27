@@ -1084,7 +1084,10 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 self.realm_stats.insert(tab_id, stats);
                 true
             }
-            Err(error) if error.kind() == io::ErrorKind::Unsupported => true,
+            Err(error) if error.kind() == io::ErrorKind::Unsupported => {
+                self.realm_stats.remove(&tab_id);
+                true
+            }
             Ok(_) | Err(_) => {
                 self.realm_stats.remove(&tab_id);
                 false
@@ -1138,6 +1141,13 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                     ChildExecutionReport::JavaScript(report) => self.push_report(report),
                     ChildExecutionReport::BlueTs(report) => self.push_blue_ts_report(report),
                 }
+            }
+            let Some(identity) = self.live_documents.get(&tab_id).cloned() else {
+                self.close_page(tab_id);
+                continue;
+            };
+            if !self.cache_realm_stats(tab_id, &identity) {
+                self.close_page(tab_id);
             }
         }
     }

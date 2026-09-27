@@ -166,6 +166,92 @@ fn core_caches_child_realm_accounting_only_for_the_live_generation() {
     assert_eq!(executor.into_child().closes, vec![(tab_id.as_u64(), 2)]);
 }
 
+#[test]
+fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifecycle() {
+    use blueice_launcher::bluejs_host::SpawnedBlueJsHost;
+
+    let (host, config) = SpawnedBlueJsHost::spawn_for_core().unwrap();
+    let first_source = "<script type=\"application/x-blueice-typescript\">const firstValue: number = 1; firstValue;</script>";
+    let second_source = "<script type=\"application/x-blueice-typescript\">const secondLongerValue: number = 2; secondLongerValue;</script>";
+    let (mut tabs, first_tab) =
+        loaded_tabs(first_source, "https://example.test/first-retained.html");
+    let second_tab = tabs.open_tab();
+    tabs.get_mut(second_tab).unwrap().load_html_str(
+        second_source,
+        Some("https://example.test/second-retained.html".to_string()),
+    );
+    let mut executor = OutOfProcessJavaScriptPageExecutor::connect_with_debugger_execution_control(
+        config.socket_path(),
+        config.session_token(),
+    )
+    .unwrap();
+    executor.synchronize_and_execute(&tabs).unwrap();
+    let first_pending = executor.realm_stats(first_tab).unwrap().clone();
+    let second_pending = executor.realm_stats(second_tab).unwrap().clone();
+    assert_eq!(first_pending.document_generation, 1);
+    assert_eq!(second_pending.document_generation, 1);
+    assert!(first_pending.static_metadata_bytes > 0 && first_pending.deferred_payload_bytes > 0);
+    assert!(second_pending.static_metadata_bytes > 0 && second_pending.deferred_payload_bytes > 0);
+
+    executor.synchronize_and_execute(&tabs).unwrap();
+    let first_executed = executor.realm_stats(first_tab).unwrap().clone();
+    let second_executed = executor.realm_stats(second_tab).unwrap().clone();
+    assert_eq!(
+        first_executed.static_metadata_bytes,
+        first_pending.static_metadata_bytes
+    );
+    assert_eq!(
+        second_executed.static_metadata_bytes,
+        second_pending.static_metadata_bytes
+    );
+    assert_eq!(first_executed.deferred_payload_bytes, 0);
+    assert_eq!(second_executed.deferred_payload_bytes, 0);
+
+    tabs.get_mut(first_tab).unwrap().load_html_str(
+        "<script type=\"application/x-blueice-typescript\">const replacement: number = 3;</script>",
+        Some("https://example.test/replacement-retained.html".to_string()),
+    );
+    executor.synchronize_and_execute(&tabs).unwrap();
+    let replacement = executor.realm_stats(first_tab).unwrap();
+    assert_eq!(replacement.document_generation, 2);
+    assert!(replacement.static_metadata_bytes > 0 && replacement.deferred_payload_bytes > 0);
+    assert_eq!(executor.realm_stats(second_tab), Some(&second_executed));
+    assert!(matches!(
+        executor.child.debugger_realm_stats(first_tab.as_u64(), 1),
+        Ok(PageHostReply::Error {
+            code: PageHostErrorCode::StaleDocument,
+            ..
+        })
+    ));
+
+    assert!(tabs.close_tab(second_tab));
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(executor.realm_stats(second_tab), None);
+    assert_eq!(
+        executor
+            .realm_stats(first_tab)
+            .unwrap()
+            .deferred_payload_bytes,
+        0
+    );
+    let oversized = "x".repeat(page_host::PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES + 1);
+    tabs.get_mut(first_tab).unwrap().load_html_str(
+        &format!("<main>{oversized}</main><script>blueiceDocumentText();</script>"),
+        Some("https://example.test/rejected-retained.html".to_string()),
+    );
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(executor.realm_stats(first_tab), None);
+    assert!(matches!(
+        executor.child.debugger_realm_stats(first_tab.as_u64(), 3),
+        Ok(PageHostReply::Error { .. })
+    ));
+    assert!(tabs.close_tab(first_tab));
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(executor.realm_stats(first_tab), None);
+    drop(executor);
+    drop(host);
+}
+
 #[derive(Clone, Copy, Default)]
 enum InvalidRealmStats {
     #[default]

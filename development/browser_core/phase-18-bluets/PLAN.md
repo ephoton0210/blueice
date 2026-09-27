@@ -2388,7 +2388,18 @@ to `u64` without truncation, and refuses any invalid reply. A local mixed
 two-tab test compares wire values with owner totals and observes deferred
 release after execution; IPC and core tests reject missing or excessive
 fields and preserve valid nonzero charges only for the live generation. The
-real-process child/core reconciliation remains E2.2.1.3.3.3.3.
+real-process child/core reconciliation is recorded in E2.2.1.3.3.3.3 below.
+
+**E2.2.1.3.3.3.3 real child/core reconciliation:** Core re-queries and
+validates the exact realm-stats tuple after every successful debugger advance,
+so execution release no longer leaves a stale cached deferred charge. An
+unsupported test transport clears any prior cache rather than preserving a
+number it cannot refresh. A launcher-supervised real child with two opted-in
+BlueTS tabs confirms nonzero static/deferred fields cross private v43 into
+core, deferred bytes fall to zero after execution, one replacement leaves the
+other tab's record intact, stale child generations refuse, close drops the
+addressed tab, and an oversized failed snapshot admission retains no cached
+or child realm. No new public debugger, page, or MCP field is exposed.
 
 **E2.2.1.3.2 direct-page retained metadata charge:** BlueTS now computes a
 checked owned-heap payload for static source/type/symbol records and nested
