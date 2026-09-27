@@ -2784,6 +2784,18 @@ The 337-test Engine library suite passes with local HTTP/socket access,
 alongside workspace Clippy and formatting. The same target directory was
 reused; E3.3.2 still checks weaker artifact claims.
 
+**E3.3.2 weaker artifact refusal:** The public BlueTSC CLI regressions now
+assert that `checked` and `transpile-only` manifests omit the helper,
+`strictBoundaries`, and `strictArtifacts`, and that their emitted JavaScript
+contains no strict helper call. A direct publisher regression compiles both
+weaker policies, then forges strict metadata with matching recalculated
+artifact digests and project fingerprints. Both attempts still fail because
+their modules lack emitted strict boundary records, and the previously
+published strict JavaScript and manifest remain byte-identical. All 13
+BlueTSC binary tests, 18 CLI coverage tests, workspace Clippy, and formatting
+pass in the reused target directory. Together with E3.3.1's same-value
+runtime refusal, this closes E3.3 for the first supported string profile.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

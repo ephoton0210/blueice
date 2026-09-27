@@ -426,6 +426,27 @@ fn strict_publisher_rejects_manifest_and_call_tampering_before_replacement() {
     checked_metadata.strict_boundaries.clear();
     checked_metadata.strict_artifacts.clear();
     assert_refused(&checked_metadata, &artifacts);
+
+    let source = fs::read_to_string(root.join("main.ts")).unwrap();
+    for policy in [RuntimePolicy::Checked, RuntimePolicy::TranspileOnly] {
+        let weak = compile(
+            "main.ts",
+            &MapLoader::from([ModuleSource::new("main.ts", &source)]),
+            CompilerOptions {
+                runtime_policy: policy,
+                source_map: true,
+                declaration: true,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(!weak.has_errors(), "{:?}", weak.diagnostics);
+        let weak_artifacts = weak.output.unwrap().artifacts;
+        assert!(weak_artifacts["main.ts"].strict_runtime.is_none());
+        let mut forged = metadata.clone();
+        forged.fingerprint = fingerprint_entries(&[weak_artifacts["main.ts"].fingerprint.clone()]);
+        forged.strict_artifacts = strict_artifact_inventory(&weak_artifacts);
+        assert_refused(&forged, &weak_artifacts);
+    }
     fs::remove_dir_all(temporary).unwrap();
 }
 

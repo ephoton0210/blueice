@@ -575,6 +575,12 @@ fn config_target_and_runtime_policy_are_validated_and_applied() {
             serde_json::from_str(&scratch.read("dist/bluetsc.manifest.json")).unwrap();
         assert_eq!(manifest["runtimePolicy"], expected);
         assert_eq!(manifest["target"], "es2020");
+        assert!(manifest.get("runtimeHelper").is_none());
+        assert!(manifest.get("strictBoundaries").is_none());
+        assert!(manifest.get("strictArtifacts").is_none());
+        assert!(!scratch
+            .read("dist/src/main.js")
+            .contains("__bluetsValidateStringV1("));
     }
     scratch.write(
         "bluetsc.json",

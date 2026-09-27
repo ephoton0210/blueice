@@ -18,8 +18,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E3.2.3.2.2.** Define the supported emitted boundary descriptor
-and fail-closed admission model before injecting helper calls.
+**Current leaf: F1.1.1.** Canonicalize owner-selected project input, config,
+and output roots against the physical filesystem before extending build
+authority.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -654,10 +655,10 @@ channel with explicit owner/client grants.
         - [x] **E3.2.3.3.2.1** Serialize the exact owner-selected strict boundary inventory into build metadata, including source spans, budgets, and helper version; keep checked metadata free of that claim. The manifest now carries `strictBoundaries` in owner order only when selected, and focused binary tests verify its exact fields and omission from checked builds.
         - [x] **E3.2.3.3.2.2** Verify strict metadata against every emitted module, exact helper imports/call sites, fingerprints, and map requests before any staging write; test tamper refusal and prior-output preservation. Thirteen BlueTSC binary tests and workspace Clippy pass in the reused target.
       - [x] **E3.2.3.3.3** Open standalone strict builds only with a complete admitted descriptor set; test successful publication and unsupported/ambient failure without replacing a prior output directory, then close E3.2.3.3. Both ES2020/ES2022 CLI builds pass; missing descriptors and ambient calls refuse. BlueTS's 166 library, 13 binary, 7 CLI, and 18 CLI coverage tests plus workspace Clippy and formatting pass in the reused target.
-- [ ] **E3.3** Make direct-page and emitted ESM reject the same malformed value;
+- [x] **E3.3** Make direct-page and emitted ESM reject the same malformed value;
   a weaker artifact must never claim strict-runtime.
   - [x] **E3.3.1** Run one malformed value through both paths and assert the same rejection. One nine-byte document string under an eight-byte owner budget is rejected by a strict direct-page host before realm capture and by the emitted ESM helper when Node is available; the same focused test uses the identical value and bound. All 337 Engine library tests pass with local socket access, plus workspace Clippy and formatting, using the shared target.
-  - [ ] **E3.3.2** Assert a weaker artifact cannot claim strict-runtime.
+  - [x] **E3.3.2** Assert a weaker artifact cannot claim strict-runtime. Checked and transpile-only CLI manifests omit helper, strict boundaries, and strict artifact digests; even with recomputed hashes and a forged strict label, publisher rejects their missing emitted-call records before replacing a valid strict build. Thirteen binary and 18 CLI coverage tests, workspace Clippy, and formatting pass using the shared target.
 
 ### F. Finish registered-project compilation and MCP (Phase 12).
 
