@@ -2115,6 +2115,15 @@ cache; the new direct-page test module remains below 1,300 lines. D.1 is
 complete for the real child transport, with public browser behavior remaining
 under D.2 and D.3.
 
+**D.2.1 real-page contract report:** The existing `blueice-core` binary
+regression serves an HTTP page whose document snapshot exceeds the
+core-selected one-mebibyte `blueiceDocumentText()` contract before inline
+BlueTS admission. The public `GetBlueTsScriptReports` response now must have
+exactly one rejection attributed to tab 1, document generation 1, ordinal 0,
+and classic script kind. It must carry the fixed host-binding contract category
+within 64 bytes. The focused subprocess test passes with the ordinary target
+cache; protected-content checks are completed separately in D.2.2.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

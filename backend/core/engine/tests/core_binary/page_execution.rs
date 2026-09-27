@@ -720,11 +720,19 @@ fn real_subprocess_rejects_an_oversized_document_text_binding_before_inline_admi
         other => panic!("expected BlueTsScriptReports, got {other:?}"),
     };
     assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0].tab_id, 1);
+    assert_eq!(reports[0].document_generation, 1);
+    assert_eq!(reports[0].ordinal, 0);
+    assert_eq!(reports[0].kind, blueice_ipc::BlueTsScriptKind::Classic);
     let blueice_ipc::BlueTsScriptExecutionOutcome::Rejected { category } = &reports[0].outcome
     else {
         panic!("the oversized document snapshot must reject before admission")
     };
     assert_eq!(category, "host binding contract rejected the page script");
+    assert!(
+        category.len() <= 64,
+        "the real-page report must remain bounded"
+    );
     assert!(!category.contains('x'));
 
     blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();

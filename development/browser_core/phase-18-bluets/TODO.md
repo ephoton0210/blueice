@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: D.2.1.** Trigger a contract failure on a real page and show
-its bounded report.
+**Current leaf: D.2.2.** Assert the real-page contract-failure report leaks
+no protected content.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -537,7 +537,7 @@ channel with explicit owner/client grants.
   - [x] **D.1.2** ESM fixture: authorized resolver identity and original source mapping. A real supervised child accepts an explicit resolver edge whose canonical target differs from relative-path resolution, installs and executes both ESM programs, and maps typed declarations in both original modules with exact UTF-8 byte ranges and UTF-16 columns. Changing only the resolver fingerprint changes compiler-options identity; removing the authorized edge rejects the graph and installs no program. The focused real-child test, Launcher Clippy, formatting, and line-count checks pass using the shared target cache.
 - [ ] **D.2** A real page exercises a declared contract and shows its bounded
   failure without exposing protected content.
-  - [ ] **D.2.1** Trigger a contract failure on a real page and show its bounded report.
+  - [x] **D.2.1** Trigger a contract failure on a real page and show its bounded report. The existing real core-binary HTTP fixture exceeds the core-selected one-mebibyte document-text contract before inline admission. Its focused subprocess test now requires exactly one addressed tab/document/classic-script report, the fixed contract-rejection category, and a category no longer than 64 bytes; the test passes using the shared target cache.
   - [ ] **D.2.2** Assert the report leaks no protected content.
 - [ ] **D.3** Public-boundary tests cover multiple tabs, reload, policy isolation,
   and tab/child resource attribution; no required result depends only on a
