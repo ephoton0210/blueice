@@ -195,6 +195,17 @@ fn externally_constructed_statement_asts_reject_invalid_control_flow() {
             "invalid labelled function declaration",
         ),
         (
+            vec![Stmt::If {
+                test: Expr::Bool(true),
+                consequent: Box::new(labelled(
+                    "outer",
+                    labelled("inner", parse("function f() {}").unwrap().body.remove(0)),
+                )),
+                alternate: None,
+            }],
+            "a labelled function declaration is not allowed in statement position",
+        ),
+        (
             vec![
                 strict.clone(),
                 Stmt::With {

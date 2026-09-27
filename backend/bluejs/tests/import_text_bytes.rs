@@ -433,6 +433,20 @@ fn a_side_effect_only_import_still_requires_the_resource() {
 }
 
 #[test]
+fn typed_imports_and_reexports_reject_paths_outside_the_host_root() {
+    for source in [
+        "import value from '../../outside' with { type: 'text' }; value",
+        "export { default as value } from '../../outside' with { type: 'text' };",
+    ] {
+        let result = run(&[("main.js", source)], &[], &[]);
+        assert!(
+            matches!(result, Err(RuntimeError::ModuleResolution(ref message)) if message.contains("escapes its host root")),
+            "{source}: {result:?}"
+        );
+    }
+}
+
+#[test]
 fn an_unknown_type_attribute_value_still_loads_a_source_text_module() {
     // Only json/text/bytes select a synthetic module; other values are
     // accepted and ignored exactly like every other attribute.

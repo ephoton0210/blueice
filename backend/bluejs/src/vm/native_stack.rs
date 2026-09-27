@@ -36,12 +36,19 @@ fn current_stack_address() -> usize {
 
 #[cfg(target_os = "linux")]
 fn lowest_stack_address() -> Option<usize> {
-    // SAFETY: `attr` is initialised by `pthread_attr_init` before anything
-    // reads it and destroyed on every path after that; the other calls only
-    // write through the pointers passed to them.
+    lowest_stack_address_with_init(libc::pthread_attr_init)
+}
+
+#[cfg(target_os = "linux")]
+fn lowest_stack_address_with_init(
+    init: unsafe extern "C" fn(*mut libc::pthread_attr_t) -> libc::c_int,
+) -> Option<usize> {
+    // SAFETY: `init` initializes `attr` on success before anything reads it.
+    // The initialized attribute is destroyed on every later path; the other
+    // calls only write through the pointers passed to them.
     unsafe {
         let mut attr = std::mem::MaybeUninit::<libc::pthread_attr_t>::uninit();
-        if libc::pthread_attr_init(attr.as_mut_ptr()) != 0 {
+        if init(attr.as_mut_ptr()) != 0 {
             return None;
         }
         let mut address = std::ptr::null_mut();
@@ -86,7 +93,26 @@ fn lowest_stack_address() -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::remaining_stack;
+    use super::{remaining_stack, LOWEST_STACK_ADDRESS};
+
+    #[test]
+    fn reports_nothing_when_the_thread_has_no_stack_bound() {
+        LOWEST_STACK_ADDRESS.with(|lowest| {
+            let previous = lowest.replace(None);
+            assert_eq!(remaining_stack(), None);
+            lowest.set(previous);
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn failed_pthread_attribute_initialization_reports_nothing() {
+        unsafe extern "C" fn fail(_: *mut libc::pthread_attr_t) -> libc::c_int {
+            libc::ENOMEM
+        }
+
+        assert_eq!(super::lowest_stack_address_with_init(fail), None);
+    }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
     #[test]
