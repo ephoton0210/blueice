@@ -2330,6 +2330,23 @@ that larger source content costs more and that execution, document replacement,
 and close release only the affected pending graphs. No private wire field or
 core charge is claimed by this step.
 
+The two remaining nested payloads use separate owners: BlueTS module
+attachments contain provenance spans, safe-point maps, root slots, and an
+ordered module map; pending JavaScript programs contain parsed ASTs and their
+module-ID map. Their recursive storage shapes differ, so E2.2.1.3.3.2.2 is
+split into attachment and AST counters before the combined queue count.
+
+**E2.2.1.3.3.2.2.1 BlueTS attachment charge:** A checked bridge meter counts
+each program attachment's provenance vector and source-module strings, its
+safe-point-map copy, and its root-slot vector. The module-graph meter adds the
+entry attachment and every separately retained map attachment and module ID;
+map-entry payload is counted without claiming allocator-node overhead. The
+child query sums only pending BlueTS module attachments for the exact live
+document. A two-tab regression verifies content sensitivity and release after
+execution, replacement, and close. The separately retained static debugger
+registry record remains under E2.2.1.3.3.1, so no cross-owner duplication is
+introduced.
+
 **E2.2.1.3.2 direct-page retained metadata charge:** BlueTS now computes a
 checked owned-heap payload for static source/type/symbol records and nested
 reifiable contract plans. The bridge adds its safe-point map, breakpoint spans,

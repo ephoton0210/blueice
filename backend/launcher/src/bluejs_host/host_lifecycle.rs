@@ -1097,6 +1097,27 @@ impl BlueJsChildHost {
             .ok_or_else(host_failure)
     }
 
+    /// Counts pending BlueTS module attachments in one exact child document.
+    /// This includes attachment clones but no static debugger registry data.
+    pub fn retained_deferred_bluets_attachment_bytes(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+    ) -> Result<usize, PageHostReply> {
+        let document = self.exact_document(tab_id, document_generation)?;
+        document
+            .pending_debugger_executions
+            .iter()
+            .filter_map(|pending| match &pending.execution {
+                DeferredChildExecution::BlueTsModule { attachment, .. } => Some(attachment),
+                _ => None,
+            })
+            .try_fold(0usize, |bytes, attachment| {
+                bytes.checked_add(attachment.owned_heap_payload_bytes()?)
+            })
+            .ok_or_else(host_failure)
+    }
+
     /// Recomputes actual VM-managed usage from the live realm table on each
     /// request. No cached predecessor generation or conservative reservation
     /// is included, and checked sums fail closed instead of wrapping.

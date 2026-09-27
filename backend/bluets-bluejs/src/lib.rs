@@ -137,6 +137,25 @@ pub struct DirectRootSymbolSlot {
 }
 
 impl DirectProgramAttachment {
+    /// Counts heap payload owned by this attachment, excluding its inline
+    /// fields and the separately retained static debugger registry record.
+    pub fn owned_heap_payload_bytes(&self) -> Option<usize> {
+        let mut bytes = self
+            .provenance
+            .capacity()
+            .checked_mul(std::mem::size_of::<AttachedLoweringProvenance>())?
+            .checked_add(self.safe_point_map.owned_heap_payload_bytes()?)?
+            .checked_add(
+                self.root_symbol_slots
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<DirectRootSymbolSlot>())?,
+            )?;
+        for provenance in &self.provenance {
+            bytes = bytes.checked_add(provenance.source.module.capacity())?;
+        }
+        Some(bytes)
+    }
+
     /// Returns only structurally verified root declaration slots after
     /// rechecking the exact installed generation. A stale or moved attachment
     /// refuses before returning any static IDs; no runtime value is read.

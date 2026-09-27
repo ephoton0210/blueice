@@ -202,6 +202,20 @@ pub struct DirectPageModuleGraphAttachment {
 }
 
 impl DirectPageModuleGraphAttachment {
+    /// Counts this graph attachment's owned heap payload. The entry and each
+    /// module attachment are separate retained clones, so both are charged.
+    pub fn owned_heap_payload_bytes(&self) -> Option<usize> {
+        self.modules.iter().try_fold(
+            self.entry.owned_heap_payload_bytes()?,
+            |bytes, (module_id, attachment)| {
+                bytes
+                    .checked_add(std::mem::size_of::<(String, DirectProgramAttachment)>())?
+                    .checked_add(module_id.capacity())?
+                    .checked_add(attachment.owned_heap_payload_bytes()?)
+            },
+        )
+    }
+
     /// Executes the fully attached graph in its owning page realm. BlueJS uses
     /// the retained canonical module IDs and does not re-resolve TypeScript
     /// import specifiers at execution time.

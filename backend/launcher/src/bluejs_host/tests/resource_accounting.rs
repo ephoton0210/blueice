@@ -88,6 +88,109 @@ fn child_pending_javascript_source_graphs_follow_exact_document_lifetimes() {
 }
 
 #[test]
+fn child_pending_bluets_attachments_follow_exact_document_lifetimes() {
+    fn module(id: &str) -> PageHostScript {
+        PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Module,
+            graph: graph(
+                id,
+                vec![PageHostSource::new(id, "export const value: number = 1;")],
+            ),
+        }
+    }
+
+    let mut host = BlueJsChildHost::default();
+    let first = debugger_document(1, vec![module("blueice://page/a.ts")]);
+    let mut second = debugger_document(
+        1,
+        vec![module(
+            "blueice://page/a-much-longer-retained-module-identity.ts",
+        )],
+    );
+    second.tab_id = 8;
+    for document in [first, second] {
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument { document }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+    }
+    let first_bytes = host
+        .retained_deferred_bluets_attachment_bytes(7, 1)
+        .unwrap();
+    let second_bytes = host
+        .retained_deferred_bluets_attachment_bytes(8, 1)
+        .unwrap();
+    assert!(first_bytes > 0);
+    assert!(second_bytes > first_bytes);
+    assert_eq!(host.retained_deferred_source_graph_bytes(7, 1).unwrap(), 0);
+
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+            if matches!(reports.as_slice(), [PageHostScriptReport {
+                outcome: PageHostScriptOutcome::Executed,
+                ..
+            }])
+    ));
+    assert_eq!(
+        host.retained_deferred_bluets_attachment_bytes(7, 1)
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        host.retained_deferred_bluets_attachment_bytes(8, 1)
+            .unwrap(),
+        second_bytes
+    );
+
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(2, vec![module("blueice://page/replaced.ts")]),
+        }),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(
+        host.retained_deferred_bluets_attachment_bytes(7, 2)
+            .unwrap()
+            > 0
+    );
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(3, Vec::new()),
+        }),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(host
+        .retained_deferred_bluets_attachment_bytes(7, 2)
+        .is_err());
+    assert_eq!(
+        host.retained_deferred_bluets_attachment_bytes(7, 3)
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        host.retained_deferred_bluets_attachment_bytes(8, 1)
+            .unwrap(),
+        second_bytes
+    );
+    assert!(matches!(
+        host.handle_request(PageHostRequest::CloseRealm {
+            tab_id: 8,
+            document_generation: 1,
+        }),
+        PageHostReply::RealmClosed { .. }
+    ));
+    assert!(host
+        .retained_deferred_bluets_attachment_bytes(8, 1)
+        .is_err());
+}
+
+#[test]
 fn child_static_bluets_metadata_is_charged_to_its_exact_live_document() {
     let mut host = BlueJsChildHost::default();
     let first = document(
