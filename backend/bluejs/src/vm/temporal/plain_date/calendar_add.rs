@@ -151,13 +151,15 @@ pub(super) fn add_year_month_duration_leap_month(
                 }
                 remaining += ordinal;
                 year -= 1;
-                let months_in_year =
-                    i64::from(months_in_year_for(calendar, i32::try_from(year).ok()?)?);
-                first_day_of_month = calendar_date_from_ordinal(calendar, year, months_in_year, 1)?;
+                let first_month = calendar_date_from_ordinal(calendar, year, 1, 1)?;
+                let months_in_year = i64::from(first_month.months_in_year());
+                first_day_of_month = calendar_date_from_ordinal(calendar, year, months_in_year, 1)
+                    .expect("the last ordinal month exists in a supported calendar year");
             }
         }
         let final_ordinal = i64::from(first_day_of_month.month().ordinal) + remaining;
-        let final_day = calendar_date_from_ordinal(calendar, year, final_ordinal, 1)?;
+        let final_day = calendar_date_from_ordinal(calendar, year, final_ordinal, 1)
+            .expect("the normalized ordinal exists in the supported calendar year");
         month = final_day.month().to_input();
     }
     Some((year, month))

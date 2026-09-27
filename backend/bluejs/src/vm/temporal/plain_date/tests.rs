@@ -15,6 +15,45 @@ use icu_calendar::options::Overflow as IcuOverflow;
 use icu_calendar::types::Month;
 use icu_calendar::{AnyCalendarKind, Iso};
 
+#[test]
+fn leap_month_subtraction_stops_at_the_icu_calendar_year_boundary() {
+    for calendar in [
+        AnyCalendarKind::Chinese,
+        AnyCalendarKind::Dangi,
+        AnyCalendarKind::Hebrew,
+    ] {
+        let mut outside = i64::from(i32::MIN);
+        let mut inside = -100_000_i64;
+        let first_month_exists = |year| {
+            calendar_date_from_month(calendar, year, Month::new(1), 1, IcuOverflow::Constrain)
+                .is_some()
+        };
+        assert!(!first_month_exists(outside));
+        assert!(first_month_exists(inside));
+        while inside - outside > 1 {
+            let midpoint = outside + (inside - outside) / 2;
+            if first_month_exists(midpoint) {
+                inside = midpoint;
+            } else {
+                outside = midpoint;
+            }
+        }
+        assert!(!first_month_exists(inside - 1));
+        assert_eq!(
+            add_year_month_duration_leap_month(
+                calendar,
+                inside,
+                Month::new(1),
+                0,
+                -1,
+                IcuOverflow::Constrain,
+            ),
+            None,
+            "{calendar:?} cannot borrow a month from an unsupported prior year"
+        );
+    }
+}
+
 /// [`super::round_duration::round_calendar_duration`] for a pair whose rounding
 /// window is inside Temporal's range (every case below): shadows the glob-imported
 /// `Option`-returning function so those cases read as plain tuples. The

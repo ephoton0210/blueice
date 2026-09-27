@@ -5,6 +5,66 @@
 use super::*;
 
 #[test]
+fn sparse_array_scans_propagate_stale_object_and_instruction_errors() {
+    let mut vm = Vm::default();
+    let objects: Vec<_> = (0..3)
+        .map(|_| vm.heap.alloc_object(None).unwrap())
+        .collect();
+    let mut scans: Vec<_> = objects
+        .iter()
+        .map(|&object| vm.index_scan(object, 65_536).unwrap())
+        .collect();
+    vm.heap.collect_major();
+    for &object in &objects {
+        assert!(!vm.heap.contains(object));
+    }
+    let marker = vm.heap.alloc_object(None).unwrap();
+    vm.heap.set(marker, "0", Value::Number(1.0)).unwrap();
+
+    fn stale<T>(result: Result<T, RuntimeError>, object: ObjectId) {
+        assert!(
+            matches!(result, Err(RuntimeError::Heap(HeapError::InvalidObject(id))) if id == object),
+            "the scan must report its collected receiver"
+        );
+    }
+    stale(vm.scan_next(&mut scans[0], objects[0], 0), objects[0]);
+    stale(
+        vm.array_next_present(&mut scans[1], objects[1], 0),
+        objects[1],
+    );
+    stale(
+        vm.array_previous_present(&mut scans[2], objects[2], 1),
+        objects[2],
+    );
+    stale(vm.index_scan(objects[0], 65_536), objects[0]);
+
+    let object = vm.heap.alloc_object(None).unwrap();
+    let mut forward = vm.index_scan(object, 1).unwrap();
+    let mut backward = vm.index_scan(object, 1).unwrap();
+    vm.remaining_instructions = 0;
+    assert!(matches!(
+        vm.array_next_present(&mut forward, object, 0),
+        Err(RuntimeError::InstructionLimit)
+    ));
+    assert!(matches!(
+        vm.array_previous_present(&mut backward, object, 1),
+        Err(RuntimeError::InstructionLimit)
+    ));
+}
+
+#[test]
+fn sparse_array_length_rejects_a_symbol() {
+    let code = crate::compile(
+        &crate::parse("Array.prototype.some.call({ length: Symbol() }, () => false)").unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        Vm::default().execute(&code),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
 fn array_concat_keeps_non_array_values_as_elements() {
     let mut vm = Vm::default();
     vm.remaining_instructions = vm.config.instruction_budget;

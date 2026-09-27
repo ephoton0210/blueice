@@ -71,7 +71,12 @@ impl Vm {
             };
             scan.work += keys.len() as u64 + 1;
             stored.extend(keys.into_iter().take_while(|key| *key < scan.length));
-            current = self.heap.prototype(id)?;
+            // `own_integer_keys` just validated this object, and no heap
+            // mutation occurs between that lookup and this one.
+            current = self
+                .heap
+                .prototype(id)
+                .expect("the object validated by own_integer_keys is still live");
         }
         if scan.work <= scan.length / 4 {
             stored.sort_unstable();

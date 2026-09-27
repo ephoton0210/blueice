@@ -133,6 +133,24 @@ fn instant_option_readers_preserve_errors_and_accept_auto_largest_unit() {
 }
 
 #[test]
+fn temporal_numeric_and_property_bag_coercions_preserve_abrupt_completions() {
+    run(r#"
+      const badNumber = { valueOf() { throw new TypeError("number conversion"); } };
+      const badString = { toString() { throw new TypeError("string conversion"); } };
+      type(() => new Temporal.Instant(badNumber));
+      same(() => thrown(() => new Temporal.Instant("\uD800")), "SyntaxError");
+      same(() => new Temporal.Instant("").epochNanoseconds, 0n);
+      type(() => D.from({ day: 1, monthCode: badString, year: 2024 }));
+      type(() => D.from({ day: 1, get monthCode() { throw new TypeError("monthCode getter"); }, year: 2024 }));
+      range(() => Temporal.PlainMonthDay.from({ calendar: "gregory", day: 2, era: "\uD800", eraYear: 2024, month: 5 }));
+      type(() => Z.from({ day: 1, month: 1, year: 2024, timeZone: "UTC", get offset() { throw new TypeError("offset getter"); } }));
+      type(() => Z.from({ day: 1, month: 1, year: 2024, timeZone: "UTC", offset: badString }));
+      range(() => Z.from({ day: 1, month: 1, year: 2024, timeZone: "UTC", offset: "\uD800" }));
+      type(() => new Temporal.Duration(badNumber));
+    "#);
+}
+
+#[test]
 fn instant_options_propagate_heap_limits_before_and_after_object_allocation() {
     let prepare =
         compile(&parse("globalThis.i = new Temporal.Instant(0n); i.toString; i.round;").unwrap())

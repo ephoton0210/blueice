@@ -234,13 +234,11 @@ impl Vm {
         if matches!(value, Value::Undefined) {
             return Ok(None);
         }
-        let primitive = self.coerce_primitive(&value, "string")?;
-        if !matches!(primitive, Value::String(_)) {
+        let Value::String(text) = self.coerce_primitive(&value, "string")? else {
             return Err(RuntimeError::TypeError(
                 "Temporal.ZonedDateTime offset must be a string".into(),
             ));
-        }
-        let text = self.coerce_string(&primitive)?;
+        };
         text.to_utf8()
             .map(Some)
             .map_err(|_| RuntimeError::RangeError("invalid Temporal offset".into()))
