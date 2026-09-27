@@ -276,3 +276,98 @@ fn reserved_native_tab_does_not_delay_an_unreserved_pending_tab() {
         }
     );
 }
+
+#[test]
+fn transition_observation_is_exact_stream_bound_and_bounded() {
+    let (mut tabs, realm) = loaded_tabs();
+    let tab = TabId::from_u64(realm.tab_id);
+    let (_, receiver) = debugger_request_channel();
+    let owner = negotiated_session();
+    let foreign = negotiated_session();
+    let program = DebuggerProgram {
+        realm,
+        program_handle: 1,
+        program_generation: 1,
+    };
+    assert!(receiver.remember_transition_reply(
+        &tabs,
+        Some(&owner),
+        &DebuggerReply::ExecutionResumed { program },
+    ));
+    assert_eq!(receiver.refresh_transition_holds(&tabs), vec![tab]);
+    let observed = DebuggerReply::ExecutionState {
+        program,
+        state: DebuggerExecutionState::Resuming,
+    };
+    receiver.observe_transition_reply(Some(&foreign), &observed);
+    assert_eq!(receiver.refresh_transition_holds(&tabs), vec![tab]);
+    receiver.observe_transition_reply(
+        Some(&owner),
+        &DebuggerReply::ExecutionState {
+            program: DebuggerProgram {
+                program_handle: 9,
+                ..program
+            },
+            state: DebuggerExecutionState::Resuming,
+        },
+    );
+    assert_eq!(receiver.refresh_transition_holds(&tabs), vec![tab]);
+    receiver.observe_transition_reply(Some(&owner), &observed);
+    assert!(receiver.refresh_transition_holds(&tabs).is_empty());
+
+    let frame = DebuggerLinkedFrame {
+        program,
+        code_unit_ordinal: 1,
+        core_instance: [1; 16],
+        frame_handle: 7,
+    };
+    let entry = DebuggerProgram {
+        program_handle: 2,
+        program_generation: 2,
+        ..program
+    };
+    assert!(receiver.remember_transition_reply(
+        &tabs,
+        Some(&owner),
+        &DebuggerReply::LinkedNestedResumeRequested { top_frame: frame },
+    ));
+    receiver.observe_transition_reply(
+        Some(&owner),
+        &DebuggerReply::LinkedExecutionState {
+            entry,
+            state: Box::new(DebuggerLinkedExecutionState::Resuming { frame }),
+        },
+    );
+    assert!(receiver.refresh_transition_holds(&tabs).is_empty());
+
+    assert!(receiver.remember_transition_reply(
+        &tabs,
+        Some(&owner),
+        &DebuggerReply::ExecutionResumed { program },
+    ));
+    tabs.get_mut(tab)
+        .unwrap()
+        .load_html_str("<main>replacement</main>", None);
+    assert!(receiver.refresh_transition_holds(&tabs).is_empty());
+
+    assert!(receiver.remember_transition_reply(
+        &tabs,
+        Some(&owner),
+        &DebuggerReply::ExecutionResumed { program },
+    ));
+    receiver
+        .transition_holds
+        .borrow_mut()
+        .get_mut(&tab)
+        .unwrap()
+        .expires_at = Instant::now() - Duration::from_millis(1);
+    assert!(receiver.refresh_transition_holds(&tabs).is_empty());
+
+    assert!(receiver.remember_transition_reply(
+        &tabs,
+        Some(&owner),
+        &DebuggerReply::ExecutionResumed { program },
+    ));
+    drop(owner);
+    assert!(receiver.refresh_transition_holds(&tabs).is_empty());
+}

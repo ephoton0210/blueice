@@ -4336,6 +4336,33 @@ post-resume `GetExecutionState` saw `Completed` instead of the promised
 stream and exact program, with a deadline and disconnect cleanup, before the
 next full gate.
 
+**G.3.2.2.3.5 observable transitions:** The follow-up workspace run found a
+real post-resume race: `ExecutionResumed` succeeded, but the same socket's
+immediate state query sometimes saw `Completed` instead of the promised
+`Resuming` because its only scheduler hold lasted one 25 ms session turn.
+Core now records a bounded transition for the exact negotiated stream and
+program, or the linked frame for linked resume. An exact transition-state
+reply to that stream consumes the hold; a different stream or program cannot
+consume it. Disconnect, document replacement, and a one-second deadline also
+release it. The tab-scoped executor hook keeps unrelated tabs running, and a
+set of held tabs supports independent transitions on multiple live tabs.
+Direct in-process callers without a negotiated stream keep the earlier
+one-turn behavior. A real launcher/core/child test deliberately waits 75 ms
+after `ExecutionResumed`, then still requires `Resuming`; unit coverage checks
+foreign/wrong-program observations, linked-frame observation, replacement,
+timeout, and disconnect.
+
+The next full workspace run found two `broker_end_to_end` teardown checks
+failing when nine independent real launcher/core test trees ran concurrently:
+the private child socket still existed after the test's unchanged five-second
+shutdown wait. That process-heavy test binary now serializes its outer cases,
+while its simultaneous-cutover test still runs concurrent operations inside
+one case. All nine focused cases pass. The subsequent full workspace suite
+passes, including the 33-case debugger suite and seven `spawn_core` tests;
+workspace all-target Clippy with warnings as errors and rustfmt pass. CI is
+still required to prove the macOS/Windows matrix and both coverage floors on
+the repaired commit.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

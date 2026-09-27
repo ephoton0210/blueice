@@ -93,6 +93,9 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
             program: first_program,
         }
     );
+    // Cross several 25 ms core polls before reading the exact public state.
+    // The owner stream must see Resuming even when socket scheduling is slow.
+    thread::sleep(Duration::from_millis(75));
     assert_eq!(
         debugger_request(
             &mut debugger,

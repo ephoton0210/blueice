@@ -64,7 +64,7 @@ use blueice_ipc::debugger::{
     DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
 };
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::io;
 use std::sync::{mpsc, Weak};
 use std::time::{Duration, Instant};
@@ -81,6 +81,9 @@ const MAX_DEBUGGER_REQUESTS_PER_SESSION_TICK: usize = 64;
 /// discovery deferrals; a stalled owner cannot retain entry forever.
 const NEXT_DOCUMENT_ADMISSION_WINDOW: Duration = Duration::from_secs(5);
 const NEXT_DOCUMENT_RESERVATION_WINDOW: Duration = Duration::from_secs(30);
+/// A negotiated peer has a bounded chance to observe the transition state
+/// returned by its own successful resume or step before execution continues.
+const TRANSITION_OBSERVATION_WINDOW: Duration = Duration::from_secs(1);
 
 fn admission_hold_error(code: DebuggerErrorCode) -> DebuggerReply {
     DebuggerReply::Error {
@@ -126,12 +129,26 @@ pub struct DebuggerRequestReceiver {
     /// Zero is terminal exhaustion, never a valid pause incarnation.
     pause_incarnation: Cell<u64>,
     admission_hold: RefCell<Option<NextDocumentAdmissionHold>>,
+    transition_holds: RefCell<BTreeMap<TabId, TransitionObservationHold>>,
 }
 
 struct NextDocumentAdmissionHold {
     tab_id: TabId,
     previous_generation: u64,
     held_generation: Option<u64>,
+    expires_at: Instant,
+    owner_stream: Weak<()>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TransitionObservationTarget {
+    Program(DebuggerProgram),
+    LinkedFrame(DebuggerLinkedFrame),
+}
+
+struct TransitionObservationHold {
+    document_generation: u64,
+    target: TransitionObservationTarget,
     expires_at: Instant,
     owner_stream: Weak<()>,
 }
@@ -152,6 +169,7 @@ pub fn debugger_request_channel() -> (DebuggerRequestSender, DebuggerRequestRece
             requests: receiver,
             pause_incarnation: Cell::new(1),
             admission_hold: RefCell::new(None),
+            transition_holds: RefCell::new(BTreeMap::new()),
         },
     )
 }
@@ -201,6 +219,114 @@ impl DebuggerRequestSender {
 }
 
 impl DebuggerRequestReceiver {
+    fn refresh_transition_holds(&self, tabs: &TabManager) -> Vec<TabId> {
+        let now = Instant::now();
+        let mut holds = self.transition_holds.borrow_mut();
+        holds.retain(|tab_id, hold| {
+            now < hold.expires_at
+                && hold.owner_stream.upgrade().is_some()
+                && tabs
+                    .get(*tab_id)
+                    .is_some_and(|page| page.document_generation() == hold.document_generation)
+        });
+        holds.keys().copied().collect()
+    }
+
+    fn remember_transition_reply(
+        &self,
+        tabs: &TabManager,
+        metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+        reply: &DebuggerReply,
+    ) -> bool {
+        let Some(metadata_session) = metadata_session else {
+            return false;
+        };
+        let target = match reply {
+            DebuggerReply::ExecutionResumed { program }
+            | DebuggerReply::ExecutionStepRequested { program } => {
+                TransitionObservationTarget::Program(*program)
+            }
+            DebuggerReply::NestedStepRequested { frame }
+            | DebuggerReply::NestedResumeRequested { frame } => {
+                TransitionObservationTarget::Program(frame.program)
+            }
+            DebuggerReply::LinkedNestedResumeRequested { top_frame } => {
+                TransitionObservationTarget::LinkedFrame(*top_frame)
+            }
+            DebuggerReply::ExecutionSourceSpanStepRequested { safe_point } => {
+                TransitionObservationTarget::Program(safe_point.program)
+            }
+            _ => return false,
+        };
+        let tab_id = match target {
+            TransitionObservationTarget::Program(program) => TabId::from_u64(program.realm.tab_id),
+            TransitionObservationTarget::LinkedFrame(frame) => {
+                TabId::from_u64(frame.program.realm.tab_id)
+            }
+        };
+        let Some(page) = tabs.get(tab_id) else {
+            return false;
+        };
+        let mut holds = self.transition_holds.borrow_mut();
+        if holds.len() >= MAX_DISCOVERABLE_PAGE_REALMS && !holds.contains_key(&tab_id) {
+            return false;
+        }
+        holds.insert(
+            tab_id,
+            TransitionObservationHold {
+                document_generation: page.document_generation(),
+                target,
+                expires_at: Instant::now() + TRANSITION_OBSERVATION_WINDOW,
+                owner_stream: metadata_session.admission_stream(),
+            },
+        );
+        true
+    }
+
+    fn observe_transition_reply(
+        &self,
+        metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+        reply: &DebuggerReply,
+    ) {
+        let Some(metadata_session) = metadata_session else {
+            return;
+        };
+        let target = match reply {
+            DebuggerReply::ExecutionState {
+                program,
+                state:
+                    DebuggerExecutionState::Resuming
+                    | DebuggerExecutionState::Stepping
+                    | DebuggerExecutionState::NestedResuming { .. }
+                    | DebuggerExecutionState::NestedStepping { .. },
+            } => TransitionObservationTarget::Program(*program),
+            DebuggerReply::LinkedExecutionState { state, .. }
+                if matches!(
+                    state.as_ref(),
+                    DebuggerLinkedExecutionState::Resuming { .. }
+                ) =>
+            {
+                let DebuggerLinkedExecutionState::Resuming { frame } = state.as_ref() else {
+                    unreachable!()
+                };
+                TransitionObservationTarget::LinkedFrame(*frame)
+            }
+            _ => return,
+        };
+        let tab_id = match target {
+            TransitionObservationTarget::Program(program) => TabId::from_u64(program.realm.tab_id),
+            TransitionObservationTarget::LinkedFrame(frame) => {
+                TabId::from_u64(frame.program.realm.tab_id)
+            }
+        };
+        let mut holds = self.transition_holds.borrow_mut();
+        if holds.get(&tab_id).is_some_and(|hold| {
+            hold.target == target && metadata_session.owns_admission_stream(&hold.owner_stream)
+        }) {
+            holds.remove(&tab_id);
+        }
+    }
+
     fn refresh_admission_hold(&self, tabs: &TabManager) -> Option<TabId> {
         let mut slot = self.admission_hold.borrow_mut();
         let hold = slot.as_mut()?;
@@ -314,6 +440,7 @@ impl DebuggerRequestReceiver {
         let mut preserve_pending_entry = false;
         let mut advance_pending_entry = false;
         let mut preserve_execution_transition = false;
+        self.refresh_transition_holds(tabs);
         while dispatched < MAX_DEBUGGER_REQUESTS_PER_SESSION_TICK {
             let Ok(envelope) = self.requests.try_recv() else {
                 break;
@@ -377,6 +504,9 @@ impl DebuggerRequestReceiver {
                     }
                 }
             };
+            let transition_recorded =
+                self.remember_transition_reply(tabs, envelope.metadata_session.as_ref(), &reply);
+            self.observe_transition_reply(envelope.metadata_session.as_ref(), &reply);
             self.invalidate_pause_receipts_for(&reply);
             // A rejected arm/resume request must not consume the pending
             // declaration's only discovery turn. Otherwise an invalid child
@@ -442,21 +572,19 @@ impl DebuggerRequestReceiver {
                 DebuggerReply::LinkedExecutionState { state, .. }
                     if !matches!(state.as_ref(), DebuggerLinkedExecutionState::Pending)
             );
-            // `Resuming` is a public, source-free state rather than a reply
-            // synonym. Preserve it for one owner-session turn after the
-            // successful response so a socket peer can observe the exact
-            // transition before the scheduler resumes the retained frame.
-            // An idle turn still completes it normally, so this never turns
-            // the debugger connection into an execution lease.
-            preserve_execution_transition |= matches!(
-                &reply,
-                DebuggerReply::ExecutionResumed { .. }
-                    | DebuggerReply::ExecutionStepRequested { .. }
-                    | DebuggerReply::NestedStepRequested { .. }
-                    | DebuggerReply::NestedResumeRequested { .. }
-                    | DebuggerReply::LinkedNestedResumeRequested { .. }
-                    | DebuggerReply::ExecutionSourceSpanStepRequested { .. }
-            );
+            // A negotiated socket keeps its exact transition until the same
+            // stream observes it or the core deadline expires. Direct callers
+            // without stream authorization retain the older one-turn fallback.
+            preserve_execution_transition |= !transition_recorded
+                && matches!(
+                    &reply,
+                    DebuggerReply::ExecutionResumed { .. }
+                        | DebuggerReply::ExecutionStepRequested { .. }
+                        | DebuggerReply::NestedStepRequested { .. }
+                        | DebuggerReply::NestedResumeRequested { .. }
+                        | DebuggerReply::LinkedNestedResumeRequested { .. }
+                        | DebuggerReply::ExecutionSourceSpanStepRequested { .. }
+                );
             let _ = envelope.reply.send(reply);
             if executes_or_releases_entry {
                 advance_pending_entry = true;
@@ -470,10 +598,13 @@ impl DebuggerRequestReceiver {
         // more session boundary to send the next bounded request; otherwise a
         // normal idle synchronization begins it. Successful arms consume that
         // boundary so their requested state transition happens. A successful
-        // resume or step preserves its public transition state for one turn;
-        // a following idle turn advances the same private VM frame.
+        // resume or step remains observable on its owning stream for a bounded
+        // interval; a direct caller retains the older one-turn fallback.
         if let Some(executor) = javascript_executor {
             if let Some(tab_id) = self.refresh_admission_hold(tabs) {
+                executor.hold_reserved_debugger_execution_once(tab_id);
+            }
+            for tab_id in self.refresh_transition_holds(tabs) {
                 executor.hold_reserved_debugger_execution_once(tab_id);
             }
             if (preserve_pending_entry && !advance_pending_entry) || preserve_execution_transition {

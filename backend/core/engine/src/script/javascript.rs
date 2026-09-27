@@ -553,7 +553,7 @@ pub struct JavaScriptPageExecutor {
     /// location. This is consumed by the next lifecycle synchronization; an
     /// idle session still starts the declaration normally.
     hold_pending_debugger_execution_once: bool,
-    reserved_debugger_hold_once: Option<TabId>,
+    reserved_debugger_hold_once: BTreeSet<TabId>,
     next_debugger_program_handle: u64,
     reports: VecDeque<JavaScriptPageExecutionReport>,
 }
@@ -596,7 +596,7 @@ impl JavaScriptPageExecutor {
             pending_debugger_executions: BTreeMap::new(),
             debugger_execution_states: BTreeMap::new(),
             hold_pending_debugger_execution_once: false,
-            reserved_debugger_hold_once: None,
+            reserved_debugger_hold_once: BTreeSet::new(),
             next_debugger_program_handle: 1,
             reports: VecDeque::new(),
         })
@@ -636,7 +636,7 @@ impl JavaScriptPageExecutor {
                 self.close_page(*tab_id);
             }
         }
-        let reserved_tab = self.reserved_debugger_hold_once.take();
+        let reserved_tab = std::mem::take(&mut self.reserved_debugger_hold_once);
         if !std::mem::take(&mut self.hold_pending_debugger_execution_once) {
             self.drive_debugger_executions(reserved_tab);
         }
@@ -860,7 +860,7 @@ impl PageJavaScriptExecutor for JavaScriptPageExecutor {
 
     fn hold_reserved_debugger_execution_once(&mut self, tab_id: TabId) {
         if self.pending_debugger_executions.contains_key(&tab_id) {
-            self.reserved_debugger_hold_once = Some(tab_id);
+            self.reserved_debugger_hold_once.insert(tab_id);
         }
     }
 }

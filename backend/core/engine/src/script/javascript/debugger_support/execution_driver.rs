@@ -59,10 +59,10 @@ impl JavaScriptPageExecutor {
     /// tab. A paused declaration blocks later same-tab declarations, retaining
     /// classic-script order. This runs only on the core session thread and
     /// never waits for a debugger socket.
-    pub(in super::super) fn drive_debugger_executions(&mut self, reserved_tab: Option<TabId>) {
+    pub(in super::super) fn drive_debugger_executions(&mut self, reserved_tabs: BTreeSet<TabId>) {
         let tab_ids: Vec<_> = self.pending_debugger_executions.keys().copied().collect();
         for tab_id in tab_ids {
-            if Some(tab_id) == reserved_tab {
+            if reserved_tabs.contains(&tab_id) {
                 continue;
             }
             while let Some(next) = self
