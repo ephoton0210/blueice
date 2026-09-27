@@ -22,6 +22,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 mod authorization;
 mod lifecycle;
+mod linked_execution;
 mod linked_pause;
 mod metadata;
 mod nested_pause;

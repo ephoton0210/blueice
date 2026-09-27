@@ -1996,6 +1996,24 @@ cannot be minted. The independent linked frame still carries its full core
 instance. The focused resume/reload and cutover real-socket tests pass with the
 single workspace target cache.
 
+**C3.1.3.5.5.3 workspace and coverage closure:** The all-target workspace
+build, sequential workspace test suite, warning-free workspace Clippy, Rust
+format check, and diff check pass. The CI-style workspace coverage run reports
+90.33% lines against the 90% gate; the independent no-exclusion BlueJS run
+reports 93.31% against its 88% gate. Both runs exercised the BlueTS compiler,
+bridge, core, and real Launcher tests. `cargo llvm-cov` used a temporary
+`target/llvm-cov-target` instrumentation cache, which was removed after the
+reports; the ordinary `target/debug` cache was retained.
+
+The line audit found one 1,322-line linked child test owner. Its independent
+arm and real-child execution tests now live in an MPL-headed 544-line
+`linked_execution.rs`; the paused-stack and static/value remint test stays in
+the 784-line `linked_pause.rs`. The three tests pass under their moved module
+paths, and the incremental all-target build, workspace Clippy, and formatting
+checks pass after the split. No affected BlueTS/debugger source or test owner
+exceeds 1,300 lines. C3.1.3.5, C3.1.3, and C3.1 are complete; metadata
+invalidation and successor isolation continue under C3.2.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
