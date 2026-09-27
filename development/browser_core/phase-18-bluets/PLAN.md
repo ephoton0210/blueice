@@ -2044,6 +2044,18 @@ eviction. The focused bridge test, Clippy, and format checks pass. This closes
 the current no-restore contract without claiming that page-cache or
 hibernation features are implemented.
 
+**C3.2.3 successor metadata isolation:** The real supervised-child cutover
+regression now asserts that a successor can reuse the predecessor's visible
+realm and public program IDs while its full core instance and public metadata
+ID differ. With the successor's own complete linked-scope and metadata
+receipts, its Value request still returns `9`, while the predecessor's static
+relation, type display, and linked Value selectors all receive typed
+no-payload refusals. The direct bridge separately proves that reinstalling
+identical source after invalidation mints a distinct BlueJS generation and
+cannot retrieve predecessor static metadata. The focused socket test,
+Launcher Clippy, and formatting pass. C3.2 is closed for the current
+no-page-restore lifecycle contract.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

@@ -700,10 +700,14 @@ fn launcher_rejects_predecessor_linked_type_value_pair_after_child_cutover() {
         &mut successor_browser,
         &fixture.origin,
     );
-    assert_eq!(successor.entry.realm, predecessor.entry.realm);
+    assert_eq!(successor.entry, predecessor.entry);
     assert_ne!(
         successor.stack.frames[0].frame.core_instance,
         predecessor.stack.frames[0].frame.core_instance
+    );
+    assert_ne!(
+        successor.static_type.metadata,
+        predecessor.static_type.metadata
     );
     assert_eq!(
         debugger_request(

@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.2.3.** Prove a successor never receives its predecessor's
-static metadata, including when visible realm/program ordinals repeat.
+**Current leaf: C4.1.1.** Audit real-process coverage for each public debugger
+capability: pause, step, stack, scope, values, and exception.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -508,12 +508,15 @@ channel with explicit owner/client grants.
         - [x] **C3.1.3.5.5.1** On real Launcher/core/child sockets, pair one initialized linked entry-root slot's compiler type display with its independently granted bounded runtime preview. Check complete same-stream linked-scope receipt, exact target echoes, Value-only/static-only/relation-only denials, and absent or truncated receipt refusal. The real Launcher socket test pairs a linked entry-root `rootValue` slot's exact static selector and compiler `number` display with its independently granted exact linked Value selector and `9` preview. Separate streams prove static-only, relation-only, Value-only, foreign no-receipt, and truncated-receipt behavior. The focused test passes with the existing shared `target/` cache.
         - [x] **C3.1.3.5.5.2** Keep the same real-socket target through linked resume, HTTP reload, and supervised child cutover; prove old pause-bound relation and Value targets expire after resume, and old relation, type display, and Value targets expire after reload and cutover with typed no-partial refusal. Focused real-socket regressions pass. Resume leaves the independently valid compiler type display readable until generation replacement. The cutover test reproduced a metadata-ID reuse bug when predecessor and successor realm IDs matched; core metadata handles/generations now receive a process-incarnation seed so the old type ID cannot alias the successor receipt. Public linked step is not a supported operation, so resume is the available linked execution advance.
         - [x] **C3.1.3.5.5.3** Run the full workspace build/test, Clippy, formatting, and relevant BlueTS coverage gates with the shared target cache. Resolve failures, verify the over-1,300-line audit remains satisfied, then check off C3.1.3.5, C3.1.3, and C3.1. Full workspace all-target build, sequential test suite, warning-free Clippy, and rustfmt pass. CI-style workspace line coverage is 90.33% against 90%; independent BlueJS line coverage is 93.31% against 88%. Coverage instrumentation was removed after measurement, preserving the ordinary shared target cache. A 1,322-line linked child test file was split into 784-line pause and 544-line execution modules; all three moved tests, the incremental all-target build, and workspace Clippy/format pass. The affected BlueTS and debugger modules are each at most 1,300 lines.
-- [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
+- [x] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
   restore the same checked generation; never attach old metadata to a
-  successor.
+  successor. Reload and tab close invalidate live metadata; the current
+  no-restore page lifecycle and explicit BlueJS invalidation prevent cache or
+  hibernation revival. Real cutover sockets and direct-bridge tests reject
+  predecessor identities even when visible program IDs repeat.
   - [x] **C3.2.1** Invalidate metadata on reload and tab close. Existing real Launcher metadata-policy coverage rejects old inventory, derived type/symbol/contract/source, and lowering requests after HTTP reload. A new real Launcher socket test closes the sole BlueTS tab and proves the realm inventory becomes empty and old metadata/type queries return typed no-payload refusals. The core child-executor test now remints successor metadata after reload, closes that tab, verifies the retained live-document and metadata maps are empty, and rejects the old successor summary. Both focused tests and affected engine/Launcher Clippy/format checks pass.
   - [x] **C3.2.2** Invalidate or restore the same checked generation on cache eviction and hibernation. There is currently no page-cache or hibernation restore route; BlueTS metadata is never serialized for either event. The current HTTP source cache evicts only verified source bytes and rechecks integrity on refetch, without owning installed program metadata. BlueJS's explicit program invalidation is the fail-closed boundary for any future page eviction or hibernation: an extended direct-bridge test invalidates and prunes a generation, reinstalls identical source under a distinct generation, rejects the predecessor metadata, and removes the successor by explicit `forget`. The focused test, bridge Clippy, formatting, and diff checks pass. A future page-cache/hibernation feature must call this boundary or prove exact-generation restoration before it can preserve metadata.
-  - [ ] **C3.2.3** Assert a successor never receives the predecessor's metadata.
+  - [x] **C3.2.3** Assert a successor never receives the predecessor's metadata. The real Launcher cutover test deliberately aligns predecessor and successor public program IDs, requires distinct core instances and metadata IDs, reads the successor's valid `9` preview, and rejects the predecessor relation, type display, and Value selectors without partial replies. The direct bridge also reinstalls identical source under a distinct BlueJS generation and rejects the predecessor metadata. Focused socket test, Launcher Clippy, and formatting pass.
 
 #### C4. Verify the public debugger route.
 
