@@ -173,6 +173,73 @@ fn catch_checks_nested_calls_and_unannotated_returns_without_scope_leakage() {
 }
 
 #[test]
+fn immutable_typeof_guard_narrows_each_branch_and_inequality_inverse() {
+    assert_accepted(
+        "function takesString(value: string): void {} function takesNumber(value: number): void {} function f(input: string | number): number { const value: string | number = input; if (typeof value === 'string') { takesString(value); return 1; } else { takesNumber(value); return 2; } }",
+    );
+    assert_accepted(
+        "function takesString(value: string): void {} function takesNumber(value: number): void {} function f(input: string | number): number { const value: string | number = input; if (typeof value !== \"string\") { takesNumber(value); return value; } else { takesString(value); return 0; } }",
+    );
+}
+
+#[test]
+fn immutable_typeof_guard_carries_the_surviving_type_after_early_completion() {
+    assert_accepted(
+        "function takesString(value: string): void {} function f(input: string | number): number { const value: string | number = input; if (typeof value !== 'string') { return value; } takesString(value); return 0; }",
+    );
+    assert_accepted(
+        "function takesNumber(value: number): void {} function f(input: string | number): number { const value: string | number = input; if (typeof value === 'string') { throw value; } takesNumber(value); return value; }",
+    );
+    assert_rejected(
+        "function f(input: string | number): number { const value: string | number = input; if (typeof value === 'string') { return 1; } }",
+        "BTS3004",
+        "can complete without returning a value",
+    );
+}
+
+#[test]
+fn immutable_typeof_guard_does_not_leak_into_siblings_or_two_live_paths() {
+    assert_rejected(
+        "function takesString(value: string): void {} function f(input: string | number): void { const value: string | number = input; if (typeof value === 'string') { 0; } takesString(value); }",
+        "BTS3003",
+        "argument 1 has type `string | number`",
+    );
+    let source = "function takesString(value: string): void {} function takesNumber(value: number): void {} function f(input: string | number): void { const value: string | number = input; if (typeof value === 'string') { takesNumber(value); } else { takesString(value); } }";
+    let found = diagnostics(source);
+    assert_eq!(
+        found.len(),
+        2,
+        "both siblings must keep distinct narrowed types: {found:?}"
+    );
+    assert!(found[0].message.contains("argument 1 has type `string`"));
+    assert!(found[1].message.contains("argument 1 has type `number`"));
+}
+
+#[test]
+fn first_typeof_guard_does_not_narrow_mutable_or_parameter_bindings() {
+    for source in [
+        "function takesString(value: string): void {} function f(input: string | number): void { let value: string | number = input; if (typeof value === 'string') { takesString(value); } }",
+        "function takesString(value: string): void {} function f(value: string | number): void { if (typeof value === 'string') { takesString(value); } }",
+    ] {
+        assert_rejected(source, "BTS3003", "argument 1 has type `string | number`");
+    }
+}
+
+#[test]
+fn first_typeof_guard_does_not_claim_later_or_repeated_guards() {
+    assert_rejected(
+        "function takesString(value: string): void {} function f(input: string | number): void { if (typeof value === 'string') { takesString(value); } const value: string | number = input; }",
+        "BTS3003",
+        "argument 1 has type `string | number`",
+    );
+    assert_rejected(
+        "function takesString(value: string): void {} function f(input: string | number): void { const value: string | number = input; if (typeof value === 'string') { 0; } if (typeof value === 'string') { takesString(value); } }",
+        "BTS3003",
+        "argument 1 has type `string | number`",
+    );
+}
+
+#[test]
 fn braced_while_retains_its_condition_and_body_without_proving_a_return() {
     let source =
         "function count(value: number): number { while (value > 0) { value -= 1; } return value; }";
