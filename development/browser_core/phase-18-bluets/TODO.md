@@ -18,7 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: F3.1.3.** Treat project strings as untrusted data.
+**Current leaf: F3.2.1.** Hide build unless the owner granted output-write
+authority.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -702,7 +703,7 @@ Keep check read-only and owner registration sealed before listeners.
   pagination cursors one-shot and treat project strings as untrusted.
   - [x] **F3.1.1** Negotiate exact session/project/generation capabilities. The core's exact-version handshake mints a per-stream attestation and canonical query-only manifest, which MCP validates before exposing its session receipt. `bluetsc_list_projects` supplies bounded per-session project receipts; `bluetsc_check` then supplies exact project/generation evidence, revoking the old generation before each check. MCP rejects an unobserved project or generation before IPC, verifies project descriptions and check replies against the requested handle, and keeps earlier receipts unusable on a new MCP stream. Unit and real launcher/core/MCP tests cover malformed core evidence, a mismatched description, hidden or guessed projects, prior-session receipt replay, generation binding, and cutover.
   - [x] **F3.1.2** Make pagination cursors one-shot. The core service retains cursor state for diagnostics, incremental work sets, and static metadata, binds it to the exact project generation and collection, and removes it after one valid continuation. The accepted compiler stream also requires a matching cursor receipt and releases abandoned cursors on disconnect or check replacement. Existing service/IPC/real MCP tests cover replay, stale generation, and metadata cross-kind use; an added stream-bound test proves diagnostic and work-set cursors reject foreign streams, wrong work-set kinds, and replay while a rejected attempt leaves the owner's cursor usable.
-  - [ ] **F3.1.3** Treat project strings as untrusted data.
+  - [x] **F3.1.3** Treat project strings as untrusted data. Every compiler tool response goes through one MCP formatter that JSON-encodes the source-free reply inside a session envelope and precedes it with an explicit untrusted-data marker and instruction warning. Project-controlled entry module IDs, diagnostic messages, module identities, and static display strings stay data fields rather than tool descriptions or trusted control text. The session-capabilities result contains only core-authored fixed evidence. A focused adversarial identity test injects quotes, a forged session key, the marker, and imperative prose and proves the session receipt remains intact and the whole string remains one JSON value; existing tests cover diagnostic and type-result framing.
 - [ ] **F3.2** Expose build only with explicit output-write authority; a query
   receipt must never imply write access.
   - [ ] **F3.2.1** Hide build unless the owner granted output-write authority.

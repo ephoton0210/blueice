@@ -4076,6 +4076,15 @@ successful use makes replay fail. Stream closure and new checks revoke
 unused records. The added stream-bound diagnostic/work-set regression and
 existing metadata and real MCP tests cover these conditions.
 
+**F3.1.3 untrusted compiler strings:** Every compiler tool returns through
+the same MCP result formatter: project-derived entry identities, module
+names, diagnostic prose, static displays, and core error messages are JSON
+values behind an explicit untrusted-data warning and marker. The capability
+report contains only fixed core-authored session evidence. An adversarial
+project identity containing JSON delimiters, a forged session field, the
+marker, and an instruction remains a single encoded value; parsing the
+result still yields the genuine session receipt.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
