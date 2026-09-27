@@ -76,7 +76,7 @@ impl Vm {
                 )));
             }
         }
-        let existing_fields = self.temporal_calendar_fields(&existing)?;
+        let existing_fields = self.temporal_calendar_fields(&existing);
         // `PrepareCalendarFields` reads and converts one field at a time, in
         // alphabetical order, each conversion straight after its own `Get`
         // (`with/order-of-operations.js`). Nothing object-valued is held in a

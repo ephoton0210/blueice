@@ -17,11 +17,20 @@ impl Vm {
         like: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        // Native dispatch checked the PlainDate or PlainDateTime receiver.
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("native dispatch validated the Temporal date receiver");
         let like_object = like
             .object_id()
             .ok_or_else(|| RuntimeError::TypeError("Temporal.with requires an object".into()))?;
-        if self.heap.temporal_value(like_object)?.is_some() {
+        // JavaScript object values are handles from this VM's heap.
+        if self
+            .heap
+            .temporal_value(like_object)
+            .expect("the property bag belongs to this VM")
+            .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "Temporal.with does not accept a Temporal-like object".into(),
             ));
@@ -33,7 +42,7 @@ impl Vm {
                 )));
             }
         }
-        let existing_fields = self.temporal_calendar_fields(&existing)?;
+        let existing_fields = self.temporal_calendar_fields(&existing);
         let is_date_time = existing.kind == TemporalKind::PlainDateTime;
 
         // `PrepareCalendarFields`/`PreparePartialCalendarFields` read and

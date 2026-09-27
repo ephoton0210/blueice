@@ -37,7 +37,7 @@ impl Vm {
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
         let existing = self.temporal_date_receiver(receiver)?;
-        let fields = self.temporal_calendar_fields(&existing)?;
+        let fields = self.temporal_calendar_fields(&existing);
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let ym_fields = plain_year_month::YearMonthFields {
@@ -80,7 +80,7 @@ impl Vm {
                 Self::temporal_date_value(TemporalKind::PlainMonthDay, existing.calendar, date);
             return self.alloc_temporal_value(value, false);
         }
-        let fields = self.temporal_calendar_fields(&existing)?;
+        let fields = self.temporal_calendar_fields(&existing);
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let md_fields = plain_month_day::MonthDayFields {

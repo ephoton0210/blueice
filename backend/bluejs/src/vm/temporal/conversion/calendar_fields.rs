@@ -130,7 +130,7 @@ impl Vm {
     pub(in super::super::super) fn temporal_calendar_fields(
         &self,
         value: &TemporalValue,
-    ) -> Result<TemporalCalendarFields, RuntimeError> {
+    ) -> TemporalCalendarFields {
         // The `"iso8601"` calendar is a fast path that deliberately never
         // reaches `icu_calendar::Date::try_new_iso` below: that constructor
         // enforces `icu_calendar`'s own `CONSTRUCTOR_YEAR_RANGE` (-9999..=9999
@@ -147,7 +147,7 @@ impl Vm {
         // than special-casing its error path.
         // See development/browser_core/phase-26-ecma262-temporal/PLAN.md.
         if value.calendar == "iso8601" {
-            return Ok(TemporalCalendarFields {
+            return TemporalCalendarFields {
                 year: value.year,
                 month: value.month,
                 month_code: format!("M{:02}", value.month),
@@ -162,7 +162,7 @@ impl Vm {
                     365
                 },
                 in_leap_year: plain_date::is_iso_leap_year(value.year),
-            });
+            };
         }
         let calendar = calendar::calendar_kind(&value.calendar)
             .expect("Temporal values retain a validated calendar identifier");
@@ -173,7 +173,7 @@ impl Vm {
         // The `iso8601` calendar never reaches this point (see the fast
         // path above), so every calendar here keeps ICU4X's own era, if any.
         let era = year.era();
-        Ok(TemporalCalendarFields {
+        TemporalCalendarFields {
             year: year.extended_year(),
             // Temporal's numeric `month` is the ordinal month in a year.
             // A leap month therefore increments every following ordinal,
@@ -187,7 +187,7 @@ impl Vm {
             days_in_month: date.days_in_month(),
             days_in_year: date.days_in_year(),
             in_leap_year: date.is_in_leap_year(),
-        })
+        }
     }
 
     pub(in super::super::super) fn temporal_value_from_calendar_date(

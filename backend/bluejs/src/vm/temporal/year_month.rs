@@ -401,7 +401,7 @@ impl Vm {
         if parsed.calendar == "iso8601" {
             return Ok(parsed);
         }
-        let fields = self.temporal_calendar_fields(&parsed)?;
+        let fields = self.temporal_calendar_fields(&parsed);
         let calendar_kind = calendar::calendar_kind(&parsed.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let ym_fields = plain_year_month::YearMonthFields {
@@ -458,7 +458,7 @@ impl Vm {
         if parsed.calendar == "iso8601" {
             return Ok(parsed);
         }
-        let fields = self.temporal_calendar_fields(&parsed)?;
+        let fields = self.temporal_calendar_fields(&parsed);
         let calendar_kind = calendar::calendar_kind(&parsed.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let md_fields = plain_month_day::MonthDayFields {
@@ -505,7 +505,7 @@ impl Vm {
                 )));
             }
         }
-        let base = self.temporal_calendar_fields(&existing)?;
+        let base = self.temporal_calendar_fields(&existing);
 
         // `PreparePartialCalendarFields` reads and immediately coerces
         // every recognized property in strict alphabetical order -- `era`,
@@ -640,7 +640,7 @@ impl Vm {
                 )));
             }
         }
-        let base = self.temporal_calendar_fields(&existing)?;
+        let base = self.temporal_calendar_fields(&existing);
         // `PreparePartialCalendarFields` reads and converts one field at a
         // time in alphabetical order (`day`, `month`, `monthCode`, `year`),
         // each conversion right after its own `Get` (`with/
@@ -830,7 +830,7 @@ impl Vm {
         }
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
-        let fields = self.temporal_calendar_fields(&existing)?;
+        let fields = self.temporal_calendar_fields(&existing);
         let anchor_fields = plain_year_month::YearMonthFields {
             era: None,
             era_year: None,
@@ -958,8 +958,8 @@ impl Vm {
         // leap-months-{chinese,dangi,hebrew}.js`, whose "M04L-M04 is 1y not
         // 1y 1mo" case this swap computed as `1y 1mo` instead of `1y`.
         let (from, to) = (&existing, &other);
-        let from_fields = self.temporal_calendar_fields(from)?;
-        let to_fields = self.temporal_calendar_fields(to)?;
+        let from_fields = self.temporal_calendar_fields(from);
+        let to_fields = self.temporal_calendar_fields(to);
         let resolve = |fields: &TemporalCalendarFields| {
             plain_year_month::year_month_from_fields(
                 calendar_kind,
@@ -1261,7 +1261,7 @@ impl Vm {
             ));
         }
         let day = self.temporal_integer(&day_v, 1, 31, "day")?;
-        let base = self.temporal_calendar_fields(&existing)?;
+        let base = self.temporal_calendar_fields(&existing);
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let mut fields = DateFields::default();
@@ -1332,7 +1332,7 @@ impl Vm {
                 self.temporal_integer(&year_v, i32::MIN, i32::MAX, "year")
             })
             .transpose()?;
-        let base = self.temporal_calendar_fields(&existing)?;
+        let base = self.temporal_calendar_fields(&existing);
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let supports_era = calendar::calendar_supports_era(&existing.calendar);

@@ -163,7 +163,7 @@ impl Vm {
                 Ok(Value::Number(length as f64 / 3_600_000_000_000.0))
             }
             getter => {
-                let fields = self.temporal_calendar_fields(&value)?;
+                let fields = self.temporal_calendar_fields(&value);
                 match getter {
                     native::TemporalGetter::Year => Ok(Value::Number(fields.year.into())),
                     native::TemporalGetter::Month => Ok(Value::Number(fields.month.into())),
