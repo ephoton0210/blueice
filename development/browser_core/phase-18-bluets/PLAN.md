@@ -1878,6 +1878,21 @@ adding a callable public linked request; bump private and public protocol
 versions only when each respective route is complete. This design leaf does
 not change debugger v41 or the current metadata manifest.
 
+**C3.1.3.5.2 real ordinary display/value acceptance:** A focused public
+Launcher/core/child socket test runs the same supported BlueTS declaration in
+classic and module form. It arms the root before metadata reads, obtains
+same-stream compiler metadata/type/symbol and Scopes receipts, and checks the
+exact static relation selector and `number` type display. An independent
+Value-only stream advances to the initialized slot and obtains a bounded `9`
+preview; static-only and relation-only streams refuse Value and type display
+respectively, while the Value-only stream refuses the static relation. A
+combined stream independently receipts the same live slot, echoes the same
+selector in both replies, and proves its preview matches the Value-only
+snapshot. After a real instruction step, both old slot requests refuse
+without a partial payload; after HTTP reload, old relation, Value, and type
+display targets also refuse. The focused real-socket test passes for both
+script kinds without changing debugger v41 or the compiler/runtime ABI.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

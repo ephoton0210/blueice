@@ -59,6 +59,8 @@ mod scope_relations;
 mod source_breakpoints;
 #[path = "out_of_process_debugger/spans_stack.rs"]
 mod spans_stack;
+#[path = "out_of_process_debugger/static_runtime_display.rs"]
+mod static_runtime_display;
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
 /// Each test owns a full launcher/core/child tree. Running several at once
