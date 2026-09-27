@@ -102,6 +102,24 @@ fn direct_page_while_runs_zero_and_multiple_iterations() {
 }
 
 #[test]
+fn direct_page_callback_method_overloads_run_both_tags_through_one_object_function() {
+    let source = "interface Visitor { visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; } let observed: number = 0; function onText(value: string): void { if (value === 'A') { observed += 1; } } function onCount(value: number): void { observed += value; } function dispatch(kind: string, listener: any): void { if (kind === 'text') { listener('A'); } else { listener(2); } } const visitor: Visitor = { visit: dispatch }; visitor.visit('text', onText); visitor.visit('count', onCount); observed;";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    assert_eq!(
+        owner.execute_program(7, &attachment).unwrap(),
+        bluejs::Value::Number(3.0)
+    );
+}
+
+#[test]
 fn direct_page_try_catches_exact_value_and_restores_outer_binding_in_finally() {
     let source = "function f(caught: number): number { let observed: number = 0; try { throw 7; } catch (caught) { if (caught === 7) { observed += 1; } } finally { if (caught === 99) { observed += 10; } } return observed; } f(99);";
     let artifact = compile_direct_script(

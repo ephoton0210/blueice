@@ -364,6 +364,26 @@ fn callback_method_overloads_select_by_tag_and_report_distinct_failures() {
 }
 
 #[test]
+fn callback_method_overloads_erase_types_but_keep_one_runtime_property() {
+    let source = "interface Visitor { visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; } let observed: number = 0; function onText(value: string): void { if (value === 'A') { observed += 1; } } function onCount(value: number): void { observed += value; } function dispatch(kind: string, listener: any): void { if (kind === 'text') { listener('A'); } else { listener(2); } } const visitor: Visitor = { visit: dispatch }; visitor.visit('text', onText); visitor.visit('count', onCount); observed;";
+    let javascript = emitted(source);
+    assert!(!javascript.contains("interface Visitor"), "{javascript}");
+    assert!(!javascript.contains(": Visitor"), "{javascript}");
+    assert!(!javascript.contains(": string"), "{javascript}");
+    assert!(!javascript.contains(": number"), "{javascript}");
+    assert_eq!(javascript.matches("function dispatch(").count(), 1);
+    assert!(javascript.contains("visit: dispatch"), "{javascript}");
+    assert!(
+        javascript.contains("visitor.visit('text', onText)"),
+        "{javascript}"
+    );
+    assert!(
+        javascript.contains("visitor.visit('count', onCount)"),
+        "{javascript}"
+    );
+}
+
+#[test]
 fn braced_while_retains_its_condition_and_body_without_proving_a_return() {
     let source =
         "function count(value: number): number { while (value > 0) { value -= 1; } return value; }";
