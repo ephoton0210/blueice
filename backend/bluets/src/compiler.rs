@@ -375,8 +375,20 @@ fn compile_with_cache(
     let has_errors = diagnostics
         .iter()
         .any(|diagnostic| diagnostic.severity == crate::diagnostic::Severity::Error);
-    let output = (!has_errors).then(|| emitter::emit(&checked, &project, &options));
-    let debug_info = (!has_errors).then(|| debug_info::build(&checked, &options));
+    let output = if has_errors {
+        None
+    } else {
+        match emitter::emit(&checked, &project, &options) {
+            Ok(output) => Some(output),
+            Err(diagnostic) => {
+                diagnostics.push(diagnostic);
+                None
+            }
+        }
+    };
+    let debug_info = output
+        .as_ref()
+        .map(|_| debug_info::build(&checked, &options));
     IncrementalResult {
         compilation: Compilation {
             project,

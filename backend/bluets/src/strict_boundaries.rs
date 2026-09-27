@@ -6,12 +6,14 @@
 
 use crate::compiler::{is_declaration_module, CompilerOptions, Project, RuntimePolicy};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::parser::{Declaration, FunctionBodyItem, FunctionDeclaration, Type};
+use crate::emitter::{EmittedRuntimeBoundary, EmittedRuntimeSite, EmittedStrictModule};
+use crate::parser::{Declaration, FunctionBodyItem, FunctionDeclaration, Module, TextEdit, Type};
 use crate::syntax::{Token, TokenKind};
 use std::collections::BTreeSet;
 
 pub(crate) const HELPER_V1_VERSION: &str = "bluets-runtime-helper-v1";
 pub(crate) const HELPER_ALIAS: &str = "__bluetsValidateStringV1";
+pub(crate) const HELPER_V1_FILE: &str = "bluets.runtime-helper.v1.mjs";
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const MAX_EMITTED_STRING_BYTES: usize = 1_048_576;
 
@@ -239,6 +241,199 @@ fn supported_string_expression(tokens: &[Token], parameters: &BTreeSet<&str>) ->
     !needs_operand && depth == 0
 }
 
+/// Produces only edits for an already-admitted strict module. A missing source
+/// location is still an error here, so a later parser change cannot silently
+/// publish a strict artifact without all required runtime calls.
+pub(crate) fn plan_emission(
+    module: &Module,
+    options: &CompilerOptions,
+) -> Result<Option<(Vec<TextEdit>, EmittedStrictModule)>, Diagnostic> {
+    if options.runtime_policy != RuntimePolicy::StrictRuntime
+        || options.strict_runtime_boundaries.is_empty()
+    {
+        return Ok(None);
+    }
+    let mut selected = options
+        .strict_runtime_boundaries
+        .iter()
+        .filter(|boundary| boundary.span.module == module.id)
+        .collect::<Vec<_>>();
+    if selected.is_empty() {
+        return Err(emission_error(
+            module,
+            "strict module has no emitted boundary",
+        ));
+    }
+    selected.sort_by_key(|boundary| boundary.span.start);
+    let helper_path = format!(
+        "{}{}",
+        if module.id.contains('/') {
+            "../".repeat(module.id.split('/').count() - 1)
+        } else {
+            "./".to_string()
+        },
+        HELPER_V1_FILE
+    );
+    let import_text =
+        format!("import {{ validateStringV1 as {HELPER_ALIAS} }} from '{helper_path}';\n");
+    let mut edits = vec![TextEdit {
+        start: 0,
+        end: 0,
+        replacement: import_text.clone(),
+    }];
+    let mut record = EmittedStrictModule {
+        helper_version: HELPER_V1_VERSION.to_string(),
+        helper_import: EmittedRuntimeSite {
+            source_span: SourceSpan::new(&module.id, 0, 0),
+            generated_start: 0,
+            expected_text: import_text,
+        },
+        boundaries: Vec::new(),
+    };
+    for boundary in selected {
+        let function = module
+            .declarations
+            .iter()
+            .find_map(|declaration| match declaration {
+                Declaration::Function(function)
+                    if function.span == boundary.span && function.name == boundary.function =>
+                {
+                    Some(function)
+                }
+                _ => None,
+            });
+        let Some(function) = function else {
+            return Err(emission_error(
+                module,
+                "strict function disappeared before emission",
+            ));
+        };
+        let Some(body_open) = function.body_open else {
+            return Err(emission_error(
+                module,
+                "strict function has no body opening brace",
+            ));
+        };
+        if module.source.get(body_open..body_open + 1) != Some("{") {
+            return Err(emission_error(module, "strict function body opening moved"));
+        }
+        let mut ingress_text = String::new();
+        let mut ingress = Vec::new();
+        for parameter in &function.parameters {
+            let call = format!(
+                "{HELPER_ALIAS}({}, {})",
+                parameter.name, boundary.max_string_bytes
+            );
+            ingress_text.push_str("\n  ");
+            ingress_text.push_str(&call);
+            ingress_text.push(';');
+            ingress.push(EmittedRuntimeSite {
+                source_span: parameter.span.clone(),
+                generated_start: 0,
+                expected_text: call,
+            });
+        }
+        edits.push(TextEdit {
+            start: body_open + 1,
+            end: body_open + 1,
+            replacement: ingress_text,
+        });
+        let [FunctionBodyItem::Return { tokens, .. }] = function.body.as_slice() else {
+            return Err(emission_error(
+                module,
+                "strict return disappeared before emission",
+            ));
+        };
+        let (Some(first), Some(last)) = (tokens.first(), tokens.last()) else {
+            return Err(emission_error(module, "strict return has no expression"));
+        };
+        let Some(expression) = module.source.get(first.start..last.end) else {
+            return Err(emission_error(
+                module,
+                "strict return source span is invalid",
+            ));
+        };
+        let egress_text = format!(
+            "{HELPER_ALIAS}({expression}, {})",
+            boundary.max_string_bytes
+        );
+        edits.push(TextEdit {
+            start: first.start,
+            end: first.start,
+            replacement: format!("{HELPER_ALIAS}("),
+        });
+        edits.push(TextEdit {
+            start: last.end,
+            end: last.end,
+            replacement: format!(", {})", boundary.max_string_bytes),
+        });
+        record.boundaries.push(EmittedRuntimeBoundary {
+            contract_id: boundary.contract_id.clone(),
+            function: function.name.clone(),
+            source_span: function.span.clone(),
+            max_string_bytes: boundary.max_string_bytes,
+            ingress,
+            egress: EmittedRuntimeSite {
+                source_span: SourceSpan::new(&module.id, first.start, last.end),
+                generated_start: 0,
+                expected_text: egress_text,
+            },
+        });
+    }
+    Ok(Some((edits, record)))
+}
+
+pub(crate) fn locate_emitted_calls(
+    module: &Module,
+    javascript: &str,
+    record: &mut EmittedStrictModule,
+) -> Result<(), Diagnostic> {
+    if !javascript.starts_with(&record.helper_import.expected_text) {
+        return Err(emission_error(
+            module,
+            "strict helper import was lost during emission",
+        ));
+    }
+    let marker = format!("{HELPER_ALIAS}(");
+    let mut offsets = javascript.match_indices(&marker).map(|(offset, _)| offset);
+    for boundary in &mut record.boundaries {
+        for site in boundary
+            .ingress
+            .iter_mut()
+            .chain(std::iter::once(&mut boundary.egress))
+        {
+            let Some(start) = offsets.next() else {
+                return Err(emission_error(
+                    module,
+                    "strict helper call was lost during emission",
+                ));
+            };
+            if !javascript[start..].starts_with(&site.expected_text) {
+                return Err(emission_error(
+                    module,
+                    "strict helper call changed during emission",
+                ));
+            }
+            site.generated_start = start;
+        }
+    }
+    if offsets.next().is_some() {
+        return Err(emission_error(
+            module,
+            "unexpected strict helper call in output",
+        ));
+    }
+    Ok(())
+}
+
+fn emission_error(module: &Module, message: &str) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::InvalidContract,
+        SourceSpan::new(&module.id, 0, 0),
+        message,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,6 +540,25 @@ mod tests {
             },
         );
         assert!(!result.has_errors(), "{:?}", result.diagnostics);
+        let artifact = &result.output.as_ref().unwrap().artifacts[MODULE];
+        let record = artifact.strict_runtime.as_ref().unwrap();
+        assert_eq!(record.helper_version, HELPER_V1_VERSION);
+        assert!(artifact.javascript.starts_with(&format!(
+            "import {{ validateStringV1 as {HELPER_ALIAS} }} from '../{HELPER_V1_FILE}';\n"
+        )));
+        assert_eq!(record.boundaries.len(), 1);
+        assert_eq!(record.boundaries[0].ingress.len(), 2);
+        assert_eq!(record.boundaries[0].contract_id, "join-string-v1");
+        for site in record.boundaries[0]
+            .ingress
+            .iter()
+            .chain(std::iter::once(&record.boundaries[0].egress))
+        {
+            assert!(artifact.javascript[site.generated_start..].starts_with(&site.expected_text));
+        }
+        assert!(artifact
+            .javascript
+            .contains(&format!("return {HELPER_ALIAS}((left + ':') + right, 64);")));
     }
 
     #[test]

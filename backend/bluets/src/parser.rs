@@ -197,6 +197,9 @@ pub struct FunctionDeclaration {
     /// `async` changes the runtime result to a Promise and cannot satisfy a
     /// primitive-string emitted boundary after type erasure.
     pub async_function: bool,
+    /// Original `{` byte position for emitted boundary insertion. Signature
+    /// declarations have no body opening brace.
+    pub body_open: Option<usize>,
     pub type_parameters: Vec<TypeParameter>,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,

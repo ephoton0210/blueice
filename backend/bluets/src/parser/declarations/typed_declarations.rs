@@ -269,6 +269,7 @@ impl Parser {
         let mut body = Vec::new();
         let mut returns = Vec::new();
         let mut locals = Vec::new();
+        let body_open = self.peek("{").then(|| self.current().start);
         let overload = if self.consume("{") {
             let body_start = self.previous().start;
             self.parse_function_body(body_start, &mut body, &mut returns, &mut locals);
@@ -294,6 +295,7 @@ impl Parser {
             .push(Declaration::Function(FunctionDeclaration {
                 name,
                 async_function: async_start,
+                body_open,
                 type_parameters,
                 parameters,
                 return_type,

@@ -8,6 +8,7 @@ use crate::checker::CheckedProject;
 use crate::compiler::{fingerprint, is_declaration_module, CompilerOptions, Project};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{Declaration, Module, TextEdit, Type, TypeParameter};
+use crate::strict_boundaries;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,21 +91,21 @@ pub(crate) fn emit(
     checked: &CheckedProject,
     project: &Project,
     options: &CompilerOptions,
-) -> BuildOutput {
+) -> Result<BuildOutput, Diagnostic> {
     let build_fingerprint = fingerprint(project, options);
     let artifacts = checked
         .modules
         .iter()
         .filter(|(id, _)| !is_declaration_module(id))
         .map(|(id, checked_module)| {
-            let emitted = emit_javascript(&checked_module.module);
+            let (emitted, strict_runtime) = emit_javascript(&checked_module.module, options)?;
             let source_map = options
                 .source_map
                 .then(|| source_map(id, &checked_module.module.source, &emitted));
             let declaration = options
                 .declaration
                 .then(|| emit_declaration(&checked_module.module));
-            (
+            Ok((
                 id.clone(),
                 BuildArtifact {
                     module_id: id.clone(),
@@ -112,11 +113,11 @@ pub(crate) fn emit(
                     source_map,
                     declaration,
                     fingerprint: build_fingerprint.clone(),
-                    strict_runtime: None,
+                    strict_runtime,
                 },
-            )
+            ))
         })
-        .collect();
+        .collect::<Result<BTreeMap<_, _>, Diagnostic>>()?;
     let declaration_modules = if options.declaration {
         {
             checked
@@ -131,11 +132,11 @@ pub(crate) fn emit(
     } else {
         BTreeMap::new()
     };
-    BuildOutput {
+    Ok(BuildOutput {
         fingerprint: build_fingerprint,
         artifacts,
         declaration_modules,
-    }
+    })
 }
 
 /// Rejects a source-map request before allocating an unbounded provenance
@@ -197,7 +198,10 @@ struct ProvenanceSegment {
     source_column: usize,
 }
 
-fn emit_javascript(module: &Module) -> EmittedJavaScript {
+fn emit_javascript(
+    module: &Module,
+    options: &CompilerOptions,
+) -> Result<(EmittedJavaScript, Option<EmittedStrictModule>), Diagnostic> {
     let mut edits = module.edits.clone();
     for declaration in &module.declarations {
         let Declaration::Import(import) = declaration else {
@@ -223,7 +227,17 @@ fn emit_javascript(module: &Module) -> EmittedJavaScript {
             replacement: format!("{quote}{emitted_specifier}{quote}"),
         });
     }
-    apply_edits(&module.source, edits)
+    let plan = strict_boundaries::plan_emission(module, options)?;
+    let mut strict_runtime = None;
+    if let Some((strict_edits, record)) = plan {
+        edits.extend(strict_edits);
+        strict_runtime = Some(record);
+    }
+    let emitted = apply_edits(&module.source, edits);
+    if let Some(record) = &mut strict_runtime {
+        strict_boundaries::locate_emitted_calls(module, &emitted.javascript, record)?;
+    }
+    Ok((emitted, strict_runtime))
 }
 
 fn javascript_specifier(specifier: &str) -> String {

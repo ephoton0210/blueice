@@ -2671,6 +2671,24 @@ actually inserted. The six focused descriptor tests, 162 BlueTS library
 tests, 12 binary tests, workspace Clippy, and formatting pass in the reused
 target directory; standalone strict publication is still closed.
 
+**E3.2.3.2.3.3.2 helper-call insertion:** The parser now retains each
+function body's opening brace byte so the emitter can insert ingress checks
+immediately inside it. For each admitted exported function, the emitter adds
+one deterministic root-relative helper import per module, validates every
+required string parameter, and wraps the sole return expression in the same
+versioned helper. Its strict record holds the owner contract ID and budget,
+the original parameter/expression spans, and generated offsets of every
+exact call. A source alias collision was already rejected; after applying
+all ordinary type-erasure edits, emission scans generated calls in source
+order and returns `InvalidContract` without output if any import or call is
+missing, changed, or unexpectedly duplicated. Compiler emission now returns
+a diagnostic rather than treating such a mismatch as success. The focused
+two-parameter concatenation test asserts the helper path, exact ingress and
+egress text, and retained generated sites. All 162 BlueTS library tests,
+12 BlueTSC binary tests, workspace Clippy, and formatting pass in the reused
+target directory. The public strict build gate remains closed pending
+source-map, multi-module, and publisher verification.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
