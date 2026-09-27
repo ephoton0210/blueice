@@ -430,3 +430,38 @@ fn oop_debugger_discovery_deferrals_are_finite_per_document() {
     executor.synchronize_and_execute(&tabs).unwrap();
     assert_eq!(executor.child.advances, vec![(tab_id.as_u64(), 1)]);
 }
+
+#[test]
+fn reserved_oop_tab_does_not_delay_an_unreserved_pending_tab_or_spend_its_budget() {
+    let (mut tabs, reserved_tab) = loaded_tabs(
+        "<script>let first = 1;</script>",
+        "https://example.test/first.html",
+    );
+    let other_tab = tabs.open_tab();
+    tabs.get_mut(other_tab).unwrap().load_html_str(
+        "<script>let second = 2;</script>",
+        Some("https://example.test/second.html".to_string()),
+    );
+    let mut executor = OutOfProcessJavaScriptPageExecutor::new_with_debugger_execution_control(
+        DeferralBudgetChild::default(),
+    );
+    executor.synchronize_and_execute(&tabs).unwrap();
+
+    PageJavaScriptExecutor::hold_reserved_debugger_execution_once(&mut executor, reserved_tab);
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(executor.child.advances, vec![(other_tab.as_u64(), 1)]);
+    assert_eq!(
+        executor.debugger_execution_deferrals[&reserved_tab].remaining,
+        MAX_OOP_DEBUGGER_EXECUTION_DEFERRALS_PER_DOCUMENT
+    );
+
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(
+        executor.child.advances,
+        vec![
+            (other_tab.as_u64(), 1),
+            (reserved_tab.as_u64(), 1),
+            (other_tab.as_u64(), 1),
+        ]
+    );
+}

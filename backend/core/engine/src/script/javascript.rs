@@ -241,7 +241,7 @@ pub trait PageJavaScriptExecutor {
     /// Applies one tick of a core-owned, deadline-bounded next-document
     /// reservation. Unlike request-triggered discovery, this does not spend
     /// the isolated child's per-document discovery-request budget.
-    fn hold_reserved_debugger_execution_once(&mut self) {}
+    fn hold_reserved_debugger_execution_once(&mut self, _tab_id: TabId) {}
 }
 
 /// The core-only context supplied when authorizing an external JavaScript
@@ -553,6 +553,7 @@ pub struct JavaScriptPageExecutor {
     /// location. This is consumed by the next lifecycle synchronization; an
     /// idle session still starts the declaration normally.
     hold_pending_debugger_execution_once: bool,
+    reserved_debugger_hold_once: Option<TabId>,
     next_debugger_program_handle: u64,
     reports: VecDeque<JavaScriptPageExecutionReport>,
 }
@@ -595,6 +596,7 @@ impl JavaScriptPageExecutor {
             pending_debugger_executions: BTreeMap::new(),
             debugger_execution_states: BTreeMap::new(),
             hold_pending_debugger_execution_once: false,
+            reserved_debugger_hold_once: None,
             next_debugger_program_handle: 1,
             reports: VecDeque::new(),
         })
@@ -634,8 +636,9 @@ impl JavaScriptPageExecutor {
                 self.close_page(*tab_id);
             }
         }
+        let reserved_tab = self.reserved_debugger_hold_once.take();
         if !std::mem::take(&mut self.hold_pending_debugger_execution_once) {
-            self.drive_debugger_executions();
+            self.drive_debugger_executions(reserved_tab);
         }
         for tab_id in tab_ids {
             let Some(page) = tabs.get(tab_id) else {
@@ -855,8 +858,10 @@ impl PageJavaScriptExecutor for JavaScriptPageExecutor {
         Self::hold_pending_debugger_execution_once(self);
     }
 
-    fn hold_reserved_debugger_execution_once(&mut self) {
-        Self::hold_pending_debugger_execution_once(self);
+    fn hold_reserved_debugger_execution_once(&mut self, tab_id: TabId) {
+        if self.pending_debugger_executions.contains_key(&tab_id) {
+            self.reserved_debugger_hold_once = Some(tab_id);
+        }
     }
 }
 

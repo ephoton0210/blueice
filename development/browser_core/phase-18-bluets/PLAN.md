@@ -4320,6 +4320,22 @@ instrumented or alternate local build tree was created. The remaining proof
 is CI on the repaired commit for macOS, Windows, workspace coverage, and the
 independent BlueJS coverage threshold.
 
+**G.3.2.2.3.4 exact-tab reservation:** A second review found that the first
+reserved-execution hook still used the old global one-turn scheduler flag.
+It could pause unrelated tabs for the reservation's five-second window even
+though the public request identified one tab. The core now passes the tab ID
+to a separate reserved-tick hook. Both native and supervised-child execution
+drivers skip only that tab and let other live documents advance. Focused
+two-tab tests prove native `Pending`/`Completed` separation and the child's
+exact advance requests without spending its 64 request-triggered discovery
+deferrals. All focused tests and workspace all-target Clippy pass in the shared
+target. A later full workspace rerun reached 32/33 debugger cases before a
+separate one-turn transition-observation race: a real socket's immediate
+post-resume `GetExecutionState` saw `Completed` instead of the promised
+`Resuming`. G.3.2.2.3.5 will bind that short observation window to the same
+stream and exact program, with a deadline and disconnect cleanup, before the
+next full gate.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

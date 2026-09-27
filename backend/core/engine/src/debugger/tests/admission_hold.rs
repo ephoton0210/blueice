@@ -134,11 +134,11 @@ fn next_document_hold_attaches_once_and_expires_on_replacement_disconnect_or_tim
         ),
         DebuggerReply::NextDocumentHoldAcquired { tab_id }
     );
-    assert!(!receiver.refresh_admission_hold(&tabs));
+    assert!(receiver.refresh_admission_hold(&tabs).is_none());
     tabs.get_mut(tab)
         .unwrap()
         .load_html_str("<main>one</main>", None);
-    assert!(receiver.refresh_admission_hold(&tabs));
+    assert_eq!(receiver.refresh_admission_hold(&tabs), Some(tab));
     let foreign = negotiated_session();
     let safe_point = DebuggerSafePoint {
         program: DebuggerProgram {
@@ -166,11 +166,11 @@ fn next_document_hold_attaches_once_and_expires_on_replacement_disconnect_or_tim
             ..
         }
     ));
-    assert!(receiver.refresh_admission_hold(&tabs));
+    assert_eq!(receiver.refresh_admission_hold(&tabs), Some(tab));
     tabs.get_mut(tab)
         .unwrap()
         .load_html_str("<main>two</main>", None);
-    assert!(!receiver.refresh_admission_hold(&tabs));
+    assert!(receiver.refresh_admission_hold(&tabs).is_none());
 
     assert_eq!(
         dispatch(
@@ -183,7 +183,7 @@ fn next_document_hold_attaches_once_and_expires_on_replacement_disconnect_or_tim
         DebuggerReply::NextDocumentHoldAcquired { tab_id }
     );
     drop(owner);
-    assert!(!receiver.refresh_admission_hold(&tabs));
+    assert!(receiver.refresh_admission_hold(&tabs).is_none());
 
     let owner = negotiated_session();
     assert_eq!(
@@ -202,5 +202,77 @@ fn next_document_hold_attaches_once_and_expires_on_replacement_disconnect_or_tim
         .as_mut()
         .unwrap()
         .expires_at = Instant::now() - Duration::from_millis(1);
-    assert!(!receiver.refresh_admission_hold(&tabs));
+    assert!(receiver.refresh_admission_hold(&tabs).is_none());
+}
+
+#[test]
+fn reserved_native_tab_does_not_delay_an_unreserved_pending_tab() {
+    let mut tabs = TabManager::new(320.0, 200.0);
+    let reserved_tab = tabs.default_tab();
+    let other_tab = tabs.open_tab();
+    for tab in [reserved_tab, other_tab] {
+        tabs.get_mut(tab).unwrap().load_html_str(
+            "<script>let answer = 42;</script>",
+            Some(format!("https://example.test/{}", tab.as_u64())),
+        );
+    }
+    let mut executor = JavaScriptPageExecutor::with_config(
+        crate::script::javascript::JavaScriptPageExecutorConfig {
+            native_debugger_execution_control: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    executor.synchronize_and_execute(&tabs).unwrap();
+    let program_for = |executor: &mut JavaScriptPageExecutor, tab: TabId| {
+        let realm = DebuggerPageRealm {
+            browser_context_id: DEFAULT_BROWSER_CONTEXT_ID,
+            tab_id: tab.as_u64(),
+            realm_generation: 1,
+        };
+        let DebuggerReply::Programs(programs) = handle_debugger_request_with_javascript_executor(
+            &tabs,
+            Some(executor),
+            DebuggerRequest::ListPrograms { realm },
+        ) else {
+            panic!("one live program must be discoverable for each tab")
+        };
+        assert_eq!(programs.len(), 1);
+        programs[0]
+    };
+    let reserved_program = program_for(&mut executor, reserved_tab);
+    let other_program = program_for(&mut executor, other_tab);
+
+    PageJavaScriptExecutor::hold_reserved_debugger_execution_once(&mut executor, reserved_tab);
+    executor.synchronize_and_execute(&tabs).unwrap();
+    for (program, expected) in [
+        (reserved_program, DebuggerExecutionState::Pending),
+        (other_program, DebuggerExecutionState::Completed),
+    ] {
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetExecutionState { program },
+            ),
+            DebuggerReply::ExecutionState {
+                program,
+                state: expected,
+            }
+        );
+    }
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(
+        handle_debugger_request_with_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::GetExecutionState {
+                program: reserved_program,
+            },
+        ),
+        DebuggerReply::ExecutionState {
+            program: reserved_program,
+            state: DebuggerExecutionState::Completed,
+        }
+    );
 }

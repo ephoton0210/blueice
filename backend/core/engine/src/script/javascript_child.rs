@@ -202,6 +202,7 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
     /// constructor and defaults to false for the existing page-host path.
     native_debugger_execution_control: bool,
     hold_pending_debugger_execution_once: bool,
+    reserved_debugger_hold_once: Option<TabId>,
     /// Remaining one-turn discovery/configuration deferrals keyed by the
     /// document that received them. Realm replacement and close discard the
     /// budget with every other OOP debugger lifetime record.
@@ -656,6 +657,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             external_source_authorizer: None,
             native_debugger_execution_control: false,
             hold_pending_debugger_execution_once: false,
+            reserved_debugger_hold_once: None,
             debugger_execution_deferrals: BTreeMap::new(),
             live_documents: BTreeMap::new(),
             realm_stats: BTreeMap::new(),
@@ -706,6 +708,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             external_source_authorizer: Some(Box::new(authorizer)),
             native_debugger_execution_control: false,
             hold_pending_debugger_execution_once: false,
+            reserved_debugger_hold_once: None,
             debugger_execution_deferrals: BTreeMap::new(),
             live_documents: BTreeMap::new(),
             realm_stats: BTreeMap::new(),
@@ -819,10 +822,11 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         // Existing documents advance before newly observed documents are
         // admitted. This gives the debugger request dispatcher one full
         // session boundary to discover and arm an exact child root point.
+        let reserved_tab = self.reserved_debugger_hold_once.take();
         if self.native_debugger_execution_control
             && !std::mem::take(&mut self.hold_pending_debugger_execution_once)
         {
-            self.advance_debugger_executions(|child, tab_id, generation| {
+            self.advance_debugger_executions(reserved_tab, |child, tab_id, generation| {
                 child.advance_debugger_execution(tab_id.as_u64(), generation)
             });
         }
@@ -852,10 +856,11 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         script_requests: &ScriptRequestReceiver,
     ) -> io::Result<()> {
         self.close_removed_tabs(tabs);
+        let reserved_tab = self.reserved_debugger_hold_once.take();
         if self.native_debugger_execution_control
             && !std::mem::take(&mut self.hold_pending_debugger_execution_once)
         {
-            self.advance_debugger_executions(|child, tab_id, generation| {
+            self.advance_debugger_executions(reserved_tab, |child, tab_id, generation| {
                 let target = ScriptDocumentTarget {
                     tab_id: tab_id.as_u64(),
                     document_generation: generation,
@@ -1096,6 +1101,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
 
     fn advance_debugger_executions(
         &mut self,
+        reserved_tab: Option<TabId>,
         mut advance: impl FnMut(&mut C, TabId, u64) -> io::Result<PageHostReply>,
     ) {
         let documents: Vec<_> = self
@@ -1104,6 +1110,9 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             .map(|(&tab_id, document)| (tab_id, document.document_generation))
             .collect();
         for (tab_id, document_generation) in documents {
+            if Some(tab_id) == reserved_tab {
+                continue;
+            }
             let reply = advance(&mut self.child, tab_id, document_generation);
             let Ok(PageHostReply::DebuggerExecutionAdvanced {
                 tab_id: reply_tab_id,
@@ -1251,9 +1260,9 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
         }
     }
 
-    fn hold_reserved_debugger_execution_once(&mut self) {
-        if self.native_debugger_execution_control && !self.live_documents.is_empty() {
-            self.hold_pending_debugger_execution_once = true;
+    fn hold_reserved_debugger_execution_once(&mut self, tab_id: TabId) {
+        if self.native_debugger_execution_control && self.live_documents.contains_key(&tab_id) {
+            self.reserved_debugger_hold_once = Some(tab_id);
         }
     }
 }

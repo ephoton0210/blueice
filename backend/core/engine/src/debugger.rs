@@ -201,33 +201,31 @@ impl DebuggerRequestSender {
 }
 
 impl DebuggerRequestReceiver {
-    fn refresh_admission_hold(&self, tabs: &TabManager) -> bool {
+    fn refresh_admission_hold(&self, tabs: &TabManager) -> Option<TabId> {
         let mut slot = self.admission_hold.borrow_mut();
-        let Some(hold) = slot.as_mut() else {
-            return false;
-        };
+        let hold = slot.as_mut()?;
         let now = Instant::now();
         let Some(page) = tabs.get(hold.tab_id) else {
             *slot = None;
-            return false;
+            return None;
         };
         if now >= hold.expires_at || hold.owner_stream.upgrade().is_none() {
             *slot = None;
-            return false;
+            return None;
         }
         let generation = page.document_generation();
         match hold.held_generation {
-            Some(held_generation) if generation == held_generation => true,
+            Some(held_generation) if generation == held_generation => Some(hold.tab_id),
             Some(_) => {
                 *slot = None;
-                false
+                None
             }
             None if generation != hold.previous_generation => {
                 hold.held_generation = Some(generation);
                 hold.expires_at = now + NEXT_DOCUMENT_ADMISSION_WINDOW;
-                true
+                Some(hold.tab_id)
             }
-            None => false,
+            None => None,
         }
     }
 
@@ -475,11 +473,10 @@ impl DebuggerRequestReceiver {
         // resume or step preserves its public transition state for one turn;
         // a following idle turn advances the same private VM frame.
         if let Some(executor) = javascript_executor {
-            if self.refresh_admission_hold(tabs) {
-                executor.hold_reserved_debugger_execution_once();
-            } else if (preserve_pending_entry && !advance_pending_entry)
-                || preserve_execution_transition
-            {
+            if let Some(tab_id) = self.refresh_admission_hold(tabs) {
+                executor.hold_reserved_debugger_execution_once(tab_id);
+            }
+            if (preserve_pending_entry && !advance_pending_entry) || preserve_execution_transition {
                 executor.hold_pending_debugger_execution_once();
             }
         }
