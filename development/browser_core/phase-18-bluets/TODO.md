@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C4.1.2.** Audit real-process stale, unauthorized, and
-over-budget debugger refusals, adding a regression for any uncovered class.
+**Current leaf: D.1.1.** Build a real classic BlueTS fixture that proves
+type-only import elision and original source mapping.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -520,10 +520,12 @@ channel with explicit owner/client grants.
 
 #### C4. Verify the public debugger route.
 
-- [ ] **C4.1** Through launcher/core/child, test source pause, stepping, stack,
+- [x] **C4.1** Through launcher/core/child, test source pause, stepping, stack,
   scope, values, exception, and stale/unauthorized/over-budget rejection.
+  Distinct real public-socket tests cover all six positive routes and all
+  three typed no-partial refusal classes; PLAN.md names the cases.
   - [x] **C4.1.1** One real-process test per capability: pause, step, stack, scope, values, exception. The Launcher/core/child public-socket suite already has focused cases for a paused module entry, real module step, exact original stack coordinates, checked static scope relations, bounded classic/module/nested values, and original classic/module nested exception locations. Their exact test names and acceptance boundaries are mapped in PLAN.md; the full sequential workspace run passed and the current test inventory confirms all six cases remain registered.
-  - [ ] **C4.1.2** One rejection test per class: stale, unauthorized, over-budget.
+  - [x] **C4.1.2** One rejection test per class: stale, unauthorized, over-budget. Real Launcher/core/child socket regressions already require `StaleRealm` for old module targets after reload, `CapabilityUnavailable` for an exception location without independent owner/client grant, and `InvalidExecutionState` with no partial preview for each bounded Value budget overrun. PLAN.md maps the exact test names and replies; the full sequential workspace suite passed.
 
 ### D. Close direct-page acceptance.
 

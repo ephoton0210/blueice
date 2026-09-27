@@ -2070,6 +2070,19 @@ proves original exception location. These are distinct registered tests in
 suite passed, and `cargo test -- --list` confirms the current inventory.
 Rejection classes are audited separately in C4.1.2.
 
+**C4.1.2 public debugger refusal inventory:** Three distinct real
+Launcher/core/child socket tests already cover the required rejection
+classes. `module_lifecycle::launcher_steps_a_real_bluets_module_then_rejects_stale_generation`
+requires `StaleRealm` for old program and safe-point requests after reload.
+`exceptions::launcher_refuses_exception_locations_without_owner_client_grants_or_source_receipts`
+requires `CapabilityUnavailable` without the independent owner/client
+exception-location grant, and `InvalidTarget` without its exact source
+receipt. `runtime_values::launcher_refuses_every_bounded_value_budget_on_a_real_bluets_socket`
+requires typed `InvalidExecutionState` and no partial preview for depth,
+collection, node, and payload over-budget reads. All were registered in the
+current Launcher test inventory and passed in the complete sequential
+workspace suite. C4.1 needs no additional wire or runtime route.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
