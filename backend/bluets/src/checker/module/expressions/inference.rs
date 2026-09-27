@@ -270,6 +270,25 @@ impl<'a> ModuleChecker<'a> {
         if first.kind == TokenKind::Number {
             return Type::Number;
         }
+        if let [receiver, optional, property] = tokens {
+            if receiver.kind == TokenKind::Identifier
+                && optional.is("?.")
+                && property.kind == TokenKind::Identifier
+            {
+                return scope
+                    .get(&receiver.text)
+                    .and_then(|receiver_type| {
+                        optional_property_type(
+                            receiver_type,
+                            &property.text,
+                            &self.types,
+                            self.max_type_expansions,
+                        )
+                        .ok()
+                    })
+                    .unwrap_or(Type::Unknown);
+            }
+        }
         if let Some((receiver, property)) = member_access_target(tokens) {
             if tokens.iter().filter(|token| token.is("[")).count() > self.max_type_expansions {
                 return Type::Unknown;

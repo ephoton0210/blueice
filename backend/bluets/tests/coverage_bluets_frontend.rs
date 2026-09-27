@@ -332,6 +332,62 @@ fn optional_dot_read_retains_exact_tokens_and_source_span() {
 }
 
 #[test]
+fn optional_dot_read_checks_nullish_result_and_rejects_unproven_shapes() {
+    let prefix = "function choose(flag: boolean): { value: number } | null { return flag ? { value: 41 } : null; } const receiver: { value: number } | null = choose(true); ";
+    let check = |suffix: &str| diagnostics(&format!("{prefix}{suffix}"));
+    let accepted = check("const answer: number = receiver?.value ?? 0;");
+    assert!(accepted.is_empty(), "{accepted:#?}");
+    let named = diagnostics("interface Box { value: number; } function choose(flag: boolean): Box | null { return flag ? { value: 41 } : null; } const receiver: Box | null = choose(true); const answer: number = receiver?.value ?? 0;");
+    assert!(named.is_empty(), "{named:#?}");
+    for (suffix, message) in [
+        (
+            "const wrong: number = receiver?.value;",
+            "initializer has type `number | undefined`",
+        ),
+        (
+            "const wrong: number = receiver?.missing ?? 0;",
+            "property `missing` does not exist",
+        ),
+        (
+            "const wrong: number = receiver?.[value] ?? 0;",
+            "unsupported optional property read",
+        ),
+        (
+            "const wrong: number = receiver?.value() ?? 0;",
+            "unsupported optional property read",
+        ),
+        (
+            "const wrong: number = choose(true)?.value ?? 0;",
+            "unsupported optional property read",
+        ),
+        (
+            "function takesNumber(value: number): number { return value; } const wrong: number = receiver?.value ?? takesNumber('wrong');",
+            "argument 1 has type `'wrong'`",
+        ),
+    ] {
+        let found = check(suffix);
+        assert!(
+            found.iter().any(|diagnostic| diagnostic.message.contains(message)),
+            "{suffix}: {found:#?}"
+        );
+    }
+    let mutable = diagnostics("let receiver: { value: number } | null = null; const wrong: number = receiver?.value ?? 0;");
+    assert!(
+        mutable.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("unsupported optional property read")),
+        "{mutable:#?}"
+    );
+    let optional_field = diagnostics("const receiver: { value?: number } | null = null; const wrong: number = receiver?.value ?? 0;");
+    assert!(
+        optional_field.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("unsupported optional property read")),
+        "{optional_field:#?}"
+    );
+}
+
+#[test]
 fn callback_method_overloads_select_by_tag_and_report_distinct_failures() {
     let ambient = ModuleSource::new(
         "memory:///visitor.d.ts",

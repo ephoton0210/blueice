@@ -730,6 +730,9 @@ impl<'a> ModuleChecker<'a> {
             );
             return;
         }
+        if self.check_optional_property_read(tokens, scope, span) {
+            return;
+        }
         self.check_function_call(tokens, scope, span);
         self.check_member_calls_in_expression(tokens, scope, span);
         self.check_direct_property_access(tokens, scope, span);
