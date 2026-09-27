@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: F3.3.3.** Reject stale, guessed, oversized, private, and
-unauthorized requests through the real MCP boundary.
+**Current leaf: G.1.1.** Run the complete Rust workspace test suite while
+reusing the shared workspace target directory.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -715,12 +715,12 @@ Keep check read-only and owner registration sealed before listeners.
         - [x] **F3.2.1.2.2.2** Bind the owner-only process socket and hand off output requests to that same core session thread. An explicitly configured `--compiler-output-socket` requires an owner catalog and at least one exposed output grant before any listener binds. The `0600` output listener mints a fresh `ow-` stream receipt after exact Hello, handles bounded frames only, and queues requests on the existing core compiler session channel. A real core subprocess proves a query receipt is rejected, granted inventory/build publishes, socket permissions and cleanup hold, and removing the grant prevents output listener startup. All Engine library, real core process, CLI, formatting, and all-target Clippy gates pass.
     - [x] **F3.2.1.3** Attach the independent output capability to MCP and hide the build tool when it is absent. MCP now has an explicit constructor for the already paired browser/query sockets plus the separate output socket. Its output client validates the `ow-` Hello receipt and granted-project inventory, then advertises output capabilities, inventory, and build tools only when that connection exists; absent tools also reject direct calls. Build requires the independent receipt and an inventoried project, verifies the source-free result, and serializes query-receipt revocation with query requests. A real MCP client proves tool hiding on the query-only path and end-to-end granted publication without returning an output path. MCP library, real-process, formatting, and all-target Clippy gates pass.
   - [x] **F3.2.2** Assert a query receipt never authorizes a build. In a real core process, presenting the read-only query attestation to the independent output protocol's inventory and build requests returns `InvalidReceipt` without a published directory. A real MCP client with an already inventoried output project likewise rejects the query receipt at `bluetsc_build`; the output root stays empty and the next authorized build advances the generation exactly once. Query-only MCP never advertises the build route, and the `ow-` receipt shape prevents a query attestation from passing the output handshake.
-- [ ] **F3.3** Through a real MCP client, inspect a diagnostic/type/contract
+- [x] **F3.3** Through a real MCP client, inspect a diagnostic/type/contract
   failure and check/build an authorized project; reject stale, guessed,
   oversized, private, and unauthorized requests.
   - [x] **F3.3.1** Inspect a diagnostic, a type, and a contract failure through a real MCP client. A launcher-managed core receives two owner-selected virtual projects: one with a type error and one with a reifiable local contract. The MCP client inventories exact project IDs, checks each, reads a nonempty retained diagnostic page, inventories and reads a static type, and validates a JSON value that fails the inventoried contract. Every reply stays source-free and generation-bound; the real process test passes.
   - [x] **F3.3.2** Check and build an authorized project. A real MCP client connects to a core started with an owner-selected physical project and independent output grant, inventories the query and output project handles, checks the former, then builds with the separate `ow-` receipt. The source-free build result has the same project fingerprint as the prior check, a single successor generation, and published status; the one new immutable generation directory contains emitted `main.js` from the authorized source and the MCP result does not disclose the output root. The direct process test passes.
-  - [ ] **F3.3.3** Reject stale, guessed, oversized, private, and unauthorized requests.
+  - [x] **F3.3.3** Reject stale, guessed, oversized, private, and unauthorized requests. Real MCP tests already reject a guessed or private project, unobserved metadata IDs, wrong-session receipts, stale generations after check/build, and a query receipt offered as output authority. An added real MCP request sends a contract string one byte beyond the 256 KiB limit; the adapter rejects it as invalid parameters before compiler validation, and the same session and contract remain usable afterward. The focused real-process test passes in the shared target directory.
 
 ## Release gate
 

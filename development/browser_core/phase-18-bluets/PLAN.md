@@ -4177,6 +4177,15 @@ owner's immutable generation directory contains the emitted `main.js` for
 the authorized module. The same fixture proves old query-generation evidence
 is revoked after build.
 
+**F3.3.3 real MCP rejection coverage:** The real MCP process fixtures reject
+guessed and owner-private project IDs, unobserved static metadata IDs, wrong
+session receipts, and stale generations following another check or build.
+The output fixture rejects an unobserved output project and a read-only query
+receipt presented as write authority without publishing an artifact. A real
+client now also sends a contract string one byte over the MCP adapter's 256 KiB
+limit. The adapter returns invalid parameters before compiler validation, and
+the same session can still validate the inventoried contract afterward.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

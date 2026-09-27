@@ -718,6 +718,45 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         )
     ));
 
+    // Oversized client JSON must be rejected at the public MCP boundary
+    // before the compiler sees a validation request. The same session and
+    // contract must remain usable after the rejected call.
+    let oversized = client
+        .call_tool(
+            CallToolRequestParams::new("debug_validate_contract").with_arguments(
+                serde_json::json!({
+                    "session_id": compiler_session,
+                    "project_id": 1,
+                    "generation": check.generation.sequence,
+                    "id": symbol_contract_ids[0],
+                    "value": "x".repeat(256 * 1024 + 1),
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .expect_err("oversized contract JSON must fail MCP parameter validation");
+    assert!(oversized
+        .to_string()
+        .contains("contract string exceeds maximum byte length"));
+    let after_oversized = compiler_tool!(
+        "debug_validate_contract",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "id": symbol_contract_ids[0],
+            "value": { "enabled": true },
+        })
+    );
+    assert!(matches!(
+        compiler_tool_reply(&after_oversized),
+        blueice_ipc::compiler::CompilerReply::ContractValidation(
+            blueice_ipc::compiler::CompilerContractValidation { valid: true, .. }
+        )
+    ));
+
     // Cross-kind use fails without consuming the genuine symbols cursor; a
     // subsequent valid use consumes it, and replay then fails.
     let first_symbols_result = compiler_tool!(
