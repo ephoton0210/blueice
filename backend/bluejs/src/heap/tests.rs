@@ -2187,15 +2187,36 @@ fn completion_records_retain_object_references_and_charge_owned_payloads() {
         assert!(completion.references().is_empty());
         assert_eq!(completion.managed_bytes(), "message".len());
     }
+    let jump = GeneratorPendingCompletion::Jump {
+        cleanup: 0,
+        target: 1,
+    };
+    assert!(jump.references().is_empty());
+    assert_eq!(jump.managed_bytes(), 0);
 
     let mut queue = AsyncGeneratorControl::default();
-    queue.requests.push_back(AsyncGeneratorRequest {
-        id: 0,
-        completion: AsyncGeneratorCompletion::ResumeThrow(Value::Object(first)),
-        target: second,
-    });
-    assert_eq!(queue.references(), vec![second, first]);
-    assert_eq!(queue.managed_bytes(), size_of::<AsyncGeneratorRequest>());
+    for (id, completion) in [
+        AsyncGeneratorCompletion::Next(Value::Object(first)),
+        AsyncGeneratorCompletion::Return(Value::Object(first)),
+        AsyncGeneratorCompletion::Throw(Value::Object(first)),
+        AsyncGeneratorCompletion::ReturnAwaited(Value::Object(first)),
+        AsyncGeneratorCompletion::ResumeReturn(Value::Object(first)),
+        AsyncGeneratorCompletion::ResumeThrow(Value::Object(first)),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        queue.requests.push_back(AsyncGeneratorRequest {
+            id: id as u64,
+            completion,
+            target: second,
+        });
+    }
+    assert_eq!(queue.references(), [second, first].repeat(6));
+    assert_eq!(
+        queue.managed_bytes(),
+        6 * size_of::<AsyncGeneratorRequest>()
+    );
 }
 
 #[test]
@@ -2206,6 +2227,18 @@ fn shared_buffer_rejects_overflow_and_notifies_only_matching_waiters() {
     assert!(!buffer.write(4, &[1]));
     assert_eq!(buffer.modify(usize::MAX, 2, |_| true), None);
     assert_eq!(buffer.copy(0, 4), Some(vec![0; 4]));
+    assert!(buffer.write(0, &[4, 5]));
+    assert_eq!(buffer.copy(0, 4), Some(vec![4, 5, 0, 0]));
+    for (offset, expected) in [(0, Some(5)), (usize::MAX, None), (4, None)] {
+        assert_eq!(
+            buffer.modify(offset, 1, |bytes| {
+                bytes[0] += 1;
+                bytes[0]
+            }),
+            expected
+        );
+    }
+    assert_eq!(buffer.copy(0, 4), Some(vec![5, 5, 0, 0]));
 
     let waiter = buffer.register_waiter(0);
     assert_eq!(buffer.notify(4, 1), 0);
@@ -2391,6 +2424,57 @@ fn intl_host_records_only_trace_their_javascript_prototype() {
             vec![prototype]
         );
     }
+}
+
+#[test]
+fn plain_temporal_epoch_conversion_uses_iso_date_and_local_time() {
+    let mut plain = TemporalValue {
+        kind: TemporalKind::PlainDateTime,
+        duration: None,
+        year: 1970,
+        month: 1,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0,
+        millisecond: 0,
+        microsecond: 0,
+        nanosecond: 0,
+        epoch_nanoseconds: BigInt::from(0),
+        calendar: String::new(),
+        time_zone: String::new(),
+    };
+    assert_eq!(plain.plain_epoch_milliseconds(), 0);
+    plain.day = 2;
+    assert_eq!(plain.plain_epoch_milliseconds(), 86_400_000);
+    plain.year = 1969;
+    plain.month = 12;
+    plain.day = 31;
+    assert_eq!(plain.plain_epoch_milliseconds(), -86_400_000);
+
+    plain.kind = TemporalKind::PlainTime;
+    plain.year = 2000;
+    plain.hour = 1;
+    plain.minute = 2;
+    plain.second = 3;
+    plain.millisecond = 4;
+    assert_eq!(plain.plain_epoch_milliseconds(), 3_723_004);
+
+    plain.kind = TemporalKind::PlainDateTime;
+    plain.year = 2000;
+    plain.month = 3;
+    plain.day = 1;
+    plain.hour = 0;
+    plain.minute = 0;
+    plain.second = 0;
+    plain.millisecond = 0;
+    let first_of_march = plain.plain_epoch_milliseconds();
+    plain.month = 2;
+    plain.day = 29;
+    assert_eq!(
+        first_of_march - plain.plain_epoch_milliseconds(),
+        86_400_000
+    );
 }
 
 #[test]
