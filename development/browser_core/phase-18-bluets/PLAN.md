@@ -4207,6 +4207,15 @@ workspace test fix and process-suite evidence were committed.
 passes after the completed workspace and formatting gates, using the existing
 shared target directory.
 
+**G.3.1 pinned TypeScript CI oracle:** The manually dispatched CI workflow
+[run 36317372058](https://github.com/ephoton0210/blueice/actions/runs/36317372058)
+checks out `a9d85172d` and its
+[oracle job](https://github.com/ephoton0210/blueice/actions/runs/36317372058/job/108614527760)
+completed successfully. The successful step runs the repository's pinned
+`typescript@5.9.3` matrix through `npm exec` with
+`BLUEICE_BLUETSC_ORACLE=tsc`; it is the opt-in test excluded from the ordinary
+workspace test command. Coverage remains a separate CI gate.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
