@@ -5,12 +5,14 @@
 //! Admission of owner-selected emitted runtime crossing descriptors.
 
 use crate::compiler::{is_declaration_module, CompilerOptions, Project, RuntimePolicy};
-use crate::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::parser::Declaration;
+use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
+use crate::parser::{Declaration, FunctionBodyItem, FunctionDeclaration, Type};
+use crate::syntax::{Token, TokenKind};
 use std::collections::BTreeSet;
 
 pub(crate) const HELPER_V1_VERSION: &str = "bluets-runtime-helper-v1";
-const MAX_SAFE_INTEGER: usize = 9_007_199_254_740_991;
+const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+const MAX_EMITTED_STRING_BYTES: usize = 1_048_576;
 
 pub(crate) fn validate_descriptors(
     project: &Project,
@@ -33,9 +35,14 @@ pub(crate) fn validate_descriptors(
         if boundary.helper_version != HELPER_V1_VERSION {
             diagnostics.push(reject("unsupported emitted runtime helper version"));
         }
-        if boundary.max_string_bytes > MAX_SAFE_INTEGER {
+        if u64::try_from(boundary.max_string_bytes).map_or(true, |limit| limit > MAX_SAFE_INTEGER) {
             diagnostics.push(reject(
                 "string-byte limit exceeds helper v1's safe integer range",
+            ));
+        }
+        if boundary.max_string_bytes > MAX_EMITTED_STRING_BYTES {
+            diagnostics.push(reject(
+                "string-byte limit exceeds the first emitted profile",
             ));
         }
         if boundary.contract_id.is_empty()
@@ -74,7 +81,130 @@ pub(crate) fn validate_descriptors(
             ));
         }
     }
+    if options.runtime_policy == RuntimePolicy::StrictRuntime
+        && !options.strict_runtime_boundaries.is_empty()
+    {
+        diagnostics.extend(validate_profile(project, options));
+    }
     diagnostics
+}
+
+fn validate_profile(project: &Project, options: &CompilerOptions) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    for ambient in &options.ambient_declaration_modules {
+        diagnostics.push(Diagnostic::error(
+            DiagnosticCode::InvalidContract,
+            SourceSpan::new(&ambient.id, 0, 0),
+            "emitted strict profile cannot use ambient declarations",
+        ));
+    }
+    for (module_id, module) in &project.modules {
+        if is_declaration_module(module_id) {
+            continue;
+        }
+        let mut selected_count = 0usize;
+        for declaration in &module.declarations {
+            match declaration {
+                Declaration::Import(import) if import.type_only => {}
+                Declaration::TypeExport(_)
+                | Declaration::TypeAlias(_)
+                | Declaration::Interface(_) => {}
+                Declaration::Function(function) => {
+                    let selected = options.strict_runtime_boundaries.iter().any(|boundary| {
+                        boundary.span == function.span && boundary.function == function.name
+                    });
+                    if selected {
+                        selected_count += 1;
+                        if !supported_function(function) {
+                            diagnostics.push(Diagnostic::error(
+                                DiagnosticCode::InvalidContract,
+                                function.span.clone(),
+                                "unsupported exported string function in emitted strict profile",
+                            ));
+                        }
+                    } else {
+                        diagnostics.push(Diagnostic::error(
+                            DiagnosticCode::InvalidContract,
+                            function.span.clone(),
+                            "runtime function has no owner-selected emitted boundary",
+                        ));
+                    }
+                }
+                other => diagnostics.push(Diagnostic::error(
+                    DiagnosticCode::InvalidContract,
+                    other.span().clone(),
+                    "unsupported runtime declaration or import in emitted strict profile",
+                )),
+            }
+        }
+        if selected_count == 0 {
+            diagnostics.push(Diagnostic::error(
+                DiagnosticCode::InvalidContract,
+                SourceSpan::new(module_id, 0, 0),
+                "emitted strict module has no owner-selected boundary",
+            ));
+        }
+    }
+    diagnostics
+}
+
+fn supported_function(function: &FunctionDeclaration) -> bool {
+    if !function.exported
+        || function.default_export
+        || function.declared
+        || function.overload
+        || function.async_function
+        || !function.type_parameters.is_empty()
+        || function.parameters.is_empty()
+        || function.parameters.len() > 16
+        || function.return_type != Some(Type::String)
+    {
+        return false;
+    }
+    let mut parameter_names = BTreeSet::new();
+    for parameter in &function.parameters {
+        if parameter.rest
+            || parameter.optional
+            || parameter.default.is_some()
+            || parameter.annotation != Some(Type::String)
+            || !parameter_names.insert(parameter.name.as_str())
+        {
+            return false;
+        }
+    }
+    let [FunctionBodyItem::Return { tokens, .. }] = function.body.as_slice() else {
+        return false;
+    };
+    supported_string_expression(tokens, &parameter_names)
+}
+
+fn supported_string_expression(tokens: &[Token], parameters: &BTreeSet<&str>) -> bool {
+    if tokens.len() > 128 {
+        return false;
+    }
+    let mut needs_operand = true;
+    let mut depth = 0usize;
+    for token in tokens {
+        if needs_operand {
+            match token.text.as_str() {
+                "(" => depth += 1,
+                _ if token.kind == TokenKind::Identifier
+                    && parameters.contains(token.text.as_str()) =>
+                {
+                    needs_operand = false;
+                }
+                _ if token.kind == TokenKind::String => needs_operand = false,
+                _ => return false,
+            }
+        } else {
+            match token.text.as_str() {
+                "+" => needs_operand = true,
+                ")" if depth > 0 => depth -= 1,
+                _ => return false,
+            }
+        }
+    }
+    !needs_operand && depth == 0
 }
 
 #[cfg(test)]
@@ -157,8 +287,153 @@ mod tests {
         assert!(refused.output.is_none());
 
         let mut invalid_limit = boundary();
-        invalid_limit.max_string_bytes = MAX_SAFE_INTEGER + 1;
+        invalid_limit.max_string_bytes = 1_048_577;
         let refused = compile_with(vec![invalid_limit], RuntimePolicy::StrictRuntime);
         assert!(refused.output.is_none());
+    }
+
+    #[test]
+    fn admits_only_explicit_string_parameters_and_pure_string_returns() {
+        let source = "export function join(left: string, right: string): string { return (left + ':') + right; }\n";
+        let boundary = StrictRuntimeBoundary {
+            contract_id: "join-string-v1".to_string(),
+            function: "join".to_string(),
+            span: SourceSpan::new(MODULE, 0, source.find('}').unwrap() + 1),
+            max_string_bytes: 64,
+            helper_version: HELPER_V1_VERSION.to_string(),
+        };
+        let loader = MapLoader::from([ModuleSource::new(MODULE, source)]);
+        let result = compile(
+            MODULE,
+            &loader,
+            CompilerOptions {
+                runtime_policy: RuntimePolicy::StrictRuntime,
+                strict_runtime_boundaries: vec![boundary],
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(!result.has_errors(), "{:?}", result.diagnostics);
+    }
+
+    #[test]
+    fn refuses_ambient_or_unsupported_runtime_shapes_even_with_a_matching_descriptor() {
+        let cases = [
+            "export async function echo(value: string): string { return value; }",
+            "export function echo(value?: string): string { return value; }",
+            "export function echo(value: string): string { return value.toString(); }",
+            "export function echo(value: string): string { return globalText(); }",
+            "export function echo(value: string): string { const copy = value; return copy; }",
+            "export function echo(value: string): string { if (value) { return value; } return ''; }",
+            "export function echo(value: string): string { return value; } export const extra: string = 'x';",
+            "export function echo(value: string): string { return value; } declare function ambient(): string;",
+        ];
+        for source in cases {
+            let mut boundary = boundary();
+            boundary.span.end = source.find('}').unwrap() + 1;
+            let loader = MapLoader::from([ModuleSource::new(MODULE, source)]);
+            let result = compile(
+                MODULE,
+                &loader,
+                CompilerOptions {
+                    runtime_policy: RuntimePolicy::StrictRuntime,
+                    strict_runtime_boundaries: vec![boundary],
+                    ..CompilerOptions::default()
+                },
+            );
+            assert!(result.has_errors(), "unexpected admission for {source}");
+            assert!(result.output.is_none(), "unexpected output for {source}");
+            assert!(
+                result
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| { diagnostic.code == DiagnosticCode::InvalidContract }),
+                "missing strict profile refusal for {source}: {:?}",
+                result.diagnostics
+            );
+        }
+
+        let loader = MapLoader::from([ModuleSource::new(MODULE, SOURCE)]);
+        let result = compile(
+            MODULE,
+            &loader,
+            CompilerOptions {
+                runtime_policy: RuntimePolicy::StrictRuntime,
+                strict_runtime_boundaries: vec![boundary()],
+                ambient_declaration_modules: vec![ModuleSource::new(
+                    "memory:///ambient.d.ts",
+                    "declare function globalText(): string;",
+                )],
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(result.output.is_none());
+        assert!(result.diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("cannot use ambient declarations")
+        }));
+    }
+
+    #[test]
+    fn permits_erased_type_imports_but_refuses_runtime_imports_and_uncovered_modules() {
+        let type_source =
+            "import type { Shape } from './types.d.ts';\nexport function echo(value: string): string { return value; }";
+        let mut selected = boundary();
+        selected.span = SourceSpan::new(
+            MODULE,
+            type_source.find("export function").unwrap(),
+            type_source.rfind('}').unwrap() + 1,
+        );
+        let type_loader = MapLoader::from([
+            ModuleSource::new(MODULE, type_source),
+            ModuleSource::new(
+                "memory:///types.d.ts",
+                "export interface Shape { name: string }",
+            ),
+        ]);
+        let allowed = compile(
+            MODULE,
+            &type_loader,
+            CompilerOptions {
+                runtime_policy: RuntimePolicy::StrictRuntime,
+                strict_runtime_boundaries: vec![selected.clone()],
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(!allowed.has_errors(), "{:?}", allowed.diagnostics);
+
+        let runtime_source =
+            "import { other } from './other.ts';\nexport function echo(value: string): string { return value; }";
+        let runtime_loader = MapLoader::from([
+            ModuleSource::new(MODULE, runtime_source),
+            ModuleSource::new(
+                "memory:///other.ts",
+                "export const other: string = 'outside';",
+            ),
+        ]);
+        selected.span = SourceSpan::new(
+            MODULE,
+            runtime_source.find("export function").unwrap(),
+            runtime_source.rfind('}').unwrap() + 1,
+        );
+        let refused = compile(
+            MODULE,
+            &runtime_loader,
+            CompilerOptions {
+                runtime_policy: RuntimePolicy::StrictRuntime,
+                strict_runtime_boundaries: vec![selected],
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(refused.output.is_none());
+        assert!(refused.diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("unsupported runtime declaration or import")
+        }));
+        assert!(refused
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.message.contains("no owner-selected boundary") }));
     }
 }

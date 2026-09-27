@@ -2639,6 +2639,26 @@ standalone strict build refusal remains in force. Two focused compiler tests,
 one config path/span test, all 158 BlueTS library tests, workspace Clippy,
 and formatting pass against the reused target directory.
 
+**E3.2.3.2.3.2 strict shape admission:** A descriptor-selected compilation
+now admits only modules whose runtime declarations are all matching named
+exported functions. Each such function has 1–16 required primitive-string
+parameters, an explicit string result, and exactly one unconditional return
+made from those parameters, string literals, parentheses, and `+` (at most
+128 expression tokens). Each owner budget is capped at 1 MiB as well as
+helper v1's safe-integer range. The parser retains the `async` marker so a
+Promise-returning declaration cannot masquerade as a primitive-string
+crossing after type erasure. Ambient declarations, runtime imports, uncovered
+modules or functions, default/value exports, extra runtime declarations,
+opaque bodies, global calls, property reads, optional/default/rest
+parameters, and unsupported expressions fail with `InvalidContract` before
+output. Type-only imports to `.d.ts` modules remain erasable. The first
+profile requires one CLI entry so descriptors cannot be misinterpreted as
+stale when independently compiling multiple entry graphs. Focused
+admission/refusal tests, 161 BlueTS library tests, 12 BlueTSC binary tests,
+workspace Clippy, and formatting pass in the reused target directory.
+Generated JavaScript is still uninstrumented, so standalone strict build
+remains closed.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

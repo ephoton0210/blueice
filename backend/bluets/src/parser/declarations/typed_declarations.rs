@@ -178,7 +178,7 @@ impl Parser {
         exported: bool,
         default_export: bool,
         declared: bool,
-        _async_start: bool,
+        async_start: bool,
     ) {
         let name = self.require_identifier("expected a function name");
         let type_parameter_start = self.current().start;
@@ -293,6 +293,7 @@ impl Parser {
         self.declarations
             .push(Declaration::Function(FunctionDeclaration {
                 name,
+                async_function: async_start,
                 type_parameters,
                 parameters,
                 return_type,

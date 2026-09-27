@@ -498,6 +498,11 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
     }
     entries.sort();
     entries.dedup();
+    if !config.strict_boundaries.is_empty() && entries.len() != 1 {
+        return Err(
+            "the first emitted strict boundary profile requires exactly one entry".to_string(),
+        );
+    }
     let out_dir = config
         .out_dir
         .map(|path| configured_output_path(&root, &path))
