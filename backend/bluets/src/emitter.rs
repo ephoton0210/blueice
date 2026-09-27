@@ -26,6 +26,33 @@ pub struct BuildArtifact {
     pub source_map: Option<SourceMap>,
     pub declaration: Option<String>,
     pub fingerprint: String,
+    /// Present only when every admitted strict crossing has an emitted helper
+    /// call. Publishers must verify these byte locations before release.
+    pub strict_runtime: Option<EmittedStrictModule>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmittedStrictModule {
+    pub helper_version: String,
+    pub helper_import: EmittedRuntimeSite,
+    pub boundaries: Vec<EmittedRuntimeBoundary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmittedRuntimeBoundary {
+    pub contract_id: String,
+    pub function: String,
+    pub source_span: SourceSpan,
+    pub max_string_bytes: usize,
+    pub ingress: Vec<EmittedRuntimeSite>,
+    pub egress: EmittedRuntimeSite,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmittedRuntimeSite {
+    pub source_span: SourceSpan,
+    pub generated_start: usize,
+    pub expected_text: String,
 }
 
 /// A Source Map v3 payload.  It is kept as structured data until the CLI or a
@@ -85,6 +112,7 @@ pub(crate) fn emit(
                     source_map,
                     declaration,
                     fingerprint: build_fingerprint.clone(),
+                    strict_runtime: None,
                 },
             )
         })

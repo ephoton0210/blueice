@@ -11,6 +11,7 @@ use crate::syntax::{Token, TokenKind};
 use std::collections::BTreeSet;
 
 pub(crate) const HELPER_V1_VERSION: &str = "bluets-runtime-helper-v1";
+pub(crate) const HELPER_ALIAS: &str = "__bluetsValidateStringV1";
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const MAX_EMITTED_STRING_BYTES: usize = 1_048_576;
 
@@ -60,6 +61,11 @@ pub(crate) fn validate_descriptors(
         if !selected_functions.insert((&boundary.span.module, &boundary.function)) {
             diagnostics.push(reject("duplicate emitted function boundary"));
         }
+        if !canonical_emitted_module_id(&boundary.span.module) {
+            diagnostics.push(reject(
+                "emitted boundary module must have a canonical root-relative .ts identity",
+            ));
+        }
         let matched = !is_declaration_module(&boundary.span.module)
             && project
                 .modules
@@ -101,6 +107,20 @@ fn validate_profile(project: &Project, options: &CompilerOptions) -> Vec<Diagnos
     for (module_id, module) in &project.modules {
         if is_declaration_module(module_id) {
             continue;
+        }
+        if !canonical_emitted_module_id(module_id) {
+            diagnostics.push(Diagnostic::error(
+                DiagnosticCode::InvalidContract,
+                SourceSpan::new(module_id, 0, 0),
+                "emitted strict module must have a canonical root-relative .ts identity",
+            ));
+        }
+        if module.source.contains(HELPER_ALIAS) {
+            diagnostics.push(Diagnostic::error(
+                DiagnosticCode::InvalidContract,
+                SourceSpan::new(module_id, 0, 0),
+                "emitted strict source uses the reserved helper alias",
+            ));
         }
         let mut selected_count = 0usize;
         for declaration in &module.declarations {
@@ -146,6 +166,18 @@ fn validate_profile(project: &Project, options: &CompilerOptions) -> Vec<Diagnos
         }
     }
     diagnostics
+}
+
+fn canonical_emitted_module_id(module_id: &str) -> bool {
+    module_id.ends_with(".ts")
+        && !module_id.ends_with(".d.ts")
+        && module_id.split('/').all(|part| {
+            !part.is_empty()
+                && part != "."
+                && part != ".."
+                && !part.contains(':')
+                && !part.contains('\\')
+        })
 }
 
 fn supported_function(function: &FunctionDeclaration) -> bool {
@@ -213,7 +245,7 @@ mod tests {
     use crate::compiler::{compile, MapLoader, ModuleSource, StrictRuntimeBoundary};
     use crate::diagnostic::SourceSpan;
 
-    const MODULE: &str = "memory:///main.ts";
+    const MODULE: &str = "src/main.ts";
     const SOURCE: &str = "export function echo(value: string): string { return value; }\n";
 
     fn boundary() -> StrictRuntimeBoundary {
@@ -360,7 +392,7 @@ mod tests {
                 runtime_policy: RuntimePolicy::StrictRuntime,
                 strict_runtime_boundaries: vec![boundary()],
                 ambient_declaration_modules: vec![ModuleSource::new(
-                    "memory:///ambient.d.ts",
+                    "src/ambient.d.ts",
                     "declare function globalText(): string;",
                 )],
                 ..CompilerOptions::default()
@@ -386,10 +418,7 @@ mod tests {
         );
         let type_loader = MapLoader::from([
             ModuleSource::new(MODULE, type_source),
-            ModuleSource::new(
-                "memory:///types.d.ts",
-                "export interface Shape { name: string }",
-            ),
+            ModuleSource::new("src/types.d.ts", "export interface Shape { name: string }"),
         ]);
         let allowed = compile(
             MODULE,
@@ -406,10 +435,7 @@ mod tests {
             "import { other } from './other.ts';\nexport function echo(value: string): string { return value; }";
         let runtime_loader = MapLoader::from([
             ModuleSource::new(MODULE, runtime_source),
-            ModuleSource::new(
-                "memory:///other.ts",
-                "export const other: string = 'outside';",
-            ),
+            ModuleSource::new("src/other.ts", "export const other: string = 'outside';"),
         ]);
         selected.span = SourceSpan::new(
             MODULE,
@@ -435,5 +461,50 @@ mod tests {
             .diagnostics
             .iter()
             .any(|diagnostic| { diagnostic.message.contains("no owner-selected boundary") }));
+    }
+
+    #[test]
+    fn reserves_the_generated_alias_and_requires_root_relative_module_ids() {
+        let source = format!("// {HELPER_ALIAS}\n{SOURCE}");
+        let loader = MapLoader::from([ModuleSource::new(MODULE, &source)]);
+        let mut selected = boundary();
+        selected.span = SourceSpan::new(
+            MODULE,
+            source.find("export function").unwrap(),
+            source.rfind('}').unwrap() + 1,
+        );
+        let refused = compile(
+            MODULE,
+            &loader,
+            CompilerOptions {
+                runtime_policy: RuntimePolicy::StrictRuntime,
+                strict_runtime_boundaries: vec![selected],
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(refused.output.is_none());
+        assert!(refused
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.message.contains("reserved helper alias") }));
+
+        let foreign_id = "memory:///main.ts";
+        let loader = MapLoader::from([ModuleSource::new(foreign_id, SOURCE)]);
+        let mut selected = boundary();
+        selected.span.module = foreign_id.to_string();
+        let refused = compile(
+            foreign_id,
+            &loader,
+            CompilerOptions {
+                runtime_policy: RuntimePolicy::StrictRuntime,
+                strict_runtime_boundaries: vec![selected],
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(refused.output.is_none());
+        assert!(refused
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.message.contains("canonical root-relative") }));
     }
 }

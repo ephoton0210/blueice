@@ -177,6 +177,7 @@ fn publishing_replaces_a_complete_output_directory_only_after_staging() {
             }),
             declaration: Some("export declare const answer: number;\n".to_string()),
             fingerprint: "test".to_string(),
+            strict_runtime: None,
         },
     )]);
 
@@ -294,6 +295,7 @@ fn staging_failure_does_not_replace_an_existing_output_directory() {
             source_map: None,
             declaration: None,
             fingerprint: "test".to_string(),
+            strict_runtime: None,
         },
     )]);
 

@@ -46,7 +46,10 @@ pub use debug_info::{
     DebugSourceLocation, DebugSourcePosition, DebugSymbol, DebugType, SourceId, SymbolId, TypeId,
 };
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
-pub use emitter::{BuildArtifact, BuildOutput, SourceMap};
+pub use emitter::{
+    BuildArtifact, BuildOutput, EmittedRuntimeBoundary, EmittedRuntimeSite, EmittedStrictModule,
+    SourceMap,
+};
 pub use parser::{
     parse_module, Declaration, FunctionBodyItem, FunctionDeclaration, FunctionElseBranch,
     FunctionIfStatement, ImportDeclaration, InterfaceDeclaration, Module, Parameter, ParserLimits,
