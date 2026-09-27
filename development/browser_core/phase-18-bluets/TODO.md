@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E2.2.2.3.** Carry bounded policy and verified inline positions
-through the supervised child to the public BlueTS report.
+**Current leaf: E2.2.2.3.2.** Revalidate child positions against the exact
+core-owned inline declaration before publishing a numeric range.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -615,6 +615,8 @@ channel with explicit owner/client grants.
     - [x] **E2.2.2.1** Decide the report audience, allowed policy and position provenance, and protected-data exclusions. The existing tab-addressed BlueTS report seam is the intended output: report only core-selected `checked`/`strict-runtime` policy and an optional original inline byte range after exact module and length validation. Current precompile host-snapshot boundaries have no call-site span, and external graph positions remain private. No URL, module ID, source, value, diagnostic prose, failure path, expected/observed type, or contract plan may enter the report. PLAN.md records this decision and the required direct/child gates.
     - [x] **E2.2.2.2** Add fixed runtime-policy labels and independently verified original inline byte ranges to direct-page BlueTS reports at the existing tab-addressed public boundary. The direct executor retains only core-selected checked/strict policy and optional numeric original inline offsets after exact module, UTF-8 boundary, and length checks; external and precompile host-boundary failures omit position. Frontend IPC v2 requires the policy field and carries the optional range. Direct, real HTTP/session IPC, and wire tests prove checked/strict labels, valid and malformed/stale module candidates, source-free categories, and omission for external denials. Inline-runner tests moved to a submodule, keeping its owner file under 1,300 lines.
     - [ ] **E2.2.2.3** Carry the same bounded policy and inline-position shape through the private child protocol to core and the BlueTS public report seam. Bump private protocol versions as required, validate child positions against core-owned inline source length and identity, and prove real child/core tab isolation, stale refusal, and no protected content in external-source failures.
+      - [x] **E2.2.2.3.1** Add a bounded, source-free private BlueTS rejection-position candidate to the child report and bump page-host protocol version. Page-host v44 limits module IDs and offsets, and only BlueTS rejection reports can carry a candidate. The child extracts compiler/lowering spans from its validated graph without diagnostics or source text; local normal and deferred execution tests and the 121 IPC/122 launcher library tests pass.
+      - [ ] **E2.2.2.3.2** Revalidate each child candidate against the exact core-owned inline declaration and document generation before publishing a numeric range; omit external, stale, malformed, or mismatched candidates. Prove the full supervised core/child/browser-report route and then close E2.2.2.3 and E2.2.2.
 - [ ] **E2.3** Test valid, malformed, cyclic, deep, oversized, and exhausting
   values at a live boundary.
   - [ ] **E2.3.1** One live-boundary test per value class: valid, malformed, cyclic, deep, oversized, exhausting.

@@ -10,6 +10,7 @@ pub(super) enum PreparedScript {
         language: PageHostScriptLanguage,
         kind: PageHostScriptKind,
         category: &'static str,
+        source_position: Option<PageHostScriptSourcePosition>,
     },
     JavaScriptClassic {
         ordinal: u32,
@@ -31,6 +32,20 @@ pub(super) enum PreparedScript {
     },
 }
 
+pub(super) struct PreparedScriptFailure {
+    category: &'static str,
+    source_position: Option<PageHostScriptSourcePosition>,
+}
+
+impl PreparedScriptFailure {
+    fn plain(category: &'static str) -> Self {
+        Self {
+            category,
+            source_position: None,
+        }
+    }
+}
+
 pub(super) fn prepare_script(
     script: PageHostScript,
     page_dom_profile: PageDomProfile,
@@ -40,22 +55,22 @@ pub(super) fn prepare_script(
     let kind = script.kind;
     let prepared = match (language, kind) {
         (PageHostScriptLanguage::JavaScript, PageHostScriptKind::Classic) => {
-            prepare_classic(script.graph).map(|(source, program)| {
-                PreparedScript::JavaScriptClassic {
+            prepare_classic(script.graph)
+                .map_err(PreparedScriptFailure::plain)
+                .map(|(source, program)| PreparedScript::JavaScriptClassic {
                     ordinal,
                     source,
                     program,
-                }
-            })
+                })
         }
         (PageHostScriptLanguage::JavaScript, PageHostScriptKind::Module) => {
-            prepare_module_graph(script.graph).map(|(graph, programs)| {
-                PreparedScript::JavaScriptModule {
+            prepare_module_graph(script.graph)
+                .map_err(PreparedScriptFailure::plain)
+                .map(|(graph, programs)| PreparedScript::JavaScriptModule {
                     ordinal,
                     graph,
                     programs,
-                }
-            })
+                })
         }
         (PageHostScriptLanguage::BlueTs, PageHostScriptKind::Classic) => {
             prepare_bluets_classic(script.graph, page_dom_profile).map(|script| {
@@ -74,11 +89,12 @@ pub(super) fn prepare_script(
             })
         }
     };
-    prepared.unwrap_or_else(|category| PreparedScript::Rejected {
+    prepared.unwrap_or_else(|failure| PreparedScript::Rejected {
         ordinal,
         language,
         kind,
-        category,
+        category: failure.category,
+        source_position: failure.source_position,
     })
 }
 
@@ -125,16 +141,19 @@ pub(super) fn prepare_module_graph(
 pub(super) fn prepare_bluets_classic(
     graph: PageHostModuleGraph,
     page_dom_profile: PageDomProfile,
-) -> Result<DirectScript, &'static str> {
-    let modules = validate_graph(&graph)?;
-    validate_resolutions(&graph, &modules)?;
-    let loader = bluets_loader(&graph, modules)?;
+) -> Result<DirectScript, PreparedScriptFailure> {
+    let modules = validate_graph(&graph).map_err(PreparedScriptFailure::plain)?;
+    validate_resolutions(&graph, &modules).map_err(PreparedScriptFailure::plain)?;
+    let loader = bluets_loader(&graph, modules).map_err(PreparedScriptFailure::plain)?;
     compile_direct_script(
         &graph.entry,
         &loader,
-        bluets_compiler_options(&graph, page_dom_profile)?,
+        bluets_compiler_options(&graph, page_dom_profile).map_err(PreparedScriptFailure::plain)?,
     )
-    .map_err(bluets_bridge_category)
+    .map_err(|error| PreparedScriptFailure {
+        source_position: bluets_bridge_position(&error, &graph),
+        category: bluets_bridge_category(error),
+    })
 }
 
 /// Prepares a complete explicit BlueTS module graph without giving BlueTS a
@@ -142,16 +161,51 @@ pub(super) fn prepare_bluets_classic(
 pub(super) fn prepare_bluets_module_graph(
     graph: PageHostModuleGraph,
     page_dom_profile: PageDomProfile,
-) -> Result<DirectModuleGraph, &'static str> {
-    let modules = validate_graph(&graph)?;
-    validate_resolutions(&graph, &modules)?;
-    let loader = bluets_loader(&graph, modules)?;
+) -> Result<DirectModuleGraph, PreparedScriptFailure> {
+    let modules = validate_graph(&graph).map_err(PreparedScriptFailure::plain)?;
+    validate_resolutions(&graph, &modules).map_err(PreparedScriptFailure::plain)?;
+    let loader = bluets_loader(&graph, modules).map_err(PreparedScriptFailure::plain)?;
     compile_direct_module_graph(
         &graph.entry,
         &loader,
-        bluets_compiler_options(&graph, page_dom_profile)?,
+        bluets_compiler_options(&graph, page_dom_profile).map_err(PreparedScriptFailure::plain)?,
     )
-    .map_err(bluets_bridge_category)
+    .map_err(|error| PreparedScriptFailure {
+        source_position: bluets_bridge_position(&error, &graph),
+        category: bluets_bridge_category(error),
+    })
+}
+
+fn bluets_bridge_position(
+    error: &BridgeError,
+    graph: &PageHostModuleGraph,
+) -> Option<PageHostScriptSourcePosition> {
+    let candidate = |span: &blueice_bluets::SourceSpan| {
+        let source = graph
+            .modules
+            .iter()
+            .find(|source| source.canonical_module_id == span.module)?;
+        if span.start >= span.end
+            || span.end > source.source.len()
+            || !source.source.is_char_boundary(span.start)
+            || !source.source.is_char_boundary(span.end)
+        {
+            return None;
+        }
+        let position = PageHostScriptSourcePosition {
+            module_id: span.module.clone(),
+            start: u32::try_from(span.start).ok()?,
+            end: u32::try_from(span.end).ok()?,
+        };
+        position.is_well_formed().then_some(position)
+    };
+    match error {
+        BridgeError::BlueTs(diagnostics) => diagnostics
+            .iter()
+            .find_map(|diagnostic| candidate(&diagnostic.span)),
+        BridgeError::UnsupportedRuntimeTarget { span, .. } => candidate(span),
+        _ => None,
+    }
 }
 
 pub(super) fn bluets_loader(

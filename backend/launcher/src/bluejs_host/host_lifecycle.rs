@@ -588,12 +588,13 @@ impl BlueJsChildHost {
 
         let mut reports = Vec::with_capacity(prepared.len());
         for prepared in prepared {
-            let (ordinal, language, kind, outcome) = match prepared {
+            let (ordinal, language, kind, outcome, source_position) = match prepared {
                 PreparedScript::Rejected {
                     ordinal,
                     language,
                     kind,
                     category,
+                    source_position,
                 } => (
                     ordinal,
                     language,
@@ -601,6 +602,7 @@ impl BlueJsChildHost {
                     PageHostScriptOutcome::Rejected {
                         category: category.to_string(),
                     },
+                    source_position,
                 ),
                 PreparedScript::JavaScriptClassic {
                     ordinal,
@@ -619,6 +621,7 @@ impl BlueJsChildHost {
                         PageHostScriptLanguage::JavaScript,
                         PageHostScriptKind::Classic,
                         outcome,
+                        None,
                     )
                 }
                 PreparedScript::JavaScriptModule {
@@ -638,6 +641,7 @@ impl BlueJsChildHost {
                         PageHostScriptLanguage::JavaScript,
                         PageHostScriptKind::Module,
                         outcome,
+                        None,
                     )
                 }
                 PreparedScript::BlueTsClassic { ordinal, script } => {
@@ -653,6 +657,7 @@ impl BlueJsChildHost {
                         PageHostScriptLanguage::BlueTs,
                         PageHostScriptKind::Classic,
                         outcome,
+                        None,
                     )
                 }
                 PreparedScript::BlueTsModule { ordinal, graph } => {
@@ -668,6 +673,7 @@ impl BlueJsChildHost {
                         PageHostScriptLanguage::BlueTs,
                         PageHostScriptKind::Module,
                         outcome,
+                        None,
                     )
                 }
             };
@@ -677,6 +683,7 @@ impl BlueJsChildHost {
                 ordinal,
                 language,
                 kind,
+                source_position,
                 outcome,
             });
         }
@@ -804,13 +811,15 @@ impl BlueJsChildHost {
                     language,
                     kind,
                     category,
-                } => reports.push(script_report(
+                    source_position,
+                } => reports.push(script_report_with_position(
                     tab_id,
                     document_generation,
                     ordinal,
                     language,
                     kind,
                     rejected(category),
+                    source_position,
                 )),
                 PreparedScript::JavaScriptClassic {
                     ordinal,

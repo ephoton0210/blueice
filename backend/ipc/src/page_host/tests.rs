@@ -372,14 +372,32 @@ fn requests_and_replies_round_trip_over_a_real_socket() {
         tab_id: 7,
         document_generation: 3,
         already_current: false,
-        reports: vec![PageHostScriptReport {
-            tab_id: 7,
-            document_generation: 3,
-            ordinal: 0,
-            language: PageHostScriptLanguage::JavaScript,
-            kind: PageHostScriptKind::Classic,
-            outcome: PageHostScriptOutcome::Executed,
-        }],
+        reports: vec![
+            PageHostScriptReport {
+                tab_id: 7,
+                document_generation: 3,
+                ordinal: 0,
+                language: PageHostScriptLanguage::JavaScript,
+                kind: PageHostScriptKind::Classic,
+                source_position: None,
+                outcome: PageHostScriptOutcome::Executed,
+            },
+            PageHostScriptReport {
+                tab_id: 7,
+                document_generation: 3,
+                ordinal: 1,
+                language: PageHostScriptLanguage::BlueTs,
+                kind: PageHostScriptKind::Classic,
+                source_position: Some(PageHostScriptSourcePosition {
+                    module_id: "core-inline-7-3-1".into(),
+                    start: 5,
+                    end: 8,
+                }),
+                outcome: PageHostScriptOutcome::Rejected {
+                    category: "BlueTS compilation rejected the page script".into(),
+                },
+            },
+        ],
     };
     let (mut writer, mut reader) = UnixStream::pair().unwrap();
     write_page_host_reply(&mut writer, &reply).unwrap();
@@ -1036,6 +1054,45 @@ fn page_host_rejects_an_oversized_frame_before_payload_allocation() {
     let oversized = u32::try_from(PAGE_HOST_MAX_FRAME_BYTES + 1).unwrap();
     let mut bytes = oversized.to_le_bytes().to_vec();
     assert!(read_page_host_request(&mut std::io::Cursor::new(&mut bytes)).is_err());
+}
+
+#[test]
+fn private_script_position_requires_a_bounded_bluets_rejection() {
+    let mut report = PageHostScriptReport {
+        tab_id: 7,
+        document_generation: 3,
+        ordinal: 0,
+        language: PageHostScriptLanguage::BlueTs,
+        kind: PageHostScriptKind::Classic,
+        source_position: Some(PageHostScriptSourcePosition {
+            module_id: "blueice://page/inline.ts".into(),
+            start: 1,
+            end: 2,
+        }),
+        outcome: PageHostScriptOutcome::Rejected {
+            category: "BlueTS compilation rejected the page script".into(),
+        },
+    };
+    assert!(report.is_well_formed());
+    for module_id in [
+        String::new(),
+        "bad\0module".into(),
+        "m".repeat(PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES + 1),
+    ] {
+        report.source_position.as_mut().unwrap().module_id = module_id;
+        assert!(!report.is_well_formed());
+    }
+    report.source_position.as_mut().unwrap().module_id = "blueice://page/inline.ts".into();
+    report.source_position.as_mut().unwrap().end = 1;
+    assert!(!report.is_well_formed());
+    report.source_position.as_mut().unwrap().end = PAGE_HOST_REPORT_POSITION_MAX_OFFSET + 1;
+    assert!(!report.is_well_formed());
+    report.source_position.as_mut().unwrap().end = 2;
+    report.language = PageHostScriptLanguage::JavaScript;
+    assert!(!report.is_well_formed());
+    report.language = PageHostScriptLanguage::BlueTs;
+    report.outcome = PageHostScriptOutcome::Executed;
+    assert!(!report.is_well_formed());
 }
 
 #[test]

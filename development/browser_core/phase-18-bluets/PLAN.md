@@ -2427,6 +2427,16 @@ policy, external omission, and malformed/mismatched spans, while IPC tests
 round-trip the shape. The direct executor's tests now reside in their own
 MPL-licensed submodule so the implementation file remains easy to extend.
 
+**E2.2.2.3.1 private child candidate:** Page-host protocol v44 carries an
+optional compiler-position candidate only on a rejected BlueTS script report.
+The child selects compiler or direct-lowering spans from its independently
+validated graph, requires a nonempty UTF-8 byte range within the referenced
+module, and bounds the module ID and 32-bit offsets. JavaScript, successful
+BlueTS, graph validation, and runtime failures carry no candidate. Immediate
+and debugger-controlled synchronization use the same private field. Core
+must still verify the candidate against its own exact inline declaration
+before placing a numeric range in a browser report.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

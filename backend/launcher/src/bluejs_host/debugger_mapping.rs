@@ -95,12 +95,34 @@ pub(super) fn script_report(
     kind: PageHostScriptKind,
     outcome: PageHostScriptOutcome,
 ) -> PageHostScriptReport {
+    script_report_with_position(
+        tab_id,
+        document_generation,
+        ordinal,
+        language,
+        kind,
+        outcome,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn script_report_with_position(
+    tab_id: u64,
+    document_generation: u64,
+    ordinal: u32,
+    language: PageHostScriptLanguage,
+    kind: PageHostScriptKind,
+    outcome: PageHostScriptOutcome,
+    source_position: Option<PageHostScriptSourcePosition>,
+) -> PageHostScriptReport {
     PageHostScriptReport {
         tab_id,
         document_generation,
         ordinal,
         language,
         kind,
+        source_position,
         outcome,
     }
 }

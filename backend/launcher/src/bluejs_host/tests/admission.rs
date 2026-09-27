@@ -221,6 +221,36 @@ fn bluets_uses_the_verified_snapshot_profile_and_rejects_untyped_globals() {
 }
 
 #[test]
+fn bluets_compiler_positions_remain_private_candidates_in_normal_and_deferred_reports() {
+    let source = "const broken: number = \"wrong\";";
+    let mut host = BlueJsChildHost::default();
+    for (generation, debugger_control) in [(1, false), (2, true)] {
+        let mut request_document = document(generation, vec![blue_ts_classic(0, source)]);
+        request_document.debugger_execution_control = debugger_control;
+        let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: request_document,
+        });
+        let PageHostReply::Synchronized { reports, .. } = reply else {
+            panic!("expected synchronized reply: {reply:?}");
+        };
+        let [report] = reports.as_slice() else {
+            panic!("expected one BlueTS report: {reports:?}");
+        };
+        assert_eq!(report.document_generation, generation);
+        assert!(matches!(
+            report.outcome,
+            PageHostScriptOutcome::Rejected { .. }
+        ));
+        let position = report.source_position.as_ref().expect("compiler position");
+        assert_eq!(position.module_id, "blueice://page/inline-0.ts");
+        assert!(position.start < position.end);
+        assert!(position.end as usize <= source.len());
+        assert!(report.is_well_formed());
+        assert!(!format!("{report:?}").contains("wrong"));
+    }
+}
+
+#[test]
 fn module_graph_uses_only_the_explicit_static_resolution_records() {
     let entry = "blueice://page/entry.js";
     let dependency = "blueice://page/dependency.js";

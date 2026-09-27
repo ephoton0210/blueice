@@ -125,12 +125,17 @@ use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-/// V43 adds bounded child-retained static and deferred payload totals to
-/// realm accounting. V42 adds the private linked entry-root value route. V41 adds the private
+/// V44 adds a bounded private BlueTS rejection-position candidate. V43 adds
+/// bounded child-retained static and deferred payload totals to realm
+/// accounting. V42 adds the private linked entry-root value route. V41 adds the private
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 43;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 44;
+
+/// Private candidate limits; core independently checks the original source.
+pub const PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES: usize = 2_048;
+pub const PAGE_HOST_REPORT_POSITION_MAX_OFFSET: u32 = 8 * 1024 * 1024;
 
 pub const PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -323,7 +328,38 @@ pub struct PageHostScriptReport {
     pub ordinal: u32,
     pub language: PageHostScriptLanguage,
     pub kind: PageHostScriptKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_position: Option<PageHostScriptSourcePosition>,
     pub outcome: PageHostScriptOutcome,
+}
+
+/// Child-private compiler span candidate. It is never copied to the browser
+/// report until core binds it to its exact original inline declaration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostScriptSourcePosition {
+    pub module_id: String,
+    pub start: u32,
+    pub end: u32,
+}
+
+impl PageHostScriptSourcePosition {
+    pub fn is_well_formed(&self) -> bool {
+        !self.module_id.is_empty()
+            && self.module_id.len() <= PAGE_HOST_REPORT_POSITION_MAX_MODULE_ID_BYTES
+            && !self.module_id.contains('\0')
+            && self.start < self.end
+            && self.end <= PAGE_HOST_REPORT_POSITION_MAX_OFFSET
+    }
+}
+
+impl PageHostScriptReport {
+    pub fn is_well_formed(&self) -> bool {
+        self.source_position.as_ref().is_none_or(|position| {
+            self.language == PageHostScriptLanguage::BlueTs
+                && matches!(self.outcome, PageHostScriptOutcome::Rejected { .. })
+                && position.is_well_formed()
+        })
+    }
 }
 
 /// Bounded outcome category. The child owns these fixed labels; it never
