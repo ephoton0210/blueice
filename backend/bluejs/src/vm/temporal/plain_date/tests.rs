@@ -50,6 +50,21 @@ fn computes_iso_day_of_week_matching_a_known_monday() {
 }
 
 #[test]
+fn non_iso_calendar_difference_of_equal_dates_is_zero() {
+    let date = (2020, 5, 23);
+    for unit in [DateUnit::Year, DateUnit::Month] {
+        assert_eq!(
+            calendar_difference_date_fixed_months(AnyCalendarKind::Coptic, date, date, unit),
+            (0, 0, 0, 0)
+        );
+        assert_eq!(
+            calendar_difference_date_leap_month(AnyCalendarKind::Chinese, date, date, unit),
+            (0, 0, 0, 0)
+        );
+    }
+}
+
+#[test]
 fn computes_iso_week_of_year_across_a_year_boundary() {
     // Test262's PlainDate/prototype/weekOfYear/basic.js.
     for day in 29..=31 {

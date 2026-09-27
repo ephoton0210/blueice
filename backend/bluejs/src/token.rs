@@ -292,7 +292,9 @@ impl Tokenizer {
 
     pub(crate) fn regexp_at(&mut self, position: usize) -> Result<(JsString, JsString), LexError> {
         self.pos = position;
-        self.skip_trivia()?;
+        // First-pass tokenization already validated the trivia before `/`.
+        self.skip_trivia()
+            .expect("regexp literal trivia was validated before rescan");
         self.advance();
         let mut pattern = JsString::default();
         let mut class = false;
@@ -333,7 +335,9 @@ impl Tokenizer {
         position: usize,
     ) -> Result<TaggedTemplateData, LexError> {
         self.pos = position;
-        self.skip_trivia()?;
+        // `at_template` validated this trivia before requesting the rescan.
+        self.skip_trivia()
+            .expect("tagged template trivia was validated before rescan");
         self.advance();
         let mut raw = Vec::new();
         let mut current = String::new();
@@ -356,17 +360,14 @@ impl Tokenizer {
                     .advance()
                     .ok_or_else(|| LexError::new("unterminated tagged template escape"))?;
                 if c == '\r' {
-                    if self.peek() == Some('\n') {
-                        self.advance();
-                    }
+                    // The consumed CR already marked a line start.
+                    self.pos += usize::from(self.peek() == Some('\n'));
                     current.push('\n');
                 } else {
                     current.push(c);
                 }
             } else if c == '\r' {
-                if self.peek() == Some('\n') {
-                    self.advance();
-                }
+                self.pos += usize::from(self.peek() == Some('\n'));
                 current.push('\n');
             } else {
                 current.push(c);
@@ -1844,14 +1845,42 @@ mod tests {
     #[test]
     fn a_placeholder_keeps_its_source_in_lexer_text() {
         let source = encoded(&[0x60, 0x24, 0x7B, 0x27, 0xD800, 0x27, 0x7D, 0x60]);
-        let Token::Template {
-            raw_expressions, ..
-        } = tokens(&source).remove(0)
-        else {
-            panic!("expected a template");
-        };
-        assert_eq!(raw_expressions, vec![encoded(&[0x27, 0xD800, 0x27])]);
-        assert_eq!(tokens(&raw_expressions[0])[0], Token::String(js(&[0xD800])));
+        let expression = encoded(&[0x27, 0xD800, 0x27]);
+        assert_eq!(
+            tokens(&source),
+            vec![
+                Token::Template {
+                    quasis: vec!["".into(), "".into()],
+                    raw_expressions: vec![expression.clone()],
+                },
+                Token::Eof,
+            ]
+        );
+        assert_eq!(tokens(&expression)[0], Token::String(js(&[0xD800])));
+    }
+
+    #[test]
+    fn helper_entry_points_preserve_template_errors_and_crlf() {
+        assert!(Tokenizer::new("`${").tagged_template_at(0).is_err());
+        assert!(Tokenizer::new_module("<!-- /x/").next_spanned().is_err());
+        assert!(Tokenizer::new_module("<!-- `x`").next_spanned().is_err());
+        for source in ["`\\\r\nx`", "`\r\nx`"] {
+            assert!(Tokenizer::new(source).tagged_template_at(0).is_ok());
+        }
+    }
+
+    #[test]
+    fn private_identifier_escapes_validate_each_code_point() {
+        assert_eq!(
+            Tokenizer::new("#\\u0061\\u0062")
+                .next_spanned()
+                .unwrap()
+                .token,
+            Token::PrivateIdentifier("ab".into())
+        );
+        for source in ["#\\u0030", "#a\\u0020", "#\\u{xyz}", "#\\u00zz"] {
+            assert!(Tokenizer::new(source).next_spanned().is_err(), "{source}");
+        }
     }
 
     #[test]
