@@ -4256,6 +4256,28 @@ real-child test passes locally in the shared target; CI must still verify
 the macOS behavior. The macOS debugger pending-admission failures remain a
 separate release-gate blocker.
 
+**G.3.2.2.3 debugger admission contract:** The completed macOS CI jobs for
+run 36317372058 show the same failure on macOS 15/26 and x86_64/arm64: 10–12
+real launcher debugger tests per job observe `Completed` before an expected
+`Pending` state or receive `InvalidExecutionState` when arming a verified
+breakpoint. The core gives discovery/configuration replies one extra session
+turn, but the first request is often sent after its 25 ms idle poll has
+advanced the just-admitted entry. The existing 64-deferral child budget
+limits request-triggered holds; it does not cover the gap before the first
+request. Repeating a test or increasing the idle timeout would not establish
+a reliable admission boundary.
+
+Add an explicit, owner-only debugger reservation before navigation. It must
+identify one existing tab and its current document generation, apply only to
+the next generation, and have a fixed core-owned expiry. Bind its release to
+the same negotiated stream; successful entry/root/nested/source breakpoint
+arming may consume it, while an explicit same-stream release lets an inventory
+test prove ordinary completion. Stream disconnect, superseding navigation,
+and timeout must also free the hold. No unrequested page execution is delayed.
+Real-process tests must acquire it before navigation, then keep their exact
+pending, arm, pause, resume, completion, stale-handle, and refusal assertions.
+Unit tests must cover foreign-stream release refusal and automatic cleanup.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
