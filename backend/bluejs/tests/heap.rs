@@ -838,3 +838,45 @@ fn generator_pending_completions_survive_collection() {
     );
     assert!(vm.heap().stats().major_collections > 0);
 }
+
+#[test]
+fn generator_pending_runtime_errors_survive_collection() {
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 1024,
+            max_heap_bytes: 64 * 1024 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    let source = r#"
+        function* pauseOnError(kind) {
+            try {
+                if (kind === 'ReferenceError') return missingBinding;
+                if (kind === 'TypeError') return null.property;
+                if (kind === 'RangeError') return new Array(-1);
+                return eval('(');
+            } finally {
+                yield {kind};
+            }
+        }
+        const kinds = ['ReferenceError', 'TypeError', 'RangeError', 'SyntaxError'];
+        const generators = kinds.map(kind => pauseOnError(kind));
+        globalThis.savedErrorGenerators = generators;
+        const paused = generators.every((generator, index) =>
+            generator.next().value.kind === kinds[index]);
+        for (let index = 0; index < 128; index++) ({index});
+        const errors = generators.map(generator => {
+            try { generator.next(); return 'none'; }
+            catch (error) { return error.name; }
+        });
+        paused && errors.every((name, index) => name === kinds[index])
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(vm.heap().stats().major_collections > 0);
+}

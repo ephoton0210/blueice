@@ -16,7 +16,9 @@
 //! instants and explicit locales/time zones are used, except the `Temporal.Now`
 //! checks, which only assert properties that hold for any wall-clock reading.
 
-use blueice_bluejs::{compile, parse, Value, Vm};
+use blueice_bluejs::{
+    compile, parse, Heap, HeapConfig, HeapError, RuntimeError, Value, Vm, VmConfig,
+};
 
 const PRELUDE: &str = r#"
 const fails = [];
@@ -112,6 +114,64 @@ fn malformed_iso_fields_are_rejected_without_panicking() {
         "2020010xT12:34Z"
       ]) range(() => Temporal.Instant.from(text));
     "#);
+}
+
+#[test]
+fn instant_option_readers_preserve_errors_and_accept_auto_largest_unit() {
+    run(r#"
+      const first = Temporal.Instant.from("1970-01-01T00:00Z");
+      const second = Temporal.Instant.from("1970-01-01T00:00:01Z");
+      same(() => first.until(second, { largestUnit: "auto" }).seconds, 1);
+      range(() => first.toString({ roundingMode: "\uD800" }));
+      range(() => first.toString({ smallestUnit: "\uD800" }));
+      type(() => first.toString({ get roundingMode() { throw new TypeError("mode getter"); } }));
+      type(() => first.toString({ get smallestUnit() { throw new TypeError("unit getter"); } }));
+      type(() => first.toString({ smallestUnit: Symbol("unit") }));
+      type(() => first.round({ smallestUnit: "second", get roundingIncrement() { throw new TypeError("increment getter"); } }));
+      type(() => first.round({ smallestUnit: "second", roundingIncrement: Symbol("increment") }));
+    "#);
+}
+
+#[test]
+fn instant_options_propagate_heap_limits_before_and_after_object_allocation() {
+    let prepare =
+        compile(&parse("globalThis.i = new Temporal.Instant(0n); i.toString; i.round;").unwrap())
+            .unwrap();
+    let mut ample = Vm::default();
+    ample.execute(&prepare).unwrap();
+    let base_bytes = ample.heap().stats().managed_bytes;
+
+    let mut sizing_heap = Heap::new(HeapConfig::default()).unwrap();
+    sizing_heap.alloc_object(None).unwrap();
+    let object_bytes = sizing_heap.stats().managed_bytes;
+
+    for (source, extra) in [
+        ("i.toString()", 0),
+        ("i.round('second')", 0),
+        ("i.round('second')", object_bytes),
+    ] {
+        let limit = base_bytes + extra;
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity: 256,
+                major_threshold_bytes: 1024,
+                max_heap_bytes: limit,
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
+        assert!(vm.execute(&prepare).is_ok(), "preparing at {limit} bytes");
+        assert_eq!(vm.heap().stats().managed_bytes, base_bytes);
+        let action = compile(&parse(source).unwrap()).unwrap();
+        assert!(
+            matches!(
+                vm.execute(&action),
+                Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { limit: observed }))
+                    if observed == limit
+            ),
+            "{source} at {limit} bytes"
+        );
+    }
 }
 
 #[test]

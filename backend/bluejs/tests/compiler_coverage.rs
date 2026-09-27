@@ -136,6 +136,7 @@ fn statement_control_flow_and_binding_limits_compile_through_the_public_pipeline
         "function f() { outer: for (const x of [1]) { inner: while (x) { break outer; } } }",
         "with ({ x: 1 }) { var x = 2; var { y } = { y: 3 }; var [z] = [4]; }",
         "for (let index = 0; index < 2; index++) {}",
+        "for (1 + 2; false; 1) {}",
         "for (; false; 1) {}",
         "var [first = 1, ...rest] = []; var { x: item = 2, ...other } = {};",
         "with ({ x: 1 }) { var { x: renamed = 2, ...rest } = {}; }",
