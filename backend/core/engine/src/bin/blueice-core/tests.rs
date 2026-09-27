@@ -222,6 +222,7 @@ fn every_flag_is_parsed() {
             debugger_static_metadata_symbol_contract: false,
             debugger_static_scope_relation: false,
             compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
+            compiler_output_socket: None,
             compiler_project_profile: Some("core-closed-fixture-v1".to_string()),
             compiler_catalog_stdin: false,
             owner_bootstrap_stdin: false,
@@ -764,6 +765,33 @@ fn compiler_profile_and_query_listener_are_an_indivisible_startup_pair() {
         "core-closed-fixture-v1",
     ])
     .is_err());
+    assert_eq!(
+        args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--compiler-socket",
+            "/tmp/compiler.sock",
+            "--compiler-project-profile",
+            "core-closed-fixture-v1",
+            "--compiler-output-socket",
+            "/tmp/output.sock",
+        ]),
+        Err("--compiler-output-socket requires a compiler socket and owner catalog".to_string())
+    );
+    let parsed = args(&[
+        "--socket",
+        "/tmp/x.sock",
+        "--compiler-socket",
+        "/tmp/compiler.sock",
+        "--compiler-catalog-stdin",
+        "--compiler-output-socket",
+        "/tmp/output.sock",
+    ])
+    .unwrap();
+    assert_eq!(
+        parsed.compiler_output_socket,
+        Some(PathBuf::from("/tmp/output.sock"))
+    );
 }
 
 #[test]

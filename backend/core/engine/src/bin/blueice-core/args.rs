@@ -43,6 +43,7 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
     let mut debugger_static_metadata_symbol_contract = false;
     let mut debugger_static_scope_relation = false;
     let mut compiler_socket = None;
+    let mut compiler_output_socket = None;
     let mut compiler_project_profile = None;
     let mut compiler_catalog_stdin = false;
     let mut owner_bootstrap_stdin = false;
@@ -126,6 +127,7 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
             }
             "--debugger-static-scope-relation" => debugger_static_scope_relation = true,
             "--compiler-socket" => compiler_socket = Some(PathBuf::from(value()?)),
+            "--compiler-output-socket" => compiler_output_socket = Some(PathBuf::from(value()?)),
             "--compiler-project-profile" => compiler_project_profile = Some(value()?),
             "--compiler-catalog-stdin" => compiler_catalog_stdin = true,
             "--owner-bootstrap-stdin" => owner_bootstrap_stdin = true,
@@ -463,6 +465,13 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
     {
         return Err("--compiler-socket requires exactly one compiler startup selector".to_string());
     }
+    if compiler_output_socket.is_some()
+        && (compiler_socket.is_none() || !(compiler_catalog_stdin || owner_bootstrap_stdin))
+    {
+        return Err(
+            "--compiler-output-socket requires a compiler socket and owner catalog".to_string(),
+        );
+    }
     Ok(Args {
         socket,
         width,
@@ -494,6 +503,7 @@ pub(super) fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, Str
         debugger_static_metadata_symbol_contract,
         debugger_static_scope_relation,
         compiler_socket,
+        compiler_output_socket,
         compiler_project_profile,
         compiler_catalog_stdin,
         owner_bootstrap_stdin,

@@ -30,6 +30,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 #[path = "core_binary/compiler_debugger.rs"]
 mod compiler_debugger;
+#[path = "core_binary/compiler_output.rs"]
+mod compiler_output;
 #[path = "core_binary/core_session.rs"]
 mod core_session;
 #[path = "core_binary/multi_tab.rs"]

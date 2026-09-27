@@ -4123,6 +4123,18 @@ may advance the compiler generation. Diagnostic-bearing builds publish
 nothing. Closing the output session drops its project inventory. No socket
 can reach this owner handler until F3.2.1.2.2.2 connects it.
 
+**F3.2.1.2.2.2 core output socket:** Core accepts an independently configured
+`--compiler-output-socket` only with an owner catalog and at least one exposed
+physical write grant. It binds the endpoint with explicit `0600` permissions.
+Each accepted output connection mints a fresh `ow-` receipt after exact
+protocol Hello. Its worker owns framing only and queues output requests on
+the same channel that the core session thread drains for compiler queries;
+no listener thread owns compiler cache, grant map, or filesystem publisher.
+Disconnect drops the stream inventory, and core shutdown removes the socket.
+A real subprocess covers valid publication, rejection of a query receipt,
+permission mode, cleanup, and refusal to start an output listener with an
+ungranted owner catalog. MCP still has no output adapter until F3.2.1.3.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

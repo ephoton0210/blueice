@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: F3.2.1.2.2.2.** Bind the owner-only core output socket and
-hand output requests to the sealed compiler session thread.
+**Current leaf: F3.2.1.3.** Attach the independent output capability to MCP
+and hide the build tool when it is absent.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -708,11 +708,11 @@ Keep check read-only and owner registration sealed before listeners.
   receipt must never imply write access.
   - [ ] **F3.2.1** Hide build unless the owner granted output-write authority.
     - [x] **F3.2.1.1** Define the independent write boundary. The existing compiler query socket and its fixed manifest remain read-only. A separately configured, owner-only output socket will expose only inventoried, owner-granted physical projects under an independent per-stream receipt. Its build request will carry only that receipt and an opaque project handle, return a bounded check plus publication status without artifacts or paths, and run the existing owner staging gate on the core session thread. MCP will attach this endpoint explicitly and advertise build only while attached. A build must revoke that project's query-generation receipts.
-    - [ ] **F3.2.1.2** Implement the separate core output-write transport and its grant-filtered project inventory and build reply.
+    - [x] **F3.2.1.2** Implement the separate core output-write transport and its grant-filtered project inventory and build reply.
       - [x] **F3.2.1.2.1** Define the output-only handshake, exact receipt, granted-project inventory, bounded build reply, and strict request fields in a separate IPC protocol. `compiler_output` v1 uses an `ow-`-prefixed core receipt that a query session attestation cannot satisfy, strict opaque-handle request shapes without source/options/path fields, a 64 KiB frame cap, and a source-free generation/fingerprint/publication result. Focused wire tests cover exact version/receipt negotiation, rejection of injected authority fields, bounded framing, and result shape. No socket or write operation is exposed by this wire-only step.
-      - [ ] **F3.2.1.2.2** Bind an owner-only core output socket and dispatch granted inventory/build on the sealed compiler session thread.
+      - [x] **F3.2.1.2.2** Bind an owner-only core output socket and dispatch granted inventory/build on the sealed compiler session thread.
         - [x] **F3.2.1.2.2.1** Implement sealed-owner output inventory, per-stream receipt checks, build staging, and session cleanup with no network listener. Only the intersection of exposed projects and separately granted physical output roots enters a stream's output inventory. The sealed owner rejects query/foreign receipts and unobserved or private projects before build, invokes the existing no-emit-on-error staging method, returns only generation/fingerprint/status, revokes older query cursor evidence after a build, and discards inventory when the output stream ends. A physical-owner test covers denied and successful writes, diagnostic non-publication, stale query generation, and session cleanup; all Engine library tests pass.
-        - [ ] **F3.2.1.2.2.2** Bind the owner-only process socket and hand off output requests to that same core session thread.
+        - [x] **F3.2.1.2.2.2** Bind the owner-only process socket and hand off output requests to that same core session thread. An explicitly configured `--compiler-output-socket` requires an owner catalog and at least one exposed output grant before any listener binds. The `0600` output listener mints a fresh `ow-` stream receipt after exact Hello, handles bounded frames only, and queues requests on the existing core compiler session channel. A real core subprocess proves a query receipt is rejected, granted inventory/build publishes, socket permissions and cleanup hold, and removing the grant prevents output listener startup. All Engine library, real core process, CLI, formatting, and all-target Clippy gates pass.
     - [ ] **F3.2.1.3** Attach the independent output capability to MCP and hide the build tool when it is absent.
   - [ ] **F3.2.2** Assert a query receipt never authorizes a build.
 - [ ] **F3.3** Through a real MCP client, inspect a diagnostic/type/contract

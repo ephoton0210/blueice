@@ -140,6 +140,8 @@ struct Args {
     /// registered during startup. Its protocol does not accept registration,
     /// source, path, resolver, compiler-option, build, or write requests.
     compiler_socket: Option<PathBuf>,
+    /// Independent owner-granted build endpoint; never shares the query socket.
+    compiler_output_socket: Option<PathBuf>,
     /// A compiled-in closed project profile selected by the core process
     /// owner. This is a startup-only test/integration seam, not a project
     /// file/path argument and never crosses compiler IPC.
@@ -175,6 +177,9 @@ struct Args {
 #[cfg(unix)]
 #[path = "blueice-core/args.rs"]
 mod args;
+#[cfg(unix)]
+#[path = "blueice-core/compiler_output.rs"]
+mod compiler_output;
 #[cfg(unix)]
 use args::parse_args;
 
@@ -722,6 +727,7 @@ fn main() -> ExitCode {
         blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty()
     };
     let compiler_socket = args.compiler_socket.clone();
+    let compiler_output_socket = args.compiler_output_socket.clone();
     let inline_bluets_profile = args.inline_bluets_profile.clone();
     let inline_bluejs = args.inline_bluejs;
     let out_of_process_bluejs_socket = args.out_of_process_bluejs_socket.clone();
@@ -800,6 +806,14 @@ fn main() -> ExitCode {
         }
     }
     let mut compiler_service = compiler_catalog.map(CoreCompilerProjectCatalog::seal);
+    if compiler_output_socket.is_some()
+        && !compiler_service
+            .as_ref()
+            .is_some_and(|service| service.has_exposed_output_grants())
+    {
+        eprintln!("blueice-core: compiler output socket requires an exposed owner write grant");
+        return ExitCode::FAILURE;
+    }
 
     let script_listener = match script_socket.as_ref() {
         Some(path) => match bind_script_listener(path) {
@@ -852,6 +866,28 @@ fn main() -> ExitCode {
         },
         None => None,
     };
+    let compiler_output_listener = match compiler_output_socket.as_ref() {
+        Some(path) => match bind_owner_only_listener(path, "compiler output") {
+            Ok(listener) => Some(listener),
+            Err(error) => {
+                if let Some(path) = &script_socket {
+                    remove_owned_socket_if_owned(path);
+                }
+                if let Some(path) = &debugger_socket {
+                    let _ = std::fs::remove_file(path);
+                }
+                if let Some(path) = &compiler_socket {
+                    remove_owned_socket_if_owned(path);
+                }
+                eprintln!(
+                    "blueice-core: failed to bind compiler output socket {}: {error}",
+                    path.display()
+                );
+                return ExitCode::FAILURE;
+            }
+        },
+        None => None,
+    };
 
     // A stale socket file from a previous run (e.g. one that crashed
     // instead of exiting cleanly) makes bind() fail with AddrInUse
@@ -868,6 +904,9 @@ fn main() -> ExitCode {
                 let _ = std::fs::remove_file(path);
             }
             if let Some(path) = &compiler_socket {
+                remove_owned_socket_if_owned(path);
+            }
+            if let Some(path) = &compiler_output_socket {
                 remove_owned_socket_if_owned(path);
             }
             eprintln!(
@@ -898,7 +937,15 @@ fn main() -> ExitCode {
             });
         }
         if let Some(listener) = compiler_listener {
-            thread::spawn(move || serve_compiler_listener(listener, compiler_sender));
+            thread::spawn({
+                let compiler_sender = compiler_sender.clone();
+                move || serve_compiler_listener(listener, compiler_sender)
+            });
+        }
+        if let Some(listener) = compiler_output_listener {
+            thread::spawn(move || {
+                compiler_output::serve_compiler_output_listener(listener, compiler_sender)
+            });
         }
         let (mut stream, _) = listener.accept()?;
         let mut tabs = TabManager::new(args.width, args.height);
@@ -1054,6 +1101,9 @@ fn main() -> ExitCode {
         let _ = std::fs::remove_file(path);
     }
     if let Some(path) = compiler_socket {
+        remove_owned_socket_if_owned(&path);
+    }
+    if let Some(path) = compiler_output_socket {
         remove_owned_socket_if_owned(&path);
     }
     let _ = std::fs::remove_dir_all(&frame_dir);

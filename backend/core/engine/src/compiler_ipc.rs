@@ -529,6 +529,15 @@ pub struct CoreCompilerServiceSession {
 }
 
 impl CoreCompilerServiceSession {
+    /// Whether an independently configured output listener has any project
+    /// the owner both granted and exposed. Refuse an empty write endpoint.
+    pub fn has_exposed_output_grants(&self) -> bool {
+        self.adapter.registered_projects.iter().any(|id| {
+            RegisteredProjectId::from_wire(*id)
+                .is_some_and(|id| self.output_write_grants.contains_key(&id))
+        })
+    }
+
     /// Handles an already accepted output stream on the core owner thread.
     /// Only a separately minted output receipt and this stream's inventory
     /// can reach the startup owner grant; the query adapter remains read-only.
@@ -635,7 +644,7 @@ impl CoreCompilerServiceSession {
     /// owns framing/handshake only and never obtains this adapter or its
     /// incremental compiler state.
     pub fn dispatch_pending(&mut self, receiver: &CompilerServiceIpcRequestReceiver) -> usize {
-        receiver.dispatch_pending(&mut self.adapter)
+        receiver.dispatch_pending_owner(self)
     }
 
     /// A startup-only count useful for core lifecycle diagnostics and tests.
@@ -1242,6 +1251,12 @@ pub struct CompilerServiceIpcSessionSender {
     session_id: String,
 }
 
+/// Bound to the independent output Hello receipt; no query sender can mint it.
+pub struct CompilerOutputIpcSessionSender {
+    sender: CompilerServiceIpcRequestSender,
+    receipt: CompilerOutputSessionReceipt,
+}
+
 /// Session-owner receiver for the compiler adapter. Only this side obtains a
 /// mutable adapter and therefore the mutable incremental compiler cache.
 pub struct CompilerServiceIpcRequestReceiver(mpsc::Receiver<CompilerServiceIpcRequestEnvelope>);
@@ -1254,6 +1269,14 @@ enum CompilerServiceIpcRequestEnvelope {
     },
     EndSession {
         session_id: String,
+    },
+    OutputRequest {
+        receipt: CompilerOutputSessionReceipt,
+        request: CompilerOutputRequest,
+        reply: mpsc::SyncSender<CompilerOutputReply>,
+    },
+    EndOutputSession {
+        receipt: CompilerOutputSessionReceipt,
     },
 }
 
@@ -1270,6 +1293,22 @@ pub fn compiler_service_ipc_request_channel() -> (
 }
 
 impl CompilerServiceIpcRequestSender {
+    pub fn bind_output_session(
+        &self,
+        receipt: CompilerOutputSessionReceipt,
+    ) -> io::Result<CompilerOutputIpcSessionSender> {
+        if !receipt.is_well_formed() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "invalid core output session receipt",
+            ));
+        }
+        Ok(CompilerOutputIpcSessionSender {
+            sender: self.clone(),
+            receipt,
+        })
+    }
+
     /// Binds one accepted worker stream to the core-minted Hello attestation.
     /// Only this internal handle can present a pagination cursor receipt.
     pub fn bind_session(
@@ -1286,6 +1325,34 @@ impl CompilerServiceIpcRequestSender {
             sender: self.clone(),
             session_id: attestation.id,
         })
+    }
+}
+
+impl CompilerOutputIpcSessionSender {
+    pub fn request(&self, request: CompilerOutputRequest) -> io::Result<CompilerOutputReply> {
+        let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+        self.sender
+            .0
+            .send(CompilerServiceIpcRequestEnvelope::OutputRequest {
+                receipt: self.receipt.clone(),
+                request,
+                reply: reply_sender,
+            })
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "core output session ended"))?;
+        reply_receiver
+            .recv()
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "core output reply unavailable"))
+    }
+}
+
+impl Drop for CompilerOutputIpcSessionSender {
+    fn drop(&mut self) {
+        let _ = self
+            .sender
+            .0
+            .send(CompilerServiceIpcRequestEnvelope::EndOutputSession {
+                receipt: self.receipt.clone(),
+            });
     }
 }
 
@@ -1323,6 +1390,43 @@ impl Drop for CompilerServiceIpcSessionSender {
 }
 
 impl CompilerServiceIpcRequestReceiver {
+    /// Applies query and output requests on the same sealed owner thread.
+    pub fn dispatch_pending_owner(&self, owner: &mut CoreCompilerServiceSession) -> usize {
+        const MAX_REQUESTS_PER_TICK: usize = 64;
+        let mut dispatched = 0;
+        while dispatched < MAX_REQUESTS_PER_TICK {
+            let Ok(envelope) = self.0.try_recv() else {
+                break;
+            };
+            match envelope {
+                CompilerServiceIpcRequestEnvelope::Request {
+                    session_id,
+                    request,
+                    reply,
+                } => {
+                    let result = owner.adapter.handle_session_request(&session_id, request);
+                    let _ = reply.send(result);
+                }
+                CompilerServiceIpcRequestEnvelope::EndSession { session_id } => {
+                    owner.adapter.end_session(&session_id);
+                }
+                CompilerServiceIpcRequestEnvelope::OutputRequest {
+                    receipt,
+                    request,
+                    reply,
+                } => {
+                    let result = owner.handle_output_request(&receipt, request);
+                    let _ = reply.send(result);
+                }
+                CompilerServiceIpcRequestEnvelope::EndOutputSession { receipt } => {
+                    owner.end_output_session(&receipt);
+                }
+            }
+            dispatched += 1;
+        }
+        dispatched
+    }
+
     /// Applies a bounded batch under the service owner. A disconnected worker
     /// cannot interrupt compilation, page processing, or future rendering.
     pub fn dispatch_pending(&self, adapter: &mut CompilerServiceIpcAdapter) -> usize {
@@ -1344,6 +1448,13 @@ impl CompilerServiceIpcRequestReceiver {
                 CompilerServiceIpcRequestEnvelope::EndSession { session_id } => {
                     adapter.end_session(&session_id);
                 }
+                CompilerServiceIpcRequestEnvelope::OutputRequest { reply, .. } => {
+                    let _ = reply.send(output_error(
+                        CompilerOutputErrorCode::NotGranted,
+                        "output requests require the sealed core owner",
+                    ));
+                }
+                CompilerServiceIpcRequestEnvelope::EndOutputSession { .. } => {}
             }
             dispatched += 1;
         }
