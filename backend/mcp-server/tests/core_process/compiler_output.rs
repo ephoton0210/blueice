@@ -169,6 +169,18 @@ async fn real_mcp_build_requires_the_independent_owner_output_receipt() {
         panic!("output owner must inventory its granted project")
     };
     assert_eq!(inventory.projects.len(), 1);
+    let query_receipt_build = client
+        .call_tool(call(
+            "bluetsc_build",
+            serde_json::json!({
+                "output_session_id": query_session,
+                "project_id": inventory.projects[0].id,
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(query_receipt_build.is_error, Some(true));
+    assert_eq!(std::fs::read_dir(&output_root).unwrap().count(), 0);
     let build = client
         .call_tool(call(
             "bluetsc_build",
@@ -183,7 +195,11 @@ async fn real_mcp_build_requires_the_independent_owner_output_receipt() {
         panic!("owner-granted MCP build must publish")
     };
     assert!(result.published);
-    assert_ne!(result.generation, check.generation);
+    assert_eq!(
+        result.generation.sequence,
+        check.generation.sequence + 1,
+        "the rejected query-receipt build must not advance the core generation"
+    );
     assert_eq!(std::fs::read_dir(&output_root).unwrap().count(), 1);
     assert!(!build.content[0]
         .as_text()

@@ -116,7 +116,7 @@ fn real_core_output_socket_requires_a_separate_owner_grant_and_receipt() {
         &mut output_stream,
         &CompilerOutputRequest::ListProjects {
             receipt: CompilerOutputSessionReceipt {
-                id: session_attestation.id,
+                id: session_attestation.id.clone(),
             },
         },
     )
@@ -141,6 +141,24 @@ fn real_core_output_socket_requires_a_separate_owner_grant_and_receipt() {
         panic!("the owner grant must enter this output stream's inventory")
     };
     assert_eq!(inventory.projects.len(), 1);
+    compiler_output::write_compiler_output_request(
+        &mut output_stream,
+        &CompilerOutputRequest::Build {
+            receipt: CompilerOutputSessionReceipt {
+                id: session_attestation.id,
+            },
+            project: inventory.projects[0],
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        compiler_output::read_compiler_output_reply(&mut output_stream).unwrap(),
+        CompilerOutputReply::Error {
+            code: CompilerOutputErrorCode::InvalidReceipt,
+            ..
+        }
+    ));
+    assert_eq!(std::fs::read_dir(&output_root).unwrap().count(), 0);
     compiler_output::write_compiler_output_request(
         &mut output_stream,
         &CompilerOutputRequest::Build {

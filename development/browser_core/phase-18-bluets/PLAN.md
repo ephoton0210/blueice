@@ -4149,6 +4149,15 @@ The build result is source-free and omits the physical output path. A real
 MCP/core test covers the advertised tools, wrong query receipt, inventory
 gate, publication, and stale query generation.
 
+**F3.2.2 query receipt denial:** The read-only query attestation cannot act
+as an output receipt at either boundary. A real core output stream rejects it
+for both inventory and build after a valid output Hello; a real MCP client
+repeats it as `bluetsc_build.output_session_id` after obtaining the granted
+project inventory. Both attempts leave the output root empty, and the next
+valid build increments the compiler generation only once. The query-only MCP
+router also has no build route. This proves that a successful query check or
+project receipt never implies write authority.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
