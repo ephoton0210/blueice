@@ -43,13 +43,20 @@ if [[ -n ${CARGO_TARGET_DIR:-} ]] &&
 fi
 export CARGO_TARGET_DIR=$target_dir
 export CARGO_INCREMENTAL=0
+# Full workspace test binaries otherwise retain tens of GiB of debug data.
+# Keep one compact profile in the shared target unless the caller overrides it.
+export CARGO_PROFILE_DEV_DEBUG=${CARGO_PROFILE_DEV_DEBUG:-0}
+export CARGO_PROFILE_TEST_DEBUG=${CARGO_PROFILE_TEST_DEBUG:-0}
 
 max_target_kib=$((max_target_gib * 1024 * 1024))
 min_free_kib=$((min_free_gib * 1024 * 1024))
 
 check_budget() {
     local target_kib free_kib
-    target_kib=$(du -sk -- "$target_dir" | awk '{ print $1 }')
+    # Rust can remove a temporary object during du's walk. The final total is
+    # still usable; discard only that transient diagnostic and require a
+    # numeric result below.
+    target_kib=$(du -sk -- "$target_dir" 2>/dev/null | awk '{ print $1 }') || :
     free_kib=$(df -Pk -- "$target_dir" | awk 'END { print $4 }')
     if [[ ! $target_kib =~ ^[0-9]+$ || ! $free_kib =~ ^[0-9]+$ ]]; then
         echo "disk budget: could not measure target size or free space" >&2
@@ -65,7 +72,7 @@ if ! check_budget; then
     exit 75
 fi
 
-echo "disk budget: shared target limit ${max_target_gib} GiB, host free-space reserve ${min_free_gib} GiB; incremental cache disabled" >&2
+echo "disk budget: shared target limit ${max_target_gib} GiB, host free-space reserve ${min_free_gib} GiB; incremental cache disabled; dev/test debug info ${CARGO_PROFILE_DEV_DEBUG}/${CARGO_PROFILE_TEST_DEBUG}" >&2
 setsid -- "$@" &
 child_pid=$!
 

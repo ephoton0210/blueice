@@ -377,6 +377,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "function-braced-while-statement",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-braced-while-statement/main.ts"),
+        )],
+        expected_stdout: Some("0:6\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "object-shorthand-expression",
         modules: &[ (
             "memory:///main.ts",
@@ -686,6 +695,40 @@ const CASES: &[OracleCase] = &[
             "memory:///main.ts",
             include_str!(
                 "fixtures/typescript_oracle/function-return-fallthrough-error/main.ts"
+            ),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::ReturnTypeMismatch,
+            line: 5,
+        }],
+    },
+    OracleCase {
+        name: "function-braced-while-statement-call-error",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!(
+                "fixtures/typescript_oracle/function-braced-while-statement-call-error/main.ts"
+            ),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[
+            ExpectedDiagnostic {
+                code: DiagnosticCode::TypeMismatch,
+                line: 8,
+            },
+            ExpectedDiagnostic {
+                code: DiagnosticCode::TypeMismatch,
+                line: 9,
+            },
+        ],
+    },
+    OracleCase {
+        name: "function-braced-while-statement-return-error",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!(
+                "fixtures/typescript_oracle/function-braced-while-statement-return-error/main.ts"
             ),
         )],
         expected_stdout: None,

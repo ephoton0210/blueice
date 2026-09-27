@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: H.1.2.4.** Compare the chosen `while` syntax and diagnostics
-with pinned TypeScript, then run focused and workspace gates.
+**Current leaf: H.2.1.** Define the supported catch binding and finally
+semantics before adding try/catch/finally execution and safe-point tests.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -768,14 +768,14 @@ Keep check read-only and owner registration sealed before listeners.
 
 ### H. Grow control flow and function semantics.
 
-- [ ] **H.1** Define one supported loop form, then test checker, direct execution,
+- [x] **H.1** Define one supported loop form, then test checker, direct execution,
   safe points, and oracle before selecting another.
   - [x] **H.1.1** Pick one loop form and state its unsupported neighbors. [PLAN.md](PLAN.md#h11-first-loop-form-after-release-gate) selects a braced `while (condition) { body }` in a structured named local function. Its condition and supported body expressions use the existing direct subset, with no control-flow narrowing or return-path proof from the loop. Body-local declarations, nested loops, unbraced bodies, break/continue, labels, other loop forms, and top-level/anonymous contexts remain outside the direct bridge and fail closed. H.1.2 owns checker, VM, safe-point, fuel, and oracle evidence for this design-only decision.
-  - [ ] **H.1.2** Test checker, direct execution, safe points, and oracle for it before choosing another.
+  - [x] **H.1.2** Test checker, direct execution, safe points, and oracle for it before choosing another.
     - [x] **H.1.2.1** Parse the braced `while` as a structured function-body item, check its condition and body with the existing direct-expression rules, preserve the conservative return-path rule, and prove the direct bridge still rejects it pending lowering. BlueTSC retains the condition, body, and original span; its checker reports argument mismatches in both condition and body and refuses to infer a required return from the loop. The direct bridge returns a source-spanned unsupported-runtime error until H.1.2.2 installs lowering. Focused public BlueTSC tests and a direct-bridge regression pass in the shared target under the disk-budget guard.
     - [x] **H.1.2.2** Lower only the selected body subset into a real BlueJS `Stmt::While`/`Stmt::Block`; test zero and multiple iterations, `return`/`throw`, exclusions, and bounded endless-loop failure through a direct page realm. The direct bridge validates every braced `if` branch inside a loop before constructing the BlueJS AST. Direct page tests cover numeric truthiness, zero/multiple iterations, an `if`-nested loop, return/throw completion, and a 128-instruction VM budget failure for an endless loop. Local declarations, nested/unbraced loops, break/continue, labels, do-while, and classic for fail closed. All 114 direct-bridge library tests pass under the shared-target disk guard; safe-point/debugger evidence remains H.1.2.3.
     - [x] **H.1.2.3** Verify loop-back safe-point mapping and pause/step/resume behavior against the exact live source and generation. A direct BlueTS page-runtime test pauses in the named function, steps through three iterations, sees a repeated loop-back offset retain its exact original function-declaration source span, resumes the root, then resumes a second independent nested frame. Navigation invalidates both old frame authority and safe-point-map validation. The existing v1 child-map granularity is the whole original function declaration, not a loop-line span; [PLAN.md](PLAN.md#h11-first-loop-form-after-release-gate) records that boundary.
-    - [ ] **H.1.2.4** Compare accepted syntax and diagnostics with the pinned TypeScript oracle, run the focused and workspace gates, and record the completed loop boundary.
+    - [x] **H.1.2.4** Compare accepted syntax and diagnostics with the pinned TypeScript oracle, run the focused and workspace gates, and record the completed loop boundary. Three new TypeScript 5.9.3 fixtures match zero/multiple-iteration output, both condition/body call-error lines, and conservative missing-return diagnostics; the entire pinned oracle matrix passes. The first full workspace run hit the 60 GiB shared-target cap and stopped safely; after cleaning generated Cargo artifacts and defaulting local dev/test debug info to zero, workspace tests, all-target Clippy with warnings denied, all-target build, rustfmt, and whitespace checks pass with one 12 GiB target and about 629 GiB free on the host. [PLAN.md](PLAN.md#h11-first-loop-form-after-release-gate) records the v1 whole-function child-span granularity and disk-bound local gate.
 - [ ] **H.2** Define try/catch/finally with matching BlueJS execution and safe points.
   - [ ] **H.2.1** Define supported catch-binding and finally semantics.
   - [ ] **H.2.2** Test matching BlueJS execution and safe points.
