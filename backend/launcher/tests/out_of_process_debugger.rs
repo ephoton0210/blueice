@@ -378,6 +378,23 @@ fn debugger_request(stream: &mut UnixStream, request: DebuggerRequest) -> Debugg
     read_debugger_reply(stream).expect("public debugger reply must frame")
 }
 
+fn hold_next_document(debugger: &mut UnixStream, tab_id: u64) {
+    assert_eq!(
+        debugger_request(debugger, DebuggerRequest::HoldNextDocument { tab_id }),
+        DebuggerReply::NextDocumentHoldAcquired { tab_id }
+    );
+}
+
+fn release_next_document_hold(debugger: &mut UnixStream, tab_id: u64) {
+    assert_eq!(
+        debugger_request(
+            debugger,
+            DebuggerRequest::ReleaseNextDocumentHold { tab_id },
+        ),
+        DebuggerReply::NextDocumentHoldReleased { tab_id }
+    );
+}
+
 fn assert_exception_refusal(reply: DebuggerReply, expected: DebuggerErrorCode) {
     let DebuggerReply::Error { code, message } = reply else {
         panic!("exception location must be refused without a partial position: {reply:?}")

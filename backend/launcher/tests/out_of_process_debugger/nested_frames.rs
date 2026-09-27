@@ -47,6 +47,7 @@ fn public_socket_steps_and_resumes_one_real_bluets_nested_frame() {
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         }
     );
+    hold_next_document(&mut debugger, 1);
     navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,
@@ -417,6 +418,7 @@ fn public_socket_rejects_cross_tab_nested_frames_with_two_live_bluets_pages() {
         ),
         DebuggerReply::HelloAck { .. }
     ));
+    hold_next_document(&mut debugger, 1);
     navigate(&mut browser, &url);
     let first_realm = one_realm(debugger_request(
         &mut debugger,
@@ -528,7 +530,6 @@ fn public_socket_rejects_predecessor_frame_after_supervised_child_cutover() {
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).unwrap();
     navigate(&mut browser, &url);
-    navigate(&mut browser, &url);
     let mut predecessor_debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
     assert!(matches!(
         debugger_request(
@@ -541,6 +542,8 @@ fn public_socket_rejects_predecessor_frame_after_supervised_child_cutover() {
         ),
         DebuggerReply::HelloAck { .. }
     ));
+    hold_next_document(&mut predecessor_debugger, 1);
+    navigate(&mut browser, &url);
     let predecessor_realm = one_realm(debugger_request(
         &mut predecessor_debugger,
         DebuggerRequest::ListPageRealms,
@@ -557,7 +560,6 @@ fn public_socket_rejects_predecessor_frame_after_supervised_child_cutover() {
     drop(predecessor_debugger);
     let mut successor_browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut successor_browser).unwrap();
-    navigate(&mut successor_browser, &url);
     let mut successor_debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
     assert!(matches!(
         debugger_request(
@@ -570,6 +572,8 @@ fn public_socket_rejects_predecessor_frame_after_supervised_child_cutover() {
         ),
         DebuggerReply::HelloAck { .. }
     ));
+    hold_next_document(&mut successor_debugger, 1);
+    navigate(&mut successor_browser, &url);
     let successor_realm = one_realm(debugger_request(
         &mut successor_debugger,
         DebuggerRequest::ListPageRealms,
@@ -670,7 +674,6 @@ fn public_socket_keeps_unsupported_deeper_bluets_call_shape_unavailable() {
     let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).unwrap();
-    navigate(&mut browser, &url);
 
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
     assert!(matches!(
@@ -684,6 +687,8 @@ fn public_socket_keeps_unsupported_deeper_bluets_call_shape_unavailable() {
         ),
         DebuggerReply::HelloAck { .. }
     ));
+    hold_next_document(&mut debugger, 1);
+    navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,

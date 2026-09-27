@@ -167,6 +167,7 @@ fn pause_and_pair_linked_runtime(
     browser: &mut UnixStream,
     origin: &str,
 ) -> LinkedRuntimePair {
+    hold_next_document(debugger, 1);
     navigate(browser, &format!("{origin}/"));
     let realm = one_realm(debugger_request(debugger, DebuggerRequest::ListPageRealms));
     let DebuggerReply::Programs(programs) =
@@ -298,6 +299,7 @@ fn launcher_pairs_linked_entry_type_and_value_with_independent_grants() {
     blueice_ipc::client_handshake(&mut browser).unwrap();
     // Negotiate before navigation so Hello cannot consume the pending arm window.
     let mut combined = timed_debugger(&launcher.debugger_socket, true, static_manifest());
+    hold_next_document(&mut combined, 1);
     navigate(&mut browser, &format!("{}/", fixture.origin));
     let realm = one_realm(debugger_request(
         &mut combined,

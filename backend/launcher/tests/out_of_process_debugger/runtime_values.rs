@@ -14,7 +14,6 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
 
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
-    navigate(&mut browser, &url);
 
     let mut debugger = UnixStream::connect(&launcher.debugger_socket)
         .expect("launcher public debugger endpoint must accept a peer");
@@ -33,6 +32,8 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         }
     );
+    hold_next_document(&mut debugger, 1);
+    navigate(&mut browser, &url);
     let first_realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,
@@ -214,8 +215,6 @@ fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
         );
         let mut browser = launcher.connect_browser();
         blueice_ipc::client_handshake(&mut browser).unwrap();
-        navigate(&mut browser, &url);
-        fixture.join().unwrap();
 
         let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
         assert_eq!(
@@ -233,6 +232,9 @@ fn launcher_reads_granted_classic_and_module_root_and_nested_bluets_values() {
                 granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
             }
         );
+        hold_next_document(&mut debugger, 1);
+        navigate(&mut browser, &url);
+        fixture.join().unwrap();
         let realm = one_realm(debugger_request(
             &mut debugger,
             DebuggerRequest::ListPageRealms,
@@ -566,8 +568,6 @@ fn launcher_refuses_a_non_plain_bluets_value_without_a_partial_preview() {
     );
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).unwrap();
-    navigate(&mut browser, &url);
-    fixture.join().unwrap();
 
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
     assert!(matches!(
@@ -584,6 +584,9 @@ fn launcher_refuses_a_non_plain_bluets_value_without_a_partial_preview() {
             ..
         }
     ));
+    hold_next_document(&mut debugger, 1);
+    navigate(&mut browser, &url);
+    fixture.join().unwrap();
     let realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,
@@ -711,8 +714,6 @@ fn launcher_refuses_every_bounded_value_budget_on_a_real_bluets_socket() {
     );
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).unwrap();
-    navigate(&mut browser, &url);
-    fixture.join().unwrap();
 
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
     assert!(matches!(
@@ -729,6 +730,9 @@ fn launcher_refuses_every_bounded_value_budget_on_a_real_bluets_socket() {
             ..
         }
     ));
+    hold_next_document(&mut debugger, 1);
+    navigate(&mut browser, &url);
+    fixture.join().unwrap();
     let realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,

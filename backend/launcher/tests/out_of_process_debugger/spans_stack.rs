@@ -21,7 +21,6 @@ fn launcher_exposes_exact_bluets_safe_point_spans_only_after_same_stream_source_
     );
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
-    navigate(&mut browser, &url);
 
     let manifest = DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
@@ -40,6 +39,8 @@ fn launcher_exposes_exact_bluets_safe_point_spans_only_after_same_stream_source_
             granted_metadata_capabilities: manifest.clone(),
         }
     );
+    hold_next_document(&mut debugger, 1);
+    navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,
@@ -269,8 +270,6 @@ fn launcher_batches_exact_classic_and_module_stack_coordinates_only_with_receipt
         );
         let mut browser = launcher.connect_browser();
         blueice_ipc::client_handshake(&mut browser).unwrap();
-        navigate(&mut browser, &url);
-        fixture.join().unwrap();
 
         let manifest = DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
         let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
@@ -289,6 +288,9 @@ fn launcher_batches_exact_classic_and_module_stack_coordinates_only_with_receipt
                 granted_metadata_capabilities: manifest.clone(),
             }
         );
+        hold_next_document(&mut debugger, 1);
+        navigate(&mut browser, &url);
+        fixture.join().unwrap();
         let realm = one_realm(debugger_request(
             &mut debugger,
             DebuggerRequest::ListPageRealms,
@@ -538,8 +540,6 @@ fn launcher_rejects_a_real_paused_unbound_bluets_stack_without_partial_coordinat
     );
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).unwrap();
-    navigate(&mut browser, &url);
-    fixture.join().unwrap();
     let manifest = DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
     assert_eq!(
@@ -557,6 +557,9 @@ fn launcher_rejects_a_real_paused_unbound_bluets_stack_without_partial_coordinat
             granted_metadata_capabilities: manifest,
         }
     );
+    hold_next_document(&mut debugger, 1);
+    navigate(&mut browser, &url);
+    fixture.join().unwrap();
     let realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,

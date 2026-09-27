@@ -42,8 +42,6 @@ fn launcher_relates_classic_and_module_root_scopes_without_value_authority() {
         );
         let mut browser = launcher.connect_browser();
         blueice_ipc::client_handshake(&mut browser).unwrap();
-        navigate(&mut browser, &url);
-        fixture.join().unwrap();
         let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
         let manifest = DebuggerMetadataCapabilityManifest::opaque_selected(
             DebuggerMetadataCapabilitySelection {
@@ -66,6 +64,9 @@ fn launcher_relates_classic_and_module_root_scopes_without_value_authority() {
                 granted_metadata_capabilities: manifest,
             }
         );
+        hold_next_document(&mut debugger, 1);
+        navigate(&mut browser, &url);
+        fixture.join().unwrap();
         let realm = one_realm(debugger_request(
             &mut debugger,
             DebuggerRequest::ListPageRealms,
@@ -322,8 +323,6 @@ fn launcher_relates_nested_parent_roots_but_not_child_local_slots() {
         );
         let mut browser = launcher.connect_browser();
         blueice_ipc::client_handshake(&mut browser).unwrap();
-        navigate(&mut browser, &url);
-        fixture.join().unwrap();
         let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
         let manifest = DebuggerMetadataCapabilityManifest::opaque_selected(
             DebuggerMetadataCapabilitySelection {
@@ -346,6 +345,9 @@ fn launcher_relates_nested_parent_roots_but_not_child_local_slots() {
                 granted_metadata_capabilities: manifest,
             }
         );
+        hold_next_document(&mut debugger, 1);
+        navigate(&mut browser, &url);
+        fixture.join().unwrap();
         let realm = one_realm(debugger_request(
             &mut debugger,
             DebuggerRequest::ListPageRealms,

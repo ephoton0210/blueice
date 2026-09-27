@@ -170,6 +170,7 @@ fn launcher_pairs_independent_static_type_and_runtime_value_for_classic_and_modu
         // Negotiate before navigation so Hello cannot consume the pending
         // execution window after the new realm becomes visible.
         let mut static_only = open_debugger(&launcher.debugger_socket, false, static_manifest());
+        hold_next_document(&mut static_only, 1);
         navigate(&mut browser, &url);
 
         // First stream has static authority only. Arm before metadata queries

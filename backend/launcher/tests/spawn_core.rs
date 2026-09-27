@@ -14,11 +14,24 @@ use blueice_launcher::{CoreLaunchOptions, SpawnedCore};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 
+// Each case starts a real core, and most start a supervised child as well.
+// Serializing these process trees keeps the bounded ten-second public reply
+// deadlines about one request rather than competing startup work.
+static SPAWNED_CORE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+fn spawned_core_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    SPAWNED_CORE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[test]
 fn spawn_connects_to_a_real_core_and_cleans_up_on_drop() {
+    let _guard = spawned_core_test_guard();
     let dir = std::env::temp_dir().join(format!(
         "blueice-launcher-test-spawn-core-{}",
         std::process::id()
@@ -49,6 +62,7 @@ fn spawn_connects_to_a_real_core_and_cleans_up_on_drop() {
 
 #[test]
 fn supervised_child_gets_a_private_script_listener_that_denies_foreign_hello() {
+    let _guard = spawned_core_test_guard();
     let dir = std::env::temp_dir().join(format!(
         "blueice-launcher-test-script-core-{}",
         std::process::id()
@@ -95,6 +109,7 @@ fn supervised_child_gets_a_private_script_listener_that_denies_foreign_hello() {
 
 #[test]
 fn supervised_child_script_completes_a_synchronous_core_dom_lookup() {
+    let _guard = spawned_core_test_guard();
     let gatekeeper_path = std::env::temp_dir().join(format!("bi-dom-{}.sock", std::process::id()));
     let _ = std::fs::remove_file(&gatekeeper_path);
     let gatekeeper = UnixListener::bind(&gatekeeper_path).unwrap();
@@ -193,6 +208,7 @@ fn supervised_child_script_completes_a_synchronous_core_dom_lookup() {
 
 #[test]
 fn supervised_child_dom_text_profile_executes_checked_bluets_and_renders_live_text() {
+    let _guard = spawned_core_test_guard();
     let gatekeeper_path = std::env::temp_dir().join(format!(
         "bi-dom-text-gatekeeper-{}.sock",
         std::process::id()
@@ -352,6 +368,7 @@ fn supervised_child_dom_text_profile_executes_checked_bluets_and_renders_live_te
 
 #[test]
 fn supervised_child_dom_mutation_profile_renders_created_subtree_from_js_and_bluets() {
+    let _guard = spawned_core_test_guard();
     let gatekeeper_path = std::env::temp_dir().join(format!(
         "bi-dom-mutation-gatekeeper-{}.sock",
         std::process::id()
@@ -541,6 +558,7 @@ fn supervised_child_dom_mutation_profile_renders_created_subtree_from_js_and_blu
 
 #[test]
 fn supervised_child_click_event_profile_runs_js_and_bluets_before_navigation() {
+    let _guard = spawned_core_test_guard();
     let gatekeeper_path = std::env::temp_dir().join(format!(
         "bi-dom-event-gatekeeper-{}.sock",
         std::process::id()
@@ -706,6 +724,7 @@ fn supervised_child_click_event_profile_runs_js_and_bluets_before_navigation() {
 
 #[test]
 fn supervised_child_event_profile_pairs_static_and_runtime_unsupported_members() {
+    let _guard = spawned_core_test_guard();
     use blueice_bluets::{CompilerOptions, MapLoader, ModuleSource, RuntimePolicy};
     use blueice_bluets_bluejs::page_host_typings::{
         page_host_dom_event_runtime_bindings_v1, PageHostDocumentTypingsV1,

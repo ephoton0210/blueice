@@ -81,7 +81,6 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).unwrap();
     let url = format!("{origin}/");
-    navigate(&mut browser, &url);
 
     let manifest =
         DebuggerMetadataCapabilityManifest::opaque_selected(DebuggerMetadataCapabilitySelection {
@@ -108,6 +107,8 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
             granted_metadata_capabilities: manifest,
         }
     );
+    hold_next_document(&mut debugger, 1);
+    navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,
@@ -829,8 +830,6 @@ fn launcher_arms_only_a_receipted_module_root_source_position() {
     );
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).unwrap();
-    navigate(&mut browser, &url);
-    fixture.join().unwrap();
 
     let manifest =
         DebuggerMetadataCapabilityManifest::opaque_selected(DebuggerMetadataCapabilitySelection {
@@ -856,6 +855,9 @@ fn launcher_arms_only_a_receipted_module_root_source_position() {
             granted_metadata_capabilities: manifest.clone(),
         }
     );
+    hold_next_document(&mut debugger, 1);
+    navigate(&mut browser, &url);
+    fixture.join().unwrap();
     let realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,

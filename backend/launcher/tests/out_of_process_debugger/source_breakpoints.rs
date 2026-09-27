@@ -39,6 +39,7 @@ fn launcher_resolves_receipted_bluets_source_positions_to_live_breakpoints() {
             granted_metadata_capabilities: manifest.clone(),
         }
     );
+    hold_next_document(&mut debugger, 1);
     navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,
@@ -323,6 +324,7 @@ fn launcher_steps_only_receipted_paused_bluets_source_spans() {
             granted_metadata_capabilities: manifest.clone(),
         }
     );
+    hold_next_document(&mut debugger, 1);
     navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,

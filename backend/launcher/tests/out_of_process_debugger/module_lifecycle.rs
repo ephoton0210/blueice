@@ -45,13 +45,7 @@ fn launcher_inventories_a_pending_bluets_module_before_execution() {
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         }
     );
-    assert_eq!(
-        debugger_request(
-            &mut debugger,
-            DebuggerRequest::HoldNextDocument { tab_id: 1 },
-        ),
-        DebuggerReply::NextDocumentHoldAcquired { tab_id: 1 }
-    );
+    hold_next_document(&mut debugger, 1);
     navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,
@@ -77,13 +71,7 @@ fn launcher_inventories_a_pending_bluets_module_before_execution() {
     );
     assert!(points.iter().any(|point| point.code_unit_ordinal == 0));
 
-    assert_eq!(
-        debugger_request(
-            &mut debugger,
-            DebuggerRequest::ReleaseNextDocumentHold { tab_id: 1 },
-        ),
-        DebuggerReply::NextDocumentHoldReleased { tab_id: 1 }
-    );
+    release_next_document_hold(&mut debugger, 1);
 
     blueice_ipc::write_client_message(&mut browser, &blueice_ipc::ClientMessage::GetDom).unwrap();
     assert!(matches!(
@@ -131,7 +119,6 @@ fn launcher_pauses_and_resumes_a_real_bluets_module_entry() {
     let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
-    navigate(&mut browser, &url);
 
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
     assert_eq!(
@@ -149,6 +136,8 @@ fn launcher_pauses_and_resumes_a_real_bluets_module_entry() {
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         }
     );
+    hold_next_document(&mut debugger, 1);
+    navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,
@@ -292,6 +281,7 @@ fn launcher_steps_a_real_bluets_module_then_rejects_stale_generation() {
             granted_metadata_capabilities: manifest,
         }
     );
+    hold_next_document(&mut debugger, 1);
     navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,
@@ -492,6 +482,7 @@ fn launcher_exposes_bluets_metadata_while_its_root_frame_is_pending_and_paused()
             granted_metadata_capabilities: metadata_capabilities,
         }
     );
+    hold_next_document(&mut debugger, 1);
     navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,

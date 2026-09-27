@@ -4258,9 +4258,10 @@ separate release-gate blocker.
 
 **G.3.2.2.3 debugger admission contract:** The completed macOS CI jobs for
 run 36317372058 show the same failure on macOS 15/26 and x86_64/arm64: 10–12
-real launcher debugger tests per job observe `Completed` before an expected
-`Pending` state or receive `InvalidExecutionState` when arming a verified
-breakpoint. The core gives discovery/configuration replies one extra session
+real launcher debugger failures per job, chiefly `Completed` before an
+expected `Pending` state or `InvalidExecutionState` when arming a verified
+breakpoint. One macOS 15 x86_64 failure is a separate fixture `WouldBlock`.
+The core gives discovery/configuration replies one extra session
 turn, but the first request is often sent after its 25 ms idle poll has
 advanced the just-admitted entry. The existing 64-deferral child budget
 limits request-triggered holds; it does not cover the gap before the first
@@ -4294,6 +4295,30 @@ and foreign arm refusal. The IPC suite (127 cases), core debugger tests (33),
 targeted all-target Clippy, and a real launcher/core/child pending-to-completed
 module test pass from the shared `target` directory. Remaining real debugger
 fixtures must reserve before navigating and retain their exact assertions.
+
+**G.3.2.2.3.3 real debugger acceptance:** The affected launcher/core/child
+fixtures now complete their negotiated `Hello` and reserve the exact next
+document before browser navigation. This covers source and linked-source
+breakpoints, module entry and stepping, nested frames and cutover, bounded
+values, scope relations, stack coordinates, source spans, and type/value
+display. Inventory-only code explicitly releases its hold before checking
+ordinary completion. All original `Pending`, arm, pause, resume, completion,
+stale-handle, and refusal assertions remain exact. The full 33-case debugger
+suite passes without ignored cases. One macOS 15 x86_64 failure in that suite
+was separate: the policy-isolation fixture accepted a nonblocking TCP stream
+and its bounded read returned `WouldBlock`; it now makes the accepted stream
+blocking before reading.
+
+The first workspace rerun exposed four `spawn_core` ten-second reply timeouts
+when seven tests concurrently started full core/child process trees. The
+real-process test binary now serializes those trees with a local mutex; all
+seven pass with their original reply timeouts. The subsequent full workspace
+suite passes, including all 33 debugger and seven `spawn_core` cases.
+Workspace all-target Clippy with warnings as errors, rustfmt, and whitespace
+checks pass. All Cargo commands reused the existing `target` directory; no
+instrumented or alternate local build tree was created. The remaining proof
+is CI on the repaired commit for macOS, Windows, workspace coverage, and the
+independent BlueJS coverage threshold.
 
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
