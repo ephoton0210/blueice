@@ -500,6 +500,98 @@ fn immutable_typed_array_index_descriptors_are_neither_writable_nor_configurable
 }
 
 #[test]
+fn typed_array_numeric_properties_do_not_fall_through_to_ordinary_storage() {
+    let mut heap = Heap::default();
+    let buffer = heap.alloc_array_buffer(2, None).unwrap();
+    let view = heap
+        .alloc_typed_array(buffer, 0, 2, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    heap.typed_array_set_index(view, 0, &Value::Number(7.0))
+        .unwrap();
+
+    assert_eq!(heap.get_own(view, "0"), Ok(Some(Value::Number(7.0))));
+    assert_eq!(heap.get(view, "0"), Ok(Value::Number(7.0)));
+    assert_eq!(heap.get_own(view, "2"), Ok(None));
+    assert_eq!(heap.get(view, "2"), Ok(Value::Undefined));
+    assert_eq!(heap.get_own(view, "-0"), Ok(None));
+    assert_eq!(heap.get(view, "-0"), Ok(Value::Undefined));
+    assert!(heap
+        .get_own_property_descriptor(view, "-0")
+        .unwrap()
+        .is_none());
+    assert_eq!(heap.delete(view, "0"), Ok(false));
+    assert_eq!(heap.delete(view, "2"), Ok(true));
+    assert_eq!(heap.delete(view, "-0"), Ok(true));
+    assert_eq!(
+        heap.set(view, "-0", Value::Number(8.0)),
+        Err(HeapError::ReadOnlyProperty)
+    );
+    assert_eq!(heap.own_keys(view), Ok(vec!["0".into(), "1".into()]));
+
+    heap.detach_array_buffer(buffer).unwrap();
+    assert_eq!(heap.get_own(view, "0"), Ok(None));
+    assert_eq!(heap.get(view, "0"), Ok(Value::Undefined));
+    assert_eq!(heap.delete(view, "0"), Ok(true));
+    assert_eq!(heap.own_keys(view), Ok(vec![]));
+}
+
+#[test]
+fn property_storage_rejects_foreign_objects_and_exhausted_ids() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    let object = heap.alloc_object(None).unwrap();
+    assert_eq!(heap.typed_array_index_value(object, 0), Ok(None));
+    macro_rules! invalid {
+        () => {
+            Err(HeapError::InvalidObject(foreign))
+        };
+    }
+
+    assert_eq!(heap.get_own(foreign, "x"), invalid!());
+    assert_eq!(heap.get(foreign, "x"), invalid!());
+    assert_eq!(heap.set(foreign, "x", Value::Null), invalid!());
+    assert_eq!(heap.delete(foreign, "x"), invalid!());
+    assert!(matches!(
+        heap.get_own_property_descriptor(foreign, "x"),
+        Err(HeapError::InvalidObject(id)) if id == foreign
+    ));
+    assert_eq!(
+        heap.define_own_property(
+            foreign,
+            "x",
+            PropertyDescriptor::data(Value::Null, true, true, true),
+        ),
+        invalid!()
+    );
+    assert_eq!(heap.own_property_keys(foreign), invalid!());
+    assert_eq!(heap.own_integer_keys(foreign), invalid!());
+    assert_eq!(heap.enumerable_own_keys(foreign), invalid!());
+    assert_eq!(heap.is_arguments(foreign), invalid!());
+    assert_eq!(heap.is_module_namespace(foreign), invalid!());
+    assert_eq!(
+        heap.arguments_parameter_cell(foreign, &"x".into()),
+        invalid!()
+    );
+    assert_eq!(
+        heap.module_namespace_export_cell(foreign, &"x".into()),
+        invalid!()
+    );
+    assert_eq!(
+        heap.unmap_arguments_property(foreign, &"x".into()),
+        invalid!()
+    );
+    assert_eq!(heap.root(foreign), invalid!());
+
+    heap.next_root = u64::MAX;
+    assert_eq!(heap.root(object), Err(HeapError::IdExhausted));
+    assert_eq!(heap.stats().root_registrations, 0);
+    heap.next_object = u64::MAX;
+    assert_eq!(heap.alloc_object(None), Err(HeapError::IdExhausted));
+    assert!(heap.contains(object));
+}
+
+#[test]
 fn weak_collection_values_follow_live_keys_to_an_ephemeron_fixed_point() {
     let mut heap = Heap::default();
     let first = heap.alloc_weak_collection(true, None).unwrap();
@@ -550,6 +642,90 @@ fn manual_collection_heap() -> Heap {
         max_heap_bytes: usize::MAX,
     })
     .unwrap()
+}
+
+#[test]
+fn non_extensible_objects_keep_their_prototype_and_reject_foreign_handles() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let parent = heap.alloc_object(None).unwrap();
+    let alternate = heap.alloc_object(None).unwrap();
+    let object = heap.alloc_object(Some(parent)).unwrap();
+    let foreign = other.alloc_object(None).unwrap();
+
+    assert_eq!(heap.is_extensible(object), Ok(true));
+    heap.prevent_extensions(object).unwrap();
+    assert_eq!(heap.is_extensible(object), Ok(false));
+    assert_eq!(heap.set_prototype(object, Some(parent)), Ok(()));
+    assert_eq!(heap.prototype(object), Ok(Some(parent)));
+    assert_eq!(
+        heap.set_prototype(object, Some(alternate)),
+        Err(HeapError::ReadOnlyProperty)
+    );
+    assert_eq!(heap.prototype(object), Ok(Some(parent)));
+    assert_eq!(
+        heap.prevent_extensions(foreign),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.is_extensible(foreign),
+        Err(HeapError::InvalidObject(foreign))
+    );
+}
+
+#[test]
+fn young_closure_metadata_survives_old_owner_and_ephemeron_edges() {
+    let mut heap = manual_collection_heap();
+    let prototype = heap.alloc_object(None).unwrap();
+    let closure = heap
+        .alloc_closure(
+            Rc::new(Bytecode::empty()),
+            Vec::new(),
+            Value::Undefined,
+            prototype,
+        )
+        .unwrap();
+    let closure_root = heap.root(closure).unwrap();
+    heap.collect_minor();
+    assert!(!heap.objects[&closure].young);
+
+    let young_home = heap.alloc_object(None).unwrap();
+    heap.set_closure_home(closure, young_home).unwrap();
+    assert!(heap.remembered.contains(&closure));
+    heap.collect_minor();
+    assert!(heap.contains(young_home));
+    heap.unroot(closure_root).unwrap();
+
+    let table = heap.alloc_weak_collection(true, None).unwrap();
+    let table_root = heap.root(table).unwrap();
+    let key = heap.alloc_object(None).unwrap();
+    let key_root = heap.root(key).unwrap();
+    let ephemeron_closure = heap
+        .alloc_closure(
+            Rc::new(Bytecode::empty()),
+            Vec::new(),
+            Value::Undefined,
+            prototype,
+        )
+        .unwrap();
+    let ephemeron_home = heap.alloc_object(None).unwrap();
+    heap.set_closure_home(ephemeron_closure, ephemeron_home)
+        .unwrap();
+    heap.weak_collection_set(table, Value::Object(key), Value::Object(ephemeron_closure))
+        .unwrap();
+    let primitive_key = heap.alloc_object(None).unwrap();
+    let primitive_root = heap.root(primitive_key).unwrap();
+    heap.weak_collection_set(table, Value::Object(primitive_key), Value::Number(1.0))
+        .unwrap();
+    heap.collect_minor();
+    assert!(heap.contains(ephemeron_closure));
+    assert!(heap.contains(ephemeron_home));
+    heap.collect_minor();
+    assert!(heap.contains(ephemeron_closure));
+
+    heap.unroot(primitive_root).unwrap();
+    heap.unroot(key_root).unwrap();
+    heap.unroot(table_root).unwrap();
 }
 
 /// A chain in which each key's only reference is the previous key's table
@@ -673,6 +849,109 @@ fn weak_ref_does_not_trace_its_target_and_clears_after_collection() {
     assert!(!heap.contains(target));
     assert_eq!(heap.weak_ref_target(weak_ref).unwrap(), None);
     heap.unroot(weak_ref_root).unwrap();
+}
+
+#[test]
+fn minor_gc_clears_dead_young_weak_targets_and_keeps_live_or_symbol_targets() {
+    let mut heap = manual_collection_heap();
+    let table = heap.alloc_weak_collection(true, None).unwrap();
+    let table_root = heap.root(table).unwrap();
+    let dead_key = heap.alloc_object(None).unwrap();
+    let dead_value = heap.alloc_object(None).unwrap();
+    heap.weak_collection_set(table, Value::Object(dead_key), Value::Object(dead_value))
+        .unwrap();
+    let live_key = heap.alloc_object(None).unwrap();
+    let live_key_root = heap.root(live_key).unwrap();
+    let live_value = heap.alloc_object(None).unwrap();
+    heap.weak_collection_set(table, Value::Object(live_key), Value::Object(live_value))
+        .unwrap();
+    let symbol = JsSymbol::new(Some("live symbol".into()));
+    let symbol_value = heap.alloc_object(None).unwrap();
+    heap.weak_collection_set(
+        table,
+        Value::Symbol(symbol.clone()),
+        Value::Object(symbol_value),
+    )
+    .unwrap();
+
+    let dead_target = heap.alloc_object(None).unwrap();
+    let dead_ref = heap
+        .alloc_weak_ref(Value::Object(dead_target), None)
+        .unwrap();
+    let dead_ref_root = heap.root(dead_ref).unwrap();
+    let live_target = heap.alloc_object(None).unwrap();
+    let live_target_root = heap.root(live_target).unwrap();
+    let live_ref = heap
+        .alloc_weak_ref(Value::Object(live_target), None)
+        .unwrap();
+    let live_ref_root = heap.root(live_ref).unwrap();
+    let symbol_ref = heap
+        .alloc_weak_ref(Value::Symbol(symbol.clone()), None)
+        .unwrap();
+    let symbol_ref_root = heap.root(symbol_ref).unwrap();
+
+    let registry = heap
+        .alloc_finalization_registry(Value::Undefined, None)
+        .unwrap();
+    let registry_root = heap.root(registry).unwrap();
+    let dead_registry_target = heap.alloc_object(None).unwrap();
+    let live_registry_target = heap.alloc_object(None).unwrap();
+    let registry_target_root = heap.root(live_registry_target).unwrap();
+    for target in [
+        Value::Object(dead_registry_target),
+        Value::Object(live_registry_target),
+        Value::Symbol(symbol.clone()),
+    ] {
+        heap.finalization_registry_register(registry, target, Value::Null, None)
+            .unwrap();
+    }
+
+    heap.collect_minor();
+    for dead in [dead_key, dead_value, dead_target, dead_registry_target] {
+        assert!(!heap.contains(dead));
+    }
+    for live in [
+        live_key,
+        live_value,
+        symbol_value,
+        live_target,
+        live_registry_target,
+    ] {
+        assert!(heap.contains(live));
+    }
+    assert_eq!(heap.weak_ref_target(dead_ref), Ok(None));
+    assert_eq!(
+        heap.weak_ref_target(live_ref),
+        Ok(Some(Value::Object(live_target)))
+    );
+    assert_eq!(
+        heap.weak_ref_target(symbol_ref),
+        Ok(Some(Value::Symbol(symbol)))
+    );
+    let ObjectKind::FinalizationRegistry { cells, .. } = &heap.objects[&registry].kind else {
+        panic!("expected finalization registry");
+    };
+    assert_eq!(
+        cells
+            .iter()
+            .map(|cell| cell.target.is_none())
+            .collect::<Vec<_>>(),
+        [true, false, false]
+    );
+    heap.collect_minor();
+
+    for root in [
+        registry_target_root,
+        registry_root,
+        symbol_ref_root,
+        live_ref_root,
+        live_target_root,
+        dead_ref_root,
+        live_key_root,
+        table_root,
+    ] {
+        heap.unroot(root).unwrap();
+    }
 }
 
 #[test]
@@ -1381,6 +1660,144 @@ fn module_namespace_sorts_exports_and_rejects_invalid_cells_and_initialization()
     assert_eq!(
         heap.initialize_module_namespace(foreign, vec![]),
         Err(HeapError::InvalidObject(foreign))
+    );
+}
+
+#[test]
+fn mapped_arguments_and_module_namespace_exports_follow_binding_cells() {
+    let mut heap = Heap::default();
+    let prototype = heap.alloc_object(None).unwrap();
+    let ordinary = heap.alloc_object(None).unwrap();
+    let cell = heap.alloc_object(None).unwrap();
+    heap.set(cell, "value", Value::Number(1.0)).unwrap();
+    let second_cell = heap.alloc_object(None).unwrap();
+    heap.set(second_cell, "value", Value::Number(5.0)).unwrap();
+    let arguments = heap
+        .alloc_arguments(
+            HashMap::from([
+                (PropertyName::from("0"), cell),
+                (PropertyName::from("1"), second_cell),
+            ]),
+            prototype,
+        )
+        .unwrap();
+    assert_eq!(heap.is_arguments(arguments), Ok(true));
+    assert_eq!(heap.is_arguments(ordinary), Ok(false));
+    assert_eq!(
+        heap.arguments_parameter_cell(arguments, &"0".into()),
+        Ok(Some(cell))
+    );
+    assert_eq!(
+        heap.arguments_parameter_cell(ordinary, &"0".into()),
+        Ok(None)
+    );
+    heap.set(arguments, "0", Value::Number(2.0)).unwrap();
+    heap.set(arguments, "1", Value::Number(5.0)).unwrap();
+    assert_eq!(heap.get_own(cell, "value"), Ok(Some(Value::Number(2.0))));
+    assert_eq!(heap.get(arguments, "0"), Ok(Value::Number(2.0)));
+    assert_eq!(
+        heap.get_own_property_descriptor(arguments, "0")
+            .unwrap()
+            .and_then(|descriptor| descriptor.value),
+        Some(Value::Number(2.0))
+    );
+    assert_eq!(
+        heap.define_own_property(
+            arguments,
+            "0",
+            PropertyDescriptor::data(Value::Number(3.0), true, true, true),
+        ),
+        Ok(true)
+    );
+    assert_eq!(heap.get_own(cell, "value"), Ok(Some(Value::Number(3.0))));
+    assert_eq!(
+        heap.define_own_property(
+            arguments,
+            "0",
+            PropertyDescriptor::data(Value::Number(3.0), false, true, true),
+        ),
+        Ok(true)
+    );
+    assert_eq!(
+        heap.arguments_parameter_cell(arguments, &"0".into()),
+        Ok(None)
+    );
+    assert_eq!(heap.delete(arguments, "1"), Ok(true));
+    assert_eq!(
+        heap.arguments_parameter_cell(arguments, &"1".into()),
+        Ok(None)
+    );
+
+    let namespace = heap
+        .alloc_module_namespace(vec![("export".into(), cell)], false)
+        .unwrap();
+    assert_eq!(heap.is_module_namespace(namespace), Ok(true));
+    assert_eq!(heap.is_module_namespace(ordinary), Ok(false));
+    assert_eq!(
+        heap.module_namespace_export_cell(namespace, &"export".into()),
+        Ok(Some(cell))
+    );
+    assert_eq!(
+        heap.module_namespace_export_cell(namespace, &"missing".into()),
+        Ok(None)
+    );
+    assert_eq!(
+        heap.get_own(namespace, "export"),
+        Ok(Some(Value::Number(3.0)))
+    );
+    assert_eq!(heap.get(namespace, "export"), Ok(Value::Number(3.0)));
+    assert_eq!(
+        heap.get_own_property_descriptor(namespace, "export")
+            .unwrap()
+            .and_then(|descriptor| descriptor.value),
+        Some(Value::Number(3.0))
+    );
+    assert_eq!(
+        heap.define_own_property(
+            namespace,
+            "export",
+            PropertyDescriptor::data(Value::Number(3.0), true, true, false),
+        ),
+        Ok(true)
+    );
+    assert_eq!(
+        heap.define_own_property(
+            namespace,
+            "export",
+            PropertyDescriptor::data(Value::Number(4.0), true, true, false),
+        ),
+        Ok(false)
+    );
+    assert_eq!(heap.delete(namespace, "export"), Ok(false));
+    assert_eq!(heap.delete(namespace, "missing"), Ok(true));
+    assert_eq!(
+        heap.set(namespace, "export", Value::Number(4.0)),
+        Err(HeapError::ReadOnlyProperty)
+    );
+
+    let uninitialized_cell = heap.alloc_object(None).unwrap();
+    let uninitialized = heap
+        .alloc_module_namespace(vec![("pending".into(), uninitialized_cell)], false)
+        .unwrap();
+    assert_eq!(
+        heap.get_own(uninitialized, "pending"),
+        Err(HeapError::UninitializedModuleExport)
+    );
+    assert_eq!(
+        heap.get(uninitialized, "pending"),
+        Err(HeapError::UninitializedModuleExport)
+    );
+    assert!(matches!(
+        heap.get_own_property_descriptor(uninitialized, "pending"),
+        Err(HeapError::UninitializedModuleExport)
+    ));
+    assert_eq!(
+        heap.define_own_property(
+            uninitialized,
+            "pending",
+            PropertyDescriptor::data(Value::Undefined, true, true, false),
+        ),
+        Err(HeapError::UninitializedModuleExport)
     );
 }
 

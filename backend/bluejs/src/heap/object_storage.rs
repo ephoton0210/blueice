@@ -487,11 +487,6 @@ impl Heap {
                 TypedArrayNumericKey::Invalid => Ok(None),
             };
         }
-        if let Some(index) = key.index() {
-            if let Some(value) = self.typed_array_index_value(object, index)? {
-                return Ok(Some(value));
-            }
-        }
         if let Some(cell) = self.module_namespace_export_cell(object, &key)? {
             return self
                 .get_own(cell, "value")?
@@ -516,11 +511,6 @@ impl Heap {
                         .unwrap_or(Value::Undefined)),
                     TypedArrayNumericKey::Invalid => Ok(Value::Undefined),
                 };
-            }
-            if let Some(index) = key.index() {
-                if let Some(value) = self.typed_array_index_value(id, index)? {
-                    return Ok(value);
-                }
             }
             if let Some(cell) = self.module_namespace_export_cell(id, &key)? {
                 return self
