@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: F2.2.3.** Map compiler artifacts only to paths inside the
-owner-granted output root and reject escaping or colliding paths.
+**Current leaf: F3.1.1.** Negotiate exact compiler session, project, and
+generation capabilities across the core/MCP boundary.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -691,11 +691,11 @@ Keep check read-only and owner registration sealed before listeners.
   diagnostic, and incremental-work-set responses.
   - [x] **F2.1.1** Bind every result to project generation and fingerprint. BlueTS computes the observed graph/options fingerprint on both successful and diagnostic-bearing compiles. Core check results carry that fingerprint with an exact project generation; the in-memory build result carries the same check and refuses an output or per-module artifact whose fingerprint differs. Compiler IPC v11 includes the fingerprint in every check, even without artifacts; subsequent diagnostic, work-set, and metadata records remain bound to that exact generation. MCP rejects malformed or conflicting fingerprint claims before recording a generation receipt.
   - [x] **F2.1.2** Cap artifact size, diagnostic count, and incremental-work-set size. Build validation now counts artifact keys/fingerprints, source-map entries, declarations, and strict helper/call metadata under one checked byte limit plus an artifact-count limit. Core retains a deterministic diagnostic prefix under both count and byte limits and signals truncation even when no diagnostic fits. Existing work-set retention and IPC response tests prove per-set count/byte caps, bounded pages, one-shot cursors, and explicit truncation.
-- [ ] **F2.2** Stage output atomically and emit nothing on compiler error; reject
+- [x] **F2.2** Stage output atomically and emit nothing on compiler error; reject
   paths outside the authorized output root.
   - [x] **F2.2.1** Write to a staging path and rename atomically. A trusted core owner can stage a current, separately granted generation under its existing canonical output root and atomically rename the complete staging directory to an immutable generation directory. Missing grants, stale generations, changed root aliases, duplicate destinations, and failed population refuse; failed stages are removed. This is the owner staging primitive, with compiler-error admission and artifact path mapping reserved for F2.2.2–F2.2.3.
   - [x] **F2.2.2** Emit nothing on compiler error. The core owner build/staging entry checks for a separate output grant before compiling, then stages only a successful in-memory `BuildOutput`. Diagnostic-bearing builds return their check and no published path without invoking the staging writer; a denied build does not advance the generation. A focused owner-boundary test preserves preexisting output and proves a successful granted build can publish.
-  - [ ] **F2.2.3** Reject output paths outside the authorized root.
+  - [x] **F2.2.3** Reject output paths outside the authorized root. Core now plans every emitted `.js`, `.js.map`, `.d.ts`, and declaration module from canonical physical source IDs relative to the owner project root before creating a stage. Escaping/aliased IDs, artifact-key mismatches, invalid source kinds, duplicate or ancestor/descendant output collisions, and changed granted output-root identities refuse without publication. The owner build method no longer accepts an arbitrary write callback; registered strict artifacts remain refused until helper publication is audited.
 
 #### F3. Complete the MCP adapter.
 

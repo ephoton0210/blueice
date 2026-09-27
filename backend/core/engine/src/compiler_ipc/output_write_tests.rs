@@ -3,7 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
-use blueice_bluets::{AuthorizedModule, AuthorizedModuleLoader, CompilerOptions};
+use blueice_bluets::{
+    AuthorizedModule, AuthorizedModuleLoader, CompilerOptions, EmittedRuntimeSite,
+    EmittedStrictModule, SourceSpan,
+};
 use std::path::Path;
 
 fn registration(project: &Path, output: &Path) -> RegisteredProjectRegistration {
@@ -215,6 +218,19 @@ fn owner_staging_publishes_one_complete_generation_and_cleans_failed_stages() {
         assert!(std::fs::read_dir(&outside).unwrap().next().is_none());
         std::fs::remove_file(&granted_output).unwrap();
         std::fs::rename(moved_root, &granted_output).unwrap();
+
+        let original_root = directory.join("original-output");
+        std::fs::rename(&granted_output, &original_root).unwrap();
+        std::fs::create_dir(&granted_output).unwrap();
+        assert_eq!(
+            session
+                .stage_owner_output(next_generation, |_| Ok(()))
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::InvalidInput
+        );
+        std::fs::remove_dir(&granted_output).unwrap();
+        std::fs::rename(original_root, &granted_output).unwrap();
     }
     std::fs::remove_dir_all(directory).unwrap();
 }
@@ -241,11 +257,11 @@ fn diagnostic_build_does_not_enter_staging_or_replace_prior_output() {
     let plain = catalog
         .register_startup_project(registration(&plain_project, &plain_output))
         .unwrap();
+    let mut valid_registration = registration(&valid_project, &valid_output);
+    valid_registration.compiler_options.source_map = true;
+    valid_registration.compiler_options.declaration = true;
     let valid = catalog
-        .register_startup_project_with_output_write_grant(registration(
-            &valid_project,
-            &valid_output,
-        ))
+        .register_startup_project_with_output_write_grant(valid_registration)
         .unwrap();
     let invalid = catalog
         .register_startup_project_with_output_write_grant(registration_with_source(
@@ -257,7 +273,7 @@ fn diagnostic_build_does_not_enter_staging_or_replace_prior_output() {
     let mut session = catalog.seal();
     let plain_id = RegisteredProjectId::from_wire(plain.id).unwrap();
     assert!(matches!(
-        session.build_and_stage_owner_output(plain_id, |_, _| panic!("no grant")),
+        session.build_and_stage_owner_output(plain_id),
         Err(OwnerBuildStageError::NotGranted)
     ));
     assert_eq!(
@@ -273,9 +289,7 @@ fn diagnostic_build_does_not_enter_staging_or_replace_prior_output() {
     );
 
     let invalid_id = RegisteredProjectId::from_wire(invalid.id).unwrap();
-    let (check, published) = session
-        .build_and_stage_owner_output(invalid_id, |_, _| panic!("errors must not stage"))
-        .unwrap();
+    let (check, published) = session.build_and_stage_owner_output(invalid_id).unwrap();
     assert!(check.has_errors);
     assert!(published.is_none());
     assert_eq!(
@@ -285,16 +299,100 @@ fn diagnostic_build_does_not_enter_staging_or_replace_prior_output() {
     assert_eq!(std::fs::read_dir(&invalid_output).unwrap().count(), 1);
 
     let valid_id = RegisteredProjectId::from_wire(valid.id).unwrap();
-    let (check, published) = session
-        .build_and_stage_owner_output(valid_id, |output, stage| {
-            let javascript = &output.artifacts.values().next().unwrap().javascript;
-            std::fs::write(stage.join("main.js"), javascript)
-        })
-        .unwrap();
+    let (check, published) = session.build_and_stage_owner_output(valid_id).unwrap();
     assert!(!check.has_errors);
     let published = published.unwrap();
     assert!(std::fs::read_to_string(published.join("main.js"))
         .unwrap()
         .contains("answer"));
+    assert!(published.join("main.js.map").exists());
+    assert!(published.join("main.d.ts").exists());
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn artifact_plan_rejects_sources_outside_the_project_aliases_and_output_collisions() {
+    let directory = std::env::temp_dir().join(format!(
+        "blueice-owner-artifact-paths-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&directory).unwrap();
+    let directory = directory.canonicalize().unwrap();
+    let (project, output_root) = make_project(&directory, "project");
+    let root = project.to_str().unwrap();
+    let mut service = RegisteredProjectCompilerService::default();
+    let id = service
+        .register(registration(&project, &output_root))
+        .unwrap();
+    let output = service.build(id).unwrap().output.unwrap();
+    assert!(output_artifacts::plan(root, &output).is_ok());
+
+    let outside = directory.join("outside.ts");
+    std::fs::write(&outside, "export const outside = 1;").unwrap();
+    let mut escaped = output.clone();
+    let (_, mut artifact) = escaped.artifacts.pop_first().unwrap();
+    artifact.module_id = outside.to_str().unwrap().to_string();
+    escaped
+        .artifacts
+        .insert(artifact.module_id.clone(), artifact);
+    assert!(output_artifacts::plan(root, &escaped).is_err());
+
+    std::fs::create_dir(project.join("nested")).unwrap();
+    let alias = project.join("nested/../main.ts");
+    let mut aliased = output.clone();
+    let (_, mut artifact) = aliased.artifacts.pop_first().unwrap();
+    artifact.module_id = alias.to_str().unwrap().to_string();
+    aliased
+        .artifacts
+        .insert(artifact.module_id.clone(), artifact);
+    assert!(output_artifacts::plan(root, &aliased).is_err());
+
+    let declaration_id = project.join("main.d.ts");
+    std::fs::write(&declaration_id, "declare const answer: number;").unwrap();
+    let mut colliding = output.clone();
+    colliding.artifacts.values_mut().next().unwrap().declaration =
+        Some("declare const answer: number;".into());
+    colliding.declaration_modules.insert(
+        declaration_id.to_str().unwrap().to_string(),
+        "declare const answer: number;".into(),
+    );
+    assert!(output_artifacts::plan(root, &colliding).is_err());
+
+    let file_source = project.join("foo.ts");
+    let nested_directory = project.join("foo.js");
+    std::fs::write(&file_source, "export const foo = 1;").unwrap();
+    std::fs::create_dir(&nested_directory).unwrap();
+    let nested_source = nested_directory.join("bar.ts");
+    std::fs::write(&nested_source, "export const bar = 1;").unwrap();
+    let mut nested_collision = colliding;
+    nested_collision.declaration_modules.clear();
+    let mut prototype = nested_collision.artifacts.values().next().unwrap().clone();
+    prototype.declaration = None;
+    prototype.module_id = file_source.to_str().unwrap().to_string();
+    nested_collision
+        .artifacts
+        .insert(prototype.module_id.clone(), prototype.clone());
+    prototype.module_id = nested_source.to_str().unwrap().to_string();
+    nested_collision
+        .artifacts
+        .insert(prototype.module_id.clone(), prototype);
+    assert!(output_artifacts::plan(root, &nested_collision).is_err());
+
+    let mut strict = output;
+    strict.artifacts.values_mut().next().unwrap().strict_runtime = Some(EmittedStrictModule {
+        helper_version: "bluets-runtime-helper-v1".into(),
+        helper_import: EmittedRuntimeSite {
+            source_span: SourceSpan::new(root, 0, 1),
+            generated_start: 0,
+            expected_text: "import helper".into(),
+        },
+        boundaries: Vec::new(),
+    });
+    assert!(output_artifacts::plan(root, &strict).is_err());
+    assert!(std::fs::read_dir(&output_root).unwrap().next().is_none());
     std::fs::remove_dir_all(directory).unwrap();
 }

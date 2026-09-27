@@ -33,13 +33,8 @@ pub(super) fn stage_and_publish<F>(
 where
     F: FnOnce(&Path) -> io::Result<()>,
 {
+    grant.validate_current_root()?;
     let root = grant.canonical_root();
-    if fs::canonicalize(root)? != root || !fs::metadata(root)?.is_dir() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "output root changed after the owner grant",
-        ));
-    }
     let published = root.join(format!(
         "blueice-project-{}-generation-{}",
         generation.project_id().as_u64(),

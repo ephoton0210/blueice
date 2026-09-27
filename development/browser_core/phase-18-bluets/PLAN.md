@@ -4040,6 +4040,20 @@ callers cannot skip the build result gate through that API. F2.2.3 will
 replace the trusted population callback with validated artifact-to-path
 mapping before any public build route is enabled.
 
+**F2.2.3 contained artifact publication:** The owner build method no longer
+accepts a population callback. It preflights all successful compiler artifact
+IDs against the physically canonical project root, maps source `.ts` modules
+to `.js` plus optional `.js.map` and `.d.ts`, preserves declaration modules,
+and rejects aliases, escape components, mismatched artifact keys, unsupported
+source kinds, and destination collisions including file/directory ancestors.
+Only after the full plan succeeds does the atomic staging primitive create
+files under its fresh generation directory. The output grant also pins the
+Unix device/inode of its root and refuses a replacement at use time. Until a
+registered strict helper publisher and its audit are available, any emitted
+strict-runtime crossing fails closed rather than producing a broken module.
+The compiler IPC/MCP route is still query-only; F3.2 must explicitly gate any
+public build operation by the separate owner grant.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

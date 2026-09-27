@@ -247,6 +247,10 @@ pub struct CoreCompilerProjectCatalog {
 #[derive(Debug)]
 pub struct OwnerOutputWriteGrant {
     canonical_root: PathBuf,
+    #[cfg(unix)]
+    root_device: u64,
+    #[cfg(unix)]
+    root_inode: u64,
 }
 
 impl OwnerOutputWriteGrant {
@@ -255,6 +259,33 @@ impl OwnerOutputWriteGrant {
     /// the directory may be replaced after startup.
     pub fn canonical_root(&self) -> &Path {
         &self.canonical_root
+    }
+
+    fn validate_current_root(&self) -> io::Result<()> {
+        if std::fs::canonicalize(&self.canonical_root)? != self.canonical_root {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "output root changed after the owner grant",
+            ));
+        }
+        let metadata = std::fs::metadata(&self.canonical_root)?;
+        if !metadata.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "output root is no longer a directory",
+            ));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if metadata.dev() != self.root_device || metadata.ino() != self.root_inode {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "output root identity changed after the owner grant",
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn for_registration(registration: &RegisteredProjectRegistration) -> io::Result<Self> {
@@ -313,7 +344,19 @@ impl OwnerOutputWriteGrant {
                 "output-write grant root overlaps an input",
             ));
         }
-        Ok(Self { canonical_root })
+        #[cfg(unix)]
+        let (root_device, root_inode) = {
+            use std::os::unix::fs::MetadataExt;
+            let metadata = std::fs::metadata(&canonical_root)?;
+            (metadata.dev(), metadata.ino())
+        };
+        Ok(Self {
+            canonical_root,
+            #[cfg(unix)]
+            root_device,
+            #[cfg(unix)]
+            root_inode,
+        })
     }
 }
 
@@ -530,18 +573,14 @@ impl CoreCompilerServiceSession {
         output_staging::stage_and_publish(grant, generation, populate)
     }
 
-    /// Compiles one core-owned project and stages output only if the result is
-    /// successful and this project has an independent owner write grant. An
-    /// error-bearing check returns `None` without invoking `populate` or
-    /// creating any staging path. No compiler IPC/MCP request calls this API.
-    pub fn build_and_stage_owner_output<F>(
+    /// Compiles one core-owned project and stages only its validated artifact
+    /// paths under the separately granted output root. A diagnostic-bearing
+    /// check returns `None` without creating a staging path. No compiler
+    /// IPC/MCP request calls this owner API.
+    pub fn build_and_stage_owner_output(
         &mut self,
         project_id: RegisteredProjectId,
-        populate: F,
-    ) -> Result<(CompilerServiceCheck, Option<PathBuf>), OwnerBuildStageError>
-    where
-        F: FnOnce(&blueice_bluets::BuildOutput, &Path) -> io::Result<()>,
-    {
+    ) -> Result<(CompilerServiceCheck, Option<PathBuf>), OwnerBuildStageError> {
         if !self.output_write_grants.contains_key(&project_id) {
             return Err(OwnerBuildStageError::NotGranted);
         }
@@ -560,8 +599,15 @@ impl CoreCompilerServiceSession {
                 "compiler returned artifacts with errors",
             )));
         }
+        let identity = self
+            .adapter
+            .service
+            .identity(project_id)
+            .map_err(OwnerBuildStageError::Compiler)?;
+        let planned = output_artifacts::plan(&identity.canonical_project_root, &output)
+            .map_err(OwnerBuildStageError::Io)?;
         let published = self
-            .stage_owner_output(check.generation, |stage| populate(&output, stage))
+            .stage_owner_output(check.generation, |stage| planned.write_to(stage))
             .map_err(OwnerBuildStageError::Io)?;
         Ok((check, Some(published)))
     }
@@ -1191,6 +1237,7 @@ impl CompilerServiceIpcRequestReceiver {
 }
 
 mod adapter;
+mod output_artifacts;
 mod output_staging;
 
 #[cfg(test)]
