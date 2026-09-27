@@ -4066,6 +4066,16 @@ tests prove private project IDs and superseded generations cannot be
 borrowed. This negotiation grants only the fixed query vocabulary; the
 independent output-write grant is not represented by these receipts.
 
+**F3.1.2 one-shot compiler pagination:** Diagnostic, incremental work-set,
+and static metadata continuations remain core-owned cursor records, never
+numeric offsets supplied by an MCP caller. The service consumes a valid
+record once, and the accepted IPC stream requires its own previously returned
+receipt for the exact generation and collection. A rejected cross-stream or
+cross-kind use does not consume the owning stream's valid continuation;
+successful use makes replay fail. Stream closure and new checks revoke
+unused records. The added stream-bound diagnostic/work-set regression and
+existing metadata and real MCP tests cover these conditions.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

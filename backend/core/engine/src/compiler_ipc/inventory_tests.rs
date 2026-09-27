@@ -7,6 +7,125 @@
 use super::*;
 
 #[test]
+fn compiler_stream_diagnostic_and_work_set_cursors_are_single_use() {
+    let mut adapter = CompilerServiceIpcAdapter::new(
+        RegisteredProjectCompilerService::default(),
+        CompilerServiceIpcLimits {
+            max_diagnostic_page_entries: 1,
+            max_work_set_page_entries: 1,
+            ..CompilerServiceIpcLimits::default()
+        },
+    )
+    .unwrap();
+    let project = adapter
+        .register_core_project(registration(
+            "const first: number = 'one'; const second: number = 'two';",
+        ))
+        .unwrap();
+    let owner = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
+    let foreign = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
+    inventory_on_stream(&mut adapter, &owner, project);
+    inventory_on_stream(&mut adapter, &foreign, project);
+    let CompilerReply::Check(check) =
+        adapter.handle_session_request(&owner, CompilerRequest::Check { project })
+    else {
+        panic!("the owner stream must check its inventoried project")
+    };
+    assert!(check.has_errors);
+
+    let CompilerReply::DiagnosticPage(first_diagnostics) = adapter.handle_session_request(
+        &owner,
+        CompilerRequest::ListDiagnostics {
+            generation: check.generation,
+            cursor: None,
+            limit: Some(1),
+        },
+    ) else {
+        panic!("diagnostics must return a first page")
+    };
+    let diagnostic_cursor = first_diagnostics
+        .next_cursor
+        .expect("the fixture has multiple diagnostics");
+    let diagnostic_continuation = CompilerRequest::ListDiagnostics {
+        generation: check.generation,
+        cursor: Some(diagnostic_cursor),
+        limit: Some(1),
+    };
+    assert!(matches!(
+        adapter.handle_session_request(&foreign, diagnostic_continuation.clone()),
+        CompilerReply::Error {
+            code: CompilerErrorCode::InvalidDiagnosticCursor,
+            ..
+        }
+    ));
+    assert!(matches!(
+        adapter.handle_session_request(&owner, diagnostic_continuation.clone()),
+        CompilerReply::DiagnosticPage(_)
+    ));
+    assert!(matches!(
+        adapter.handle_session_request(&owner, diagnostic_continuation),
+        CompilerReply::Error {
+            code: CompilerErrorCode::InvalidDiagnosticCursor,
+            ..
+        }
+    ));
+
+    let CompilerReply::WorkSetPage(first_work_set) = adapter.handle_session_request(
+        &owner,
+        CompilerRequest::ListWorkSet {
+            generation: check.generation,
+            kind: CompilerWorkSetKind::Parsed,
+            cursor: None,
+            limit: Some(1),
+        },
+    ) else {
+        panic!("parsed modules must return a first page")
+    };
+    let work_set_cursor = first_work_set
+        .next_cursor
+        .expect("the fixture has multiple parsed modules");
+    let work_set_continuation = CompilerRequest::ListWorkSet {
+        generation: check.generation,
+        kind: CompilerWorkSetKind::Parsed,
+        cursor: Some(work_set_cursor),
+        limit: Some(1),
+    };
+    assert!(matches!(
+        adapter.handle_session_request(&foreign, work_set_continuation.clone()),
+        CompilerReply::Error {
+            code: CompilerErrorCode::InvalidWorkSetCursor,
+            ..
+        }
+    ));
+    assert!(matches!(
+        adapter.handle_session_request(
+            &owner,
+            CompilerRequest::ListWorkSet {
+                generation: check.generation,
+                kind: CompilerWorkSetKind::Rechecked,
+                cursor: Some(work_set_cursor),
+                limit: Some(1),
+            },
+        ),
+        CompilerReply::Error {
+            code: CompilerErrorCode::InvalidWorkSetCursor,
+            ..
+        }
+    ));
+    assert!(matches!(
+        adapter.handle_session_request(&owner, work_set_continuation.clone()),
+        CompilerReply::WorkSetPage(_)
+    ));
+    assert!(matches!(
+        adapter.handle_session_request(&owner, work_set_continuation),
+        CompilerReply::Error {
+            code: CompilerErrorCode::InvalidWorkSetCursor,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn metadata_inventory_clamps_pages_and_rejects_malformed_or_replayed_cursors() {
     let mut adapter = CompilerServiceIpcAdapter::new(
         RegisteredProjectCompilerService::default(),
