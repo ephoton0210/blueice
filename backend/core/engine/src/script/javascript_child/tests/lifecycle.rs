@@ -374,6 +374,7 @@ fn over_budget_core_snapshot_is_never_sent_to_the_child() {
             ordinal: 1,
             kind: DirectPageScriptKind::Module,
             category: "host binding contract rejected the page script",
+            source_position: None,
         }]
     );
     assert_eq!(
@@ -439,9 +440,78 @@ fn core_routes_interleaved_bluets_and_javascript_to_one_child_realm() {
                 ordinal: 4,
                 kind: DirectPageScriptKind::Classic,
                 category: "external BlueTS declarations require an authorized loader",
+                source_position: None,
             },
         ]
     );
+    drop(executor);
+    shutdown_child(&path, &token);
+    child.join().unwrap();
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn supervised_child_reports_only_verified_inline_bluets_ranges_per_tab_and_generation() {
+    let (path, token, child) = spawn_child();
+    let source = "const broken: number = \"wrong\";";
+    let (mut tabs, first_tab) = loaded_tabs(
+        &format!(
+            "<script type=\"application/x-blueice-typescript\">{source}</script>\
+             <script type=\"application/x-blueice-typescript\" src=\"https://private.test/secret.ts\"></script>"
+        ),
+        "https://example.test/first",
+    );
+    let second_tab = tabs.open_tab();
+    tabs.get_mut(second_tab).unwrap().load_html_str(
+        "<script type=\"application/x-blueice-typescript\">const good: number = 42;</script>",
+        Some("https://example.test/second".into()),
+    );
+    let mut executor = OutOfProcessJavaScriptPageExecutor::connect(&path, &token).unwrap();
+    executor.synchronize_and_execute(&tabs).unwrap();
+    let first_reports = executor.drain_blue_ts_reports_for_tab(first_tab);
+    let [BlueTsPageExecutionReport::Rejected {
+        document_generation: 1,
+        ordinal: 0,
+        source_position: Some(position),
+        category: "BlueTS compilation rejected the page script",
+        ..
+    }, BlueTsPageExecutionReport::Rejected {
+        document_generation: 1,
+        ordinal: 1,
+        source_position: None,
+        category: "external BlueTS declarations require an authorized loader",
+        ..
+    }] = first_reports.as_slice()
+    else {
+        panic!("expected one verified inline range and one external denial: {first_reports:?}");
+    };
+    assert!(position.start < position.end);
+    assert!(position.end as usize <= source.len());
+    assert!(!format!("{first_reports:?}").contains("private.test"));
+    assert!(!format!("{first_reports:?}").contains("wrong"));
+    assert!(matches!(
+        executor.drain_blue_ts_reports_for_tab(second_tab).as_slice(),
+        [BlueTsPageExecutionReport::Executed {
+            tab_id,
+            document_generation: 1,
+            ..
+        }] if *tab_id == second_tab.as_u64()
+    ));
+    tabs.get_mut(first_tab).unwrap().load_html_str(
+        "<script type=\"application/x-blueice-typescript\">const newer: number = 42;</script>",
+        Some("https://example.test/newer".into()),
+    );
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert!(matches!(
+        executor.drain_blue_ts_reports_for_tab(first_tab).as_slice(),
+        [BlueTsPageExecutionReport::Executed {
+            document_generation: 2,
+            ..
+        }]
+    ));
+    assert!(executor
+        .drain_blue_ts_reports_for_tab(second_tab)
+        .is_empty());
     drop(executor);
     shutdown_child(&path, &token);
     child.join().unwrap();

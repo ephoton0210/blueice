@@ -156,6 +156,7 @@ pub enum BlueTsPageExecutionReport {
         ordinal: u32,
         kind: DirectPageScriptKind,
         category: &'static str,
+        source_position: Option<super::inline_runner::InlineBlueTsSourcePosition>,
     },
 }
 

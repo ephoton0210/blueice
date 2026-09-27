@@ -305,7 +305,11 @@ fn real_subprocess_routes_an_explicit_page_lifecycle_to_the_private_bluejs_host(
             "<main>out-of-process JavaScript process proof</main>",
             "<script>globalThis.answer = 42;</script>",
             "<script type=\"module\">export const moduleAnswer = 43;</script>",
-            "<script src=\"untrusted.js\"></script>"
+            "<script src=\"untrusted.js\"></script>",
+            "<script type=\"application/x-blueice-typescript\">",
+            "const broken: number = \"wrong\";",
+            "</script>",
+            "<script type=\"application/x-blueice-typescript\" src=\"https://private.test/secret.ts\"></script>"
         );
         stream
             .write_all(
@@ -387,6 +391,52 @@ fn real_subprocess_routes_an_explicit_page_lifecycle_to_the_private_bluejs_host(
             },
         ])
     );
+
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueTsScriptReports,
+    )
+    .unwrap();
+    let reply = blueice_ipc::read_server_message(&mut stream).unwrap();
+    let blueice_ipc::ServerMessage::BlueTsScriptReports(reports) = reply else {
+        panic!("expected public BlueTS reports: {reply:?}");
+    };
+    let [inline, external] = reports.as_slice() else {
+        panic!("expected inline rejection and external denial: {reports:?}");
+    };
+    assert_eq!(inline.tab_id, 1);
+    assert_eq!(inline.document_generation, 1);
+    assert_eq!(inline.ordinal, 3);
+    assert_eq!(inline.kind, blueice_ipc::BlueTsScriptKind::Classic);
+    assert_eq!(
+        inline.policy,
+        blueice_ipc::BlueTsScriptRuntimePolicy::Checked
+    );
+    assert_eq!(
+        inline.outcome,
+        blueice_ipc::BlueTsScriptExecutionOutcome::Rejected {
+            category: "BlueTS compilation rejected the page script".into(),
+        }
+    );
+    let position = inline
+        .source_position
+        .expect("verified original inline range");
+    assert!(position.start < position.end);
+    assert!(position.end <= "const broken: number = \"wrong\";".len() as u32);
+    assert_eq!(external.ordinal, 4);
+    assert_eq!(external.source_position, None);
+    assert_eq!(
+        external.policy,
+        blueice_ipc::BlueTsScriptRuntimePolicy::Checked
+    );
+    assert_eq!(
+        external.outcome,
+        blueice_ipc::BlueTsScriptExecutionOutcome::Rejected {
+            category: "external BlueTS declarations require an authorized loader".into(),
+        }
+    );
+    assert!(!format!("{reports:?}").contains("wrong"));
+    assert!(!format!("{reports:?}").contains("private.test"));
 
     blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
     assert!(core.wait().unwrap().success());

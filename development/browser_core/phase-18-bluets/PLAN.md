@@ -2437,6 +2437,20 @@ and debugger-controlled synchronization use the same private field. Core
 must still verify the candidate against its own exact inline declaration
 before placing a numeric range in a browser report.
 
+**E2.2.2.3.2 core verification and public route:** While an authenticated
+document synchronization is pending, core retains the original inline BlueTS
+declaration text and its ordinal only until the reply is processed. It first
+requires the child report to name a script that core actually submitted for
+the same tab and generation. It publishes a numeric position only for a
+recognized compiler or direct-lowering rejection whose bounded private
+candidate names the exact core-minted inline module and falls on UTF-8
+boundaries within those original bytes. Core discards the private module ID,
+source, and diagnostic before the tab-addressed report enters browser IPC.
+External graph failures, malformed or stale candidates, and later debugger
+execution replies have no public position; the child runtime policy is the
+fixed checked mode. Real launcher-supervised two-tab, navigation, authorized
+external failure, and core-binary/browser-IPC tests exercise these boundaries.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

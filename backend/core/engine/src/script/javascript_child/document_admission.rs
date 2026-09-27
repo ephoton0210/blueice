@@ -388,6 +388,17 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         let document_url = page
             .url()
             .expect("a page with a live child identity always has a URL");
+        let inline_blue_ts_sources = declarations
+            .iter()
+            .filter_map(|declaration| match declaration {
+                CombinedPageScriptDeclaration::Inline {
+                    ordinal,
+                    language: CombinedPageScriptLanguage::BlueTs(_),
+                    source,
+                } => Some((*ordinal, source.clone())),
+                _ => None,
+            })
+            .collect();
         let (document, local_reports, local_blue_ts_reports) = authorized_document(
             tab_id,
             identity,
@@ -408,6 +419,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 local_reports,
                 local_blue_ts_reports,
                 inline_scripts,
+                inline_blue_ts_sources,
             },
         })
     }

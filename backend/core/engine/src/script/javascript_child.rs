@@ -24,6 +24,7 @@ use super::{
     direct_page::DirectPageScriptKind,
     BlueJsPageScriptKind, CombinedPageScriptDeclaration, CombinedPageScriptLanguage,
 };
+use crate::script::inline_runner::InlineBlueTsSourcePosition;
 use crate::script::javascript::{
     AuthorizedJavaScriptModuleGraph, BlueTsPageExecutionReport, JavaScriptPageDebuggerBreakpoint,
     JavaScriptPageDebuggerError, JavaScriptPageDebuggerExceptionLocation,
@@ -183,6 +184,7 @@ struct PendingDocumentOutcome {
     local_reports: Vec<JavaScriptPageExecutionReport>,
     local_blue_ts_reports: Vec<BlueTsPageExecutionReport>,
     inline_scripts: Vec<(u32, PageHostScriptLanguage, PageHostScriptKind)>,
+    inline_blue_ts_sources: BTreeMap<u32, String>,
 }
 
 /// Explicit core-owned lifecycle owner for one authenticated child host.
@@ -941,6 +943,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             mut local_reports,
             mut local_blue_ts_reports,
             inline_scripts,
+            inline_blue_ts_sources,
         } = outcome;
         let mut child_synchronized = false;
         match result {
@@ -954,7 +957,19 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             {
                 child_synchronized = true;
                 for report in reports {
-                    match child_report(report) {
+                    if report.tab_id != tab_id.as_u64()
+                        || report.document_generation != identity.document_generation
+                        || !inline_scripts.contains(&(report.ordinal, report.language, report.kind))
+                    {
+                        continue;
+                    }
+                    let source_position = verified_child_inline_position(
+                        &report,
+                        tab_id,
+                        identity.document_generation,
+                        &inline_blue_ts_sources,
+                    );
+                    match child_report(report, source_position) {
                         ChildExecutionReport::JavaScript(report) => local_reports.push(report),
                         ChildExecutionReport::BlueTs(report) => local_blue_ts_reports.push(report),
                     }
@@ -1107,7 +1122,12 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 continue;
             }
             for report in reports {
-                match child_report(report) {
+                if report.tab_id != tab_id.as_u64()
+                    || report.document_generation != document_generation
+                {
+                    continue;
+                }
+                match child_report(report, None) {
                     ChildExecutionReport::JavaScript(report) => self.push_report(report),
                     ChildExecutionReport::BlueTs(report) => self.push_blue_ts_report(report),
                 }

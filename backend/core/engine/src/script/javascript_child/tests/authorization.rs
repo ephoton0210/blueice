@@ -493,6 +493,68 @@ fn external_authorizer_denial_and_invalid_graph_are_source_free_in_real_child_ro
 }
 
 #[test]
+fn authorized_external_bluets_compile_failure_keeps_its_position_private() {
+    struct FailingExternalBlueTs;
+
+    impl OutOfProcessPageScriptSourceAuthorizer for FailingExternalBlueTs {
+        fn authorize(
+            &self,
+            request: &OutOfProcessPageScriptSourceRequest,
+        ) -> Result<
+            AuthorizedOutOfProcessPageScriptGraph,
+            OutOfProcessPageScriptSourceAuthorizationError,
+        > {
+            assert_eq!(request.ordinal, 0);
+            assert_eq!(
+                request.language,
+                CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Classic)
+            );
+            let entry = "https://secret.example.test/private.ts";
+            let loader = AuthorizedModuleLoader::new(
+                [AuthorizedModule::new(
+                    entry,
+                    "const broken: number = \"private value\";",
+                )],
+                [],
+            )
+            .unwrap();
+            Ok(AuthorizedOutOfProcessPageScriptGraph::BlueTs(
+                AuthorizedPageScriptGraph::new(entry, loader, "core-private-external-v1").unwrap(),
+            ))
+        }
+    }
+
+    let (path, token, child) = spawn_child();
+    let (tabs, tab_id) = loaded_tabs(
+        "<script type=\"application/x-blueice-typescript\" src=\"https://secret.example.test/private.ts\"></script>",
+        "https://example.test/app/index.html",
+    );
+    let mut executor = OutOfProcessJavaScriptPageExecutor::connect_with_external_source_authorizer(
+        &path,
+        &token,
+        FailingExternalBlueTs,
+    )
+    .unwrap();
+    executor.synchronize_and_execute(&tabs).unwrap();
+    let reports = executor.drain_blue_ts_reports_for_tab(tab_id);
+    assert!(matches!(
+        reports.as_slice(),
+        [BlueTsPageExecutionReport::Rejected {
+            category: "BlueTS compilation rejected the page script",
+            source_position: None,
+            ..
+        }]
+    ));
+    let observed = format!("{reports:?}");
+    assert!(!observed.contains("secret.example.test"));
+    assert!(!observed.contains("private value"));
+    drop(executor);
+    shutdown_child(&path, &token);
+    child.join().unwrap();
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn missing_authorized_static_edge_has_no_child_resolver_fallback() {
     let (path, token, child) = spawn_child();
     let (tabs, tab_id) = loaded_tabs(

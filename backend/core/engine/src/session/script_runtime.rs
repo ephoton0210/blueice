@@ -149,13 +149,17 @@ pub(super) fn child_blue_ts_execution_reports(
                 ordinal,
                 kind,
                 category,
+                source_position,
             } => BlueTsScriptExecutionReport {
                 tab_id,
                 document_generation,
                 ordinal,
                 kind: child_blue_ts_kind(kind),
                 policy: BlueTsScriptRuntimePolicy::Checked,
-                source_position: None,
+                source_position: source_position.map(|position| BlueTsScriptSourcePosition {
+                    start: position.start,
+                    end: position.end,
+                }),
                 outcome: BlueTsScriptExecutionOutcome::Rejected {
                     category: category.to_string(),
                 },
@@ -262,5 +266,34 @@ mod tests {
                 },
             }]
         );
+    }
+
+    #[test]
+    fn checked_child_policy_and_verified_position_cross_the_public_report_mapping() {
+        let reports = child_blue_ts_execution_reports(vec![BlueTsPageExecutionReport::Rejected {
+            tab_id: 7,
+            document_generation: 4,
+            ordinal: 2,
+            kind: DirectPageScriptKind::Classic,
+            category: "BlueTS compilation rejected the page script",
+            source_position: Some(InlineBlueTsSourcePosition { start: 6, end: 11 }),
+        }]);
+        assert_eq!(
+            reports,
+            vec![BlueTsScriptExecutionReport {
+                tab_id: 7,
+                document_generation: 4,
+                ordinal: 2,
+                kind: BlueTsScriptKind::Classic,
+                policy: BlueTsScriptRuntimePolicy::Checked,
+                source_position: Some(BlueTsScriptSourcePosition { start: 6, end: 11 }),
+                outcome: BlueTsScriptExecutionOutcome::Rejected {
+                    category: "BlueTS compilation rejected the page script".into(),
+                },
+            }]
+        );
+        let serialized = serde_json::to_string(&reports[0]).unwrap();
+        assert!(!serialized.contains("module_id"));
+        assert!(!serialized.contains("wrong"));
     }
 }

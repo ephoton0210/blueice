@@ -9,7 +9,10 @@ pub(super) enum ChildExecutionReport {
     BlueTs(BlueTsPageExecutionReport),
 }
 
-pub(super) fn child_report(report: page_host::PageHostScriptReport) -> ChildExecutionReport {
+pub(super) fn child_report(
+    report: page_host::PageHostScriptReport,
+    source_position: Option<InlineBlueTsSourcePosition>,
+) -> ChildExecutionReport {
     match report.language {
         PageHostScriptLanguage::JavaScript => match report.outcome {
             PageHostScriptOutcome::Executed => {
@@ -46,10 +49,59 @@ pub(super) fn child_report(report: page_host::PageHostScriptReport) -> ChildExec
                     ordinal: report.ordinal,
                     kind: core_blue_ts_kind(report.kind),
                     category: leak_blue_ts_category(category),
+                    source_position,
                 })
             }
         },
     }
+}
+
+pub(super) fn verified_child_inline_position(
+    report: &page_host::PageHostScriptReport,
+    tab_id: TabId,
+    document_generation: u64,
+    inline_sources: &BTreeMap<u32, String>,
+) -> Option<InlineBlueTsSourcePosition> {
+    if report.tab_id != tab_id.as_u64()
+        || report.document_generation != document_generation
+        || report.language != PageHostScriptLanguage::BlueTs
+    {
+        return None;
+    }
+    let PageHostScriptOutcome::Rejected { category } = &report.outcome else {
+        return None;
+    };
+    if !matches!(
+        category.as_str(),
+        "BlueTS compilation rejected the page script"
+            | "BlueTS direct lowering rejected the page script"
+    ) {
+        return None;
+    }
+    let candidate = report.source_position.as_ref()?;
+    if !candidate.is_well_formed() {
+        return None;
+    }
+    let source = inline_sources.get(&report.ordinal)?;
+    let expected_module = inline_module_id(
+        tab_id,
+        document_generation,
+        report.ordinal,
+        CombinedPageScriptLanguage::BlueTs(core_blue_ts_kind(report.kind)),
+    );
+    let start = candidate.start as usize;
+    let end = candidate.end as usize;
+    if candidate.module_id != expected_module
+        || end > source.len()
+        || !source.is_char_boundary(start)
+        || !source.is_char_boundary(end)
+    {
+        return None;
+    }
+    Some(InlineBlueTsSourcePosition {
+        start: candidate.start,
+        end: candidate.end,
+    })
 }
 
 // `JavaScriptPageExecutionReport` predates the child transport and stores
@@ -152,6 +204,7 @@ pub(super) fn rejected_blue_ts_report(
         ordinal,
         kind,
         category,
+        source_position: None,
     }
 }
 
@@ -244,5 +297,83 @@ pub(super) fn blue_ts_report_ordinal(report: &BlueTsPageExecutionReport) -> u32 
     match report {
         BlueTsPageExecutionReport::Executed { ordinal, .. }
         | BlueTsPageExecutionReport::Rejected { ordinal, .. } => *ordinal,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn child_position_requires_exact_inline_identity_generation_and_utf8_range() {
+        let tab_id = TabId::from_u64(7);
+        let source = "const café: number = \"wrong\";";
+        let inline_sources = BTreeMap::from([(3, source.to_string())]);
+        let mut report = page_host::PageHostScriptReport {
+            tab_id: 7,
+            document_generation: 4,
+            ordinal: 3,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Classic,
+            source_position: Some(page_host::PageHostScriptSourcePosition {
+                module_id: inline_module_id(
+                    tab_id,
+                    4,
+                    3,
+                    CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Classic),
+                ),
+                start: 6,
+                end: 11,
+            }),
+            outcome: PageHostScriptOutcome::Rejected {
+                category: "BlueTS compilation rejected the page script".into(),
+            },
+        };
+        let verify = |report: &page_host::PageHostScriptReport| {
+            verified_child_inline_position(report, tab_id, 4, &inline_sources)
+        };
+        assert_eq!(
+            verify(&report),
+            Some(InlineBlueTsSourcePosition { start: 6, end: 11 })
+        );
+        report.source_position.as_mut().unwrap().end = 10;
+        assert_eq!(verify(&report), None, "partial UTF-8 code point");
+        report.source_position.as_mut().unwrap().end = (source.len() + 1) as u32;
+        assert_eq!(verify(&report), None, "outside original inline source");
+        report.source_position.as_mut().unwrap().end = 11;
+        report.source_position.as_mut().unwrap().module_id = inline_module_id(
+            tab_id,
+            3,
+            3,
+            CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Classic),
+        );
+        assert_eq!(verify(&report), None, "stale module identity");
+        report.source_position.as_mut().unwrap().module_id = "private-external.ts".into();
+        assert_eq!(verify(&report), None, "external module identity");
+        report.source_position.as_mut().unwrap().module_id = inline_module_id(
+            tab_id,
+            4,
+            3,
+            CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Classic),
+        );
+        report.tab_id = 8;
+        assert_eq!(verify(&report), None, "wrong tab");
+        report.tab_id = 7;
+        report.document_generation = 5;
+        assert_eq!(verify(&report), None, "wrong document generation");
+        report.document_generation = 4;
+        report.outcome = PageHostScriptOutcome::Rejected {
+            category: "BlueJS page execution failed".into(),
+        };
+        assert_eq!(
+            verify(&report),
+            None,
+            "runtime failure has no compiler span"
+        );
+        report.outcome = PageHostScriptOutcome::Rejected {
+            category: "BlueTS compilation rejected the page script".into(),
+        };
+        report.ordinal = 2;
+        assert_eq!(verify(&report), None, "unknown inline declaration");
     }
 }
