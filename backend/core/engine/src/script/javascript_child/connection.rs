@@ -17,7 +17,24 @@ impl PageHostConnection {
     /// launcher owner; a page, frontend client, or script never receives this
     /// configuration.
     pub fn connect(socket_path: &Path, session_token: &str) -> io::Result<Self> {
-        let mut stream = UnixStream::connect(socket_path)?;
+        // The launcher may see the socket pathname after bind(2) but before
+        // listen(2). Retry only that transient startup interval; a rejected
+        // capability handshake below is final.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut stream = loop {
+            match UnixStream::connect(socket_path) {
+                Ok(stream) => break stream,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
+                    ) && Instant::now() < deadline =>
+                {
+                    thread::sleep(Duration::from_millis(20));
+                }
+                Err(error) => return Err(error),
+            }
+        };
         page_host::write_page_host_request(
             &mut stream,
             &PageHostRequest::Hello {

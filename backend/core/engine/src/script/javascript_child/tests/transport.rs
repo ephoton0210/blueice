@@ -5,6 +5,46 @@
 use super::*;
 
 #[test]
+fn page_host_connection_waits_for_a_bound_socket_to_start_listening() {
+    use std::os::unix::net::UnixListener;
+
+    let path = unique_socket_path("bound-before-listen");
+    let stale_listener = UnixListener::bind(&path).unwrap();
+    drop(stale_listener);
+    assert_eq!(
+        UnixStream::connect(&path).unwrap_err().kind(),
+        io::ErrorKind::ConnectionRefused
+    );
+
+    let child_path = path.clone();
+    let child = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(100));
+        std::fs::remove_file(&child_path).unwrap();
+        let listener = UnixListener::bind(&child_path).unwrap();
+        let (mut stream, _) = listener.accept().unwrap();
+        assert_eq!(
+            page_host::read_page_host_request(&mut stream).unwrap(),
+            PageHostRequest::Hello {
+                protocol_version: page_host::PAGE_HOST_PROTOCOL_VERSION,
+                session_token: "owner-capability".to_string(),
+            }
+        );
+        page_host::write_page_host_reply(
+            &mut stream,
+            &PageHostReply::HelloAck {
+                protocol_version: page_host::PAGE_HOST_PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
+    });
+
+    let connection = PageHostConnection::connect(&path, "owner-capability").unwrap();
+    drop(connection);
+    child.join().unwrap();
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn page_host_transport_pumps_before_the_child_replies() {
     let (core, mut child) = UnixStream::pair().unwrap();
     let (resume_sender, resume_receiver) = mpsc::sync_channel(1);
