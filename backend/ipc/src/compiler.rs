@@ -189,6 +189,7 @@ impl CompilerSessionHelloEvidence {
 /// Opaque identifier minted by the core owner when it registers a project.
 /// It is an identifier, not a path or authority to create a registration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CompilerProject {
     pub id: u64,
 }
@@ -219,6 +220,7 @@ impl CompilerProjectInventory {
 /// The exact compiler result generation a static query must present. A later
 /// check invalidates this handle even if it has the same project ID.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CompilerGeneration {
     pub project: CompilerProject,
     pub sequence: u64,
@@ -252,6 +254,7 @@ pub enum CompilerWorkSetKind {
 /// A core-minted, one-shot work-set continuation bound to one accepted stream,
 /// exact generation, and work-set kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CompilerWorkSetCursor {
     pub id: u64,
 }
@@ -327,6 +330,7 @@ pub struct CompilerDiagnostics {
 /// and cannot be repurposed for static metadata, a later stream, or a later
 /// check generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CompilerDiagnosticCursor {
     pub id: u64,
 }
@@ -393,6 +397,7 @@ pub enum CompilerStaticMetadataKind {
 /// and metadata kind, the stream that received it, consumes it once, and
 /// invalidates it on a later check or stream close.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CompilerStaticMetadataCursor {
     pub id: u64,
 }
@@ -591,7 +596,12 @@ pub struct CompilerStaticContract {
 /// graph, or compiler configuration. Numbers use canonical finite decimal
 /// text so the JSON transport preserves a fully comparable `Eq` wire value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "value", rename_all = "kebab-case")]
+#[serde(
+    tag = "kind",
+    content = "value",
+    rename_all = "kebab-case",
+    deny_unknown_fields
+)]
 pub enum CompilerContractValue {
     Null,
     Undefined,
@@ -624,6 +634,7 @@ pub struct CompilerContractValidation {
 /// Requests sent after a successful [`CompilerRequest::Hello`] handshake.
 /// None can register, reconfigure, update, write, or source-read a project.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum CompilerRequest {
     Hello {
         protocol_version: u32,

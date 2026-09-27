@@ -3968,6 +3968,17 @@ does not compare bundled source text with file contents or open a write
 capability. F1.1.3 must separately authorize output writes and revalidate
 paths at the time of use, because filesystem entries can change after startup.
 
+**F1.1.2 client request closure:** Compiler IPC now refuses unknown fields in
+each request variant and its nested project, generation, cursor, and contract
+value envelopes. The compiler MCP adapter applies the same strict decoding to
+each typed compiler-tool argument and nested cursor. Extra client paths,
+resolver edges, compiler options, or plugin names are rejected instead of
+being silently dropped before a read-only query. Unknown operation variants
+still take the existing unsupported path; contract-validation JSON remains
+data, never a route to a filesystem or compiler option. A real core/MCP
+regression injects all four field classes and then checks the same inventoried
+project successfully with the fixed query shape.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

@@ -30,6 +30,28 @@ fn session_evidence() -> CompilerSessionHelloEvidence {
 }
 
 #[test]
+fn compiler_request_decoder_rejects_client_authority_fields() {
+    for request in [
+        serde_json::json!({"Check": {"project": {"id": 7}, "path": "/tmp/other.ts"}}),
+        serde_json::json!({"Check": {"project": {"id": 7, "root": "/tmp/other"}}}),
+        serde_json::json!({"Check": {"project": {"id": 7}, "resolver_edges": []}}),
+        serde_json::json!({"Check": {"project": {"id": 7}, "options": {"target": "es2020"}}}),
+        serde_json::json!({"Check": {"project": {"id": 7}, "plugins": ["unsafe"]}}),
+        serde_json::json!({"GetStaticType": {
+            "generation": {"project": {"id": 7}, "sequence": 3, "path": "/tmp/other.ts"},
+            "type_id": 1
+        }}),
+    ] {
+        let mut frame = Vec::new();
+        write_bounded(&mut frame, &request).unwrap();
+        assert!(
+            read_compiler_request(&mut frame.as_slice()).is_err(),
+            "accepted client authority field: {request}"
+        );
+    }
+}
+
+#[test]
 fn requests_and_replies_round_trip_on_a_real_socket() {
     for request in [
         CompilerRequest::Hello {

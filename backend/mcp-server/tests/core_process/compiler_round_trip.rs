@@ -161,6 +161,32 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
     assert!(wrong_project_session_text.contains("does not belong to this MCP adapter"));
     assert!(!wrong_project_session_text.contains("coreRegisteredAnswer"));
 
+    for (field, value) in [
+        ("path", serde_json::json!("/tmp/other.ts")),
+        ("resolver_edges", serde_json::json!([])),
+        ("options", serde_json::json!({"target": "es2020"})),
+        ("plugins", serde_json::json!(["unsafe"])),
+    ] {
+        let mut arguments = serde_json::json!({
+            "session_id": compiler_session.clone(),
+            "project_id": 1,
+        });
+        arguments[field] = value;
+        let refusal = client
+            .call_tool(
+                CallToolRequestParams::new("bluetsc_check")
+                    .with_arguments(arguments.as_object().unwrap().clone()),
+            )
+            .await;
+        assert!(
+            match &refusal {
+                Err(_) => true,
+                Ok(result) => result.is_error == Some(true),
+            },
+            "MCP accepted client-supplied {field}: {refusal:?}"
+        );
+    }
+
     let check_result = compiler_tool!("bluetsc_check", serde_json::json!({ "project_id": 1 }));
     assert_eq!(check_result.is_error, Some(false));
     assert_source_free_compiler_tool_result(&check_result);

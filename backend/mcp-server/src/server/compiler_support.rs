@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 
 /// Source-free inventory for this exact accepted compiler stream.
 #[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(super) struct CompilerProjectInventoryParams {
     /// Opaque receipt returned by `bluetsc_session_capabilities`.
     pub(super) session_id: Option<String>,
@@ -24,6 +25,7 @@ pub(super) struct CompilerProjectInventoryParams {
 /// An opaque project handle minted by a core-owned registered-project
 /// catalog. It is not a filesystem path and cannot create a registration.
 #[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(super) struct CompilerProjectParams {
     /// Opaque session receipt returned by `bluetsc_session_capabilities` for
     /// this MCP adapter. The adapter rejects a receipt from another MCP
@@ -38,6 +40,7 @@ pub(super) struct CompilerProjectParams {
 /// opaque core-minted number; this shape intentionally has no source text,
 /// path, resolver, compiler-option, artifact, or output-write field.
 #[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(super) struct CompilerStaticQueryParams {
     /// Opaque session receipt returned by `bluetsc_session_capabilities` for
     /// this MCP adapter.
@@ -53,6 +56,7 @@ pub(super) struct CompilerStaticQueryParams {
 /// Exact compiler-minted declaration and owning source pair. Both IDs must
 /// first be received in the matching inventory categories on this session.
 #[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(super) struct CompilerStaticLocationParams {
     /// Opaque receipt from this adapter's `bluetsc_session_capabilities`.
     pub(super) session_id: Option<String>,
@@ -70,6 +74,7 @@ pub(super) struct CompilerStaticLocationParams {
 /// number has no offset semantics and is accepted only for the exact
 /// generation and category that minted it.
 #[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(super) struct CompilerStaticMetadataCursorParams {
     /// Opaque core-minted cursor identifier from the prior page's
     /// `next_cursor`. Do not construct or reuse it.
@@ -80,6 +85,7 @@ pub(super) struct CompilerStaticMetadataCursorParams {
 /// It is bound by core to one exact checked generation and has no source
 /// position or ordinal semantics.
 #[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(super) struct CompilerDiagnosticCursorParams {
     /// Opaque core-minted cursor identifier from a prior diagnostic page. Do
     /// not construct, reuse, or substitute it for a static metadata cursor.
@@ -90,6 +96,7 @@ pub(super) struct CompilerDiagnosticCursorParams {
 /// no source text, project root, resolver, compiler option, artifact, or
 /// output capability.
 #[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(super) struct CompilerDiagnosticInventoryParams {
     /// Opaque session receipt returned by `bluetsc_session_capabilities` for
     /// this MCP adapter.
@@ -117,12 +124,14 @@ pub(super) enum CompilerWorkSetKindParams {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(super) struct CompilerWorkSetCursorParams {
     /// Core-minted one-shot cursor from the prior work-set page.
     pub(super) id: u64,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(super) struct CompilerWorkSetInventoryParams {
     pub(super) session_id: Option<String>,
     pub(super) project_id: u64,
@@ -148,6 +157,7 @@ pub(super) enum CompilerStaticMetadataKindParams {
 /// first page. `limit` is optional and always clamped by the core; zero and
 /// malformed cursors fail closed without falling back to another page.
 #[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(super) struct CompilerStaticMetadataInventoryParams {
     /// Opaque session receipt returned by `bluetsc_session_capabilities` for
     /// this MCP adapter.
@@ -168,6 +178,7 @@ pub(super) struct CompilerStaticMetadataInventoryParams {
 /// symbol/contract metadata and is not a filesystem path or source-read
 /// handle.
 #[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(super) struct CompilerProvenanceQueryParams {
     /// Opaque session receipt returned by `bluetsc_session_capabilities` for
     /// this MCP adapter.
@@ -184,6 +195,7 @@ pub(super) struct CompilerProvenanceQueryParams {
 /// express BlueTS's static-only `undefined` category; callers can validate
 /// ordinary JSON values only. The value is not echoed in the response.
 #[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(super) struct CompilerContractValidationParams {
     /// Opaque session receipt returned by `bluetsc_session_capabilities` for
     /// this MCP adapter.
@@ -834,6 +846,51 @@ pub(super) fn compiler_contract_value_from_json(
 mod project_inventory_tests {
     use super::*;
     use blueice_ipc::compiler::{CompilerProject, CompilerProjectInventory};
+
+    #[test]
+    fn compiler_tool_params_reject_client_authority_fields() {
+        assert!(
+            serde_json::from_value::<CompilerProjectParams>(serde_json::json!({
+                "session_id": null,
+                "project_id": 1,
+                "path": "/tmp/other.ts"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<CompilerProjectParams>(serde_json::json!({
+                "session_id": null,
+                "project_id": 1,
+                "resolver_edges": []
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<CompilerProjectParams>(serde_json::json!({
+                "session_id": null,
+                "project_id": 1,
+                "options": {"target": "es2020"}
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<CompilerProjectParams>(serde_json::json!({
+                "session_id": null,
+                "project_id": 1,
+                "plugins": ["unsafe"]
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<CompilerDiagnosticInventoryParams>(serde_json::json!({
+                "session_id": null,
+                "project_id": 1,
+                "generation": 1,
+                "cursor": {"id": 1, "path": "/tmp/other.ts"}
+            }))
+            .is_err()
+        );
+    }
 
     #[test]
     fn mcp_project_receipts_require_valid_inventory_and_revoke_on_refresh() {

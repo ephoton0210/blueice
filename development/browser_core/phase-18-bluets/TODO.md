@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: F1.1.2.** Reject client-supplied paths, resolver edges,
-options, and plugins at the compiler/MCP request boundary.
+**Current leaf: F1.1.3.** Grant output writes separately from the sealed
+read-only catalog and its query receipts.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -674,7 +674,7 @@ Keep check read-only and owner registration sealed before listeners.
   the expected kind before registration; virtual bundled-source identities
   remain read-only. Output-write authority remains open.
   - [x] **F1.1.1** Physical filesystem canonicalization of input, config, and output roots. The launcher file and core bootstrap both validate canonical absolute project/config/source/output identities before listeners; missing paths, wrong file types, mixed path kinds, and symlink aliases fail closed. A real launcher/core compiler query accepts a canonical physical catalog and leaves output untouched. Validation grants no writes; any future write path must recheck its target at use time.
-  - [ ] **F1.1.2** Reject client-supplied paths, resolver edges, options, and plugins.
+  - [x] **F1.1.2** Reject client-supplied paths, resolver edges, options, and plugins. The compiler IPC request decoder and every typed compiler MCP argument shape now reject unknown fields, including nested project/generation/cursor fields. Tests prove attempts to inject path, resolver, options, or plugin data fail while the same real MCP session can still run a valid read-only check. No request can alter the owner graph or catalog options.
   - [ ] **F1.1.3** Output-write authority as a separate owner grant.
 - [x] **F1.2** Admit only owner-exposed projects to each client inventory; deny a
   guessed or private project before reaching the compiler cache. Even a
