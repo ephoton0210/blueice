@@ -2056,6 +2056,20 @@ cannot retrieve predecessor static metadata. The focused socket test,
 Launcher Clippy, and formatting pass. C3.2 is closed for the current
 no-page-restore lifecycle contract.
 
+**C4.1.1 public debugger capability inventory:** The real Launcher socket
+suite already exercises each required public route through core and the
+supervised child. `module_lifecycle::launcher_pauses_and_resumes_a_real_bluets_module_entry`
+proves pause; `module_lifecycle::launcher_steps_a_real_bluets_module_then_rejects_stale_generation`
+proves step; `spans_stack::launcher_batches_exact_classic_and_module_stack_coordinates_only_with_receipts`
+proves stack; `scope_relations::launcher_relates_classic_and_module_root_scopes_without_value_authority`
+proves scope; `runtime_values::launcher_reads_granted_classic_and_module_root_and_nested_bluets_values`
+proves bounded Value; and
+`exceptions::launcher_reports_original_classic_and_module_nested_exception_positions`
+proves original exception location. These are distinct registered tests in
+`backend/launcher/tests/out_of_process_debugger/`; the sequential workspace
+suite passed, and `cargo test -- --list` confirms the current inventory.
+Rejection classes are audited separately in C4.1.2.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C4.1.1.** Audit real-process coverage for each public debugger
-capability: pause, step, stack, scope, values, and exception.
+**Current leaf: C4.1.2.** Audit real-process stale, unauthorized, and
+over-budget debugger refusals, adding a regression for any uncovered class.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -522,7 +522,7 @@ channel with explicit owner/client grants.
 
 - [ ] **C4.1** Through launcher/core/child, test source pause, stepping, stack,
   scope, values, exception, and stale/unauthorized/over-budget rejection.
-  - [ ] **C4.1.1** One real-process test per capability: pause, step, stack, scope, values, exception.
+  - [x] **C4.1.1** One real-process test per capability: pause, step, stack, scope, values, exception. The Launcher/core/child public-socket suite already has focused cases for a paused module entry, real module step, exact original stack coordinates, checked static scope relations, bounded classic/module/nested values, and original classic/module nested exception locations. Their exact test names and acceptance boundaries are mapped in PLAN.md; the full sequential workspace run passed and the current test inventory confirms all six cases remain registered.
   - [ ] **C4.1.2** One rejection test per class: stale, unauthorized, over-budget.
 
 ### D. Close direct-page acceptance.
