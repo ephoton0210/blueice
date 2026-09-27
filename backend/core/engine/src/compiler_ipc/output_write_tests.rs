@@ -485,18 +485,21 @@ fn artifact_plan_rejects_sources_outside_the_project_aliases_and_output_collisio
     assert!(output_artifacts::plan(root, &escaped).is_err());
 
     std::fs::create_dir(project.join("nested")).unwrap();
-    let aliased_root = project.join("nested/..");
+    // Preserve the spelling under test: joining onto a Windows verbatim path
+    // can normalize away `..` before the planner receives it.
+    let separator = std::path::MAIN_SEPARATOR;
+    let aliased_root = format!("{root}{separator}nested{separator}..");
     assert_eq!(
-        output_artifacts::plan(aliased_root.to_str().unwrap(), &output)
+        output_artifacts::plan(&aliased_root, &output)
             .err()
             .unwrap()
             .kind(),
         std::io::ErrorKind::InvalidInput
     );
-    let alias = project.join("nested/../main.ts");
+    let alias = format!("{root}{separator}nested{separator}..{separator}main.ts");
     let mut aliased = output.clone();
     let (_, mut artifact) = aliased.artifacts.pop_first().unwrap();
-    artifact.module_id = alias.to_str().unwrap().to_string();
+    artifact.module_id = alias;
     aliased
         .artifacts
         .insert(artifact.module_id.clone(), artifact);
@@ -509,11 +512,7 @@ fn artifact_plan_rejects_sources_outside_the_project_aliases_and_output_collisio
     {
         let mut aliased = output.clone();
         let (_, mut artifact) = aliased.artifacts.pop_first().unwrap();
-        artifact.module_id = project
-            .join(r"nested\..\main.ts")
-            .to_str()
-            .unwrap()
-            .to_string();
+        artifact.module_id = format!(r"{root}\nested\..\main.ts");
         aliased
             .artifacts
             .insert(artifact.module_id.clone(), artifact);
