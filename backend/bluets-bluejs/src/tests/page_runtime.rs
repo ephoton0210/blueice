@@ -217,6 +217,65 @@ fn direct_page_optional_dot_read_short_circuits_null_and_undefined_receivers() {
 }
 
 #[test]
+fn direct_page_optional_dot_read_debugger_provenance_expires_on_navigation() {
+    let source = "const receiver: { value: number } | null = null; const read: number | undefined = receiver?.value; read;";
+    let read_start = source.find("const read").unwrap();
+    let read_end = read_start + source[read_start..].find(';').unwrap() + 1;
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let mut debug = DirectDebugRegistry::default();
+    let attachment = artifact
+        .attach_debug_in_page_realm(&mut runtime, 7, &origin(), &mut debug)
+        .unwrap();
+    attachment
+        .safe_point_map
+        .validate_against(runtime.program_registry(), attachment.handle)
+        .unwrap();
+    let read = attachment
+        .provenance
+        .iter()
+        .find(|entry| (entry.source.start, entry.source.end) == (read_start, read_end))
+        .expect("optional read declaration must retain original source provenance");
+    let DirectSafePointBinding::Bound(point) = read.safe_point else {
+        panic!("optional read declaration must bind a root safe point");
+    };
+    assert_eq!(point.code_unit.ordinal(), 0);
+    let mapped = attachment
+        .safe_point_map
+        .source_span_for_safe_point(0, point.bytecode_offset)
+        .expect("root safe point must map to the original optional read declaration");
+    assert_eq!(mapped.source, ENTRY);
+    assert_eq!((mapped.start_byte, mapped.end_byte), (read_start, read_end));
+    assert_eq!(
+        attachment.breakpoint_at_or_after(ENTRY, read_start),
+        DirectSafePointBinding::Bound(point)
+    );
+    assert_eq!(
+        runtime
+            .execute_program_until_debugger_pause(7, attachment.handle, point)
+            .unwrap(),
+        bluejs::BlueJsPageDebuggerExecutionState::Paused {
+            bytecode_offset: point.bytecode_offset
+        }
+    );
+    runtime.navigate(7, origin()).unwrap();
+    assert!(attachment
+        .safe_point_map
+        .validate_against(runtime.program_registry(), attachment.handle)
+        .is_err());
+    assert!(debug
+        .get(runtime.program_registry(), attachment.handle)
+        .is_err());
+    assert!(runtime.resume_debugger_execution(7).is_err());
+}
+
+#[test]
 fn direct_page_try_catches_exact_value_and_restores_outer_binding_in_finally() {
     let source = "function f(caught: number): number { let observed: number = 0; try { throw 7; } catch (caught) { if (caught === 7) { observed += 1; } } finally { if (caught === 99) { observed += 10; } } return observed; } f(99);";
     let artifact = compile_direct_script(

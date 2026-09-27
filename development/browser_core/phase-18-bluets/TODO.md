@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: I.3.1.** Verify optional-read source provenance and debugger
-generation behavior in the direct page realm.
+**Current leaf: I.3.2.** Verify optional-read contract behavior and pinned
+TypeScript oracle evidence, then run the final workspace gates.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -811,7 +811,7 @@ Keep check read-only and owner registration sealed before listeners.
   - [x] **I.2.4** Direct-runtime test without reparsing emitted JavaScript. The direct bridge lowers checked `local?.field` tokens into BlueJS `OptionalMember` AST/bytecode. Page-realm tests execute non-nullish and both `null`/`undefined` short-circuit branches, yielding `41`; a structural AST test confirms the bridge path. Optional access inside template substitution remains explicitly rejected with its original source span. BlueTS and bridge crate suites, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
 - [ ] **I.3** Verify its provenance, debugger behavior, contracts, and TypeScript
   oracle evidence before choosing another form.
-  - [ ] **I.3.1** Provenance and debugger behavior verified.
+  - [x] **I.3.1** Provenance and debugger behavior verified. A checked direct-page optional read retains its original declaration byte span and a bound root safe point; a live debugger pause resolves to that position. Navigation invalidates the old safe-point map, static debug record and paused root continuation. Bridge crate tests, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
   - [ ] **I.3.2** Contract behavior and TypeScript oracle evidence verified.
 
 ### J. Decide large features only when requested.
