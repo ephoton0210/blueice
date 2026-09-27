@@ -4203,6 +4203,10 @@ all four required process suites without a second build or redundant rerun.
 **G.2.1 formatting gate:** `cargo fmt --all -- --check` passes after the
 workspace test fix and process-suite evidence were committed.
 
+**G.2.2 Clippy gate:** `cargo clippy --workspace --all-targets -- -D warnings`
+passes after the completed workspace and formatting gates, using the existing
+shared target directory.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
