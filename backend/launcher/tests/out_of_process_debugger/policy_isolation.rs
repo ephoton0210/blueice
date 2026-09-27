@@ -109,6 +109,8 @@ fn public_tabs_cannot_borrow_another_origins_child_source_authorization() {
             document_generation: 1,
             ordinal: 0,
             kind: blueice_ipc::BlueTsScriptKind::Module,
+            policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+            source_position: None,
             outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
         }])
     );
@@ -128,6 +130,8 @@ fn public_tabs_cannot_borrow_another_origins_child_source_authorization() {
             document_generation: 1,
             ordinal: 0,
             kind: blueice_ipc::BlueTsScriptKind::Module,
+            policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+            source_position: None,
             outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Rejected {
                 category: "external BlueTS source authorization rejected the page script".into(),
             },

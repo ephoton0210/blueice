@@ -223,7 +223,8 @@ fn inline_blue_ts_scripts_execute_after_a_real_session_navigation() {
         let _ = std::io::Read::read(&mut stream, &mut request);
         let body = concat!(
             "<script type=\"application/x-blueice-typescript\">42;</script>",
-            "<script type=\"application/x-blueice-typescript-module\">43;</script>"
+            "<script type=\"application/x-blueice-typescript-module\">43;</script>",
+            "<script type=\"application/x-blueice-typescript\">const broken: number = \"wrong\";</script>"
         );
         std::io::Write::write_all(
             &mut stream,
@@ -253,9 +254,7 @@ fn inline_blue_ts_scripts_execute_after_a_real_session_navigation() {
             Some(&mut executor),
         )
         .unwrap();
-        result_sender
-            .send((executor.debug_record_count(), executor.drain_reports()))
-            .unwrap();
+        result_sender.send(executor.debug_record_count()).unwrap();
     });
     handshake(&mut client);
 
@@ -274,19 +273,41 @@ fn inline_blue_ts_scripts_execute_after_a_real_session_navigation() {
         blueice_ipc::read_server_message(&mut client).unwrap(),
         ServerMessage::FrameReady { .. }
     ));
+    blueice_ipc::write_client_message(&mut client, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    let reports = match blueice_ipc::read_server_message(&mut client).unwrap() {
+        ServerMessage::BlueTsScriptReports(reports) => reports,
+        other => panic!("expected BlueTS reports, got {other:?}"),
+    };
+    assert_eq!(reports.len(), 3);
+    assert!(reports
+        .iter()
+        .all(|report| report.policy == BlueTsScriptRuntimePolicy::Checked));
+    assert!(matches!(
+        reports[0].outcome,
+        BlueTsScriptExecutionOutcome::Executed
+    ));
+    assert!(matches!(
+        reports[1].outcome,
+        BlueTsScriptExecutionOutcome::Executed
+    ));
+    assert_eq!(reports[0].source_position, None);
+    assert_eq!(reports[1].source_position, None);
+    let position = reports[2]
+        .source_position
+        .expect("an inline compiler rejection has a verified source position");
+    assert!(position.start < position.end);
+    assert!(position.end as usize <= "const broken: number = \"wrong\";".len());
+    assert!(matches!(
+        &reports[2].outcome,
+        BlueTsScriptExecutionOutcome::Rejected { category }
+            if category == "BlueTS compilation rejected the page script"
+    ));
+    assert!(!format!("{reports:?}").contains("wrong"));
     blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
 
     handle.join().unwrap();
-    let (debug_record_count, reports) = result_receiver.recv().unwrap();
+    let debug_record_count = result_receiver.recv().unwrap();
     assert_eq!(debug_record_count, 2);
-    assert!(matches!(
-        reports.first(),
-        Some(DirectPageScriptExecutionReport::Executed { ordinal: 0, .. })
-    ));
-    assert!(matches!(
-        reports.last(),
-        Some(DirectPageScriptExecutionReport::Executed { ordinal: 1, .. })
-    ));
     let _ = std::fs::remove_dir_all(dir);
 }
 

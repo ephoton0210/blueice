@@ -2410,6 +2410,23 @@ the report. The direct executor can validate before reporting; the child
 route needs a private bounded position candidate and a second core check
 against the original inline declaration before public serialization.
 
+**E2.2.2.2 direct-page report route:** `DirectPageInlineExecutor` records its
+construction-time checked or strict-runtime policy with each BlueTS outcome.
+For a rejected inline script, it inspects only compiler or unsupported-target
+spans, requires the exact core-minted module ID for that tab, document, and
+ordinal, checks non-empty offsets within the original extracted inline UTF-8
+source at character boundaries, converts them to bounded 32-bit numbers, and
+discards the diagnostic, module ID, and source. Other failures, successful
+scripts, and every external declaration have no position. The session maps
+this private record to a typed tab-addressed `BlueTsScriptExecutionReport`
+with a fixed policy enum and optional numeric range; the existing outcome
+category stays source-free. Browser IPC advances to v2 because policy is a
+required field. A live HTTP/session query proves the public checked-policy
+and original inline range without source text; direct tests cover strict
+policy, external omission, and malformed/mismatched spans, while IPC tests
+round-trip the shape. The direct executor's tests now reside in their own
+MPL-licensed submodule so the implementation file remains easy to extend.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

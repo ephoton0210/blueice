@@ -96,14 +96,27 @@ fn real_subprocess_executes_an_opted_in_inline_bluets_profile_and_reports_source
         blueice_ipc::ServerMessage::BlueTsScriptReports(reports) => reports,
         other => panic!("expected BlueTsScriptReports, got {other:?}"),
     };
+    assert_eq!(reports[0].source_position, None);
+    assert_eq!(reports[1].source_position, None);
+    let position = reports[2]
+        .source_position
+        .expect("a compiler rejection in the original inline source has a position");
+    assert!(position.start < position.end);
+    assert!(position.end as usize <= "blueiceDocumentText(1);".len());
+    let mut without_positions = reports.clone();
+    for report in &mut without_positions {
+        report.source_position = None;
+    }
     assert_eq!(
-        reports,
+        without_positions,
         vec![
             blueice_ipc::BlueTsScriptExecutionReport {
                 tab_id: 1,
                 document_generation: 1,
                 ordinal: 0,
                 kind: blueice_ipc::BlueTsScriptKind::Classic,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
             },
             blueice_ipc::BlueTsScriptExecutionReport {
@@ -111,6 +124,8 @@ fn real_subprocess_executes_an_opted_in_inline_bluets_profile_and_reports_source
                 document_generation: 1,
                 ordinal: 1,
                 kind: blueice_ipc::BlueTsScriptKind::Module,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
             },
             blueice_ipc::BlueTsScriptExecutionReport {
@@ -118,6 +133,8 @@ fn real_subprocess_executes_an_opted_in_inline_bluets_profile_and_reports_source
                 document_generation: 1,
                 ordinal: 2,
                 kind: blueice_ipc::BlueTsScriptKind::Classic,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Rejected {
                     category: "BlueTS compilation rejected the page script".to_string(),
                 },
@@ -896,6 +913,8 @@ fn real_subprocess_keeps_opted_in_inline_bluets_reports_isolated_by_tab() {
                 document_generation: 1,
                 ordinal: 0,
                 kind: blueice_ipc::BlueTsScriptKind::Classic,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
             },
         ])
@@ -934,6 +953,8 @@ fn real_subprocess_keeps_opted_in_inline_bluets_reports_isolated_by_tab() {
                 document_generation: 1,
                 ordinal: 0,
                 kind: blueice_ipc::BlueTsScriptKind::Classic,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
             },
         ])
@@ -1058,6 +1079,8 @@ fn real_subprocess_reexecutes_opted_in_inline_bluets_for_a_replacement_document(
                     document_generation: expected_generation,
                     ordinal: 0,
                     kind: blueice_ipc::BlueTsScriptKind::Classic,
+                    policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                    source_position: None,
                     outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
                 },
             ])

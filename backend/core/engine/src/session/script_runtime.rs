@@ -15,11 +15,18 @@ pub(super) fn inline_execution_reports(
                 document_generation,
                 ordinal,
                 kind,
+                policy,
+                source_position,
             } => BlueTsScriptExecutionReport {
                 tab_id,
                 document_generation,
                 ordinal,
                 kind: inline_script_kind(kind),
+                policy: inline_runtime_policy(policy),
+                source_position: source_position.map(|position| BlueTsScriptSourcePosition {
+                    start: position.start,
+                    end: position.end,
+                }),
                 outcome: BlueTsScriptExecutionOutcome::Executed,
             },
             DirectPageScriptExecutionReport::Rejected {
@@ -27,16 +34,33 @@ pub(super) fn inline_execution_reports(
                 document_generation,
                 ordinal,
                 kind,
+                policy,
+                source_position,
                 message,
             } => BlueTsScriptExecutionReport {
                 tab_id,
                 document_generation,
                 ordinal,
                 kind: inline_script_kind(kind),
+                policy: inline_runtime_policy(policy),
+                source_position: source_position.map(|position| BlueTsScriptSourcePosition {
+                    start: position.start,
+                    end: position.end,
+                }),
                 outcome: BlueTsScriptExecutionOutcome::Rejected { category: message },
             },
         })
         .collect()
+}
+
+fn inline_runtime_policy(policy: RuntimePolicy) -> BlueTsScriptRuntimePolicy {
+    match policy {
+        RuntimePolicy::Checked => BlueTsScriptRuntimePolicy::Checked,
+        RuntimePolicy::StrictRuntime => BlueTsScriptRuntimePolicy::StrictRuntime,
+        RuntimePolicy::TranspileOnly => {
+            unreachable!("the direct page executor rejects transpile-only at construction")
+        }
+    }
 }
 
 pub(super) fn inline_script_kind(kind: DirectPageScriptKind) -> BlueTsScriptKind {
@@ -115,6 +139,8 @@ pub(super) fn child_blue_ts_execution_reports(
                 document_generation,
                 ordinal,
                 kind: child_blue_ts_kind(kind),
+                policy: BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: BlueTsScriptExecutionOutcome::Executed,
             },
             BlueTsPageExecutionReport::Rejected {
@@ -128,6 +154,8 @@ pub(super) fn child_blue_ts_execution_reports(
                 document_generation,
                 ordinal,
                 kind: child_blue_ts_kind(kind),
+                policy: BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: BlueTsScriptExecutionOutcome::Rejected {
                     category: category.to_string(),
                 },
@@ -202,4 +230,37 @@ pub(super) fn synchronize_inline_page_executor(
             .map_err(|error| io::Error::other(format!("inline page execution failed: {error}")))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::script::inline_runner::InlineBlueTsSourcePosition;
+
+    #[test]
+    fn strict_inline_policy_and_verified_position_cross_the_public_report_mapping() {
+        let reports = inline_execution_reports(vec![DirectPageScriptExecutionReport::Rejected {
+            tab_id: 2,
+            document_generation: 3,
+            ordinal: 4,
+            kind: DirectPageScriptKind::Classic,
+            policy: RuntimePolicy::StrictRuntime,
+            source_position: Some(InlineBlueTsSourcePosition { start: 5, end: 8 }),
+            message: "BlueTS compilation rejected the page script".into(),
+        }]);
+        assert_eq!(
+            reports,
+            vec![BlueTsScriptExecutionReport {
+                tab_id: 2,
+                document_generation: 3,
+                ordinal: 4,
+                kind: BlueTsScriptKind::Classic,
+                policy: BlueTsScriptRuntimePolicy::StrictRuntime,
+                source_position: Some(BlueTsScriptSourcePosition { start: 5, end: 8 }),
+                outcome: BlueTsScriptExecutionOutcome::Rejected {
+                    category: "BlueTS compilation rejected the page script".into(),
+                },
+            }]
+        );
+    }
 }

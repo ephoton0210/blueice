@@ -567,7 +567,7 @@ fn require_no_arguments(
     }
 }
 
-fn inline_module_id(tab_id: TabId, document_generation: u64, ordinal: u32) -> String {
+pub(super) fn inline_module_id(tab_id: TabId, document_generation: u64, ordinal: u32) -> String {
     format!(
         "blueice://page/tab-{}/document-{document_generation}/inline-{ordinal}.ts",
         tab_id.as_u64()

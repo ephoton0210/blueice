@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E2.2.2.2.** Add policy and verified inline positions to
-direct-page reports without exposing source or private diagnostics.
+**Current leaf: E2.2.2.3.** Carry bounded policy and verified inline positions
+through the supervised child to the public BlueTS report.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -613,7 +613,7 @@ channel with explicit owner/client grants.
       - [x] **E2.2.1.3.6** Recount all live-page retained cache owners and prove the combined tab charges and lifecycle release through real core/child processes; document the page compiler/primitive-plan zero-retention paths. Checked direct and supervised queries now sum distinct exact-generation owners while excluding VM bytecode/heap and transient validation work. A launcher-supervised two-tab HTTP/BlueTS regression proves source, child static/deferred, and core debugger charges together, then execution, independent navigation/close, stale refusal, and failed admission. Direct tests prove metadata and source charges and release; PLAN.md records the stateless compiler and short-lived primitive-plan evidence. This completes E2.2.1.3 and E2.2.1.
   - [ ] **E2.2.2** Report policy and source position without protected content. Fixed policy labels and optional verified original inline byte ranges must accompany source-free outcomes; an unavailable or protected external position is omitted.
     - [x] **E2.2.2.1** Decide the report audience, allowed policy and position provenance, and protected-data exclusions. The existing tab-addressed BlueTS report seam is the intended output: report only core-selected `checked`/`strict-runtime` policy and an optional original inline byte range after exact module and length validation. Current precompile host-snapshot boundaries have no call-site span, and external graph positions remain private. No URL, module ID, source, value, diagnostic prose, failure path, expected/observed type, or contract plan may enter the report. PLAN.md records this decision and the required direct/child gates.
-    - [ ] **E2.2.2.2** Add fixed runtime-policy labels and independently verified original inline byte ranges to direct-page BlueTS reports at the existing tab-addressed public boundary. Prove checked/strict policy, exact document and declaration binding, unavailable-position omission, and source-free rejection on malformed or external diagnostic spans.
+    - [x] **E2.2.2.2** Add fixed runtime-policy labels and independently verified original inline byte ranges to direct-page BlueTS reports at the existing tab-addressed public boundary. The direct executor retains only core-selected checked/strict policy and optional numeric original inline offsets after exact module, UTF-8 boundary, and length checks; external and precompile host-boundary failures omit position. Frontend IPC v2 requires the policy field and carries the optional range. Direct, real HTTP/session IPC, and wire tests prove checked/strict labels, valid and malformed/stale module candidates, source-free categories, and omission for external denials. Inline-runner tests moved to a submodule, keeping its owner file under 1,300 lines.
     - [ ] **E2.2.2.3** Carry the same bounded policy and inline-position shape through the private child protocol to core and the BlueTS public report seam. Bump private protocol versions as required, validate child positions against core-owned inline source length and identity, and prove real child/core tab isolation, stale refusal, and no protected content in external-source failures.
 - [ ] **E2.3** Test valid, malformed, cyclic, deep, oversized, and exhausting
   values at a live boundary.

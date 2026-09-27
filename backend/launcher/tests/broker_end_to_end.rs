@@ -550,6 +550,8 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
                 document_generation: 1,
                 ordinal: 1,
                 kind: blueice_ipc::BlueTsScriptKind::Classic,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
             },
             blueice_ipc::BlueTsScriptExecutionReport {
@@ -557,6 +559,8 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
                 document_generation: 1,
                 ordinal: 5,
                 kind: blueice_ipc::BlueTsScriptKind::Module,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
             },
             blueice_ipc::BlueTsScriptExecutionReport {
@@ -564,6 +568,8 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
                 document_generation: 1,
                 ordinal: 6,
                 kind: blueice_ipc::BlueTsScriptKind::Classic,
+                policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+                source_position: None,
                 outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Rejected {
                     category: "BlueTS compilation rejected the page script".to_string(),
                 },
@@ -733,6 +739,8 @@ fn owner_http_manifest_admits_closed_page_graphs_and_rejects_unlisted_or_tampere
             document_generation: 1,
             ordinal: 1,
             kind: blueice_ipc::BlueTsScriptKind::Module,
+            policy: blueice_ipc::BlueTsScriptRuntimePolicy::Checked,
+            source_position: None,
             outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
         }])
     );
