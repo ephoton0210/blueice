@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: F1.1.3.** Grant output writes separately from the sealed
-read-only catalog and its query receipts.
+**Current leaf: F2.1.1.** Bind every registered-project result to its exact
+project generation and compiler fingerprint.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -665,17 +665,18 @@ Keep check read-only and owner registration sealed before listeners.
 
 #### F1. Authorize projects independently of query receipts.
 
-- [ ] **F1.1** Pin canonical input/config/output roots and a closed source graph;
+- [x] **F1.1** Pin canonical input/config/output roots and a closed source graph;
   client requests cannot add paths, resolver edges, options, or plugins.
-  Partial: the owner-only startup catalog rejects lexical path aliases,
+  Complete: the owner-only startup catalog rejects lexical path aliases,
   config/entry/source identities outside the declared project root, and
   output roots colliding with any catalog input or another output. Absolute
-  owner paths must now resolve to existing canonical filesystem objects of
-  the expected kind before registration; virtual bundled-source identities
-  remain read-only. Output-write authority remains open.
+  owner paths must resolve to existing canonical filesystem objects of the
+  expected kind before registration. A separate, default-denied owner grant
+  is retained only for physical projects; virtual bundled-source catalogs
+  remain read-only, and public query receipts still grant no writes.
   - [x] **F1.1.1** Physical filesystem canonicalization of input, config, and output roots. The launcher file and core bootstrap both validate canonical absolute project/config/source/output identities before listeners; missing paths, wrong file types, mixed path kinds, and symlink aliases fail closed. A real launcher/core compiler query accepts a canonical physical catalog and leaves output untouched. Validation grants no writes; any future write path must recheck its target at use time.
   - [x] **F1.1.2** Reject client-supplied paths, resolver edges, options, and plugins. The compiler IPC request decoder and every typed compiler MCP argument shape now reject unknown fields, including nested project/generation/cursor fields. Tests prove attempts to inject path, resolver, options, or plugin data fail while the same real MCP session can still run a valid read-only check. No request can alter the owner graph or catalog options.
-  - [ ] **F1.1.3** Output-write authority as a separate owner grant.
+  - [x] **F1.1.3** Output-write authority as a separate owner grant. An optional owner-bootstrap `grant_output_write` field defaults to false and is valid only for canonical physical inputs and an existing canonical output directory. Core preflights that grant before registration and retains it in a separate sealed-session map keyed by core project ID, not a compiler query receipt. A real launcher/core query accepts the granted project yet leaves output empty; core tests prove default denial and alias rejection. Future writes must still be capability-gated and revalidate targets at use time.
 - [x] **F1.2** Admit only owner-exposed projects to each client inventory; deny a
   guessed or private project before reaching the compiler cache. Even a
   pre-populated core service now defaults to a private inventory until the

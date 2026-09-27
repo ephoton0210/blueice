@@ -133,6 +133,7 @@ fn owner_catalog_file_checks_physical_roots_before_launch() {
                 text: "export const answer = 42;".into(),
             }],
             expose_to_compiler_ipc: true,
+            grant_output_write: true,
             resolutions: Vec::new(),
             options: CompilerCatalogOptions::default(),
         }],

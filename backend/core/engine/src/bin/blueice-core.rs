@@ -248,6 +248,8 @@ fn register_owner_compiler_catalog(
 
     bootstrap.validate().map_err(|error| error.to_string())?;
     for project in bootstrap.projects {
+        let expose_to_compiler_ipc = project.expose_to_compiler_ipc;
+        let grant_output_write = project.grant_output_write;
         let loader = AuthorizedModuleLoader::new(
             project
                 .modules
@@ -292,12 +294,21 @@ fn register_owner_compiler_catalog(
             loader,
             compiler_options,
         };
-        (if project.expose_to_compiler_ipc {
-            catalog.register_startup_project(registration)
-        } else {
-            catalog.register_startup_project_private(registration)
-        })
-        .map_err(|error| format!("failed to register owner compiler project: {error}"))?;
+        let result = match (expose_to_compiler_ipc, grant_output_write) {
+            (true, true) => catalog
+                .register_startup_project_with_output_write_grant(registration)
+                .map_err(|error| error.to_string()),
+            (false, true) => catalog
+                .register_startup_project_private_with_output_write_grant(registration)
+                .map_err(|error| error.to_string()),
+            (true, false) => catalog
+                .register_startup_project(registration)
+                .map_err(|error| error.to_string()),
+            (false, false) => catalog
+                .register_startup_project_private(registration)
+                .map_err(|error| error.to_string()),
+        };
+        result.map_err(|error| format!("failed to register owner compiler project: {error}"))?;
     }
     Ok(())
 }

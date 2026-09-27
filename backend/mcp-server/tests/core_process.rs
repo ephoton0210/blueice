@@ -446,6 +446,7 @@ async fn owner_private_compiler_projects_never_enter_real_mcp_client_inventories
                 text: "export const answer: number = 42;".to_string(),
             }],
             expose_to_compiler_ipc: exposed,
+            grant_output_write: false,
             resolutions: Vec::new(),
             options: CompilerCatalogOptions::default(),
         }

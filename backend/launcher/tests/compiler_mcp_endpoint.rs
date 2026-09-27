@@ -182,6 +182,7 @@ fn launcher_combines_owner_compiler_catalog_and_page_http_policy_in_one_private_
                 text: "export const answer: number = 42;".into(),
             }],
             expose_to_compiler_ipc: true,
+            grant_output_write: false,
             resolutions: Vec::new(),
             options: CompilerCatalogOptions::default(),
         }],
@@ -313,6 +314,7 @@ fn launcher_bootstraps_two_owner_selected_projects_without_public_registration()
                 text: format!("export const answer: number = {answer};"),
             }],
             expose_to_compiler_ipc: exposed,
+            grant_output_write: false,
             resolutions: Vec::new(),
             options: CompilerCatalogOptions::default(),
         }
@@ -431,6 +433,7 @@ fn launcher_registers_a_canonical_physical_catalog_before_compiler_queries() {
                 text: source.to_string(),
             }],
             expose_to_compiler_ipc: true,
+            grant_output_write: true,
             resolutions: Vec::new(),
             options: CompilerCatalogOptions::default(),
         }],

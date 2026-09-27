@@ -3979,6 +3979,18 @@ data, never a route to a filesystem or compiler option. A real core/MCP
 regression injects all four field classes and then checks the same inventoried
 project successfully with the fixed query shape.
 
+**F1.1.3 owner output grant:** `canonical_output_root` remains an identity in
+every registration, without implying write authority. The optional owner
+bootstrap `grant_output_write` flag defaults to false, requires a physical
+catalog, and is validated with the complete physical input/output graph.
+During core startup, an explicit grant path preflights the existing canonical
+files and output directory before mutating the registered-project catalog.
+The grant lives separately in the sealed core session under a core-owned
+project ID; compiler IPC and MCP still expose only the unchanged query-only
+manifest and project receipts. A granted catalog check creates no output.
+Actual build publication remains for F2.2 and F3.2, which must verify the
+grant and revalidate the filesystem target at the time of every write.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

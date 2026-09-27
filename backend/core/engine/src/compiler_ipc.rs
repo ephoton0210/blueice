@@ -41,6 +41,7 @@ use blueice_ipc::compiler::{
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::io;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
 /// A response budget smaller than the protocol's one-mebibyte transport cap.
@@ -237,7 +238,107 @@ fn compiler_request_project_id(request: &CompilerRequest) -> Option<u64> {
 pub struct CoreCompilerProjectCatalog {
     adapter: CompilerServiceIpcAdapter,
     registered_projects: Vec<CompilerProject>,
+    output_write_grants: BTreeMap<RegisteredProjectId, OwnerOutputWriteGrant>,
 }
+
+/// An owner-only marker bound to an existing canonical physical output root.
+/// Possessing a root identity in a project registration does not create this
+/// grant. No compiler request or MCP tool can construct or inspect it.
+#[derive(Debug)]
+pub struct OwnerOutputWriteGrant {
+    canonical_root: PathBuf,
+}
+
+impl OwnerOutputWriteGrant {
+    /// The pinned root for a future owner-authorized output transaction. A
+    /// writer must revalidate the filesystem object before each use because
+    /// the directory may be replaced after startup.
+    pub fn canonical_root(&self) -> &Path {
+        &self.canonical_root
+    }
+
+    fn for_registration(registration: &RegisteredProjectRegistration) -> io::Result<Self> {
+        fn canonical_existing_path(identity: &str, directory: bool) -> io::Result<PathBuf> {
+            let path = Path::new(identity);
+            if !path.is_absolute() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "output-write grant requires physical project paths",
+                ));
+            }
+            let canonical = std::fs::canonicalize(path)?;
+            let metadata = std::fs::metadata(&canonical)?;
+            if canonical != path
+                || (directory && !metadata.is_dir())
+                || (!directory && !metadata.is_file())
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "output-write grant requires existing canonical roots and sources",
+                ));
+            }
+            Ok(canonical)
+        }
+
+        let project_root = canonical_existing_path(&registration.canonical_project_root, true)?;
+        let config = canonical_existing_path(&registration.canonical_config_root, false)?;
+        let entry = canonical_existing_path(&registration.entry_module, false)?;
+        if !config.starts_with(&project_root) || !entry.starts_with(&project_root) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "output-write grant input escapes its project root",
+            ));
+        }
+        let mut inputs = vec![config, entry];
+        for (module_id, _) in registration.loader.authorized_modules() {
+            let module = canonical_existing_path(module_id, false)?;
+            if !module.starts_with(&project_root) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "output-write grant input escapes its project root",
+                ));
+            }
+            inputs.push(module);
+        }
+        for ambient in &registration.compiler_options.ambient_declaration_modules {
+            inputs.push(canonical_existing_path(&ambient.id, false)?);
+        }
+        let canonical_root = canonical_existing_path(&registration.canonical_output_root, true)?;
+        if inputs
+            .iter()
+            .any(|input| input.starts_with(&canonical_root))
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "output-write grant root overlaps an input",
+            ));
+        }
+        Ok(Self { canonical_root })
+    }
+}
+
+/// Startup grant failure. Validation happens before registration, so a bad
+/// physical root cannot leave a partially registered project behind.
+#[derive(Debug)]
+pub enum OwnerOutputWriteGrantError {
+    InvalidPhysicalRoot(io::Error),
+    Registration(CompilerServiceError),
+}
+
+impl fmt::Display for OwnerOutputWriteGrantError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidPhysicalRoot(error) => {
+                write!(formatter, "invalid output-write grant: {error}")
+            }
+            Self::Registration(error) => {
+                write!(formatter, "invalid compiler registration: {error}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for OwnerOutputWriteGrantError {}
 
 impl Default for CoreCompilerProjectCatalog {
     fn default() -> Self {
@@ -265,6 +366,7 @@ impl CoreCompilerProjectCatalog {
         Ok(Self {
             adapter: CompilerServiceIpcAdapter::new(service, limits)?,
             registered_projects,
+            output_write_grants: BTreeMap::new(),
         })
     }
 
@@ -293,6 +395,41 @@ impl CoreCompilerProjectCatalog {
         Ok(project)
     }
 
+    /// Registers one owner-selected project with a separate output-write
+    /// grant. This is never called by the query channel; the exact physical
+    /// inputs and output root are checked before registration is mutated.
+    pub fn register_startup_project_with_output_write_grant(
+        &mut self,
+        registration: RegisteredProjectRegistration,
+    ) -> Result<CompilerProject, OwnerOutputWriteGrantError> {
+        let grant = OwnerOutputWriteGrant::for_registration(&registration)
+            .map_err(OwnerOutputWriteGrantError::InvalidPhysicalRoot)?;
+        let project = self
+            .register_startup_project(registration)
+            .map_err(OwnerOutputWriteGrantError::Registration)?;
+        let id = RegisteredProjectId::from_wire(project.id)
+            .expect("a registered core project always has a valid ID");
+        self.output_write_grants.insert(id, grant);
+        Ok(project)
+    }
+
+    /// The same owner grant may be retained for a private project, without
+    /// exposing that project's ID to any compiler query stream.
+    pub fn register_startup_project_private_with_output_write_grant(
+        &mut self,
+        registration: RegisteredProjectRegistration,
+    ) -> Result<CompilerProject, OwnerOutputWriteGrantError> {
+        let grant = OwnerOutputWriteGrant::for_registration(&registration)
+            .map_err(OwnerOutputWriteGrantError::InvalidPhysicalRoot)?;
+        let project = self
+            .register_startup_project_private(registration)
+            .map_err(OwnerOutputWriteGrantError::Registration)?;
+        let id = RegisteredProjectId::from_wire(project.id)
+            .expect("a registered core project always has a valid ID");
+        self.output_write_grants.insert(id, grant);
+        Ok(project)
+    }
+
     /// Returns how many registrations the trusted startup owner admitted.
     /// It is intentionally a count, not a remote project enumeration API.
     pub fn registered_project_count(&self) -> usize {
@@ -306,6 +443,7 @@ impl CoreCompilerProjectCatalog {
         CoreCompilerServiceSession {
             adapter: self.adapter,
             registered_project_count: self.registered_projects.len(),
+            output_write_grants: self.output_write_grants,
         }
     }
 }
@@ -317,6 +455,7 @@ impl CoreCompilerProjectCatalog {
 pub struct CoreCompilerServiceSession {
     adapter: CompilerServiceIpcAdapter,
     registered_project_count: usize,
+    output_write_grants: BTreeMap<RegisteredProjectId, OwnerOutputWriteGrant>,
 }
 
 impl CoreCompilerServiceSession {
@@ -332,6 +471,15 @@ impl CoreCompilerServiceSession {
     /// through its inventoried opaque handle and `DescribeProject` query.
     pub fn registered_project_count(&self) -> usize {
         self.registered_project_count
+    }
+
+    /// Trusted core code can inspect a separately granted output root. A
+    /// project receipt from the query listener has no access to this method.
+    pub fn output_write_grant(
+        &self,
+        project_id: RegisteredProjectId,
+    ) -> Option<&OwnerOutputWriteGrant> {
+        self.output_write_grants.get(&project_id)
     }
 }
 
@@ -959,5 +1107,7 @@ impl CompilerServiceIpcRequestReceiver {
 
 mod adapter;
 
+#[cfg(test)]
+mod output_write_tests;
 #[cfg(test)]
 mod tests;

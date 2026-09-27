@@ -60,6 +60,11 @@ pub struct CompilerCatalogProject {
     /// its opaque ID or use a guessed ID to query it.
     #[serde(default)]
     pub expose_to_compiler_ipc: bool,
+    /// A separate owner grant for a future output transaction. The output
+    /// root identity alone never grants writes; virtual catalogs cannot hold
+    /// this grant. Compiler queries remain read-only even when it is set.
+    #[serde(default)]
+    pub grant_output_write: bool,
     #[serde(default)]
     pub resolutions: Vec<CompilerCatalogResolution>,
     #[serde(default)]
@@ -391,9 +396,18 @@ fn validate_project_filesystem(project: &CompilerCatalogProject) -> io::Result<(
         for module in &project.options.ambient_declaration_modules {
             if Path::new(&module.canonical_id).is_absolute() {
                 validate_existing_path(&module.canonical_id, false)?;
+            } else if project.grant_output_write {
+                return Err(invalid(
+                    "output-write grant requires physical ambient declarations",
+                ));
             }
         }
     } else {
+        if project.grant_output_write {
+            return Err(invalid(
+                "virtual compiler catalog cannot grant output writes",
+            ));
+        }
         let Some((scheme, _)) = project.canonical_project_root.split_once("://") else {
             return Err(invalid(
                 "compiler catalog project root is not absolute or virtual",
@@ -505,6 +519,7 @@ mod tests {
                     text: "export const value: number = 42;".to_string(),
                 }],
                 expose_to_compiler_ipc: false,
+                grant_output_write: false,
                 resolutions: Vec::new(),
                 options: CompilerCatalogOptions::default(),
             }],
@@ -530,10 +545,15 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("expose_to_compiler_ipc");
+        value["projects"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("grant_output_write");
         let decoded =
             CompilerCatalogBootstrap::from_json_slice(&serde_json::to_vec(&value).unwrap())
                 .unwrap();
         assert!(!decoded.projects[0].expose_to_compiler_ipc);
+        assert!(!decoded.projects[0].grant_output_write);
     }
 
     #[test]
@@ -673,6 +693,20 @@ mod tests {
         let mut file_as_output = fixture.catalog.clone();
         file_as_output.projects[0].canonical_output_root = path_text(&output_file);
         assert!(file_as_output.validate().is_err());
+
+        let mut owner_file = serde_json::to_value(&fixture.catalog).unwrap();
+        owner_file["projects"][0]["grant_output_write"] = serde_json::json!(true);
+        assert!(CompilerCatalogBootstrap::from_json_slice(
+            &serde_json::to_vec(&owner_file).unwrap()
+        )
+        .is_ok());
+
+        let mut virtual_catalog = serde_json::to_value(fixture_catalog()).unwrap();
+        virtual_catalog["projects"][0]["grant_output_write"] = serde_json::json!(true);
+        assert!(CompilerCatalogBootstrap::from_json_slice(
+            &serde_json::to_vec(&virtual_catalog).unwrap()
+        )
+        .is_err());
     }
 
     #[cfg(unix)]
