@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: G.3.2.2.4.** Rerun CI on the repaired commit and require
-passing coverage thresholds and platform build/test jobs.
+**Current leaf: G.3.2.2.4.4.2.2.2.2.** Rerun CI after the Windows BlueTSC CLI
+enum-size fix and require passing coverage thresholds and platform jobs.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -760,6 +760,8 @@ Keep check read-only and owner registration sealed before listeners.
             - [ ] **G.3.2.2.4.4.2.2** Close the Windows all-target Clippy blocker, rerun CI after the linked HTTP fixture and physical catalog repairs, then record passing coverage and every applicable platform job.
               - [x] **G.3.2.2.4.4.2.2.1** Scope the raw-node script handle helper to Unix. The Windows Server 2022 x86_64 job in [CI run 36333351838](https://github.com/ephoton0210/blueice/actions/runs/36333351838) passed its workspace tests, then failed all-target Clippy with `dead_code` because `Page::script_handle_for_raw_node` is called only by the Unix-only `javascript_child` module. The method now carries the same `#[cfg(unix)]` boundary as its caller; no warning is suppressed. Local workspace all-target Clippy with `-D warnings`, rustfmt, and diff whitespace checks pass in the shared target. Windows confirmation remains G.3.2.2.4.4.2.2.2.
               - [ ] **G.3.2.2.4.4.2.2.2** Rerun CI after the Windows Clippy scope fix and require passing workspace and independent BlueJS coverage thresholds and all platform build/test/lint jobs.
+                - [x] **G.3.2.2.4.4.2.2.2.1** Reduce the BlueTSC CLI input enum's Windows variant-size gap. [CI run 36337948524](https://github.com/ephoton0210/blueice/actions/runs/36337948524) passed Windows Server 2022 x86_64 workspace tests and Node differential matrices, then all-target Clippy reported `large_enum_variant` on the `Input::Entry` variant. The entry's `CompilerOptions` is now boxed only while held by the parser enum and moved back into the resolved invocation, retaining CLI behavior without suppressing the lint. All seven `cli` and 18 `coverage_bluets_cli` real-process tests, workspace all-target Clippy with `-D warnings`, rustfmt, and diff whitespace checks pass in the shared target. Windows confirmation remains G.3.2.2.4.4.2.2.2.2.
+                - [ ] **G.3.2.2.4.4.2.2.2.2** Rerun CI after boxing BlueTSC CLI options and require passing workspace and independent BlueJS coverage thresholds and every applicable platform build/test/lint job.
   - [ ] **G.3.3** No ignored required test or suppressed warning substitutes for evidence.
 
 ## P2 — compatibility after the page gate

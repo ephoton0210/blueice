@@ -40,7 +40,7 @@ enum Input {
         entry: PathBuf,
         project_root: Option<PathBuf>,
         out_dir: Option<PathBuf>,
-        options: CompilerOptions,
+        options: Box<CompilerOptions>,
     },
     Config(PathBuf),
 }
@@ -249,7 +249,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             entry,
             project_root,
             out_dir,
-            options,
+            options: Box::new(options),
         },
     })
 }
@@ -487,7 +487,7 @@ fn resolve_invocation(input: Input) -> Result<Invocation, String> {
             project_root,
             out_dir,
             options,
-        } => resolve_explicit_invocation(entry, project_root, out_dir, options),
+        } => resolve_explicit_invocation(entry, project_root, out_dir, *options),
         Input::Config(path) => resolve_config_invocation(path),
     }
 }
