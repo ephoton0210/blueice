@@ -34,6 +34,7 @@ use super::{
     },
     BlueJsPageScriptKind, CombinedPageScriptLanguage,
 };
+use crate::TabId;
 use blueice_bluejs::{parse_module as parse_javascript_module, ModuleType};
 use blueice_bluets::{
     parse_module as parse_bluets_module, AuthorizedModule, AuthorizedModuleLoader,
@@ -44,6 +45,9 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::time::Duration;
+
+mod verified_cache;
+use verified_cache::{ResourceCacheKey, VerifiedResourceCache, MAX_VERIFIED_SOURCE_CACHE_ENTRIES};
 
 /// Hard ceiling for owner-selected resource-manifest records.  The owner may
 /// choose tighter limits but cannot accidentally make this first authority an
@@ -58,7 +62,7 @@ const MAX_RESOURCE_URL_BYTES: usize = 2048;
 /// core-owned authorizer. Graphs copied to an executor have separate budgets.
 const MAX_VERIFIED_SOURCE_CACHE_BYTES: usize = 4 * 1024 * 1024;
 const FETCH_TIMEOUT: Duration = Duration::from_secs(5);
-const AUTHORIZER_VERSION: &str = "core-page-http-resource-authorizer-v2";
+const AUTHORIZER_VERSION: &str = "core-page-http-resource-authorizer-v3";
 
 /// The only named HTTP page-script policy that the reference core can select
 /// during startup. The name carries no URL, manifest, resolver, path, or
@@ -216,7 +220,7 @@ impl HttpScriptResourcePolicy {
     ) -> Result<Self, HttpScriptResourcePolicyError> {
         validate_limits(&limits)?;
         let fingerprint_input = format!(
-            "{AUTHORIZER_VERSION}|{}|{}|{}|{}|{}|{}|{}",
+            "{AUTHORIZER_VERSION}|{}|{}|{}|{}|{}|{}|{}|{}",
             origin_rule.fingerprint_component(),
             integrity_manifest.fingerprint_component(),
             limits.max_modules_per_graph,
@@ -224,6 +228,7 @@ impl HttpScriptResourcePolicy {
             limits.max_module_source_bytes,
             limits.max_graph_source_bytes,
             MAX_VERIFIED_SOURCE_CACHE_BYTES,
+            MAX_VERIFIED_SOURCE_CACHE_ENTRIES,
         );
         Ok(Self {
             origin_rule,
@@ -248,9 +253,9 @@ impl HttpScriptResourcePolicy {
 ///
 /// Its only mutable state is a private cache of already integrity-checked,
 /// immutable source bytes. Cache keys include the canonical URL, expected
-/// SHA-256, and language MIME lane, which makes cache reuse deterministic and
-/// prevents an accepted JavaScript response from being reused as BlueTS (or
-/// vice versa). The cache has no public read API. It implements both the
+/// SHA-256, language MIME lane, and exact tab/document owner. This prevents
+/// an accepted JavaScript response from being reused as BlueTS (or vice
+/// versa). The cache has no public read API. It implements both the
 /// in-process and out-of-process authorizer traits; both adapters call the
 /// same graph builder and therefore cannot drift in fetch, integrity, URL,
 /// static-edge, or resource-limit policy.
@@ -376,6 +381,28 @@ impl OutOfProcessPageScriptSourceAuthorizer for CoreHttpPageScriptFixtureAuthori
             .expect("installed fixture authorizer must remain present")
             .authorize(request)
     }
+
+    fn release_document(&self, tab_id: TabId, document_generation: u64) {
+        for authorizer in self.authorizers_by_document_origin.borrow().values() {
+            authorizer.release_document_cache(tab_id, document_generation);
+        }
+    }
+
+    fn retained_source_payload_bytes(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Option<usize> {
+        self.authorizers_by_document_origin
+            .borrow()
+            .values()
+            .try_fold(0usize, |total, authorizer| {
+                total.checked_add(
+                    authorizer
+                        .retained_document_source_payload_bytes(tab_id, document_generation)?,
+                )
+            })
+    }
 }
 
 impl HttpOutOfProcessPageScriptSourceAuthorizer {
@@ -393,6 +420,22 @@ impl HttpOutOfProcessPageScriptSourceAuthorizer {
         self.policy.resolver_fingerprint()
     }
 
+    fn release_document_cache(&self, tab_id: TabId, document_generation: u64) {
+        self.cache
+            .borrow_mut()
+            .release_document(tab_id, document_generation);
+    }
+
+    fn retained_document_source_payload_bytes(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Option<usize> {
+        self.cache
+            .borrow()
+            .retained_source_payload_bytes(tab_id, document_generation)
+    }
+
     fn authorize_graph(
         &self,
         request: &OutOfProcessPageScriptSourceRequest,
@@ -403,7 +446,13 @@ impl HttpOutOfProcessPageScriptSourceAuthorizer {
         self.ensure_permitted_resource(&document_origin, &entry)?;
 
         let language = GraphLanguage::from_request(request.language);
-        let mut builder = AuthorizedGraphBuilder::new(self, document_origin, language);
+        let mut builder = AuthorizedGraphBuilder::new(
+            self,
+            request.tab_id,
+            request.document_generation,
+            document_origin,
+            language,
+        );
         builder.visit(entry.clone(), 1)?;
         let (modules, resolutions) = builder.finish();
         match language {
@@ -485,6 +534,8 @@ impl HttpOutOfProcessPageScriptSourceAuthorizer {
 
     fn fetch_resource(
         &self,
+        tab_id: TabId,
+        document_generation: u64,
         document_origin: &str,
         resource_url: &str,
         language: GraphLanguage,
@@ -496,6 +547,8 @@ impl HttpOutOfProcessPageScriptSourceAuthorizer {
             .integrity_for(resource_url)
             .expect("permission check requires a manifest integrity record");
         let cache_key = ResourceCacheKey {
+            tab_id,
+            document_generation,
             canonical_url: resource_url.to_string(),
             expected_integrity: integrity.to_string(),
             mime_lane: language.mime_lane(),
@@ -582,6 +635,18 @@ impl OutOfProcessPageScriptSourceAuthorizer for HttpOutOfProcessPageScriptSource
         self.authorize_graph(request)
             .map_err(|error| OutOfProcessPageScriptSourceAuthorizationError::new(error.to_string()))
     }
+
+    fn release_document(&self, tab_id: TabId, document_generation: u64) {
+        self.release_document_cache(tab_id, document_generation);
+    }
+
+    fn retained_source_payload_bytes(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Option<usize> {
+        self.retained_document_source_payload_bytes(tab_id, document_generation)
+    }
 }
 
 /// Reuses the exact immutable HTTP resource policy for the bounded
@@ -612,79 +677,17 @@ impl PageScriptSourceAuthorizer for HttpOutOfProcessPageScriptSourceAuthorizer {
             Err(error) => Err(PageScriptSourceAuthorizationError::new(error.to_string())),
         }
     }
-}
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct ResourceCacheKey {
-    canonical_url: String,
-    expected_integrity: String,
-    mime_lane: &'static str,
-}
-
-#[derive(Debug, Clone)]
-struct CachedResource {
-    source: String,
-    last_used: u64,
-}
-
-/// A byte-bounded, deterministic private cache. Eviction never changes the
-/// authorization result: a later fetch repeats the same response and SHA-256
-/// checks before admitting the source. Only retained source payload is
-/// charged; allocator, key, graph, and VM memory have separate accounting.
-struct VerifiedResourceCache {
-    entries: BTreeMap<ResourceCacheKey, CachedResource>,
-    source_bytes: usize,
-    max_source_bytes: usize,
-    clock: u64,
-}
-
-impl VerifiedResourceCache {
-    fn new(max_source_bytes: usize) -> Self {
-        Self {
-            entries: BTreeMap::new(),
-            source_bytes: 0,
-            max_source_bytes,
-            clock: 0,
-        }
+    fn release_document(&mut self, tab_id: TabId, document_generation: u64) {
+        self.release_document_cache(tab_id, document_generation);
     }
 
-    fn get(&mut self, key: &ResourceCacheKey) -> Option<String> {
-        let entry = self.entries.get_mut(key)?;
-        self.clock = self.clock.saturating_add(1);
-        entry.last_used = self.clock;
-        Some(entry.source.clone())
-    }
-
-    fn insert_verified(&mut self, key: ResourceCacheKey, source: String) {
-        let bytes = source.len();
-        if bytes > self.max_source_bytes {
-            return;
-        }
-        if let Some(old) = self.entries.remove(&key) {
-            self.source_bytes -= old.source.len();
-        }
-        while self.source_bytes + bytes > self.max_source_bytes {
-            let victim = self
-                .entries
-                .iter()
-                .min_by_key(|(key, resource)| (resource.last_used, *key))
-                .map(|(key, _)| key.clone())
-                .expect("a nonempty cache must have a victim above its source budget");
-            let evicted = self
-                .entries
-                .remove(&victim)
-                .expect("selected cache victim exists");
-            self.source_bytes -= evicted.source.len();
-        }
-        self.clock = self.clock.saturating_add(1);
-        self.source_bytes += bytes;
-        self.entries.insert(
-            key,
-            CachedResource {
-                source,
-                last_used: self.clock,
-            },
-        );
+    fn retained_source_payload_bytes(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Option<usize> {
+        self.retained_document_source_payload_bytes(tab_id, document_generation)
     }
 }
 
@@ -739,6 +742,8 @@ impl GraphLanguage {
 
 struct AuthorizedGraphBuilder<'a> {
     authorizer: &'a HttpOutOfProcessPageScriptSourceAuthorizer,
+    tab_id: TabId,
+    document_generation: u64,
     document_origin: String,
     language: GraphLanguage,
     modules: BTreeMap<String, String>,
@@ -750,11 +755,15 @@ struct AuthorizedGraphBuilder<'a> {
 impl<'a> AuthorizedGraphBuilder<'a> {
     fn new(
         authorizer: &'a HttpOutOfProcessPageScriptSourceAuthorizer,
+        tab_id: TabId,
+        document_generation: u64,
         document_origin: String,
         language: GraphLanguage,
     ) -> Self {
         Self {
             authorizer,
+            tab_id,
+            document_generation,
             document_origin,
             language,
             modules: BTreeMap::new(),
@@ -779,9 +788,13 @@ impl<'a> AuthorizedGraphBuilder<'a> {
             return Err(ResourceAuthorizationFailure::ModuleCountExceeded);
         }
         self.visiting.insert(canonical_url.clone());
-        let source =
-            self.authorizer
-                .fetch_resource(&self.document_origin, &canonical_url, self.language)?;
+        let source = self.authorizer.fetch_resource(
+            self.tab_id,
+            self.document_generation,
+            &self.document_origin,
+            &canonical_url,
+            self.language,
+        )?;
         self.total_source_bytes = self
             .total_source_bytes
             .checked_add(source.len())

@@ -173,8 +173,15 @@ impl DirectPageInlineExecutor {
         self.host
             .synchronize_tabs(tabs)
             .map_err(DirectPageInlineExecutorError::Lifecycle)?;
-        self.observed_documents
-            .retain(|tab_id, _| tabs.get(*tab_id).is_some());
+        self.observed_documents.retain(|tab_id, generation| {
+            let keep = tabs.get(*tab_id).is_some();
+            if !keep {
+                if let Some(authorizer) = self.external_source_authorizer.as_mut() {
+                    authorizer.release_document(*tab_id, *generation);
+                }
+            }
+            keep
+        });
 
         let tab_ids: Vec<_> = tabs.ids().collect();
         for tab_id in tab_ids {
@@ -184,6 +191,11 @@ impl DirectPageInlineExecutor {
             let document_generation = page.document_generation();
             if self.observed_documents.get(&tab_id) == Some(&document_generation) {
                 continue;
+            }
+            if let Some(previous_generation) = self.observed_documents.get(&tab_id).copied() {
+                if let Some(authorizer) = self.external_source_authorizer.as_mut() {
+                    authorizer.release_document(tab_id, previous_generation);
+                }
             }
             let declarations = page.blue_ts_script_declarations();
             let document_url = page.url().map(str::to_string);
@@ -207,6 +219,22 @@ impl DirectPageInlineExecutor {
     /// source text nor runtime values.
     pub fn reports(&self) -> &VecDeque<DirectPageScriptExecutionReport> {
         &self.reports
+    }
+
+    /// Retained verified external source for one observed document.
+    pub fn retained_external_source_payload_bytes(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Option<usize> {
+        if self.observed_documents.get(&tab_id) != Some(&document_generation) {
+            return None;
+        }
+        self.external_source_authorizer
+            .as_ref()
+            .map_or(Some(0), |authorizer| {
+                authorizer.retained_source_payload_bytes(tab_id, document_generation)
+            })
     }
 
     /// Removes and returns every retained execution report.
@@ -632,6 +660,95 @@ mod tests {
             AuthorizedPageScriptGraph::new(entry, loader, "external-policy-v1")
                 .map_err(|error| PageScriptSourceAuthorizationError::new(error.to_string()))
         }
+    }
+
+    struct TrackingSourceAuthorizer {
+        retained: Rc<RefCell<std::collections::BTreeSet<(TabId, u64)>>>,
+        authorizations: Rc<RefCell<usize>>,
+    }
+
+    impl PageScriptSourceAuthorizer for TrackingSourceAuthorizer {
+        fn authorize(
+            &mut self,
+            request: &PageScriptSourceRequest,
+        ) -> Result<AuthorizedPageScriptGraph, PageScriptSourceAuthorizationError> {
+            self.retained
+                .borrow_mut()
+                .insert((request.tab_id, request.document_generation));
+            *self.authorizations.borrow_mut() += 1;
+            Err(PageScriptSourceAuthorizationError::new("fixture rejection"))
+        }
+
+        fn release_document(&mut self, tab_id: TabId, document_generation: u64) {
+            self.retained
+                .borrow_mut()
+                .remove(&(tab_id, document_generation));
+        }
+
+        fn retained_source_payload_bytes(
+            &self,
+            tab_id: TabId,
+            document_generation: u64,
+        ) -> Option<usize> {
+            Some(
+                usize::from(
+                    self.retained
+                        .borrow()
+                        .contains(&(tab_id, document_generation)),
+                ) * 17,
+            )
+        }
+    }
+
+    #[test]
+    fn direct_executor_releases_external_source_on_navigation_and_close() {
+        let retained = Rc::new(RefCell::new(std::collections::BTreeSet::new()));
+        let authorizations = Rc::new(RefCell::new(0));
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        let html =
+            "<script type=\"application/x-blueice-typescript-module\" src=\"/main.ts\"></script>";
+        tabs.get_mut(tab_id)
+            .unwrap()
+            .load_html_str(html, Some("https://example.test/first.html".to_string()));
+        let mut executor = DirectPageInlineExecutor::with_external_source_authorizer(
+            profiles(),
+            "inline-runner-empty-v1",
+            CompilerOptions::default(),
+            TrackingSourceAuthorizer {
+                retained: Rc::clone(&retained),
+                authorizations: Rc::clone(&authorizations),
+            },
+        )
+        .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.retained_external_source_payload_bytes(tab_id, 1),
+            Some(17)
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(*authorizations.borrow(), 1);
+        tabs.get_mut(tab_id)
+            .unwrap()
+            .load_html_str(html, Some("https://example.test/second.html".to_string()));
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.retained_external_source_payload_bytes(tab_id, 1),
+            None
+        );
+        assert_eq!(
+            executor.retained_external_source_payload_bytes(tab_id, 2),
+            Some(17)
+        );
+        assert_eq!(*authorizations.borrow(), 2);
+        assert!(!retained.borrow().contains(&(tab_id, 1)));
+        assert!(tabs.close_tab(tab_id));
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.retained_external_source_payload_bytes(tab_id, 2),
+            None
+        );
+        assert!(retained.borrow().is_empty());
     }
 
     #[test]

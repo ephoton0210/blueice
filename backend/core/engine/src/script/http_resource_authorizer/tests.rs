@@ -7,6 +7,8 @@ use super::*;
 #[test]
 fn verified_source_cache_is_byte_bounded_and_evicts_least_recently_used() {
     let key = |name: &str| ResourceCacheKey {
+        tab_id: TabId::from_u64(1),
+        document_generation: 1,
         canonical_url: format!("https://example.test/{name}.js"),
         expected_integrity: sha256_integrity(name.as_bytes()),
         mime_lane: "javascript",
@@ -25,6 +27,52 @@ fn verified_source_cache_is_byte_bounded_and_evicts_least_recently_used() {
     assert_eq!(cache.source_bytes, 8);
     cache.insert_verified(key("a"), "aa".into());
     assert_eq!(cache.source_bytes, 6);
+}
+
+#[test]
+fn verified_source_cache_partitions_owners_and_releases_only_one_document() {
+    let first = TabId::from_u64(1);
+    let second = TabId::from_u64(2);
+    let key = |tab_id, document_generation| ResourceCacheKey {
+        tab_id,
+        document_generation,
+        canonical_url: "https://example.test/shared.js".into(),
+        expected_integrity: sha256_integrity(b"same source"),
+        mime_lane: "javascript",
+    };
+    let mut cache = VerifiedResourceCache::new(64);
+    cache.insert_verified(key(first, 1), "same source".into());
+    cache.insert_verified(key(second, 1), "same source".into());
+    cache.insert_verified(key(first, 2), "same source".into());
+    assert_eq!(cache.source_bytes, 3 * "same source".len());
+    assert_eq!(cache.retained_source_payload_bytes(first, 1), Some(11));
+    assert_eq!(cache.retained_source_payload_bytes(second, 1), Some(11));
+    cache.release_document(first, 1);
+    assert_eq!(cache.get(&key(first, 1)), None);
+    assert_eq!(cache.get(&key(second, 1)), Some("same source".into()));
+    assert_eq!(cache.get(&key(first, 2)), Some("same source".into()));
+    assert_eq!(cache.retained_source_payload_bytes(first, 1), Some(0));
+    assert_eq!(cache.source_bytes, 2 * "same source".len());
+    cache.release_document(first, 1);
+    assert_eq!(cache.source_bytes, 2 * "same source".len());
+}
+
+#[test]
+fn verified_source_cache_bounds_empty_source_keys() {
+    let key = |document_generation| ResourceCacheKey {
+        tab_id: TabId::from_u64(1),
+        document_generation,
+        canonical_url: "https://example.test/empty.js".into(),
+        expected_integrity: sha256_integrity(b""),
+        mime_lane: "javascript",
+    };
+    let mut cache = VerifiedResourceCache::new(0);
+    for generation in 1..=MAX_VERIFIED_SOURCE_CACHE_ENTRIES as u64 + 1 {
+        cache.insert_verified(key(generation), String::new());
+    }
+    assert_eq!(cache.get(&key(1)), None);
+    assert_eq!(cache.get(&key(2)), Some(String::new()));
+    assert_eq!(cache.source_bytes, 0);
 }
 
 #[test]
@@ -95,10 +143,21 @@ fn evicted_http_source_is_refetched_and_integrity_checked_again() {
         .cache
         .replace(VerifiedResourceCache::new(A.len()));
     let language = GraphLanguage::JavaScript(BlueJsPageScriptKind::Classic);
-    assert_eq!(authorizer.fetch_resource(&origin, &a, language).unwrap(), A);
-    assert_eq!(authorizer.fetch_resource(&origin, &b, language).unwrap(), B);
+    let tab_id = TabId::from_u64(1);
     assert_eq!(
-        authorizer.fetch_resource(&origin, &a, language),
+        authorizer
+            .fetch_resource(tab_id, 1, &origin, &a, language)
+            .unwrap(),
+        A
+    );
+    assert_eq!(
+        authorizer
+            .fetch_resource(tab_id, 1, &origin, &b, language)
+            .unwrap(),
+        B
+    );
+    assert_eq!(
+        authorizer.fetch_resource(tab_id, 1, &origin, &a, language),
         Err(ResourceAuthorizationFailure::IntegrityMismatch)
     );
     assert_eq!(server.join().unwrap(), ["/a.js", "/b.js", "/a.js"]);
@@ -162,7 +221,7 @@ fn manifest_and_policy_require_canonical_owner_configuration() {
     .unwrap();
     assert!(policy
         .resolver_fingerprint()
-        .starts_with("core-page-http-resource-authorizer-v2:sha256:"));
+        .starts_with("core-page-http-resource-authorizer-v3:sha256:"));
     let zero_depth = HttpScriptResourceLimits {
         max_module_depth: 0,
         ..HttpScriptResourceLimits::default()

@@ -922,39 +922,6 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         }
     }
 
-    fn close_page(&mut self, tab_id: TabId) {
-        if let Some(document) = self.live_documents.remove(&tab_id) {
-            let _ = self
-                .child
-                .close_realm(tab_id.as_u64(), document.document_generation);
-        }
-        self.debugger_execution_deferrals.remove(&tab_id);
-        self.realm_stats.remove(&tab_id);
-        self.validation_usage.remove(&tab_id);
-        self.debugger_programs.remove(&tab_id);
-        self.debugger_nested_frames.remove(&tab_id);
-        self.debugger_linked_frames.remove(&tab_id);
-        self.debugger_static_metadata.remove(&tab_id);
-    }
-
-    /// A failed synchronization may still have installed the candidate realm
-    /// before the child sent a malformed acknowledgement. Close both the
-    /// previously trusted generation and the attempted successor: a child
-    /// with exact-generation close semantics will reject the stale request
-    /// and discard whichever generation is actually live.
-    fn close_failed_document(&mut self, tab_id: TabId, candidate_generation: u64) {
-        let predecessor_generation = self
-            .live_documents
-            .get(&tab_id)
-            .map(|document| document.document_generation);
-        self.close_page(tab_id);
-        if predecessor_generation != Some(candidate_generation) {
-            let _ = self
-                .child
-                .close_realm(tab_id.as_u64(), candidate_generation);
-        }
-    }
-
     fn synchronize_document(&mut self, tab_id: TabId, page: &Page, identity: LiveDocument) {
         let Some(prepared) = self.prepare_document(tab_id, page, &identity) else {
             return;
@@ -1038,6 +1005,9 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             let _ = self
                 .child
                 .close_realm(tab_id.as_u64(), identity.document_generation);
+            if let Some(authorizer) = &self.external_source_authorizer {
+                authorizer.release_document(tab_id, identity.document_generation);
+            }
             child_synchronized = false;
         }
         local_reports.sort_by_key(report_ordinal);

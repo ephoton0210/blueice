@@ -7,6 +7,23 @@
 use super::*;
 
 impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
+    /// Retained verified HTTP source payload for one exact live document.
+    pub fn retained_external_source_payload_bytes(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Option<usize> {
+        let document = self.live_documents.get(&tab_id)?;
+        if document.document_generation != document_generation {
+            return None;
+        }
+        self.external_source_authorizer
+            .as_ref()
+            .map_or(Some(0), |authorizer| {
+                authorizer.retained_source_payload_bytes(tab_id, document_generation)
+            })
+    }
+
     /// Counts logical map-entry payload for core-minted program and metadata
     /// identities plus the execution-deferral record. Child metadata and
     /// active frame state are distinct owners and are not counted here.

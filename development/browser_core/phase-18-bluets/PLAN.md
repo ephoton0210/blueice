@@ -2344,6 +2344,26 @@ and zero after frame return or linked completion; navigation makes the old
 generation unqueryable. No child-owned metadata or VM runtime state is counted
 inside this core-only total.
 
+**E2.2.1.3.5 verified HTTP source cache:** The cache key now includes the
+initiating tab and document generation in addition to canonical URL, expected
+SHA-256, and MIME lane. One document still reuses a verified response across
+its declarations; a second tab or successor document performs its own fetch
+and integrity check. Both page executors tell their private source authorizer
+when a document is replaced or closed. The child route also releases an
+attempted successor after failed acknowledgement or malformed realm stats,
+and rejects old-generation accounting queries. The exact-document meter sums
+only retained source lengths under the existing shared 4 MiB source-byte
+budget, leaving key/allocator and completed graph copies outside this charge.
+The fixed fixture profile forwards release and checked charges across its
+per-origin inner authorizers. A real two-tab child/core HTTP test proves
+same-document hits, cross-tab isolation, replacement and close release,
+re-fetch after release, and rejection of a changed response; a direct route
+test proves the same lifecycle callback contract. The cache implementation is
+in its own module so the authorizer and child executor stay under 1,300 lines.
+Partitioning could otherwise retain arbitrarily many empty-source keys, so
+the cache also caps entries at 4,096 and advances the policy fingerprint to
+`core-page-http-resource-authorizer-v3`.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

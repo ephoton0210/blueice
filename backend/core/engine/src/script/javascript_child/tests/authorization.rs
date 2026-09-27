@@ -125,7 +125,7 @@ fn startup_http_authorizer_builds_closed_classic_module_and_bluets_graphs_source
         HttpTestResponse::redirect("/assets/classic.js"),
     );
     // Eight requests: the repeated classic declaration uses the private
-    // `(URL, integrity, MIME lane)` cache key, and the cross-origin URL
+    // `(tab, document, URL, integrity, MIME lane)` cache key, and the cross-origin URL
     // is rejected before any network I/O.
     let (origin, requested, server) = spawn_local_resource_server(responses, 8);
     let resource = |path: &str| format!("{origin}{path}");
@@ -290,6 +290,141 @@ fn startup_http_authorizer_builds_closed_classic_module_and_bluets_graphs_source
         1
     );
     assert!(!requested.iter().any(|path| path.contains("cross-origin")));
+}
+
+#[test]
+fn http_source_cache_is_isolated_and_released_through_real_child_lifecycle() {
+    use std::time::{Duration, Instant};
+
+    const SOURCE: &str = "globalThis.verifiedCache = 7;";
+    const CHANGED: &str = "globalThis.verifiedCache = 8;";
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let server = thread::spawn(move || {
+        let mut requests = 0;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while requests < 4 && Instant::now() < deadline {
+            let Ok((mut stream, _)) = listener.accept() else {
+                thread::sleep(Duration::from_millis(5));
+                continue;
+            };
+            let mut buffer = [0u8; 4096];
+            let bytes = stream.read(&mut buffer).unwrap();
+            assert!(std::str::from_utf8(&buffer[..bytes])
+                .unwrap()
+                .starts_with("GET /shared.js "));
+            let source = if requests == 3 { CHANGED } else { SOURCE };
+            HttpTestResponse::script("text/javascript", source).write_to(&mut stream);
+            requests += 1;
+        }
+        requests
+    });
+    let policy = HttpScriptResourcePolicy::new(
+        HttpScriptResourceOriginRule::same_document_origin(),
+        HttpScriptIntegrityManifest::new([(
+            format!("{origin}/shared.js"),
+            sha256_integrity(SOURCE.as_bytes()),
+        )])
+        .unwrap(),
+        HttpScriptResourceLimits::default(),
+    )
+    .unwrap();
+    let repeated = "<script src=\"/shared.js\"></script><script src=\"/shared.js\"></script>";
+    let single = "<script src=\"/shared.js\"></script>";
+    let (mut tabs, first_tab) = loaded_tabs(repeated, &format!("{origin}/first.html"));
+    let second_tab = tabs.open_tab();
+    tabs.get_mut(second_tab)
+        .unwrap()
+        .load_html_str(single, Some(format!("{origin}/second.html")));
+    let (path, token, child) = spawn_child();
+    let mut executor = OutOfProcessJavaScriptPageExecutor::connect_with_external_source_authorizer(
+        &path,
+        &token,
+        HttpOutOfProcessPageScriptSourceAuthorizer::new(policy),
+    )
+    .unwrap();
+
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(
+        executor.retained_external_source_payload_bytes(first_tab, 1),
+        Some(SOURCE.len())
+    );
+    assert_eq!(
+        executor.retained_external_source_payload_bytes(second_tab, 1),
+        Some(SOURCE.len())
+    );
+    assert_eq!(executor.drain_reports_for_tab(first_tab).len(), 2);
+    assert_eq!(executor.drain_reports_for_tab(second_tab).len(), 1);
+    executor.synchronize_and_execute(&tabs).unwrap();
+
+    tabs.get_mut(first_tab)
+        .unwrap()
+        .load_html_str(single, Some(format!("{origin}/replacement.html")));
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(
+        executor.retained_external_source_payload_bytes(first_tab, 1),
+        None
+    );
+    assert_eq!(
+        executor.retained_external_source_payload_bytes(first_tab, 2),
+        Some(SOURCE.len())
+    );
+    assert_eq!(
+        executor.retained_external_source_payload_bytes(second_tab, 1),
+        Some(SOURCE.len())
+    );
+
+    assert!(tabs.close_tab(second_tab));
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(
+        executor.retained_external_source_payload_bytes(second_tab, 1),
+        None
+    );
+    let third_tab = tabs.open_tab();
+    tabs.get_mut(third_tab)
+        .unwrap()
+        .load_html_str(single, Some(format!("{origin}/third.html")));
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(
+        executor.retained_external_source_payload_bytes(third_tab, 1),
+        Some(0)
+    );
+    assert!(matches!(
+        executor.drain_reports_for_tab(third_tab).as_slice(),
+        [JavaScriptPageExecutionReport::Rejected { .. }]
+    ));
+    assert_eq!(server.join().unwrap(), 4);
+
+    let oversized = "x".repeat(page_host::PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES + 1);
+    tabs.get_mut(first_tab).unwrap().load_html_str(
+        &format!("<main>{oversized}</main><script>blueiceDocumentText();</script>"),
+        Some(format!("{origin}/invalid.html")),
+    );
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(
+        executor.retained_external_source_payload_bytes(first_tab, 2),
+        None
+    );
+    assert_eq!(
+        executor.retained_external_source_payload_bytes(first_tab, 3),
+        Some(0)
+    );
+    assert!(tabs.close_tab(first_tab));
+    assert!(tabs.close_tab(third_tab));
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(
+        executor.retained_external_source_payload_bytes(first_tab, 3),
+        None
+    );
+    assert_eq!(
+        executor.retained_external_source_payload_bytes(third_tab, 1),
+        None
+    );
+    drop(executor);
+    shutdown_child(&path, &token);
+    child.join().unwrap();
+    let _ = std::fs::remove_file(path);
 }
 
 #[test]

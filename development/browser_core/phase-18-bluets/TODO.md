@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E2.2.1.3.5.** Partition the verified HTTP source cache by
-initiating tab/document and release it on navigation or close.
+**Current leaf: E2.2.1.3.6.** Recount live-page retained cache owners and
+prove combined tab charges and lifecycle release through real processes.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -609,7 +609,7 @@ channel with explicit owner/client grants.
       - [x] **E2.2.1.3.4** Account core-retained debugger identity and metadata maps by exact tab/document generation, including failed child admission and replacement. Exact core queries now cover program/static-metadata/deferral maps and active nested/linked frames, including two linked scope vectors, without counting child-owned data. Real two-tab, nested, and linked child/core regressions prove discovery charges, execution/resume release, failed admission, replacement, stale generation, and close.
         - [x] **E2.2.1.3.4.1** Count core program, static-metadata, and execution-deferral map entries for the exact live tab/document; prove discovery, replacement, failed admission, and close release. A checked core-only query counts logical outer/inner BTreeMap entry payload only after validating the live document generation and exact deferral generation. The real two-tab child/core test proves program and metadata discovery each add a charge to one tab, the other tab remains unchanged, replacement invalidates the old generation, failed snapshot admission leaves zero debugger identity retention, and close removes the record.
         - [x] **E2.2.1.3.4.2** Count active nested/linked frame map entries and linked scope-vector payload, combine all core debugger map charges, and prove frame lifecycle release without double-counting child-owned state; then check off E2.2.1.3.4. The exact-generation query adds fixed nested and linked core map records and both linked child-stack scope-vector capacities to the identity-map charge. Real child/core nested and linked tests verify content-bearing charges, completion/resume release, and stale-generation refusal after navigation.
-      - [ ] **E2.2.1.3.5** Partition the verified HTTP source cache by initiating tab/document generation and release its payload charge on navigation/close while preserving same-document cache hits and integrity checks.
+      - [x] **E2.2.1.3.5** Partition the verified HTTP source cache by initiating tab/document generation and release its payload charge on navigation/close while preserving same-document cache hits and integrity checks. The private cache key now includes the exact tab/generation; authorizer lifecycle hooks release only matching entries in both direct and supervised routes, including failed child admission. A real child/core two-tab HTTP regression proves one same-document hit, separate cross-tab fetches, navigation and close release, and fresh SHA-256 rejection after a changed response. Focused direct-executor and cache tests cover the same release contract. A 4,096-entry cap also bounds empty-source key retention; fingerprint v3 records the policy change. The verified cache moved into a submodule to keep its owner file below 1,300 lines.
       - [ ] **E2.2.1.3.6** Recount all live-page retained cache owners and prove the combined tab charges and lifecycle release through real core/child processes; document the page compiler/primitive-plan zero-retention paths.
   - [ ] **E2.2.2** Report policy and source position without protected content.
 - [ ] **E2.3** Test valid, malformed, cyclic, deep, oversized, and exhausting
