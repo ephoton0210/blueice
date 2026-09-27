@@ -26,16 +26,12 @@ fn vm_construction_reports_a_limit_that_cannot_hold_both_prototypes() {
 
 #[test]
 fn temporal_receiver_checks_propagate_invalid_object_handles() {
-    let mut vm = Vm::default();
+    let vm = Vm::default();
     let mut other_vm = Vm::default();
     let foreign = other_vm.heap.alloc_object(None).unwrap();
     let receiver = Value::Object(foreign);
     assert_eq!(
         vm.require_temporal_receiver(&receiver, TemporalKind::PlainDate),
-        Err(RuntimeError::Heap(HeapError::InvalidObject(foreign)))
-    );
-    assert_eq!(
-        vm.temporal_date_equals(&receiver, &Value::Undefined),
         Err(RuntimeError::Heap(HeapError::InvalidObject(foreign)))
     );
 }

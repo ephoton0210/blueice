@@ -16,6 +16,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -288,7 +289,8 @@ def report_section(files: dict[Path, dict], totals: dict, update_option: str) ->
         f"`python3 backend/bluejs/coverage_file.py {update_option}` "
         "cleared prior LLVM execution profiles, reused instrumented Cargo "
         "build artifacts, ran the complete default BlueJS Rust test suite, "
-        "and exported fresh per-file JSON and source-line text. "
+        "exported fresh per-file JSON and source-line text, and released raw "
+        "profiles and incremental compilation caches afterward. "
         "The opt-in Node "
         "oracle and external full Test262 runner were not included. "
         "Workspace coverage was not remeasured at this revision."
@@ -378,40 +380,64 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
     with tempfile.TemporaryDirectory(prefix="bluejs-coverage-") as tmp:
         output = Path(tmp) / "coverage.json"
         text_output = Path(tmp) / "coverage.txt"
-        subprocess.run(
-            ["cargo", "llvm-cov", "clean", "--profraw-only"],
-            cwd=REPO_ROOT,
-            check=True,
-        )
-        subprocess.run(
-            [
-                "cargo",
-                "llvm-cov",
-                "-p",
-                "blueice-bluejs",
-                "--no-clean",
-                "--json",
-                "--output-path",
-                str(output),
-            ],
-            cwd=REPO_ROOT,
-            check=True,
-        )
-        subprocess.run(
-            [
-                "cargo",
-                "llvm-cov",
-                "report",
-                "-p",
-                "blueice-bluejs",
-                "--text",
-                "--output-path",
-                str(text_output),
-            ],
-            cwd=REPO_ROOT,
-            check=True,
-        )
-        return source_union_export(json.loads(output.read_text()), text_output.read_text())
+        try:
+            subprocess.run(
+                ["cargo", "llvm-cov", "clean", "--profraw-only"],
+                cwd=REPO_ROOT,
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "cargo",
+                    "llvm-cov",
+                    "-p",
+                    "blueice-bluejs",
+                    "--no-clean",
+                    "--json",
+                    "--output-path",
+                    str(output),
+                ],
+                cwd=REPO_ROOT,
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "cargo",
+                    "llvm-cov",
+                    "report",
+                    "-p",
+                    "blueice-bluejs",
+                    "--text",
+                    "--output-path",
+                    str(text_output),
+                ],
+                cwd=REPO_ROOT,
+                check=True,
+            )
+            return source_union_export(
+                json.loads(output.read_text()), text_output.read_text()
+            )
+        finally:
+            try:
+                subprocess.run(
+                    ["cargo", "llvm-cov", "clean", "--profraw-only"],
+                    cwd=REPO_ROOT,
+                    check=True,
+                )
+            finally:
+                # Keep compiled dependencies for the next run; these two
+                # incremental directories are disposable and grow per test.
+                target = Path(os.environ.get("CARGO_TARGET_DIR", REPO_ROOT / "target"))
+                if not target.is_absolute():
+                    target = REPO_ROOT / target
+                target = target.resolve()
+                if target.is_relative_to(REPO_ROOT):
+                    for path in (
+                        target / "debug/incremental",
+                        target / "llvm-cov-target/debug/incremental",
+                    ):
+                        if path.exists():
+                            shutil.rmtree(path)
 
 
 def main(argv: list[str] | None = None) -> int:

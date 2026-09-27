@@ -137,6 +137,13 @@ class CoverageFileTests(unittest.TestCase):
 
     def test_fresh_run_cleans_profiles_and_executes_unfiltered_crate_suite(self):
         calls = []
+        for name in ("debug/incremental", "llvm-cov-target/debug/incremental"):
+            cache = self.repo / "target" / name
+            cache.mkdir(parents=True)
+            (cache / "disposable").write_text("profile cache")
+        dependencies = self.repo / "target/debug/deps"
+        dependencies.mkdir()
+        (dependencies / "reuse").write_text("compiled dependency")
 
         def fake_run(argv, *, cwd, check):
             self.assertEqual(cwd, self.repo)
@@ -153,7 +160,9 @@ class CoverageFileTests(unittest.TestCase):
                         "    2|      1|fn g() {}\n"
                     )
 
-        with patch.object(coverage_file.subprocess, "run", side_effect=fake_run):
+        with patch.dict(coverage_file.os.environ, {"CARGO_TARGET_DIR": str(self.repo / "target")}), patch.object(
+            coverage_file.subprocess, "run", side_effect=fake_run
+        ):
             files, _ = coverage_file.run_coverage()
         self.assertEqual(len(files), 1)
         self.assertEqual(calls[0], ["cargo", "llvm-cov", "clean", "--profraw-only"])
@@ -162,6 +171,32 @@ class CoverageFileTests(unittest.TestCase):
         self.assertNotIn("--test", calls[1])
         self.assertNotIn("--ignore-filename-regex", calls[1])
         self.assertEqual(calls[2][:5], ["cargo", "llvm-cov", "report", "-p", "blueice-bluejs"])
+        self.assertEqual(calls[3], ["cargo", "llvm-cov", "clean", "--profraw-only"])
+        self.assertFalse((self.repo / "target/debug/incremental").exists())
+        self.assertFalse((self.repo / "target/llvm-cov-target/debug/incremental").exists())
+        self.assertTrue((dependencies / "reuse").exists())
+
+    def test_failed_coverage_run_releases_profiles_and_incremental_cache(self):
+        cache = self.repo / "target/llvm-cov-target/debug/incremental"
+        cache.mkdir(parents=True)
+        (cache / "disposable").write_text("profile cache")
+        calls = []
+
+        def fake_run(argv, *, cwd, check):
+            self.assertEqual(cwd, self.repo)
+            self.assertTrue(check)
+            calls.append(argv)
+            if len(calls) == 2:
+                raise coverage_file.subprocess.CalledProcessError(1, argv)
+
+        with patch.dict(coverage_file.os.environ, {"CARGO_TARGET_DIR": str(self.repo / "target")}), patch.object(
+            coverage_file.subprocess, "run", side_effect=fake_run
+        ):
+            with self.assertRaises(coverage_file.subprocess.CalledProcessError):
+                coverage_file.run_coverage()
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(calls[-1], ["cargo", "llvm-cov", "clean", "--profraw-only"])
+        self.assertFalse(cache.exists())
 
     def test_source_union_counts_duplicate_compilations_once(self):
         payload = self.export()

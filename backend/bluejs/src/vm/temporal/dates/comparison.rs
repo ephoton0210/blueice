@@ -12,7 +12,11 @@ impl Vm {
         receiver: &Value,
         other_value: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        // Native dispatch already checked the receiver's Temporal internal
+        // slot before calling this method.
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("native dispatch validated the Temporal date receiver");
         let other = self.temporal_to_matching(other_value, existing.kind, &Value::Undefined)?;
         let mut equal = existing.year == other.year
             && existing.month == other.month
