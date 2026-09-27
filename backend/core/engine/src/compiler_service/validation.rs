@@ -126,8 +126,17 @@ pub(super) fn validate_static_debug_info(
 
 pub(super) fn validate_build_output(
     output: &BuildOutput,
+    expected_fingerprint: &str,
     limits: CompilerServiceLimits,
 ) -> Result<(), CompilerServiceError> {
+    if output.fingerprint != expected_fingerprint
+        || output
+            .artifacts
+            .values()
+            .any(|artifact| artifact.fingerprint != expected_fingerprint)
+    {
+        return Err(CompilerServiceError::BuildOutputFingerprintMismatch);
+    }
     let artifact_count = output.artifacts.len() + output.declaration_modules.len();
     if artifact_count > limits.max_build_artifacts {
         return Err(CompilerServiceError::BuildOutputLimit {

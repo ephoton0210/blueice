@@ -1012,8 +1012,16 @@ impl CompilerServiceIpcAdapter {
             self.limits,
             &mut budget,
         )?;
+        if !budget.reserve_required_string(&check.project_fingerprint, self.limits.max_field_bytes)
+        {
+            return Err(());
+        }
+        let project_fingerprint = check.project_fingerprint;
         let artifact_fingerprint = match check.artifact_fingerprint {
             Some(fingerprint) => {
+                if fingerprint != project_fingerprint {
+                    return Err(());
+                }
                 if !budget.reserve_required_string(&fingerprint, self.limits.max_field_bytes) {
                     return Err(());
                 }
@@ -1048,6 +1056,7 @@ impl CompilerServiceIpcAdapter {
         };
         Ok(CompilerCheck {
             generation: generation_to_wire(check.generation),
+            project_fingerprint,
             cache_hit: check.cache_hit,
             parsed_modules,
             reused_parsed_modules,

@@ -120,6 +120,7 @@ fn requests_and_replies_round_trip_on_a_real_socket() {
 
     let reply = CompilerReply::Check(CompilerCheck {
         generation: generation(),
+        project_fingerprint: "bts-1234".to_string(),
         cache_hit: false,
         parsed_modules: CompilerModuleList {
             entries: vec!["project:///app/main.ts".to_string()],
@@ -152,6 +153,16 @@ fn requests_and_replies_round_trip_on_a_real_socket() {
             contract_count: 1,
         }),
     });
+    let CompilerReply::Check(check) = &reply else {
+        unreachable!()
+    };
+    assert!(check.is_well_formed_for_project(project()));
+    let mut forged = check.clone();
+    forged.artifact_fingerprint = Some("bts-other".into());
+    assert!(!forged.is_well_formed_for_project(project()));
+    forged.artifact_fingerprint = None;
+    forged.project_fingerprint.clear();
+    assert!(!forged.is_well_formed_for_project(project()));
     let (mut sender, mut receiver) = UnixStream::pair().unwrap();
     write_compiler_reply(&mut sender, &reply).unwrap();
     assert_eq!(read_compiler_reply(&mut receiver).unwrap(), reply);

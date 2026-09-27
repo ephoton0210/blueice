@@ -113,6 +113,7 @@ fn malformed_check_diagnostics_cannot_mint_a_generation_receipt() {
             project: CompilerProject { id: 7 },
             sequence: 3,
         },
+        project_fingerprint: "bts-error-graph".to_string(),
         cache_hit: false,
         parsed_modules: empty_set.clone(),
         reused_parsed_modules: empty_set.clone(),
@@ -156,6 +157,34 @@ fn malformed_check_diagnostics_cannot_mint_a_generation_receipt() {
     ));
     assert!(compiler_generation_is_observed(&state, 7, 3).is_none());
     state.revoke_project(7);
+    let mut missing_fingerprint = check.clone();
+    missing_fingerprint.project_fingerprint.clear();
+    assert!(matches!(
+        accept_compiler_check_reply(
+            &mut state,
+            7,
+            blueice_ipc::compiler::CompilerReply::Check(missing_fingerprint),
+        ),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::InvalidDiagnosticPage,
+            ..
+        }
+    ));
+    assert!(compiler_generation_is_observed(&state, 7, 3).is_some());
+    let mut conflicting_artifact = check.clone();
+    conflicting_artifact.has_errors = false;
+    conflicting_artifact.artifact_fingerprint = Some("bts-other-graph".into());
+    assert!(matches!(
+        accept_compiler_check_reply(
+            &mut state,
+            7,
+            blueice_ipc::compiler::CompilerReply::Check(conflicting_artifact),
+        ),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::InvalidDiagnosticPage,
+            ..
+        }
+    ));
     let mut wrong_project = check.clone();
     wrong_project.generation.project.id = 8;
     assert!(matches!(

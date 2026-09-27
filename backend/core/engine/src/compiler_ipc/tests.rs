@@ -63,6 +63,33 @@ fn inventory_on_stream(
 }
 
 #[test]
+fn diagnostic_check_wire_keeps_a_generation_bound_project_fingerprint_without_artifacts() {
+    let mut adapter = CompilerServiceIpcAdapter::default();
+    let project = adapter
+        .register_core_project(registration("export const value: number = 'wrong';"))
+        .unwrap();
+    let stream = "c".repeat(CompilerSessionAttestation::ID_LENGTH);
+    inventory_on_stream(&mut adapter, &stream, project);
+    let mut previous = None;
+    for _ in 0..2 {
+        let CompilerReply::Check(check) =
+            adapter.handle_session_request(&stream, CompilerRequest::Check { project })
+        else {
+            panic!("registered project must return a diagnostic check")
+        };
+        assert!(check.has_errors);
+        assert!(check.artifact_fingerprint.is_none());
+        assert!(check.project_fingerprint.starts_with("bts-"));
+        assert!(check.is_well_formed_for_project(project));
+        if let Some((generation, fingerprint)) = previous {
+            assert_ne!(check.generation, generation);
+            assert_eq!(check.project_fingerprint, fingerprint);
+        }
+        previous = Some((check.generation, check.project_fingerprint));
+    }
+}
+
+#[test]
 fn sealed_project_inventory_is_bounded_and_stream_local() {
     let (mut adapter, first) = adapter();
     let mut second_registration = registration("export const next: number = answer;");

@@ -327,6 +327,7 @@ fn compile_with_cache(
         reused_parsed_modules,
         ..
     } = builder;
+    let project_fingerprint = fingerprint(&project, &options);
 
     let changed_modules = previous_project
         .map(|previous| changed_modules(previous, &project))
@@ -389,6 +390,7 @@ fn compile_with_cache(
     IncrementalResult {
         compilation: Compilation {
             project,
+            project_fingerprint,
             checked: Some(checked),
             debug_info,
             diagnostics,

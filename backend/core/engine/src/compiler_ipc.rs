@@ -652,7 +652,8 @@ fn service_error_reply(error: &CompilerServiceError) -> CompilerReply {
         CompilerServiceError::InvalidRegistration { .. }
         | CompilerServiceError::EntryModuleNotAuthorized { .. }
         | CompilerServiceError::DuplicateRegistration
-        | CompilerServiceError::ProjectIdExhausted => (
+        | CompilerServiceError::ProjectIdExhausted
+        | CompilerServiceError::BuildOutputFingerprintMismatch => (
             CompilerErrorCode::Unavailable,
             "compiler operation is unavailable",
         ),

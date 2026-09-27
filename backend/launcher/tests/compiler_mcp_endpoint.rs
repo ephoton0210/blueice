@@ -468,6 +468,10 @@ fn launcher_registers_a_canonical_physical_catalog_before_compiler_queries() {
         panic!("canonical physical source must check through the sealed graph")
     };
     assert!(!check.has_errors);
+    assert_eq!(
+        check.artifact_fingerprint.as_deref(),
+        Some(check.project_fingerprint.as_str())
+    );
     assert!(std::fs::read_dir(&output).unwrap().next().is_none());
     launcher.shutdown();
     std::fs::remove_dir_all(directory).unwrap();

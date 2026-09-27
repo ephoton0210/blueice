@@ -186,6 +186,9 @@ pub struct CompilerServiceCheck {
     /// authorized graph. Invalid or unavailable source ranges remain absent.
     pub(crate) retained_diagnostic_locations: Vec<Option<DebugSourceLocation>>,
     pub has_errors: bool,
+    /// Observed source graph and fixed options for this exact generation,
+    /// present even when errors prevent artifact emission.
+    pub project_fingerprint: String,
     /// The compiler's graph/options fingerprint when artifact creation was
     /// successful. It is absent on a no-emit-on-error result.
     pub artifact_fingerprint: Option<String>,
@@ -327,6 +330,7 @@ pub enum CompilerServiceError {
         resource: &'static str,
         limit: usize,
     },
+    BuildOutputFingerprintMismatch,
 }
 
 impl fmt::Display for CompilerServiceError {
@@ -465,6 +469,9 @@ impl fmt::Display for CompilerServiceError {
                     formatter,
                     "build output `{resource}` exceeds service limit {limit}"
                 )
+            }
+            Self::BuildOutputFingerprintMismatch => {
+                formatter.write_str("build output fingerprint does not match its generation")
             }
         }
     }
@@ -637,7 +644,7 @@ impl RegisteredProjectCompilerService {
     ) -> Result<CompilerServiceBuild, CompilerServiceError> {
         let (check, output) = self.compile(project_id)?;
         if let Some(output) = output.as_ref() {
-            validate_build_output(output, self.limits)?;
+            validate_build_output(output, &check.project_fingerprint, self.limits)?;
         }
         Ok(CompilerServiceBuild { check, output })
     }
@@ -1046,6 +1053,7 @@ impl RegisteredProjectCompilerService {
                 retained_diagnostics: retained_diagnostics.clone(),
                 retained_diagnostic_locations: retained_diagnostic_locations.clone(),
                 has_errors: result.compilation.has_errors(),
+                project_fingerprint: result.compilation.project_fingerprint.clone(),
                 artifact_fingerprint,
                 static_debug_info: static_debug_info.clone(),
             };

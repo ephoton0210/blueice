@@ -38,6 +38,39 @@ fn registration(source: &str) -> RegisteredProjectRegistration {
 }
 
 #[test]
+fn each_check_generation_binds_the_same_project_fingerprint_as_its_build_output() {
+    let mut service = RegisteredProjectCompilerService::default();
+    let id = service
+        .register(registration("export const result = answer;"))
+        .unwrap();
+    let first = service.check(id).unwrap();
+    let built = service.build(id).unwrap();
+    assert_ne!(first.generation, built.check.generation);
+    assert!(!first.project_fingerprint.is_empty());
+    assert_eq!(first.project_fingerprint, built.check.project_fingerprint);
+    assert_eq!(
+        built.check.project_fingerprint,
+        built.output.as_ref().unwrap().fingerprint
+    );
+    let mut tampered = built.output.unwrap();
+    tampered.artifacts.values_mut().next().unwrap().fingerprint = "bts-forged".into();
+    assert!(matches!(
+        validate_build_output(&tampered, &built.check.project_fingerprint, service.limits),
+        Err(CompilerServiceError::BuildOutputFingerprintMismatch)
+    ));
+
+    let mut invalid_service = RegisteredProjectCompilerService::default();
+    let invalid_id = invalid_service
+        .register(registration("export const result: number = 'wrong';"))
+        .unwrap();
+    let invalid = invalid_service.check(invalid_id).unwrap();
+    assert!(invalid.has_errors);
+    assert!(invalid.artifact_fingerprint.is_none());
+    assert!(invalid.project_fingerprint.starts_with("bts-"));
+    assert_ne!(invalid.project_fingerprint, first.project_fingerprint);
+}
+
+#[test]
 fn retained_diagnostics_keep_authorized_utf16_locations_across_pages() {
     let registration = registration("const marker = '😀';\r\nconst invalid: number = 'wrong';");
     let unavailable = Diagnostic::error(

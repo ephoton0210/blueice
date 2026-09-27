@@ -442,13 +442,7 @@ fn compiler_check_reply_is_well_formed(
     project_id: u64,
     check: &blueice_ipc::compiler::CompilerCheck,
 ) -> bool {
-    check.generation.is_well_formed()
-        && check.generation.project.id == project_id
-        && check
-            .diagnostics
-            .entries
-            .iter()
-            .all(blueice_ipc::compiler::CompilerDiagnostic::is_well_formed)
+    check.is_well_formed_for_project(blueice_ipc::compiler::CompilerProject { id: project_id })
 }
 
 fn invalid_compiler_diagnostic_reply(
@@ -472,7 +466,7 @@ pub(super) fn accept_compiler_check_reply(
         blueice_ipc::compiler::CompilerReply::Check(check) => {
             if !compiler_check_reply_is_well_formed(project_id, check) {
                 return invalid_compiler_diagnostic_reply(
-                    "core returned a compiler check for a different project or with malformed diagnostic positions",
+                    "core returned a compiler check with malformed project, fingerprint, or diagnostic evidence",
                 );
             }
             state.observe_generation(project_id, check.generation.sequence);

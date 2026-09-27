@@ -62,12 +62,13 @@ pub use syntax::{lex, Token, TokenKind};
 /// diagnostics.  This is not a claim of complete `tsc` compatibility.
 pub const LANGUAGE_VERSION: &str = "blue-ts-0.1";
 
-/// A successful compilation, including checked modules and optional portable
-/// JavaScript artifacts.  Diagnostics are always returned; callers must only
-/// publish artifacts when [`Self::has_errors`] is false.
+/// One compilation, including checked modules and optional portable
+/// JavaScript artifacts. Diagnostics and the observed graph/options
+/// fingerprint remain available when errors prevent artifact emission.
 #[derive(Debug, Clone)]
 pub struct Compilation {
     pub project: Project,
+    pub project_fingerprint: String,
     pub checked: Option<CheckedProject>,
     pub debug_info: Option<BlueTsDebugInfo>,
     pub diagnostics: Vec<Diagnostic>,

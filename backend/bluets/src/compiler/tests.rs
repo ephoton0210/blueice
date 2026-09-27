@@ -5,6 +5,40 @@
 use super::*;
 use std::cell::RefCell;
 
+#[test]
+fn project_fingerprint_identifies_successful_and_failed_compilations() {
+    let valid_loader = MapLoader::from([ModuleSource::new(
+        "project:///main.ts",
+        "export const answer: number = 42;",
+    )]);
+    let valid = compile(
+        "project:///main.ts",
+        &valid_loader,
+        CompilerOptions::default(),
+    );
+    assert!(!valid.has_errors());
+    let output = valid.output.as_ref().unwrap();
+    assert_eq!(valid.project_fingerprint, output.fingerprint);
+    assert!(output
+        .artifacts
+        .values()
+        .all(|artifact| artifact.fingerprint == valid.project_fingerprint));
+
+    let invalid_loader = MapLoader::from([ModuleSource::new(
+        "project:///main.ts",
+        "export const answer: number = 'wrong';",
+    )]);
+    let invalid = compile(
+        "project:///main.ts",
+        &invalid_loader,
+        CompilerOptions::default(),
+    );
+    assert!(invalid.has_errors());
+    assert!(invalid.output.is_none());
+    assert!(invalid.project_fingerprint.starts_with("bts-"));
+    assert_ne!(valid.project_fingerprint, invalid.project_fingerprint);
+}
+
 #[derive(Default)]
 struct MutableLoader {
     modules: RefCell<BTreeMap<String, ModuleSource>>,

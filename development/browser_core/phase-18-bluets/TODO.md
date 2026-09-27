@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: F2.1.1.** Bind every registered-project result to its exact
-project generation and compiler fingerprint.
+**Current leaf: F2.1.2.** Cap artifact size, diagnostic count, and retained
+incremental work-set responses at the registered-project boundary.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -689,7 +689,7 @@ Keep check read-only and owner registration sealed before listeners.
 
 - [ ] **F2.1** Bind results to project generation and fingerprint; cap artifact,
   diagnostic, and incremental-work-set responses.
-  - [ ] **F2.1.1** Bind every result to project generation and fingerprint.
+  - [x] **F2.1.1** Bind every result to project generation and fingerprint. BlueTS computes the observed graph/options fingerprint on both successful and diagnostic-bearing compiles. Core check results carry that fingerprint with an exact project generation; the in-memory build result carries the same check and refuses an output or per-module artifact whose fingerprint differs. Compiler IPC v11 includes the fingerprint in every check, even without artifacts; subsequent diagnostic, work-set, and metadata records remain bound to that exact generation. MCP rejects malformed or conflicting fingerprint claims before recording a generation receipt.
   - [ ] **F2.1.2** Cap artifact size, diagnostic count, and incremental-work-set size.
 - [ ] **F2.2** Stage output atomically and emit nothing on compiler error; reject
   paths outside the authorized output root.

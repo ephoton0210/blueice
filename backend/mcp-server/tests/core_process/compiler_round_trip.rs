@@ -194,6 +194,10 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
     else {
         panic!("the sealed core profile must return an exact check generation")
     };
+    assert_eq!(
+        check.artifact_fingerprint.as_deref(),
+        Some(check.project_fingerprint.as_str())
+    );
     let summary = check
         .static_metadata
         .as_ref()

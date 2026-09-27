@@ -10,6 +10,8 @@
 //! path, or write capability. Callers can therefore only act on opaque
 //! project and generation handles minted by that owner.
 //!
+//! Version eleven binds every check generation to the observed graph/options
+//! fingerprint, including diagnostic-bearing checks with no emitted artifact.
 //! Version ten adds a bounded, source-free inventory of owner-exposed
 //! startup project IDs. A core listener grants subsequent project queries only after
 //! that exact accepted stream received the inventory; guessed IDs cannot
@@ -50,7 +52,7 @@ use std::io::{self, Read, Write};
 
 /// Independent protocol version for registered-project compiler IPC. It does
 /// not share the browser frontend protocol's lifecycle.
-pub const COMPILER_PROTOCOL_VERSION: u32 = 10;
+pub const COMPILER_PROTOCOL_VERSION: u32 = 11;
 
 /// A sealed catalog can expose at most this many project identities on one
 /// compiler stream. Inventory is a single bounded source-free response.
@@ -435,6 +437,8 @@ pub struct CompilerProjectIdentity {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompilerCheck {
     pub generation: CompilerGeneration,
+    /// Observed graph/options identity for this generation, even on error.
+    pub project_fingerprint: String,
     pub cache_hit: bool,
     pub parsed_modules: CompilerModuleList,
     pub reused_parsed_modules: CompilerModuleList,
@@ -444,6 +448,24 @@ pub struct CompilerCheck {
     pub has_errors: bool,
     pub artifact_fingerprint: Option<String>,
     pub static_metadata: Option<CompilerStaticMetadataSummary>,
+}
+
+impl CompilerCheck {
+    pub fn is_well_formed_for_project(&self, project: CompilerProject) -> bool {
+        self.generation.is_well_formed()
+            && self.generation.project == project
+            && !self.project_fingerprint.is_empty()
+            && self
+                .artifact_fingerprint
+                .as_ref()
+                .is_none_or(|artifact| artifact == &self.project_fingerprint)
+            && (self.artifact_fingerprint.is_some() != self.has_errors)
+            && self
+                .diagnostics
+                .entries
+                .iter()
+                .all(CompilerDiagnostic::is_well_formed)
+    }
 }
 
 /// A single static type, bound to the exact check/build generation that

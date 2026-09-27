@@ -3991,6 +3991,19 @@ manifest and project receipts. A granted catalog check creates no output.
 Actual build publication remains for F2.2 and F3.2, which must verify the
 grant and revalidate the filesystem target at the time of every write.
 
+**F2.1.1 result identity:** BlueTS now computes one stable observed
+graph/options fingerprint before deciding whether emission is possible. A
+diagnostic-bearing compilation therefore has a fingerprint even though it
+has no artifact; a successful compilation's fingerprint equals its output
+and each module artifact fingerprint. Core keeps this value with every
+registered-project check generation and verifies build artifacts against it
+before returning the in-memory build. Compiler IPC v11 adds the value to the
+check reply; later diagnostic, work-set, and static records carry the exact
+generation that the client first received with that fingerprint. MCP checks
+project/generation/fingerprint consistency before accepting a replacement
+generation receipt. This fingerprint is deterministic cache provenance, not a
+cryptographic authorization token or an output-write grant.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
