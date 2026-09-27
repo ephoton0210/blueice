@@ -397,6 +397,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "function-typeof-local-guard",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-typeof-local-guard/main.ts"),
+        )],
+        expected_stdout: Some("1:42:1:42\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "object-shorthand-expression",
         modules: &[ (
             "memory:///main.ts",
@@ -759,6 +768,24 @@ const CASES: &[OracleCase] = &[
             code: DiagnosticCode::TypeMismatch,
             line: 9,
         }],
+    },
+    OracleCase {
+        name: "function-typeof-local-guard-error",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-typeof-local-guard-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[
+            ExpectedDiagnostic {
+                code: DiagnosticCode::TypeMismatch,
+                line: 11,
+            },
+            ExpectedDiagnostic {
+                code: DiagnosticCode::TypeMismatch,
+                line: 13,
+            },
+        ],
     },
     OracleCase {
         name: "optional-record-error",

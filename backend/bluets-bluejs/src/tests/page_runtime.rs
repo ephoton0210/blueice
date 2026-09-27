@@ -556,6 +556,66 @@ fn direct_page_try_nested_safe_points_expire_with_the_page_generation() {
 }
 
 #[test]
+fn direct_page_typeof_guard_keeps_live_nested_provenance_and_rejects_stale_frames() {
+    let source = "function choose(input: string | number): number { const value: string | number = input; if (typeof value === 'string') { return 1; } return value; } choose('Ada');";
+    let function_end = source.find(" choose('Ada');").unwrap();
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let mut debug = DirectDebugRegistry::default();
+    let attachment = artifact
+        .attach_debug_in_page_realm(&mut runtime, 7, &origin(), &mut debug)
+        .unwrap();
+    attachment
+        .safe_point_map
+        .validate_against(runtime.program_registry(), attachment.handle)
+        .unwrap();
+    let child = attachment
+        .safe_point_map
+        .entries
+        .iter()
+        .find(|entry| entry.code_unit.ordinal() == 1)
+        .expect("guarded named function must have a mapped child frame");
+    let point = bluejs::BlueJsSafePoint {
+        code_unit: child.code_unit,
+        bytecode_offset: child.bytecode_offset,
+    };
+    let bluejs::BlueJsPageDebuggerNestedExecutionState::Paused {
+        frame,
+        bytecode_offset,
+    } = runtime
+        .execute_program_until_nested_debugger_pause(7, attachment.handle, point)
+        .unwrap()
+    else {
+        panic!("guarded function must pause in its nested frame");
+    };
+    let mapped = attachment
+        .safe_point_map
+        .source_span_for_safe_point(frame.code_unit_ordinal(), bytecode_offset)
+        .expect("the live guarded instruction must retain original provenance");
+    assert_eq!(mapped.source, ENTRY);
+    assert_eq!((mapped.start_byte, mapped.end_byte), (0, function_end));
+    assert!(matches!(
+        runtime.step_debugger_nested_instruction(frame),
+        Ok(bluejs::BlueJsPageDebuggerNestedExecutionState::Paused { .. })
+    ));
+    runtime.navigate(7, origin()).unwrap();
+    assert!(attachment
+        .safe_point_map
+        .validate_against(runtime.program_registry(), attachment.handle)
+        .is_err());
+    assert!(runtime.step_debugger_nested_instruction(frame).is_err());
+    assert!(debug
+        .get(runtime.program_registry(), attachment.handle)
+        .is_err());
+}
+
+#[test]
 fn direct_script_keeps_ambient_host_typings_static_without_making_them_a_program_source() {
     let artifact = compile_direct_script(
         ENTRY,
