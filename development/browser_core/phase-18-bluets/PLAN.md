@@ -4054,6 +4054,18 @@ strict-runtime crossing fails closed rather than producing a broken module.
 The compiler IPC/MCP route is still query-only; F3.2 must explicitly gate any
 public build operation by the separate owner grant.
 
+**F3.1.1 scoped compiler negotiation:** The existing exact-version compiler
+Hello gives MCP a core-authored query-only manifest and per-accepted-stream
+attestation. The sealed project inventory admits only owner-exposed handles
+on that stream; a structurally valid check for one of those handles replaces
+its generation receipt and revokes earlier metadata IDs. MCP now also
+validates `DescribeProject` against the exact requested handle before
+publishing its source-free identity. A real MCP client confirms that another
+connection rejects a prior session receipt, while existing real core/cutover
+tests prove private project IDs and superseded generations cannot be
+borrowed. This negotiation grants only the fixed query vocabulary; the
+independent output-write grant is not represented by these receipts.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

@@ -18,8 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: F3.1.1.** Negotiate exact compiler session, project, and
-generation capabilities across the core/MCP boundary.
+**Current leaf: F3.1.2.** Make pagination cursors one-shot.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -701,7 +700,7 @@ Keep check read-only and owner registration sealed before listeners.
 
 - [ ] **F3.1** Negotiate exact session/project/generation capabilities; keep
   pagination cursors one-shot and treat project strings as untrusted.
-  - [ ] **F3.1.1** Negotiate exact session/project/generation capabilities.
+  - [x] **F3.1.1** Negotiate exact session/project/generation capabilities. The core's exact-version handshake mints a per-stream attestation and canonical query-only manifest, which MCP validates before exposing its session receipt. `bluetsc_list_projects` supplies bounded per-session project receipts; `bluetsc_check` then supplies exact project/generation evidence, revoking the old generation before each check. MCP rejects an unobserved project or generation before IPC, verifies project descriptions and check replies against the requested handle, and keeps earlier receipts unusable on a new MCP stream. Unit and real launcher/core/MCP tests cover malformed core evidence, a mismatched description, hidden or guessed projects, prior-session receipt replay, generation binding, and cutover.
   - [ ] **F3.1.2** Make pagination cursors one-shot.
   - [ ] **F3.1.3** Treat project strings as untrusted data.
 - [ ] **F3.2** Expose build only with explicit output-write authority; a query

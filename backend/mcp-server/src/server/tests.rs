@@ -5,6 +5,52 @@
 use super::*;
 
 #[test]
+fn project_description_admits_only_the_requested_core_identity() {
+    use blueice_ipc::compiler::{CompilerErrorCode, CompilerProject, CompilerProjectIdentity};
+
+    let description = CompilerProjectIdentity {
+        project: CompilerProject { id: 7 },
+        entry_module: "project:///app/main.ts".into(),
+    };
+    assert!(matches!(
+        accept_compiler_project_reply(
+            7,
+            blueice_ipc::compiler::CompilerReply::Project(description.clone())
+        ),
+        blueice_ipc::compiler::CompilerReply::Project(_)
+    ));
+    for (requested, reply) in [
+        (
+            8,
+            blueice_ipc::compiler::CompilerReply::Project(description.clone()),
+        ),
+        (
+            7,
+            blueice_ipc::compiler::CompilerReply::Project(CompilerProjectIdentity {
+                entry_module: String::new(),
+                ..description
+            }),
+        ),
+        (
+            7,
+            blueice_ipc::compiler::CompilerReply::Projects(
+                blueice_ipc::compiler::CompilerProjectInventory {
+                    projects: vec![CompilerProject { id: 7 }],
+                },
+            ),
+        ),
+    ] {
+        assert!(matches!(
+            accept_compiler_project_reply(requested, reply),
+            blueice_ipc::compiler::CompilerReply::Error {
+                code: CompilerErrorCode::InvalidProject,
+                ..
+            }
+        ));
+    }
+}
+
+#[test]
 fn compiler_metadata_receipts_are_generation_and_category_bound() {
     let mut state = CompilerMcpSessionState::default();
     state.observe_generation(7, 3);

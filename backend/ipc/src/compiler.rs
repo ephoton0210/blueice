@@ -431,6 +431,14 @@ pub struct CompilerProjectIdentity {
     pub entry_module: String,
 }
 
+impl CompilerProjectIdentity {
+    /// A description can become public evidence only for the exact project
+    /// requested on this compiler stream.
+    pub fn is_well_formed_for_project(&self, project: CompilerProject) -> bool {
+        project.is_well_formed() && self.project == project && !self.entry_module.is_empty()
+    }
+}
+
 /// Bounded result of checking one already registered project. It contains no
 /// emitted JavaScript, declaration text, source-map text, source text, or
 /// output-write result.

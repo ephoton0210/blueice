@@ -438,6 +438,30 @@ pub(super) fn compiler_project_is_observed(
     })
 }
 
+/// A project inventory permits describing only that exact handle. Reject a
+/// mismatched or malformed core reply before its identity reaches MCP clients.
+pub(super) fn accept_compiler_project_reply(
+    project_id: u64,
+    reply: blueice_ipc::compiler::CompilerReply,
+) -> blueice_ipc::compiler::CompilerReply {
+    match &reply {
+        blueice_ipc::compiler::CompilerReply::Project(identity)
+            if identity.is_well_formed_for_project(blueice_ipc::compiler::CompilerProject {
+                id: project_id,
+            }) =>
+        {
+            reply
+        }
+        blueice_ipc::compiler::CompilerReply::Error { .. }
+        | blueice_ipc::compiler::CompilerReply::Unsupported { .. } => reply,
+        _ => blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::InvalidProject,
+            message: "core returned a project description for a different or malformed project"
+                .to_string(),
+        },
+    }
+}
+
 fn compiler_check_reply_is_well_formed(
     project_id: u64,
     check: &blueice_ipc::compiler::CompilerCheck,

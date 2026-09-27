@@ -486,6 +486,18 @@ async fn owner_private_compiler_projects_never_enter_real_mcp_client_inventories
         );
         if let Some(previous) = &previous_session {
             assert_ne!(session, *previous, "client streams need distinct receipts");
+            let replay = client
+                .call_tool(
+                    CallToolRequestParams::new("bluetsc_list_projects").with_arguments(
+                        serde_json::json!({ "session_id": previous })
+                            .as_object()
+                            .unwrap()
+                            .clone(),
+                    ),
+                )
+                .await
+                .expect("a prior MCP session receipt must get a structured rejection");
+            assert_eq!(replay.is_error, Some(true));
         }
 
         let request = |name: &str, project_id: u64| {

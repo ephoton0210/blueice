@@ -461,7 +461,9 @@ impl BlueIceMcpServer {
                 if let Some(error) = compiler_project_is_observed(session_state, project_id) {
                     return Ok(error);
                 }
-                connection.describe_project(project_id)
+                connection
+                    .describe_project(project_id)
+                    .map(|reply| accept_compiler_project_reply(project_id, reply))
             })
             .await?;
         Ok(compiler_reply_to_result(&compiler.receipt, reply))
