@@ -1330,7 +1330,8 @@ impl Vm {
                 self.heap.prevent_extensions(id)?;
             }
             self.heap.root(cooked.object_id().unwrap())?;
-            self.templates.insert(site.id, cooked.object_id().unwrap());
+            self.templates
+                .insert(site.id.clone(), cooked.object_id().unwrap());
             Ok(cooked)
         })();
         self.stack.truncate(base);

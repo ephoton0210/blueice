@@ -6,7 +6,7 @@
 //! Allocating instructions root all VM-held objects around heap
 //! safepoints. The collector itself additionally protects store inputs.
 
-use crate::bytecode::{Binding, ModuleExport, ModuleImportName};
+use crate::bytecode::{Binding, ModuleExport, ModuleImportName, TemplateSiteId};
 use crate::heap::{GeneratorState, PrivateElement};
 use crate::native::{self, NativeFunction};
 use crate::primitive;
@@ -785,7 +785,7 @@ struct SuspendedModuleExecution {
     script_global_slots: HashMap<usize, String>,
     variable_scope: u32,
     variable_scope_lexicals: Vec<String>,
-    templates: HashMap<u64, ObjectId>,
+    templates: HashMap<TemplateSiteId, ObjectId>,
     new_target: Value,
     new_target_allowed: bool,
     home_object: Option<ObjectId>,
@@ -990,7 +990,7 @@ pub struct Vm {
     variable_scope_lexicals: Vec<String>,
     iterator_prototype: Option<ObjectId>,
     regexp_iterator_prototype: Option<ObjectId>,
-    templates: HashMap<u64, ObjectId>,
+    templates: HashMap<TemplateSiteId, ObjectId>,
     new_target: Value,
     new_target_allowed: bool,
     // The `[[HomeObject]]` of the currently executing method or class

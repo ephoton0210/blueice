@@ -336,19 +336,30 @@ impl Vm {
                             .clone();
                         self.private_set(&receiver, owner, name, value)?;
                     }
-                    Opcode::PrivateUpdate => {
-                        let (receiver, owner, name) = self.private_reference(operand >> 2)?;
+                    Opcode::PrivatePostIncrement
+                    | Opcode::PrivatePreIncrement
+                    | Opcode::PrivatePostDecrement
+                    | Opcode::PrivatePreDecrement => {
+                        let (receiver, owner, name) = self.private_reference(operand)?;
                         // The private Reference is evaluated once: PrivateGet
                         // then PrivateSet on the same receiver and name.
                         // Keep the receiver rooted across a getter or setter.
                         self.stack.push(receiver.clone());
                         let old_value = self.private_get(&receiver, owner, &name)?;
-                        let (old, new) = self.numeric_step(&old_value, operand & 1 != 0)?;
+                        let decrement = matches!(
+                            instruction.opcode,
+                            Opcode::PrivatePostDecrement | Opcode::PrivatePreDecrement
+                        );
+                        let (old, new) = self.numeric_step(&old_value, decrement)?;
                         self.stack.push(new.clone());
                         self.private_set(&receiver, owner, name, new.clone())?;
                         self.stack.pop();
                         self.stack.pop();
-                        self.stack.push(if operand & 2 == 0 { old } else { new });
+                        let prefix = matches!(
+                            instruction.opcode,
+                            Opcode::PrivatePreIncrement | Opcode::PrivatePreDecrement
+                        );
+                        self.stack.push(if prefix { new } else { old });
                     }
                     Opcode::PrivateIn => {
                         let (receiver, owner, _name) = self.private_reference(operand)?;

@@ -269,8 +269,12 @@ opcodes! {
     // A destructuring leaf's PrivateSet: `value, receiver, name` -> `value`.
     PrivateSetLeaf: 5, 0;
     // `++`/`--` on a private member: `receiver, name` -> the old or new
-    // number. The operand is `owner_slot << 2 | prefix << 1 | decrement`.
-    PrivateUpdate: 5, MAY_USE_INLINE_CACHE;
+    // number. The full u32 operand is the owner slot; the opcode carries the
+    // update operation and result choice.
+    PrivatePostIncrement: 5, MAY_USE_INLINE_CACHE;
+    PrivatePreIncrement: 5, MAY_USE_INLINE_CACHE;
+    PrivatePostDecrement: 5, MAY_USE_INLINE_CACHE;
+    PrivatePreDecrement: 5, MAY_USE_INLINE_CACHE;
     PrivateIn: 5, MAY_USE_INLINE_CACHE;
     // A super property Reference is the operand pair `base, key` (like any
     // other property Reference) with the `this` value pushed on top just
@@ -473,9 +477,34 @@ pub(crate) enum ModuleExport {
     },
 }
 
+/// Identity shared by clones of one compiled site. The VM keeps a clone as
+/// the cache key, so its allocation cannot be reused while that entry lives.
+#[derive(Clone)]
+pub(crate) struct TemplateSiteId(std::sync::Arc<()>);
+
+impl TemplateSiteId {
+    pub(crate) fn new() -> Self {
+        Self(std::sync::Arc::new(()))
+    }
+}
+
+impl PartialEq for TemplateSiteId {
+    fn eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for TemplateSiteId {}
+
+impl std::hash::Hash for TemplateSiteId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hash::hash(&std::sync::Arc::as_ptr(&self.0), state);
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct TemplateSite {
-    pub id: u64,
+    pub id: TemplateSiteId,
     pub raw: Vec<crate::JsString>,
     pub cooked: Vec<Option<crate::JsString>>,
 }

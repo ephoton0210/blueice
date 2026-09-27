@@ -62,65 +62,20 @@ fn missing_private_member() -> Expr {
 }
 
 #[test]
-fn template_site_ids_stop_before_wrapping() {
-    let counter = std::sync::atomic::AtomicU64::new(u64::MAX - 1);
-    assert!(matches!(next_template_site_id(&counter), Ok(id) if id == u64::MAX - 1));
-    assert!(matches!(
-        next_template_site_id(&counter),
-        Err(CompileError::ProgramTooLarge)
-    ));
-    assert_eq!(counter.load(std::sync::atomic::Ordering::Relaxed), u64::MAX);
-}
-
-#[test]
-fn tagged_template_compilation_propagates_site_id_exhaustion() {
-    let counter = std::sync::atomic::AtomicU64::new(u64::MAX - 1);
-    let mut compiler = bare_compiler();
+fn tagged_template_site_identity_survives_clone_and_distinguishes_compilations() {
     let raw = vec![JsString::from("raw")];
     let cooked = vec![Some(JsString::from("raw"))];
-    compiler
-        .tagged_template_expression(&Expr::Number(1.0), &raw, &cooked, &[], &counter)
+    let mut first = bare_compiler();
+    first
+        .tagged_template_expression(&Expr::Number(1.0), &raw, &cooked, &[])
         .unwrap();
-    assert_eq!(compiler.bytecode.templates.len(), 1);
-    assert_eq!(compiler.bytecode.templates[0].id, u64::MAX - 1);
-
-    let mut exhausted = bare_compiler();
-    assert!(matches!(
-        exhausted.tagged_template_expression(&Expr::Number(1.0), &raw, &cooked, &[], &counter),
-        Err(CompileError::ProgramTooLarge)
-    ));
-    assert!(exhausted.bytecode.templates.is_empty());
-    assert_eq!(counter.load(std::sync::atomic::Ordering::Relaxed), u64::MAX);
-}
-
-#[test]
-fn private_update_operands_reject_unrepresentable_owners() {
-    assert!(matches!(
-        private_update_operand(u32::MAX / 4, UpdateOp::Dec, true),
-        Ok(u32::MAX)
-    ));
-    assert!(matches!(
-        private_update_operand(u32::MAX / 4 + 1, UpdateOp::Inc, false),
-        Err(CompileError::ProgramTooLarge)
-    ));
-}
-
-#[test]
-fn private_update_rejects_an_owner_slot_that_cannot_fit_its_operand() {
-    let mut compiler = bare_compiler();
-    compiler.names[0].insert("owner".into(), u32::MAX / 4 + 1);
-    compiler
-        .private_scopes
-        .push(HashMap::from([("missing".into(), "owner".into())]));
-    let expression = Expr::Update {
-        op: UpdateOp::Inc,
-        arg: Box::new(missing_private_member()),
-        prefix: false,
-    };
-    assert!(matches!(
-        compiler.expression(&expression),
-        Err(CompileError::ProgramTooLarge)
-    ));
+    let cloned = first.bytecode.clone();
+    assert!(first.bytecode.templates[0].id == cloned.templates[0].id);
+    let mut second = bare_compiler();
+    second
+        .tagged_template_expression(&Expr::Number(1.0), &raw, &cooked, &[])
+        .unwrap();
+    assert!(first.bytecode.templates[0].id != second.bytecode.templates[0].id);
 }
 
 #[test]
@@ -174,18 +129,7 @@ fn super_spread_arguments_preserve_their_compilation_error() {
 
 #[test]
 fn internal_member_helpers_reject_invalid_shapes_and_unresolved_private_names() {
-    assert!(matches!(
-        bare_compiler().optional_chain_member_reference(&Expr::Number(1.0), &mut Vec::new()),
-        Err(CompileError::InvalidSyntax(
-            "invalid optional-chain member AST"
-        ))
-    ));
-    assert!(matches!(
-        bare_compiler().parenthesized_optional_member_method(&Expr::Number(1.0)),
-        Err(CompileError::InvalidSyntax(
-            "invalid parenthesized optional member AST"
-        ))
-    ));
+    assert!(optional_member_parts(&Expr::Number(1.0)).is_none());
     assert!(matches!(
         bare_compiler().member_reference_uncoerced(&Expr::Number(1.0)),
         Err(CompileError::InvalidSyntax("invalid assignment/member AST"))
@@ -212,7 +156,10 @@ fn internal_member_helpers_reject_invalid_shapes_and_unresolved_private_names() 
         computed: false,
     };
     assert!(matches!(
-        bare_compiler().optional_chain_member_reference(&optional_private, &mut Vec::new()),
+        bare_compiler().optional_chain_member_reference(
+            optional_member_parts(&optional_private).unwrap(),
+            &mut Vec::new(),
+        ),
         Err(CompileError::InvalidSyntax(message)) if message == expected
     ));
     assert!(matches!(
@@ -222,7 +169,7 @@ fn internal_member_helpers_reject_invalid_shapes_and_unresolved_private_names() 
 }
 
 #[test]
-fn direct_plain_expression_helpers_reject_optional_ast_shapes() {
+fn direct_plain_expression_helpers_compile_optional_ast_shapes() {
     let optional_member = Expr::OptionalMember {
         object: Box::new(Expr::Number(1.0)),
         property: Box::new(Expr::Identifier("name".into())),
@@ -233,9 +180,10 @@ fn direct_plain_expression_helpers_reject_optional_ast_shapes() {
         args: Vec::new(),
     };
     for expression in [optional_member, optional_call] {
-        assert!(matches!(
-            bare_compiler().expression_plain(&expression),
-            Err(CompileError::Unsupported("optional chaining"))
-        ));
+        let mut plain = bare_compiler();
+        plain.expression_plain(&expression).unwrap();
+        let mut ordinary = bare_compiler();
+        ordinary.expression(&expression).unwrap();
+        assert_eq!(plain.bytecode.bytes(), ordinary.bytecode.bytes());
     }
 }
