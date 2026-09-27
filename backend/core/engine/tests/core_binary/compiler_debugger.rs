@@ -470,22 +470,6 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
     assert!(wait_for(&debugger_socket_path, Duration::from_secs(5)));
     let mut frontend = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::client_handshake(&mut frontend).unwrap();
-    blueice_ipc::write_client_message(
-        &mut frontend,
-        &blueice_ipc::ClientMessage::Navigate {
-            url: format!("http://{addr_one}"),
-        },
-    )
-    .unwrap();
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::Navigated { .. }
-    ));
-    assert!(matches!(
-        blueice_ipc::read_server_message(&mut frontend).unwrap(),
-        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
-    ));
-
     let mut invalid_debugger =
         connect_with_retry(&debugger_socket_path, Duration::from_secs(5)).unwrap();
     blueice_ipc::debugger::write_debugger_request(
@@ -528,6 +512,30 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
                 blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
         }
     );
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::HoldNextDocument { tab_id: 1 },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::NextDocumentHoldAcquired { tab_id: 1 }
+    );
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("http://{addr_one}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
+    ));
     blueice_ipc::debugger::write_debugger_request(
         &mut debugger,
         &blueice_ipc::debugger::DebuggerRequest::ListPageRealms,
@@ -622,9 +630,8 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
         other => panic!("expected verified debugger safe points, got {other:?}"),
     };
     assert_eq!(first_safe_point.program, first_program);
-    // The core process has not entered this program yet: with the debugger
-    // socket selected, its page scheduler gives this handshaken peer one turn
-    // to arm the compiler-verified root instruction boundary.
+    // The stream-owned hold keeps the admitted program pending while this
+    // debugger reads its verified root entry and arms it.
     blueice_ipc::debugger::write_debugger_request(
         &mut debugger,
         &blueice_ipc::debugger::DebuggerRequest::ArmEntryBreakpoint {
