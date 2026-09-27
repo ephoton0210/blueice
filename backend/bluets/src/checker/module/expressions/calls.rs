@@ -82,19 +82,8 @@ impl<'a> ModuleChecker<'a> {
             &mut HashSet::new(),
             &mut budget,
         );
-        let (parameters, _) = match member_type {
-            PropertyType::Found {
-                value: Type::Function { parameters, result },
-                ..
-            } => (parameters, result),
-            PropertyType::Found { .. } => {
-                self.type_error(
-                    span,
-                    format!("property `{}` is not callable", call.member.text),
-                    DiagnosticCode::TypeMismatch,
-                );
-                return;
-            }
+        let member_type = match member_type {
+            PropertyType::Found { value, .. } => value,
             PropertyType::Missing
                 if matches!(
                     base,
@@ -148,13 +137,93 @@ impl<'a> ModuleChecker<'a> {
             );
             return;
         };
+        let call_span = SourceSpan::new(
+            span.module.clone(),
+            tokens.first().expect("member call has a receiver").start,
+            tokens.last().expect("member call has a closing token").end,
+        );
+        let (parameters, selected_overload) = match member_type {
+            Type::Function { parameters, .. } => (parameters, false),
+            Type::Intersection(overloads) => {
+                if !supports_callback_method_receiver(&base, &self.types, self.max_type_expansions)
+                {
+                    self.type_error(
+                        &call_span,
+                        format!("unsupported overload set for method {}", call.member.text),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                    return;
+                }
+                match select_callback_method_overload(&overloads, &actuals) {
+                    Ok(Type::Function { parameters, .. }) => {
+                        let named_callback = matches!(arguments.get(1), Some([callback]) if callback.kind == TokenKind::Identifier);
+                        if matches!(actuals.get(1), Some(Type::Any | Type::Unknown))
+                            || (matches!(actuals.get(1), Some(Type::Function { .. }))
+                                && !named_callback)
+                        {
+                            self.type_error(
+                                &call_span,
+                                format!(
+                                    "method {} requires a named function callback",
+                                    call.member.text
+                                ),
+                                DiagnosticCode::TypeMismatch,
+                            );
+                            return;
+                        }
+                        (parameters.clone(), true)
+                    }
+                    Ok(_) => unreachable!("the selected overload is a function"),
+                    Err(MethodOverloadError::Ambiguous) => {
+                        self.type_error(
+                            &call_span,
+                            format!(
+                                "ambiguous overload of method {} for first argument type `{}`",
+                                call.member.text,
+                                type_label(&actuals[0])
+                            ),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                        return;
+                    }
+                    Err(MethodOverloadError::NoMatch) => {
+                        self.type_error(
+                            &call_span,
+                            format!(
+                                "no overload of method {} matches the supplied argument types",
+                                call.member.text
+                            ),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                        return;
+                    }
+                    Err(MethodOverloadError::Unsupported) => {
+                        self.type_error(
+                            &call_span,
+                            format!("unsupported overload set for method {}", call.member.text),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                        return;
+                    }
+                }
+            }
+            _ => {
+                self.type_error(
+                    span,
+                    format!("property `{}` is not callable", call.member.text),
+                    DiagnosticCode::TypeMismatch,
+                );
+                return;
+            }
+        };
+        let argument_span = if selected_overload { &call_span } else { span };
         let required = parameters
             .iter()
             .filter(|parameter| !parameter.optional)
             .count();
         if actuals.len() < required || actuals.len() > parameters.len() {
             self.type_error(
-                span,
+                argument_span,
                 format!(
                     "method {} expects {required} to {} argument(s), got {}",
                     call.member.text,
@@ -166,13 +235,18 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         for (index, actual) in actuals.iter().enumerate() {
+            if selected_overload && index == 0 {
+                // The selector already compared the literal string values,
+                // including equivalent single and double quote spellings.
+                continue;
+            }
             let expected = parameters[index]
                 .annotation
                 .as_ref()
                 .expect("method signature parameters have annotations");
-            if !self.is_assignable_bounded(actual, expected, span) {
+            if !self.is_assignable_bounded(actual, expected, argument_span) {
                 self.type_error(
-                    span,
+                    argument_span,
                     format!(
                         "argument {} has type `{}`, which is not assignable to method parameter `{}` of type `{}`",
                         index + 1,

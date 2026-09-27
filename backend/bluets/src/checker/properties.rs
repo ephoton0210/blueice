@@ -124,22 +124,31 @@ pub(super) fn property_type(
         }
         Type::Intersection(parts) => {
             let mut indeterminate = false;
-            let mut found: Option<(Type, bool)> = None;
+            let mut found = Vec::new();
+            let mut readonly = false;
             for part in parts {
                 match property_type(part, property, aliases, visited, budget) {
-                    PropertyType::Found { value, readonly } => {
-                        if let Some((_, found_readonly)) = &mut found {
-                            *found_readonly |= readonly;
-                        } else {
-                            found = Some((value, readonly));
+                    PropertyType::Found {
+                        value,
+                        readonly: part_readonly,
+                    } => {
+                        if !found.is_empty() && !budget.consume() {
+                            return PropertyType::Exhausted;
                         }
+                        found.push(value);
+                        readonly |= part_readonly;
                     }
                     PropertyType::Missing => {}
                     PropertyType::Indeterminate => indeterminate = true,
                     PropertyType::Exhausted => return PropertyType::Exhausted,
                 }
             }
-            if let Some((value, readonly)) = found {
+            if !found.is_empty() {
+                let value = if found.len() == 1 {
+                    found.pop().expect("one matching property")
+                } else {
+                    Type::Intersection(found)
+                };
                 PropertyType::Found { value, readonly }
             } else if indeterminate {
                 PropertyType::Indeterminate

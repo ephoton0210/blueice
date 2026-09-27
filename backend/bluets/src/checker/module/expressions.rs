@@ -8,9 +8,13 @@ use super::*;
 
 mod indexing;
 mod inference;
+mod method_overloads;
 mod readonly;
 
 use indexing::{canonical_index_key, indexed_value_type};
+use method_overloads::{
+    select_callback_method_overload, supports_callback_method_receiver, MethodOverloadError,
+};
 
 impl<'a> ModuleChecker<'a> {
     pub(super) fn infer_function_call(

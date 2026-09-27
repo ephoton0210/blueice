@@ -287,6 +287,83 @@ fn callback_method_overloads_retain_both_literal_tag_signatures() {
 }
 
 #[test]
+fn callback_method_overloads_select_by_tag_and_report_distinct_failures() {
+    let ambient = ModuleSource::new(
+        "memory:///visitor.d.ts",
+        "interface Visitor { visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; } declare const visitor: Visitor; declare const kind: 'text' | 'count'; declare const opaque: any;",
+    );
+    let check = |call: &str| {
+        let source = format!(
+            "function onText(value: string): void {{}} function onCount(value: number): void {{}} {call}"
+        );
+        let result = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source.clone())]),
+            CompilerOptions {
+                ambient_declaration_modules: vec![ambient.clone()],
+                require_declared_global_calls: true,
+                ..CompilerOptions::default()
+            },
+        );
+        (source, result)
+    };
+    for call in [
+        "visitor.visit('text', onText);",
+        "visitor.visit(\"count\", onCount);",
+    ] {
+        let (_, result) = check(call);
+        assert!(
+            result.diagnostics.is_empty(),
+            "{call}: {:#?}",
+            result.diagnostics
+        );
+    }
+    for (call, message) in [
+        (
+            "visitor.visit(kind, onText);",
+            "ambiguous overload of method visit",
+        ),
+        (
+            "visitor.visit('other', onText);",
+            "no overload of method visit matches",
+        ),
+        (
+            "visitor.visit('text', onCount);",
+            "argument 2 has type `function`",
+        ),
+        (
+            "visitor.visit('text', 'wrong');",
+            "argument 2 has type `'wrong'`",
+        ),
+        (
+            "visitor.visit('text', opaque);",
+            "requires a named function callback",
+        ),
+    ] {
+        let (source, result) = check(call);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "{call}: {:#?}",
+            result.diagnostics
+        );
+        let diagnostic = &result.diagnostics[0];
+        assert_eq!(diagnostic.code.to_string(), "BTS3003");
+        assert!(
+            diagnostic.message.contains(message),
+            "{call}: {diagnostic:?}"
+        );
+        let start = source.find(call).expect("call text");
+        assert_eq!(diagnostic.span.start, start, "{call}: {diagnostic:?}");
+        assert_eq!(
+            diagnostic.span.end,
+            start + call.len() - 1,
+            "{call}: {diagnostic:?}"
+        );
+    }
+}
+
+#[test]
 fn braced_while_retains_its_condition_and_body_without_proving_a_return() {
     let source =
         "function count(value: number): number { while (value > 0) { value -= 1; } return value; }";

@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: H.4.2.2.** Select the unique literal-tag method signature and
-check its named callback, with stable rejected-call diagnostics.
+**Current leaf: H.4.2.3.** Verify erased emission and direct-page execution of
+both tags through one typed object method and named callbacks.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -793,7 +793,7 @@ Keep check read-only and owner registration sealed before listeners.
   - [x] **H.4.1** Define resolution rules and the ambiguous-call diagnostic. [PLAN.md](PLAN.md#h41-first-callback-bearing-method-overload-form) selects exactly two same-named interface/record methods with distinct string-literal first arguments and one named primitive callback each. An exact tag selects one callback signature; a union of both tags yields one stable `BTS3003` ambiguous-call diagnostic at the call, an unrelated tag has a distinct no-match diagnostic, and a wrong callback remains an argument mismatch. Overlaps, larger/generic/optional/rest sets, anonymous callbacks, inherited/intersection receivers, and optional calls remain outside this first form. H.4.2 owns parser, checker, emitted/direct runtime, debugger, and oracle evidence.
   - [ ] **H.4.2** Test with the same four gates: checker, emitter, direct execution, oracle.
     - [x] **H.4.2.1** Preserve two same-named callback-bearing method signatures in the public parser and bounded property lookup; prove unsupported overlapping/larger sets do not select a first signature. Public parser tests retain both signatures in an interface and record alias; lookup retains declaration order as a bounded function intersection. Until H.4.2.2 selects the supported pair, calls through duplicate method names fail closed, including overlapping and three-signature sets. BlueTS crate tests, all-target Clippy, rustfmt, and whitespace checks pass under the shared-target disk guard.
-    - [ ] **H.4.2.2** Resolve exactly one literal-tag method signature and callback, with stable ambiguous, no-match, and wrong-callback diagnostics; test at the public compiler boundary.
+    - [x] **H.4.2.2** Resolve exactly one literal-tag method signature and callback, with stable ambiguous, no-match, and wrong-callback diagnostics; test at the public compiler boundary. A shared bounded selector recognizes the exact two-method shape, compares literal tag values across quote styles, and uses the existing callback assignability check. Public tests confirm both selected branches and one `BTS3003` call-span diagnostic for a union tag, unrelated tag, wrong callback, and opaque callback. Overlapping, larger, optional, wrong-result and inherited sets fail closed. BlueTS crate tests, all-target Clippy, rustfmt, and whitespace checks pass under the shared-target disk guard.
     - [ ] **H.4.2.3** Verify erased emission and direct-page execution of both tags through one typed object method and named callbacks, without reparsing JavaScript.
     - [ ] **H.4.2.4** Compare accepted and rejected fixtures with pinned TypeScript 5.9.3, verify debugger provenance/stale-generation behavior, and run workspace gates under the shared-target disk budget.
 

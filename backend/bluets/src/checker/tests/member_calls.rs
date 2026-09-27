@@ -47,6 +47,8 @@ fn unsupported_callback_method_overload_sets_do_not_choose_the_first_signature()
     for signatures in [
         "visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'text', callback: (value: number) => void): void;",
         "visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; visit(kind: 'other', callback: (value: boolean) => void): void;",
+        "visit(kind: 'text', callback?: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void;",
+        "visit(kind: 'text', callback: (value: string) => string): void; visit(kind: 'count', callback: (value: number) => void): void;",
     ] {
         let ambient = ModuleSource::new(
             "memory:///visitor.d.ts",
@@ -67,12 +69,32 @@ fn unsupported_callback_method_overload_sets_do_not_choose_the_first_signature()
         assert!(
             result.diagnostics.iter().any(|diagnostic| {
                 diagnostic.code == DiagnosticCode::TypeMismatch
-                    && diagnostic.message == "property `visit` is not callable"
+                    && diagnostic.message == "unsupported overload set for method visit"
             }),
             "{signatures}: {:#?}",
             result.diagnostics
         );
     }
+}
+
+#[test]
+fn inherited_callback_method_overloads_do_not_choose_a_parent_signature() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "interface Base { visit(kind: 'text', callback: (value: string) => void): void; } interface Visitor extends Base { visit(kind: 'count', callback: (value: number) => void): void; } declare const visitor: Visitor; function onText(value: string): void {} visitor.visit('text', onText);",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(
+        result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::TypeMismatch
+                && diagnostic.message == "unsupported overload set for method visit"
+        }),
+        "{:#?}",
+        result.diagnostics
+    );
 }
 
 #[test]

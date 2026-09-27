@@ -96,17 +96,37 @@ impl<'a> ModuleChecker<'a> {
         if let Some(call) = member_call_parts(tokens) {
             let base = self.infer_expression(call.receiver, scope);
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-            if let PropertyType::Found {
-                value: Type::Function { result, .. },
-                ..
-            } = property_type(
+            let found = property_type(
                 &base,
                 &call.member.text,
                 &self.types,
                 &mut HashSet::new(),
                 &mut budget,
-            ) {
-                return *result;
+            );
+            if let PropertyType::Found { value, .. } = found {
+                match value {
+                    Type::Function { result, .. } => return *result,
+                    Type::Intersection(overloads)
+                        if supports_callback_method_receiver(
+                            &base,
+                            &self.types,
+                            self.max_type_expansions,
+                        ) =>
+                    {
+                        if let Some(arguments) = split_call_arguments(call.arguments) {
+                            if let Ok(actuals) =
+                                self.expanded_call_argument_types(&arguments, scope)
+                            {
+                                if let Ok(Type::Function { result, .. }) =
+                                    select_callback_method_overload(&overloads, &actuals)
+                                {
+                                    return *result.clone();
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
             }
             return Type::Unknown;
         }
