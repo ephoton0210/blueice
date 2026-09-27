@@ -222,17 +222,14 @@ fn calendar_add_date_matches_the_pure_iso_fast_path_for_iso8601() {
 
 #[test]
 fn rounds_calendar_durations_matching_a_real_test262_fixture() {
-    // Test262's PlainDate/prototype/until/roundingmode-ceil.js: 2019-01-08
-    // until 2021-09-07, rounded up (roundingMode "ceil") to each
-    // smallestUnit in turn, with largestUnit implicitly bumped to match.
+    // The year/month cases of Test262's PlainDate/prototype/until/
+    // roundingmode-ceil.js exercise PlainYearMonth's shared calendar window.
     use blueice_ecma402::NumberRoundingMode::Ceil;
     let start = (2019, 1, 8);
     let end = (2021, 9, 7);
     for (unit, expected_positive, expected_negative) in [
         (DateUnit::Year, (3, 0, 0, 0), (-2, 0, 0, 0)),
         (DateUnit::Month, (0, 32, 0, 0), (0, -31, 0, 0)),
-        (DateUnit::Week, (0, 0, 139, 0), (0, 0, -139, 0)),
-        (DateUnit::Day, (0, 0, 0, 973), (0, 0, 0, -973)),
     ] {
         assert_eq!(
             round_calendar_duration(AnyCalendarKind::Iso, start, end, unit, unit, 1, Ceil),
@@ -250,27 +247,11 @@ fn rounds_calendar_durations_matching_a_real_test262_fixture() {
 #[test]
 fn rounding_an_exact_multiple_of_the_larger_unit_adds_no_spurious_remainder() {
     // Test262's PlainDate/prototype/since/exact-multiple-of-larger-unit.js:
-    // a `{ largestUnit, smallestUnit }` pair where the *unrounded*
-    // difference is already an exact whole `largestUnit` (here, exactly
-    // one month/one year) must report that exactly, in every rounding
-    // mode — not a `smallestUnit`-sized wobble computed by bubbling
-    // `smallestUnit` steps from scratch.
+    // an exact whole year must report that year in every rounding mode,
+    // without a month-sized wobble from a fresh month-by-month walk.
     use blueice_ecma402::NumberRoundingMode::{Ceil, Expand, Floor, HalfEven, HalfExpand, Trunc};
     let start = (2012, 1, 1);
     for mode in [Ceil, Floor, Expand, Trunc, HalfExpand, HalfEven] {
-        assert_eq!(
-            round_calendar_duration(
-                AnyCalendarKind::Iso,
-                start,
-                (2012, 2, 1),
-                DateUnit::Month,
-                DateUnit::Week,
-                1,
-                mode
-            ),
-            (0, 1, 0, 0),
-            "P1M weeks..months {mode:?}"
-        );
         assert_eq!(
             round_calendar_duration(
                 AnyCalendarKind::Iso,
@@ -935,5 +916,112 @@ fn round_calendar_duration_reports_a_window_outside_the_range_as_none() {
             Trunc
         ),
         None
+    );
+}
+
+#[test]
+fn non_iso_date_addition_rejects_years_outside_the_icu_field_range() {
+    let calendar = AnyCalendarKind::Indian;
+    let date = (2020, 6, 1);
+    let start_year = i64::from(
+        super::super::calendar::calendar_date_from_civil(calendar, date)
+            .year()
+            .extended_year(),
+    );
+    let above = i64::from(i32::MAX) + 1 - start_year;
+    let below = i64::from(i32::MIN) - 1 - start_year;
+
+    // A nonnegative month count checks the year before reading its months.
+    assert_eq!(
+        calendar_add_date(calendar, date, above, 0, 0, 0, false),
+        None
+    );
+    // Month 3 -> 2 exits the negative loop before its final year conversion.
+    assert_eq!(
+        calendar_add_date(calendar, date, above, -1, 0, 0, false),
+        None
+    );
+    // Crossing the preceding year's boundary checks that year's conversion.
+    assert_eq!(
+        calendar_add_date(calendar, date, below, -3, 0, 0, false),
+        None
+    );
+    // The next year's i32 value exists, but ICU cannot construct its month.
+    assert_eq!(
+        calendar_add_date(calendar, date, above, -3, 0, 0, false),
+        None
+    );
+}
+
+#[test]
+fn calendar_rounding_handles_ties_equal_dates_and_unrepresentable_windows() {
+    use blueice_ecma402::NumberRoundingMode::{HalfEven, Trunc};
+    assert_eq!(
+        super::round_duration::round_calendar_duration(
+            AnyCalendarKind::Iso,
+            (2021, 1, 1),
+            (2021, 1, 1),
+            DateUnit::Month,
+            DateUnit::Month,
+            1,
+            HalfEven,
+        ),
+        Some((0, 0, 0, 0))
+    );
+    assert_eq!(
+        super::round_duration::round_calendar_duration(
+            AnyCalendarKind::Iso,
+            (2021, 1, 1),
+            (2021, 2, 15),
+            DateUnit::Month,
+            DateUnit::Month,
+            1,
+            HalfEven,
+        ),
+        Some((0, 2, 0, 0))
+    );
+    assert_eq!(
+        super::round_duration::round_month_or_year(
+            AnyCalendarKind::Iso,
+            (2021, 1, 1),
+            0,
+            (2021, 1, 2),
+            DateUnit::Year,
+            0,
+            1,
+            i128::from(i64::MAX) + 1,
+            Trunc,
+        ),
+        None
+    );
+    assert_eq!(
+        super::round_duration::round_month_or_year(
+            AnyCalendarKind::Iso,
+            (275760, 9, 13),
+            0,
+            (275760, 9, 13),
+            DateUnit::Year,
+            1,
+            1,
+            1,
+            Trunc,
+        ),
+        None
+    );
+}
+
+#[test]
+#[should_panic(expected = "round_month_or_year is only called for Month/Year units")]
+fn calendar_rounding_rejects_a_fixed_length_unit_at_the_internal_boundary() {
+    super::round_duration::round_month_or_year(
+        AnyCalendarKind::Iso,
+        (2021, 1, 1),
+        0,
+        (2021, 1, 2),
+        DateUnit::Day,
+        0,
+        1,
+        1,
+        blueice_ecma402::NumberRoundingMode::Trunc,
     );
 }

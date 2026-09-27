@@ -144,6 +144,33 @@ fn a_set_uses_same_value_zero() {
 }
 
 #[test]
+fn maps_and_sets_hash_every_key_type_and_keep_distinct_identities() {
+    assert_true(
+        r#"(function() {
+          const symbol = Symbol('key');
+          const object = {};
+          const keys = [undefined, null, false, true, -0, NaN, 3.5, 17n, '17', symbol, object];
+          const map = new Map();
+          const set = new Set();
+          for (let index = 0; index < keys.length; index++) {
+            map.set(keys[index], index);
+            set.add(keys[index]);
+          }
+          if (map.size !== keys.length || set.size !== keys.length) return 'size';
+          for (let index = 0; index < keys.length; index++) {
+            if (!map.has(keys[index]) || map.get(keys[index]) !== index ||
+                !set.has(keys[index])) return 'lookup ' + index;
+          }
+          if (!map.has(0) || !set.has(0) || !map.has(Number('not a number'))) return 'same value zero';
+          for (let index = 0; index < keys.length; index++) {
+            if (!map.delete(keys[index]) || !set.delete(keys[index])) return 'delete ' + index;
+          }
+          return map.size === 0 && set.size === 0 ? true : 'remaining entries';
+        })()"#,
+    );
+}
+
+#[test]
 fn a_map_iterates_in_insertion_order() {
     let map = "new Map([['a', 1], ['b', 2], ['c', 3]])";
     assert_string(

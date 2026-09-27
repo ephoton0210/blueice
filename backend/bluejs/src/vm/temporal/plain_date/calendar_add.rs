@@ -67,14 +67,15 @@ pub(crate) fn calendar_add_date(
         }
     }
     let year = i32::try_from(year).ok()?;
-    let month = u8::try_from(month).ok()?;
+    // The loops above leave an ordinal in 1..=months_in_year (at most 13).
+    let month = month as u8;
 
     let mut fields = DateFields::default();
     fields.extended_year = Some(year);
     fields.ordinal_month = Some(month);
     let mut options = DateFromFieldsOptions::default();
     if reject {
-        fields.day = Some(u8::try_from(start_day).ok()?);
+        fields.day = Some(start_day as u8);
         options.overflow = Some(IcuOverflow::Reject);
     } else {
         // Constrain the day to the landing month ourselves via a
@@ -83,7 +84,7 @@ pub(crate) fn calendar_add_date(
         // out-of-range day, so this is simply always constrain-mode here,
         // with `reject` distinguishing whether an out-of-range day is an
         // error at all.
-        fields.day = Some(u8::try_from(start_day.min(31)).ok()?);
+        fields.day = Some(start_day.min(31) as u8);
         options.overflow = Some(IcuOverflow::Constrain);
     }
     let landed = Date::try_from_fields(fields, options, AnyCalendar::new(calendar)).ok()?;
