@@ -309,6 +309,10 @@ fn http_source_cache_is_isolated_and_released_through_real_child_lifecycle() {
                 thread::sleep(Duration::from_millis(5));
                 continue;
             };
+            stream.set_nonblocking(false).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
             let mut buffer = [0u8; 4096];
             let bytes = stream.read(&mut buffer).unwrap();
             assert!(std::str::from_utf8(&buffer[..bytes])

@@ -4245,6 +4245,17 @@ macOS arm64 debugger tests separately reached `Completed` before their pending
 breakpoints were armed, so their admission race needs its own leaf before the
 full CI rerun.
 
+**G.3.2.2.2 macOS HTTP fixture mode:** The macOS 26 x86_64 core-library job
+in the same CI run failed the real-child source-cache test when its accepted
+HTTP connection returned `WouldBlock` before any request bytes were read.
+The fixture intentionally keeps the listener nonblocking while polling for
+four connections, but each accepted connection now switches to blocking mode
+with a five-second read timeout before reading its request. This preserves
+the actual HTTP/child/cache path and bounds a stalled fixture. The focused
+real-child test passes locally in the shared target; CI must still verify
+the macOS behavior. The macOS debugger pending-admission failures remain a
+separate release-gate blocker.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

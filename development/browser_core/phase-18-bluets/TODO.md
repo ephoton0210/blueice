@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: G.3.2.2.2.** Stabilize the macOS arm64 debugger admission
-tests without weakening their breakpoint assertions.
+**Current leaf: G.3.2.2.3.** Stabilize the macOS debugger admission tests
+without weakening their breakpoint assertions.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -742,8 +742,9 @@ Keep check read-only and owner registration sealed before listeners.
     - [x] **G.3.2.1** Configure valid-profile recovery without weakening either coverage threshold. CI run 36317372058 reached profile merging after its workspace tests, but one invalid `.profraw` header made the default any-profile failure mode abort before a coverage percentage existed. Both threshold commands now use cargo-llvm-cov's documented `--failure-mode all`, which keeps warnings visible and still fails if every profile is invalid or the existing 90% workspace/88% BlueJS line gate is missed. The YAML parses, local CLI help confirms the option, and G.3.2.2 retains the real CI verification requirement.
     - [ ] **G.3.2.2** Repair the cross-platform blockers found by the same CI run, then rerun the workspace and BlueJS coverage thresholds in CI and record their passing results.
       - [x] **G.3.2.2.1** Reject Windows verbatim-path aliases before physical output planning. The Windows x86_64/arm64 CI jobs accepted an artifact source spelled `nested/../main.ts` because Windows verbatim paths can preserve such segments. The output planner now rejects raw `.` and `..` segments in project roots and source identities before filesystem canonicalization, handling both Windows separator spellings while preserving Unix backslash filenames. The existing public planner test now requires `InvalidInput` for root/source aliases and includes a Windows backslash case. All five owner-output tests, workspace Clippy, and formatting pass in the shared target; Windows CI verification remains part of G.3.2.2.3.
-      - [ ] **G.3.2.2.2** Stabilize macOS arm64 real debugger pending-admission tests without weakening breakpoint and execution-state assertions.
-      - [ ] **G.3.2.2.3** Rerun CI on the repaired commit and require passing workspace coverage, independent BlueJS coverage, and applicable platform build/test jobs.
+      - [x] **G.3.2.2.2** Make the macOS accepted HTTP fixture stream blocking. The macOS 26 x86_64 core-library CI job saw `WouldBlock` during its real-child source-cache test because the fixture's nonblocking listener could yield a nonblocking accepted stream. The test now explicitly switches the accepted stream to blocking with a five-second read timeout before reading the request. Its focused real-child test passes on the shared target; macOS CI verification remains part of G.3.2.2.4.
+      - [ ] **G.3.2.2.3** Stabilize macOS real debugger pending-admission tests without weakening breakpoint and execution-state assertions.
+      - [ ] **G.3.2.2.4** Rerun CI on the repaired commit and require passing workspace coverage, independent BlueJS coverage, and applicable platform build/test jobs.
   - [ ] **G.3.3** No ignored required test or suppressed warning substitutes for evidence.
 
 ## P2 — compatibility after the page gate
