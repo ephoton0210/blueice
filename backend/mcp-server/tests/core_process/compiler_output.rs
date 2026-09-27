@@ -195,12 +195,20 @@ async fn real_mcp_build_requires_the_independent_owner_output_receipt() {
         panic!("owner-granted MCP build must publish")
     };
     assert!(result.published);
+    assert_eq!(result.project_fingerprint, check.project_fingerprint);
     assert_eq!(
         result.generation.sequence,
         check.generation.sequence + 1,
         "the rejected query-receipt build must not advance the core generation"
     );
-    assert_eq!(std::fs::read_dir(&output_root).unwrap().count(), 1);
+    let published = std::fs::read_dir(&output_root)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect::<Vec<_>>();
+    assert_eq!(published.len(), 1);
+    assert!(std::fs::read_to_string(published[0].join("main.js"))
+        .unwrap()
+        .contains("answer"));
     assert!(!build.content[0]
         .as_text()
         .unwrap()

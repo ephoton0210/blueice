@@ -4167,6 +4167,16 @@ static type, then validates a mismatched JSON snapshot to obtain a concrete
 contract failure. Source text and physical paths never appear in those
 replies; the exact session/project/generation receipts gate every query.
 
+**F3.3.2 real MCP check and build:** A separate real MCP/core fixture starts
+an owner-granted physical project. The client inventories the read-only
+project, checks it, then inventories the same project's independent output
+grant and builds with its `ow-` receipt. The resulting source-free build
+record repeats the observed graph/options fingerprint, advances exactly one
+generation, and reports publication without revealing the output root. The
+owner's immutable generation directory contains the emitted `main.js` for
+the authorized module. The same fixture proves old query-generation evidence
+is revoked after build.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
