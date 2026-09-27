@@ -2169,6 +2169,19 @@ borrow the first tab's owner-authorized module URL or trigger an unauthorized
 fetch. The focused subprocess test passes using the shared target cache; the
 new MPL-headed module is below the 1,300-line limit.
 
+**D.3.4 private numeric resource attribution:** The browser IPC intentionally
+does not expose child bytecode/heap statistics. A new real supervised BlueJS
+child-process test exercises the authenticated accounting boundary used by
+core: two BlueTS pages occupy distinct tab realms, and the child-wide live
+realm, program, bytecode, and VM-managed heap totals equal the two exact
+per-realm charges. Closing tab one rejects its old realm-stats lookup while
+preserving tab two's exact charge; the child total then equals only tab two.
+Closing tab two zeroes every aggregate. The focused subprocess test passes
+with the ordinary target cache. Together with D.3.1's public browser tab
+report attribution and existing core validation of private stats tuples,
+this proves tab/child accounting without adding a public resource-inspection
+capability. The new MPL-headed test module stays below 1,300 lines.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

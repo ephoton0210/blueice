@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: D.3.4.** Prove tab and supervised-child resource attribution
-at the public boundary.
+**Current leaf: E1.2.1.** Define the ingress/egress inventory record shape
+for owner, source position, contract ID, limits, failure category, and capability.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -542,13 +542,17 @@ channel with explicit owner/client grants.
   markers.
   - [x] **D.2.1** Trigger a contract failure on a real page and show its bounded report. The existing real core-binary HTTP fixture exceeds the core-selected one-mebibyte document-text contract before inline admission. Its focused subprocess test now requires exactly one addressed tab/document/classic-script report, the fixed contract-rejection category, and a category no longer than 64 bytes; the test passes using the shared target cache.
   - [x] **D.2.2** Assert the report leaks no protected content. The oversized HTTP page now contains distinct private body and inline-source markers. The focused real-process test records the actual public IPC reply frame, bounds it to 512 bytes, and proves neither marker nor a 128-byte page-text run appears in the serialized report. The normal decoded report remains the fixed contract category, with no source or diagnostic payload. The focused test, formatting, and diff checks pass using the shared target cache.
-- [ ] **D.3** Public-boundary tests cover multiple tabs, reload, policy isolation,
+- [x] **D.3** Public-boundary tests cover multiple tabs, reload, policy isolation,
   and tab/child resource attribution; no required result depends only on a
-  host-neutral unit test.
+  host-neutral unit test. Real browser/Launcher sockets prove tab result,
+  reload, and source-policy isolation. The real supervised child transport
+  proves private per-tab and child-wide resource totals; core validates those
+  same private records, while public browser IPC intentionally exposes no
+  numeric child usage.
   - [x] **D.3.1** Multiple tabs: separate results and attribution. An existing real core-binary test navigates two independent HTTP pages, then uses public IPC envelopes to retrieve each BlueTS report under its own tab ID and document generation. It now requires distinct tab IDs and proves a second tab-one read is empty before tab two is drained, so tab-one consumption cannot replay or take tab-two results. The focused subprocess test, formatting, and diff checks pass with the shared target cache.
   - [x] **D.3.2** Reload: no state carried across generations. Existing real core-binary HTTP replacement coverage requires one fresh BlueTS report for each document with distinct public document generations. The real Launcher/core/child debugger reload test rejects predecessor breakpoint, instruction-step, and source-span-step targets as `StaleRealm`, then inventories a new realm and program for the same tab. Both focused subprocess tests pass with the shared target cache; PLAN.md names their exact public-boundary evidence.
   - [x] **D.3.3** Policy isolation between tabs and children. A new real Launcher/core/BlueJS-child test uses two HTTP origins whose documents declare the same external BlueTS module path, but the owner manifest authorizes only the first origin's URL. Public report envelopes show execution for tab one and fixed source-free authorization rejection for tab two. After a two-tab supervised child cutover, both outcomes persist on fresh navigations; the second origin's server records document fetches only, never the unauthorized module path. The focused real-process test passes; the new MPL-headed test module stays below 1,300 lines.
-  - [ ] **D.3.4** Tab/child resource attribution.
+  - [x] **D.3.4** Tab/child resource attribution. A new real supervised BlueJS-child test installs BlueTS pages in two live tab realms and requires the child-wide program, bytecode, and heap totals to equal the two exact tab-realm charges. Closing tab one preserves tab two's exact charge and leaves only that amount in the child total; closing tab two zeros all totals. This runs over the authenticated private child socket, the numeric accounting boundary used by core. D.3.1 separately proves public browser tab attribution; numeric child usage is core-only by design. The focused subprocess test, Launcher Clippy, formatting, and line-count checks pass using the shared target cache.
 
 ## P1 — strict contracts and compiler service
 
