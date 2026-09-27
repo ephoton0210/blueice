@@ -2390,6 +2390,26 @@ counted by the direct/child static meters. The sealed project compiler's
 incremental cache belongs to its owner-registered project, which has no page
 tab identity.
 
+**E2.2.2.1 source-free policy/position report decision:** The existing
+tab-addressed BlueTS outcome reports are the public seam. Core may add
+only the owner-selected runtime policy label (`checked` or `strict-runtime`)
+and an optional half-open byte range in the original *inline* BlueTS source.
+For a compiler diagnostic, the owner must match its module ID to the exact
+core-minted inline declaration identity, validate `start < end` and both
+endpoints against that declaration's original source bytes, and retain only
+the numeric range. The current precompile document-text/origin contract
+crossings have no source call site, so their position is unavailable; the
+report must not synthesize a script-tag or callback coordinate. External
+source graphs can be owner-private and their module IDs/lengths may disclose
+protected input, so their positions remain unavailable on this page-report
+surface without a separate owner authorization. A missing, malformed, stale,
+or mismatched span is omitted. Fixed outcome categories stay source-free; no
+URL, module identity, source text, diagnostic prose, value, failure path,
+expected/observed type, contract plan, or compiler option fingerprint enters
+the report. The direct executor can validate before reporting; the child
+route needs a private bounded position candidate and a second core check
+against the original inline declaration before public serialization.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
