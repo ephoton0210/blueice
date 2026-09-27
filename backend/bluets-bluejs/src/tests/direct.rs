@@ -337,6 +337,36 @@ fn rejects_object_methods_without_reparsing_emitted_javascript() {
 }
 
 #[test]
+fn lowers_checked_optional_dot_read_to_bluejs_optional_member_ast() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const receiver: { value: number } | null = null; const read: number | undefined = receiver?.value; read;",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Script(bluejs::Program { body }) = &artifact.program else {
+        panic!("direct compilation must retain a script AST");
+    };
+    assert!(body.iter().any(|statement| matches!(
+        statement,
+        bluejs::Stmt::VarDecl(_, declarations)
+            if declarations.iter().any(|declaration| matches!(
+                &declaration.init,
+                Some(bluejs::Expr::OptionalMember { object, property, computed: false })
+                    if matches!(object.as_ref(), bluejs::Expr::Identifier(name) if name == "receiver")
+                        && matches!(property.as_ref(), bluejs::Expr::Identifier(name) if name == "value")
+            ))
+    )));
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+        bluejs::Value::Undefined
+    );
+}
+
+#[test]
 fn lowers_typed_local_functions_and_direct_calls() {
     let artifact = compile_direct_script(
         ENTRY,

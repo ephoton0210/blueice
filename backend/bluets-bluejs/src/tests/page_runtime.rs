@@ -194,6 +194,29 @@ fn direct_page_callback_method_debug_frame_expires_after_navigation() {
 }
 
 #[test]
+fn direct_page_optional_dot_read_short_circuits_null_and_undefined_receivers() {
+    for nullish in ["null", "undefined"] {
+        let source = format!(
+            "function choose(flag: boolean): {{ value: number }} | {nullish} {{ return flag ? {{ value: 41 }} : {nullish}; }} const full: {{ value: number }} | {nullish} = choose(true); const empty: {{ value: number }} | {nullish} = choose(false); const first: number = full?.value ?? 0; const second: number = empty?.value ?? 0; first + second;"
+        );
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        let mut owner = DirectPageRealmOwner::default();
+        owner.open_realm(7, origin()).unwrap();
+        let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+        assert_eq!(
+            owner.execute_program(7, &attachment).unwrap(),
+            bluejs::Value::Number(41.0),
+            "nullish arm: {nullish}"
+        );
+    }
+}
+
+#[test]
 fn direct_page_try_catches_exact_value_and_restores_outer_binding_in_finally() {
     let source = "function f(caught: number): number { let observed: number = 0; try { throw 7; } catch (caught) { if (caught === 7) { observed += 1; } } finally { if (caught === 99) { observed += 10; } } return observed; } f(99);";
     let artifact = compile_direct_script(

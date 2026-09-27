@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: I.2.4.** Execute both nullish and non-nullish optional reads
-through the direct page bridge without parsing emitted JavaScript.
+**Current leaf: I.3.1.** Verify optional-read source provenance and debugger
+generation behavior in the direct page realm.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -803,12 +803,12 @@ Keep check read-only and owner registration sealed before listeners.
   object methods/accessors, member constructors, iterable spread, or
   structural/union/any operands; state its unsupported behavior. [PLAN.md](PLAN.md#i11-first-optional-dot-property-read) chooses one `local?.field` read from an immutable annotated record-or-nullish local, yielding the required field type or `undefined`.
   - [x] **I.1.1** Record the chosen form and its unsupported behavior. The receiver is one module-local `const` annotated as exactly `{ field: T } | null` or `{ field: T } | undefined` (or the same shape via a non-generic local interface), with one required primitive field. A single optional dot read short-circuits nullish receiver values; the existing `??` operator may consume its result. Optional calls, computed/nested chains, method calls, assignment targets, side-effecting receivers, function-local or side-effecting receivers, larger/opaque unions, optional fields, generic/imported aliases and inherited records remain unsupported by this form and must not gain a type-safety claim through an `unknown` fallback. I.2 and I.3 own implementation and evidence.
-- [ ] **I.2** For that form, test parser/checker/emitter and direct runtime without
+- [x] **I.2** For that form, test parser/checker/emitter and direct runtime without
   reparsing emitted JavaScript.
   - [x] **I.2.1** Parser test. Public `parse_module` retains `receiver?.value` as the exact three-token initializer, including one `?.` token with original byte span; computed and call-suffix shapes remain distinct raw tokens for later checker/direct-bridge rejection. BlueTS crate tests, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
   - [x] **I.2.2** Checker test. A focused optional-property checker accepts one top-level read from a preceding module-local annotated `const` with a required primitive record/interface field and a nullish arm. Inference returns `field | undefined`; existing `??` removes `undefined`. Public compiler tests reject a typed use that omits that possibility, a missing field, computed/call/side-effecting forms, mutable or optional-field receivers, and an invalid call in the `??` fallback. BlueTS crate tests, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
   - [x] **I.2.3** Emitter test. A public BlueTSC regression confirms the local interface and type annotations are erased while `receiver?.value ?? 0` remains in the emitted JavaScript. The BlueTS crate suite, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
-  - [ ] **I.2.4** Direct-runtime test without reparsing emitted JavaScript.
+  - [x] **I.2.4** Direct-runtime test without reparsing emitted JavaScript. The direct bridge lowers checked `local?.field` tokens into BlueJS `OptionalMember` AST/bytecode. Page-realm tests execute non-nullish and both `null`/`undefined` short-circuit branches, yielding `41`; a structural AST test confirms the bridge path. Optional access inside template substitution remains explicitly rejected with its original source span. BlueTS and bridge crate suites, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
 - [ ] **I.3** Verify its provenance, debugger behavior, contracts, and TypeScript
   oracle evidence before choosing another form.
   - [ ] **I.3.1** Provenance and debugger behavior verified.

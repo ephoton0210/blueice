@@ -4535,6 +4535,8 @@ I.2.2 adds a focused checker for a top-level optional read from one preceding mo
 
 I.2.3 verifies at the public BlueTSC boundary that the selected optional read keeps its original `receiver?.value ?? 0` runtime syntax after the local interface and all type annotations are erased. The BlueTS crate suite, all-target Clippy, rustfmt and whitespace checks pass under the shared disk-budgeted target. I.2.4 must lower and run both receiver states directly.
 
+I.2.4 adds one direct bridge suffix case for an identifier receiver followed by `?.` and an identifier property, producing BlueJS `Expr::OptionalMember` with a non-computed key. A structural AST regression proves the checked TypeScript tokens go directly to BlueJS without parsing emitted JavaScript. Page-realm regressions execute a known object and both `null` and `undefined` receiver values; short-circuiting plus existing `??` yields `41`. The broader template-substitution path remains outside this form and explicitly rejects optional access at the original substitution token span. BlueTS and bridge crate suites, all-target Clippy, rustfmt and whitespace checks pass with the shared disk-budgeted target. I.3.1 owns live/stale provenance and debugger evidence.
+
 The direct bridge lowers template substitutions containing supported direct expressions to BlueJS expression slots. It tokenizes the original substitution with BlueTS's lexer and constructs BlueJS AST directly; it never calls a BlueJS source parser on BlueTSC output. Nested templates and embedded expressions outside the direct subset remain excluded.
 
 Non-substituted template literals use the same ordinary escape decoder as quoted strings.
