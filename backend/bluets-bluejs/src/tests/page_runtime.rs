@@ -6,7 +6,7 @@
 
 use super::*;
 use blueice_bluets::{AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 fn artifact() -> DirectScript {
     compile_direct_script(
@@ -388,6 +388,103 @@ fn direct_page_while_loopback_keeps_its_live_source_map_and_nested_frame() {
     assert!(runtime
         .step_debugger_nested_instruction(second_frame)
         .is_err());
+}
+
+#[test]
+fn direct_page_try_nested_safe_points_expire_with_the_page_generation() {
+    let source = "function f(): number { try { throw 1; } catch (caught) { if (caught === 1) { return 2; } } finally { 3; } return 0; } f();";
+    let function_end = source.find(" f();").unwrap();
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let mut debug = DirectDebugRegistry::default();
+    let attachment = artifact
+        .attach_debug_in_page_realm(&mut runtime, 7, &origin(), &mut debug)
+        .unwrap();
+    attachment
+        .safe_point_map
+        .validate_against(runtime.program_registry(), attachment.handle)
+        .unwrap();
+    let child = attachment
+        .safe_point_map
+        .entries
+        .iter()
+        .find(|entry| entry.code_unit.ordinal() == 1)
+        .expect("the try function must have mapped nested instructions");
+    let point = bluejs::BlueJsSafePoint {
+        code_unit: child.code_unit,
+        bytecode_offset: child.bytecode_offset,
+    };
+    let bluejs::BlueJsPageDebuggerNestedExecutionState::Paused {
+        frame,
+        bytecode_offset: mut offset,
+    } = runtime
+        .execute_program_until_nested_debugger_pause(7, attachment.handle, point)
+        .unwrap()
+    else {
+        panic!("the try function must pause in its nested frame");
+    };
+    assert_eq!(frame.program(), attachment.handle);
+    assert_eq!(frame.code_unit_ordinal(), 1);
+    let mut visited = BTreeSet::new();
+    let mut returned = false;
+    for _ in 0..256 {
+        let mapped = attachment
+            .safe_point_map
+            .source_span_for_safe_point(frame.code_unit_ordinal(), offset)
+            .expect("every paused try instruction must retain original BlueTS provenance");
+        assert_eq!(mapped.source, ENTRY);
+        assert_eq!((mapped.start_byte, mapped.end_byte), (0, function_end));
+        visited.insert(offset);
+        match runtime.step_debugger_nested_instruction(frame).unwrap() {
+            bluejs::BlueJsPageDebuggerNestedExecutionState::Paused {
+                frame: same_frame,
+                bytecode_offset,
+            } => {
+                assert_eq!(same_frame, frame);
+                offset = bytecode_offset;
+            }
+            bluejs::BlueJsPageDebuggerNestedExecutionState::FrameReturned { .. } => {
+                returned = true;
+                break;
+            }
+            state => panic!("unexpected nested try state: {state:?}"),
+        }
+    }
+    assert!(
+        returned,
+        "the finite try call must return within the step bound"
+    );
+    assert!(
+        visited.len() > 3,
+        "try/catch/finally must map multiple live instructions"
+    );
+    assert_eq!(
+        runtime.resume_debugger_execution(7),
+        Ok(bluejs::BlueJsPageDebuggerExecutionState::Completed)
+    );
+    runtime.navigate(7, origin()).unwrap();
+    assert!(attachment
+        .safe_point_map
+        .validate_against(runtime.program_registry(), attachment.handle)
+        .is_err());
+    assert!(runtime.step_debugger_nested_instruction(frame).is_err());
+    assert!(debug
+        .get(runtime.program_registry(), attachment.handle)
+        .is_err());
+    let successor = artifact
+        .attach_debug_in_page_realm(&mut runtime, 7, &origin(), &mut debug)
+        .unwrap();
+    assert_ne!(successor.handle, attachment.handle);
+    successor
+        .safe_point_map
+        .validate_against(runtime.program_registry(), successor.handle)
+        .unwrap();
 }
 
 #[test]

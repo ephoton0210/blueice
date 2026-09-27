@@ -386,6 +386,17 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "function-braced-try-catch-finally-statement",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!(
+                "fixtures/typescript_oracle/function-braced-try-catch-finally-statement/main.ts"
+            ),
+        )],
+        expected_stdout: Some("7:5\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "object-shorthand-expression",
         modules: &[ (
             "memory:///main.ts",
@@ -735,6 +746,18 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[ExpectedDiagnostic {
             code: DiagnosticCode::ReturnTypeMismatch,
             line: 5,
+        }],
+    },
+    OracleCase {
+        name: "function-braced-try-catch-call-error",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-braced-try-catch-call-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 9,
         }],
     },
     OracleCase {
