@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E2.2.1.** Charge validation and cache cost to the initiating
-tab.
+**Current leaf: E2.2.1.2.** Charge out-of-process document validation to the
+initiating tab and document generation.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -588,7 +588,10 @@ channel with explicit owner/client grants.
   - [x] **E2.1.2** Prove no getter, proxy trap, page callback, or fetch runs during validation. `ContractPlan::validate_with_limits` accepts only the owned, data-only `ContractValue` tree, which cannot contain a getter, Proxy, callback, or host object; the live boundary converts its copied snapshot string into that tree. The over-budget loaded-page regression includes an inline callback and an external BlueTS module, then observes zero external source-authorizer calls, no document sent to the child, and source-free rejection reports for both scripts. Validation completes before the source fetch authority or any page script can run.
 - [ ] **E2.2** Attribute validation/cache cost to the initiating tab and report
   policy plus source position without protected content.
-  - [ ] **E2.2.1** Charge cost to the initiating tab.
+  - [ ] **E2.2.1** Charge validation and retained cache cost to the initiating tab.
+    - [x] **E2.2.1.1** Meter direct-page validation per live tab and document generation. The pure validator returns attempted-node work even on rejection, and the direct-page owner charges each validated string copy plus that work to the exact tab. A two-tab public-boundary test proves the successful text/origin pair and the failed oversized text have separate charges, and that navigation and close release only the addressed tab's record. The focused test uses the shared target cache.
+    - [ ] **E2.2.1.2** Charge out-of-process document validation to the initiating tab and document generation, including failed admission; prove two-tab isolation and release on navigation/close.
+    - [ ] **E2.2.1.3** Audit every retained page compiler/contract/debug cache owner, charge its actual retained bytes to the initiating tab or prove zero retention, and verify replacement/close releases the charge.
   - [ ] **E2.2.2** Report policy and source position without protected content.
 - [ ] **E2.3** Test valid, malformed, cyclic, deep, oversized, and exhausting
   values at a live boundary.

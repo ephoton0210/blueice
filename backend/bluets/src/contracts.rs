@@ -104,6 +104,14 @@ pub struct ValidationLimits {
     pub max_string_bytes: usize,
 }
 
+/// Work performed by one pure validation attempt, including a rejected node.
+/// A boundary owner can charge this to the exact caller without retaining the
+/// inspected value or exposing it in a diagnostic.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ValidationUsage {
+    pub visited_nodes: usize,
+}
+
 impl Default for ValidationLimits {
     fn default() -> Self {
         Self {
@@ -150,17 +158,34 @@ impl ContractPlan {
         value: &ContractValue,
         limits: ValidationLimits,
     ) -> Result<(), ValidationError> {
+        self.validate_with_limits_metered(value, limits).0
+    }
+
+    /// Returns the bounded work done even when validation fails.
+    pub fn validate_with_limits_metered(
+        &self,
+        value: &ContractValue,
+        limits: ValidationLimits,
+    ) -> (Result<(), ValidationError>, ValidationUsage) {
         let mut state = ValidationState {
             limits,
             visited_nodes: 0,
+            attempted_nodes: 0,
         };
-        validate_contract(&self.root, value, &self.definitions, "$", 0, &mut state)
+        let result = validate_contract(&self.root, value, &self.definitions, "$", 0, &mut state);
+        (
+            result,
+            ValidationUsage {
+                visited_nodes: state.attempted_nodes,
+            },
+        )
     }
 }
 
 struct ValidationState {
     limits: ValidationLimits,
     visited_nodes: usize,
+    attempted_nodes: usize,
 }
 
 impl ValidationState {
@@ -170,6 +195,7 @@ impl ValidationState {
         path: &str,
         depth: usize,
     ) -> Result<(), ValidationError> {
+        self.attempted_nodes = self.attempted_nodes.saturating_add(1);
         if depth > self.limits.max_depth {
             return Err(limit_error(
                 path,
@@ -605,5 +631,15 @@ mod tests {
             .unwrap_err();
         assert_eq!(fuel_error.path, "$[0]");
         assert!(fuel_error.expected.contains("fuel 1"));
+
+        let (metered_error, usage) = array_plan.validate_with_limits_metered(
+            &ContractValue::Array(vec![ContractValue::String("a".to_string())]),
+            ValidationLimits {
+                max_nodes: 1,
+                ..ValidationLimits::default()
+            },
+        );
+        assert_eq!(metered_error.unwrap_err(), fuel_error);
+        assert_eq!(usage.visited_nodes, 2, "the rejected node also costs work");
     }
 }

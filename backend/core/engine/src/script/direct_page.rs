@@ -80,6 +80,17 @@ pub struct DirectPageScriptHost {
     boundary_records: Vec<HostBindingBoundaryRecordV1>,
     live_documents: BTreeMap<TabId, LivePageIdentity>,
     bound_profiles: BTreeMap<TabId, String>,
+    validation_usage: BTreeMap<TabId, DirectPageValidationUsage>,
+}
+
+/// Owner-only validation work for one live tab/document generation. These
+/// counters contain no source text, values, or VM handles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DirectPageValidationUsage {
+    pub document_generation: u64,
+    pub attempts: u64,
+    pub visited_nodes: u64,
+    pub copied_value_bytes: u64,
 }
 
 /// The core-visible portion of a live page document needed to keep a BlueJS
@@ -126,6 +137,7 @@ impl DirectPageScriptHost {
             boundary_records: core_script_binding_boundary_records(binding_contract_limits).into(),
             live_documents: BTreeMap::new(),
             bound_profiles: BTreeMap::new(),
+            validation_usage: BTreeMap::new(),
         }
     }
 
@@ -183,6 +195,7 @@ impl DirectPageScriptHost {
     pub fn close_page(&mut self, tab_id: TabId) -> bool {
         self.live_documents.remove(&tab_id);
         self.bound_profiles.remove(&tab_id);
+        self.validation_usage.remove(&tab_id);
         self.realms.close_realm(tab_id.as_u64())
     }
 
@@ -340,6 +353,43 @@ impl DirectPageScriptHost {
             .map_err(DirectPageScriptError::Bridge)
     }
 
+    /// Returns only the current document's private contract-validation work.
+    /// A rejected result is charged before the error is returned; navigation
+    /// and tab close release the old generation's counters.
+    pub fn validation_usage(&self, tab_id: TabId) -> Option<DirectPageValidationUsage> {
+        self.validation_usage.get(&tab_id).copied()
+    }
+
+    fn charge_validation(
+        &mut self,
+        tab_id: TabId,
+        copied_value_bytes: usize,
+        visited_nodes: usize,
+    ) {
+        let document_generation = self
+            .live_documents
+            .get(&tab_id)
+            .expect("validation only runs for a synchronized live document")
+            .document_generation;
+        let charge = self
+            .validation_usage
+            .entry(tab_id)
+            .or_insert(DirectPageValidationUsage {
+                document_generation,
+                attempts: 0,
+                visited_nodes: 0,
+                copied_value_bytes: 0,
+            });
+        debug_assert_eq!(charge.document_generation, document_generation);
+        charge.attempts = charge.attempts.saturating_add(1);
+        charge.visited_nodes = charge
+            .visited_nodes
+            .saturating_add(u64::try_from(visited_nodes).unwrap_or(u64::MAX));
+        charge.copied_value_bytes = charge
+            .copied_value_bytes
+            .saturating_add(u64::try_from(copied_value_bytes).unwrap_or(u64::MAX));
+    }
+
     fn synchronize_live_document(
         &mut self,
         tab_id: TabId,
@@ -362,6 +412,7 @@ impl DirectPageScriptHost {
         };
         if replaced {
             self.bound_profiles.remove(&tab_id);
+            self.validation_usage.remove(&tab_id);
         }
         self.live_documents.insert(tab_id, target);
         Ok(())
@@ -415,26 +466,27 @@ impl DirectPageScriptHost {
         });
         let text_boundary = core_script_binding_contract("dom.document-text")
             .expect("the installed document-text binding has a contract inventory entry");
-        text_boundary
-            .validate_string(&document_text, self.binding_contract_limits.document_text)
-            .map_err(|error| DirectPageScriptError::BindingContractViolation {
-                stable_binding_id: text_boundary.stable_binding_id,
-                contract_id: CORE_SCRIPT_DOCUMENT_TEXT_RESULT_CONTRACT_V1,
-                error,
-            })?;
+        let (text_result, text_usage) = text_boundary
+            .validate_string_metered(&document_text, self.binding_contract_limits.document_text);
+        self.charge_validation(tab_id, document_text.len(), text_usage.visited_nodes);
+        text_result.map_err(|error| DirectPageScriptError::BindingContractViolation {
+            stable_binding_id: text_boundary.stable_binding_id,
+            contract_id: CORE_SCRIPT_DOCUMENT_TEXT_RESULT_CONTRACT_V1,
+            error,
+        })?;
         if let Some(document_origin) = document_origin.as_deref() {
             let origin_boundary = core_script_binding_contract("dom.document-origin")
                 .expect("the installed document-origin binding has a contract inventory entry");
-            origin_boundary
-                .validate_string(
-                    document_origin,
-                    self.binding_contract_limits.document_origin,
-                )
-                .map_err(|error| DirectPageScriptError::BindingContractViolation {
-                    stable_binding_id: origin_boundary.stable_binding_id,
-                    contract_id: CORE_SCRIPT_DOCUMENT_ORIGIN_RESULT_CONTRACT_V1,
-                    error,
-                })?;
+            let (origin_result, origin_usage) = origin_boundary.validate_string_metered(
+                document_origin,
+                self.binding_contract_limits.document_origin,
+            );
+            self.charge_validation(tab_id, document_origin.len(), origin_usage.visited_nodes);
+            origin_result.map_err(|error| DirectPageScriptError::BindingContractViolation {
+                stable_binding_id: origin_boundary.stable_binding_id,
+                contract_id: CORE_SCRIPT_DOCUMENT_ORIGIN_RESULT_CONTRACT_V1,
+                error,
+            })?;
         }
         self.realms
             .configure_realm_bindings(tab_id.as_u64(), move |bindings| {

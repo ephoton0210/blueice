@@ -13,6 +13,7 @@
 use super::host_typings::{HostBindingRoleV1, HostRuntimeBindingV1};
 use blueice_bluets::{
     ContractPlan, ContractValue, SourceSpan, Type, ValidationError, ValidationLimits,
+    ValidationUsage,
 };
 use blueice_ipc::page_host::{
     PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES, PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
@@ -229,8 +230,17 @@ impl HostBindingContractV1 {
         value: &str,
         limits: ValidationLimits,
     ) -> Result<(), ValidationError> {
+        self.validate_string_metered(value, limits).0
+    }
+
+    /// Includes failed attempts in the work returned to the boundary owner.
+    pub fn validate_string_metered(
+        self,
+        value: &str,
+        limits: ValidationLimits,
+    ) -> (Result<(), ValidationError>, ValidationUsage) {
         self.plan()
-            .validate_with_limits(&ContractValue::String(value.to_string()), limits)
+            .validate_with_limits_metered(&ContractValue::String(value.to_string()), limits)
     }
 }
 

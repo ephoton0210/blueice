@@ -233,6 +233,86 @@ fn document_text_contract_rejects_an_oversized_snapshot_before_admission() {
 }
 
 #[test]
+fn direct_page_validation_work_is_charged_to_the_initiating_tab_and_generation() {
+    let profiles = core_script_host_type_catalog();
+    let artifact = profiles
+        .generate(CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1)
+        .unwrap();
+    let loader = AuthorizedModuleLoader::new(
+        [AuthorizedModule::new(
+            "page:///app/main.ts",
+            "blueiceDocumentText();",
+        )],
+        [],
+    )
+    .unwrap();
+    let (mut tabs, first_tab) = loaded_tabs();
+    tabs.get_mut(first_tab).unwrap().load_html_str(
+        "<main>ok</main>",
+        Some("https://example.test/first.html".to_string()),
+    );
+    let second_tab = tabs.open_tab();
+    tabs.get_mut(second_tab).unwrap().load_html_str(
+        "<main>long</main>",
+        Some("https://example.test/second.html".to_string()),
+    );
+    let mut limits = CoreScriptBindingContractLimits::default();
+    limits.document_text.max_string_bytes = 3;
+    let mut host = DirectPageScriptHost::with_realm_owner_and_contract_limits(
+        profiles,
+        DirectPageRealmOwner::default(),
+        limits,
+    );
+    let execute = |host: &mut DirectPageScriptHost, tabs: &TabManager, tab_id| {
+        host.execute(
+            tabs,
+            DirectPageScriptRequest {
+                tab_id,
+                kind: DirectPageScriptKind::Classic,
+                entry: "page:///app/main.ts".to_string(),
+                loader: &loader,
+                compiler_options: CompilerOptions::default(),
+                feature_profile: CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1.to_string(),
+                supplied_manifest: &artifact.manifest,
+                supplied_declaration_source: &artifact.declaration_source,
+                supplied_runtime_bindings: &artifact.runtime_bindings,
+            },
+        )
+    };
+    assert_eq!(
+        execute(&mut host, &tabs, first_tab).unwrap(),
+        blueice_bluejs::Value::String("ok".into())
+    );
+    assert!(matches!(
+        execute(&mut host, &tabs, second_tab),
+        Err(DirectPageScriptError::BindingContractViolation { .. })
+    ));
+
+    let origin_bytes = "https://example.test".len() as u64;
+    let first = host.validation_usage(first_tab).unwrap();
+    assert_eq!(first.document_generation, 2);
+    assert_eq!(first.attempts, 2);
+    assert_eq!(first.visited_nodes, 2);
+    assert_eq!(first.copied_value_bytes, 2 + origin_bytes);
+    let second = host.validation_usage(second_tab).unwrap();
+    assert_eq!(second.document_generation, 1);
+    assert_eq!(second.attempts, 1);
+    assert_eq!(second.visited_nodes, 1);
+    assert_eq!(second.copied_value_bytes, 4);
+    assert_eq!(host.validation_usage(first_tab), Some(first));
+
+    tabs.get_mut(first_tab).unwrap().load_html_str(
+        "<main>new</main>",
+        Some("https://example.test/replacement.html".to_string()),
+    );
+    host.synchronize_tab(&tabs, first_tab).unwrap();
+    assert_eq!(host.validation_usage(first_tab), None);
+    assert_eq!(host.validation_usage(second_tab), Some(second));
+    host.close_page(second_tab);
+    assert_eq!(host.validation_usage(second_tab), None);
+}
+
+#[test]
 fn strict_runtime_rejects_missing_unreifiable_and_unchecked_live_boundaries_separately() {
     let profiles = core_script_host_type_catalog();
     let artifact = profiles

@@ -38,6 +38,7 @@ pub use compiler::{
 };
 pub use contracts::{
     Contract, ContractError, ContractPlan, ContractValue, ValidationError, ValidationLimits,
+    ValidationUsage,
 };
 pub use debug_info::{
     source_locations_for_spans, BlueTsDebugInfo, ContractId, DebugContract, DebugSource,

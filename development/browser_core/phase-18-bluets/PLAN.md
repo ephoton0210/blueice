@@ -2262,6 +2262,19 @@ invokes page code nor enters the source-fetch path. This proof applies to the
 currently installed immutable snapshot bindings; future VM-object boundaries
 must provide a separately reviewed, pure data-copy step before validation.
 
+**E2.2.1.1 direct-page validation attribution:** The pure contract validator
+now returns a source-free count of attempted value-node visits, including the
+node that trips a fuel/depth/size failure. The direct-page host attributes each
+validation attempt, node visit, and copied string byte to the exact live
+`TabId` and document generation before returning a contract error. Its private
+accounting record is cleared on replacement or close; it is not a page,
+debugger, or MCP query. A two-tab public-boundary regression exercises a valid
+text/origin pair alongside a rejected text result, checks distinct charges,
+then navigates one tab and closes the other to prove scoped release. The
+remaining E2.2.1 work is out-of-process snapshot attribution and retained
+compiler/contract/debug cache accounting; this leaf does not claim those
+costs are already charged.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
