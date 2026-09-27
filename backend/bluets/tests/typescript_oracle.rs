@@ -406,6 +406,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "callback-method-overload",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/callback-method-overload/main.ts"),
+        )],
+        expected_stdout: Some("3\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "object-shorthand-expression",
         modules: &[ (
             "memory:///main.ts",
@@ -784,6 +793,28 @@ const CASES: &[OracleCase] = &[
             ExpectedDiagnostic {
                 code: DiagnosticCode::TypeMismatch,
                 line: 13,
+            },
+        ],
+    },
+    OracleCase {
+        name: "callback-method-overload-error",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/callback-method-overload-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[
+            ExpectedDiagnostic {
+                code: DiagnosticCode::TypeMismatch,
+                line: 15,
+            },
+            ExpectedDiagnostic {
+                code: DiagnosticCode::TypeMismatch,
+                line: 16,
+            },
+            ExpectedDiagnostic {
+                code: DiagnosticCode::TypeMismatch,
+                line: 17,
             },
         ],
     },

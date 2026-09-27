@@ -8,6 +8,8 @@ use super::*;
 use blueice_bluets::{AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution};
 use std::collections::{BTreeMap, BTreeSet};
 
+const CALLBACK_METHOD_SOURCE: &str = "interface Visitor { visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; } let observed: number = 0; function onText(value: string): void { if (value === 'A') { observed += 1; } } function onCount(value: number): void { observed += value; } function dispatch(kind: string, listener: any): void { if (kind === 'text') { listener('A'); } else { listener(2); } } const visitor: Visitor = { visit: dispatch }; visitor.visit('text', onText); visitor.visit('count', onCount); observed;";
+
 fn artifact() -> DirectScript {
     compile_direct_script(
         ENTRY,
@@ -103,7 +105,7 @@ fn direct_page_while_runs_zero_and_multiple_iterations() {
 
 #[test]
 fn direct_page_callback_method_overloads_run_both_tags_through_one_object_function() {
-    let source = "interface Visitor { visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; } let observed: number = 0; function onText(value: string): void { if (value === 'A') { observed += 1; } } function onCount(value: number): void { observed += value; } function dispatch(kind: string, listener: any): void { if (kind === 'text') { listener('A'); } else { listener(2); } } const visitor: Visitor = { visit: dispatch }; visitor.visit('text', onText); visitor.visit('count', onCount); observed;";
+    let source = CALLBACK_METHOD_SOURCE;
     let artifact = compile_direct_script(
         ENTRY,
         &MapLoader::from([ModuleSource::new(ENTRY, source)]),
@@ -117,6 +119,78 @@ fn direct_page_callback_method_overloads_run_both_tags_through_one_object_functi
         owner.execute_program(7, &attachment).unwrap(),
         bluejs::Value::Number(3.0)
     );
+}
+
+#[test]
+fn direct_page_callback_method_debug_frame_expires_after_navigation() {
+    let source = CALLBACK_METHOD_SOURCE;
+    let dispatch_start = source.find("function dispatch").unwrap();
+    let dispatch_end = source.find(" const visitor").unwrap();
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let mut debug = DirectDebugRegistry::default();
+    let attachment = artifact
+        .attach_debug_in_page_realm(&mut runtime, 7, &origin(), &mut debug)
+        .unwrap();
+    attachment
+        .safe_point_map
+        .validate_against(runtime.program_registry(), attachment.handle)
+        .unwrap();
+    let child = attachment
+        .safe_point_map
+        .entries
+        .iter()
+        .find(|entry| {
+            entry.code_unit.ordinal() > 0
+                && attachment
+                    .safe_point_map
+                    .source_span_for_safe_point(entry.code_unit.ordinal(), entry.bytecode_offset)
+                    .is_some_and(|mapped| {
+                        (mapped.start_byte, mapped.end_byte) == (dispatch_start, dispatch_end)
+                    })
+        })
+        .expect("dispatch must have a mapped child instruction");
+    let point = bluejs::BlueJsSafePoint {
+        code_unit: child.code_unit,
+        bytecode_offset: child.bytecode_offset,
+    };
+    let bluejs::BlueJsPageDebuggerNestedExecutionState::Paused {
+        frame,
+        bytecode_offset,
+    } = runtime
+        .execute_program_until_nested_debugger_pause(7, attachment.handle, point)
+        .unwrap()
+    else {
+        panic!("the first overloaded method call must pause in dispatch");
+    };
+    assert_eq!(frame.program(), attachment.handle);
+    let mapped = attachment
+        .safe_point_map
+        .source_span_for_safe_point(frame.code_unit_ordinal(), bytecode_offset)
+        .expect("live dispatch instruction must retain source provenance");
+    assert_eq!(mapped.source, ENTRY);
+    assert_eq!(
+        (mapped.start_byte, mapped.end_byte),
+        (dispatch_start, dispatch_end)
+    );
+    assert!(debug
+        .get(runtime.program_registry(), attachment.handle)
+        .is_ok());
+    runtime.navigate(7, origin()).unwrap();
+    assert!(attachment
+        .safe_point_map
+        .validate_against(runtime.program_registry(), attachment.handle)
+        .is_err());
+    assert!(runtime.step_debugger_nested_instruction(frame).is_err());
+    assert!(debug
+        .get(runtime.program_registry(), attachment.handle)
+        .is_err());
 }
 
 #[test]
