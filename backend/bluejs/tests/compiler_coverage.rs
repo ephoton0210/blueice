@@ -100,6 +100,22 @@ fn metadata_limits_reject_each_table_before_an_index_overflows() {
 }
 
 #[test]
+fn annex_b_if_clause_function_propagates_metadata_exhaustion() {
+    let program = parse("if (true) function selected() { return 7; }").unwrap();
+    assert!(compile(&program).is_ok());
+    assert!(matches!(
+        compile_with_limits(
+            &program,
+            CompileLimits {
+                max_metadata_entries: 0,
+                ..CompileLimits::default()
+            }
+        ),
+        Err(CompileError::ProgramTooLarge)
+    ));
+}
+
+#[test]
 fn statement_control_flow_and_binding_limits_compile_through_the_public_pipeline() {
     for source in [
         "function f() { using resource = null; return 1; }",

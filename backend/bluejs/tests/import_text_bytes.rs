@@ -315,6 +315,29 @@ fn a_bytes_import_survives_a_collection_before_every_allocation() {
     assert_eq!(result, Ok(string("true:1,2,3,4:text")));
 }
 
+#[test]
+fn an_oversized_bytes_module_fails_before_linking() {
+    let config = VmConfig {
+        heap: HeapConfig {
+            max_heap_bytes: 1024 * 1024,
+            ..HeapConfig::default()
+        },
+        ..VmConfig::default()
+    };
+    let mut vm = vm_with(config, &[], &[("large.bin", &vec![0; 1024 * 1024])]);
+    let result = vm.execute_module_graph(
+        "t/main.js",
+        &build(&[(
+            "main.js",
+            "import bytes from './large.bin' with { type: 'bytes' }; bytes.length",
+        )]),
+    );
+    assert!(
+        matches!(result, Err(RuntimeError::RangeError(ref message)) if message.contains("immutable ArrayBuffer length")),
+        "{result:?}"
+    );
+}
+
 /// Runs `script` as the classic-script entry `t/main.js` and returns what it
 /// reported through `$DONE`.
 fn run_script(

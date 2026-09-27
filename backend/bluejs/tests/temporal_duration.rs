@@ -232,6 +232,35 @@ fn add_rejects_calendar_units_without_a_relative_anchor() {
     }
 }
 
+#[test]
+fn duration_like_conversion_preserves_string_and_getter_errors() {
+    assert_true(
+        r#"
+        const duration = new Temporal.Duration();
+        let invalidString = false;
+        try {
+            duration.add(String.fromCharCode(0xD800));
+        } catch (error) {
+            invalidString = error instanceof RangeError;
+        }
+        const marker = {};
+        let originalGetterError = false;
+        try {
+            duration.add(new Proxy({}, { get() { throw marker; } }));
+        } catch (error) {
+            originalGetterError = error === marker;
+        }
+        let otherTemporalTypeError = false;
+        try {
+            duration.add(new Temporal.PlainDate(2024, 1, 2));
+        } catch (error) {
+            otherTemporalTypeError = error instanceof TypeError;
+        }
+        invalidString && originalGetterError && otherTemporalTypeError
+    "#,
+    );
+}
+
 /// `.../prototype/round/{relativeto-not-required-to-round-non-calendar-units,
 /// days-24-hours,succeeds-with-largest-unit-auto,largestunit-smallestunit-default,
 /// round-negative-result,balance-negative-result,balance-subseconds,
