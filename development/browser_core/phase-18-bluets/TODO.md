@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: G.2.1.** Verify Rust formatting after the workspace test gate.
+**Current leaf: G.2.2.** Run workspace all-target Clippy with warnings denied.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -732,7 +732,7 @@ Keep check read-only and owner registration sealed before listeners.
   - [x] **G.1.1** `cargo test --workspace` passes. The full suite found one stale launcher test expectation: a rejected inline BlueTS script now has a verified source position. The assertion was updated to check that the range is nonempty and within the source, matching existing core and child coverage. Its focused test and the full `cargo test --workspace --quiet` rerun pass in the same shared target directory.
   - [x] **G.1.2** Real-process suites (launcher, core, MCP, debugger) pass. These suites have no ignored tests and ran as part of the successful full workspace rerun, including the corrected launcher end-to-end case and the real MCP acceptance tests.
 - [ ] **G.2** Pass formatting and all-target Clippy with warnings as errors.
-  - [ ] **G.2.1** `cargo fmt --check` passes.
+  - [x] **G.2.1** `cargo fmt --all -- --check` passes after the completed workspace test gate and launcher test correction, using the existing workspace target directory.
   - [ ] **G.2.2** `cargo clippy --workspace --all-targets -- -D warnings` passes.
 - [ ] **G.3** Pass the pinned oracle and workspace coverage gate in CI; no
   ignored required test or suppressed warning may substitute for evidence.

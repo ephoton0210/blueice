@@ -4200,6 +4200,9 @@ client tests, and the launcher debugger socket suite. None of these process
 test directories has an ignored test. The workspace result therefore covers
 all four required process suites without a second build or redundant rerun.
 
+**G.2.1 formatting gate:** `cargo fmt --all -- --check` passes after the
+workspace test fix and process-suite evidence were committed.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
