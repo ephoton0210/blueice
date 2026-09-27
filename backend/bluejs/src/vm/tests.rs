@@ -41,6 +41,21 @@ fn temporal_receiver_checks_propagate_invalid_object_handles() {
             "receiver is not a Temporal.PlainDate".into()
         ))
     );
+    assert_eq!(
+        vm.require_temporal_receiver(&Value::Null, TemporalKind::PlainDate),
+        Err(RuntimeError::TypeError(
+            "receiver is not a Temporal.PlainDate".into()
+        ))
+    );
+    let date = vm
+        .execute(
+            &crate::compile(&crate::parse("new Temporal.PlainDate(2020, 1, 1)").unwrap()).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        vm.require_temporal_receiver(&date, TemporalKind::PlainDate),
+        Ok(())
+    );
 }
 
 #[test]

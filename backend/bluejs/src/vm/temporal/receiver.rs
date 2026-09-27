@@ -126,15 +126,18 @@ impl Vm {
         kind: TemporalKind,
     ) -> Result<(), RuntimeError> {
         let actual = match receiver.object_id() {
-            Some(object) => self.heap.temporal_kind(object)?,
-            None => None,
+            Some(object) => self.heap.temporal_kind(object),
+            None => Ok(None),
         };
-        if actual == Some(kind) {
-            return Ok(());
-        }
-        Err(RuntimeError::TypeError(format!(
-            "receiver is not a Temporal.{}",
-            kind.name()
-        )))
+        actual.map_err(RuntimeError::from).and_then(|actual| {
+            if actual == Some(kind) {
+                Ok(())
+            } else {
+                Err(RuntimeError::TypeError(format!(
+                    "receiver is not a Temporal.{}",
+                    kind.name()
+                )))
+            }
+        })
     }
 }

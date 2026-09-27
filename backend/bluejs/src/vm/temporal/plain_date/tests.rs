@@ -595,6 +595,21 @@ fn calendar_add_date_leap_month_bubbles_months_into_a_leap_month() {
     assert_eq!((year, month, day), (2020, Month::leap(4), 1));
 }
 
+#[test]
+fn leap_month_calendar_subtraction_borrows_the_previous_years_last_month() {
+    assert_eq!(
+        add_year_month_duration_leap_month(
+            AnyCalendarKind::Chinese,
+            2020,
+            Month::new(1),
+            0,
+            -1,
+            IcuOverflow::Constrain,
+        ),
+        Some((2019, Month::new(12)))
+    );
+}
+
 /// [`calendar_difference_date_leap_month`] reproduces
 /// `intl402/Temporal/PlainDate/prototype/since/leap-months-chinese.js`'s
 /// own worked examples directly (the same values the VM-level
