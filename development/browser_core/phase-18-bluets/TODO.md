@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: H.1.2.** Test the chosen bounded `while` form through the
-checker, direct execution, safe points, and pinned TypeScript oracle.
+**Current leaf: H.1.2.2.** Lower only the selected braced `while` body subset
+to BlueJS and prove bounded direct-page execution and excluded-shape denial.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -772,6 +772,10 @@ Keep check read-only and owner registration sealed before listeners.
   safe points, and oracle before selecting another.
   - [x] **H.1.1** Pick one loop form and state its unsupported neighbors. [PLAN.md](PLAN.md#h11-first-loop-form-after-release-gate) selects a braced `while (condition) { body }` in a structured named local function. Its condition and supported body expressions use the existing direct subset, with no control-flow narrowing or return-path proof from the loop. Body-local declarations, nested loops, unbraced bodies, break/continue, labels, other loop forms, and top-level/anonymous contexts remain outside the direct bridge and fail closed. H.1.2 owns checker, VM, safe-point, fuel, and oracle evidence for this design-only decision.
   - [ ] **H.1.2** Test checker, direct execution, safe points, and oracle for it before choosing another.
+    - [x] **H.1.2.1** Parse the braced `while` as a structured function-body item, check its condition and body with the existing direct-expression rules, preserve the conservative return-path rule, and prove the direct bridge still rejects it pending lowering. BlueTSC retains the condition, body, and original span; its checker reports argument mismatches in both condition and body and refuses to infer a required return from the loop. The direct bridge returns a source-spanned unsupported-runtime error until H.1.2.2 installs lowering. Focused public BlueTSC tests and a direct-bridge regression pass in the shared target under the disk-budget guard.
+    - [ ] **H.1.2.2** Lower only the selected body subset into a real BlueJS `Stmt::While`/`Stmt::Block`; test zero and multiple iterations, `return`/`throw`, exclusions, and bounded endless-loop failure through a direct page realm.
+    - [ ] **H.1.2.3** Verify loop-back safe-point mapping and pause/step/resume behavior against the exact live source and generation.
+    - [ ] **H.1.2.4** Compare accepted syntax and diagnostics with the pinned TypeScript oracle, run the focused and workspace gates, and record the completed loop boundary.
 - [ ] **H.2** Define try/catch/finally with matching BlueJS execution and safe points.
   - [ ] **H.2.1** Define supported catch-binding and finally semantics.
   - [ ] **H.2.2** Test matching BlueJS execution and safe points.

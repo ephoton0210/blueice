@@ -52,9 +52,9 @@ pub use emitter::{
 };
 pub use parser::{
     parse_module, Declaration, FunctionBodyItem, FunctionDeclaration, FunctionElseBranch,
-    FunctionIfStatement, ImportDeclaration, InterfaceDeclaration, Module, Parameter, ParserLimits,
-    RawDeclaration, TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, ValueExportBinding,
-    ValueExportDeclaration, VariableDeclaration, VariableKind,
+    FunctionIfStatement, FunctionWhileStatement, ImportDeclaration, InterfaceDeclaration, Module,
+    Parameter, ParserLimits, RawDeclaration, TypeAliasDeclaration, TypeExportDeclaration,
+    TypeParameter, ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
 };
 pub use syntax::{lex, Token, TokenKind};
 

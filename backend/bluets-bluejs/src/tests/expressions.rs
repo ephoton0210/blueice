@@ -569,6 +569,25 @@ fn refuses_to_silently_drop_an_unstructured_function_body_statement() {
 }
 
 #[test]
+fn structured_while_remains_closed_to_the_direct_bridge_until_lowering() {
+    let source = "function count(value: number): number { while (value > 0) { value -= 1; } return value; } count(2);";
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    );
+    let Err(BridgeError::UnsupportedRuntimeTarget { span, message }) = result else {
+        panic!("the direct bridge must keep a structured loop closed until lowering");
+    };
+    assert_eq!(span.module, ENTRY);
+    assert_eq!(
+        &source[span.start..span.end],
+        "while (value > 0) { value -= 1; }"
+    );
+    assert!(message.contains("while"));
+}
+
+#[test]
 fn lowers_local_named_and_default_exports_to_a_bluejs_module() {
     let artifact = compile_direct_module(
         MODULE_ENTRY,

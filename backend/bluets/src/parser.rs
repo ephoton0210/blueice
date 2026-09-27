@@ -261,6 +261,9 @@ pub enum FunctionBodyItem {
     /// `else if` from a braced `else` block so direct lowering preserves the
     /// BlueJS AST shape without adding an artificial block scope.
     If(FunctionIfStatement),
+    /// A braced `while` in a named function body. Runtime lowering remains
+    /// separately gated by the direct bridge.
+    While(FunctionWhileStatement),
     Return {
         tokens: Vec<Token>,
         span: SourceSpan,
@@ -274,6 +277,14 @@ pub struct FunctionIfStatement {
     pub test: Vec<Token>,
     pub consequent: Vec<FunctionBodyItem>,
     pub alternate: Option<FunctionElseBranch>,
+    pub span: SourceSpan,
+}
+
+/// The bounded function-body representation for one braced `while` loop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionWhileStatement {
+    pub test: Vec<Token>,
+    pub body: Vec<FunctionBodyItem>,
     pub span: SourceSpan,
 }
 

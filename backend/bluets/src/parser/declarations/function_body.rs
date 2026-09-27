@@ -37,6 +37,15 @@ impl Parser {
                 ));
                 continue;
             }
+            if parentheses == 0
+                && brackets == 0
+                && is_direct_braced_while_statement(&self.tokens, self.index)
+            {
+                body.push(FunctionBodyItem::While(
+                    self.parse_direct_braced_while_statement(returns, locals),
+                ));
+                continue;
+            }
             if self.consume("{") {
                 depth += 1;
                 body.push(FunctionBodyItem::Opaque(self.previous().span(&self.id)));
@@ -193,6 +202,29 @@ impl Parser {
             consequent,
             alternate,
             span: SourceSpan::new(&self.id, if_start, self.previous().end),
+        }
+    }
+
+    pub(in crate::parser::implementation) fn parse_direct_braced_while_statement(
+        &mut self,
+        returns: &mut Vec<Vec<Token>>,
+        locals: &mut Vec<VariableDeclaration>,
+    ) -> FunctionWhileStatement {
+        debug_assert!(is_direct_braced_while_statement(&self.tokens, self.index));
+        let while_start = self.current().start;
+        self.bump();
+        let test_start = self.index + 1;
+        let test_end =
+            matching_closing_delimiter(&self.tokens, self.index, self.tokens.len() - 1, "(", ")")
+                .expect("the direct braced-while preflight found a closing parenthesis");
+        let test = self.tokens[test_start..test_end].to_vec();
+        self.collect_expression_type_edits(test_start, test_end);
+        self.index = test_end + 1;
+        let body = self.parse_direct_function_block(returns, locals);
+        FunctionWhileStatement {
+            test,
+            body,
+            span: SourceSpan::new(&self.id, while_start, self.previous().end),
         }
     }
 

@@ -8,7 +8,7 @@ use crate::compiler::{is_declaration_module, Project};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{
     Declaration, FunctionBodyItem, FunctionDeclaration, FunctionElseBranch, FunctionIfStatement,
-    InterfaceDeclaration, Module, Parameter, TypeField, TypeParameter,
+    FunctionWhileStatement, InterfaceDeclaration, Module, Parameter, TypeField, TypeParameter,
 };
 use crate::syntax::{Token, TokenKind};
 use std::collections::{BTreeMap, BTreeSet, HashSet};

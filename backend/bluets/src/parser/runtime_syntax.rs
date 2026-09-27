@@ -299,6 +299,22 @@ pub(super) fn is_direct_braced_if_statement(tokens: &[Token], start: usize) -> b
     alternate_start.is("if") && is_direct_braced_if_statement(tokens, consequent_end + 2)
 }
 
+/// Preflights a complete braced `while` before the function-body parser
+/// consumes it. Unbraced and incomplete loops retain their opaque fallback.
+pub(super) fn is_direct_braced_while_statement(tokens: &[Token], start: usize) -> bool {
+    if !tokens.get(start).is_some_and(|token| token.is("while"))
+        || !tokens.get(start + 1).is_some_and(|token| token.is("("))
+    {
+        return false;
+    }
+    let limit = tokens.len().saturating_sub(1);
+    let Some(test_end) = matching_closing_delimiter(tokens, start + 1, limit, "(", ")") else {
+        return false;
+    };
+    tokens.get(test_end + 1).is_some_and(|token| token.is("{"))
+        && matching_closing_delimiter(tokens, test_end + 1, limit, "{", "}").is_some()
+}
+
 pub(super) fn matching_closing_delimiter(
     tokens: &[Token],
     start: usize,

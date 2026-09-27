@@ -826,7 +826,9 @@ impl<'a> ModuleChecker<'a> {
                     StructuredTermination::Opaque => return StructuredTermination::Opaque,
                 },
                 FunctionBodyItem::Opaque(_) => return StructuredTermination::Opaque,
-                FunctionBodyItem::Variable(_) | FunctionBodyItem::Expression { .. } => {}
+                FunctionBodyItem::Variable(_)
+                | FunctionBodyItem::Expression { .. }
+                | FunctionBodyItem::While(_) => {}
             }
         }
         StructuredTermination::FallsThrough
@@ -865,6 +867,10 @@ impl<'a> ModuleChecker<'a> {
                     self.check_direct_function_if(statement, scope);
                     continue;
                 }
+                FunctionBodyItem::While(statement) => {
+                    self.check_direct_function_while(statement, scope);
+                    continue;
+                }
                 _ => continue,
             };
             self.check_direct_runtime_expression(tokens, scope, span);
@@ -887,6 +893,15 @@ impl<'a> ModuleChecker<'a> {
             }
             None => {}
         }
+    }
+
+    pub(super) fn check_direct_function_while(
+        &mut self,
+        statement: &FunctionWhileStatement,
+        scope: &BTreeMap<String, Type>,
+    ) {
+        self.check_direct_runtime_expression(&statement.test, scope, &statement.span);
+        self.check_function_body_expressions(&statement.body, scope);
     }
 
     pub(super) fn check_direct_runtime_expression(

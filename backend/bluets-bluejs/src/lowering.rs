@@ -285,6 +285,12 @@ fn lower_function_body(
                 body.push(bluejs::Stmt::Return(value));
             }
             FunctionBodyItem::If(statement) => body.push(lower_function_if(module, statement)?),
+            FunctionBodyItem::While(statement) => {
+                return Err(unsupported(
+                    statement.span.clone(),
+                    "braced while execution awaits direct AST lowering",
+                ));
+            }
             FunctionBodyItem::Opaque(span) => {
                 return Err(unsupported(
                     span.clone(),

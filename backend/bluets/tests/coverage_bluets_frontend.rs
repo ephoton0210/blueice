@@ -6,7 +6,10 @@
 //! the public `compile` entry point: the diagnostic code and wording for each
 //! rejected construct, and the erased JavaScript for accepted ones.
 
-use blueice_bluets::{compile, CompilerOptions, Diagnostic, MapLoader, ModuleSource};
+use blueice_bluets::{
+    compile, parse_module, CompilerOptions, Declaration, Diagnostic, FunctionBodyItem, MapLoader,
+    ModuleSource,
+};
 
 const ENTRY: &str = "memory:///main.ts";
 const HELPER: &str = "export const a: number = 1;\nexport const b: number = 2;\nexport interface Shape { x: number }\nexport type Box<T> = { value: T };\nexport type Id = number | string;\n";
@@ -49,6 +52,58 @@ fn emitted(source: &str) -> String {
     let result = compile_with_helper(source);
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     result.output.unwrap().artifacts[ENTRY].javascript.clone()
+}
+
+#[test]
+fn braced_while_retains_its_condition_and_body_without_proving_a_return() {
+    let source =
+        "function count(value: number): number { while (value > 0) { value -= 1; } return value; }";
+    let module = parse_module(ENTRY, source).unwrap();
+    let [Declaration::Function(function)] = module.declarations.as_slice() else {
+        panic!("expected one named function");
+    };
+    let [FunctionBodyItem::While(statement), FunctionBodyItem::Return { .. }] =
+        function.body.as_slice()
+    else {
+        panic!("the braced while must be a structured body item");
+    };
+    assert_eq!(
+        statement
+            .test
+            .iter()
+            .map(|token| token.text.as_str())
+            .collect::<Vec<_>>(),
+        ["value", ">", "0"]
+    );
+    assert!(matches!(
+        statement.body.as_slice(),
+        [FunctionBodyItem::Expression { .. }]
+    ));
+    assert_eq!(
+        &source[statement.span.start..statement.span.end],
+        "while (value > 0) { value -= 1; }"
+    );
+    assert_accepted(source);
+    assert_rejected(
+        "function count(value: number): number { while (value > 0) { return value; } }",
+        "BTS3004",
+        "can complete without returning a value",
+    );
+}
+
+#[test]
+fn braced_while_checks_condition_and_body_calls_with_existing_rules() {
+    let prelude = "function positive(value: number): boolean { return value > 0; } ";
+    assert_rejected(
+        &format!("{prelude}function count(): number {{ while (positive('bad')) {{ return 1; }} return 0; }}"),
+        "BTS3003",
+        "argument 1 has type",
+    );
+    assert_rejected(
+        &format!("{prelude}function count(): number {{ while (positive(1)) {{ positive('bad'); return 1; }} return 0; }}"),
+        "BTS3003",
+        "argument 1 has type",
+    );
 }
 
 #[test]
