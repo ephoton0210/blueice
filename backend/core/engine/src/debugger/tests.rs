@@ -5,6 +5,7 @@
 use super::*;
 use blueice_ipc::debugger::DebuggerSourceCoordinates;
 mod linked_coordinates;
+mod linked_scope_values;
 mod metadata_grants;
 mod metadata_locations;
 mod metadata_relations;

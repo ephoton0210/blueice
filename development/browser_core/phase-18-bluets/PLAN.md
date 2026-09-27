@@ -1947,6 +1947,23 @@ truncated reply records none. Receipts remain limited by the shared fixed
 scope budget and expire on a new core pause incarnation. This prepares the
 public handler without giving a Value-only stream metadata authority.
 
+**C3.1.3.5.4.2 authorized public linked value:** Public debugger protocol
+v42 adds `GetLinkedValue` and an exact echoed `LinkedValue` snapshot. Core
+requires the independently negotiated bounded-value owner/client grant and
+the complete same-stream `GetLinkedScopes` receipt from the current pause.
+Before reading, it reacquires the live linked entry scope, confirms the
+unique selected slot, and compares the full core-reminted two-program stack
+with the current child state. The already strict core-facing adapter then
+reads the retained entry binding. Core remints the plain-data preview under
+its fixed depth, node, container, and payload limits and returns one complete
+snapshot or one typed error. IPC and engine tests reject absent grants or
+receipts, truncated scopes, foreign streams, new pause incarnations, forged
+slots, swapped programs, moved stacks, and over-budget data. The IPC 120-test
+and engine 309-test library suites pass. The engine value test module was
+split into an ordinary-value file and a linked-scope file, both below 1,300
+lines. The real Launcher socket acceptance and expiry proof remains
+C3.1.3.5.5.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

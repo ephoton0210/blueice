@@ -898,6 +898,87 @@ pub(super) fn child_value_snapshot(
     Ok(snapshot)
 }
 
+/// Public linked Value route. The stream's independent bounded-value grant
+/// and exact complete linked-scope receipt precede every live child read.
+pub(super) fn child_linked_value_snapshot(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    session: Option<&DebuggerMetadataSessionAuthorization>,
+    granted: bool,
+    pause_incarnation: u64,
+    target: DebuggerLinkedScopeTarget,
+) -> Result<DebuggerLinkedValueSnapshot, Box<DebuggerReply>> {
+    if !granted {
+        return Err(Box::new(unavailable_values()));
+    }
+    let Some(session) = session else {
+        return Err(Box::new(unavailable_values()));
+    };
+    if !target.is_well_formed() || !session.observed_linked_scope(target, pause_incarnation) {
+        return Err(Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "linked debugger value target was not returned by complete linked Scopes on this stream"
+                .to_string(),
+        }));
+    }
+    if !locations.debugger_values_available() || !locations.debugger_linked_frames_available() {
+        return Err(Box::new(unavailable_values()));
+    }
+    let scopes = staged_child_linked_scopes(tabs, locations, target.stack, MAX_SCOPE_BINDINGS)?;
+    if scopes.scope_truncated
+        || scopes
+            .entries
+            .iter()
+            .filter(|entry| entry.slot_ordinal == target.scope_entry.slot_ordinal)
+            .count()
+            != 1
+        || !scopes.entries.contains(&target.scope_entry)
+    {
+        return Err(Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "linked debugger value slot is no longer active at this pause".to_string(),
+        }));
+    }
+    let realm = target.stack.frames[1].frame.program.realm;
+    let tab_id = resolve_live_realm(tabs, realm)?;
+    let internal = internal_linked_stack(tab_id, target.stack);
+    let current = locations
+        .debugger_linked_stack_snapshot(internal.frames[0].frame, MAX_SCOPE_BINDINGS)
+        .map_err(|error| Box::new(debugger_program_error(error)))?;
+    if current != internal {
+        return Err(Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidExecutionState,
+            message: "linked debugger stack moved before value inspection".to_string(),
+        }));
+    }
+    let core_target = JavaScriptPageDebuggerLinkedValueTarget {
+        expected_stack: internal,
+        frame_index: target.frame_index,
+        scope_entry: JavaScriptPageDebuggerScopeEntry {
+            slot_ordinal: target.scope_entry.slot_ordinal,
+            scope_depth: target.scope_entry.scope_depth,
+        },
+    };
+    let preview = locations
+        .debugger_linked_value_snapshot(core_target)
+        .map_err(|error| Box::new(debugger_program_error(error)))?;
+    let mut budget = ValueRemintBudget::default();
+    let preview = remint_core_debugger_value(preview, 0, &mut budget).ok_or_else(|| {
+        Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::ResourceLimit,
+            message: "linked debugger value exceeds the complete public preview budget".to_string(),
+        })
+    })?;
+    let snapshot = DebuggerLinkedValueSnapshot { target, preview };
+    if !snapshot.is_well_formed() {
+        return Err(Box::new(DebuggerReply::Error {
+            code: DebuggerErrorCode::ResourceLimit,
+            message: "invalid complete linked debugger value preview".to_string(),
+        }));
+    }
+    Ok(snapshot)
+}
+
 #[derive(Default)]
 pub(super) struct ValueRemintBudget {
     nodes: usize,

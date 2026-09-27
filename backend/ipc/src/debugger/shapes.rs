@@ -1137,7 +1137,7 @@ impl DebuggerValueSnapshot {
 }
 
 /// One complete linked entry-root slot and its separately authorized bounded
-/// runtime preview. This shape is staged without a callable public request.
+/// runtime preview. The exact target is echoed without a child identity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DebuggerLinkedValueSnapshot {
     pub target: DebuggerLinkedScopeTarget,

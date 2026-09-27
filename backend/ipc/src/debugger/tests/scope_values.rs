@@ -278,6 +278,16 @@ fn linked_scope_receipts_stay_distinct_from_ordinary_value_receipts() {
         preview: DebuggerValuePreview::NumberBits(9.0_f64.to_bits()),
     };
     assert!(linked_value.is_well_formed());
+    let request = DebuggerRequest::GetLinkedValue {
+        target: linked_target,
+    };
+    let (mut writer, mut reader) = UnixStream::pair().unwrap();
+    write_debugger_request(&mut writer, &request).unwrap();
+    assert_eq!(read_debugger_request(&mut reader).unwrap(), request);
+    let reply = DebuggerReply::LinkedValue(Box::new(linked_value.clone()));
+    let (mut writer, mut reader) = UnixStream::pair().unwrap();
+    write_debugger_reply(&mut writer, &reply).unwrap();
+    assert_eq!(read_debugger_reply(&mut reader).unwrap(), reply);
     assert_eq!(
         serde_json::from_slice::<DebuggerLinkedValueSnapshot>(
             &serde_json::to_vec(&linked_value).unwrap()

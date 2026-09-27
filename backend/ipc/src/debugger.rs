@@ -9,8 +9,11 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version forty adds a complete
-//! linked dependency/entry module pause family: two separately reminted
+//! and an opt-in root-code-unit pause/resume seam.
+//! Version forty-two adds a separately granted, same-stream linked-entry
+//! bounded value read under a complete linked-scopes receipt.
+//! Version forty adds a complete linked dependency/entry module pause family:
+//! two separately reminted
 //! program frames, a fixed complete stack, exact resume, and all-or-nothing
 //! original coordinates under the existing span grant and two independent
 //! same-stream metadata/source receipts. Version thirty-nine adds an
@@ -89,7 +92,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 41;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 42;
 
 pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -404,7 +407,7 @@ pub enum DebuggerRequest {
         max_scope_entries: u32,
     },
     /// Reads only the entry-root lexical slots of one complete linked pause.
-    /// An incomplete reply does not mint a static-scope receipt.
+    /// An incomplete reply mints neither a static-scope nor a Value receipt.
     GetLinkedScopes {
         expected_stack: DebuggerLinkedStackSnapshot,
         max_scope_entries: u32,
@@ -418,6 +421,11 @@ pub enum DebuggerRequest {
     /// same core-owned pause incarnation and independently granted in Hello.
     GetValue {
         target: DebuggerValueTarget,
+    },
+    /// Reads only one complete linked entry-root slot receipted on this
+    /// stream and independently granted as a bounded runtime value.
+    GetLinkedValue {
+        target: DebuggerLinkedScopeTarget,
     },
     /// Denial-only compatibility probe. Core never resolves this target or
     /// reads source text; the reply is always a typed capability refusal.
@@ -572,6 +580,7 @@ pub enum DebuggerReply {
     LinkedScopes(Box<DebuggerLinkedScopeSnapshot>),
     StaticScopeRelation(Box<DebuggerStaticScopeRelation>),
     Value(Box<DebuggerValueSnapshot>),
+    LinkedValue(Box<DebuggerLinkedValueSnapshot>),
     ExecutionSourceSpanStepRequested {
         safe_point: DebuggerSafePoint,
     },
@@ -691,6 +700,7 @@ pub fn negotiate_with_values(
         | DebuggerRequest::GetLinkedScopes { .. }
         | DebuggerRequest::GetStaticScopeRelation { .. }
         | DebuggerRequest::GetValue { .. }
+        | DebuggerRequest::GetLinkedValue { .. }
         | DebuggerRequest::GetSourceText { .. }
         | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
         | DebuggerRequest::Unknown => DebuggerReply::Error {

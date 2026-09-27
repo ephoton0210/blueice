@@ -444,7 +444,7 @@ fn public_static_scope_grant_and_wire_are_independent_of_values() {
             static_scope_relation: true,
             ..Default::default()
         });
-    assert_eq!(DEBUGGER_PROTOCOL_VERSION, 41);
+    assert_eq!(DEBUGGER_PROTOCOL_VERSION, 42);
     assert_eq!(DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION, 5);
     assert_eq!(
         manifest.capabilities,
