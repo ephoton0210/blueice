@@ -240,6 +240,20 @@ fn first_typeof_guard_does_not_claim_later_or_repeated_guards() {
 }
 
 #[test]
+fn immutable_typeof_guard_emits_the_original_runtime_condition_without_types() {
+    let javascript = emitted(
+        "function f(input: string | number): number { const value: string | number = input; if (typeof value === 'string') { return 1; } else { return value; } }",
+    );
+    assert!(
+        javascript.contains("typeof value === 'string'"),
+        "{javascript}"
+    );
+    assert!(javascript.contains("if ("), "{javascript}");
+    assert!(!javascript.contains(": string | number"), "{javascript}");
+    assert!(!javascript.contains("): number"), "{javascript}");
+}
+
+#[test]
 fn braced_while_retains_its_condition_and_body_without_proving_a_return() {
     let source =
         "function count(value: number): number { while (value > 0) { value -= 1; } return value; }";

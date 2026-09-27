@@ -195,6 +195,74 @@ fn direct_page_try_cannot_catch_or_override_a_fatal_instruction_limit() {
 }
 
 #[test]
+fn direct_page_immutable_typeof_guard_runs_both_branches_and_early_completion() {
+    for source in [
+        "function f(input: string | number): number { const value: string | number = input; if (typeof value === 'string') { return 1; } else { return value; } } f('Ada') + f(41);",
+        "function f(input: string | number): number { const value: string | number = input; if (typeof value !== \"string\") { return value; } return 1; } f('Ada') + f(41);",
+        "function f(input: string | number): number { const value: string | number = input; if (typeof value === 'string') { throw value; } return value; } f(42);",
+    ] {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+            panic!("a guarded function must lower to a direct script");
+        };
+        assert!(matches!(
+            program.body.first(),
+            Some(bluejs::Stmt::FunctionDecl(bluejs::Function { body, .. }))
+                if matches!(body.as_slice(), [bluejs::Stmt::VarDecl(_, _), bluejs::Stmt::If { .. }, ..])
+        ));
+        let mut owner = DirectPageRealmOwner::default();
+        owner.open_realm(7, origin()).unwrap();
+        let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+        assert_eq!(
+            owner.execute_program(7, &attachment).unwrap(),
+            bluejs::Value::Number(42.0),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn direct_page_typeof_guard_preserves_string_throw_and_rejects_unproven_shapes() {
+    let source = "function f(input: string | number): number { const value: string | number = input; if (typeof value === 'string') { throw value; } return value; } f('bad');";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    assert!(matches!(
+        owner.execute_program(7, &attachment),
+        Err(BridgeError::PageRuntime(
+            bluejs::BlueJsPageRuntimeError::Runtime(bluejs::RuntimeError::Thrown(
+                bluejs::Value::String(value)
+            ))
+        )) if value == "bad"
+    ));
+
+    for source in [
+        "function takesString(value: string): void {} function f(input: string | number): void { let value: string | number = input; if (typeof value === 'string') { takesString(value); } } f('Ada');",
+        "function takesString(value: string): void {} function f(value: string | number): void { if (typeof value === 'string') { takesString(value); } } f('Ada');",
+    ] {
+        assert!(matches!(
+            compile_direct_script(
+                ENTRY,
+                &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+                CompilerOptions::default(),
+            ),
+            Err(BridgeError::BlueTs(_))
+        ), "unproven narrowing must prevent direct execution: {source}");
+    }
+}
+
+#[test]
 fn direct_page_while_runs_inside_an_existing_braced_if_branch() {
     let artifact = compile_direct_script(
         ENTRY,

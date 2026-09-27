@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: H.3.2.2.** Verify erased JavaScript and direct-page behavior
-for the selected branch and early-completion paths.
+**Current leaf: H.3.2.3.** Compare the selected guard with pinned TypeScript,
+verify debugger generation behavior, and run workspace gates.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -788,7 +788,7 @@ Keep check read-only and owner registration sealed before listeners.
   - [x] **H.3.1** Define narrowing forms and return-path analysis. [PLAN.md](PLAN.md#h31-first-bounded-narrowing-and-return-path-form) selects one immutable function-local `string | number` binding guarded by a braced `typeof value === "string"` or `!==` if; branch-local types and the surviving type after an early return/throw are specified, while both-arm fall-through restores the union and a lone guard never proves required return. Mutable, parameter, property, wider-union, compound, loop/try, and repeated guards remain outside this first narrowing form. H.3.2 owns checker, emitter, direct-page, and oracle evidence for this design-only decision.
   - [ ] **H.3.2** Test checker, emitter, direct execution, and oracle.
     - [x] **H.3.2.1** Split the near-1,300-line function checker into a focused submodule, then implement and test branch-local `typeof` narrowing and residual types after an early return or throw without scope leakage. Function checks now live in `binding/functions.rs` with a small guard recognizer; `binding.rs` is 886 lines. Public compiler tests cover equality/inequality arms, branch calls and returns, early return/throw residuals, excluded mutable/parameter/repeated guards, no scope leakage, and conservative required return. BlueTS crate tests and all-target Clippy pass under the disk guard.
-    - [ ] **H.3.2.2** Verify erased JavaScript emission and direct-page execution for the selected true/false, inequality, and guard-return paths; keep unsupported shapes outside the new narrowing claim.
+    - [x] **H.3.2.2** Verify erased JavaScript emission and direct-page execution for the selected true/false, inequality, and guard-return paths; keep unsupported shapes outside the new narrowing claim. Public compiler tests confirm erased annotations and preserved `typeof`; page-realm tests execute both equality branches, inequality early return, and string throw, while mutable/parameter obligations reject before direct execution. BlueTS and bridge crate tests and all-target Clippy pass under the disk guard.
     - [ ] **H.3.2.3** Compare accepted behavior and rejected diagnostics with pinned TypeScript 5.9.3, verify debugger provenance and stale-generation behavior, and run workspace gates under the shared-target disk budget.
 - [ ] **H.4** Define callback/method overload resolution with the same four gates.
   - [ ] **H.4.1** Define resolution rules and the ambiguous-call diagnostic.
