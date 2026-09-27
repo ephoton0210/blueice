@@ -2689,6 +2689,13 @@ egress text, and retained generated sites. All 162 BlueTS library tests,
 target directory. The public strict build gate remains closed pending
 source-map, multi-module, and publisher verification.
 
+**E3.2.3.2.3.3.3.1 emitter test extraction:** Before adding more strict
+emission regressions, the emitter's 15 existing tests moved unchanged into
+the MPL-licensed `emitter/tests.rs` submodule. The owner file fell from
+1,204 to 787 lines and the tests occupy 420 lines. All 15 focused emitter
+tests pass using the same target directory. The following leaf adds the
+strict crossing and provenance cases in the bounded test module.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
