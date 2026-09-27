@@ -2553,6 +2553,23 @@ digest, missing strict record, and unexpected checked record all fail before
 replacement. This binds artifact identity but does not yet prove that
 generated modules retain calls to the helper; E3.2.3 owns that gate.
 
+**E3.2.3.1 strict emitted-path audit:** The current compiler passes both
+`checked` and `strict-runtime` as the same checking-enabled boolean into
+`checker::check_incremental`. `emitter::emit` receives policy in options for
+fingerprinting, but its `emit_javascript` path has no selected runtime
+boundary record or helper-call insertion. Standalone `bluetsc` also builds
+with `require_declared_global_calls: false`, so an undeclared ambient call
+may enter emitted JavaScript. Thus the newly staged helper file and hashed
+manifest prove artifact identity only; they do not prove that any boundary
+was checked at runtime. The existing early strict-build refusal is the
+correct current target gate. A supported strict emitted path requires an
+owner-selected, reifiable boundary descriptor tied to each source crossing,
+deterministic helper imports/calls at those sites, and a publisher audit that
+refuses any module/target that loses a required check. E3.2.3.2 implements
+the crossing route; E3.2.3.3 proves target retention and opens only covered
+strict output. No module is considered safe merely because its manifest
+names a helper.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

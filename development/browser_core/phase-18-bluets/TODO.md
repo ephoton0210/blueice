@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E3.2.3.** Reject emitted targets or artifacts that can erase a
-required strict-runtime check before standalone admission opens.
+**Current leaf: E3.2.3.2.** Add explicit emitted boundary checks before any
+standalone strict-runtime target can be admitted.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -635,6 +635,9 @@ channel with explicit owner/client grants.
     - [x] **E3.2.1.2** Implement the pure, versioned helper source and stage the exact helper file through the build publisher. The MPL-licensed ESM helper checks primitive type, nonnegative integer byte limit, surrogate pairing, and UTF-8 length using primitive operations and a fixed source-free rejection. An internal strict-metadata publisher test verifies exact staged bytes and removal on a checked replacement; all 11 BlueTSC binary tests, the existing strict-admission CLI regression, workspace Clippy, and direct Node edge checks pass. This closes E3.2.1 while public strict admission remains gated for E3.2.2–E3.2.3.
   - [x] **E3.2.2** Bind the helper identity into the artifact manifest. Strict metadata now records helper v1 version, fixed relative file name, and SHA-256 of the exact embedded bytes. The atomic publisher verifies that strict metadata matches the file it will write, refuses missing or tampered identity, and refuses a helper claim in a checked build before replacing output. Its focused test confirms the serialized manifest and preservation of prior output on refusal; all 11 BlueTSC binary tests and workspace Clippy pass.
   - [ ] **E3.2.3** Reject any target that erases a required check.
+    - [x] **E3.2.3.1** Audit the current strict emitted path and define a fail-closed target gate. The compiler currently passes checked and strict through the same static checker, `emit_javascript` has no runtime-policy input or helper-call insertion, and standalone options do not require declared global calls. A helper file and manifest hash alone therefore do not justify a strict claim. PLAN.md records the missing explicit boundary descriptor and call-site proof; the existing CLI refusal remains the gate until the next steps.
+    - [ ] **E3.2.3.2** Carry owner-selected reifiable emitted boundary records into the checked graph and insert helper imports/calls at every supported strict ingress/egress crossing. Reject unsupported, unresolved, or potentially ambient crossings instead of labelling erased output strict. Split this implementation further if a complete boundary route is too large for one reviewable change.
+    - [ ] **E3.2.3.3** Audit ES2020/ES2022 emitted modules and source maps for retained exact helper calls, verify publisher/manifest consistency, and open standalone strict build only for fully covered targets. Prove unsupported output fails before publication and then close E3.2.3 and E3.2.
 - [ ] **E3.3** Make direct-page and emitted ESM reject the same malformed value;
   a weaker artifact must never claim strict-runtime.
   - [ ] **E3.3.1** Run one malformed value through both paths and assert the same rejection.
