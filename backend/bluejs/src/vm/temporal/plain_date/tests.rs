@@ -1014,6 +1014,41 @@ fn non_iso_date_addition_carries_a_negative_month_into_the_previous_year() {
 }
 
 #[test]
+fn non_iso_date_addition_cannot_borrow_before_the_first_icu_year() {
+    let calendar = AnyCalendarKind::Indian;
+    let date = (2020, 6, 1);
+    let calendar_date = super::super::calendar::calendar_date_from_civil(calendar, date);
+    let start_year = i64::from(calendar_date.year().extended_year());
+    let start_month = i64::from(calendar_date.month().ordinal);
+    let mut outside = i64::from(i32::MIN);
+    let mut inside = start_year;
+    assert!(months_in_year_for(calendar, inside as i32).is_some());
+    assert!(months_in_year_for(calendar, outside as i32).is_none());
+    while inside - outside > 1 {
+        let midpoint = outside + (inside - outside) / 2;
+        if months_in_year_for(calendar, midpoint as i32).is_some() {
+            inside = midpoint;
+        } else {
+            outside = midpoint;
+        }
+    }
+    assert!(months_in_year_for(calendar, inside as i32).is_some());
+    assert!(months_in_year_for(calendar, (inside - 1) as i32).is_none());
+    assert_eq!(
+        calendar_add_date(
+            calendar,
+            date,
+            inside - start_year,
+            -start_month,
+            0,
+            0,
+            false,
+        ),
+        None,
+    );
+}
+
+#[test]
 fn calendar_rounding_handles_ties_equal_dates_and_unrepresentable_windows() {
     use blueice_ecma402::NumberRoundingMode::{HalfEven, Trunc};
     assert_eq!(

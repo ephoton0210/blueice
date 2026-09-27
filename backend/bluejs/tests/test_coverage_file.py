@@ -6,6 +6,7 @@
 
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -160,9 +161,13 @@ class CoverageFileTests(unittest.TestCase):
                         "    2|      1|fn g() {}\n"
                     )
 
+        def fake_bounded(argv, *, cwd, target):
+            self.assertEqual(target, self.repo / "target")
+            fake_run(argv, cwd=cwd, check=True)
+
         with patch.dict(coverage_file.os.environ, {"CARGO_TARGET_DIR": str(self.repo / "target")}), patch.object(
             coverage_file.subprocess, "run", side_effect=fake_run
-        ):
+        ), patch.object(coverage_file, "run_bounded_command", side_effect=fake_bounded):
             files, _ = coverage_file.run_coverage()
         self.assertEqual(len(files), 1)
         self.assertEqual(calls[0], ["cargo", "llvm-cov", "clean", "--profraw-only"])
@@ -189,14 +194,50 @@ class CoverageFileTests(unittest.TestCase):
             if len(calls) == 2:
                 raise coverage_file.subprocess.CalledProcessError(1, argv)
 
+        def fake_bounded(argv, *, cwd, target):
+            self.assertEqual(target, self.repo / "target")
+            fake_run(argv, cwd=cwd, check=True)
+
         with patch.dict(coverage_file.os.environ, {"CARGO_TARGET_DIR": str(self.repo / "target")}), patch.object(
             coverage_file.subprocess, "run", side_effect=fake_run
-        ):
+        ), patch.object(coverage_file, "run_bounded_command", side_effect=fake_bounded):
             with self.assertRaises(coverage_file.subprocess.CalledProcessError):
                 coverage_file.run_coverage()
         self.assertEqual(len(calls), 3)
         self.assertEqual(calls[-1], ["cargo", "llvm-cov", "clean", "--profraw-only"])
         self.assertFalse(cache.exists())
+
+    def test_disk_budget_stops_a_test_that_keeps_writing(self):
+        target = self.repo / "target"
+        target.mkdir()
+        command = [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; import time; "
+            "Path('target/growth').write_bytes(b'x' * 1048576); time.sleep(30)",
+        ]
+        with self.assertRaisesRegex(RuntimeError, "test disk budget exceeded"):
+            coverage_file.run_bounded_command(
+                command,
+                cwd=self.repo,
+                target=target,
+                growth_limit=0,
+                free_floor=0,
+                poll_interval=0.05,
+            )
+
+    def test_disk_budget_rejects_an_oversized_existing_target(self):
+        target = self.repo / "target"
+        target.mkdir()
+        (target / "existing").write_bytes(b"x" * 1024)
+        with self.assertRaisesRegex(RuntimeError, "already exceeds"):
+            coverage_file.run_bounded_command(
+                [sys.executable, "-c", "raise AssertionError('should not run')"],
+                cwd=self.repo,
+                target=target,
+                target_limit=0,
+                free_floor=0,
+            )
 
     def test_source_union_counts_duplicate_compilations_once(self):
         payload = self.export()

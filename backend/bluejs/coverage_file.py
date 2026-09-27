@@ -17,6 +17,7 @@ import os
 import platform
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -36,6 +37,9 @@ LINUX_REPORT = (
     / "development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md"
 )
 METRICS = ("lines", "functions", "regions")
+TEST_GROWTH_LIMIT = 16 * 1024**3
+TEST_TARGET_LIMIT = 140 * 1024**3
+HOST_FREE_FLOOR = 20 * 1024**3
 
 # Files without executable coverage targets are audited here. An unexpected
 # uninstrumented source file is an error rather than a silently omitted row.
@@ -415,6 +419,82 @@ def prune_superseded_test_executables(target: Path) -> None:
                     path.unlink()
 
 
+def cargo_target() -> Path:
+    target = Path(os.environ.get("CARGO_TARGET_DIR", REPO_ROOT / "target"))
+    return (target if target.is_absolute() else REPO_ROOT / target).resolve()
+
+
+def target_size_bytes(target: Path) -> int:
+    if not target.exists():
+        return 0
+    return int(subprocess.check_output(["du", "-sk", str(target)], text=True).split()[0]) * 1024
+
+
+def stop_process_group(process: subprocess.Popen) -> None:
+    if process.poll() is None:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+
+
+def run_bounded_command(
+    argv: list[str],
+    *,
+    cwd: Path,
+    target: Path,
+    growth_limit: int = TEST_GROWTH_LIMIT,
+    target_limit: int = TEST_TARGET_LIMIT,
+    free_floor: int = HOST_FREE_FLOOR,
+    poll_interval: float = 5,
+) -> None:
+    """Stop a test and its children before Cargo growth exhausts the host."""
+    starting_size = target_size_bytes(target)
+    if starting_size > target_limit:
+        raise RuntimeError("Cargo target already exceeds the test disk limit")
+    if shutil.disk_usage(cwd).free < free_floor:
+        raise RuntimeError("insufficient free disk space to start tests")
+    print(
+        f"Test disk budget: {growth_limit // 1024**3} GiB target growth, "
+        f"{target_limit // 1024**3} GiB total target, "
+        f"{free_floor // 1024**3} GiB host reserve",
+        flush=True,
+    )
+    process = subprocess.Popen(argv, cwd=cwd, start_new_session=True)
+    try:
+        while True:
+            try:
+                returncode = process.wait(timeout=poll_interval)
+            except subprocess.TimeoutExpired:
+                returncode = None
+            growth = target_size_bytes(target) - starting_size
+            free = shutil.disk_usage(cwd).free
+            if (
+                growth > growth_limit
+                or starting_size + growth > target_limit
+                or free < free_floor
+            ):
+                stop_process_group(process)
+                raise RuntimeError(
+                    f"test disk budget exceeded: target grew {growth / 1024**3:.1f} GiB, "
+                    f"host free {free / 1024**3:.1f} GiB"
+                )
+            if returncode is not None:
+                if returncode:
+                    raise subprocess.CalledProcessError(returncode, argv)
+                return
+    finally:
+        stop_process_group(process)
+
+
 def run_coverage() -> tuple[dict[Path, dict], dict]:
     with tempfile.TemporaryDirectory(prefix="bluejs-coverage-") as tmp:
         output = Path(tmp) / "coverage.json"
@@ -425,7 +505,7 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
                 cwd=REPO_ROOT,
                 check=True,
             )
-            subprocess.run(
+            run_bounded_command(
                 [
                     "cargo",
                     "llvm-cov",
@@ -437,7 +517,7 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
                     str(output),
                 ],
                 cwd=REPO_ROOT,
-                check=True,
+                target=cargo_target(),
             )
             subprocess.run(
                 [
@@ -467,10 +547,7 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
             finally:
                 # Keep compiled dependencies for the next run; these two
                 # incremental directories are disposable and grow per test.
-                target = Path(os.environ.get("CARGO_TARGET_DIR", REPO_ROOT / "target"))
-                if not target.is_absolute():
-                    target = REPO_ROOT / target
-                target = target.resolve()
+                target = cargo_target()
                 if target.is_relative_to(REPO_ROOT):
                     for path in (
                         target / "debug/incremental",
