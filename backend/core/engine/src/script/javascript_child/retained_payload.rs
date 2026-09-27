@@ -50,4 +50,59 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         }
         Some(bytes)
     }
+
+    /// Counts core-owned active nested/linked frame map entries and the two
+    /// retained linked scope vectors for one exact live document.
+    pub fn retained_debugger_active_frame_bytes(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Option<usize> {
+        let document = self.live_documents.get(&tab_id)?;
+        if document.document_generation != document_generation {
+            return None;
+        }
+        let mut bytes = 0usize;
+        if let Some(frame) = self.debugger_nested_frames.get(&tab_id) {
+            if frame.public.tab_id != tab_id
+                || frame.public.document_generation != document_generation
+                || frame.child.tab_id != tab_id.as_u64()
+                || frame.child.document_generation != document_generation
+            {
+                return None;
+            }
+            bytes = bytes.checked_add(std::mem::size_of::<(TabId, ActiveDebuggerFrame)>())?;
+        }
+        if let Some(pause) = self.debugger_linked_frames.get(&tab_id) {
+            if pause.child.tab_id != tab_id.as_u64()
+                || pause.child.document_generation != document_generation
+                || pause.frames.iter().any(|frame| {
+                    frame.frame.tab_id != tab_id
+                        || frame.frame.document_generation != document_generation
+                })
+            {
+                return None;
+            }
+            bytes = bytes.checked_add(std::mem::size_of::<(TabId, ActiveLinkedDebuggerPause)>())?;
+            for frame in &pause.child_stack.frames {
+                bytes = bytes.checked_add(
+                    frame
+                        .scope_entries
+                        .capacity()
+                        .checked_mul(std::mem::size_of::<PageHostDebuggerScopeEntry>())?,
+                )?;
+            }
+        }
+        Some(bytes)
+    }
+
+    /// Complete core-owned debugger-map payload for one live generation.
+    pub fn retained_debugger_payload_bytes(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Option<usize> {
+        self.retained_debugger_identity_map_bytes(tab_id, document_generation)?
+            .checked_add(self.retained_debugger_active_frame_bytes(tab_id, document_generation)?)
+    }
 }

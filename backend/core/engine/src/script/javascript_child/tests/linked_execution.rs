@@ -322,6 +322,28 @@ fn real_child_linked_modules_return_two_exact_original_spans() {
     else {
         panic!("the linked child must pause in its dependency")
     };
+    let active = &executor.debugger_linked_frames[&tab_id];
+    let linked_scope_bytes: usize = active
+        .child_stack
+        .frames
+        .iter()
+        .map(|frame| {
+            frame.scope_entries.capacity() * std::mem::size_of::<PageHostDebuggerScopeEntry>()
+        })
+        .sum();
+    assert!(linked_scope_bytes > 0);
+    let linked_bytes =
+        std::mem::size_of::<(TabId, ActiveLinkedDebuggerPause)>() + linked_scope_bytes;
+    assert_eq!(
+        executor.retained_debugger_active_frame_bytes(tab_id, 1),
+        Some(linked_bytes)
+    );
+    assert_eq!(
+        executor.retained_debugger_payload_bytes(tab_id, 1),
+        executor
+            .retained_debugger_identity_map_bytes(tab_id, 1)
+            .and_then(|bytes| bytes.checked_add(linked_bytes))
+    );
     assert_eq!(
         stack.frames[0].frame.program_handle,
         dependency.program_handle
@@ -527,12 +549,17 @@ fn real_child_linked_modules_return_two_exact_original_spans() {
         executor.debugger_linked_execution_state(tab_id, 1, entry),
         Ok(JavaScriptPageDebuggerLinkedExecutionState::Completed)
     );
+    assert_eq!(
+        executor.retained_debugger_active_frame_bytes(tab_id, 1),
+        Some(0)
+    );
     let mut tabs = tabs;
     tabs.get_mut(tab_id).unwrap().load_html_str(
         "<p>linked successor</p>",
         Some("https://example.test/app/successor.html".to_string()),
     );
     executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(executor.retained_debugger_payload_bytes(tab_id, 1), None);
     assert_eq!(
         executor.debugger_static_scope_relation(tab_id, 1, static_target),
         Err(JavaScriptPageDebuggerError::InvalidExecutionState)

@@ -2333,6 +2333,17 @@ metadata discovery increase only one tab's charge; replacement, failed
 snapshot admission, and close release the appropriate records. Active
 nested/linked frames and their scope vectors follow in E2.2.1.3.4.2.
 
+**E2.2.1.3.4.2 active core frames:** The exact-document core query counts
+the fixed nested-frame map entry or linked-pause map entry and the capacity of
+both linked child-stack scope vectors. It validates the retained core/child
+frame tuple against the addressed tab and generation before returning any
+charge. A combined query adds these allocations to program, metadata, and
+deferral map entries with checked arithmetic. Real child/core nested and
+linked tests observe nonzero active-frame charges, linked scope-vector bytes,
+and zero after frame return or linked completion; navigation makes the old
+generation unqueryable. No child-owned metadata or VM runtime state is counted
+inside this core-only total.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

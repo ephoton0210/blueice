@@ -169,6 +169,17 @@ fn core_proxies_real_child_nested_frame_without_exposing_private_program_ids() {
     assert_eq!(frame.program_generation, program.program_generation);
     assert_eq!(frame.code_unit_ordinal, 1);
     assert_ne!(frame.frame_handle, 0);
+    let nested_bytes = std::mem::size_of::<(TabId, ActiveDebuggerFrame)>();
+    assert_eq!(
+        executor.retained_debugger_active_frame_bytes(tab_id, 1),
+        Some(nested_bytes)
+    );
+    assert_eq!(
+        executor.retained_debugger_payload_bytes(tab_id, 1),
+        executor
+            .retained_debugger_identity_map_bytes(tab_id, 1)
+            .and_then(|bytes| bytes.checked_add(nested_bytes))
+    );
     let stack = executor
         .debugger_stack_snapshot(tab_id, 1, program, Some(frame), 1, 1)
         .unwrap();
@@ -250,6 +261,10 @@ fn core_proxies_real_child_nested_frame_without_exposing_private_program_ids() {
         }
     }
     assert!(returned);
+    assert_eq!(
+        executor.retained_debugger_active_frame_bytes(tab_id, 1),
+        Some(0)
+    );
     assert_eq!(
         executor.step_debugger_nested_instruction(frame),
         Err(JavaScriptPageDebuggerError::InvalidExecutionState)
