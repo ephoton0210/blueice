@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: H.3.1.** Define the first bounded control-flow narrowing and
-return-path analysis form before implementing it.
+**Current leaf: H.3.2.** Test the selected immutable local `typeof` guard
+through checker, emitter, direct page execution, and the pinned oracle.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -785,7 +785,7 @@ Keep check read-only and owner registration sealed before listeners.
     - [x] **H.2.2.4** Verify live nested safe-point mapping and stale-generation denial, compare syntax and diagnostics with the pinned TypeScript oracle, and run the workspace gates under the shared-target disk budget. A page-realm regression steps the nested try frame through live source-bound safe points, then proves navigation expires its map, frame, and static debugger entry; a replacement attachment has a new generation. Two new TypeScript 5.9.3 fixtures pass in the full pinned oracle matrix. Workspace tests, all-target build and Clippy, rustfmt, and whitespace checks pass with one 13 GiB target and about 629 GiB host space free; the full test rerun used local Unix-socket access for `ai-gatekeeper`.
 - [ ] **H.3** Define control-flow narrowing and return paths through checker, emitter,
   direct execution, and oracle.
-  - [ ] **H.3.1** Define narrowing forms and return-path analysis.
+  - [x] **H.3.1** Define narrowing forms and return-path analysis. [PLAN.md](PLAN.md#h31-first-bounded-narrowing-and-return-path-form) selects one immutable function-local `string | number` binding guarded by a braced `typeof value === "string"` or `!==` if; branch-local types and the surviving type after an early return/throw are specified, while both-arm fall-through restores the union and a lone guard never proves required return. Mutable, parameter, property, wider-union, compound, loop/try, and repeated guards remain outside this first narrowing form. H.3.2 owns checker, emitter, direct-page, and oracle evidence for this design-only decision.
   - [ ] **H.3.2** Test checker, emitter, direct execution, and oracle.
 - [ ] **H.4** Define callback/method overload resolution with the same four gates.
   - [ ] **H.4.1** Define resolution rules and the ambiguous-call diagnostic.
