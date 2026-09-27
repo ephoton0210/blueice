@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: H.1.1.** Pick one supported loop form and state its unsupported
-neighbors before adding checker, execution, safe-point, and oracle coverage.
+**Current leaf: H.1.2.** Test the chosen bounded `while` form through the
+checker, direct execution, safe points, and pinned TypeScript oracle.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -770,7 +770,7 @@ Keep check read-only and owner registration sealed before listeners.
 
 - [ ] **H.1** Define one supported loop form, then test checker, direct execution,
   safe points, and oracle before selecting another.
-  - [ ] **H.1.1** Pick one loop form and state its unsupported neighbors.
+  - [x] **H.1.1** Pick one loop form and state its unsupported neighbors. [PLAN.md](PLAN.md#h11-first-loop-form-after-release-gate) selects a braced `while (condition) { body }` in a structured named local function. Its condition and supported body expressions use the existing direct subset, with no control-flow narrowing or return-path proof from the loop. Body-local declarations, nested loops, unbraced bodies, break/continue, labels, other loop forms, and top-level/anonymous contexts remain outside the direct bridge and fail closed. H.1.2 owns checker, VM, safe-point, fuel, and oracle evidence for this design-only decision.
   - [ ] **H.1.2** Test checker, direct execution, safe points, and oracle for it before choosing another.
 - [ ] **H.2** Define try/catch/finally with matching BlueJS execution and safe points.
   - [ ] **H.2.1** Define supported catch-binding and finally semantics.
