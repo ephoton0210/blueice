@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.5.4.** Add the public linked value request under an
-independent bounded-value grant and complete same-stream linked-scope receipt.
+**Current leaf: C3.1.3.5.4.2.** Add the public linked value request/reply,
+owner/client grant checks, live revalidation, and bounded core reminting.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -502,6 +502,8 @@ channel with explicit owner/client grants.
         - [x] **C3.1.3.5.3.2** Define a strict private linked-value target and echoed bounded snapshot, add the page-host route and owner-side tests for malformed, moved, cross-program, and over-budget requests; bump the private protocol only with the complete route. Private page-host v42 accepts only a complete two-frame stack and one exact entry-root slot, rechecks the live frame/stack and BlueJS continuation before copying, echoes the full target and bounded preview, and returns typed refusals for malformed, moved, cross-program, stale, resumed, and over-budget requests. Focused IPC socket and Launcher owner tests pass.
         - [x] **C3.1.3.5.3.3** Adapt and validate the private linked-value reply in the child executor and core-facing debugger interface, preserving exact stack/program echo and no-partial denials; then check off C3.1.3.5.3. The child client sends the v42 request, the adapter accepts only a well-formed exact target echo, and the core-facing linked-value method reacquires its complete pause/scope state before reminting a bounded preview. A focused engine regression covers the successful `9` read plus wrong frame/slot/program ordering and malformed or over-budget child replies.
       - [ ] **C3.1.3.5.4** Add a public linked value request/reply under the existing independent bounded-value owner/client grant and a complete same-stream `GetLinkedScopes` receipt. Revalidate the linked pause and remint the bounded preview in core; add IPC/core denial tests and bump the public protocol only with the complete route.
+        - [x] **C3.1.3.5.4.1** Stage a distinct linked value target and bounded echoed snapshot, plus a same-stream linked-slot receipt check under the existing Value grant. Make complete `GetLinkedScopes` eligible to receipt for a Value-only stream while truncated replies remain unreceipted. Test shape, foreign stream, pause-incarnation expiry, and Value-only receipt; keep public debugger v41 and no callable linked value request. The staged snapshot reuses the exact complete-stack linked slot selector and fixed preview budget; receipt checks are stream/pause scoped, and focused IPC/engine tests prove a Value-only stream receipts only a complete linked-scope reply.
+        - [ ] **C3.1.3.5.4.2** Add and dispatch the public linked value request/reply under the independent owner/client bounded-value grant. Recheck complete live linked scopes and exact slot, call the core-facing private route, remint within public preview budgets, and reject stale, foreign, moved, or over-budget targets without partial data. Add IPC/core denial tests and bump public debugger protocol only with this complete route; then check off C3.1.3.5.4.
       - [ ] **C3.1.3.5.5** Prove a linked entry-root slot's static type display and runtime preview on real Launcher sockets, including absent grants/receipts and step/resume, HTTP reload, and supervised child cutover expiry. Run the full workspace, Clippy, and formatting gates, then check off C3.1.3.5, C3.1.3, and C3.1.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
   restore the same checked generation; never attach old metadata to a

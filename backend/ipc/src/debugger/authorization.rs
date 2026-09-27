@@ -13,8 +13,8 @@ pub struct DebuggerMetadataSessionAuthorization {
     granted: DebuggerMetadataCapabilityManifest,
     granted_bounded_values: bool,
     /// Exact ordinary and linked Scopes entries emitted on this stream during
-    /// one core-owned pause incarnation. `Value` consumes ordinary receipts
-    /// only; a future static relation additionally needs its own grant.
+    /// one core-owned pause incarnation. The two value selectors consume only
+    /// their matching receipt family; a static relation needs its own grant.
     observed_scope_entries: Arc<Mutex<DebuggerScopeReceipts>>,
     /// Bounded per-stream receipts for opaque metadata handles emitted by the
     /// public inventory operation. A handle must not become a summary or
@@ -298,6 +298,21 @@ impl DebuggerMetadataSessionAuthorization {
         }
         observed.linked_targets.extend(targets);
         true
+    }
+
+    /// Checks one exact linked entry-root receipt on this stream and pause.
+    /// A caller must separately prove the bounded-value owner/client grant.
+    pub fn observed_linked_scope(
+        &self,
+        target: DebuggerLinkedScopeTarget,
+        incarnation: u64,
+    ) -> bool {
+        incarnation != 0
+            && target.is_well_formed()
+            && self.observed_scope_entries.lock().is_ok_and(|observed| {
+                observed.pause_incarnation == incarnation
+                    && observed.linked_targets.contains(&target)
+            })
     }
 
     /// Staged receipt check only. A future public handler must separately

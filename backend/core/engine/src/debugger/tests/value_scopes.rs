@@ -738,6 +738,65 @@ fn private_static_scope_helper_and_staged_receipts_recheck_both_pauses() {
     let session = blueice_ipc::debugger::metadata_session_authorization(&hello, &ack).unwrap();
     let other = blueice_ipc::debugger::metadata_session_authorization(&hello, &ack).unwrap();
     assert!(!session.permits_bounded_values());
+    let value_manifest = blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty();
+    let value_hello = DebuggerRequest::Hello {
+        protocol_version: DEBUGGER_PROTOCOL_VERSION,
+        requested_bounded_values: true,
+        requested_metadata_capabilities: value_manifest.clone(),
+    };
+    let value_ack =
+        blueice_ipc::debugger::negotiate_with_values(&value_hello, &value_manifest, true);
+    let value_session =
+        blueice_ipc::debugger::metadata_session_authorization(&value_hello, &value_ack).unwrap();
+    let value_target = blueice_ipc::debugger::DebuggerLinkedScopeTarget {
+        stack: public_linked,
+        frame_index: 1,
+        scope_entry: public_slot,
+    };
+    assert!(value_session.permits_bounded_values());
+    assert!(!value_session.permits(DebuggerMetadataCapability::OpaqueStaticScopeRelation));
+    locations
+        .linked_scope
+        .scope_entries
+        .push(JavaScriptPageDebuggerScopeEntry {
+            slot_ordinal: 1,
+            scope_depth: 0,
+        });
+    let DebuggerReply::LinkedScopes(truncated) =
+        handle_debugger_request_with_child_locations_and_pause(
+            &tabs,
+            &mut locations,
+            Some(&value_session),
+            1,
+            DebuggerRequest::GetLinkedScopes {
+                expected_stack: public_linked,
+                max_scope_entries: 1,
+            },
+        )
+    else {
+        panic!("Value-only stream should receive a visibly truncated linked scope list");
+    };
+    assert!(truncated.scope_truncated);
+    assert!(!value_session.observed_linked_scope(value_target, 1));
+    locations.linked_scope.scope_entries.pop();
+    let DebuggerReply::LinkedScopes(complete) =
+        handle_debugger_request_with_child_locations_and_pause(
+            &tabs,
+            &mut locations,
+            Some(&value_session),
+            1,
+            DebuggerRequest::GetLinkedScopes {
+                expected_stack: public_linked,
+                max_scope_entries: 2,
+            },
+        )
+    else {
+        panic!("Value-only stream should receive a complete linked scope list");
+    };
+    assert!(!complete.scope_truncated);
+    assert!(value_session.observed_linked_scope(value_target, 1));
+    assert!(!other.observed_linked_scope(value_target, 1));
+    assert!(!value_session.observed_linked_scope(value_target, 2));
     for target in public_targets {
         assert!(staged_child_static_scope_relation(
             &tabs,

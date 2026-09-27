@@ -220,7 +220,7 @@ fn scope_receipts_are_exact_stream_local_and_pause_bound() {
 }
 
 #[test]
-fn linked_static_scope_receipts_cannot_be_used_as_value_receipts() {
+fn linked_scope_receipts_stay_distinct_from_ordinary_value_receipts() {
     let hello = hello(DebuggerMetadataCapabilityManifest::empty());
     let ack = negotiate(&hello, &DebuggerMetadataCapabilityManifest::empty());
     let session = metadata_session_authorization(&hello, &ack).unwrap();
@@ -273,6 +273,31 @@ fn linked_static_scope_receipts_cannot_be_used_as_value_receipts() {
         frame_index: 1,
         scope_entry: slot,
     };
+    let linked_value = DebuggerLinkedValueSnapshot {
+        target: linked_target,
+        preview: DebuggerValuePreview::NumberBits(9.0_f64.to_bits()),
+    };
+    assert!(linked_value.is_well_formed());
+    assert_eq!(
+        serde_json::from_slice::<DebuggerLinkedValueSnapshot>(
+            &serde_json::to_vec(&linked_value).unwrap()
+        )
+        .unwrap(),
+        linked_value
+    );
+    assert!(!DebuggerLinkedValueSnapshot {
+        target: DebuggerLinkedScopeTarget {
+            frame_index: 0,
+            ..linked_target
+        },
+        ..linked_value.clone()
+    }
+    .is_well_formed());
+    assert!(!DebuggerLinkedValueSnapshot {
+        preview: DebuggerValuePreview::StringUnits(vec![u16::from(b'x'); 2_049]),
+        ..linked_value
+    }
+    .is_well_formed());
     let linked = DebuggerStaticScopeTarget::Linked {
         metadata,
         target: linked_target,
@@ -289,8 +314,11 @@ fn linked_static_scope_receipts_cannot_be_used_as_value_receipts() {
         target: ordinary_value,
     };
     assert!(!session.observed_static_scope(linked, 1));
+    assert!(!session.observed_linked_scope(linked_target, 1));
     assert!(session.observe_linked_scopes(&linked_scopes, 1));
     assert!(session.observed_static_scope(linked, 1));
+    assert!(session.observed_linked_scope(linked_target, 1));
+    assert!(!other.observed_linked_scope(linked_target, 1));
     assert!(!session.observed_static_scope(ordinary, 1));
     assert!(!session.observed_scope(ordinary_value, 1));
     assert!(!other.observed_static_scope(linked, 1));
@@ -319,6 +347,7 @@ fn linked_static_scope_receipts_cannot_be_used_as_value_receipts() {
         1
     ));
     assert!(!session.observed_static_scope(linked, 2));
+    assert!(!session.observed_linked_scope(linked_target, 2));
     let truncated = DebuggerLinkedScopeSnapshot {
         scope_truncated: true,
         max_scope_entries: 1,
@@ -327,9 +356,11 @@ fn linked_static_scope_receipts_cannot_be_used_as_value_receipts() {
     assert!(truncated.is_well_formed());
     assert!(!session.observe_linked_scopes(&truncated, 2));
     assert!(!session.observed_static_scope(linked, 1));
+    assert!(!session.observed_linked_scope(linked_target, 1));
     assert!(!session.observed_static_scope(ordinary, 2));
     assert!(session.observe_linked_scopes(&linked_scopes, 2));
     assert!(session.observed_static_scope(linked, 2));
+    assert!(session.observed_linked_scope(linked_target, 2));
     assert!(!session.observe_linked_scopes(&linked_scopes, 1));
     for batch in 0..(DEBUGGER_SESSION_MAX_OBSERVED_SCOPE_ENTRIES / 256) {
         let snapshot = DebuggerScopeSnapshot {

@@ -735,6 +735,7 @@ fn handle_debugger_request_with_child_locations_and_pause(
                 if !snapshot.scope_truncated
                     && metadata_session.is_some_and(|session| {
                         session.permits(DebuggerMetadataCapability::OpaqueStaticScopeRelation)
+                            || session.permits_bounded_values()
                     })
                     && !metadata_session.is_some_and(|session| {
                         session.observe_linked_scopes(&snapshot, pause_incarnation)

@@ -1136,6 +1136,20 @@ impl DebuggerValueSnapshot {
     }
 }
 
+/// One complete linked entry-root slot and its separately authorized bounded
+/// runtime preview. This shape is staged without a callable public request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerLinkedValueSnapshot {
+    pub target: DebuggerLinkedScopeTarget,
+    pub preview: DebuggerValuePreview,
+}
+
+impl DebuggerLinkedValueSnapshot {
+    pub fn is_well_formed(&self) -> bool {
+        self.target.is_well_formed() && self.preview.is_well_formed()
+    }
+}
+
 impl DebuggerValueTarget {
     pub fn is_well_formed(self) -> bool {
         self.program.is_well_formed()

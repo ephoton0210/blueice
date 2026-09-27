@@ -1934,6 +1934,19 @@ slot, swapped program order, altered child echo, and over-budget child data.
 The native, private wire, owner, and core-facing parts of C3.1.3.5.3 are now
 complete; public authorization and same-stream receipt are C3.1.3.5.4.
 
+**C3.1.3.5.4.1 staged public linked value and receipt:** The existing
+`DebuggerLinkedScopeTarget` is the exact public linked value selector: it
+contains both core-reminted frames, the entry frame index, and one slot. A
+distinct `DebuggerLinkedValueSnapshot` echoes this selector with the existing
+bounded plain-data preview, while debugger v41 still has no request or reply
+that can carry it. The per-stream receipt table now exposes an exact linked
+slot check separate from ordinary `Scopes` receipts. A complete
+`GetLinkedScopes` reply records its slots when either the independently
+negotiated static relation grant or bounded-value grant is present; a visibly
+truncated reply records none. Receipts remain limited by the shared fixed
+scope budget and expire on a new core pause incarnation. This prepares the
+public handler without giving a Value-only stream metadata authority.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
