@@ -2368,6 +2368,28 @@ A mixed-language two-tab regression checks the sum and independent execution,
 replacement, and close release. E2.2.1.3.3.3 may now transport a bounded
 numeric total to core without exposing source or AST data.
 
+**E2.2.1.3.3.3 private accounting route:** The existing exact-generation
+`GetRealmStats` reply already carries program, bytecode, and VM heap totals
+to core. Private v43 adds mandatory numeric static-metadata and deferred-queue
+payload fields to that one reply. Each field and their checked sum must remain
+below a fixed 4 GiB per-realm transport ceiling; larger or conversion-failed
+measurements are refused. The child populates both fields only after exact
+document validation. Core admits the whole v43 record only when its tuple
+and bounds validate, then discards it on replacement or close. Wire shape,
+child owner production, and real-process core reconciliation are separate
+reviewable steps.
+
+**E2.2.1.3.3.3.1–2 v43 shape and child production:** The two new realm-stats
+fields are required during deserialization and have no source or AST content.
+Their checked sum must fit the 4 GiB envelope before core caches the exact
+tab/document tuple. The child now obtains static metadata and complete
+deferred-queue charges from its exact-document owner queries, converts them
+to `u64` without truncation, and refuses any invalid reply. A local mixed
+two-tab test compares wire values with owner totals and observes deferred
+release after execution; IPC and core tests reject missing or excessive
+fields and preserve valid nonzero charges only for the live generation. The
+real-process child/core reconciliation remains E2.2.1.3.3.3.3.
+
 **E2.2.1.3.2 direct-page retained metadata charge:** BlueTS now computes a
 checked owned-heap payload for static source/type/symbol records and nested
 reifiable contract plans. The bridge adds its safe-point map, breakpoint spans,

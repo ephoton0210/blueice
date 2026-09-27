@@ -117,6 +117,8 @@ fn core_accepts_only_well_formed_child_wide_usage_for_its_live_realm_count() {
         program_count: 1,
         bytecode_bytes: 64,
         heap_bytes: 128,
+        static_metadata_bytes: 0,
+        deferred_payload_bytes: 0,
     }));
     assert_eq!(
         executor.child_stats().unwrap_err().kind(),
@@ -140,6 +142,8 @@ fn core_caches_child_realm_accounting_only_for_the_live_generation() {
             program_count: 1,
             bytecode_bytes: 64,
             heap_bytes: 128,
+            static_metadata_bytes: 32,
+            deferred_payload_bytes: 64,
         })
     );
 
@@ -169,6 +173,9 @@ enum InvalidRealmStats {
     ExcessPrograms,
     SaturatedBytecode,
     SaturatedHeap,
+    SaturatedStaticMetadata,
+    SaturatedDeferredPayload,
+    ExcessCombinedRetainedPayload,
 }
 
 #[derive(Default)]
@@ -207,6 +214,8 @@ impl PageHostClient for InvalidStatsChild {
                 program_count: 1,
                 bytecode_bytes: 64,
                 heap_bytes: 128,
+                static_metadata_bytes: 0,
+                deferred_payload_bytes: 0,
             },
             InvalidRealmStats::ExcessPrograms => page_host::PageHostRealmStats {
                 tab_id,
@@ -214,6 +223,8 @@ impl PageHostClient for InvalidStatsChild {
                 program_count: page_host::PAGE_HOST_REALM_STATS_MAX_PROGRAMS + 1,
                 bytecode_bytes: 64,
                 heap_bytes: 128,
+                static_metadata_bytes: 0,
+                deferred_payload_bytes: 0,
             },
             InvalidRealmStats::SaturatedBytecode => page_host::PageHostRealmStats {
                 tab_id,
@@ -221,6 +232,8 @@ impl PageHostClient for InvalidStatsChild {
                 program_count: 1,
                 bytecode_bytes: u64::MAX,
                 heap_bytes: 128,
+                static_metadata_bytes: 0,
+                deferred_payload_bytes: 0,
             },
             InvalidRealmStats::SaturatedHeap => page_host::PageHostRealmStats {
                 tab_id,
@@ -228,6 +241,35 @@ impl PageHostClient for InvalidStatsChild {
                 program_count: 1,
                 bytecode_bytes: 64,
                 heap_bytes: u64::MAX,
+                static_metadata_bytes: 0,
+                deferred_payload_bytes: 0,
+            },
+            InvalidRealmStats::SaturatedStaticMetadata => page_host::PageHostRealmStats {
+                tab_id,
+                document_generation,
+                program_count: 1,
+                bytecode_bytes: 64,
+                heap_bytes: 128,
+                static_metadata_bytes: u64::MAX,
+                deferred_payload_bytes: 0,
+            },
+            InvalidRealmStats::SaturatedDeferredPayload => page_host::PageHostRealmStats {
+                tab_id,
+                document_generation,
+                program_count: 1,
+                bytecode_bytes: 64,
+                heap_bytes: 128,
+                static_metadata_bytes: 0,
+                deferred_payload_bytes: u64::MAX,
+            },
+            InvalidRealmStats::ExcessCombinedRetainedPayload => page_host::PageHostRealmStats {
+                tab_id,
+                document_generation,
+                program_count: 1,
+                bytecode_bytes: 64,
+                heap_bytes: 128,
+                static_metadata_bytes: page_host::PAGE_HOST_REALM_RETAINED_PAYLOAD_MAX_BYTES,
+                deferred_payload_bytes: 1,
             },
         };
         Ok(PageHostReply::RealmStats(stats))
@@ -245,6 +287,9 @@ fn malformed_child_realm_accounting_is_never_cached() {
         InvalidRealmStats::ExcessPrograms,
         InvalidRealmStats::SaturatedBytecode,
         InvalidRealmStats::SaturatedHeap,
+        InvalidRealmStats::SaturatedStaticMetadata,
+        InvalidRealmStats::SaturatedDeferredPayload,
+        InvalidRealmStats::ExcessCombinedRetainedPayload,
     ] {
         let mut executor = OutOfProcessJavaScriptPageExecutor::new(InvalidStatsChild {
             invalid_stats,
@@ -322,6 +367,8 @@ impl PageHostClient for WrongSuccessorAckChild {
             program_count: 1,
             bytecode_bytes: 64,
             heap_bytes: 128,
+            static_metadata_bytes: 0,
+            deferred_payload_bytes: 0,
         }))
     }
 

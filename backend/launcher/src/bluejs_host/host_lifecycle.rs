@@ -1042,12 +1042,24 @@ impl BlueJsChildHost {
         }
         match self.runtime.realm_stats(tab_id) {
             Ok(stats) => {
+                let Ok(static_bytes) =
+                    self.retained_static_payload_bytes(tab_id, document_generation)
+                else {
+                    return host_failure();
+                };
+                let Ok(deferred_bytes) =
+                    self.retained_deferred_payload_bytes(tab_id, document_generation)
+                else {
+                    return host_failure();
+                };
                 let reply = PageHostRealmStats {
                     tab_id,
                     document_generation,
                     program_count: u32::try_from(stats.program_count).unwrap_or(u32::MAX),
                     bytecode_bytes: u64::try_from(stats.bytecode_bytes).unwrap_or(u64::MAX),
                     heap_bytes: u64::try_from(stats.heap.managed_bytes).unwrap_or(u64::MAX),
+                    static_metadata_bytes: u64::try_from(static_bytes).unwrap_or(u64::MAX),
+                    deferred_payload_bytes: u64::try_from(deferred_bytes).unwrap_or(u64::MAX),
                 };
                 if !reply.is_well_formed() {
                     return host_failure();

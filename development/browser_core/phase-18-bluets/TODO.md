@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E2.2.1.3.3.3.** Carry child static and deferred retained
-payload totals through the private accounting protocol to core.
+**Current leaf: E2.2.1.3.3.3.3.** Prove the bounded private retained-payload
+route through real child/core processes and lifecycle changes.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -603,6 +603,9 @@ channel with explicit owner/client grants.
             - [x] **E2.2.1.3.3.2.2.2** Count the owned heap payload of pending parsed JavaScript program ASTs and their module-ID map, without charging bytecode or source graphs again. A BlueJS AST submodule recursively counts vector capacities, strings, UTF-16 strings, boxes, import/export records, nested statements/expressions, and unique shared function-source text with checked arithmetic. The child includes module-map entries and IDs for only the addressed live tab/document. AST and two-tab child-host tests verify content-sensitive charges, execution/replacement/close release, and stale-generation refusal; VM bytecode and source graphs retain separate owners.
           - [x] **E2.2.1.3.3.2.3** Combine the pending-record and nested payload totals into one checked exact-document query and prove execution, replacement, and close release the complete charge. The combined meter includes `VecDeque` slot capacity and the three checked nested owner totals without double-counting bytecode or static registry records. A mixed JavaScript/BlueTS two-tab child-host test verifies all component charges, queue-capacity release after advance, independent replacement/close release, and stale-generation refusal.
         - [ ] **E2.2.1.3.3.3** Carry bounded numeric child static/deferred payload totals through the private page-host accounting protocol to core, update its version and validators, and prove two-tab real-process isolation and release.
+          - [x] **E2.2.1.3.3.3.1** Add mandatory bounded static/deferred payload fields to the private realm-stats wire, bump its version, and reject malformed or excessive totals before core caching. Private page-host v43 requires both numeric fields, validates their checked combined total against the fixed 4 GiB per-realm envelope, and refuses missing/overflow/excessive values. IPC serialization tests cover the mandatory fields; a core fake-child test proves malformed replies are never cached.
+          - [x] **E2.2.1.3.3.3.2** Populate the new fields from exact child owner queries and prove local two-tab/static/deferred release and accounting refusal. The child computes static and full deferred totals for the exact live document, fails closed on conversion or envelope errors, and sends only numbers. A mixed two-tab child-host test checks both values against owner queries, execution release, and independent tab retention; existing replacement/close and stale-generation checks cover the owner queries. Core caches and releases a valid nonzero numeric pair in its generation-bound test.
+          - [ ] **E2.2.1.3.3.3.3** Prove the complete numeric route through real child/core processes with two-tab isolation, failed/stale refusal, replacement, and close release; then check off E2.2.1.3.3.3 and E2.2.1.3.3.
       - [ ] **E2.2.1.3.4** Account core-retained debugger identity and metadata maps by exact tab/document generation, including failed child admission and replacement.
       - [ ] **E2.2.1.3.5** Partition the verified HTTP source cache by initiating tab/document generation and release its payload charge on navigation/close while preserving same-document cache hits and integrity checks.
       - [ ] **E2.2.1.3.6** Recount all live-page retained cache owners and prove the combined tab charges and lifecycle release through real core/child processes; document the page compiler/primitive-plan zero-retention paths.

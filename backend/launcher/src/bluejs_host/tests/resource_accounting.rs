@@ -63,6 +63,36 @@ fn child_deferred_queue_counts_all_pending_payload_and_releases_empty_capacity()
     );
     let second_bytes = host.retained_deferred_payload_bytes(8, 1).unwrap();
     assert!(second_bytes > 0);
+    let PageHostReply::RealmStats(first_stats) =
+        host.handle_request(PageHostRequest::GetRealmStats {
+            tab_id: 7,
+            document_generation: 1,
+        })
+    else {
+        panic!("the first live child realm must report bounded accounting")
+    };
+    let PageHostReply::RealmStats(second_stats) =
+        host.handle_request(PageHostRequest::GetRealmStats {
+            tab_id: 8,
+            document_generation: 1,
+        })
+    else {
+        panic!("the second live child realm must report bounded accounting")
+    };
+    assert_eq!(
+        first_stats.static_metadata_bytes,
+        u64::try_from(host.retained_static_payload_bytes(7, 1).unwrap()).unwrap()
+    );
+    assert!(first_stats.static_metadata_bytes > 0);
+    assert_eq!(
+        first_stats.deferred_payload_bytes,
+        u64::try_from(first_slots + first_components).unwrap()
+    );
+    assert_eq!(second_stats.static_metadata_bytes, 0);
+    assert_eq!(
+        second_stats.deferred_payload_bytes,
+        u64::try_from(second_bytes).unwrap()
+    );
 
     assert!(matches!(
         host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
@@ -74,6 +104,16 @@ fn child_deferred_queue_counts_all_pending_payload_and_releases_empty_capacity()
                 && reports.iter().all(|report| report.outcome == PageHostScriptOutcome::Executed)
     ));
     assert_eq!(host.retained_deferred_payload_bytes(7, 1).unwrap(), 0);
+    assert!(matches!(
+        host.handle_request(PageHostRequest::GetRealmStats {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::RealmStats(PageHostRealmStats {
+            deferred_payload_bytes: 0,
+            ..
+        })
+    ));
     assert_eq!(host.documents[&7].pending_debugger_executions.capacity(), 0);
     assert_eq!(
         host.retained_deferred_payload_bytes(8, 1).unwrap(),

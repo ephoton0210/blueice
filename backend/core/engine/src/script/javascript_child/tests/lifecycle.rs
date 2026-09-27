@@ -86,6 +86,8 @@ impl PageHostClient for MismatchedDebuggerChild {
             program_count: 1,
             bytecode_bytes: 0,
             heap_bytes: 0,
+            static_metadata_bytes: 0,
+            deferred_payload_bytes: 0,
         }))
     }
 
@@ -176,6 +178,8 @@ impl PageHostClient for MalformedBreakpointChild {
             program_count: 1,
             bytecode_bytes: 0,
             heap_bytes: 0,
+            static_metadata_bytes: 0,
+            deferred_payload_bytes: 0,
         }))
     }
 

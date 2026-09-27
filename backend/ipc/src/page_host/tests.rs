@@ -923,15 +923,22 @@ fn source_constructor_fingerprints_exact_bytes() {
 }
 
 #[test]
-fn realm_stats_reject_conversion_sentinels_and_program_overflow() {
+fn realm_stats_reject_invalid_identity_resources_and_retained_payload() {
     let stats = PageHostRealmStats {
         tab_id: 7,
         document_generation: 3,
         program_count: 2,
         bytecode_bytes: 64,
         heap_bytes: 128,
+        static_metadata_bytes: 32,
+        deferred_payload_bytes: 64,
     };
     assert!(stats.is_well_formed());
+    assert_eq!(
+        serde_json::from_value::<PageHostRealmStats>(serde_json::to_value(&stats).unwrap())
+            .unwrap(),
+        stats
+    );
     assert!(!PageHostRealmStats {
         tab_id: 0,
         ..stats.clone()
@@ -949,9 +956,36 @@ fn realm_stats_reject_conversion_sentinels_and_program_overflow() {
     .is_well_formed());
     assert!(!PageHostRealmStats {
         heap_bytes: u64::MAX,
-        ..stats
+        ..stats.clone()
     }
     .is_well_formed());
+    assert!(!PageHostRealmStats {
+        static_metadata_bytes: PAGE_HOST_REALM_RETAINED_PAYLOAD_MAX_BYTES + 1,
+        ..stats.clone()
+    }
+    .is_well_formed());
+    assert!(!PageHostRealmStats {
+        deferred_payload_bytes: u64::MAX,
+        ..stats.clone()
+    }
+    .is_well_formed());
+    assert!(!PageHostRealmStats {
+        static_metadata_bytes: PAGE_HOST_REALM_RETAINED_PAYLOAD_MAX_BYTES,
+        deferred_payload_bytes: 1,
+        ..stats.clone()
+    }
+    .is_well_formed());
+
+    let mut wire = serde_json::to_value(&stats).unwrap();
+    wire.as_object_mut()
+        .unwrap()
+        .remove("static_metadata_bytes");
+    assert!(serde_json::from_value::<PageHostRealmStats>(wire).is_err());
+    let mut wire = serde_json::to_value(&stats).unwrap();
+    wire.as_object_mut()
+        .unwrap()
+        .remove("deferred_payload_bytes");
+    assert!(serde_json::from_value::<PageHostRealmStats>(wire).is_err());
 }
 
 #[test]

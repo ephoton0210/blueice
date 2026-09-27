@@ -125,11 +125,12 @@ use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-/// V42 adds the private linked entry-root value route. V41 adds the private
+/// V43 adds bounded child-retained static and deferred payload totals to
+/// realm accounting. V42 adds the private linked entry-root value route. V41 adds the private
 /// static scope-symbol/type relation wire. V40 adds the complete linked-module
 /// private frame, stack, source-span, arm, and resume family. The public
 /// debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 42;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 43;
 
 pub const PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -165,6 +166,10 @@ pub const PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM: u32 = 256;
 /// carry at most eight closed graph modules. The accounting reply cannot name
 /// more live BlueJS programs than that fixed document envelope permits.
 pub const PAGE_HOST_REALM_STATS_MAX_PROGRAMS: u32 = 2_048;
+
+/// Maximum combined child-retained static/deferred payload reported for one
+/// realm. A child that exceeds this private accounting envelope fails closed.
+pub const PAGE_HOST_REALM_RETAINED_PAYLOAD_MAX_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 
 mod debugger_shapes;
 pub use debugger_shapes::*;
@@ -339,6 +344,10 @@ pub struct PageHostRealmStats {
     pub program_count: u32,
     pub bytecode_bytes: u64,
     pub heap_bytes: u64,
+    /// Child-owned static BlueTS debugger metadata, outside VM heap/bytecode.
+    pub static_metadata_bytes: u64,
+    /// Child-owned pending debugger queue and nested graph/AST/attachment data.
+    pub deferred_payload_bytes: u64,
 }
 
 impl PageHostRealmStats {
@@ -352,6 +361,10 @@ impl PageHostRealmStats {
             && self.program_count <= PAGE_HOST_REALM_STATS_MAX_PROGRAMS
             && self.bytecode_bytes != u64::MAX
             && self.heap_bytes != u64::MAX
+            && self
+                .static_metadata_bytes
+                .checked_add(self.deferred_payload_bytes)
+                .is_some_and(|bytes| bytes <= PAGE_HOST_REALM_RETAINED_PAYLOAD_MAX_BYTES)
     }
 }
 
