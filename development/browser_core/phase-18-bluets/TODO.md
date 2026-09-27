@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.5.5.** Prove same-slot linked static display and
-runtime preview on real Launcher sockets, then run the full workspace gates.
+**Current leaf: C3.1.3.5.5.2.** Prove linked static and value targets expire
+after step/resume, HTTP reload, and supervised child cutover on real sockets.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -505,6 +505,9 @@ channel with explicit owner/client grants.
         - [x] **C3.1.3.5.4.1** Stage a distinct linked value target and bounded echoed snapshot, plus a same-stream linked-slot receipt check under the existing Value grant. Make complete `GetLinkedScopes` eligible to receipt for a Value-only stream while truncated replies remain unreceipted. Test shape, foreign stream, pause-incarnation expiry, and Value-only receipt; keep public debugger v41 and no callable linked value request. The staged snapshot reuses the exact complete-stack linked slot selector and fixed preview budget; receipt checks are stream/pause scoped, and focused IPC/engine tests prove a Value-only stream receipts only a complete linked-scope reply.
         - [x] **C3.1.3.5.4.2** Add and dispatch the public linked value request/reply under the independent owner/client bounded-value grant. Recheck complete live linked scopes and exact slot, call the core-facing private route, remint within public preview budgets, and reject stale, foreign, moved, or over-budget targets without partial data. Add IPC/core denial tests and bump public debugger protocol only with this complete route; then check off C3.1.3.5.4. Public debugger v42 request/reply round trips on an IPC socket; focused core denials cover missing grant/receipt, truncated scopes, foreign stream, changed pause, forged slot, swapped programs, moved stack, and over-budget preview. The full IPC 120-test and engine 309-test lib suites pass. The grown engine value test was split into 425-line ordinary and 981-line linked submodules, each below the 1,300-line limit.
       - [ ] **C3.1.3.5.5** Prove a linked entry-root slot's static type display and runtime preview on real Launcher sockets, including absent grants/receipts and step/resume, HTTP reload, and supervised child cutover expiry. Run the full workspace, Clippy, and formatting gates, then check off C3.1.3.5, C3.1.3, and C3.1.
+        - [x] **C3.1.3.5.5.1** On real Launcher/core/child sockets, pair one initialized linked entry-root slot's compiler type display with its independently granted bounded runtime preview. Check complete same-stream linked-scope receipt, exact target echoes, Value-only/static-only/relation-only denials, and absent or truncated receipt refusal. The real Launcher socket test pairs a linked entry-root `rootValue` slot's exact static selector and compiler `number` display with its independently granted exact linked Value selector and `9` preview. Separate streams prove static-only, relation-only, Value-only, foreign no-receipt, and truncated-receipt behavior. The focused test passes with the existing shared `target/` cache.
+        - [ ] **C3.1.3.5.5.2** Keep the same real-socket target through linked step/resume, HTTP reload, and supervised child cutover; prove each old static relation, type display, and Value target expires with typed no-partial refusal. Add focused lifecycle regressions.
+        - [ ] **C3.1.3.5.5.3** Run the full workspace build/test, Clippy, formatting, and relevant BlueTS coverage gates with the shared target cache. Resolve failures, verify the over-1,300-line audit remains satisfied, then check off C3.1.3.5, C3.1.3, and C3.1.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
   restore the same checked generation; never attach old metadata to a
   successor.

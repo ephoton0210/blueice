@@ -1964,6 +1964,19 @@ split into an ordinary-value file and a linked-scope file, both below 1,300
 lines. The real Launcher socket acceptance and expiry proof remains
 C3.1.3.5.5.
 
+**C3.1.3.5.5.1 linked same-slot socket acceptance:** A two-file BlueTS module
+pauses in its dependency while the entry root still owns an initialized
+`rootValue` slot. One real Launcher/core/child debugger stream obtains the
+complete linked stack and linked-scope receipt, then pairs the exact echoed
+linked static selector with its compiler `number` type display and the exact
+echoed linked Value selector with a bounded `9` preview. Separate streams
+verify that static-only, relation-only, and Value-only grants stay independent;
+a Value-only stream must first receipt complete linked scopes. A foreign stream
+without that receipt and a stream with truncated linked scopes both reject the
+Value target without a partial preview. The focused real-socket test passes
+using the shared workspace `target/` directory. Lifecycle expiry remains
+C3.1.3.5.5.2.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

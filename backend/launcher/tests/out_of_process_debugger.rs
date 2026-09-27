@@ -43,6 +43,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 #[path = "out_of_process_debugger/exceptions.rs"]
 mod exceptions;
+#[path = "out_of_process_debugger/linked_runtime_display.rs"]
+mod linked_runtime_display;
 #[path = "out_of_process_debugger/linked_sources.rs"]
 mod linked_sources;
 #[path = "out_of_process_debugger/metadata_policy.rs"]

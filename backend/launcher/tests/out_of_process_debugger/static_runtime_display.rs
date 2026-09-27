@@ -10,7 +10,7 @@ use blueice_ipc::debugger::{
     DebuggerStaticScopeRelation, DebuggerStaticScopeTarget,
 };
 
-fn static_manifest() -> DebuggerMetadataCapabilityManifest {
+pub(super) fn static_manifest() -> DebuggerMetadataCapabilityManifest {
     DebuggerMetadataCapabilityManifest::opaque_selected(DebuggerMetadataCapabilitySelection {
         type_display: true,
         static_scope_relation: true,
@@ -42,7 +42,7 @@ fn open_debugger(
     debugger
 }
 
-fn static_receipts(
+pub(super) fn static_receipts(
     debugger: &mut UnixStream,
     program: DebuggerProgram,
 ) -> (
