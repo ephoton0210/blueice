@@ -4278,6 +4278,23 @@ Real-process tests must acquire it before navigation, then keep their exact
 pending, arm, pause, resume, completion, stale-handle, and refusal assertions.
 Unit tests must cover foreign-stream release refusal and automatic cleanup.
 
+**G.3.2.2.3.2 admission route:** Public debugger v43 has exact-tab
+`HoldNextDocument` and `ReleaseNextDocumentHold` requests with source-free
+acknowledgements. Only a successfully negotiated stream receives the
+core-local weak ownership marker. The core records the tab's prior document
+generation, activates the hold for one successor generation, and starts a
+five-second deadline at that admission. A reservation waiting for navigation
+also expires after 30 seconds. A foreign stream cannot release the hold or arm
+the held entry. Successful owner arming, explicit release, stream disconnect,
+document replacement, and timeout all remove it. Its idle ticks use a distinct
+executor hook, so the child's existing 64 request-triggered discovery budget
+remains independent. The focused core tests cover missing/foreign authority,
+wrong tab, duplicate reservation, generation replacement, disconnect, timeout,
+and foreign arm refusal. The IPC suite (127 cases), core debugger tests (33),
+targeted all-target Clippy, and a real launcher/core/child pending-to-completed
+module test pass from the shared `target` directory. Remaining real debugger
+fixtures must reserve before navigating and retain their exact assertions.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

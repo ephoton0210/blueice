@@ -1250,6 +1250,12 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
             self.hold_pending_debugger_execution_once = preserved_a_live_document;
         }
     }
+
+    fn hold_reserved_debugger_execution_once(&mut self) {
+        if self.native_debugger_execution_control && !self.live_documents.is_empty() {
+            self.hold_pending_debugger_execution_once = true;
+        }
+    }
 }
 
 mod client;

@@ -10,7 +10,8 @@
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
 //! and an opt-in root-code-unit pause/resume seam.
-//! Version forty-two adds a separately granted, same-stream linked-entry
+//! Version forty-three adds a bounded, stream-owned reservation for the next
+//! document's debugger admission window. Version forty-two adds a separately granted, same-stream linked-entry
 //! bounded value read under a complete linked-scopes receipt.
 //! Version forty adds a complete linked dependency/entry module pause family:
 //! two separately reminted
@@ -87,12 +88,12 @@ use crate::compiler::CompilerContractValue;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashSet};
 use std::io::{self, Read, Write};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 42;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 43;
 
 pub const DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -160,6 +161,17 @@ pub enum DebuggerRequest {
         requested_metadata_capabilities: DebuggerMetadataCapabilityManifest,
         /// Independent opt-in to one bounded active-scope value read.
         requested_bounded_values: bool,
+    },
+    /// Reserves one existing tab's next document for debugger discovery.
+    /// Only the negotiated owner stream can release it. The core fixes its
+    /// lifetime and consumes it when an exact pending breakpoint is armed.
+    HoldNextDocument {
+        tab_id: u64,
+    },
+    /// Releases this stream's reservation for the exact tab. A foreign stream
+    /// cannot release or consume the reservation.
+    ReleaseNextDocumentHold {
+        tab_id: u64,
     },
     /// Lists bounded, currently loaded page realm identities. The reply carries
     /// no URL, source, program, bytecode, or runtime object; clients use the
@@ -457,6 +469,12 @@ pub enum DebuggerReply {
         /// Granted only if both the owner and this client selected values.
         granted_bounded_values: bool,
     },
+    NextDocumentHoldAcquired {
+        tab_id: u64,
+    },
+    NextDocumentHoldReleased {
+        tab_id: u64,
+    },
     /// Reply to [`DebuggerRequest::ListPageRealms`].
     PageRealms(Vec<DebuggerPageRealm>),
     Capabilities(DebuggerCapabilities),
@@ -653,7 +671,9 @@ pub fn negotiate_with_values(
             code: DebuggerErrorCode::ProtocolVersion,
             message: "unsupported debugger protocol version".to_string(),
         },
-        DebuggerRequest::ListPageRealms
+        DebuggerRequest::HoldNextDocument { .. }
+        | DebuggerRequest::ReleaseNextDocumentHold { .. }
+        | DebuggerRequest::ListPageRealms
         | DebuggerRequest::DescribeCapabilities { .. }
         | DebuggerRequest::ListPrograms { .. }
         | DebuggerRequest::ListStaticMetadata { .. }

@@ -63,10 +63,11 @@ use blueice_ipc::debugger::{
     DEBUGGER_STATIC_METADATA_MAX_CONTRACTS, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
     DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
 };
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::io;
-use std::sync::mpsc;
+use std::sync::{mpsc, Weak};
+use std::time::{Duration, Instant};
 
 /// The only browser-context identity the reference core currently owns.
 pub const DEFAULT_BROWSER_CONTEXT_ID: u64 = 1;
@@ -74,6 +75,19 @@ pub const DEFAULT_BROWSER_CONTEXT_ID: u64 = 1;
 /// A bounded debugger batch prevents a busy discovery peer from starving the
 /// frontend or navigation-completion processing in the owning session loop.
 const MAX_DEBUGGER_REQUESTS_PER_SESSION_TICK: usize = 64;
+
+/// A reservation starts its execution clock only when the successor document
+/// appears. This is independent of the child host's 64 request-triggered
+/// discovery deferrals; a stalled owner cannot retain entry forever.
+const NEXT_DOCUMENT_ADMISSION_WINDOW: Duration = Duration::from_secs(5);
+const NEXT_DOCUMENT_RESERVATION_WINDOW: Duration = Duration::from_secs(30);
+
+fn admission_hold_error(code: DebuggerErrorCode) -> DebuggerReply {
+    DebuggerReply::Error {
+        code,
+        message: "debugger document admission hold is unavailable".to_string(),
+    }
+}
 
 /// The control reply remains bounded even if a future frontend opens many
 /// tabs. A debugger client must not turn target discovery into an unbounded
@@ -111,6 +125,15 @@ pub struct DebuggerRequestReceiver {
     /// Shared by every debugger socket routed through this core session.
     /// Zero is terminal exhaustion, never a valid pause incarnation.
     pause_incarnation: Cell<u64>,
+    admission_hold: RefCell<Option<NextDocumentAdmissionHold>>,
+}
+
+struct NextDocumentAdmissionHold {
+    tab_id: TabId,
+    previous_generation: u64,
+    held_generation: Option<u64>,
+    expires_at: Instant,
+    owner_stream: Weak<()>,
 }
 
 struct DebuggerRequestEnvelope {
@@ -128,6 +151,7 @@ pub fn debugger_request_channel() -> (DebuggerRequestSender, DebuggerRequestRece
         DebuggerRequestReceiver {
             requests: receiver,
             pause_incarnation: Cell::new(1),
+            admission_hold: RefCell::new(None),
         },
     )
 }
@@ -177,6 +201,85 @@ impl DebuggerRequestSender {
 }
 
 impl DebuggerRequestReceiver {
+    fn refresh_admission_hold(&self, tabs: &TabManager) -> bool {
+        let mut slot = self.admission_hold.borrow_mut();
+        let Some(hold) = slot.as_mut() else {
+            return false;
+        };
+        let now = Instant::now();
+        let Some(page) = tabs.get(hold.tab_id) else {
+            *slot = None;
+            return false;
+        };
+        if now >= hold.expires_at || hold.owner_stream.upgrade().is_none() {
+            *slot = None;
+            return false;
+        }
+        let generation = page.document_generation();
+        match hold.held_generation {
+            Some(held_generation) if generation == held_generation => true,
+            Some(_) => {
+                *slot = None;
+                false
+            }
+            None if generation != hold.previous_generation => {
+                hold.held_generation = Some(generation);
+                hold.expires_at = now + NEXT_DOCUMENT_ADMISSION_WINDOW;
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn acquire_admission_hold(
+        &self,
+        tabs: &TabManager,
+        metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+        tab_id: u64,
+    ) -> DebuggerReply {
+        let Some(metadata_session) = metadata_session else {
+            return admission_hold_error(DebuggerErrorCode::CapabilityUnavailable);
+        };
+        let tab = TabId::from_u64(tab_id);
+        let Some(page) = tabs.get(tab) else {
+            return admission_hold_error(DebuggerErrorCode::InvalidTarget);
+        };
+        self.refresh_admission_hold(tabs);
+        let mut slot = self.admission_hold.borrow_mut();
+        if slot.is_some() {
+            return admission_hold_error(DebuggerErrorCode::ResourceLimit);
+        }
+        *slot = Some(NextDocumentAdmissionHold {
+            tab_id: tab,
+            previous_generation: page.document_generation(),
+            held_generation: None,
+            expires_at: Instant::now() + NEXT_DOCUMENT_RESERVATION_WINDOW,
+            owner_stream: metadata_session.admission_stream(),
+        });
+        DebuggerReply::NextDocumentHoldAcquired { tab_id }
+    }
+
+    fn release_admission_hold(
+        &self,
+        tabs: &TabManager,
+        metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+        tab_id: u64,
+    ) -> DebuggerReply {
+        self.refresh_admission_hold(tabs);
+        let mut slot = self.admission_hold.borrow_mut();
+        let Some(hold) = slot.as_ref() else {
+            return admission_hold_error(DebuggerErrorCode::InvalidTarget);
+        };
+        if hold.tab_id.as_u64() != tab_id
+            || !metadata_session
+                .is_some_and(|session| session.owns_admission_stream(&hold.owner_stream))
+        {
+            return admission_hold_error(DebuggerErrorCode::InvalidTarget);
+        }
+        *slot = None;
+        DebuggerReply::NextDocumentHoldReleased { tab_id }
+    }
+
     fn invalidate_pause_receipts_for(&self, reply: &DebuggerReply) {
         if matches!(
             reply,
@@ -209,12 +312,27 @@ impl DebuggerRequestReceiver {
         mut javascript_executor: Option<&mut (dyn PageJavaScriptExecutor + '_)>,
     ) -> usize {
         let mut dispatched = 0;
+        self.refresh_admission_hold(tabs);
         let mut preserve_pending_entry = false;
         let mut advance_pending_entry = false;
         let mut preserve_execution_transition = false;
         while dispatched < MAX_DEBUGGER_REQUESTS_PER_SESSION_TICK {
             let Ok(envelope) = self.requests.try_recv() else {
                 break;
+            };
+            let armed_tab = match &envelope.request {
+                DebuggerRequest::ArmEntryBreakpoint { safe_point }
+                | DebuggerRequest::ArmRootSafePointBreakpoint { safe_point }
+                | DebuggerRequest::ArmNestedSafePointBreakpoint { safe_point } => {
+                    Some(safe_point.program.realm.tab_id)
+                }
+                DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { target } => {
+                    Some(target.entry.realm.tab_id)
+                }
+                DebuggerRequest::ArmStaticMetadataSourceBreakpoint { target } => {
+                    Some(target.source.metadata.program.realm.tab_id)
+                }
+                _ => None,
             };
             let requests_execution_transition = matches!(
                 &envelope.request,
@@ -230,13 +348,37 @@ impl DebuggerRequestReceiver {
                     | DebuggerRequest::ResumeLinkedNestedExecution { .. }
                     | DebuggerRequest::StepStaticMetadataSourceSpan { .. }
             );
-            let reply = handle_debugger_request_with_page_javascript_executor_and_metadata_session(
-                tabs,
-                javascript_executor.as_deref_mut(),
-                envelope.metadata_session.as_ref(),
-                self.pause_incarnation.get(),
-                envelope.request,
-            );
+            let foreign_arm = armed_tab.is_some_and(|tab_id| {
+                self.admission_hold.borrow().as_ref().is_some_and(|hold| {
+                    hold.tab_id.as_u64() == tab_id
+                        && hold.held_generation.is_some()
+                        && !envelope.metadata_session.as_ref().is_some_and(|session| {
+                            session.owns_admission_stream(&hold.owner_stream)
+                        })
+                })
+            });
+            let reply = if foreign_arm {
+                admission_hold_error(DebuggerErrorCode::InvalidTarget)
+            } else {
+                match envelope.request {
+                    DebuggerRequest::HoldNextDocument { tab_id } => self.acquire_admission_hold(
+                        tabs,
+                        envelope.metadata_session.as_ref(),
+                        tab_id,
+                    ),
+                    DebuggerRequest::ReleaseNextDocumentHold { tab_id } => self
+                        .release_admission_hold(tabs, envelope.metadata_session.as_ref(), tab_id),
+                    request => {
+                        handle_debugger_request_with_page_javascript_executor_and_metadata_session(
+                            tabs,
+                            javascript_executor.as_deref_mut(),
+                            envelope.metadata_session.as_ref(),
+                            self.pause_incarnation.get(),
+                            request,
+                        )
+                    }
+                }
+            };
             self.invalidate_pause_receipts_for(&reply);
             // A rejected arm/resume request must not consume the pending
             // declaration's only discovery turn. Otherwise an invalid child
@@ -256,6 +398,26 @@ impl DebuggerRequestReceiver {
                         | DebuggerReply::LinkedNestedResumeRequested { .. }
                         | DebuggerReply::ExecutionSourceSpanStepRequested { .. }
                 );
+            if let Some(tab_id) = armed_tab {
+                if matches!(
+                    reply,
+                    DebuggerReply::BreakpointArmed { .. }
+                        | DebuggerReply::RootSafePointBreakpointArmed { .. }
+                        | DebuggerReply::NestedSafePointBreakpointArmed { .. }
+                        | DebuggerReply::LinkedNestedSafePointBreakpointArmed { .. }
+                ) {
+                    let mut slot = self.admission_hold.borrow_mut();
+                    if slot.as_ref().is_some_and(|hold| {
+                        hold.tab_id.as_u64() == tab_id
+                            && hold.held_generation.is_some()
+                            && envelope.metadata_session.as_ref().is_some_and(|session| {
+                                session.owns_admission_stream(&hold.owner_stream)
+                            })
+                    }) {
+                        *slot = None;
+                    }
+                }
+            }
             // A state observation after the bounded lifecycle has already
             // left `Pending` must not renew the scheduler hold. In particular
             // a peer may observe the promised one-turn `Resuming` state, but
@@ -264,17 +426,19 @@ impl DebuggerRequestReceiver {
             // turn behavior; OOP hosts additionally cap those turns locally.
             let reply_keeps_pending_entry = !matches!(
                 &reply,
-                DebuggerReply::ExecutionState {
-                    state: DebuggerExecutionState::Paused { .. }
-                        | DebuggerExecutionState::NestedPaused { .. }
-                        | DebuggerExecutionState::SourceStepLimitReached { .. }
-                        | DebuggerExecutionState::Stepping
-                        | DebuggerExecutionState::NestedStepping { .. }
-                        | DebuggerExecutionState::NestedResuming { .. }
-                        | DebuggerExecutionState::Resuming
-                        | DebuggerExecutionState::Completed,
-                    ..
-                }
+                DebuggerReply::NextDocumentHoldAcquired { .. }
+                    | DebuggerReply::NextDocumentHoldReleased { .. }
+                    | DebuggerReply::ExecutionState {
+                        state: DebuggerExecutionState::Paused { .. }
+                            | DebuggerExecutionState::NestedPaused { .. }
+                            | DebuggerExecutionState::SourceStepLimitReached { .. }
+                            | DebuggerExecutionState::Stepping
+                            | DebuggerExecutionState::NestedStepping { .. }
+                            | DebuggerExecutionState::NestedResuming { .. }
+                            | DebuggerExecutionState::Resuming
+                            | DebuggerExecutionState::Completed,
+                        ..
+                    }
             ) && !matches!(
                 &reply,
                 DebuggerReply::LinkedExecutionState { state, .. }
@@ -310,8 +474,12 @@ impl DebuggerRequestReceiver {
         // boundary so their requested state transition happens. A successful
         // resume or step preserves its public transition state for one turn;
         // a following idle turn advances the same private VM frame.
-        if (preserve_pending_entry && !advance_pending_entry) || preserve_execution_transition {
-            if let Some(executor) = javascript_executor {
+        if let Some(executor) = javascript_executor {
+            if self.refresh_admission_hold(tabs) {
+                executor.hold_reserved_debugger_execution_once();
+            } else if (preserve_pending_entry && !advance_pending_entry)
+                || preserve_execution_transition
+            {
                 executor.hold_pending_debugger_execution_once();
             }
         }
@@ -447,6 +615,10 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::GetStaticScopeRelation { .. } => unavailable_static_scope_relation(),
         DebuggerRequest::GetValue { .. } => unavailable_values(),
         DebuggerRequest::GetLinkedValue { .. } => unavailable_values(),
+        DebuggerRequest::HoldNextDocument { .. }
+        | DebuggerRequest::ReleaseNextDocumentHold { .. } => {
+            admission_hold_error(DebuggerErrorCode::CapabilityUnavailable)
+        }
         DebuggerRequest::Hello { .. } => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
             message: "debugger Hello is valid only as the first request".to_string(),

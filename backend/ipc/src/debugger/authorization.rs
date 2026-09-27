@@ -10,6 +10,9 @@ use super::*;
 /// guard, never a client-supplied wire token.
 #[derive(Debug, Clone)]
 pub struct DebuggerMetadataSessionAuthorization {
+    /// The core stores only a weak stream marker for admission reservations.
+    /// Dropping the negotiated transport therefore releases its hold.
+    admission_stream: Arc<()>,
     granted: DebuggerMetadataCapabilityManifest,
     granted_bounded_values: bool,
     /// Exact ordinary and linked Scopes entries emitted on this stream during
@@ -553,6 +556,7 @@ pub fn metadata_session_authorization(
     }
 
     Some(DebuggerMetadataSessionAuthorization {
+        admission_stream: Arc::new(()),
         granted: granted_metadata_capabilities.clone(),
         granted_bounded_values: *granted_bounded_values,
         observed_scope_entries: Arc::new(Mutex::new(DebuggerScopeReceipts::default())),
@@ -562,6 +566,20 @@ pub fn metadata_session_authorization(
         observed_symbol_identities: Arc::new(Mutex::new(BTreeSet::new())),
         observed_contract_identities: Arc::new(Mutex::new(BTreeSet::new())),
     })
+}
+
+impl DebuggerMetadataSessionAuthorization {
+    /// A non-owning marker for a core-only pending-admission reservation.
+    pub fn admission_stream(&self) -> Weak<()> {
+        Arc::downgrade(&self.admission_stream)
+    }
+
+    /// Checks that a reservation belongs to this exact negotiated stream.
+    pub fn owns_admission_stream(&self, stream: &Weak<()>) -> bool {
+        stream
+            .upgrade()
+            .is_some_and(|owner| Arc::ptr_eq(&owner, &self.admission_stream))
+    }
 }
 
 /// A core-local authorization derived from a negotiated session and one exact

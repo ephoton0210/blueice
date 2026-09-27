@@ -237,6 +237,11 @@ pub trait PageJavaScriptExecutor {
     /// across a discovery turn. Isolated-child location discovery has no
     /// deferred execution seam, so its default is deliberately a no-op.
     fn hold_pending_debugger_execution_once(&mut self) {}
+
+    /// Applies one tick of a core-owned, deadline-bounded next-document
+    /// reservation. Unlike request-triggered discovery, this does not spend
+    /// the isolated child's per-document discovery-request budget.
+    fn hold_reserved_debugger_execution_once(&mut self) {}
 }
 
 /// The core-only context supplied when authorizing an external JavaScript
@@ -847,6 +852,10 @@ impl PageJavaScriptExecutor for JavaScriptPageExecutor {
     }
 
     fn hold_pending_debugger_execution_once(&mut self) {
+        Self::hold_pending_debugger_execution_once(self);
+    }
+
+    fn hold_reserved_debugger_execution_once(&mut self) {
         Self::hold_pending_debugger_execution_once(self);
     }
 }

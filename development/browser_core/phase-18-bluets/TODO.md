@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: G.3.2.2.3.2.** Implement a bounded, stream-owned debugger
-hold for the next document admission.
+**Current leaf: G.3.2.2.3.3.** Use the admission hold in affected real-process
+debugger tests and retain their exact execution-state assertions.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -745,7 +745,7 @@ Keep check read-only and owner registration sealed before listeners.
       - [x] **G.3.2.2.2** Make the macOS accepted HTTP fixture stream blocking. The macOS 26 x86_64 core-library CI job saw `WouldBlock` during its real-child source-cache test because the fixture's nonblocking listener could yield a nonblocking accepted stream. The test now explicitly switches the accepted stream to blocking with a five-second read timeout before reading the request. Its focused real-child test passes on the shared target; macOS CI verification remains part of G.3.2.2.4.
       - [ ] **G.3.2.2.3** Stabilize macOS real debugger pending-admission tests without weakening breakpoint and execution-state assertions.
         - [x] **G.3.2.2.3.1** Identify the race and define the admission contract. All four macOS CI debugger jobs report 10–12 failures at `Pending`/arm assertions because the entry has already reached `Completed`; a 25 ms core idle tick can advance the entry before the first debugger query. A negotiated, owner-only debugger stream will explicitly reserve the next document for one exact tab before navigation. The hold will attach only to a successor document generation, remain bounded by a core-owned deadline, and end on successful execution arm, explicit release, stream disconnect, or document replacement. It will not delay ordinary navigation unless requested and will not relax state or breakpoint assertions.
-        - [ ] **G.3.2.2.3.2** Add the bounded stream-owned admission hold to the debugger protocol and core scheduler, including denial and cleanup tests.
+        - [x] **G.3.2.2.3.2** Add the bounded stream-owned admission hold to the debugger protocol and core scheduler, including denial and cleanup tests. Public debugger v43 adds exact-tab hold/release requests and source-free replies. Core binds the hold to a weak negotiated-stream identity and the next document generation, starts a five-second deadline on admission, refuses foreign release/arm, and frees it on owner arm/release, disconnect, replacement, or timeout. Reserved idle turns do not spend the isolated child's 64 request-triggered discovery deferrals. Two core denial/lifecycle tests, 127 IPC tests, 33 engine debugger tests, targeted all-target Clippy, and one real launcher/core/child pending-to-completed test pass in the shared target.
         - [ ] **G.3.2.2.3.3** Use the hold in affected launcher/core/child tests before navigation, retain exact `Pending`/arm/pause/resume/completion assertions, and pass the real debugger suite using the shared target directory.
       - [ ] **G.3.2.2.4** Rerun CI on the repaired commit and require passing workspace coverage, independent BlueJS coverage, and applicable platform build/test jobs.
   - [ ] **G.3.3** No ignored required test or suppressed warning substitutes for evidence.

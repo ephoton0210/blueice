@@ -29,8 +29,6 @@ fn launcher_inventories_a_pending_bluets_module_before_execution() {
     let mut launcher = LauncherProcess::spawn(&gatekeeper_socket);
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
-    navigate(&mut browser, &url);
-
     let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
     assert_eq!(
         debugger_request(
@@ -47,6 +45,14 @@ fn launcher_inventories_a_pending_bluets_module_before_execution() {
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         }
     );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::HoldNextDocument { tab_id: 1 },
+        ),
+        DebuggerReply::NextDocumentHoldAcquired { tab_id: 1 }
+    );
+    navigate(&mut browser, &url);
     let realm = one_realm(debugger_request(
         &mut debugger,
         DebuggerRequest::ListPageRealms,
@@ -70,6 +76,14 @@ fn launcher_inventories_a_pending_bluets_module_before_execution() {
         program,
     );
     assert!(points.iter().any(|point| point.code_unit_ordinal == 0));
+
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ReleaseNextDocumentHold { tab_id: 1 },
+        ),
+        DebuggerReply::NextDocumentHoldReleased { tab_id: 1 }
+    );
 
     blueice_ipc::write_client_message(&mut browser, &blueice_ipc::ClientMessage::GetDom).unwrap();
     assert!(matches!(
