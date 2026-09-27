@@ -2223,6 +2223,20 @@ Clippy, rustfmt, diff, and line-count checks pass with the shared target
 cache. This is direct-page strict admission; standalone emitted strict-runtime
 artifacts remain unavailable until the helper work in E3.
 
+**E1.3.2 reviewed strict-runtime admission:** The direct-page gate now
+requires each installed value record to match the core-owned reviewed binding
+identity, direction, capability, fixed failure category, contract ID, pure
+plan fingerprint, and the validator's actual owner-selected limits. A
+reifiable but mismatched `number` plan or forged larger recorded limit cannot
+authorize the installed string callback. A live loaded-page test successfully
+executes both copied document-origin and document-text callbacks with
+`RuntimePolicy::StrictRuntime`; a separately bounded host rejects an
+oversized document-text value before any program or debug attachment. The
+three focused strict-runtime tests pass, as do Engine Clippy, formatting,
+diff, and the 1,300-line source audit, using the shared target cache. This
+closes E1.3 for the currently installed immutable direct-page result
+boundaries; emitted strict-runtime artifacts remain unavailable until E3.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

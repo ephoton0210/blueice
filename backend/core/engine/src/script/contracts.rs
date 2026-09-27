@@ -82,6 +82,7 @@ pub enum StrictRuntimeBoundaryDiagnostic {
 pub fn validate_strict_runtime_boundary_inventory(
     bindings: &[HostRuntimeBindingV1],
     records: &[HostBindingBoundaryRecordV1],
+    actual_limits: CoreScriptBindingContractLimits,
 ) -> Result<(), StrictRuntimeBoundaryDiagnostic> {
     if let Err(error) = validate_host_binding_boundary_inventory(bindings, records) {
         let stable_binding_id = match error {
@@ -111,10 +112,35 @@ pub fn validate_strict_runtime_boundary_inventory(
                 stable_binding_id: binding.stable_id.clone(),
             });
         }
-        if ContractPlan::from_type(record.contract_id, &record.declared_type, &BTreeMap::new())
-            .is_err()
+        let actual_plan =
+            ContractPlan::from_type(record.contract_id, &record.declared_type, &BTreeMap::new())
+                .map_err(|_| StrictRuntimeBoundaryDiagnostic::UnreifiableType {
+                    stable_binding_id: binding.stable_id.clone(),
+                })?;
+        let Some(reviewed) = core_script_binding_contract(&binding.stable_id) else {
+            return Err(StrictRuntimeBoundaryDiagnostic::MissingContract {
+                stable_binding_id: binding.stable_id.clone(),
+            });
+        };
+        let expected_limits = match binding.stable_id.as_str() {
+            "dom.document-origin" => actual_limits.document_origin,
+            "dom.document-text" => actual_limits.document_text,
+            _ => {
+                return Err(StrictRuntimeBoundaryDiagnostic::MissingContract {
+                    stable_binding_id: binding.stable_id.clone(),
+                })
+            }
+        };
+        if record.owner != HostBindingBoundaryOwner::CorePageRealm
+            || record.direction != reviewed.direction
+            || record.contract_id != reviewed.contract_id
+            || record.runtime_binding_id != reviewed.runtime_binding_id
+            || record.capability != reviewed.capability
+            || record.failure_category != reviewed.failure_category
+            || record.validation_limits != expected_limits
+            || actual_plan.fingerprint != reviewed.plan().fingerprint
         {
-            return Err(StrictRuntimeBoundaryDiagnostic::UnreifiableType {
+            return Err(StrictRuntimeBoundaryDiagnostic::MissingContract {
                 stable_binding_id: binding.stable_id.clone(),
             });
         }
@@ -183,6 +209,7 @@ pub struct HostBindingContractV1 {
     pub runtime_binding_id: &'static str,
     pub direction: HostBindingContractDirection,
     pub capability: &'static str,
+    pub failure_category: &'static str,
 }
 
 impl HostBindingContractV1 {
@@ -247,7 +274,7 @@ pub fn core_script_binding_boundary_records(
         declared_type: Type::String,
         validation_limits,
         validation: HostBindingBoundaryValidation::CheckedBeforeRealmCapture,
-        failure_category: "host binding contract rejected the page script",
+        failure_category: boundary.failure_category,
         capability: boundary.capability,
     };
     [
@@ -266,6 +293,7 @@ pub fn core_script_binding_contracts() -> [HostBindingContractV1; 2] {
             runtime_binding_id: "global.blueiceDocumentOrigin",
             direction: HostBindingContractDirection::HostToScript,
             capability: "dom-read",
+            failure_category: "host binding contract rejected the page script",
         },
         HostBindingContractV1 {
             stable_binding_id: "dom.document-text",
@@ -273,6 +301,7 @@ pub fn core_script_binding_contracts() -> [HostBindingContractV1; 2] {
             runtime_binding_id: "global.blueiceDocumentText",
             direction: HostBindingContractDirection::HostToScript,
             capability: "dom-read",
+            failure_category: "host binding contract rejected the page script",
         },
     ]
 }

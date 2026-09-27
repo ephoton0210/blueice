@@ -307,6 +307,97 @@ fn strict_runtime_rejects_missing_unreifiable_and_unchecked_live_boundaries_sepa
 }
 
 #[test]
+fn strict_runtime_admits_reviewed_snapshot_contracts_and_validates_before_capture() {
+    let profiles = core_script_host_type_catalog();
+    let artifact = profiles
+        .generate(CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1)
+        .unwrap();
+    let loader = AuthorizedModuleLoader::new(
+        [AuthorizedModule::new(
+            "page:///app/main.ts",
+            "blueiceDocumentOrigin() + ':' + blueiceDocumentText();",
+        )],
+        [],
+    )
+    .unwrap();
+    let (mut tabs, tab_id) = loaded_tabs();
+    tabs.get_mut(tab_id).unwrap().load_html_str(
+        "<main>reviewed content</main>",
+        Some("https://example.test/app/index.html".to_string()),
+    );
+    let request = || DirectPageScriptRequest {
+        tab_id,
+        kind: DirectPageScriptKind::Classic,
+        entry: "page:///app/main.ts".to_string(),
+        loader: &loader,
+        compiler_options: CompilerOptions {
+            runtime_policy: RuntimePolicy::StrictRuntime,
+            ..CompilerOptions::default()
+        },
+        feature_profile: CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1.to_string(),
+        supplied_manifest: &artifact.manifest,
+        supplied_declaration_source: &artifact.declaration_source,
+        supplied_runtime_bindings: &artifact.runtime_bindings,
+    };
+
+    let mut reviewed = DirectPageScriptHost::new(profiles.clone());
+    assert_eq!(
+        reviewed.execute(&tabs, request()).unwrap(),
+        blueice_bluejs::Value::String("https://example.test:reviewed content".into())
+    );
+    assert_eq!(reviewed.debug_record_count(), 1);
+
+    let mut mismatched = DirectPageScriptHost::new(profiles.clone());
+    mismatched
+        .boundary_records
+        .iter_mut()
+        .find(|record| record.stable_binding_id == "dom.document-text")
+        .unwrap()
+        .declared_type = blueice_bluets::Type::Number;
+    assert!(matches!(
+        mismatched.execute(&tabs, request()),
+        Err(DirectPageScriptError::StrictRuntimeBoundary(
+            StrictRuntimeBoundaryDiagnostic::MissingContract { stable_binding_id }
+        )) if stable_binding_id == "dom.document-text"
+    ));
+    assert_eq!(mismatched.debug_record_count(), 0);
+
+    let mut mismatched_budget = DirectPageScriptHost::new(profiles.clone());
+    mismatched_budget
+        .boundary_records
+        .iter_mut()
+        .find(|record| record.stable_binding_id == "dom.document-text")
+        .unwrap()
+        .validation_limits
+        .max_string_bytes += 1;
+    assert!(matches!(
+        mismatched_budget.execute(&tabs, request()),
+        Err(DirectPageScriptError::StrictRuntimeBoundary(
+            StrictRuntimeBoundaryDiagnostic::MissingContract { stable_binding_id }
+        )) if stable_binding_id == "dom.document-text"
+    ));
+    assert_eq!(mismatched_budget.debug_record_count(), 0);
+
+    let mut tight_limits = CoreScriptBindingContractLimits::default();
+    tight_limits.document_text.max_string_bytes = 8;
+    let mut bounded = DirectPageScriptHost::with_realm_owner_and_contract_limits(
+        profiles,
+        DirectPageRealmOwner::default(),
+        tight_limits,
+    );
+    assert!(matches!(
+        bounded.execute(&tabs, request()),
+        Err(DirectPageScriptError::BindingContractViolation {
+            stable_binding_id: "dom.document-text",
+            contract_id: CORE_SCRIPT_DOCUMENT_TEXT_RESULT_CONTRACT_V1,
+            ..
+        })
+    ));
+    assert_eq!(bounded.debug_record_count(), 0);
+    assert_eq!(bounded.realm_stats(tab_id).unwrap().program_count, 0);
+}
+
+#[test]
 fn document_context_profile_exposes_only_canonical_origin_and_text_snapshot() {
     let profiles = core_script_host_type_catalog();
     let artifact = profiles

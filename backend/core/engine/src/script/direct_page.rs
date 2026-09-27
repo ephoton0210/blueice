@@ -218,6 +218,7 @@ impl DirectPageScriptHost {
             validate_strict_runtime_boundary_inventory(
                 &artifact.runtime_bindings,
                 &self.boundary_records,
+                self.binding_contract_limits,
             )
             .map_err(DirectPageScriptError::StrictRuntimeBoundary)?;
         }

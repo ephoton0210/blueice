@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E1.3.2.** Admit a strict-runtime boundary only with a reviewed,
-authorized, actively checked contract.
+**Current leaf: E2.1.1.** Validate an admitted boundary before its value
+enters the VM.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -569,10 +569,16 @@ channel with explicit owner/client grants.
   inventory before their profile can pass the gate.
   - [x] **E1.2.1** Define the inventory record shape (owner, source position, contract ID, limits, failure category, capability). The core-only `HostBindingBoundaryRecordV1` now carries stable/runtime binding IDs, owner, optional original source span, ingress/egress direction, reviewed contract ID, the owner's actual validation limits, fixed failure category, and capability. The current immutable document-text and origin result boundaries produce records without claiming unavailable call-site spans. A focused inventory test checks every field and tighter owner limit using the shared target cache.
   - [x] **E1.2.2** Add a test that fails when a boundary lacks a record. The inventory gate checks each installed snapshot-profile runtime value against a reviewed record's stable ID, runtime ID, capability, contract ID, and fixed failure category. A focused regression accepts the actual document-text and document-context profiles, then requires a missing origin record and a newly installed but unrecorded value to fail with `MissingRecord`. The focused test passes using the shared target cache; the gate is not yet wired to strict-runtime admission, which is E1.3.
-- [ ] **E1.3** Make strict-runtime reject a missing, unreifiable, or unchecked
-  boundary unless a reviewed contract is authorized.
+- [x] **E1.3** Make strict-runtime reject a missing, unreifiable, or unchecked
+  boundary unless a reviewed contract is authorized. The live core direct-page
+  admission gate rejects each failure with a distinct typed diagnostic and
+  source-free report category, and accepts only the exact reviewed string
+  plans and owner limits for the two immutable result bindings. A successful
+  strict-runtime page uses both bindings; an oversized result is rejected
+  before program attachment. Standalone strict-runtime output remains gated
+  until the E3 helper work.
   - [x] **E1.3.1** Reject a missing contract, an unreifiable type, and an unchecked boundary, each with its own diagnostic. The direct-page host now checks installed runtime values before strict-runtime compilation or callback capture, returning distinct typed `MissingContract`, `UnreifiableType`, and `UncheckedBoundary` diagnostics. The two current copied string results carry reviewed types and an explicitly checked-before-capture status. A focused public direct-page execution test fault-injects each failure and proves no program is installed; fixed public report categories are distinct and omit the binding ID. Focused tests, Engine Clippy, formatting, and line-count checks pass with the shared target cache. E1.3.2 will prove positive admission and actual contract enforcement.
-  - [ ] **E1.3.2** Allow the boundary only with a reviewed, authorized contract.
+  - [x] **E1.3.2** Allow the boundary only with a reviewed, authorized contract. The strict-runtime gate now compares every installed value record with core's fixed reviewed contract ID, runtime binding, direction, owner, capability, failure category, reifiable plan fingerprint, and the validator's actual owner-selected limits. A public direct-page test executes `blueiceDocumentOrigin()` and `blueiceDocumentText()` under strict-runtime, rejects a mismatched type plan or budget without attaching a program, and proves an oversized live snapshot fails its pure contract before capture. All three focused strict-runtime tests, Engine Clippy, formatting, and line-count checks pass with the shared target cache.
 
 #### E2. Validate at the crossing.
 
