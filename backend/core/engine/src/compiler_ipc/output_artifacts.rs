@@ -30,7 +30,8 @@ pub(super) fn plan<'a>(
     output: &'a BuildOutput,
 ) -> io::Result<PlannedOutput<'a>> {
     let root = Path::new(project_root);
-    if !root.is_absolute() || fs::canonicalize(root)? != root {
+    if contains_dot_segment(project_root) || !root.is_absolute() || fs::canonicalize(root)? != root
+    {
         return Err(invalid("compiler project root is not canonical"));
     }
     let mut files = Vec::new();
@@ -132,7 +133,7 @@ impl PlannedOutput<'_> {
 
 fn source_relative(root: &Path, module_id: &str) -> io::Result<PathBuf> {
     let path = Path::new(module_id);
-    if !path.is_absolute() || fs::canonicalize(path)? != path {
+    if contains_dot_segment(module_id) || !path.is_absolute() || fs::canonicalize(path)? != path {
         return Err(invalid("compiler source identity is not canonical"));
     }
     let relative = path
@@ -146,6 +147,16 @@ fn source_relative(root: &Path, module_id: &str) -> io::Result<PathBuf> {
         return Err(invalid("compiler artifact path escapes its project root"));
     }
     Ok(relative.to_path_buf())
+}
+
+fn contains_dot_segment(path: &str) -> bool {
+    // Windows' verbatim paths preserve `.` and `..` instead of normalizing
+    // them, so compare the original spelling before filesystem resolution.
+    #[cfg(windows)]
+    let mut segments = path.split(['/', '\\']);
+    #[cfg(not(windows))]
+    let mut segments = path.split('/');
+    segments.any(|segment| segment == "." || segment == "..")
 }
 
 fn add_file<'a>(

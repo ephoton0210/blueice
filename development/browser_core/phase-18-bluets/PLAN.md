@@ -4228,6 +4228,23 @@ line threshold is missed. This does not skip a test or lower either threshold;
 the workflow YAML parses and the installed cargo-llvm-cov CLI documents the
 selected mode. The separate CI rerun is required before G.3.2 can be checked.
 
+**G.3.2.2.1 Windows owner-output path aliases:** The same CI run exposed a
+real cross-platform gap in the artifact planner: Windows x86_64 and arm64
+accepted an existing test source spelled `nested/../main.ts` even though the
+planner requires canonical physical identities. Windows verbatim paths can
+retain raw dot segments, so `fs::canonicalize(path) == path` alone is not a
+sufficient spelling check. The planner now rejects literal `.` or `..`
+segments in the original project root or module ID before filesystem lookup;
+Windows checks both slash spellings and Unix continues to treat backslash as
+a valid filename character. The existing owner-output test covers root and
+source aliases, plus a Windows backslash spelling, while retaining the valid
+build, outside-root, collision, and strict-runtime checks. Five focused tests,
+workspace all-target Clippy, and rustfmt pass with the shared target. A
+Windows CI rerun is still required to close the platform gate. The related
+macOS arm64 debugger tests separately reached `Completed` before their pending
+breakpoints were armed, so their admission race needs its own leaf before the
+full CI rerun.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

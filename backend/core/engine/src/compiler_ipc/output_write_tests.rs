@@ -485,6 +485,14 @@ fn artifact_plan_rejects_sources_outside_the_project_aliases_and_output_collisio
     assert!(output_artifacts::plan(root, &escaped).is_err());
 
     std::fs::create_dir(project.join("nested")).unwrap();
+    let aliased_root = project.join("nested/..");
+    assert_eq!(
+        output_artifacts::plan(aliased_root.to_str().unwrap(), &output)
+            .err()
+            .unwrap()
+            .kind(),
+        std::io::ErrorKind::InvalidInput
+    );
     let alias = project.join("nested/../main.ts");
     let mut aliased = output.clone();
     let (_, mut artifact) = aliased.artifacts.pop_first().unwrap();
@@ -492,7 +500,28 @@ fn artifact_plan_rejects_sources_outside_the_project_aliases_and_output_collisio
     aliased
         .artifacts
         .insert(artifact.module_id.clone(), artifact);
-    assert!(output_artifacts::plan(root, &aliased).is_err());
+    assert_eq!(
+        output_artifacts::plan(root, &aliased).err().unwrap().kind(),
+        std::io::ErrorKind::InvalidInput
+    );
+
+    #[cfg(windows)]
+    {
+        let mut aliased = output.clone();
+        let (_, mut artifact) = aliased.artifacts.pop_first().unwrap();
+        artifact.module_id = project
+            .join(r"nested\..\main.ts")
+            .to_str()
+            .unwrap()
+            .to_string();
+        aliased
+            .artifacts
+            .insert(artifact.module_id.clone(), artifact);
+        assert_eq!(
+            output_artifacts::plan(root, &aliased).err().unwrap().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
+    }
 
     let declaration_id = project.join("main.d.ts");
     std::fs::write(&declaration_id, "declare const answer: number;").unwrap();
