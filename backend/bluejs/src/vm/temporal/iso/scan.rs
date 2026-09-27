@@ -72,7 +72,10 @@ impl<'a> Cursor<'a> {
         if digits.is_empty() || digits.len() > 9 {
             return None;
         }
-        let mut nanoseconds: u32 = digits.parse().ok()?;
+        // At most nine ASCII digits always fit in a u32.
+        let mut nanoseconds: u32 = digits
+            .bytes()
+            .fold(0, |value, byte| value * 10 + u32::from(byte - b'0'));
         for _ in digits.len()..9 {
             nanoseconds *= 10;
         }
@@ -82,7 +85,11 @@ impl<'a> Cursor<'a> {
     /// Reads the body of the bracketed annotation at the cursor without
     /// consuming it.
     pub(super) fn peek_bracket(&self) -> Option<&'a str> {
-        let rest = self.source.get(self.index..)?.strip_prefix('[')?;
+        // Every cursor advance consumes complete ASCII syntax or a complete
+        // bracket body, so index always remains on a UTF-8 boundary.
+        let rest = self.source[self.index..]
+            .strip_prefix('[')
+            .expect("annotation callers check the opening bracket");
         rest.find(']').map(|end| &rest[..end])
     }
 
@@ -191,10 +198,15 @@ pub(super) fn parse_time_spec(source: &str) -> Option<(u8, u8, u8, u32)> {
         Some((body, fraction)) => (body, Some(fraction)),
         None => (source, None),
     };
+    // The fixed-width slices in the basic form are byte offsets. Reject
+    // non-ASCII text before slicing so malformed Unicode cannot panic.
+    if !body.is_ascii() {
+        return None;
+    }
     let (hour, minute, second) = if body.contains(':') {
         let mut fields = body.split(':');
-        let hour = two_digit_field(fields.next()?)?;
-        let minute = two_digit_field(fields.next()?)?;
+        let hour = two_digit_field(fields.next().expect("split always yields a first field"))?;
+        let minute = two_digit_field(fields.next().expect("a colon creates a second field"))?;
         let second = match fields.next() {
             Some(field) => Some(two_digit_field(field)?),
             None => None,
@@ -273,7 +285,7 @@ pub(crate) fn parse_iso_date_prefix(source: &str) -> Option<(CivilDate, &str)> {
         Some(sign @ (b'+' | b'-')) => {
             let negative = *sign == b'-';
             let (digits, rest) = split_digits(&source[1..], 6)?;
-            let value: i32 = digits.parse().ok()?;
+            let value: i32 = digits.parse().expect("six ASCII digits fit in i32");
             if negative && value == 0 {
                 return None;
             }
@@ -281,7 +293,7 @@ pub(crate) fn parse_iso_date_prefix(source: &str) -> Option<(CivilDate, &str)> {
         }
         _ => {
             let (digits, rest) = split_digits(source, 4)?;
-            (digits.parse().ok()?, rest)
+            (digits.parse().expect("four ASCII digits fit in i32"), rest)
         }
     };
     let (month, day, rest) = match rest.strip_prefix('-') {
@@ -296,8 +308,8 @@ pub(crate) fn parse_iso_date_prefix(source: &str) -> Option<(CivilDate, &str)> {
             (month, day, rest)
         }
     };
-    let month: u8 = month.parse().ok()?;
-    let day: u8 = day.parse().ok()?;
+    let month: u8 = month.parse().expect("two ASCII digits fit in u8");
+    let day: u8 = day.parse().expect("two ASCII digits fit in u8");
     ((-271_821..=275_760).contains(&year)
         && day >= 1
         && days_in_month(year, month).is_some_and(|last| day <= last))

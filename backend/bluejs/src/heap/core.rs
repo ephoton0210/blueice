@@ -324,6 +324,7 @@ impl Heap {
             })
             .collect();
         self.ensure_room(bytes, &protected)?;
+        self.write_barrier(registry, holdings.object_id());
         let object = self
             .objects
             .get_mut(&registry)

@@ -129,6 +129,7 @@ fn statement_control_flow_and_binding_limits_compile_through_the_public_pipeline
         "try {} finally {} try {} finally {} { using resource = null; }",
         "function repeated() {} function repeated() {} function repeated() {}",
         "while (true) { break; break; break; }",
+        "if (true) function selected() { return 7; }",
         "function outer() { function inner() { return 1; } return inner(); }",
         "async function* generate() { return 1; } function bare() { return; }",
         "function f() { switch (1) { case 1: function g() {} break; default: break; } }",
@@ -195,6 +196,40 @@ fn a_parenthesized_tail_call_in_an_external_ast_keeps_tail_position() {
     assert!(code.child_code_units().any(|child| child
         .instructions()
         .any(|instruction| instruction.opcode == Opcode::TailCall)));
+}
+
+#[test]
+fn an_external_class_expression_preserves_its_completion_under_byte_limits() {
+    let mut program = parse("(class {});").unwrap();
+    let Stmt::Expr(expression) = &program.body[0] else {
+        panic!("the source is an expression statement");
+    };
+    let class = match expression {
+        Expr::Parenthesized(inner) => *inner.clone(),
+        expression => expression.clone(),
+    };
+    assert!(matches!(class, Expr::Class(_)));
+    program.body[0] = Stmt::Expr(class);
+
+    let full = compile(&program).unwrap();
+    assert!(full
+        .instructions()
+        .any(|instruction| instruction.opcode == Opcode::SetCompletion));
+    let upper = u32::try_from(total_compile_bytes(&full)).unwrap();
+    let mut first_success = None;
+    for limit in 0..=upper {
+        match compile_with_limit(&program, limit) {
+            Ok(code) => {
+                first_success.get_or_insert(limit);
+                assert_eq!(code.bytes(), full.bytes(), "{limit} bytes");
+            }
+            Err(CompileError::ProgramTooLarge) => {
+                assert!(first_success.is_none(), "{limit} bytes");
+            }
+            Err(error) => panic!("{limit} bytes: {error:?}"),
+        }
+    }
+    assert!(first_success.is_some());
 }
 
 #[test]

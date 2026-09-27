@@ -738,3 +738,103 @@ fn batched_safepoint_roots_keep_vm_held_objects_alive_across_collections() {
     );
     assert!(vm.heap().stats().minor_collections > 40);
 }
+
+#[test]
+fn intl_service_allocations_keep_their_references_during_collection() {
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 1024,
+            max_heap_bytes: 64 * 1024 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    let source = r#"
+        const services = [
+            new Intl.DisplayNames('en', {type: 'region'}),
+            new Intl.DurationFormat('en'),
+            new Intl.ListFormat('en'),
+            new Intl.PluralRules('en'),
+            new Intl.RelativeTimeFormat('en'),
+            new Intl.Segmenter('en')
+        ];
+        globalThis.savedServices = services;
+        globalThis.savedIterator = services[5].segment('abc')[Symbol.iterator]();
+        for (let index = 0; index < 128; index++) ({index});
+        typeof services[0].of('US') === 'string' &&
+        typeof services[1].format({seconds: 1}) === 'string' &&
+        typeof services[2].format(['A', 'B']) === 'string' &&
+        typeof services[3].select(1) === 'string' &&
+        typeof services[4].format(-1, 'day') === 'string' &&
+        savedIterator.next().value.segment === 'a'
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(vm.heap().stats().major_collections > 0);
+}
+
+#[test]
+fn finalization_registry_holdings_survive_minor_collection() {
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 1024,
+            max_heap_bytes: 64 * 1024 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    let source = r#"
+        const registry = new FinalizationRegistry(() => {});
+        globalThis.savedRegistry = registry;
+        registry.register({}, {token: 'held'});
+        for (let index = 0; index < 128; index++) ({index});
+        true
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(vm.heap().stats().minor_collections > 0);
+    assert!(vm.heap().stats().major_collections > 0);
+}
+
+#[test]
+fn generator_pending_completions_survive_collection() {
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 1024,
+            max_heap_bytes: 64 * 1024 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    let source = r#"
+        function* pauseInFinally() {
+            try { yield 1; } finally { yield 2; }
+        }
+        const returning = pauseInFinally();
+        returning.next();
+        returning.return({token: 'return'});
+        const throwing = pauseInFinally();
+        throwing.next();
+        throwing.throw({token: 'throw'});
+        globalThis.savedGenerators = [returning, throwing];
+        for (let index = 0; index < 128; index++) ({index});
+        let thrown;
+        try { throwing.next(); } catch (value) { thrown = value; }
+        returning.next().value.token === 'return' && thrown.token === 'throw'
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(vm.heap().stats().major_collections > 0);
+}
