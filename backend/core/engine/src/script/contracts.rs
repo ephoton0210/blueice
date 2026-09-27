@@ -10,7 +10,9 @@
 //! callback captures it. It does not claim contracts for absent DOM, Fetch,
 //! storage, messaging, JSON, or extension APIs.
 
-use blueice_bluets::{ContractPlan, ContractValue, Type, ValidationError, ValidationLimits};
+use blueice_bluets::{
+    ContractPlan, ContractValue, SourceSpan, Type, ValidationError, ValidationLimits,
+};
 use blueice_ipc::page_host::{
     PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES, PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -25,6 +27,31 @@ pub const CORE_SCRIPT_DOCUMENT_ORIGIN_RESULT_CONTRACT_V1: &str =
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostBindingContractDirection {
     HostToScript,
+    ScriptToHost,
+}
+
+/// The owner that selects a boundary's contract before page code executes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostBindingBoundaryOwner {
+    CorePageRealm,
+}
+
+/// One reviewed ingress/egress inventory record. Source coordinates are
+/// optional because the two immutable host snapshots are selected by core
+/// before any source-level call; future call-site boundaries can retain their
+/// original module and half-open byte range here. This core-only record is
+/// never serialized into a source-free page report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostBindingBoundaryRecordV1 {
+    pub stable_binding_id: &'static str,
+    pub runtime_binding_id: &'static str,
+    pub owner: HostBindingBoundaryOwner,
+    pub source_position: Option<SourceSpan>,
+    pub direction: HostBindingContractDirection,
+    pub contract_id: &'static str,
+    pub validation_limits: ValidationLimits,
+    pub failure_category: &'static str,
+    pub capability: &'static str,
 }
 
 /// A named, reifiable live binding boundary. `stable_binding_id` must be the
@@ -82,6 +109,30 @@ impl Default for CoreScriptBindingContractLimits {
             },
         }
     }
+}
+
+/// Builds the current core-owned boundary records using the owner's actual
+/// validation budgets. Only installed bindings are listed; a future boundary
+/// must supply its own reviewed record before E1.2.2 can admit it.
+pub fn core_script_binding_boundary_records(
+    limits: CoreScriptBindingContractLimits,
+) -> [HostBindingBoundaryRecordV1; 2] {
+    let [origin, text] = core_script_binding_contracts();
+    let record = |boundary: HostBindingContractV1, validation_limits| HostBindingBoundaryRecordV1 {
+        stable_binding_id: boundary.stable_binding_id,
+        runtime_binding_id: boundary.runtime_binding_id,
+        owner: HostBindingBoundaryOwner::CorePageRealm,
+        source_position: None,
+        direction: boundary.direction,
+        contract_id: boundary.contract_id,
+        validation_limits,
+        failure_category: "host binding contract rejected the page script",
+        capability: boundary.capability,
+    };
+    [
+        record(origin, limits.document_origin),
+        record(text, limits.document_text),
+    ]
 }
 
 /// Returns the complete current inventory. The order is stable by binding ID
@@ -151,5 +202,35 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.path, "$");
         assert_eq!(error.observed, "string of 9 bytes");
+    }
+
+    #[test]
+    fn inventory_records_name_owner_position_policy_and_actual_limits() {
+        let mut limits = CoreScriptBindingContractLimits::default();
+        limits.document_text.max_string_bytes = 17;
+        let [origin, text] = core_script_binding_boundary_records(limits);
+        assert_eq!(origin.stable_binding_id, "dom.document-origin");
+        assert_eq!(
+            origin.contract_id,
+            CORE_SCRIPT_DOCUMENT_ORIGIN_RESULT_CONTRACT_V1
+        );
+        assert_eq!(origin.validation_limits, limits.document_origin);
+        assert_eq!(text.stable_binding_id, "dom.document-text");
+        assert_eq!(text.runtime_binding_id, "global.blueiceDocumentText");
+        assert_eq!(
+            text.contract_id,
+            CORE_SCRIPT_DOCUMENT_TEXT_RESULT_CONTRACT_V1
+        );
+        assert_eq!(text.validation_limits.max_string_bytes, 17);
+        for record in [origin, text] {
+            assert_eq!(record.owner, HostBindingBoundaryOwner::CorePageRealm);
+            assert_eq!(record.source_position, None);
+            assert_eq!(record.direction, HostBindingContractDirection::HostToScript);
+            assert_eq!(
+                record.failure_category,
+                "host binding contract rejected the page script"
+            );
+            assert_eq!(record.capability, "dom-read");
+        }
     }
 }

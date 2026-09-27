@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E1.2.1.** Define the ingress/egress inventory record shape
-for owner, source position, contract ID, limits, failure category, and capability.
+**Current leaf: E1.2.2.** Add a test that fails when an installed boundary
+lacks an inventory record.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -563,7 +563,7 @@ channel with explicit owner/client grants.
 - [x] **E1.1** Name and validate the copied document-text and origin results.
 - [ ] **E1.2** For each new ingress/egress, record owner, source position when
   available, contract ID, limits, failure category, and capability.
-  - [ ] **E1.2.1** Define the inventory record shape (owner, source position, contract ID, limits, failure category, capability).
+  - [x] **E1.2.1** Define the inventory record shape (owner, source position, contract ID, limits, failure category, capability). The core-only `HostBindingBoundaryRecordV1` now carries stable/runtime binding IDs, owner, optional original source span, ingress/egress direction, reviewed contract ID, the owner's actual validation limits, fixed failure category, and capability. The current immutable document-text and origin result boundaries produce records without claiming unavailable call-site spans. A focused inventory test checks every field and tighter owner limit using the shared target cache.
   - [ ] **E1.2.2** Add a test that fails when a boundary lacks a record.
 - [ ] **E1.3** Make strict-runtime reject a missing, unreifiable, or unchecked
   boundary unless a reviewed contract is authorized.

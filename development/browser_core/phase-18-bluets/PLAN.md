@@ -2182,6 +2182,19 @@ report attribution and existing core validation of private stats tuples,
 this proves tab/child accounting without adding a public resource-inspection
 capability. The new MPL-headed test module stays below 1,300 lines.
 
+**E1.2.1 boundary inventory record:** Core now defines a core-only
+`HostBindingBoundaryRecordV1` with stable and runtime binding IDs, owner,
+optional original source span, host-to-script or script-to-host direction,
+reviewed contract ID, the owner's effective validation limits, a fixed
+source-free failure category, and capability. Its current two records are
+derived from the installed immutable document-origin and document-text
+contracts. Both correctly leave source position absent because the copied
+snapshot boundary is selected before an individual script call site is known;
+future source-addressable crossings can fill the same field. A focused test
+checks both records and proves a tighter owner-selected text limit is carried
+into the record. This defines the shape; E1.2.2 will enforce completeness
+against the installed runtime bindings.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
