@@ -7,7 +7,8 @@
 use super::static_runtime_display::{static_manifest, static_receipts};
 use super::*;
 use blueice_ipc::debugger::{
-    DebuggerLinkedScopeTarget, DebuggerStaticScopeTarget, DebuggerValuePreview,
+    DebuggerLinkedScopeTarget, DebuggerLinkedStackSnapshot, DebuggerStaticMetadataTypeId,
+    DebuggerStaticScopeTarget, DebuggerValuePreview,
 };
 
 const DOCUMENT: &str =
@@ -150,6 +151,127 @@ fn timed_debugger(
         }
     );
     debugger
+}
+
+#[derive(Clone, Copy)]
+struct LinkedRuntimePair {
+    entry: DebuggerProgram,
+    stack: DebuggerLinkedStackSnapshot,
+    target: DebuggerLinkedScopeTarget,
+    selector: DebuggerStaticScopeTarget,
+    static_type: DebuggerStaticMetadataTypeId,
+}
+
+fn pause_and_pair_linked_runtime(
+    debugger: &mut UnixStream,
+    browser: &mut UnixStream,
+    origin: &str,
+) -> LinkedRuntimePair {
+    navigate(browser, &format!("{origin}/"));
+    let realm = one_realm(debugger_request(debugger, DebuggerRequest::ListPageRealms));
+    let DebuggerReply::Programs(programs) =
+        debugger_request(debugger, DebuggerRequest::ListPrograms { realm })
+    else {
+        panic!("linked runtime must expose two programs")
+    };
+    assert_eq!(programs.len(), 2);
+    let (dependency, dependency_point) = programs
+        .iter()
+        .find_map(|program| {
+            safe_points(
+                debugger_request(
+                    debugger,
+                    DebuggerRequest::ListSafePoints { program: *program },
+                ),
+                *program,
+            )
+            .into_iter()
+            .find(|point| point.code_unit_ordinal == 1 && point.bytecode_offset == 0)
+            .map(|point| (*program, point))
+        })
+        .expect("dependency function must have an entry safe point");
+    let entry = *programs
+        .iter()
+        .find(|program| **program != dependency)
+        .unwrap();
+    let arm = DebuggerLinkedArmTarget {
+        entry,
+        dependency_safe_point: dependency_point,
+    };
+    assert_eq!(
+        debugger_request(
+            debugger,
+            DebuggerRequest::ArmLinkedNestedSafePointBreakpoint { target: arm },
+        ),
+        DebuggerReply::LinkedNestedSafePointBreakpointArmed { target: arm }
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let stack = loop {
+        match debugger_request(debugger, DebuggerRequest::GetLinkedExecutionState { entry }) {
+            DebuggerReply::LinkedExecutionState {
+                entry: observed,
+                state,
+            } if observed == entry => match *state {
+                DebuggerLinkedExecutionState::Paused { stack } => break stack,
+                DebuggerLinkedExecutionState::Pending if Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                other => panic!("linked runtime did not pause: {other:?}"),
+            },
+            other => panic!("linked runtime returned {other:?}"),
+        }
+    };
+    let (metadata, types, symbols) = static_receipts(debugger, entry);
+    let scopes = linked_scopes(debugger, stack, 256);
+    assert!(!scopes.scope_truncated);
+    let target = scopes
+        .entries
+        .iter()
+        .find_map(|scope_entry| {
+            let target = DebuggerLinkedScopeTarget {
+                stack,
+                frame_index: 1,
+                scope_entry: *scope_entry,
+            };
+            match debugger_request(debugger, DebuggerRequest::GetLinkedValue { target }) {
+                DebuggerReply::LinkedValue(snapshot)
+                    if snapshot.target == target
+                        && snapshot.preview
+                            == DebuggerValuePreview::NumberBits(9.0_f64.to_bits()) =>
+                {
+                    Some(target)
+                }
+                DebuggerReply::Error { .. } | DebuggerReply::LinkedValue(_) => None,
+                other => panic!("linked Value returned {other:?}"),
+            }
+        })
+        .expect("linked entry binding must hold 9");
+    let selector = DebuggerStaticScopeTarget::Linked { metadata, target };
+    let DebuggerReply::StaticScopeRelation(relation) = debugger_request(
+        debugger,
+        DebuggerRequest::GetStaticScopeRelation { target: selector },
+    ) else {
+        panic!("linked slot must have a static relation")
+    };
+    assert_eq!(relation.target, selector);
+    assert!(types.contains(&relation.static_type));
+    assert!(symbols.contains(&relation.symbol));
+    let DebuggerReply::StaticMetadataType(display) = debugger_request(
+        debugger,
+        DebuggerRequest::DescribeStaticMetadataType {
+            static_type: relation.static_type,
+        },
+    ) else {
+        panic!("linked slot type must display")
+    };
+    assert_eq!(display.display, "number");
+    LinkedRuntimePair {
+        entry,
+        stack,
+        target,
+        selector,
+        static_type: relation.static_type,
+    }
 }
 
 #[test]
@@ -420,5 +542,209 @@ fn launcher_pairs_linked_entry_type_and_value_with_independent_grants() {
     let requested = fixture.finish();
     assert!(requested.contains(&"/linked-entry.ts".to_string()));
     assert!(requested.contains(&"/linked-dependency.ts".to_string()));
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+fn assert_typed_refusal(
+    debugger: &mut UnixStream,
+    request: DebuggerRequest,
+    allowed: &[DebuggerErrorCode],
+) {
+    let reply = debugger_request(debugger, request.clone());
+    assert!(
+        matches!(reply, DebuggerReply::Error { code, .. } if allowed.contains(&code)),
+        "expired request {request:?} returned a partial or unexpected reply: {reply:?}"
+    );
+}
+
+#[test]
+fn launcher_expires_linked_type_value_pair_after_resume_and_http_reload() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let mut fixture = LinkedRuntimeFixture::start();
+    let mut launcher = LauncherProcess::spawn_with_owner_http_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            bounded_values: true,
+            inventory: true,
+            type_inventory: true,
+            type_display: true,
+            symbol_inventory: true,
+            static_scope_relation: true,
+            ..Default::default()
+        },
+        Some(&fixture.policy_file),
+    );
+    let mut browser = launcher.connect_browser();
+    browser
+        .set_read_timeout(Some(Duration::from_secs(15)))
+        .unwrap();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    let mut debugger = timed_debugger(&launcher.debugger_socket, true, static_manifest());
+    let pair = pause_and_pair_linked_runtime(&mut debugger, &mut browser, &fixture.origin);
+
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResumeLinkedNestedExecution {
+                top_frame: pair.stack.frames[0].frame,
+            },
+        ),
+        DebuggerReply::LinkedNestedResumeRequested {
+            top_frame: pair.stack.frames[0].frame,
+        }
+    );
+    for request in [
+        DebuggerRequest::GetStaticScopeRelation {
+            target: pair.selector,
+        },
+        DebuggerRequest::GetLinkedValue {
+            target: pair.target,
+        },
+    ] {
+        assert_typed_refusal(
+            &mut debugger,
+            request,
+            &[
+                DebuggerErrorCode::InvalidTarget,
+                DebuggerErrorCode::InvalidExecutionState,
+            ],
+        );
+    }
+    // The compiler display is generation-bound metadata and remains valid
+    // while that program exists; it is not itself a paused slot snapshot.
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataType {
+                static_type: pair.static_type,
+            },
+        ),
+        DebuggerReply::StaticMetadataType(_)
+    ));
+
+    navigate(&mut browser, &format!("{}/", fixture.origin));
+    for request in [
+        DebuggerRequest::GetStaticScopeRelation {
+            target: pair.selector,
+        },
+        DebuggerRequest::DescribeStaticMetadataType {
+            static_type: pair.static_type,
+        },
+        DebuggerRequest::GetLinkedValue {
+            target: pair.target,
+        },
+    ] {
+        assert_typed_refusal(
+            &mut debugger,
+            request,
+            &[
+                DebuggerErrorCode::StaleRealm,
+                DebuggerErrorCode::StaleProgram,
+                DebuggerErrorCode::InvalidTarget,
+                DebuggerErrorCode::InvalidExecutionState,
+                DebuggerErrorCode::CapabilityUnavailable,
+            ],
+        );
+    }
+    drop(debugger);
+    launcher.shutdown();
+    let requested = fixture.finish();
+    assert!(requested.iter().filter(|path| path.as_str() == "/").count() >= 2);
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_rejects_predecessor_linked_type_value_pair_after_child_cutover() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let mut fixture = LinkedRuntimeFixture::start();
+    let mut launcher = LauncherProcess::spawn_with_owner_http_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            bounded_values: true,
+            inventory: true,
+            type_inventory: true,
+            type_display: true,
+            symbol_inventory: true,
+            static_scope_relation: true,
+            ..Default::default()
+        },
+        Some(&fixture.policy_file),
+    );
+    let mut browser = launcher.connect_browser();
+    browser
+        .set_read_timeout(Some(Duration::from_secs(15)))
+        .unwrap();
+    blueice_ipc::client_handshake(&mut browser).unwrap();
+    let mut debugger = timed_debugger(&launcher.debugger_socket, true, static_manifest());
+    // Match the successor's reminted realm ordinal to exercise the old
+    // core-instance guard even when other visible identifiers coincide.
+    navigate(&mut browser, &format!("{}/", fixture.origin));
+    let predecessor = pause_and_pair_linked_runtime(&mut debugger, &mut browser, &fixture.origin);
+
+    let mut control = UnixStream::connect(&launcher.control_socket).unwrap();
+    write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
+    assert_eq!(
+        read_control_reply(&mut control).unwrap(),
+        ControlReply::CutoverDone { tabs_migrated: 1 }
+    );
+    drop(debugger);
+    drop(browser);
+    let mut successor_browser = launcher.connect_browser();
+    successor_browser
+        .set_read_timeout(Some(Duration::from_secs(15)))
+        .unwrap();
+    blueice_ipc::client_handshake(&mut successor_browser).unwrap();
+    let mut successor_debugger = timed_debugger(&launcher.debugger_socket, true, static_manifest());
+    let successor = pause_and_pair_linked_runtime(
+        &mut successor_debugger,
+        &mut successor_browser,
+        &fixture.origin,
+    );
+    assert_eq!(successor.entry.realm, predecessor.entry.realm);
+    assert_ne!(
+        successor.stack.frames[0].frame.core_instance,
+        predecessor.stack.frames[0].frame.core_instance
+    );
+    assert_eq!(
+        debugger_request(
+            &mut successor_debugger,
+            DebuggerRequest::GetLinkedValue {
+                target: successor.target,
+            },
+        ),
+        DebuggerReply::LinkedValue(Box::new(
+            blueice_ipc::debugger::DebuggerLinkedValueSnapshot {
+                target: successor.target,
+                preview: DebuggerValuePreview::NumberBits(9.0_f64.to_bits()),
+            }
+        ))
+    );
+    for request in [
+        DebuggerRequest::GetStaticScopeRelation {
+            target: predecessor.selector,
+        },
+        DebuggerRequest::DescribeStaticMetadataType {
+            static_type: predecessor.static_type,
+        },
+        DebuggerRequest::GetLinkedValue {
+            target: predecessor.target,
+        },
+    ] {
+        assert_typed_refusal(
+            &mut successor_debugger,
+            request,
+            &[
+                DebuggerErrorCode::StaleRealm,
+                DebuggerErrorCode::StaleProgram,
+                DebuggerErrorCode::InvalidTarget,
+                DebuggerErrorCode::InvalidExecutionState,
+                DebuggerErrorCode::CapabilityUnavailable,
+            ],
+        );
+    }
+    drop(successor_debugger);
+    launcher.shutdown();
+    let requested = fixture.finish();
+    assert!(requested.iter().filter(|path| path.as_str() == "/").count() >= 2);
     let _ = std::fs::remove_file(gatekeeper_socket);
 }

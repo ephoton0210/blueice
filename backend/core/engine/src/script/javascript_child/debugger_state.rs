@@ -48,6 +48,26 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
         &mut self,
         program: PageHostDebuggerProgram,
     ) -> Result<CoreDebuggerStaticMetadata, JavaScriptPageDebuggerError> {
+        if self.next_debugger_metadata_handle == CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START
+            && self.next_debugger_metadata_generation
+                == CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START
+        {
+            // A successor core restarts its counters, and its reminted
+            // program IDs can equal the predecessor's. Seed both public
+            // metadata counters from the process incarnation so an old type
+            // ID cannot alias a fresh type receipt after child cutover.
+            let instance = core_debugger_instance()?;
+            let handle_nonce = u64::from_le_bytes(instance[4..12].try_into().unwrap());
+            let generation_nonce = u64::from_le_bytes(instance[8..16].try_into().unwrap());
+            let metadata_range = CORE_CHILD_DEBUGGER_ID_NAMESPACE_START
+                - CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START
+                - 2;
+            self.next_debugger_metadata_handle =
+                CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START + 1 + handle_nonce % metadata_range;
+            self.next_debugger_metadata_generation = CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START
+                + 1
+                + generation_nonce % metadata_range;
+        }
         let metadata_handle = self.next_debugger_metadata_handle;
         let metadata_generation = self.next_debugger_metadata_generation;
         // Never allow an exhausted metadata counter to cross into the public

@@ -1977,6 +1977,25 @@ Value target without a partial preview. The focused real-socket test passes
 using the shared workspace `target/` directory. Lifecycle expiry remains
 C3.1.3.5.5.2.
 
+**C3.1.3.5.5.2 linked lifecycle and cutover acceptance:** The public linked
+execution route exposes resume, but no separate linked step command. A real
+socket resume invalidates the old pause-bound static relation and linked Value
+target without a partial reply. The compiler type display remains valid while
+its program generation is live, because it is an independently authorized
+metadata query. HTTP reload invalidates all three old selectors. A supervised
+child cutover then starts a successor core, pauses the same two-file module,
+and proves the predecessor relation, type display, and Value selector refuse
+while the successor's fresh Value selector still returns `9`.
+
+The cutover regression first exposed an ABA alias: with matching realm and
+program ordinals, deterministic public metadata counters let the old type ID
+match a fresh successor type receipt. Core now seeds its public metadata
+handle and generation counters from its already-random process incarnation
+within the reserved metadata namespace, and fails closed if that incarnation
+cannot be minted. The independent linked frame still carries its full core
+instance. The focused resume/reload and cutover real-socket tests pass with the
+single workspace target cache.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
