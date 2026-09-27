@@ -17,6 +17,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+const RUNTIME_HELPER_V1_FILE: &str = "bluets.runtime-helper.v1.mjs";
+const RUNTIME_HELPER_V1_SOURCE: &str = include_str!("../runtime_helper_v1.mjs");
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
     Check,
@@ -742,6 +745,9 @@ fn publish_build(
     let stage = parent.join(format!(".bluetsc-stage-{}-{nonce}", std::process::id()));
     fs::create_dir(&stage)?;
     let write_result = (|| -> io::Result<()> {
+        if metadata.runtime_policy == RuntimePolicy::StrictRuntime.as_str() {
+            fs::write(stage.join(RUNTIME_HELPER_V1_FILE), RUNTIME_HELPER_V1_SOURCE)?;
+        }
         for (module_id, artifact) in artifacts {
             let module_path = Path::new(module_id);
             let relative = artifact_relative_path(root, module_path, module_id)?;
@@ -1048,6 +1054,42 @@ mod tests {
         assert!(manifest.contains("\"languageVersion\": \"blue-ts-test\""));
         assert!(!manifest.contains(&root.to_string_lossy().into_owned()));
         assert!(!output.join("obsolete.js").exists());
+        fs::remove_dir_all(temporary).unwrap();
+    }
+
+    #[test]
+    fn strict_publisher_stages_the_exact_versioned_helper_and_releases_it_on_replacement() {
+        let temporary = unique_test_directory("runtime-helper-v1");
+        let root = temporary.join("source");
+        let output = temporary.join("output");
+        fs::create_dir_all(&root).unwrap();
+        let mut metadata = test_metadata();
+        metadata.runtime_policy = RuntimePolicy::StrictRuntime.as_str();
+        publish_build(
+            &root,
+            &output,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &metadata,
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read_to_string(output.join(RUNTIME_HELPER_V1_FILE)).unwrap(),
+            RUNTIME_HELPER_V1_SOURCE
+        );
+        assert!(RUNTIME_HELPER_V1_SOURCE.starts_with("// This Source Code Form"));
+        assert!(RUNTIME_HELPER_V1_SOURCE.contains("bluets-runtime-helper-v1"));
+
+        metadata.runtime_policy = RuntimePolicy::Checked.as_str();
+        publish_build(
+            &root,
+            &output,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &metadata,
+        )
+        .unwrap();
+        assert!(!output.join(RUNTIME_HELPER_V1_FILE).exists());
         fs::remove_dir_all(temporary).unwrap();
     }
 

@@ -2527,6 +2527,21 @@ manifest binds the helper identity and output-target checks are enforced in
 E3.2.2–E3.2.3. A helper file alone is no proof that generated modules call
 it at every required boundary.
 
+**E3.2.1.2 helper staging:** The fixed MPL-licensed v1 ESM source exposes a
+version label and one primitive-string validator. It accepts only a
+nonnegative safe-integer byte budget, walks the string's own indexed UTF-16
+units without calling mutable globals or prototypes, rejects unpaired
+surrogates, and counts the equivalent UTF-8 bytes before returning the
+original value. Every refusal throws one fixed source-free string. The
+atomic BlueTSC publisher writes the exact embedded source as
+`bluets.runtime-helper.v1.mjs` only for strict metadata; a checked rebuild
+replaces the output directory and drops the helper. A direct publisher test
+proves exact bytes and lifecycle, a CLI regression proves standalone strict
+builds still refuse before publication, and direct Node checks cover Unicode
+byte limits, invalid budgets, surrogate refusal, and a Proxy that receives
+no property read. Manifest identity and generated-code retention gates remain
+the next steps.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
