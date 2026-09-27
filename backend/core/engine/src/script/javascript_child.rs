@@ -209,6 +209,7 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
     /// live realm. A page, frontend, debugger, and MCP client receive neither
     /// this record nor a handle that could request it.
     realm_stats: BTreeMap<TabId, PageHostRealmStats>,
+    validation_usage: BTreeMap<TabId, PageHostValidationUsage>,
     /// Core-minted public debugger identities keyed by the child-private
     /// program IDs they represent. Child IDs are transport keys only and can
     /// never accidentally become public protocol IDs.
@@ -226,6 +227,37 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
     next_debugger_metadata_generation: u64,
     reports: VecDeque<JavaScriptPageExecutionReport>,
     blue_ts_reports: VecDeque<BlueTsPageExecutionReport>,
+}
+
+/// Core-private validation work for one exact live document. A rejected
+/// snapshot still has a charge even though it never creates a child realm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PageHostValidationUsage {
+    pub document_generation: u64,
+    pub attempts: u64,
+    pub visited_nodes: u64,
+    pub copied_value_bytes: u64,
+}
+
+impl PageHostValidationUsage {
+    fn new(document_generation: u64) -> Self {
+        Self {
+            document_generation,
+            attempts: 0,
+            visited_nodes: 0,
+            copied_value_bytes: 0,
+        }
+    }
+
+    fn charge(&mut self, copied_value_bytes: usize, visited_nodes: usize) {
+        self.attempts = self.attempts.saturating_add(1);
+        self.visited_nodes = self
+            .visited_nodes
+            .saturating_add(u64::try_from(visited_nodes).unwrap_or(u64::MAX));
+        self.copied_value_bytes = self
+            .copied_value_bytes
+            .saturating_add(u64::try_from(copied_value_bytes).unwrap_or(u64::MAX));
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -625,6 +657,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             debugger_execution_deferrals: BTreeMap::new(),
             live_documents: BTreeMap::new(),
             realm_stats: BTreeMap::new(),
+            validation_usage: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             debugger_nested_frames: BTreeMap::new(),
             debugger_linked_frames: BTreeMap::new(),
@@ -674,6 +707,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             debugger_execution_deferrals: BTreeMap::new(),
             live_documents: BTreeMap::new(),
             realm_stats: BTreeMap::new(),
+            validation_usage: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             debugger_nested_frames: BTreeMap::new(),
             debugger_linked_frames: BTreeMap::new(),
@@ -738,6 +772,14 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
         let live_document = self.live_documents.get(&tab_id)?;
         let stats = self.realm_stats.get(&tab_id)?;
         (stats.document_generation == live_document.document_generation).then_some(stats)
+    }
+
+    /// Returns the current document's private snapshot-validation work. The
+    /// record is scoped to the core owner and never placed on page/debug IPC.
+    pub fn validation_usage(&self, tab_id: TabId) -> Option<PageHostValidationUsage> {
+        let live_document = self.live_documents.get(&tab_id)?;
+        let usage = self.validation_usage.get(&tab_id)?;
+        (usage.document_generation == live_document.document_generation).then_some(*usage)
     }
 }
 
@@ -888,6 +930,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         }
         self.debugger_execution_deferrals.remove(&tab_id);
         self.realm_stats.remove(&tab_id);
+        self.validation_usage.remove(&tab_id);
         self.debugger_programs.remove(&tab_id);
         self.debugger_nested_frames.remove(&tab_id);
         self.debugger_linked_frames.remove(&tab_id);
@@ -918,70 +961,6 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         };
         let result = self.child.synchronize_document(prepared.document);
         self.finish_document(tab_id, identity, prepared.outcome, result);
-    }
-
-    fn prepare_document(
-        &mut self,
-        tab_id: TabId,
-        page: &Page,
-        identity: &LiveDocument,
-    ) -> Option<PreparedDocumentSync> {
-        // A successor can never inherit accounting from its predecessor while
-        // its child acknowledgement is still in flight.
-        self.realm_stats.remove(&tab_id);
-        self.debugger_nested_frames.remove(&tab_id);
-        self.debugger_linked_frames.remove(&tab_id);
-        self.debugger_static_metadata.remove(&tab_id);
-        let declarations = page.combined_page_script_declarations();
-        let snapshot = match core_document_snapshot(page, identity) {
-            Ok(snapshot) => snapshot,
-            Err(()) => {
-                // Do not leave the prior generation runnable after the core
-                // rejected the successor's snapshots. Treat this just like a
-                // child admission failure: it is bounded, source-free, and
-                // cannot become a retry loop for one immutable document.
-                self.close_page(tab_id);
-                let (reports, blue_ts_reports) =
-                    binding_contract_rejections(tab_id, identity.document_generation, declarations);
-                for report in reports {
-                    self.push_report(report);
-                }
-                for report in blue_ts_reports {
-                    self.push_blue_ts_report(report);
-                }
-                self.debugger_programs.remove(&tab_id);
-                self.debugger_nested_frames.remove(&tab_id);
-                self.debugger_linked_frames.remove(&tab_id);
-                self.debugger_static_metadata.remove(&tab_id);
-                self.live_documents.insert(tab_id, identity.clone());
-                return None;
-            }
-        };
-        let document_url = page
-            .url()
-            .expect("a page with a live child identity always has a URL");
-        let (document, local_reports, local_blue_ts_reports) = authorized_document(
-            tab_id,
-            identity,
-            snapshot,
-            document_url,
-            declarations,
-            self.external_source_authorizer.as_deref(),
-            self.native_debugger_execution_control,
-        );
-        let inline_scripts: Vec<_> = document
-            .scripts
-            .iter()
-            .map(|script| (script.ordinal, script.language, script.kind))
-            .collect();
-        Some(PreparedDocumentSync {
-            document,
-            outcome: PendingDocumentOutcome {
-                local_reports,
-                local_blue_ts_reports,
-                inline_scripts,
-            },
-        })
     }
 
     fn finish_document(

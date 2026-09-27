@@ -265,25 +265,106 @@ pub(super) fn valid_page_host_graph(graph: &PageHostModuleGraph) -> bool {
 pub(super) fn core_document_snapshot(
     page: &Page,
     identity: &LiveDocument,
-) -> Result<PageHostDocumentSnapshot, ()> {
+) -> (
+    Result<PageHostDocumentSnapshot, ()>,
+    PageHostValidationUsage,
+) {
     let document_text = page.script_document_text_content();
-    let document_origin = identity.origin.clone();
     let limits = CoreScriptBindingContractLimits::default();
-    core_script_binding_contract("dom.document-text")
+    let mut usage = PageHostValidationUsage::new(identity.document_generation);
+    let (text_result, text_usage) = core_script_binding_contract("dom.document-text")
         .expect("the fixed document-text binding has a contract inventory entry")
-        .validate_string(&document_text, limits.document_text)
-        .map_err(|_| ())?;
-    core_script_binding_contract("dom.document-origin")
-        .expect("the fixed document-origin binding has a contract inventory entry")
-        .validate_string(&document_origin, limits.document_origin)
-        .map_err(|_| ())?;
-    if canonical_http_origin(&document_origin).ok().as_deref() != Some(document_origin.as_str()) {
-        return Err(());
+        .validate_string_metered(&document_text, limits.document_text);
+    usage.charge(document_text.len(), text_usage.visited_nodes);
+    if text_result.is_err() {
+        return (Err(()), usage);
     }
-    Ok(PageHostDocumentSnapshot {
-        document_text,
-        document_origin,
-    })
+    let document_origin = identity.origin.clone();
+    let (origin_result, origin_usage) = core_script_binding_contract("dom.document-origin")
+        .expect("the fixed document-origin binding has a contract inventory entry")
+        .validate_string_metered(&document_origin, limits.document_origin);
+    usage.charge(document_origin.len(), origin_usage.visited_nodes);
+    if origin_result.is_err() {
+        return (Err(()), usage);
+    }
+    if canonical_http_origin(&document_origin).ok().as_deref() != Some(document_origin.as_str()) {
+        return (Err(()), usage);
+    }
+    (
+        Ok(PageHostDocumentSnapshot {
+            document_text,
+            document_origin,
+        }),
+        usage,
+    )
+}
+
+impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
+    pub(super) fn prepare_document(
+        &mut self,
+        tab_id: TabId,
+        page: &Page,
+        identity: &LiveDocument,
+    ) -> Option<PreparedDocumentSync> {
+        // A successor cannot inherit the predecessor's accounting while its
+        // child acknowledgement is still in flight.
+        self.realm_stats.remove(&tab_id);
+        self.validation_usage.remove(&tab_id);
+        self.debugger_nested_frames.remove(&tab_id);
+        self.debugger_linked_frames.remove(&tab_id);
+        self.debugger_static_metadata.remove(&tab_id);
+        let declarations = page.combined_page_script_declarations();
+        let (snapshot, usage) = core_document_snapshot(page, identity);
+        let snapshot = match snapshot {
+            Ok(snapshot) => snapshot,
+            Err(()) => {
+                // The rejected successor must never leave the predecessor
+                // runnable or enter the external-source and child paths.
+                self.close_page(tab_id);
+                self.validation_usage.insert(tab_id, usage);
+                let (reports, blue_ts_reports) =
+                    binding_contract_rejections(tab_id, identity.document_generation, declarations);
+                for report in reports {
+                    self.push_report(report);
+                }
+                for report in blue_ts_reports {
+                    self.push_blue_ts_report(report);
+                }
+                self.debugger_programs.remove(&tab_id);
+                self.debugger_nested_frames.remove(&tab_id);
+                self.debugger_linked_frames.remove(&tab_id);
+                self.debugger_static_metadata.remove(&tab_id);
+                self.live_documents.insert(tab_id, identity.clone());
+                return None;
+            }
+        };
+        self.validation_usage.insert(tab_id, usage);
+        let document_url = page
+            .url()
+            .expect("a page with a live child identity always has a URL");
+        let (document, local_reports, local_blue_ts_reports) = authorized_document(
+            tab_id,
+            identity,
+            snapshot,
+            document_url,
+            declarations,
+            self.external_source_authorizer.as_deref(),
+            self.native_debugger_execution_control,
+        );
+        let inline_scripts: Vec<_> = document
+            .scripts
+            .iter()
+            .map(|script| (script.ordinal, script.language, script.kind))
+            .collect();
+        Some(PreparedDocumentSync {
+            document,
+            outcome: PendingDocumentOutcome {
+                local_reports,
+                local_blue_ts_reports,
+                inline_scripts,
+            },
+        })
+    }
 }
 
 pub(super) fn binding_contract_rejections(

@@ -5,6 +5,79 @@
 use super::*;
 
 #[test]
+fn core_charges_snapshot_validation_to_the_initiating_tab_even_on_rejection() {
+    let (mut tabs, first_tab) = loaded_tabs(
+        "<main>hello</main><script>blueiceDocumentText();</script>",
+        "https://example.test/first.html",
+    );
+    let second_tab = tabs.open_tab();
+    let oversized = "x".repeat(page_host::PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES + 1);
+    tabs.get_mut(second_tab).unwrap().load_html_str(
+        &format!("<main>{oversized}</main><script>blueiceDocumentText();</script>"),
+        Some("https://example.test/second.html".to_string()),
+    );
+    let first_snapshot_bytes = tabs
+        .get(first_tab)
+        .unwrap()
+        .script_document_text_content()
+        .len() as u64;
+    let second_snapshot_bytes = tabs
+        .get(second_tab)
+        .unwrap()
+        .script_document_text_content()
+        .len() as u64;
+    let mut executor = OutOfProcessJavaScriptPageExecutor::new(RecordingChild::default());
+    executor.synchronize_and_execute(&tabs).unwrap();
+
+    let first = executor.validation_usage(first_tab).unwrap();
+    assert_eq!(first.document_generation, 1);
+    assert_eq!(first.attempts, 2);
+    assert_eq!(first.visited_nodes, 2);
+    assert_eq!(
+        first.copied_value_bytes,
+        first_snapshot_bytes + "https://example.test".len() as u64
+    );
+    let second = executor.validation_usage(second_tab).unwrap();
+    assert_eq!(second.document_generation, 1);
+    assert_eq!(second.attempts, 1);
+    assert_eq!(second.visited_nodes, 1);
+    assert_eq!(second.copied_value_bytes, second_snapshot_bytes);
+    assert_eq!(executor.child.documents.len(), 1);
+    assert_eq!(executor.child.documents[0].tab_id, first_tab.as_u64());
+    assert!(matches!(
+        executor.drain_reports_for_tab(second_tab).as_slice(),
+        [JavaScriptPageExecutionReport::Rejected {
+            category: "host binding contract rejected the page script",
+            ..
+        }]
+    ));
+
+    tabs.get_mut(first_tab).unwrap().load_html_str(
+        "<main>next</main><script>blueiceDocumentText();</script>",
+        Some("https://example.test/next.html".to_string()),
+    );
+    let replacement_snapshot_bytes = tabs
+        .get(first_tab)
+        .unwrap()
+        .script_document_text_content()
+        .len() as u64;
+    executor.synchronize_and_execute(&tabs).unwrap();
+    let replacement = executor.validation_usage(first_tab).unwrap();
+    assert_eq!(replacement.document_generation, 2);
+    assert_eq!(replacement.attempts, 2);
+    assert_eq!(
+        replacement.copied_value_bytes,
+        replacement_snapshot_bytes + "https://example.test".len() as u64
+    );
+    assert_eq!(executor.validation_usage(second_tab), Some(second));
+
+    assert!(tabs.close_tab(second_tab));
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(executor.validation_usage(second_tab), None);
+    assert_eq!(executor.validation_usage(first_tab), Some(replacement));
+}
+
+#[test]
 fn core_accepts_only_well_formed_child_wide_usage_for_its_live_realm_count() {
     let (tabs, _tab_id) = loaded_tabs(
         "<script>let accounting = 1;</script>",

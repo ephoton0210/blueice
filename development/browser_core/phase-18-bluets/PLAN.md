@@ -2275,6 +2275,18 @@ remaining E2.2.1 work is out-of-process snapshot attribution and retained
 compiler/contract/debug cache accounting; this leaf does not claim those
 costs are already charged.
 
+**E2.2.1.2 out-of-process snapshot attribution:** Core now obtains a metered
+result from its document-text and origin contract checks and records attempted
+nodes and copied validation-value bytes under the initiating tab and exact
+document generation. A contract failure retains its charge even though core
+does not authorize external sources or send a document to the child. A two-tab
+public-boundary regression checks separate successful and over-budget charges,
+then verifies that navigation replaces only the first tab's record and closing
+the second removes only its record. The cohesive `prepare_document` body lives
+in the existing document-admission submodule; the production executor facade
+is below the 1,300-line threshold. Retained compiler/contract/debug cache
+bytes remain E2.2.1.3.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
