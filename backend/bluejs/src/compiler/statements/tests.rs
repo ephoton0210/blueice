@@ -155,16 +155,6 @@ fn direct_statement_validation_catches_unreachable_parser_shapes() {
         )
         .unwrap();
 
-    let catch = CatchClause {
-        param: Some(Pattern::Identifier("eval".into())),
-        body: Vec::new(),
-    };
-    assert_eq!(
-        strict.try_statement(&[], Some(&catch), None),
-        Err(CompileError::InvalidSyntax(
-            "strict catch parameters cannot bind eval or arguments"
-        ))
-    );
     let mut dynamic = bare_compiler();
     dynamic
         .bind_pattern(&Pattern::Identifier("unbound".into()), DeclKind::Var)

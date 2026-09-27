@@ -1296,15 +1296,8 @@ impl Compiler {
             let start = self.offset();
             self.bytecode.handlers[handler_index as usize].catch = Some(start);
             let parameter_bound_names = catch.param.as_ref().map(pattern_names).unwrap_or_default();
-            if self.bytecode.strict
-                && parameter_bound_names
-                    .iter()
-                    .any(|name| matches!(name.as_str(), "eval" | "arguments"))
-            {
-                return Err(CompileError::InvalidSyntax(
-                    "strict catch parameters cannot bind eval or arguments",
-                ));
-            }
+            // Entry-point early-error validation already rejects strict
+            // catch bindings named eval or arguments.
             if catch_lexical_names(&catch.body)
                 .into_iter()
                 .any(|name| parameter_bound_names.contains(&name))

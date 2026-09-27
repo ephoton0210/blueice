@@ -4,8 +4,8 @@
 
 use blueice_bluejs::{
     compile, compile_module, compile_module_with_limit, compile_module_with_limits,
-    compile_with_limits, parse, parse_module, Bytecode, ClassElement, CompileError, CompileLimits,
-    Expr, Opcode, Program, RuntimeError, Stmt, Value, Vm, VmConfig,
+    compile_with_limit, compile_with_limits, parse, parse_module, Bytecode, ClassElement,
+    CompileError, CompileLimits, Expr, Opcode, Program, RuntimeError, Stmt, Value, Vm, VmConfig,
 };
 
 fn largest_compile_path(code: &Bytecode) -> usize {
@@ -15,6 +15,14 @@ fn largest_compile_path(code: &Bytecode) -> usize {
             .map(largest_compile_path)
             .max()
             .unwrap_or(0)
+}
+
+fn total_compile_bytes(code: &Bytecode) -> usize {
+    code.bytes().len()
+        + code
+            .child_code_units()
+            .map(total_compile_bytes)
+            .sum::<usize>()
 }
 
 #[test]
@@ -89,6 +97,148 @@ fn metadata_limits_reject_each_table_before_an_index_overflows() {
         compile_module_with_limits(&parse_module("let first, second;").unwrap(), limits),
         Err(CompileError::ProgramTooLarge)
     ));
+}
+
+#[test]
+fn statement_control_flow_and_binding_limits_compile_through_the_public_pipeline() {
+    for source in [
+        "function f() { using resource = null; return 1; }",
+        "async function f() { await using resource = null; return 1; }",
+        "function f() { try { throw 1; } catch { return 2; } finally { 3; } }",
+        "try {} finally {} try {} finally {}",
+        "function f() { switch (1) { case 1: function g() {} break; default: break; } }",
+        "function f() { outer: for (const x of [1]) { inner: while (x) { break outer; } } }",
+        "with ({ x: 1 }) { var x = 2; var { y } = { y: 3 }; var [z] = [4]; }",
+        "const f = function self(n) { 'use strict'; return ((n ? self(n - 1) : 0)); };",
+        "const f = function self(n) { 'use strict'; for (const x of [1]) { return self(n - 1); } };",
+        "class C { [name] = function() {}; ['x'] = function() {}; 1 = function() {}; #x = function() {}; }",
+    ] {
+        let program = parse(source).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+        let full = compile(&program).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+        let upper = u32::try_from(total_compile_bytes(&full)).unwrap();
+        let mut first_success = None;
+        for limit in 0..=upper {
+            match compile_with_limit(&program, limit) {
+                Ok(code) => {
+                    first_success.get_or_insert(limit);
+                    assert_eq!(code.bytes(), full.bytes(), "{source} at {limit} bytes");
+                }
+                Err(CompileError::ProgramTooLarge) => {
+                    assert!(first_success.is_none(), "{source} at {limit} bytes");
+                }
+                Err(error) => panic!("{source} at {limit} bytes: {error:?}"),
+            }
+        }
+        assert!(first_success.is_some(), "{source}");
+
+        let mut first_success = None;
+        for limit in 0..64 {
+            let limits = CompileLimits {
+                max_metadata_entries: limit,
+                ..CompileLimits::default()
+            };
+            match compile_with_limits(&program, limits) {
+                Ok(_) => {
+                    first_success.get_or_insert(limit);
+                }
+                Err(CompileError::ProgramTooLarge) => {
+                    assert!(first_success.is_none(), "{source} at metadata limit {limit}");
+                }
+                Err(error) => panic!("{source} at metadata limit {limit}: {error:?}"),
+            }
+        }
+        assert!(first_success.is_some(), "{source}");
+    }
+}
+
+#[test]
+fn externally_constructed_statement_asts_reject_invalid_control_flow() {
+    let strict = parse("'use strict';").unwrap().body.remove(0);
+    let class = parse("class C {}").unwrap().body.remove(0);
+    let function = parse("function f() {}").unwrap().body.remove(0);
+    let lexical = parse("let value = 1;").unwrap().body.remove(0);
+    let labelled = |label: &str, item: Stmt| Stmt::Labelled {
+        label: label.into(),
+        item: Box::new(item),
+    };
+    for (body, expected) in [
+        (
+            vec![Stmt::ClassField(Box::new(Stmt::Empty))],
+            "invalid class field AST",
+        ),
+        (
+            vec![Stmt::ClassExtraInitializers("missing".into())],
+            "decoration record binding is not available in this function",
+        ),
+        (
+            vec![Stmt::ClassPrivateBrand("missing".into())],
+            "private brand binding is not available in this function",
+        ),
+        (
+            vec![strict.clone(), labelled("yield", Stmt::Empty)],
+            "yield cannot be used as a label in strict code",
+        ),
+        (
+            vec![labelled("dup", labelled("dup", Stmt::Empty))],
+            "duplicate label",
+        ),
+        (
+            vec![labelled("outer", lexical)],
+            "a labelled statement cannot contain a lexical declaration",
+        ),
+        (
+            vec![labelled("outer", class)],
+            "a labelled statement cannot contain a class declaration",
+        ),
+        (
+            vec![labelled("outer", function)],
+            "invalid labelled function declaration",
+        ),
+        (
+            vec![
+                strict.clone(),
+                Stmt::With {
+                    object: Expr::Number(0.0),
+                    body: Box::new(Stmt::Empty),
+                },
+            ],
+            "with is forbidden in strict mode",
+        ),
+    ] {
+        assert!(
+            matches!(
+                compile(&Program { body }),
+                Err(CompileError::InvalidSyntax(message)) if message == expected
+            ),
+            "{expected}"
+        );
+    }
+
+    let mut program = parse("let record = 0;").unwrap();
+    program.body.push(Stmt::ClassDecoratedField {
+        field: Box::new(Stmt::Empty),
+        record: "record".into(),
+    });
+    assert!(matches!(
+        compile(&program),
+        Err(CompileError::InvalidSyntax("invalid decorated field AST"))
+    ));
+
+    let mut program = Program { body: vec![strict] };
+    program
+        .body
+        .push(parse("try {} catch (eval) {}").unwrap().body.remove(0));
+    let result = compile(&program);
+    assert!(
+        matches!(
+            &result,
+            Err(CompileError::InvalidSyntax(
+                "strict code cannot assign to eval or arguments"
+            ))
+        ),
+        "{:?}",
+        result.err()
+    );
 }
 
 #[test]
