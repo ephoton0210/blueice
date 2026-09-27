@@ -4216,6 +4216,18 @@ completed successfully. The successful step runs the repository's pinned
 `BLUEICE_BLUETSC_ORACLE=tsc`; it is the opt-in test excluded from the ordinary
 workspace test command. Coverage remains a separate CI gate.
 
+**G.3.2 coverage merge failure and recovery design:** The coverage job in
+[CI run 36317372058](https://github.com/ephoton0210/blueice/actions/runs/36317372058/job/108614527803)
+ran workspace tests but failed before reporting a percentage because
+`llvm-profdata` found one raw profile with a corrupt header. An abruptly
+terminated instrumented subprocess can leave no usable profile. The CI
+coverage commands now use cargo-llvm-cov's `--failure-mode all`: valid raw
+profiles still merge, corrupt-profile warnings remain visible, and the run
+still fails if all profiles are invalid or the workspace 90% or BlueJS 88%
+line threshold is missed. This does not skip a test or lower either threshold;
+the workflow YAML parses and the installed cargo-llvm-cov CLI documents the
+selected mode. The separate CI rerun is required before G.3.2 can be checked.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

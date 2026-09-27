@@ -18,7 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: G.3.2.** Verify the workspace coverage gate in CI.
+**Current leaf: G.3.2.2.** Rerun the workspace and BlueJS coverage thresholds
+in CI and record their passing results.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -738,6 +739,8 @@ Keep check read-only and owner registration sealed before listeners.
   ignored required test or suppressed warning may substitute for evidence.
   - [x] **G.3.1** Pinned TypeScript oracle passes in CI. The manually dispatched CI workflow for `a9d85172d` completed its `Run the pinned TypeScript 5.9.3 BlueTSC compatibility matrix` step successfully in [run 36317372058, job 108614527760](https://github.com/ephoton0210/blueice/actions/runs/36317372058/job/108614527760). The workflow invokes `npm exec --package typescript@5.9.3` and runs the opt-in oracle test with the pinned executable; local disk was not used for a second oracle build tree.
   - [ ] **G.3.2** Workspace coverage gate passes in CI.
+    - [x] **G.3.2.1** Configure valid-profile recovery without weakening either coverage threshold. CI run 36317372058 reached profile merging after its workspace tests, but one invalid `.profraw` header made the default any-profile failure mode abort before a coverage percentage existed. Both threshold commands now use cargo-llvm-cov's documented `--failure-mode all`, which keeps warnings visible and still fails if every profile is invalid or the existing 90% workspace/88% BlueJS line gate is missed. The YAML parses, local CLI help confirms the option, and G.3.2.2 retains the real CI verification requirement.
+    - [ ] **G.3.2.2** Rerun the workspace and BlueJS coverage thresholds in CI and record their passing results.
   - [ ] **G.3.3** No ignored required test or suppressed warning substitutes for evidence.
 
 ## P2 — compatibility after the page gate
