@@ -287,6 +287,51 @@ fn callback_method_overloads_retain_both_literal_tag_signatures() {
 }
 
 #[test]
+fn optional_dot_read_retains_exact_tokens_and_source_span() {
+    let source = "const receiver: { value: number } | null = null; const answer: number | undefined = receiver?.value; const computed = receiver?.[key]; const called = receiver?.value();";
+    let module = parse_module(ENTRY, source).unwrap();
+    let [Declaration::Variable(receiver), Declaration::Variable(answer), Declaration::Variable(computed), Declaration::Variable(called)] =
+        module.declarations.as_slice()
+    else {
+        panic!("expected four source-level variable declarations");
+    };
+    assert!(matches!(
+        &receiver.annotation,
+        Some(blueice_bluets::Type::Union(parts)) if parts.len() == 2
+    ));
+    assert_eq!(
+        answer
+            .initializer
+            .iter()
+            .map(|token| token.text.as_str())
+            .collect::<Vec<_>>(),
+        ["receiver", "?.", "value"]
+    );
+    let optional_dot = &answer.initializer[1];
+    assert_eq!(&source[optional_dot.start..optional_dot.end], "?.");
+    assert_eq!(
+        &source[answer.initializer[0].start..answer.initializer[2].end],
+        "receiver?.value"
+    );
+    assert_eq!(
+        computed
+            .initializer
+            .iter()
+            .map(|token| token.text.as_str())
+            .collect::<Vec<_>>(),
+        ["receiver", "?.", "[", "key", "]"]
+    );
+    assert_eq!(
+        called
+            .initializer
+            .iter()
+            .map(|token| token.text.as_str())
+            .collect::<Vec<_>>(),
+        ["receiver", "?.", "value", "(", ")"]
+    );
+}
+
+#[test]
 fn callback_method_overloads_select_by_tag_and_report_distinct_failures() {
     let ambient = ModuleSource::new(
         "memory:///visitor.d.ts",

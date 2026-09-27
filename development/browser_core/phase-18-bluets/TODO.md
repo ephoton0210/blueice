@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: I.2.1.** Retain the selected optional dot-property read in the
-public parser with an exact source span and rejected-shape coverage.
+**Current leaf: I.2.2.** Check the selected optional dot-property read's
+non-nullish field and undefined result, and reject unsupported typed uses.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -805,7 +805,7 @@ Keep check read-only and owner registration sealed before listeners.
   - [x] **I.1.1** Record the chosen form and its unsupported behavior. The receiver is one `const` local annotated as exactly `{ field: T } | null` or `{ field: T } | undefined` (or the same shape via a non-generic local interface), with one required primitive field. A single optional dot read short-circuits nullish receiver values; the existing `??` operator may consume its result. Optional calls, computed/nested chains, method calls, assignment targets, side-effecting receivers, larger/opaque unions, optional fields, generic/imported aliases and inherited records remain unsupported by this form and must not gain a type-safety claim through an `unknown` fallback. I.2 and I.3 own implementation and evidence.
 - [ ] **I.2** For that form, test parser/checker/emitter and direct runtime without
   reparsing emitted JavaScript.
-  - [ ] **I.2.1** Parser test.
+  - [x] **I.2.1** Parser test. Public `parse_module` retains `receiver?.value` as the exact three-token initializer, including one `?.` token with original byte span; computed and call-suffix shapes remain distinct raw tokens for later checker/direct-bridge rejection. BlueTS crate tests, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
   - [ ] **I.2.2** Checker test.
   - [ ] **I.2.3** Emitter test.
   - [ ] **I.2.4** Direct-runtime test without reparsing emitted JavaScript.
