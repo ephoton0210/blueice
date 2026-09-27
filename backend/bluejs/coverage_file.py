@@ -17,6 +17,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -376,10 +377,49 @@ def update_linux_report(files: dict[Path, dict], totals: dict) -> None:
     update_report(LINUX_REPORT, files, totals, "--update-linux-report")
 
 
+def prune_superseded_test_executables(target: Path) -> None:
+    """Release old integration-test binaries while retaining current builds.
+
+    Cargo's dep-info identifies the test source. Grouping by executable name
+    alone is unsafe: a normal binary and its test harness can share that name.
+    Missing old feature variants are rebuilt on demand.
+    """
+    for deps in (target / "debug/deps", target / "llvm-cov-target/debug/deps"):
+        if not deps.is_dir():
+            continue
+        groups: dict[Path, list[Path]] = {}
+        for path in deps.iterdir():
+            name, separator, digest = path.name.rpartition("-")
+            if (
+                not separator
+                or not re.fullmatch(r"[0-9a-f]{16}", digest)
+                or not path.is_file()
+                or not stat.S_IMODE(path.stat().st_mode) & 0o111
+            ):
+                continue
+            dep_info = deps / f"{name}-{digest}.d"
+            if not dep_info.is_file():
+                continue
+            with dep_info.open() as source:
+                first_line = source.readline()
+            dependencies = first_line.partition(": ")[2].split()
+            if not dependencies:
+                continue
+            test_source = Path(dependencies[0])
+            if test_source.parent.name == "tests" and test_source.suffix == ".rs":
+                groups.setdefault(test_source, []).append(path)
+        for paths in groups.values():
+            newest = max(paths, key=lambda path: path.stat().st_mtime_ns)
+            for path in paths:
+                if path != newest:
+                    path.unlink()
+
+
 def run_coverage() -> tuple[dict[Path, dict], dict]:
     with tempfile.TemporaryDirectory(prefix="bluejs-coverage-") as tmp:
         output = Path(tmp) / "coverage.json"
         text_output = Path(tmp) / "coverage.txt"
+        completed = False
         try:
             subprocess.run(
                 ["cargo", "llvm-cov", "clean", "--profraw-only"],
@@ -414,9 +454,11 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
                 cwd=REPO_ROOT,
                 check=True,
             )
-            return source_union_export(
+            result = source_union_export(
                 json.loads(output.read_text()), text_output.read_text()
             )
+            completed = True
+            return result
         finally:
             try:
                 subprocess.run(
@@ -438,6 +480,8 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
                     ):
                         if path.exists():
                             shutil.rmtree(path)
+                    if completed:
+                        prune_superseded_test_executables(target)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -26,13 +26,20 @@ fn vm_construction_reports_a_limit_that_cannot_hold_both_prototypes() {
 
 #[test]
 fn temporal_receiver_checks_propagate_invalid_object_handles() {
-    let vm = Vm::default();
+    let mut vm = Vm::default();
     let mut other_vm = Vm::default();
     let foreign = other_vm.heap.alloc_object(None).unwrap();
     let receiver = Value::Object(foreign);
     assert_eq!(
         vm.require_temporal_receiver(&receiver, TemporalKind::PlainDate),
         Err(RuntimeError::Heap(HeapError::InvalidObject(foreign)))
+    );
+    let ordinary = vm.heap.alloc_object(None).unwrap();
+    assert_eq!(
+        vm.require_temporal_receiver(&Value::Object(ordinary), TemporalKind::PlainDate),
+        Err(RuntimeError::TypeError(
+            "receiver is not a Temporal.PlainDate".into()
+        ))
     );
 }
 
