@@ -449,6 +449,9 @@ fn test262_agents_wait_async_registers_two_waiters_before_notify() {
         }
         $262.agent.broadcast(buffer);
         while (Atomics.load(view, 2) !== 2) {}
+        // Let both agent event loops park on their registered async waits
+        // before the notifier resolves the promises.
+        $262.agent.sleep(100);
         Atomics.notify(view, 0, 2)
     "#;
     assert_eq!(

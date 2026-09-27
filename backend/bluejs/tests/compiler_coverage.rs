@@ -47,7 +47,9 @@ fn module_top_level_using_declarations_compile_with_disposal() {
 fn module_byte_limit_rejects_every_partial_program() {
     for source in [
         "export function f() { return 1; }",
+        "export default function() { return 1; }",
         "using resource = null;",
+        "await using resource = null;",
     ] {
         let module = parse_module(source).unwrap();
         let full = compile_module(&module).unwrap();
@@ -121,10 +123,21 @@ fn statement_control_flow_and_binding_limits_compile_through_the_public_pipeline
         "function f() { using resource = null; return 1; }",
         "async function f() { await using resource = null; return 1; }",
         "function f() { try { throw 1; } catch { return 2; } finally { 3; } }",
+        "try {} catch {}",
         "try {} finally {} try {} finally {}",
+        "try {} finally {} try {} finally {} try {} finally {}",
+        "try {} finally {} try {} finally {} { using resource = null; }",
+        "function repeated() {} function repeated() {} function repeated() {}",
+        "while (true) { break; break; break; }",
+        "function outer() { function inner() { return 1; } return inner(); }",
+        "async function* generate() { return 1; } function bare() { return; }",
         "function f() { switch (1) { case 1: function g() {} break; default: break; } }",
         "function f() { outer: for (const x of [1]) { inner: while (x) { break outer; } } }",
         "with ({ x: 1 }) { var x = 2; var { y } = { y: 3 }; var [z] = [4]; }",
+        "for (let index = 0; index < 2; index++) {}",
+        "for (; false; 1) {}",
+        "var [first = 1, ...rest] = []; var { x: item = 2, ...other } = {};",
+        "with ({ x: 1 }) { var { x: renamed = 2, ...rest } = {}; }",
         "const f = function self(n) { 'use strict'; return ((n ? self(n - 1) : 0)); };",
         "const f = function self(n) { 'use strict'; for (const x of [1]) { return self(n - 1); } };",
         "class C { [name] = function() {}; ['x'] = function() {}; 1 = function() {}; #x = function() {}; }",
@@ -165,6 +178,54 @@ fn statement_control_flow_and_binding_limits_compile_through_the_public_pipeline
         }
         assert!(first_success.is_some(), "{source}");
     }
+}
+
+#[test]
+fn a_parenthesized_tail_call_in_an_external_ast_keeps_tail_position() {
+    let mut program = parse("function f(n) { 'use strict'; return f(n); }").unwrap();
+    let Stmt::FunctionDecl(function) = &mut program.body[0] else {
+        panic!("the source declares a function");
+    };
+    let Some(Stmt::Return(Some(value))) = function.body.last_mut() else {
+        panic!("the function ends in a return");
+    };
+    *value = Expr::Parenthesized(Box::new(value.clone()));
+
+    let code = compile(&program).unwrap();
+    assert!(code.child_code_units().any(|child| child
+        .instructions()
+        .any(|instruction| instruction.opcode == Opcode::TailCall)));
+}
+
+#[test]
+fn repeated_direct_eval_declarations_replace_dynamic_bindings() {
+    let source = r#"
+        function run() {
+            eval('var value = 1; function selected() { return 1; }');
+            eval('var value = 2; function selected() { return 2; }');
+            return value === 2 && selected() === 2;
+        }
+        run()
+    "#;
+    let mut vm = Vm::default();
+    let code = compile(&parse(source).unwrap()).unwrap();
+    assert_eq!(vm.execute(&code), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn a_tail_recursive_call_obeys_the_public_argument_limit() {
+    let program = parse("const f = function self() { 'use strict'; return self(1, 2); };").unwrap();
+    assert!(compile(&program).is_ok());
+    assert!(matches!(
+        compile_with_limits(
+            &program,
+            CompileLimits {
+                max_list_items: 1,
+                ..CompileLimits::default()
+            }
+        ),
+        Err(CompileError::ProgramTooLarge)
+    ));
 }
 
 #[test]
