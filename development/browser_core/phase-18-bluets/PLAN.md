@@ -2770,6 +2770,20 @@ coverage tests, workspace Clippy, and formatting pass in the same target
 directory. E3.2's helper, manifest, target, and publication gates are closed;
 E3.3 still requires direct-page/emitted malformed-value parity.
 
+**E3.3.1 malformed string parity:** One Engine test sends the exact
+`ABCDEFGHI` value through a strict direct-page document-text snapshot with
+an owner-selected eight-byte limit. Core returns its typed
+`dom.document-text`/`core-script-document-text-result-v1` contract violation
+before realm capture, identifying nine observed bytes and retaining no debug
+record. The same test compiles a strict ESM `echo` crossing with an eight-byte
+owner limit and, where Node is installed, executes the emitted module with
+the exact same value. Helper v1 rejects it with its fixed source-free
+refusal. Both paths therefore reject the same malformed primitive and
+budget; their outward error formats remain appropriate to their hosts.
+The 337-test Engine library suite passes with local HTTP/socket access,
+alongside workspace Clippy and formatting. The same target directory was
+reused; E3.3.2 still checks weaker artifact claims.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

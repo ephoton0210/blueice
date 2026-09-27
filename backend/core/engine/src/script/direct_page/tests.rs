@@ -233,6 +233,137 @@ fn document_text_contract_rejects_an_oversized_snapshot_before_admission() {
 }
 
 #[test]
+fn direct_page_and_emitted_esm_refuse_the_same_oversized_string() {
+    let malformed = "ABCDEFGHI";
+    let budget = 8;
+    let profiles = core_script_host_type_catalog();
+    let host_typings = profiles
+        .generate(CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1)
+        .unwrap();
+    let loader = AuthorizedModuleLoader::new(
+        [AuthorizedModule::new(
+            "page:///app/main.ts",
+            "blueiceDocumentText();",
+        )],
+        [],
+    )
+    .unwrap();
+    let (mut tabs, tab_id) = loaded_tabs();
+    tabs.get_mut(tab_id).unwrap().load_html_str(
+        &format!("<main>{malformed}</main>"),
+        Some("https://example.test/app/index.html".to_string()),
+    );
+    let mut host = DirectPageScriptHost::with_realm_owner_and_contract_limits(
+        profiles,
+        DirectPageRealmOwner::default(),
+        CoreScriptBindingContractLimits {
+            document_text: blueice_bluets::ValidationLimits {
+                max_string_bytes: budget,
+                ..blueice_bluets::ValidationLimits::default()
+            },
+            ..CoreScriptBindingContractLimits::default()
+        },
+    );
+    let direct_error = host
+        .execute(
+            &tabs,
+            DirectPageScriptRequest {
+                tab_id,
+                kind: DirectPageScriptKind::Classic,
+                entry: "page:///app/main.ts".to_string(),
+                loader: &loader,
+                compiler_options: CompilerOptions {
+                    runtime_policy: RuntimePolicy::StrictRuntime,
+                    ..CompilerOptions::default()
+                },
+                feature_profile: CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1.to_string(),
+                supplied_manifest: &host_typings.manifest,
+                supplied_declaration_source: &host_typings.declaration_source,
+                supplied_runtime_bindings: &host_typings.runtime_bindings,
+            },
+        )
+        .unwrap_err();
+    let DirectPageScriptError::BindingContractViolation {
+        stable_binding_id,
+        contract_id,
+        error,
+    } = direct_error
+    else {
+        panic!("expected direct-page contract refusal: {direct_error:?}");
+    };
+    assert_eq!(stable_binding_id, "dom.document-text");
+    assert_eq!(contract_id, CORE_SCRIPT_DOCUMENT_TEXT_RESULT_CONTRACT_V1);
+    assert_eq!(error.expected, "string within 8 bytes");
+    assert_eq!(error.observed, "string of 9 bytes");
+    assert_eq!(host.debug_record_count(), 0);
+
+    if std::process::Command::new("node")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+    let source = "export function echo(value: string): string { return value; }";
+    let module_id = "main.ts";
+    let emitted = blueice_bluets::compile(
+        module_id,
+        &blueice_bluets::MapLoader::from([blueice_bluets::ModuleSource::new(module_id, source)]),
+        CompilerOptions {
+            runtime_policy: RuntimePolicy::StrictRuntime,
+            strict_runtime_boundaries: vec![blueice_bluets::StrictRuntimeBoundary {
+                contract_id: "echo-string-v1".to_string(),
+                function: "echo".to_string(),
+                span: blueice_bluets::SourceSpan::new(module_id, 0, source.len()),
+                max_string_bytes: budget,
+                helper_version: "bluets-runtime-helper-v1".to_string(),
+            }],
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!emitted.has_errors(), "{:?}", emitted.diagnostics);
+    let artifact = &emitted.output.unwrap().artifacts[module_id];
+    assert!(artifact.strict_runtime.is_some());
+    let scratch = std::env::temp_dir().join(format!(
+        "blueice-strict-parity-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&scratch).unwrap();
+    std::fs::write(scratch.join("package.json"), r#"{"type":"module"}"#).unwrap();
+    std::fs::write(scratch.join("main.js"), &artifact.javascript).unwrap();
+    std::fs::write(
+        scratch.join("bluets.runtime-helper.v1.mjs"),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../bluets/src/runtime_helper_v1.mjs"
+        )),
+    )
+    .unwrap();
+    let probe = format!(
+        "import {{ echo }} from './main.js'; const malformed = {};\n\
+         let refused = false; try {{ echo(malformed); }} catch (error) {{\
+         refused = error === 'BlueTS runtime contract rejected the value'; }}\
+         if (!refused) process.exit(1);",
+        serde_json::to_string(malformed).unwrap()
+    );
+    let result = std::process::Command::new("node")
+        .args(["--input-type=module", "-e", &probe])
+        .current_dir(&scratch)
+        .output()
+        .unwrap();
+    std::fs::remove_dir_all(scratch).unwrap();
+    assert!(
+        result.status.success(),
+        "emitted boundary accepted the direct-page malformed value: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
+#[test]
 fn document_text_contract_refuses_exhausted_validation_before_vm_capture() {
     let profiles = core_script_host_type_catalog();
     let artifact = profiles
