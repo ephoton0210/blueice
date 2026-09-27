@@ -570,6 +570,13 @@ impl RegisteredProjectCompilerService {
         self.projects.keys().copied()
     }
 
+    /// The exact generation retained for this owner project. Output staging
+    /// uses this before touching the filesystem; a guessed or stale token
+    /// cannot select a destination.
+    pub(crate) fn is_current_generation(&self, generation: RegisteredProjectGeneration) -> bool {
+        self.retained_compilation(generation).is_ok()
+    }
+
     /// Registers a complete project exactly once. No subsequent operation can
     /// alter its source graph, roots, resolver, or compiler options.
     pub fn register(

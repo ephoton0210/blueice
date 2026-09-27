@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: F2.2.1.** Stage authorized build output and rename it
-atomically into the owner-selected output root.
+**Current leaf: F2.2.2.** Ensure a diagnostic-bearing registered-project
+build never enters output staging or changes a published generation.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -693,7 +693,7 @@ Keep check read-only and owner registration sealed before listeners.
   - [x] **F2.1.2** Cap artifact size, diagnostic count, and incremental-work-set size. Build validation now counts artifact keys/fingerprints, source-map entries, declarations, and strict helper/call metadata under one checked byte limit plus an artifact-count limit. Core retains a deterministic diagnostic prefix under both count and byte limits and signals truncation even when no diagnostic fits. Existing work-set retention and IPC response tests prove per-set count/byte caps, bounded pages, one-shot cursors, and explicit truncation.
 - [ ] **F2.2** Stage output atomically and emit nothing on compiler error; reject
   paths outside the authorized output root.
-  - [ ] **F2.2.1** Write to a staging path and rename atomically.
+  - [x] **F2.2.1** Write to a staging path and rename atomically. A trusted core owner can stage a current, separately granted generation under its existing canonical output root and atomically rename the complete staging directory to an immutable generation directory. Missing grants, stale generations, changed root aliases, duplicate destinations, and failed population refuse; failed stages are removed. This is the owner staging primitive, with compiler-error admission and artifact path mapping reserved for F2.2.2–F2.2.3.
   - [ ] **F2.2.2** Emit nothing on compiler error.
   - [ ] **F2.2.3** Reject output paths outside the authorized root.
 

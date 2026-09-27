@@ -4016,6 +4016,19 @@ core IPC adapter additionally caps each check list and page by its own field,
 entry, and response budgets. The limits apply before any future output
 transaction or MCP build response can carry these results.
 
+**F2.2.1 atomic owner staging:** A trusted core owner now has one staging
+primitive for a current registered generation with a separate output-write
+grant. It creates a fresh temporary directory inside the canonical output
+root, lets trusted owner code populate it, and makes the complete directory
+visible with one same-filesystem rename to an immutable project/generation
+name. A failed population removes the stage and leaves previous published
+generations untouched; duplicate names, missing grants, stale generations,
+and changed output-root aliases refuse before publication. The test removes
+its tiny temporary output tree. This primitive is not a compiler IPC/MCP
+operation. F2.2.2 must prevent diagnostics from entering staging, and F2.2.3
+must map only validated artifact paths under the granted root before any
+public build route is opened.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

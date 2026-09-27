@@ -101,3 +101,116 @@ fn output_write_grant_is_separate_default_denied_and_bound_to_physical_owner_roo
     assert!(std::fs::read_dir(&granted_output).unwrap().next().is_none());
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn owner_staging_publishes_one_complete_generation_and_cleans_failed_stages() {
+    let directory = std::env::temp_dir().join(format!(
+        "blueice-owner-output-stage-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&directory).unwrap();
+    let directory = directory.canonicalize().unwrap();
+    let (plain_project, plain_output) = make_project(&directory, "plain");
+    let (granted_project, granted_output) = make_project(&directory, "granted");
+    let mut catalog = CoreCompilerProjectCatalog::default();
+    let plain = catalog
+        .register_startup_project(registration(&plain_project, &plain_output))
+        .unwrap();
+    let granted = catalog
+        .register_startup_project_with_output_write_grant(registration(
+            &granted_project,
+            &granted_output,
+        ))
+        .unwrap();
+    let mut session = catalog.seal();
+    let plain_id = RegisteredProjectId::from_wire(plain.id).unwrap();
+    let granted_id = RegisteredProjectId::from_wire(granted.id).unwrap();
+    let plain_generation = session.adapter.service.check(plain_id).unwrap().generation;
+    assert_eq!(
+        session
+            .stage_owner_output(plain_generation, |_| Ok(()))
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::PermissionDenied
+    );
+    assert!(std::fs::read_dir(&plain_output).unwrap().next().is_none());
+
+    let granted_generation = session
+        .adapter
+        .service
+        .check(granted_id)
+        .unwrap()
+        .generation;
+    let published = session
+        .stage_owner_output(granted_generation, |stage| {
+            std::fs::write(stage.join("main.js"), "export const answer = 42;")
+        })
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(published.join("main.js")).unwrap(),
+        "export const answer = 42;"
+    );
+    assert_eq!(
+        session
+            .stage_owner_output(granted_generation, |_| Ok(()))
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::AlreadyExists
+    );
+
+    let next_generation = session
+        .adapter
+        .service
+        .check(granted_id)
+        .unwrap()
+        .generation;
+    assert_eq!(
+        session
+            .stage_owner_output(granted_generation, |_| Ok(()))
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::InvalidInput
+    );
+    assert!(session
+        .stage_owner_output(next_generation, |stage| {
+            std::fs::write(stage.join("partial.js"), "partial")?;
+            Err(std::io::Error::other("populate failed"))
+        })
+        .is_err());
+    let names = std::fs::read_dir(&granted_output)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        vec![published
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned()]
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+        let moved_root = directory.join("moved-output");
+        let outside = directory.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::rename(&granted_output, &moved_root).unwrap();
+        symlink(&outside, &granted_output).unwrap();
+        assert_eq!(
+            session
+                .stage_owner_output(next_generation, |_| Ok(()))
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::InvalidInput
+        );
+        assert!(std::fs::read_dir(&outside).unwrap().next().is_none());
+        std::fs::remove_file(&granted_output).unwrap();
+        std::fs::rename(moved_root, &granted_output).unwrap();
+    }
+    std::fs::remove_dir_all(directory).unwrap();
+}

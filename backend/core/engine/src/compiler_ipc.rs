@@ -481,6 +481,33 @@ impl CoreCompilerServiceSession {
     ) -> Option<&OwnerOutputWriteGrant> {
         self.output_write_grants.get(&project_id)
     }
+
+    /// Stages trusted owner-selected content under this project's separate
+    /// output grant, then atomically publishes one immutable generation
+    /// directory. There is no compiler IPC/MCP call for this owner API.
+    /// Artifact selection and no-emit-on-error policy are added separately.
+    pub fn stage_owner_output<F>(
+        &self,
+        generation: RegisteredProjectGeneration,
+        populate: F,
+    ) -> io::Result<PathBuf>
+    where
+        F: FnOnce(&Path) -> io::Result<()>,
+    {
+        let grant = self
+            .output_write_grants
+            .get(&generation.project_id())
+            .ok_or_else(|| {
+                io::Error::new(io::ErrorKind::PermissionDenied, "output write not granted")
+            })?;
+        if !self.adapter.service.is_current_generation(generation) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "compiler generation is not current",
+            ));
+        }
+        output_staging::stage_and_publish(grant, generation, populate)
+    }
 }
 
 fn validate_limits(
@@ -1107,6 +1134,7 @@ impl CompilerServiceIpcRequestReceiver {
 }
 
 mod adapter;
+mod output_staging;
 
 #[cfg(test)]
 mod output_write_tests;
