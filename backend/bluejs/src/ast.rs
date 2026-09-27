@@ -14,6 +14,8 @@ use crate::JsString;
 use num_bigint::BigInt;
 use std::sync::Arc;
 
+mod retained_payload;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub body: Vec<Stmt>,

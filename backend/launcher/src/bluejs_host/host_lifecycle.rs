@@ -1118,6 +1118,31 @@ impl BlueJsChildHost {
             .ok_or_else(host_failure)
     }
 
+    /// Counts parsed JavaScript programs and their module-ID map entries
+    /// retained in one exact document's deferred debugger queue.
+    pub fn retained_deferred_javascript_ast_bytes(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+    ) -> Result<usize, PageHostReply> {
+        let document = self.exact_document(tab_id, document_generation)?;
+        document
+            .pending_debugger_executions
+            .iter()
+            .filter_map(|pending| match &pending.execution {
+                DeferredChildExecution::JavaScriptModule { programs, .. } => Some(programs),
+                _ => None,
+            })
+            .flat_map(|programs| programs.iter())
+            .try_fold(0usize, |bytes, (module_id, program)| {
+                bytes
+                    .checked_add(std::mem::size_of::<(String, BlueJsProgramV1)>())?
+                    .checked_add(module_id.capacity())?
+                    .checked_add(program.owned_heap_payload_bytes()?)
+            })
+            .ok_or_else(host_failure)
+    }
+
     /// Recomputes actual VM-managed usage from the live realm table on each
     /// request. No cached predecessor generation or conservative reservation
     /// is included, and checked sums fail closed instead of wrapping.

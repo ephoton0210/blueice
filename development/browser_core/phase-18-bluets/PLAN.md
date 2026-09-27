@@ -2347,6 +2347,17 @@ execution, replacement, and close. The separately retained static debugger
 registry record remains under E2.2.1.3.3.1, so no cross-owner duplication is
 introduced.
 
+**E2.2.1.3.3.2.2.2 JavaScript AST charge:** BlueJS owns a separate recursive
+meter for structured programs. It counts each syntax vector's retained
+capacity, each owned UTF-8/UTF-16 string, each boxed node, all nested
+import/export/statement/expression payloads, and one copy of each shared
+`SourceText` allocation within a program. Opaque `BigInt` storage contributes
+its normalized magnitude digits because the dependency does not expose spare
+capacity. The child adds module-map entry payload and module IDs only for
+pending JavaScript modules in the exact live document. Tests show larger
+nested syntax raises the charge and that advance, navigation, and close drop
+the affected tab's pending ASTs; bytecode and source graphs stay separate.
+
 **E2.2.1.3.2 direct-page retained metadata charge:** BlueTS now computes a
 checked owned-heap payload for static source/type/symbol records and nested
 reifiable contract plans. The bridge adds its safe-point map, breakpoint spans,

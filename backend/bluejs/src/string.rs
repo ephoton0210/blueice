@@ -20,6 +20,10 @@ impl JsString {
         &self.0
     }
 
+    pub(crate) fn owned_heap_payload_bytes(&self) -> Option<usize> {
+        self.0.capacity().checked_mul(std::mem::size_of::<u16>())
+    }
+
     /// Number of code units, not bytes or Unicode scalar values.
     pub fn len(&self) -> usize {
         self.0.len()

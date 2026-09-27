@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E2.2.1.3.3.2.2.2.** Measure child-retained parsed JavaScript
-module AST payload under the exact document.
+**Current leaf: E2.2.1.3.3.2.3.** Combine complete deferred debugger
+record payload under the exact child document.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -598,9 +598,9 @@ channel with explicit owner/client grants.
         - [x] **E2.2.1.3.3.1** Measure static BlueTS metadata under the exact live child tab/document. The child reuses the bridge registry's checked per-program retained-payload charge and sums only handles in that realm after validating the document generation. A two-tab child-host test proves separate, content-sensitive charges, stale-generation refusal, replacement release, and close release. The private helper is not yet a wire field; `host_lifecycle.rs` remains under 1,300 lines.
         - [ ] **E2.2.1.3.3.2** Measure source-bearing deferred debugger module graphs and pending execution records under the same child document, including release after execution, replacement, and close.
           - [x] **E2.2.1.3.3.2.1** Count the owned heap payload of pending JavaScript source graphs under the exact child document, including release after execution, replacement, and close. The IPC graph meter uses checked vector-capacity and owned-string sums; the child query includes only pending JavaScript modules in the exact tab/document. A two-tab regression proves content-sensitive charges, execution release, independent replacement/close release, and stale-generation refusal. Parsed ASTs, BlueTS attachments, and inline pending records remain in the next steps.
-          - [ ] **E2.2.1.3.3.2.2** Count pending parsed JavaScript program ASTs and BlueTS module attachment payloads, without duplicating runtime bytecode or static registry metadata.
+          - [x] **E2.2.1.3.3.2.2** Count pending parsed JavaScript program ASTs and BlueTS module attachment payloads, without duplicating runtime bytecode or static registry metadata. Separate checked child queries now account the BlueTS attachment clones and JavaScript module AST/map payload under the exact document; both are released with the pending queue.
             - [x] **E2.2.1.3.3.2.2.1** Count the owned heap payload of pending BlueTS module attachments under the exact child document, including duplicated attachment allocations and lifecycle release. Checked bridge meters include per-program provenance spans, safe-point-map copies, root slots, module map entries, and both the entry and per-module attachment clones. The child sums only pending BlueTS modules in one exact document. A two-tab regression proves content-sensitive charges, execution/replacement/close release, and stale-generation refusal; static registry metadata stays a separate owner.
-            - [ ] **E2.2.1.3.3.2.2.2** Count the owned heap payload of pending parsed JavaScript program ASTs and their module-ID map, without charging bytecode or source graphs again.
+            - [x] **E2.2.1.3.3.2.2.2** Count the owned heap payload of pending parsed JavaScript program ASTs and their module-ID map, without charging bytecode or source graphs again. A BlueJS AST submodule recursively counts vector capacities, strings, UTF-16 strings, boxes, import/export records, nested statements/expressions, and unique shared function-source text with checked arithmetic. The child includes module-map entries and IDs for only the addressed live tab/document. AST and two-tab child-host tests verify content-sensitive charges, execution/replacement/close release, and stale-generation refusal; VM bytecode and source graphs retain separate owners.
           - [ ] **E2.2.1.3.3.2.3** Combine the pending-record and nested payload totals into one checked exact-document query and prove execution, replacement, and close release the complete charge.
         - [ ] **E2.2.1.3.3.3** Carry bounded numeric child static/deferred payload totals through the private page-host accounting protocol to core, update its version and validators, and prove two-tab real-process isolation and release.
       - [ ] **E2.2.1.3.4** Account core-retained debugger identity and metadata maps by exact tab/document generation, including failed child admission and replacement.

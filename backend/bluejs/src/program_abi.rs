@@ -25,6 +25,16 @@ impl BlueJsProgramV1 {
     /// The ABI string checked by a bridge or host before compilation.
     pub const ABI: &'static str = BLUEJS_PROGRAM_ABI_V1;
 
+    /// Counts the checked owned heap payload of this structured program,
+    /// including shared source text only once within its AST. The inline
+    /// program value and a host's enclosing map entry are separate charges.
+    pub fn owned_heap_payload_bytes(&self) -> Option<usize> {
+        match self {
+            Self::Script(program) => program.owned_heap_payload_bytes(),
+            Self::Module(module) => module.owned_heap_payload_bytes(),
+        }
+    }
+
     /// Compiles this already-structured program to BlueJS bytecode.
     pub fn compile(&self) -> Result<Bytecode, CompileError> {
         match self {
