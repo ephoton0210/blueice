@@ -388,6 +388,20 @@ fn optional_dot_read_checks_nullish_result_and_rejects_unproven_shapes() {
 }
 
 #[test]
+fn optional_dot_read_emits_original_short_circuit_syntax_without_types() {
+    let source = "interface Box { value: number; } function choose(flag: boolean): Box | null { return flag ? { value: 41 } : null; } const receiver: Box | null = choose(true); const answer: number = receiver?.value ?? 0; answer;";
+    let javascript = emitted(source);
+    assert!(!javascript.contains("interface Box"), "{javascript}");
+    assert!(!javascript.contains(": Box"), "{javascript}");
+    assert!(!javascript.contains(": number"), "{javascript}");
+    assert!(javascript.contains("receiver?.value ?? 0"), "{javascript}");
+    assert!(
+        javascript.contains("const answer= receiver?.value ?? 0"),
+        "{javascript}"
+    );
+}
+
+#[test]
 fn callback_method_overloads_select_by_tag_and_report_distinct_failures() {
     let ambient = ModuleSource::new(
         "memory:///visitor.d.ts",

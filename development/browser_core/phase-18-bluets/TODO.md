@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: I.2.3.** Verify erased JavaScript retains the selected
-optional dot-property read while removing type annotations.
+**Current leaf: I.2.4.** Execute both nullish and non-nullish optional reads
+through the direct page bridge without parsing emitted JavaScript.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -807,7 +807,7 @@ Keep check read-only and owner registration sealed before listeners.
   reparsing emitted JavaScript.
   - [x] **I.2.1** Parser test. Public `parse_module` retains `receiver?.value` as the exact three-token initializer, including one `?.` token with original byte span; computed and call-suffix shapes remain distinct raw tokens for later checker/direct-bridge rejection. BlueTS crate tests, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
   - [x] **I.2.2** Checker test. A focused optional-property checker accepts one top-level read from a preceding module-local annotated `const` with a required primitive record/interface field and a nullish arm. Inference returns `field | undefined`; existing `??` removes `undefined`. Public compiler tests reject a typed use that omits that possibility, a missing field, computed/call/side-effecting forms, mutable or optional-field receivers, and an invalid call in the `??` fallback. BlueTS crate tests, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
-  - [ ] **I.2.3** Emitter test.
+  - [x] **I.2.3** Emitter test. A public BlueTSC regression confirms the local interface and type annotations are erased while `receiver?.value ?? 0` remains in the emitted JavaScript. The BlueTS crate suite, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
   - [ ] **I.2.4** Direct-runtime test without reparsing emitted JavaScript.
 - [ ] **I.3** Verify its provenance, debugger behavior, contracts, and TypeScript
   oracle evidence before choosing another form.

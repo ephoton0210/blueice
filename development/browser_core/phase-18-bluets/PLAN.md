@@ -4533,6 +4533,8 @@ I.2.1 confirms at the public parser boundary that `receiver?.value` remains the 
 
 I.2.2 adds a focused checker for a top-level optional read from one preceding module-local annotated `const`. The annotation must have exactly one required primitive record field and one `null` or `undefined` arm; a non-generic local interface may name the record. The inferred type is `field | undefined`, so a bare assignment to `field` rejects and the existing `??` rule can recover a definite primitive. A missing field gets a direct property diagnostic. Computed or call suffixes, side-effecting or mutable receivers, optional fields and function-local reads fail closed instead of falling back to permissive `unknown`; the right side of `??` still receives its normal checks. Public compiler regressions, the BlueTS crate suite, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard. I.2.3 owns emitter evidence.
 
+I.2.3 verifies at the public BlueTSC boundary that the selected optional read keeps its original `receiver?.value ?? 0` runtime syntax after the local interface and all type annotations are erased. The BlueTS crate suite, all-target Clippy, rustfmt and whitespace checks pass under the shared disk-budgeted target. I.2.4 must lower and run both receiver states directly.
+
 The direct bridge lowers template substitutions containing supported direct expressions to BlueJS expression slots. It tokenizes the original substitution with BlueTS's lexer and constructs BlueJS AST directly; it never calls a BlueJS source parser on BlueTSC output. Nested templates and embedded expressions outside the direct subset remain excluded.
 
 Non-substituted template literals use the same ordinary escape decoder as quoted strings.
