@@ -439,6 +439,9 @@ impl BlueJsChildHost {
             PageHostRequest::GetDebuggerValueSnapshot { target } => {
                 self.debugger_value_snapshot(target)
             }
+            PageHostRequest::GetDebuggerLinkedValueSnapshot { target } => {
+                self.debugger_linked_value_snapshot(*target)
+            }
             PageHostRequest::DescribeDebuggerStaticScopeRelation { target } => {
                 self.debugger_static_scope_relation(*target)
             }

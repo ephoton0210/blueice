@@ -380,6 +380,37 @@ impl PageHostDebuggerValueTarget {
     }
 }
 
+/// Exact retained linked entry-root slot. It cannot be exchanged for an
+/// ordinary Value target or for a static relation's metadata grant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerLinkedValueTarget {
+    pub frame: PageHostDebuggerLinkedFrame,
+    pub expected_stack: Box<PageHostDebuggerLinkedStackSnapshot>,
+    pub frame_index: u32,
+    pub scope_entry: PageHostDebuggerScopeEntry,
+}
+
+impl PageHostDebuggerLinkedValueTarget {
+    pub fn is_well_formed(&self) -> bool {
+        self.expected_stack.is_well_formed(self.frame)
+            && self.frame_index == 1
+            && self
+                .expected_stack
+                .frames
+                .iter()
+                .all(|frame| !frame.scope_truncated)
+            && self.expected_stack.frames[1]
+                .scope_entries
+                .iter()
+                .filter(|entry| entry.slot_ordinal == self.scope_entry.slot_ordinal)
+                .count()
+                == 1
+            && self.expected_stack.frames[1]
+                .scope_entries
+                .contains(&self.scope_entry)
+    }
+}
+
 /// Exact paused root slot and its separately minted static metadata owner.
 /// The ordinary selector can point at a root pause or the parent root of a
 /// nested pause. A linked pause must use the complete-stack variant instead.
@@ -551,6 +582,20 @@ pub struct PageHostDebuggerValueSnapshot {
 }
 
 impl PageHostDebuggerValueSnapshot {
+    pub fn is_well_formed(&self) -> bool {
+        self.target.is_well_formed() && self.preview.is_well_formed()
+    }
+}
+
+/// Complete, copied linked entry-root preview with its exact private target
+/// echoed. Neither a heap handle nor a compiler type is exposed here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerLinkedValueSnapshot {
+    pub target: PageHostDebuggerLinkedValueTarget,
+    pub preview: PageHostDebuggerValuePreview,
+}
+
+impl PageHostDebuggerLinkedValueSnapshot {
     pub fn is_well_formed(&self) -> bool {
         self.target.is_well_formed() && self.preview.is_well_formed()
     }

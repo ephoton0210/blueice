@@ -12,6 +12,9 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
+//! Version 42 adds a child-private, exact linked entry-root value preview
+//! behind the core's separate public Value gate. It accepts only a complete
+//! live linked stack and returns a bounded copied preview with no type data.
 //! Version 41 adds a child-private, static-only paused scope-symbol/type
 //! relation target for ordinary and linked stacks. It does not add a public
 //! debugger grant or a runtime value read. Version 40 adds the linked-module
@@ -122,10 +125,11 @@ use std::collections::HashSet;
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-/// V41 adds the private static scope-symbol/type relation wire. V40 adds the
-/// complete linked-module private frame, stack, source-span, arm, and resume
-/// family. The public debugger wire remains independently versioned.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 41;
+/// V42 adds the private linked entry-root value route. V41 adds the private
+/// static scope-symbol/type relation wire. V40 adds the complete linked-module
+/// private frame, stack, source-span, arm, and resume family. The public
+/// debugger wire remains independently versioned.
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 42;
 
 pub const PAGE_HOST_DEBUGGER_MAX_STACK_FRAMES: u32 = 64;
 pub const PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES: u32 = 256;
@@ -687,6 +691,11 @@ pub enum PageHostRequest {
     GetDebuggerValueSnapshot {
         target: PageHostDebuggerValueTarget,
     },
+    /// Copies one active entry-root slot from a complete retained linked
+    /// pause. Public Value authority remains a separate core decision.
+    GetDebuggerLinkedValueSnapshot {
+        target: Box<PageHostDebuggerLinkedValueTarget>,
+    },
     /// Asks only for a compiler symbol/type relation at one exact paused
     /// root slot. This private wire does not grant a public debugger client.
     DescribeDebuggerStaticScopeRelation {
@@ -1005,6 +1014,7 @@ pub enum PageHostReply {
         spans: Box<[PageHostDebuggerBlueTsSafePointSpan; 2]>,
     },
     DebuggerValueSnapshot(Box<PageHostDebuggerValueSnapshot>),
+    DebuggerLinkedValueSnapshot(Box<PageHostDebuggerLinkedValueSnapshot>),
     DebuggerStaticScopeRelation(Box<PageHostDebuggerStaticScopeRelation>),
     DebuggerBlueTsSourceStepRequested {
         tab_id: u64,

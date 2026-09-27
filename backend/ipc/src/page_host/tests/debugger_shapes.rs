@@ -65,7 +65,7 @@ fn private_value_target_requires_exact_root_or_nested_frame_shape() {
     target.safe_point.program.program_generation -= 1;
     target.frame_index = 2;
     assert!(!target.is_well_formed());
-    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 41);
+    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 42);
 }
 
 #[test]
@@ -402,7 +402,113 @@ fn private_static_scope_relation_round_trips_without_values_or_displays() {
     let (mut writer, mut reader) = UnixStream::pair().unwrap();
     write_page_host_reply(&mut writer, &reply).unwrap();
     assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
-    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 41);
+    assert_eq!(PAGE_HOST_PROTOCOL_VERSION, 42);
+}
+
+#[test]
+fn linked_value_private_wire_requires_one_complete_entry_slot_and_echoes_its_preview() {
+    let entry_program = PageHostDebuggerProgram {
+        program_handle: 7,
+        program_generation: 9,
+    };
+    let dependency_program = PageHostDebuggerProgram {
+        program_handle: 8,
+        program_generation: 10,
+    };
+    let frame = PageHostDebuggerLinkedFrame {
+        tab_id: 3,
+        document_generation: 4,
+        entry_program,
+        dependency_program,
+        code_unit_ordinal: 1,
+        invocation_serial: 11,
+    };
+    let scope_entry = PageHostDebuggerScopeEntry {
+        slot_ordinal: 2,
+        scope_depth: 0,
+    };
+    let stack = PageHostDebuggerLinkedStackSnapshot {
+        frames: [
+            PageHostDebuggerLinkedStackFrame {
+                safe_point: PageHostDebuggerSafePoint {
+                    program: dependency_program,
+                    code_unit_ordinal: 1,
+                    bytecode_offset: 5,
+                },
+                scope_entries: vec![],
+                scope_truncated: false,
+            },
+            PageHostDebuggerLinkedStackFrame {
+                safe_point: PageHostDebuggerSafePoint {
+                    program: entry_program,
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 13,
+                },
+                scope_entries: vec![scope_entry],
+                scope_truncated: false,
+            },
+        ],
+        stack_truncated: false,
+        max_scope_entries: 256,
+    };
+    let target = PageHostDebuggerLinkedValueTarget {
+        frame,
+        expected_stack: Box::new(stack),
+        frame_index: 1,
+        scope_entry,
+    };
+    assert!(target.is_well_formed());
+    for malformed in [
+        PageHostDebuggerLinkedValueTarget {
+            frame_index: 0,
+            ..target.clone()
+        },
+        PageHostDebuggerLinkedValueTarget {
+            scope_entry: PageHostDebuggerScopeEntry {
+                slot_ordinal: 3,
+                ..scope_entry
+            },
+            ..target.clone()
+        },
+        PageHostDebuggerLinkedValueTarget {
+            frame: PageHostDebuggerLinkedFrame {
+                dependency_program: entry_program,
+                ..frame
+            },
+            ..target.clone()
+        },
+    ] {
+        assert!(!malformed.is_well_formed());
+    }
+    let mut truncated = target.clone();
+    truncated.expected_stack.frames[1].scope_truncated = true;
+    assert!(!truncated.is_well_formed());
+    let mut duplicated = target.clone();
+    duplicated.expected_stack.frames[1]
+        .scope_entries
+        .push(scope_entry);
+    assert!(!duplicated.is_well_formed());
+
+    let request = PageHostRequest::GetDebuggerLinkedValueSnapshot {
+        target: Box::new(target.clone()),
+    };
+    let (mut writer, mut reader) = UnixStream::pair().unwrap();
+    write_page_host_request(&mut writer, &request).unwrap();
+    assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+    let snapshot = PageHostDebuggerLinkedValueSnapshot {
+        target,
+        preview: PageHostDebuggerValuePreview::NumberBits(9.0_f64.to_bits()),
+    };
+    assert!(snapshot.is_well_formed());
+    let reply = PageHostReply::DebuggerLinkedValueSnapshot(Box::new(snapshot.clone()));
+    let (mut writer, mut reader) = UnixStream::pair().unwrap();
+    write_page_host_reply(&mut writer, &reply).unwrap();
+    assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+    assert!(!PageHostDebuggerLinkedValueSnapshot {
+        preview: PageHostDebuggerValuePreview::StringUnits(vec![u16::from(b'x'); 2_049]),
+        ..snapshot
+    }
+    .is_well_formed());
 }
 
 #[test]

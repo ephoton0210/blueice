@@ -17,7 +17,10 @@ fn linked_module_child_keeps_distinct_programs_and_resumes_its_entry() {
             vec![
                 PageHostSource::new(
                     entry,
-                    "import { inner } from './linked-dependency.ts'; export const answer: number = inner() + 1;",
+                    format!(
+                        "import {{ inner }} from './linked-dependency.ts'; export const rootValue: number = 9; export const oversized: string = '{}'; export const answer: number = inner() + rootValue;",
+                        "x".repeat(2_049)
+                    ),
                 ),
                 PageHostSource::new(
                     dependency,
@@ -141,6 +144,90 @@ fn linked_module_child_keeps_distinct_programs_and_resumes_its_entry() {
     };
     assert_eq!(wire_stack.frames[0].safe_point.program, dependency_program);
     assert_eq!(wire_stack.frames[1].safe_point.program, entry_program);
+    let mut value_target = None;
+    let mut oversized_denials = 0;
+    for scope_entry in &wire_stack.frames[1].scope_entries {
+        let target = PageHostDebuggerLinkedValueTarget {
+            frame: wire_frame,
+            expected_stack: Box::new(wire_stack.clone()),
+            frame_index: 1,
+            scope_entry: *scope_entry,
+        };
+        match host.handle_request(PageHostRequest::GetDebuggerLinkedValueSnapshot {
+            target: Box::new(target.clone()),
+        }) {
+            PageHostReply::DebuggerLinkedValueSnapshot(snapshot)
+                if snapshot.target == target
+                    && snapshot.preview
+                        == PageHostDebuggerValuePreview::NumberBits(9.0_f64.to_bits()) =>
+            {
+                assert!(value_target.replace(target).is_none());
+            }
+            PageHostReply::Error {
+                code: PageHostErrorCode::ResourceLimit,
+                ..
+            } => oversized_denials += 1,
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidDebuggerState,
+                ..
+            } => {}
+            reply => panic!("unexpected linked entry value reply: {reply:?}"),
+        }
+    }
+    let value_target = value_target.expect("initialized entry root slot remains visible");
+    assert_eq!(oversized_denials, 1);
+    let rejected_targets = [
+        PageHostDebuggerLinkedValueTarget {
+            frame_index: 0,
+            ..value_target.clone()
+        },
+        PageHostDebuggerLinkedValueTarget {
+            scope_entry: PageHostDebuggerScopeEntry {
+                slot_ordinal: u32::MAX,
+                ..value_target.scope_entry
+            },
+            ..value_target.clone()
+        },
+        PageHostDebuggerLinkedValueTarget {
+            frame: PageHostDebuggerLinkedFrame {
+                dependency_program: entry_program,
+                ..wire_frame
+            },
+            ..value_target.clone()
+        },
+        PageHostDebuggerLinkedValueTarget {
+            frame: PageHostDebuggerLinkedFrame {
+                invocation_serial: wire_frame.invocation_serial + 1,
+                ..wire_frame
+            },
+            ..value_target.clone()
+        },
+        PageHostDebuggerLinkedValueTarget {
+            frame: PageHostDebuggerLinkedFrame {
+                document_generation: 2,
+                ..wire_frame
+            },
+            ..value_target.clone()
+        },
+    ];
+    for target in rejected_targets {
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetDebuggerLinkedValueSnapshot {
+                target: Box::new(target),
+            }),
+            PageHostReply::Error { .. }
+        ));
+    }
+    let mut moved_value_target = value_target.clone();
+    moved_value_target.expected_stack.frames[0]
+        .safe_point
+        .bytecode_offset += 1;
+    assert!(matches!(
+        host.handle_request(PageHostRequest::GetDebuggerLinkedValueSnapshot {
+            target: Box::new(moved_value_target),
+        }),
+        PageHostReply::Error { .. }
+    ));
     let mut source_inventory = |program| {
         let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
             tab_id: 7,
@@ -386,6 +473,12 @@ fn linked_module_child_keeps_distinct_programs_and_resumes_its_entry() {
     assert!(host
         .debugger_linked_stack_snapshot(7, 1, entry_program, frame, 256)
         .is_err());
+    assert!(matches!(
+        host.handle_request(PageHostRequest::GetDebuggerLinkedValueSnapshot {
+            target: Box::new(value_target),
+        }),
+        PageHostReply::Error { .. }
+    ));
     assert!(host
         .request_debugger_linked_resume(7, 1, entry_program, frame)
         .is_err());

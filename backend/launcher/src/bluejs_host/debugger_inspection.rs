@@ -260,6 +260,65 @@ impl BlueJsChildHost {
         PageHostReply::DebuggerValueSnapshot(Box::new(snapshot))
     }
 
+    /// Copies one entry-root binding only after the full retained linked
+    /// stack and exact slot are reacquired. The parent `Value` grant remains
+    /// a core decision; this private route cannot be called by page code.
+    pub(super) fn debugger_linked_value_snapshot(
+        &self,
+        target: PageHostDebuggerLinkedValueTarget,
+    ) -> PageHostReply {
+        if !target.is_well_formed() {
+            return invalid_request();
+        }
+        let frame = target.frame;
+        let active = match self.exact_linked_runtime_frame(frame) {
+            Ok(active) => active,
+            Err(reply) => return reply,
+        };
+        let current = match self.debugger_linked_stack_snapshot(
+            frame.tab_id,
+            frame.document_generation,
+            frame.entry_program,
+            active,
+            target.expected_stack.max_scope_entries,
+        ) {
+            Ok(current) => current.to_wire(),
+            Err(reply) => return reply,
+        };
+        if current != *target.expected_stack {
+            return invalid_debugger_state();
+        }
+        let stack = match self.runtime.debugger_linked_stack_snapshot(
+            frame.tab_id,
+            active,
+            2,
+            VM_DEBUGGER_MAX_SCOPE_ENTRIES,
+        ) {
+            Ok(stack) => stack,
+            Err(_) => return invalid_debugger_state(),
+        };
+        let preview = match self.runtime.debugger_linked_value_preview(
+            frame.tab_id,
+            active,
+            &stack,
+            VmDebuggerScopeEntry {
+                slot_ordinal: target.scope_entry.slot_ordinal,
+                scope_depth: target.scope_entry.scope_depth,
+            },
+        ) {
+            Ok(preview) => page_host_debugger_value_preview(preview),
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Unsupported(
+                "debugger value exceeds the payload byte budget",
+            ))) => return resource_limit(),
+            Err(_) => return invalid_debugger_state(),
+        };
+        let snapshot = PageHostDebuggerLinkedValueSnapshot { target, preview };
+        if !snapshot.is_well_formed() {
+            return invalid_debugger_state();
+        }
+        PageHostReply::DebuggerLinkedValueSnapshot(Box::new(snapshot))
+    }
+
     pub(super) fn debugger_execution_state(
         &self,
         tab_id: u64,

@@ -1907,6 +1907,20 @@ slot, moved child frame, wrong realm/program, and resume-stale targets; a
 tests and eleven existing plain-preview tests pass. This leaf adds no private
 wire route or public Value authority.
 
+**C3.1.3.5.3.2 private linked entry value:** Page-host protocol v42 carries a
+distinct linked value target: the exact linked frame, its complete child-first
+two-frame stack, frame index one, and one unique entry-root slot. The private
+reply echoes that entire target and one bounded plain-data preview. The host
+first validates the wire shape, reacquires the active linked frame and full
+stack, and then asks the page runtime to recheck both installed programs and
+the retained BlueJS continuation before copying the binding. Malformed and
+moved selectors, wrong programs or document generations, and resumed frames
+return only typed errors. A preview exceeding the payload budget returns
+`ResourceLimit` with no partial value. The IPC socket round trip and the
+Launcher child-owner linked-pause test pass; this leaf adds no public debugger
+request or grant. The child executor and core-facing adapter follow in
+C3.1.3.5.3.3.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
