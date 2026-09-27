@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
 use std::io::{self, Read, Write};
+use std::path::Path;
 
 /// Version two adds explicit, default-denied per-project compiler visibility.
 /// Version one is rejected rather than silently changing its public inventory.
@@ -252,6 +253,9 @@ impl CompilerCatalogBootstrap {
                 "compiler catalog output overlaps an input or another output",
             ));
         }
+        for project in &self.projects {
+            validate_project_filesystem(project)?;
+        }
         Ok(())
     }
 
@@ -364,6 +368,67 @@ fn paths_overlap(left: &str, right: &str) -> bool {
     left == right || is_descendant(left, right) || is_descendant(right, left)
 }
 
+/// An absolute owner identity is a host path and must already name the
+/// filesystem's canonical object. Virtual `scheme:///` identities continue
+/// to describe bundled source text and never imply filesystem access.
+fn validate_project_filesystem(project: &CompilerCatalogProject) -> io::Result<()> {
+    if Path::new(&project.canonical_project_root).is_absolute() {
+        for identity in [
+            &project.canonical_config_root,
+            &project.canonical_output_root,
+            &project.entry_module,
+        ] {
+            if !Path::new(identity).is_absolute() {
+                return Err(invalid("physical compiler catalog mixes path kinds"));
+            }
+        }
+        validate_existing_path(&project.canonical_project_root, true)?;
+        validate_existing_path(&project.canonical_config_root, false)?;
+        validate_existing_path(&project.canonical_output_root, true)?;
+        for module in &project.modules {
+            validate_existing_path(&module.canonical_id, false)?;
+        }
+        for module in &project.options.ambient_declaration_modules {
+            if Path::new(&module.canonical_id).is_absolute() {
+                validate_existing_path(&module.canonical_id, false)?;
+            }
+        }
+    } else {
+        let Some((scheme, _)) = project.canonical_project_root.split_once("://") else {
+            return Err(invalid(
+                "compiler catalog project root is not absolute or virtual",
+            ));
+        };
+        let Some((output_scheme, _)) = project.canonical_output_root.split_once("://") else {
+            return Err(invalid("virtual compiler catalog mixes path kinds"));
+        };
+        if scheme.is_empty() || scheme != output_scheme {
+            return Err(invalid("virtual compiler catalog mixes path kinds"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_existing_path(identity: &str, directory: bool) -> io::Result<()> {
+    let path = Path::new(identity);
+    if !path.is_absolute() {
+        return Err(invalid("physical compiler catalog mixes path kinds"));
+    }
+    let resolved = std::fs::canonicalize(path)
+        .map_err(|_| invalid("physical compiler catalog path does not exist"))?;
+    if resolved.to_str() != Some(identity) {
+        return Err(invalid("physical compiler catalog path is not canonical"));
+    }
+    let metadata = std::fs::metadata(&resolved)
+        .map_err(|_| invalid("physical compiler catalog path does not exist"))?;
+    if (directory && !metadata.is_dir()) || (!directory && !metadata.is_file()) {
+        return Err(invalid(
+            "physical compiler catalog path has wrong file type",
+        ));
+    }
+    Ok(())
+}
+
 fn add_bytes(total: &mut usize, bytes: usize) -> io::Result<()> {
     *total = total
         .checked_add(bytes)
@@ -379,6 +444,53 @@ fn invalid(message: &'static str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::{Path, PathBuf};
+
+    struct PhysicalFixture {
+        directory: PathBuf,
+        catalog: CompilerCatalogBootstrap,
+    }
+
+    impl PhysicalFixture {
+        fn new() -> Self {
+            let directory = std::env::temp_dir().join(format!(
+                "blueice-catalog-roots-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            let directory = {
+                std::fs::create_dir(&directory).unwrap();
+                directory.canonicalize().unwrap()
+            };
+            let project = directory.join("project");
+            let output = directory.join("output");
+            std::fs::create_dir(&project).unwrap();
+            std::fs::create_dir(&output).unwrap();
+            std::fs::write(project.join("blue-ts.json"), "{}").unwrap();
+            std::fs::write(project.join("main.ts"), "export const value = 42;").unwrap();
+            let mut catalog = fixture_catalog();
+            let owner = &mut catalog.projects[0];
+            owner.canonical_project_root = path_text(&project);
+            owner.canonical_config_root = path_text(&project.join("blue-ts.json"));
+            owner.canonical_output_root = path_text(&output);
+            owner.entry_module = path_text(&project.join("main.ts"));
+            owner.modules[0].canonical_id = owner.entry_module.clone();
+            Self { directory, catalog }
+        }
+    }
+
+    impl Drop for PhysicalFixture {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.directory).unwrap();
+        }
+    }
+
+    fn path_text(path: &Path) -> String {
+        path.to_str().unwrap().to_string()
+    }
 
     fn fixture_catalog() -> CompilerCatalogBootstrap {
         CompilerCatalogBootstrap {
@@ -529,5 +641,79 @@ mod tests {
 
         catalog.projects[1].canonical_output_root = "project:///second-dist".into();
         assert!(catalog.validate().is_ok());
+    }
+
+    #[test]
+    fn physical_catalog_checks_existing_canonical_roots_and_input_files() {
+        let fixture = PhysicalFixture::new();
+        assert!(fixture.catalog.validate().is_ok());
+        assert!(CompilerCatalogBootstrap::from_json_slice(
+            &serde_json::to_vec(&fixture.catalog).unwrap()
+        )
+        .is_ok());
+
+        let mut missing_output = fixture.catalog.clone();
+        missing_output.projects[0].canonical_output_root =
+            path_text(&fixture.directory.join("missing-output"));
+        assert!(missing_output.validate().is_err());
+
+        let mut mixed_identity = fixture.catalog.clone();
+        mixed_identity.projects[0].canonical_output_root = "project:///dist".into();
+        assert!(mixed_identity.validate().is_err());
+
+        let source_directory = fixture.directory.join("project/source-dir");
+        std::fs::create_dir(&source_directory).unwrap();
+        let mut directory_as_source = fixture.catalog.clone();
+        directory_as_source.projects[0].modules[0].canonical_id = path_text(&source_directory);
+        directory_as_source.projects[0].entry_module = path_text(&source_directory);
+        assert!(directory_as_source.validate().is_err());
+
+        let output_file = fixture.directory.join("output-file");
+        std::fs::write(&output_file, "not a directory").unwrap();
+        let mut file_as_output = fixture.catalog.clone();
+        file_as_output.projects[0].canonical_output_root = path_text(&output_file);
+        assert!(file_as_output.validate().is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn physical_catalog_rejects_symlink_aliases_for_each_root_and_source() {
+        use std::os::unix::fs::symlink;
+
+        let fixture = PhysicalFixture::new();
+        let project = fixture.directory.join("project");
+        let project_alias = fixture.directory.join("project-alias");
+        symlink(&project, &project_alias).unwrap();
+        let mut aliased_project = fixture.catalog.clone();
+        aliased_project.projects[0].canonical_project_root = path_text(&project_alias);
+        aliased_project.projects[0].canonical_config_root =
+            path_text(&project_alias.join("blue-ts.json"));
+        aliased_project.projects[0].entry_module = path_text(&project_alias.join("main.ts"));
+        aliased_project.projects[0].modules[0].canonical_id =
+            aliased_project.projects[0].entry_module.clone();
+        assert!(aliased_project.validate().is_err());
+
+        for (name, target) in [
+            ("config-alias.json", project.join("blue-ts.json")),
+            ("source-alias.ts", project.join("main.ts")),
+        ] {
+            symlink(target, project.join(name)).unwrap();
+        }
+        let mut aliased_config = fixture.catalog.clone();
+        aliased_config.projects[0].canonical_config_root =
+            path_text(&project.join("config-alias.json"));
+        assert!(aliased_config.validate().is_err());
+
+        let mut aliased_source = fixture.catalog.clone();
+        aliased_source.projects[0].entry_module = path_text(&project.join("source-alias.ts"));
+        aliased_source.projects[0].modules[0].canonical_id =
+            aliased_source.projects[0].entry_module.clone();
+        assert!(aliased_source.validate().is_err());
+
+        let output_alias = fixture.directory.join("output-alias");
+        symlink(fixture.directory.join("output"), &output_alias).unwrap();
+        let mut aliased_output = fixture.catalog.clone();
+        aliased_output.projects[0].canonical_output_root = path_text(&output_alias);
+        assert!(aliased_output.validate().is_err());
     }
 }

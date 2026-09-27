@@ -3953,6 +3953,21 @@ public project ID, rejects the private project ID, and still checks the public
 project. This does not add per-client project subsets, project registration,
 build/output authority, or filesystem-root canonicalization.
 
+**F1.1.1 physical owner roots:** An owner catalog may now use absolute host
+paths for its project root, config file, source modules, and output directory.
+Validation resolves every such identity against the current filesystem and
+requires the supplied spelling to equal the resolved canonical path. Project
+and output roots must be existing directories; config and source identities
+must be existing regular files. Lexical containment and cross-project
+input/output collision checks still run first. An absolute project cannot mix
+virtual and physical config, entry, module, or output identities. Existing
+`project:///` catalogs continue to represent bundled source text with no
+filesystem lookup. The launcher checks the owner file before spawning core;
+core validates the private bootstrap again before binding listeners. This
+does not compare bundled source text with file contents or open a write
+capability. F1.1.3 must separately authorize output writes and revalidate
+paths at the time of use, because filesystem entries can change after startup.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

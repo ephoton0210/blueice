@@ -96,6 +96,63 @@ fn owner_catalog_file_rejects_symlink_and_malformed_content() {
 }
 
 #[test]
+fn owner_catalog_file_checks_physical_roots_before_launch() {
+    use blueice_ipc::compiler_catalog::{
+        CompilerCatalogModule, CompilerCatalogOptions, CompilerCatalogProject,
+        COMPILER_CATALOG_BOOTSTRAP_VERSION,
+    };
+    use std::os::unix::fs::symlink;
+
+    let directory = std::env::temp_dir().join(format!(
+        "blueice-physical-owner-catalog-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&directory).unwrap();
+    let directory = directory.canonicalize().unwrap();
+    let project = directory.join("project");
+    let output = directory.join("output");
+    let catalog_file = directory.join("catalog.json");
+    std::fs::create_dir(&project).unwrap();
+    std::fs::create_dir(&output).unwrap();
+    std::fs::write(project.join("blue-ts.json"), "{}").unwrap();
+    std::fs::write(project.join("main.ts"), "export const answer = 42;").unwrap();
+    let entry = project.join("main.ts").to_str().unwrap().to_string();
+    let mut catalog = CompilerCatalogBootstrap {
+        version: COMPILER_CATALOG_BOOTSTRAP_VERSION,
+        projects: vec![CompilerCatalogProject {
+            canonical_project_root: project.to_str().unwrap().to_string(),
+            canonical_config_root: project.join("blue-ts.json").to_str().unwrap().to_string(),
+            canonical_output_root: output.to_str().unwrap().to_string(),
+            entry_module: entry.clone(),
+            modules: vec![CompilerCatalogModule {
+                canonical_id: entry,
+                text: "export const answer = 42;".into(),
+            }],
+            expose_to_compiler_ipc: true,
+            resolutions: Vec::new(),
+            options: CompilerCatalogOptions::default(),
+        }],
+    };
+    std::fs::write(&catalog_file, serde_json::to_vec(&catalog).unwrap()).unwrap();
+    assert_eq!(
+        read_owner_compiler_catalog_file(&catalog_file).unwrap(),
+        catalog
+    );
+
+    let output_alias = directory.join("output-alias");
+    symlink(&output, &output_alias).unwrap();
+    catalog.projects[0].canonical_output_root = output_alias.to_str().unwrap().to_string();
+    std::fs::write(&catalog_file, serde_json::to_vec(&catalog).unwrap()).unwrap();
+    assert!(read_owner_compiler_catalog_file(&catalog_file).is_err());
+
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn no_flags_uses_the_default_rendezvous_socket_and_default_size() {
     let parsed = args(&[]).unwrap();
     assert_eq!(parsed.rendezvous_socket, default_rendezvous_socket_path());
