@@ -254,7 +254,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, runtimePolicy, imports."
+    "Usage:\n  bluetsc check <entry.ts> [--project-root <directory>] [--target es2020|es2022] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc build <entry.ts> --out-dir <directory> [--project-root <directory>] [--source-map] [--declaration] [--target es2020|es2022] [--runtime-policy transpile-only|checked|strict-runtime]\n  bluetsc check --config <bluetsc.json>\n  bluetsc build --config <bluetsc.json>\n\nConfig fields: entries, projectRoot, outDir, sourceMap, declaration, target, runtimePolicy, imports, strictBoundaries."
 }
 
 #[derive(Debug)]
@@ -275,6 +275,8 @@ struct BuildMetadata {
     runtime_policy: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     runtime_helper: Option<RuntimeHelperIdentity>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    strict_boundaries: Vec<StrictBoundaryManifest>,
     source_map: bool,
     declaration: bool,
     entries: Vec<String>,
@@ -290,6 +292,32 @@ struct RuntimeHelperIdentity {
     version: &'static str,
     file: &'static str,
     sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StrictBoundaryManifest {
+    contract_id: String,
+    module: String,
+    function: String,
+    source_start: usize,
+    source_end: usize,
+    max_string_bytes: usize,
+    helper_version: String,
+}
+
+impl From<&StrictRuntimeBoundary> for StrictBoundaryManifest {
+    fn from(boundary: &StrictRuntimeBoundary) -> Self {
+        Self {
+            contract_id: boundary.contract_id.clone(),
+            module: boundary.span.module.clone(),
+            function: boundary.function.clone(),
+            source_start: boundary.span.start,
+            source_end: boundary.span.end,
+            max_string_bytes: boundary.max_string_bytes,
+            helper_version: boundary.helper_version.clone(),
+        }
+    }
 }
 
 fn runtime_helper_v1_identity() -> RuntimeHelperIdentity {
@@ -382,6 +410,12 @@ fn build_metadata(invocation: &Invocation, summary: &CompileSummary) -> BuildMet
         runtime_policy: invocation.options.runtime_policy.as_str(),
         runtime_helper: (invocation.options.runtime_policy == RuntimePolicy::StrictRuntime)
             .then(runtime_helper_v1_identity),
+        strict_boundaries: invocation
+            .options
+            .strict_runtime_boundaries
+            .iter()
+            .map(StrictBoundaryManifest::from)
+            .collect(),
         source_map: invocation.options.source_map,
         declaration: invocation.options.declaration,
         entries,

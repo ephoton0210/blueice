@@ -125,6 +125,29 @@ fn configured_strict_boundary_is_confined_and_keeps_exact_source_span() {
     assert_eq!(boundary.span.start, 0);
     assert_eq!(boundary.span.end, 61);
     assert_eq!(boundary.max_string_bytes, 64);
+    let metadata = build_metadata(
+        &invocation,
+        &CompileSummary {
+            artifacts: BTreeMap::new(),
+            declaration_modules: BTreeMap::new(),
+            fingerprint: "test".to_string(),
+            module_count: 1,
+            has_errors: false,
+        },
+    );
+    let serialized = serde_json::to_value(metadata).unwrap();
+    assert_eq!(
+        serialized["strictBoundaries"][0]["contractId"],
+        "echo-string-v1"
+    );
+    assert_eq!(serialized["strictBoundaries"][0]["module"], "main.ts");
+    assert_eq!(serialized["strictBoundaries"][0]["sourceStart"], 0);
+    assert_eq!(serialized["strictBoundaries"][0]["sourceEnd"], 61);
+    assert_eq!(serialized["strictBoundaries"][0]["maxStringBytes"], 64);
+    assert_eq!(
+        serialized["strictBoundaries"][0]["helperVersion"],
+        RUNTIME_HELPER_V1_VERSION
+    );
 
     let invalid = StrictBoundaryConfig {
         contract_id: "x".to_string(),
@@ -146,6 +169,7 @@ fn test_metadata() -> BuildMetadata {
         target: "es2022",
         runtime_policy: "checked",
         runtime_helper: None,
+        strict_boundaries: Vec::new(),
         source_map: true,
         declaration: true,
         entries: vec!["src/main.js".to_string()],
@@ -198,6 +222,7 @@ fn publishing_replaces_a_complete_output_directory_only_after_staging() {
     assert!(output.join("src/main.d.ts").is_file());
     let manifest = fs::read_to_string(output.join("bluetsc.manifest.json")).unwrap();
     assert!(manifest.contains("\"languageVersion\": \"blue-ts-test\""));
+    assert!(!manifest.contains("\"strictBoundaries\""));
     assert!(!manifest.contains(&root.to_string_lossy().into_owned()));
     assert!(!output.join("obsolete.js").exists());
     fs::remove_dir_all(temporary).unwrap();

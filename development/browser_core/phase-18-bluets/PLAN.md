@@ -2723,6 +2723,16 @@ strict crossing records while the target-bound fingerprints differ. This
 proves compiler retention for the current narrow profile; publisher
 consistency and public strict build admission remain separate gates.
 
+**E3.2.3.3.2.1 manifest boundary inventory:** Build metadata now serializes
+each owner-selected strict contract as `strictBoundaries` with its stable ID,
+root-relative source module, function name, exact declaration byte range,
+fixed UTF-8 byte limit, and helper version. It preserves owner order, which
+already participates in the build fingerprint. Checked output with no
+selected strict boundaries omits this field. A focused config/binary test
+checks every serialized descriptor field; the existing checked publisher
+test asserts omission. The publisher must still compare these claims to
+generated code before any strict publication.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
