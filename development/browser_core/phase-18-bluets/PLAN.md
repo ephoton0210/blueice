@@ -2100,6 +2100,21 @@ the new MPL-headed direct-page module is 194 lines. This proves the real child
 transport; browser HTTP policy and public socket acceptance are covered by
 later D leaves.
 
+**D.1.2 real ESM direct-page acceptance:** A second supervised BlueJS child
+fixture supplies an explicit static edge from `./answer.ts` to a canonical
+`blueice://authorized/...` module. Because that target is distinct from the
+specifier's relative URL, successful two-program execution proves that the
+checked caller edge determines the runtime dependency. Both programs retain
+compiler metadata whose verified safe points map to their own original typed
+declarations with exact UTF-8 ranges, UTF-16 columns, and canonical source
+provenance. Changing only the caller's resolver fingerprint changes the
+compiler-options hash. Removing the edge rejects the same source graph and
+installs no program, demonstrating no ambient URL fallback. The focused real
+child test and Launcher Clippy/format checks pass with the shared target
+cache; the new direct-page test module remains below 1,300 lines. D.1 is
+complete for the real child transport, with public browser behavior remaining
+under D.2 and D.3.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

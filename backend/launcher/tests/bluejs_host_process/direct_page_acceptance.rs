@@ -192,3 +192,253 @@ fn real_classic_bluets_page_elides_type_import_and_maps_original_declaration() {
     ));
     host.shutdown().unwrap();
 }
+
+#[test]
+fn real_esm_bluets_page_uses_authorized_target_and_maps_both_original_modules() {
+    const ENTRY: &str = "https://example.test/scripts/page-entry.ts";
+    const DEPENDENCY: &str = "blueice://authorized/owner-chosen.ts";
+    const SPECIFIER: &str = "./answer.ts";
+    const ENTRY_SOURCE: &str = "import { chosen } from './answer.ts';\n/* 🚀 */ export const typedResult: number = chosen;";
+    const DEPENDENCY_SOURCE: &str = "/* 🌕 */ export const chosen: number = 41;";
+    const ENTRY_DECLARATION: &str = "export const typedResult: number = chosen;";
+    const DEPENDENCY_DECLARATION: &str = "export const chosen: number = 41;";
+
+    let authorized_graph = |fingerprint: &str, include_resolution: bool| {
+        let mut source_graph = graph(
+            ENTRY,
+            vec![
+                PageHostSource::new(ENTRY, ENTRY_SOURCE),
+                PageHostSource::new(DEPENDENCY, DEPENDENCY_SOURCE),
+            ],
+        );
+        source_graph.resolver_fingerprint = fingerprint.into();
+        if include_resolution {
+            source_graph.resolutions.push(PageHostStaticResolution {
+                from_module: ENTRY.into(),
+                specifier: SPECIFIER.into(),
+                canonical_target: DEPENDENCY.into(),
+            });
+        }
+        source_graph
+    };
+    let module_script = |source_graph| PageHostScript {
+        ordinal: 0,
+        language: PageHostScriptLanguage::BlueTs,
+        kind: PageHostScriptKind::Module,
+        graph: source_graph,
+    };
+
+    let mut host = SpawnedBlueJsHost::spawn().unwrap();
+    let mut page = document(
+        1,
+        vec![module_script(authorized_graph(
+            "reviewed-esm-resolver-v1",
+            true,
+        ))],
+    );
+    page.debugger_execution_control = true;
+    assert!(matches!(
+        host.synchronize_document(page).unwrap(),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let PageHostReply::DebuggerPrograms { programs, .. } = host
+        .request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap()
+    else {
+        panic!("both authorized ESM modules must install debugger programs")
+    };
+    assert_eq!(programs.len(), 2);
+    let mut mapped_modules = std::collections::BTreeSet::new();
+    let mut original_options_hash = None;
+    for program in programs {
+        let PageHostReply::DebuggerBlueTsMetadata { metadata, .. } = host
+            .request(PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+            })
+            .unwrap()
+        else {
+            panic!("each ESM module must retain BlueTS metadata")
+        };
+        assert_eq!(metadata.len(), 1);
+        let metadata = metadata[0];
+        let PageHostReply::DebuggerBlueTsMetadataSummary { summary, .. } = host
+            .request(PageHostRequest::DescribeDebuggerBlueTsMetadata {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+                metadata,
+            })
+            .unwrap()
+        else {
+            panic!("each ESM module must expose its options fingerprint")
+        };
+        if let Some(previous) = &original_options_hash {
+            assert_eq!(previous, &summary.compiler_options_hash);
+        } else {
+            original_options_hash = Some(summary.compiler_options_hash);
+        }
+        let PageHostReply::DebuggerSafePoints { safe_points, .. } = host
+            .request(PageHostRequest::ListDebuggerSafePoints {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+            })
+            .unwrap()
+        else {
+            panic!("each ESM module must retain verified safe points")
+        };
+        let mut mapped = false;
+        for safe_point in safe_points {
+            let reply = host
+                .request(PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+                    tab_id: 41,
+                    document_generation: 1,
+                    metadata,
+                    safe_point,
+                })
+                .unwrap();
+            let PageHostReply::DebuggerBlueTsSafePointSpan { span, .. } = reply else {
+                assert!(matches!(
+                    reply,
+                    PageHostReply::Error {
+                        code: PageHostErrorCode::InvalidRequest,
+                        ..
+                    }
+                ));
+                continue;
+            };
+            let PageHostReply::DebuggerBlueTsMetadataSourceProvenance { provenance, .. } = host
+                .request(PageHostRequest::DescribeDebuggerBlueTsMetadataSource {
+                    tab_id: 41,
+                    document_generation: 1,
+                    program,
+                    metadata,
+                    source_id: span.source_id,
+                })
+                .unwrap()
+            else {
+                panic!("the mapped ESM source must have exact provenance")
+            };
+            let (source, declaration) = match provenance.module.as_str() {
+                ENTRY => (ENTRY_SOURCE, ENTRY_DECLARATION),
+                DEPENDENCY => (DEPENDENCY_SOURCE, DEPENDENCY_DECLARATION),
+                other => panic!("unexpected unapproved ESM source: {other}"),
+            };
+            if source.get(span.start_byte as usize..span.end_byte as usize) != Some(declaration) {
+                continue;
+            }
+            assert_eq!(span.start_byte as usize, source.find(declaration).unwrap());
+            assert_eq!(
+                span.coordinates.start_column_utf16,
+                source[source[..span.start_byte as usize]
+                    .rfind('\n')
+                    .map_or(0, |newline| newline + 1)
+                    ..span.start_byte as usize]
+                    .encode_utf16()
+                    .count() as u32
+            );
+            mapped_modules.insert(provenance.module);
+            mapped = true;
+            break;
+        }
+        assert!(
+            mapped,
+            "each ESM program must map an original typed declaration"
+        );
+    }
+    assert_eq!(
+        mapped_modules,
+        [ENTRY.to_string(), DEPENDENCY.to_string()].into()
+    );
+    assert!(matches!(
+        host.request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+            if matches!(reports.as_slice(), [PageHostScriptReport {
+                outcome: PageHostScriptOutcome::Executed,
+                ..
+            }])
+    ));
+
+    let mut second = document(
+        2,
+        vec![module_script(authorized_graph(
+            "reviewed-esm-resolver-v2",
+            true,
+        ))],
+    );
+    second.debugger_execution_control = true;
+    assert!(matches!(
+        host.synchronize_document(second).unwrap(),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let PageHostReply::DebuggerPrograms { programs, .. } = host
+        .request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 41,
+            document_generation: 2,
+        })
+        .unwrap()
+    else {
+        panic!("the successor ESM graph must install programs")
+    };
+    let program = programs[0];
+    let PageHostReply::DebuggerBlueTsMetadata { metadata, .. } = host
+        .request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 41,
+            document_generation: 2,
+            program,
+        })
+        .unwrap()
+    else {
+        panic!("the successor ESM program must retain metadata")
+    };
+    let PageHostReply::DebuggerBlueTsMetadataSummary { summary, .. } = host
+        .request(PageHostRequest::DescribeDebuggerBlueTsMetadata {
+            tab_id: 41,
+            document_generation: 2,
+            program,
+            metadata: metadata[0],
+        })
+        .unwrap()
+    else {
+        panic!("the successor ESM graph must expose its options fingerprint")
+    };
+    assert_ne!(
+        Some(summary.compiler_options_hash),
+        original_options_hash,
+        "the authorized resolver fingerprint must affect compiler identity"
+    );
+
+    let missing_edge = document(
+        3,
+        vec![module_script(authorized_graph(
+            "reviewed-esm-resolver-v2",
+            false,
+        ))],
+    );
+    assert!(matches!(
+        host.synchronize_document(missing_edge).unwrap(),
+        PageHostReply::Synchronized { reports, .. }
+            if matches!(reports.as_slice(), [PageHostScriptReport {
+                outcome: PageHostScriptOutcome::Rejected { .. },
+                ..
+            }])
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 41,
+            document_generation: 3,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerPrograms { programs, .. } if programs.is_empty()
+    ));
+    host.shutdown().unwrap();
+}
