@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E2.2.1.3.3.** Attribute child static BlueTS metadata and
-deferred debugger source graphs to their exact tab/document generation.
+**Current leaf: E2.2.1.3.3.2.** Measure child-retained deferred debugger
+source-graph payload under its exact tab/document generation.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -595,6 +595,9 @@ channel with explicit owner/client grants.
       - [x] **E2.2.1.3.1** Decide the live-page cache ownership and accounting model. The plan now separates stateless page compilation and ephemeral primitive contract plans from retained direct/child debug metadata, child deferred source graphs, core debugger maps, and the shared verified HTTP source cache. It excludes the sealed project compiler's incremental cache because it has no initiating page tab. The decision charges bounded retained payload bytes once to the exact tab/document owner, avoids counting VM bytecode/heap twice, partitions source cache retention by document, and requires release on replacement/close. This is a design-only leaf with a reviewable owner table in PLAN.md.
       - [x] **E2.2.1.3.2** Attribute direct-page retained BlueTS debug and contract metadata payload bytes to the owning tab. Checked counters cover static source/type/symbol records, nested reifiable contract plans, safe-point maps, breakpoint spans, and root slots at each live BlueJS program generation. The direct-page host sums only handles in the addressed tab's realm; a two-tab public-boundary test proves independent, content-sensitive charges and release on navigation/close. A module-graph test proves all live program charges are summed and pruned, while a compiler metadata test proves retained contracts increase the charge. All touched files remain below 1,300 lines.
       - [ ] **E2.2.1.3.3** Attribute child static BlueTS metadata and deferred debugger source-graph payload to its exact tab/document generation; expose bounded private child accounting to core and prove lifecycle release.
+        - [x] **E2.2.1.3.3.1** Measure static BlueTS metadata under the exact live child tab/document. The child reuses the bridge registry's checked per-program retained-payload charge and sums only handles in that realm after validating the document generation. A two-tab child-host test proves separate, content-sensitive charges, stale-generation refusal, replacement release, and close release. The private helper is not yet a wire field; `host_lifecycle.rs` remains under 1,300 lines.
+        - [ ] **E2.2.1.3.3.2** Measure source-bearing deferred debugger module graphs and pending execution records under the same child document, including release after execution, replacement, and close.
+        - [ ] **E2.2.1.3.3.3** Carry bounded numeric child static/deferred payload totals through the private page-host accounting protocol to core, update its version and validators, and prove two-tab real-process isolation and release.
       - [ ] **E2.2.1.3.4** Account core-retained debugger identity and metadata maps by exact tab/document generation, including failed child admission and replacement.
       - [ ] **E2.2.1.3.5** Partition the verified HTTP source cache by initiating tab/document generation and release its payload charge on navigation/close while preserving same-document cache hits and integrity checks.
       - [ ] **E2.2.1.3.6** Recount all live-page retained cache owners and prove the combined tab charges and lifecycle release through real core/child processes; document the page compiler/primitive-plan zero-retention paths.

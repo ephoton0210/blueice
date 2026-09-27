@@ -5,6 +5,61 @@
 use super::*;
 
 #[test]
+fn child_static_bluets_metadata_is_charged_to_its_exact_live_document() {
+    let mut host = BlueJsChildHost::default();
+    let first = document(
+        1,
+        vec![blue_ts_classic(
+            0,
+            "interface ShortShape { value: string; } const shortName: string = 'one'; shortName;",
+        )],
+    );
+    let mut second = document(
+        1,
+        vec![blue_ts_classic(
+            0,
+            "interface MuchLongerRetainedContractShape { value: string; } const muchLongerRetainedSymbolName: string = 'two'; muchLongerRetainedSymbolName;",
+        )],
+    );
+    second.tab_id = 8;
+    for document in [first, second] {
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument { document }),
+            PageHostReply::Synchronized { .. }
+        ));
+    }
+    let first_bytes = host.retained_static_payload_bytes(7, 1).unwrap();
+    let second_bytes = host.retained_static_payload_bytes(8, 1).unwrap();
+    assert!(first_bytes > 0);
+    assert!(second_bytes > first_bytes);
+    assert_eq!(
+        host.retained_static_payload_bytes(7, 1).unwrap(),
+        first_bytes
+    );
+
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(2, Vec::new()),
+        }),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(host.retained_static_payload_bytes(7, 1).is_err());
+    assert_eq!(host.retained_static_payload_bytes(7, 2).unwrap(), 0);
+    assert_eq!(
+        host.retained_static_payload_bytes(8, 1).unwrap(),
+        second_bytes
+    );
+    assert!(matches!(
+        host.handle_request(PageHostRequest::CloseRealm {
+            tab_id: 8,
+            document_generation: 1,
+        }),
+        PageHostReply::RealmClosed { .. }
+    ));
+    assert!(host.retained_static_payload_bytes(8, 1).is_err());
+}
+
+#[test]
 fn child_wide_reservations_reject_new_tabs_but_allow_replacement_and_release() {
     for constrained_resource in ["programs", "bytecode", "heap"] {
         let heap_per_realm = BlueJsHostRuntimeLimits::default().max_heap_bytes_per_realm;

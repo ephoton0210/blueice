@@ -1058,6 +1058,24 @@ impl BlueJsChildHost {
         }
     }
 
+    /// Counts static BlueTS metadata only for the exact live child document.
+    /// This stays inside the child until the private accounting protocol has
+    /// a bounded numeric field for it.
+    pub fn retained_static_payload_bytes(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+    ) -> Result<usize, PageHostReply> {
+        self.exact_document(tab_id, document_generation)?;
+        let handles = self
+            .runtime
+            .program_handles(tab_id)
+            .map_err(|_| host_failure())?;
+        self.debug_registry
+            .retained_payload_bytes_for_live_handles(self.runtime.program_registry(), handles)
+            .map_err(|_| host_failure())
+    }
+
     /// Recomputes actual VM-managed usage from the live realm table on each
     /// request. No cached predecessor generation or conservative reservation
     /// is included, and checked sums fail closed instead of wrapping.

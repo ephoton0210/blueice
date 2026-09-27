@@ -2327,6 +2327,16 @@ excluding allocator metadata and BTreeMap node overhead. All affected files
 are below 1,300 lines. Child, core debugger-map, and verified-source charges
 remain in the following subleaves.
 
+**E2.2.1.3.3.1 child static metadata charge:** The child now checks the exact
+tab/document tuple, obtains that realm's live BlueJS program handles, and sums
+only their checked `DirectDebugRegistry` payload charges. It does not expose a
+new page-host protocol field yet. A two-tab child-host regression executes
+different BlueTS interfaces/symbols, observes independent content-sensitive
+charges, rejects the old generation after replacement, and sees zero in the
+new empty realm while the second tab retains its charge. Closing the second
+tab removes its charge. Deferred source graphs and the private numeric
+core/child accounting field remain the next child subleaves.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
