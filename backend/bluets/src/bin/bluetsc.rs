@@ -8,6 +8,7 @@ use blueice_bluets::{
     compile, BuildArtifact, CompilerLimits, CompilerOptions, EcmaTarget, ModuleLoader,
     ModuleSource, RuntimePolicy,
 };
+use ring::digest::{digest, SHA256};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -18,6 +19,7 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const RUNTIME_HELPER_V1_FILE: &str = "bluets.runtime-helper.v1.mjs";
+const RUNTIME_HELPER_V1_VERSION: &str = "bluets-runtime-helper-v1";
 const RUNTIME_HELPER_V1_SOURCE: &str = include_str!("../runtime_helper_v1.mjs");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -257,6 +259,8 @@ struct BuildMetadata {
     fingerprint: String,
     target: &'static str,
     runtime_policy: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime_helper: Option<RuntimeHelperIdentity>,
     source_map: bool,
     declaration: bool,
     entries: Vec<String>,
@@ -264,6 +268,29 @@ struct BuildMetadata {
     imports: BTreeMap<String, String>,
     #[serde(skip)]
     has_configured_imports: bool,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeHelperIdentity {
+    version: &'static str,
+    file: &'static str,
+    sha256: String,
+}
+
+fn runtime_helper_v1_identity() -> RuntimeHelperIdentity {
+    let hash = digest(&SHA256, RUNTIME_HELPER_V1_SOURCE.as_bytes());
+    RuntimeHelperIdentity {
+        version: RUNTIME_HELPER_V1_VERSION,
+        file: RUNTIME_HELPER_V1_FILE,
+        sha256: format!(
+            "sha256:{}",
+            hash.as_ref()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        ),
+    }
 }
 
 fn compile_entries(
@@ -339,6 +366,8 @@ fn build_metadata(invocation: &Invocation, summary: &CompileSummary) -> BuildMet
         fingerprint: summary.fingerprint.clone(),
         target: invocation.options.target.as_str(),
         runtime_policy: invocation.options.runtime_policy.as_str(),
+        runtime_helper: (invocation.options.runtime_policy == RuntimePolicy::StrictRuntime)
+            .then(runtime_helper_v1_identity),
         source_map: invocation.options.source_map,
         declaration: invocation.options.declaration,
         entries,
@@ -726,6 +755,14 @@ fn publish_build(
     declaration_modules: &std::collections::BTreeMap<String, String>,
     metadata: &BuildMetadata,
 ) -> io::Result<()> {
+    let expected_helper = (metadata.runtime_policy == RuntimePolicy::StrictRuntime.as_str())
+        .then(runtime_helper_v1_identity);
+    if metadata.runtime_helper != expected_helper {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "build metadata does not bind the exact runtime helper",
+        ));
+    }
     let output = absolute_path(out_dir)?;
     if output == root || (output.exists() && fs::canonicalize(&output)? == root) {
         return Err(io::Error::new(
@@ -1001,6 +1038,7 @@ mod tests {
             fingerprint: "bts-project-test".to_string(),
             target: "es2022",
             runtime_policy: "checked",
+            runtime_helper: None,
             source_map: true,
             declaration: true,
             entries: vec!["src/main.js".to_string()],
@@ -1065,6 +1103,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         let mut metadata = test_metadata();
         metadata.runtime_policy = RuntimePolicy::StrictRuntime.as_str();
+        metadata.runtime_helper = Some(runtime_helper_v1_identity());
         publish_build(
             &root,
             &output,
@@ -1079,8 +1118,48 @@ mod tests {
         );
         assert!(RUNTIME_HELPER_V1_SOURCE.starts_with("// This Source Code Form"));
         assert!(RUNTIME_HELPER_V1_SOURCE.contains("bluets-runtime-helper-v1"));
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.join("bluetsc.manifest.json")).unwrap())
+                .unwrap();
+        let identity = runtime_helper_v1_identity();
+        assert_eq!(manifest["runtimeHelper"]["version"], identity.version);
+        assert_eq!(manifest["runtimeHelper"]["file"], identity.file);
+        assert_eq!(manifest["runtimeHelper"]["sha256"], identity.sha256);
+
+        metadata.runtime_helper.as_mut().unwrap().sha256 = "sha256:wrong".into();
+        assert!(publish_build(
+            &root,
+            &output,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &metadata
+        )
+        .is_err());
+        assert_eq!(
+            fs::read_to_string(output.join(RUNTIME_HELPER_V1_FILE)).unwrap(),
+            RUNTIME_HELPER_V1_SOURCE
+        );
+        metadata.runtime_helper = None;
+        assert!(publish_build(
+            &root,
+            &output,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &metadata
+        )
+        .is_err());
 
         metadata.runtime_policy = RuntimePolicy::Checked.as_str();
+        metadata.runtime_helper = Some(runtime_helper_v1_identity());
+        assert!(publish_build(
+            &root,
+            &output,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &metadata
+        )
+        .is_err());
+        metadata.runtime_helper = None;
         publish_build(
             &root,
             &output,

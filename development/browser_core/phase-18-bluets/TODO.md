@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E3.2.2.** Bind the exact helper v1 identity into strict-runtime
-artifact metadata before standalone admission can open.
+**Current leaf: E3.2.3.** Reject emitted targets or artifacts that can erase a
+required strict-runtime check before standalone admission opens.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -633,7 +633,7 @@ channel with explicit owner/client grants.
   - [x] **E3.2.1** Emit a versioned helper file through the atomic publisher's strict staging path. Standalone strict admission remains gated until helper identity and retained-check checks complete.
     - [x] **E3.2.1.1** Decide the helper v1 contract, output name, and admission order. The current reviewed live page boundaries are primitive strings, so helper v1 validates only primitive-string type, Unicode scalar well-formedness, and bounded UTF-8 bytes with intrinsic string indexing and operators; unsupported structured values fail closed. The deterministic `bluets.runtime-helper.v1.mjs` file is staged beside emitted modules with an MPL header. Standalone strict-runtime admission remains gated until E3.2.2 binds the file identity to the manifest and E3.2.3 proves checks cannot be erased; PLAN.md records the decision and the staging test boundary.
     - [x] **E3.2.1.2** Implement the pure, versioned helper source and stage the exact helper file through the build publisher. The MPL-licensed ESM helper checks primitive type, nonnegative integer byte limit, surrogate pairing, and UTF-8 length using primitive operations and a fixed source-free rejection. An internal strict-metadata publisher test verifies exact staged bytes and removal on a checked replacement; all 11 BlueTSC binary tests, the existing strict-admission CLI regression, workspace Clippy, and direct Node edge checks pass. This closes E3.2.1 while public strict admission remains gated for E3.2.2–E3.2.3.
-  - [ ] **E3.2.2** Bind the helper identity into the artifact manifest.
+  - [x] **E3.2.2** Bind the helper identity into the artifact manifest. Strict metadata now records helper v1 version, fixed relative file name, and SHA-256 of the exact embedded bytes. The atomic publisher verifies that strict metadata matches the file it will write, refuses missing or tampered identity, and refuses a helper claim in a checked build before replacing output. Its focused test confirms the serialized manifest and preservation of prior output on refusal; all 11 BlueTSC binary tests and workspace Clippy pass.
   - [ ] **E3.2.3** Reject any target that erases a required check.
 - [ ] **E3.3** Make direct-page and emitted ESM reject the same malformed value;
   a weaker artifact must never claim strict-runtime.

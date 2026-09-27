@@ -2542,6 +2542,17 @@ byte limits, invalid budgets, surrogate refusal, and a Proxy that receives
 no property read. Manifest identity and generated-code retention gates remain
 the next steps.
 
+**E3.2.2 manifest binding:** Strict build metadata carries one optional
+runtime-helper record with the v1 version, fixed relative output filename,
+and a `sha256:` digest of the exact embedded helper bytes. The publisher
+recomputes the expected record before staging and rejects missing, altered,
+or policy-inconsistent metadata without replacing an existing output
+directory. The direct publisher regression reads the serialized manifest,
+compares all three fields to the written helper source, then proves a wrong
+digest, missing strict record, and unexpected checked record all fail before
+replacement. This binds artifact identity but does not yet prove that
+generated modules retain calls to the helper; E3.2.3 owns that gate.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
