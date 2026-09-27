@@ -118,6 +118,61 @@ fn excluded_try_shapes_remain_opaque_to_the_bounded_function_parser() {
 }
 
 #[test]
+fn catch_binding_is_unknown_only_inside_its_lexical_body() {
+    let source = "function takesNumber(value: number): void {} function f(caught: number): void { try { takesNumber(caught); throw 'bad'; } catch (caught) { takesNumber(caught); } finally { takesNumber(caught); } takesNumber(caught); }";
+    let found = diagnostics(source);
+    assert_eq!(
+        found.len(),
+        1,
+        "only the catch-shadowed call should fail: {found:?}"
+    );
+    assert_eq!(found[0].code.to_string(), "BTS3003");
+    assert!(found[0].message.contains("argument 1 has type `unknown`"));
+    assert_eq!(
+        found[0].span.start,
+        source.find("takesNumber(caught); } finally").unwrap(),
+    );
+}
+
+#[test]
+fn catch_return_uses_unknown_instead_of_the_shadowed_outer_type() {
+    assert_rejected(
+        "function f(caught: number): number { try { throw 1; } catch (caught) { return caught; } finally { 0; } return 0; }",
+        "BTS3004",
+        "return expression has type `unknown`",
+    );
+    assert_accepted(
+        "function f(): unknown { try { throw 1; } catch (caught) { return caught; } finally { 0; } }",
+    );
+    assert_accepted(
+        "type Maybe = number | unknown; function f(): Maybe { try { throw 1; } catch (caught) { return caught; } }",
+    );
+    assert_rejected(
+        "function f(): number { try { return 1; } finally { 0; } }",
+        "BTS3004",
+        "can complete without returning a value",
+    );
+}
+
+#[test]
+fn catch_checks_nested_calls_and_unannotated_returns_without_scope_leakage() {
+    let prelude = "function takesNumber(value: number): number { return value; } ";
+    assert_rejected(
+        &format!("{prelude}function f(caught: number) {{ try {{ throw 1; }} catch (caught) {{ return takesNumber(caught); }} }}"),
+        "BTS3003",
+        "argument 1 has type `unknown`",
+    );
+    let source = format!("{prelude}function f(caught: number): number {{ try {{ throw 1; }} catch (caught) {{ if (true) {{ takesNumber(caught); }} return 0; }} finally {{ return caught; }} return 0; }}");
+    let found = diagnostics(&source);
+    assert_eq!(
+        found.len(),
+        1,
+        "only the nested catch call should fail: {found:?}"
+    );
+    assert!(found[0].message.contains("argument 1 has type `unknown`"));
+}
+
+#[test]
 fn braced_while_retains_its_condition_and_body_without_proving_a_return() {
     let source =
         "function count(value: number): number { while (value > 0) { value -= 1; } return value; }";

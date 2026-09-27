@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: H.2.2.2.** Check the catch binding as a lexical `unknown`
-across body expressions and returns without leaking into other blocks.
+**Current leaf: H.2.2.3.** Lower validated try/catch/finally bodies to BlueJS
+and verify direct-page completion behavior and excluded shapes.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -780,7 +780,7 @@ Keep check read-only and owner registration sealed before listeners.
   - [x] **H.2.1** Define supported catch-binding and finally semantics. [PLAN.md](PLAN.md#h21-first-trycatchfinally-form) chooses a named-function braced try with one unannotated identifier catch binding, a finally block, or both. Catch is lexical and typed `unknown`; finally runs on ordinary normal/return/throw completion and its own return/throw overrides a pending one. Fatal resource/host errors remain terminal, and the conservative checker derives no required-return proof from try. Bare, typed, destructured, multiple, and nested catches/tries, block-local declarations and loops, and top-level/anonymous forms remain outside the direct bridge. H.2.2 owns checker, runtime, safe-point, and stale-generation evidence for this design-only decision.
   - [ ] **H.2.2** Test matching BlueJS execution and safe points.
     - [x] **H.2.2.1** Parse the selected braced try/catch/finally shapes and preserve original spans; prove malformed or excluded shapes and the not-yet-lowered direct bridge fail closed. BlueTSC retains complete try, single-identifier catch, and finally bodies as structured items, while bare/typed catches and a handlerless try remain opaque. The direct bridge explicitly rejects the structured item at its original span until checker and AST lowering are installed. Public parser and direct-bridge regressions pass under the shared-target disk guard.
-    - [ ] **H.2.2.2** Check catch binding as a lexical `unknown` in every supported body expression and return, with no leakage into try/finally or the enclosing function; retain conservative required-return analysis.
+    - [x] **H.2.2.2** Check catch binding as a lexical `unknown` in every supported body expression and return, with no leakage into try/finally or the enclosing function; retain conservative required-return analysis. The checker walks structured bodies with a catch-local shadow, applies strict unknown assignability only there, validates unannotated return expressions, and preserves the conservative try fall-through rule; public frontend regressions and the BlueTS crate test/Clippy gates pass under the disk budget.
     - [ ] **H.2.2.3** Lower only validated bodies to BlueJS `Stmt::Try`/`CatchClause` and test direct-page catch binding, normal/return/throw completion, finalizer precedence, and excluded shapes.
     - [ ] **H.2.2.4** Verify live nested safe-point mapping and stale-generation denial, compare syntax and diagnostics with the pinned TypeScript oracle, and run the workspace gates under the shared-target disk budget.
 - [ ] **H.3** Define control-flow narrowing and return paths through checker, emitter,

@@ -117,6 +117,28 @@ pub(super) fn is_assignable(
     }
 }
 
+/// Catch bindings have TypeScript's strict `unknown` semantics. Other
+/// inference paths still use `Unknown` as a permissive bounded fallback.
+pub(super) fn accepts_strict_unknown(
+    expected: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> bool {
+    match expected {
+        Type::Any | Type::Unknown => true,
+        Type::Union(options) => options
+            .iter()
+            .any(|option| accepts_strict_unknown(option, aliases, &mut visited.clone(), budget)),
+        Type::Intersection(parts) => parts
+            .iter()
+            .all(|part| accepts_strict_unknown(part, aliases, &mut visited.clone(), budget)),
+        Type::Named { .. } => instantiate_named(expected, aliases, visited, budget, "expected")
+            .is_some_and(|expanded| accepts_strict_unknown(&expanded, aliases, visited, budget)),
+        _ => false,
+    }
+}
+
 pub(super) fn instantiate_named(
     value: &Type,
     aliases: &BTreeMap<String, TypeDefinition>,

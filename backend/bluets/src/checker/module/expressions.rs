@@ -230,13 +230,17 @@ impl<'a> ModuleChecker<'a> {
         span: &SourceSpan,
     ) -> bool {
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-        let assignable = is_assignable(
-            actual,
-            expected,
-            &self.types,
-            &mut HashSet::new(),
-            &mut budget,
-        );
+        let assignable = if self.strict_catch_unknown && matches!(actual, Type::Unknown) {
+            accepts_strict_unknown(expected, &self.types, &mut HashSet::new(), &mut budget)
+        } else {
+            is_assignable(
+                actual,
+                expected,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            )
+        };
         if budget.exhausted {
             self.type_error(
                 span,

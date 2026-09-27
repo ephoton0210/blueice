@@ -38,6 +38,7 @@ impl<'a> ModuleChecker<'a> {
             function_implementations: BTreeSet::new(),
             type_parameters: BTreeSet::new(),
             max_type_expansions,
+            strict_catch_unknown: false,
             record_spread_inference_failure: Cell::new(None),
         }
     }
@@ -735,41 +736,20 @@ impl<'a> ModuleChecker<'a> {
             scope.insert(local.name.clone(), inferred);
         }
         self.check_function_body_expressions(&function.body, &scope);
-        if let Some(return_type) = &function.return_type {
+        let allows_implicit_undefined = if let Some(return_type) = &function.return_type {
             self.check_type(return_type, &function.span);
-            let allows_implicit_undefined =
-                self.return_type_allows_implicit_undefined(return_type, &function.span);
-            for returned in &function.returns {
-                if returned.is_empty() {
-                    if !allows_implicit_undefined {
-                        self.type_error(
-                            &function.span,
-                            format!(
-                                "return expression has type `undefined`, which is not assignable to `{}`",
-                                type_label(return_type)
-                            ),
-                            DiagnosticCode::ReturnTypeMismatch,
-                        );
-                    }
-                    continue;
-                }
-                self.check_direct_runtime_expression(returned, &scope, &function.span);
-                let actual = self.infer_expression(returned, &scope);
-                let return_is_assignable = (matches!(actual, Type::Undefined)
-                    && allows_implicit_undefined)
-                    || self.is_assignable_bounded(&actual, return_type, &function.span);
-                if !return_is_assignable {
-                    self.type_error(
-                        &function.span,
-                        format!(
-                            "return expression has type `{}`, which is not assignable to `{}`",
-                            type_label(&actual),
-                            type_label(return_type)
-                        ),
-                        DiagnosticCode::ReturnTypeMismatch,
-                    );
-                }
-            }
+            self.return_type_allows_implicit_undefined(return_type, &function.span)
+        } else {
+            true
+        };
+        self.check_function_body_returns(
+            &function.body,
+            &scope,
+            function.return_type.as_ref(),
+            allows_implicit_undefined,
+            &function.span,
+        );
+        if let Some(return_type) = &function.return_type {
             if !function.declared
                 && !function.overload
                 && !allows_implicit_undefined
@@ -855,6 +835,163 @@ impl<'a> ModuleChecker<'a> {
         }
     }
 
+    /// Check structured returns in the lexical scope where they execute.
+    /// The parser's flat `returns` list remains part of its public source
+    /// representation, but cannot distinguish a catch-shadowed binding.
+    fn check_function_body_returns(
+        &mut self,
+        items: &[FunctionBodyItem],
+        scope: &BTreeMap<String, Type>,
+        return_type: Option<&Type>,
+        allows_implicit_undefined: bool,
+        function_span: &SourceSpan,
+    ) {
+        for item in items {
+            match item {
+                FunctionBodyItem::Return { tokens, .. } => self.check_function_return_tokens(
+                    tokens,
+                    scope,
+                    return_type,
+                    allows_implicit_undefined,
+                    function_span,
+                ),
+                FunctionBodyItem::If(statement) => self.check_function_if_returns(
+                    statement,
+                    scope,
+                    return_type,
+                    allows_implicit_undefined,
+                    function_span,
+                ),
+                FunctionBodyItem::While(statement) => self.check_function_body_returns(
+                    &statement.body,
+                    scope,
+                    return_type,
+                    allows_implicit_undefined,
+                    function_span,
+                ),
+                FunctionBodyItem::Try(statement) => {
+                    self.check_function_body_returns(
+                        &statement.block,
+                        scope,
+                        return_type,
+                        allows_implicit_undefined,
+                        function_span,
+                    );
+                    if let Some(handler) = &statement.handler {
+                        let catch_scope = Self::catch_binding_scope(scope, &handler.binding);
+                        let previous_strictness = self.strict_catch_unknown;
+                        self.strict_catch_unknown = true;
+                        self.check_function_body_returns(
+                            &handler.body,
+                            &catch_scope,
+                            return_type,
+                            allows_implicit_undefined,
+                            function_span,
+                        );
+                        self.strict_catch_unknown = previous_strictness;
+                    }
+                    if let Some(finalizer) = &statement.finalizer {
+                        self.check_function_body_returns(
+                            finalizer,
+                            scope,
+                            return_type,
+                            allows_implicit_undefined,
+                            function_span,
+                        );
+                    }
+                }
+                FunctionBodyItem::Variable(_)
+                | FunctionBodyItem::Expression { .. }
+                | FunctionBodyItem::Throw { .. }
+                | FunctionBodyItem::Opaque(_) => {}
+            }
+        }
+    }
+
+    fn check_function_if_returns(
+        &mut self,
+        statement: &FunctionIfStatement,
+        scope: &BTreeMap<String, Type>,
+        return_type: Option<&Type>,
+        allows_implicit_undefined: bool,
+        function_span: &SourceSpan,
+    ) {
+        self.check_function_body_returns(
+            &statement.consequent,
+            scope,
+            return_type,
+            allows_implicit_undefined,
+            function_span,
+        );
+        match &statement.alternate {
+            Some(FunctionElseBranch::Braced(body)) => self.check_function_body_returns(
+                body,
+                scope,
+                return_type,
+                allows_implicit_undefined,
+                function_span,
+            ),
+            Some(FunctionElseBranch::ElseIf(branch)) => self.check_function_if_returns(
+                branch,
+                scope,
+                return_type,
+                allows_implicit_undefined,
+                function_span,
+            ),
+            None => {}
+        }
+    }
+
+    fn check_function_return_tokens(
+        &mut self,
+        returned: &[Token],
+        scope: &BTreeMap<String, Type>,
+        return_type: Option<&Type>,
+        allows_implicit_undefined: bool,
+        function_span: &SourceSpan,
+    ) {
+        if returned.is_empty() {
+            if let Some(return_type) = return_type.filter(|_| !allows_implicit_undefined) {
+                self.type_error(
+                    function_span,
+                    format!(
+                        "return expression has type `undefined`, which is not assignable to `{}`",
+                        type_label(return_type)
+                    ),
+                    DiagnosticCode::ReturnTypeMismatch,
+                );
+            }
+            return;
+        }
+        self.check_direct_runtime_expression(returned, scope, function_span);
+        let Some(return_type) = return_type else {
+            return;
+        };
+        let actual = self.infer_expression(returned, scope);
+        let return_is_assignable = (matches!(actual, Type::Undefined) && allows_implicit_undefined)
+            || self.is_assignable_bounded(&actual, return_type, function_span);
+        if !return_is_assignable {
+            self.type_error(
+                function_span,
+                format!(
+                    "return expression has type `{}`, which is not assignable to `{}`",
+                    type_label(&actual),
+                    type_label(return_type)
+                ),
+                DiagnosticCode::ReturnTypeMismatch,
+            );
+        }
+    }
+
+    fn catch_binding_scope(
+        scope: &BTreeMap<String, Type>,
+        binding: &str,
+    ) -> BTreeMap<String, Type> {
+        let mut catch_scope = scope.clone();
+        catch_scope.insert(binding.to_string(), Type::Unknown);
+        catch_scope
+    }
+
     pub(super) fn check_function_body_expressions(
         &mut self,
         items: &[FunctionBodyItem],
@@ -870,6 +1007,20 @@ impl<'a> ModuleChecker<'a> {
                 }
                 FunctionBodyItem::While(statement) => {
                     self.check_direct_function_while(statement, scope);
+                    continue;
+                }
+                FunctionBodyItem::Try(statement) => {
+                    self.check_function_body_expressions(&statement.block, scope);
+                    if let Some(handler) = &statement.handler {
+                        let catch_scope = Self::catch_binding_scope(scope, &handler.binding);
+                        let previous_strictness = self.strict_catch_unknown;
+                        self.strict_catch_unknown = true;
+                        self.check_function_body_expressions(&handler.body, &catch_scope);
+                        self.strict_catch_unknown = previous_strictness;
+                    }
+                    if let Some(finalizer) = &statement.finalizer {
+                        self.check_function_body_expressions(finalizer, scope);
+                    }
                     continue;
                 }
                 _ => continue,

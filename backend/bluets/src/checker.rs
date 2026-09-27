@@ -20,7 +20,8 @@ mod type_relations;
 use properties::{property_type, PropertyType, TypeExpansionBudget};
 pub(crate) use type_relations::type_label;
 use type_relations::{
-    complete_type_arguments, instantiate_named, is_assignable, substitute_type, type_identity,
+    accepts_strict_unknown, complete_type_arguments, instantiate_named, is_assignable,
+    substitute_type, type_identity,
 };
 
 const MAX_LITERAL_INFERENCE_CONTAINERS: usize = 128;
