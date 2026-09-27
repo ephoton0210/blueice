@@ -251,7 +251,7 @@ fn compile_with_limit_and_mode(
         // there disposes when the module's own evaluation completes.
         if has_using_declaration(&program.body) {
             let is_async = has_await_using_declaration(&program.body);
-            compiler.wrap_with_disposal(is_async, |this| {
+            compiler.wrap_with_disposal(is_async, &mut |this| {
                 this.top_level_statements_after_function_declarations(
                     &program.body,
                     &mut root_statement_offsets,

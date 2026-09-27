@@ -444,6 +444,118 @@ fn eval_limits_cover_visible_bindings_and_the_final_halt() {
 }
 
 #[test]
+fn statement_metadata_limits_reach_handler_disposal_and_with_bindings() {
+    for source in [
+        "try {} finally {}",
+        "try {} finally {} try {} finally {}",
+        "{ using resource = null; }",
+        "try {} finally {} { using resource = null; }",
+        "try { using resource = null; } finally {}",
+        "with ({}) { var value = 1; }",
+        "0; with ({}) { var value = 1; }",
+        "0; with ({}) var value = 1;",
+    ] {
+        let program = parse(source).unwrap();
+        let full = compile(&program).unwrap();
+        let mut first_success = None;
+        for limit in 0..64 {
+            let limits = CompileLimits {
+                max_metadata_entries: limit,
+                ..CompileLimits::default()
+            };
+            match compile_with_limits(&program, limits) {
+                Ok(code) => {
+                    first_success.get_or_insert(limit);
+                    assert_eq!(code.bytes(), full.bytes(), "{source}: {limit}");
+                }
+                Err(CompileError::ProgramTooLarge) => {
+                    assert!(first_success.is_none(), "{source}: {limit}");
+                }
+                Err(error) => panic!("{source}: {limit}: {error:?}"),
+            }
+        }
+        assert!(first_success.is_some(), "{source}");
+    }
+}
+
+#[test]
+fn externally_constructed_statement_shapes_reach_lowering_boundaries() {
+    let default = parse_module("export default function() {}")
+        .unwrap()
+        .body
+        .remove(0);
+    assert!(compile(&Program {
+        body: vec![Stmt::Block(vec![default])],
+    })
+    .is_ok());
+
+    assert!(compile(&Program {
+        body: vec![Stmt::Try {
+            block: Vec::new(),
+            handler: None,
+            finalizer: None,
+        }],
+    })
+    .is_ok());
+
+    assert!(matches!(
+        compile(&Program {
+            body: vec![Stmt::ClassDecoratedField {
+                field: Box::new(Stmt::Empty),
+                record: "missing".into(),
+            }],
+        }),
+        Err(CompileError::InvalidSyntax(
+            "decoration record binding is not available in this function"
+        ))
+    ));
+}
+
+#[test]
+fn repeated_sloppy_eval_var_assignment_respects_each_compile_limit() {
+    let outer = compile(
+        &parse("function f() { eval('var value'); eval('var value = 1'); return value; } f();")
+            .unwrap(),
+    )
+    .unwrap();
+    let execute = |limits| {
+        let mut vm = Vm::new(VmConfig {
+            eval_compile_limits: limits,
+            ..VmConfig::default()
+        })
+        .unwrap();
+        vm.execute(&outer)
+    };
+    assert_eq!(execute(CompileLimits::default()), Ok(Value::Number(1.0)));
+    for byte_limit in 0..128 {
+        let limits = CompileLimits {
+            max_bytecode_bytes: byte_limit,
+            ..CompileLimits::default()
+        };
+        match execute(limits) {
+            Ok(Value::Number(1.0)) => break,
+            Err(RuntimeError::SyntaxError(_)) => {}
+            result => panic!("unexpected eval result at byte limit {byte_limit}: {result:?}"),
+        }
+        assert!(byte_limit < 127, "eval never compiled within 128 bytes");
+    }
+    for metadata_limit in 0..32 {
+        let limits = CompileLimits {
+            max_metadata_entries: metadata_limit,
+            ..CompileLimits::default()
+        };
+        match execute(limits) {
+            Ok(Value::Number(1.0)) => break,
+            Err(RuntimeError::SyntaxError(_)) => {}
+            result => {
+                panic!("unexpected eval result at metadata limit {metadata_limit}: {result:?}")
+            }
+        }
+        assert!(metadata_limit < 31, "eval never compiled within 32 entries");
+    }
+}
+
+#[test]
 fn compiler_rejects_an_undeclared_private_name_in_an_external_ast() {
     let program = Program {
         body: vec![Stmt::Expr(Expr::PrivateIn {

@@ -563,7 +563,7 @@ fn metadata_limits_bound_handler_and_control_records() {
     let mut compiler = bare_compiler();
     compiler.max_metadata_entries = 0;
     assert_eq!(
-        compiler.wrap_with_disposal(false, |_| Ok(())),
+        compiler.wrap_with_disposal(false, &mut |_| Ok(())),
         Err(CompileError::ProgramTooLarge)
     );
 
@@ -591,6 +591,30 @@ fn metadata_limits_bound_handler_and_control_records() {
 }
 
 #[test]
+fn disposal_wrapper_propagates_body_and_every_emit_limit() {
+    for is_async in [false, true] {
+        assert_compiler_byte_boundaries(
+            if is_async {
+                "asynchronous disposal wrapper"
+            } else {
+                "synchronous disposal wrapper"
+            },
+            |compiler| {
+                if is_async {
+                    compiler.function = true;
+                    compiler.bytecode.async_function = true;
+                }
+            },
+            |compiler| compiler.wrap_with_disposal(is_async, &mut |_| Ok(())),
+        );
+    }
+    assert_eq!(
+        bare_compiler().wrap_with_disposal(false, &mut |_| Err(CompileError::ProgramTooLarge)),
+        Err(CompileError::ProgramTooLarge)
+    );
+}
+
+#[test]
 fn internal_declaration_and_cleanup_paths_propagate_byte_limits() {
     let default_function = Stmt::ModuleDefaultFunction {
         function: Function::default(),
@@ -608,6 +632,21 @@ fn internal_declaration_and_cleanup_paths_propagate_byte_limits() {
     assert_compiler_byte_boundaries(
         "dynamic function declaration",
         |_| {},
+        |compiler| compiler.function_declaration(&dynamic_function),
+    );
+    assert_compiler_byte_boundaries(
+        "function declaration with a var binding",
+        |compiler| {
+            compiler.names[0].insert("f".into(), 0);
+            compiler.bytecode.bindings.push(Binding {
+                name: "f".into(),
+                mutable: true,
+                strict_immutable: false,
+                lexical: false,
+                catch_parameter: false,
+                eval_var: false,
+            });
+        },
         |compiler| compiler.function_declaration(&dynamic_function),
     );
     let mut name_limit = bare_compiler();
@@ -674,6 +713,78 @@ fn internal_declaration_and_cleanup_paths_propagate_byte_limits() {
     };
     assert_statement_byte_boundaries(&decorated, record_setup);
     assert_statement_byte_boundaries(&Stmt::ClassExtraInitializers("record".into()), record_setup);
+}
+
+#[test]
+fn binding_patterns_propagate_byte_limits_for_existing_slots_and_iterators() {
+    let bound = Pattern::Identifier("bound".into());
+    let setup = |eval_var: bool, lexical: bool| {
+        move |compiler: &mut Compiler| {
+            compiler.names[0].insert("bound".into(), 0);
+            compiler.bytecode.bindings.push(Binding {
+                name: "bound".into(),
+                mutable: true,
+                strict_immutable: false,
+                lexical,
+                catch_parameter: false,
+                eval_var,
+            });
+        }
+    };
+    assert_compiler_byte_boundaries("existing var binding", setup(false, false), |compiler| {
+        compiler.bind_pattern(&bound, DeclKind::Var)
+    });
+    assert_compiler_byte_boundaries(
+        "existing eval var binding",
+        setup(true, false),
+        |compiler| compiler.bind_pattern(&bound, DeclKind::Var),
+    );
+    assert_compiler_byte_boundaries("existing lexical binding", setup(false, true), |compiler| {
+        compiler.bind_pattern(&bound, DeclKind::Let)
+    });
+    let holes = Pattern::Array(vec![None]);
+    assert_compiler_byte_boundaries(
+        "array binding elision",
+        |_| {},
+        |compiler| compiler.bind_pattern(&holes, DeclKind::Var),
+    );
+    let rest = Pattern::Array(vec![Some(ArrayPatternElement {
+        pattern: bound,
+        default: None,
+        rest: true,
+    })]);
+    assert_compiler_byte_boundaries("array binding rest", setup(false, false), |compiler| {
+        compiler.bind_pattern(&rest, DeclKind::Var)
+    });
+}
+
+#[test]
+fn catch_parameter_conflicts_and_byte_boundaries_are_checked_directly() {
+    let conflicting = CatchClause {
+        param: Some(Pattern::Identifier("error".into())),
+        body: vec![Stmt::VarDecl(
+            DeclKind::Let,
+            vec![VarDeclarator {
+                pattern: Pattern::Identifier("error".into()),
+                init: Some(Expr::Number(1.0)),
+            }],
+        )],
+    };
+    assert_eq!(
+        bare_compiler().try_statement(&[], Some(&conflicting), None),
+        Err(CompileError::InvalidSyntax(
+            "a catch parameter conflicts with a lexical declaration"
+        ))
+    );
+    let ordinary = CatchClause {
+        param: Some(Pattern::Identifier("error".into())),
+        body: Vec::new(),
+    };
+    assert_compiler_byte_boundaries(
+        "catch parameter binding",
+        |_| {},
+        |compiler| compiler.try_statement(&[], Some(&ordinary), None),
+    );
 }
 
 #[test]

@@ -427,7 +427,20 @@ def cargo_target() -> Path:
 def target_size_bytes(target: Path) -> int:
     if not target.exists():
         return 0
-    return int(subprocess.check_output(["du", "-sk", str(target)], text=True).split()[0]) * 1024
+    result = subprocess.run(
+        ["du", "-sk", str(target)], capture_output=True, text=True, check=False
+    )
+    # Cargo can replace an executable while du walks the directory. In that
+    # case du still prints the total for files that remain on disk.
+    transient_removals = result.stderr.splitlines() and all(
+        "No such file or directory" in line for line in result.stderr.splitlines()
+    )
+    if result.returncode not in (0, 1) or (result.returncode == 1 and not transient_removals):
+        raise RuntimeError(f"could not measure Cargo target size: {result.stderr.strip()}")
+    try:
+        return int(result.stdout.split()[0]) * 1024
+    except (IndexError, ValueError) as error:
+        raise RuntimeError("du did not report a Cargo target size") from error
 
 
 def stop_process_group(process: subprocess.Popen) -> None:

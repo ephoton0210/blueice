@@ -1369,7 +1369,7 @@ impl Compiler {
             // comment), so the disposal wrapper is per-iteration here: it
             // wraps just this iteration's binding and body, inside the
             // per-iteration scope already entered above.
-            self.wrap_with_disposal(is_async, |this| {
+            self.wrap_with_disposal(is_async, &mut |this| {
                 this.emit(Opcode::Dup, 0)?;
                 this.bind_pattern(pattern, kind)?;
                 this.emit(Opcode::AddDisposableResource, u32::from(is_async))?;

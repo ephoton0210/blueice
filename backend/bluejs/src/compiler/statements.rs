@@ -169,7 +169,7 @@ impl Compiler {
             return self.statements_after_function_declarations(statements);
         }
         let is_async = has_await_using_declaration(statements);
-        self.wrap_with_disposal(is_async, |this| {
+        self.wrap_with_disposal(is_async, &mut |this| {
             this.statements_after_function_declarations(statements)
         })
     }
@@ -188,7 +188,7 @@ impl Compiler {
     pub(super) fn wrap_with_disposal(
         &mut self,
         is_async: bool,
-        compile_body: impl FnOnce(&mut Self) -> Result<(), CompileError>,
+        compile_body: &mut dyn FnMut(&mut Self) -> Result<(), CompileError>,
     ) -> Result<(), CompileError> {
         let handler_index = self.metadata_index(self.bytecode.handlers.len())?;
         self.bytecode.handlers.push(Handler {
@@ -777,7 +777,7 @@ impl Compiler {
                 let is_async_using =
                     matches!(init, Some(ForInit::VarDecl(DeclKind::AwaitUsing, _)));
                 if is_async_using || matches!(init, Some(ForInit::VarDecl(DeclKind::Using, _))) {
-                    self.wrap_with_disposal(is_async_using, |this| {
+                    self.wrap_with_disposal(is_async_using, &mut |this| {
                         this.loop_statement(
                             init.as_ref(),
                             test.as_ref(),

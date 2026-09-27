@@ -239,6 +239,18 @@ class CoverageFileTests(unittest.TestCase):
                 free_floor=0,
             )
 
+    def test_disk_measurement_tolerates_a_file_removed_during_the_scan(self):
+        target = self.repo / "target"
+        target.mkdir()
+        partial = coverage_file.subprocess.CompletedProcess(
+            ["du", "-sk", str(target)],
+            1,
+            stdout=f"1024\t{target}\n",
+            stderr="du: cannot access a removed executable: No such file or directory",
+        )
+        with patch.object(coverage_file.subprocess, "run", return_value=partial):
+            self.assertEqual(coverage_file.target_size_bytes(target), 1024 * 1024)
+
     def test_source_union_counts_duplicate_compilations_once(self):
         payload = self.export()
         summary = payload["data"][0]["files"][0]["summary"]
