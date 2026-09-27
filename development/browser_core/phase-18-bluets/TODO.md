@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E1.3.1.** Reject a missing contract, an unreifiable type, and
-an unchecked boundary with separate strict-runtime diagnostics.
+**Current leaf: E1.3.2.** Admit a strict-runtime boundary only with a reviewed,
+authorized, actively checked contract.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -571,7 +571,7 @@ channel with explicit owner/client grants.
   - [x] **E1.2.2** Add a test that fails when a boundary lacks a record. The inventory gate checks each installed snapshot-profile runtime value against a reviewed record's stable ID, runtime ID, capability, contract ID, and fixed failure category. A focused regression accepts the actual document-text and document-context profiles, then requires a missing origin record and a newly installed but unrecorded value to fail with `MissingRecord`. The focused test passes using the shared target cache; the gate is not yet wired to strict-runtime admission, which is E1.3.
 - [ ] **E1.3** Make strict-runtime reject a missing, unreifiable, or unchecked
   boundary unless a reviewed contract is authorized.
-  - [ ] **E1.3.1** Reject a missing contract, an unreifiable type, and an unchecked boundary, each with its own diagnostic.
+  - [x] **E1.3.1** Reject a missing contract, an unreifiable type, and an unchecked boundary, each with its own diagnostic. The direct-page host now checks installed runtime values before strict-runtime compilation or callback capture, returning distinct typed `MissingContract`, `UnreifiableType`, and `UncheckedBoundary` diagnostics. The two current copied string results carry reviewed types and an explicitly checked-before-capture status. A focused public direct-page execution test fault-injects each failure and proves no program is installed; fixed public report categories are distinct and omit the binding ID. Focused tests, Engine Clippy, formatting, and line-count checks pass with the shared target cache. E1.3.2 will prove positive admission and actual contract enforcement.
   - [ ] **E1.3.2** Allow the boundary only with a reviewed, authorized contract.
 
 #### E2. Validate at the crossing.

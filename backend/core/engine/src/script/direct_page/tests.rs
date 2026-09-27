@@ -233,6 +233,80 @@ fn document_text_contract_rejects_an_oversized_snapshot_before_admission() {
 }
 
 #[test]
+fn strict_runtime_rejects_missing_unreifiable_and_unchecked_live_boundaries_separately() {
+    let profiles = core_script_host_type_catalog();
+    let artifact = profiles
+        .generate(CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1)
+        .unwrap();
+    let loader = AuthorizedModuleLoader::new(
+        [AuthorizedModule::new(
+            "page:///app/main.ts",
+            "blueiceDocumentText();",
+        )],
+        [],
+    )
+    .unwrap();
+    let (tabs, tab_id) = loaded_tabs();
+    for case in 0..3 {
+        let mut host = DirectPageScriptHost::new(profiles.clone());
+        let text_record = host
+            .boundary_records
+            .iter()
+            .position(|record| record.stable_binding_id == "dom.document-text")
+            .unwrap();
+        match case {
+            0 => {
+                host.boundary_records.remove(text_record);
+            }
+            1 => host.boundary_records[text_record].declared_type = blueice_bluets::Type::Any,
+            2 => {
+                host.boundary_records[text_record].validation =
+                    super::super::contracts::HostBindingBoundaryValidation::Unchecked;
+            }
+            _ => unreachable!(),
+        }
+        let error = host
+            .execute(
+                &tabs,
+                DirectPageScriptRequest {
+                    tab_id,
+                    kind: DirectPageScriptKind::Classic,
+                    entry: "page:///app/main.ts".to_string(),
+                    loader: &loader,
+                    compiler_options: CompilerOptions {
+                        runtime_policy: RuntimePolicy::StrictRuntime,
+                        ..CompilerOptions::default()
+                    },
+                    feature_profile: CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1.to_string(),
+                    supplied_manifest: &artifact.manifest,
+                    supplied_declaration_source: &artifact.declaration_source,
+                    supplied_runtime_bindings: &artifact.runtime_bindings,
+                },
+            )
+            .unwrap_err();
+        let DirectPageScriptError::StrictRuntimeBoundary(diagnostic) = error else {
+            panic!("strict-runtime must return a typed boundary diagnostic: {error:?}")
+        };
+        let binding_id = match (case, diagnostic) {
+            (0, StrictRuntimeBoundaryDiagnostic::MissingContract { stable_binding_id })
+            | (1, StrictRuntimeBoundaryDiagnostic::UnreifiableType { stable_binding_id })
+            | (2, StrictRuntimeBoundaryDiagnostic::UncheckedBoundary { stable_binding_id }) => {
+                stable_binding_id
+            }
+            (_, other) => panic!("strict-runtime chose the wrong refusal: {other:?}"),
+        };
+        assert_eq!(binding_id, "dom.document-text");
+        assert_eq!(host.debug_record_count(), 0);
+        assert_eq!(
+            host.realm_stats(tab_id)
+                .map(|stats| stats.program_count)
+                .unwrap_or(0),
+            0
+        );
+    }
+}
+
+#[test]
 fn document_context_profile_exposes_only_canonical_origin_and_text_snapshot() {
     let profiles = core_script_host_type_catalog();
     let artifact = profiles

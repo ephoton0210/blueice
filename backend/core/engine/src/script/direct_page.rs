@@ -13,7 +13,9 @@
 //! runtime did not verify.
 
 use super::contracts::{
-    core_script_binding_contract, CoreScriptBindingContractLimits,
+    core_script_binding_boundary_records, core_script_binding_contract,
+    validate_strict_runtime_boundary_inventory, CoreScriptBindingContractLimits,
+    HostBindingBoundaryRecordV1, StrictRuntimeBoundaryDiagnostic,
     CORE_SCRIPT_DOCUMENT_ORIGIN_RESULT_CONTRACT_V1, CORE_SCRIPT_DOCUMENT_TEXT_RESULT_CONTRACT_V1,
 };
 use super::host_typings::{
@@ -75,6 +77,7 @@ pub struct DirectPageScriptHost {
     profiles: HostTypeSurfaceCatalogV1,
     realms: DirectPageRealmOwner,
     binding_contract_limits: CoreScriptBindingContractLimits,
+    boundary_records: Vec<HostBindingBoundaryRecordV1>,
     live_documents: BTreeMap<TabId, LivePageIdentity>,
     bound_profiles: BTreeMap<TabId, String>,
 }
@@ -120,6 +123,7 @@ impl DirectPageScriptHost {
             profiles,
             realms,
             binding_contract_limits,
+            boundary_records: core_script_binding_boundary_records(binding_contract_limits).into(),
             live_documents: BTreeMap::new(),
             bound_profiles: BTreeMap::new(),
         }
@@ -210,6 +214,13 @@ impl DirectPageScriptHost {
             .profiles
             .generate(&request.feature_profile)
             .map_err(DirectPageScriptError::HostTypings)?;
+        if request.compiler_options.runtime_policy == RuntimePolicy::StrictRuntime {
+            validate_strict_runtime_boundary_inventory(
+                &artifact.runtime_bindings,
+                &self.boundary_records,
+            )
+            .map_err(DirectPageScriptError::StrictRuntimeBoundary)?;
+        }
         let declaration = verified_declaration(&artifact, &request)?;
         self.configure_profile_bindings(tabs, request.tab_id, &request.feature_profile, &artifact)?;
         let mut options = request.compiler_options;
@@ -533,6 +544,7 @@ pub enum DirectPageScriptError {
     },
     RuntimeBindingProfileUnavailable,
     BindingProfileAlreadySelected,
+    StrictRuntimeBoundary(StrictRuntimeBoundaryDiagnostic),
     BindingContractViolation {
         stable_binding_id: &'static str,
         contract_id: &'static str,
@@ -587,6 +599,20 @@ impl fmt::Display for DirectPageScriptError {
             Self::BindingProfileAlreadySelected => {
                 formatter.write_str("page realm already selected a different host binding profile")
             }
+            Self::StrictRuntimeBoundary(diagnostic) => match diagnostic {
+                StrictRuntimeBoundaryDiagnostic::MissingContract { stable_binding_id } => write!(
+                    formatter,
+                    "strict-runtime boundary `{stable_binding_id}` has no reviewed contract"
+                ),
+                StrictRuntimeBoundaryDiagnostic::UnreifiableType { stable_binding_id } => write!(
+                    formatter,
+                    "strict-runtime boundary `{stable_binding_id}` has an unreifiable type"
+                ),
+                StrictRuntimeBoundaryDiagnostic::UncheckedBoundary { stable_binding_id } => write!(
+                    formatter,
+                    "strict-runtime boundary `{stable_binding_id}` has no installed validator"
+                ),
+            },
             Self::BindingContractViolation {
                 stable_binding_id,
                 contract_id,

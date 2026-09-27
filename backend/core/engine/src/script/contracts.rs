@@ -37,6 +37,15 @@ pub enum HostBindingBoundaryOwner {
     CorePageRealm,
 }
 
+/// Whether the installed runtime path validates a value before realm capture.
+/// A new boundary starts unchecked until its crossing is implemented and
+/// tested; a reviewed type alone does not authorize an unchecked value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostBindingBoundaryValidation {
+    Unchecked,
+    CheckedBeforeRealmCapture,
+}
+
 /// One reviewed ingress/egress inventory record. Source coordinates are
 /// optional because the two immutable host snapshots are selected by core
 /// before any source-level call; future call-site boundaries can retain their
@@ -50,9 +59,72 @@ pub struct HostBindingBoundaryRecordV1 {
     pub source_position: Option<SourceSpan>,
     pub direction: HostBindingContractDirection,
     pub contract_id: &'static str,
+    pub declared_type: Type,
     pub validation_limits: ValidationLimits,
+    pub validation: HostBindingBoundaryValidation,
     pub failure_category: &'static str,
     pub capability: &'static str,
+}
+
+/// Stable, distinct strict-runtime refusals for a live host value crossing.
+/// Public script reports map them to fixed source-free categories.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StrictRuntimeBoundaryDiagnostic {
+    MissingContract { stable_binding_id: String },
+    UnreifiableType { stable_binding_id: String },
+    UncheckedBoundary { stable_binding_id: String },
+}
+
+/// Rejects a strict-runtime profile before the host installs or compiles any
+/// value boundary that lacks a matching reviewed, reifiable, actively checked
+/// contract. The record and installed profile are both core-selected; page
+/// source cannot add a record or change its validation status.
+pub fn validate_strict_runtime_boundary_inventory(
+    bindings: &[HostRuntimeBindingV1],
+    records: &[HostBindingBoundaryRecordV1],
+) -> Result<(), StrictRuntimeBoundaryDiagnostic> {
+    if let Err(error) = validate_host_binding_boundary_inventory(bindings, records) {
+        let stable_binding_id = match error {
+            HostBindingBoundaryInventoryError::MissingRecord(id)
+            | HostBindingBoundaryInventoryError::DuplicateRecord(id)
+            | HostBindingBoundaryInventoryError::MismatchedRecord(id) => id,
+        };
+        return Err(StrictRuntimeBoundaryDiagnostic::MissingContract { stable_binding_id });
+    }
+    for binding in bindings
+        .iter()
+        .filter(|binding| binding.role == HostBindingRoleV1::Value)
+    {
+        let Some(record) = records
+            .iter()
+            .find(|record| record.stable_binding_id == binding.stable_id)
+        else {
+            return Err(StrictRuntimeBoundaryDiagnostic::MissingContract {
+                stable_binding_id: binding.stable_id.clone(),
+            });
+        };
+        if record.runtime_binding_id != binding.runtime_binding_id
+            || record.capability != binding.capability
+            || record.contract_id.is_empty()
+        {
+            return Err(StrictRuntimeBoundaryDiagnostic::MissingContract {
+                stable_binding_id: binding.stable_id.clone(),
+            });
+        }
+        if ContractPlan::from_type(record.contract_id, &record.declared_type, &BTreeMap::new())
+            .is_err()
+        {
+            return Err(StrictRuntimeBoundaryDiagnostic::UnreifiableType {
+                stable_binding_id: binding.stable_id.clone(),
+            });
+        }
+        if record.validation != HostBindingBoundaryValidation::CheckedBeforeRealmCapture {
+            return Err(StrictRuntimeBoundaryDiagnostic::UncheckedBoundary {
+                stable_binding_id: binding.stable_id.clone(),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// An installed runtime value may not silently acquire an inferred contract.
@@ -172,7 +244,9 @@ pub fn core_script_binding_boundary_records(
         source_position: None,
         direction: boundary.direction,
         contract_id: boundary.contract_id,
+        declared_type: Type::String,
         validation_limits,
+        validation: HostBindingBoundaryValidation::CheckedBeforeRealmCapture,
         failure_category: "host binding contract rejected the page script",
         capability: boundary.capability,
     };

@@ -2207,6 +2207,22 @@ its contract inventory entry. The focused test passes with the shared target
 cache. E1.3 will apply the gate during strict-runtime admission and add
 separate diagnostics for missing, unreifiable, and unchecked boundaries.
 
+**E1.3.1 strict-runtime refusal diagnostics:** The direct-page host now
+checks its core-owned installed binding inventory before a strict-runtime
+script can compile or capture a callback. Each record names a declared type
+and whether the installed crossing validates before realm capture. A missing
+or mismatched reviewed record, a type that cannot become a pure `ContractPlan`
+(including `any`), and an unchecked crossing return separate typed
+`MissingContract`, `UnreifiableType`, and `UncheckedBoundary` diagnostics.
+The core inline-report adapter maps them to three different fixed categories
+without serializing binding IDs or page source. A public `DirectPageScriptHost`
+execution regression injects each faulty owner record under the same live
+document-text profile and requires no program or debug attachment; a report
+regression checks the three bounded category labels. Focused tests, Engine
+Clippy, rustfmt, diff, and line-count checks pass with the shared target
+cache. This is direct-page strict admission; standalone emitted strict-runtime
+artifacts remain unavailable until the helper work in E3.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

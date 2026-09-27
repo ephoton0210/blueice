@@ -477,6 +477,17 @@ fn report_error_message(error: DirectPageScriptError) -> &'static str {
         DirectPageScriptError::BindingContractViolation { .. } => {
             "host binding contract rejected the page script"
         }
+        DirectPageScriptError::StrictRuntimeBoundary(diagnostic) => match diagnostic {
+            super::contracts::StrictRuntimeBoundaryDiagnostic::MissingContract { .. } => {
+                "strict-runtime missing contract rejected the page script"
+            }
+            super::contracts::StrictRuntimeBoundaryDiagnostic::UnreifiableType { .. } => {
+                "strict-runtime unreifiable type rejected the page script"
+            }
+            super::contracts::StrictRuntimeBoundaryDiagnostic::UncheckedBoundary { .. } => {
+                "strict-runtime unchecked boundary rejected the page script"
+            }
+        },
         DirectPageScriptError::UnknownTab { .. } => "page tab is no longer available",
         DirectPageScriptError::PageHasNoUrl { .. }
         | DirectPageScriptError::InvalidPageUrl { .. } => {
@@ -537,6 +548,41 @@ mod tests {
     };
     use std::cell::RefCell;
     use std::rc::Rc;
+
+    #[test]
+    fn strict_runtime_boundary_reports_keep_three_distinct_source_free_categories() {
+        use super::super::contracts::StrictRuntimeBoundaryDiagnostic;
+
+        let private_id = "dom.private-page-binding".to_string();
+        let categories = [
+            report_error_message(DirectPageScriptError::StrictRuntimeBoundary(
+                StrictRuntimeBoundaryDiagnostic::MissingContract {
+                    stable_binding_id: private_id.clone(),
+                },
+            )),
+            report_error_message(DirectPageScriptError::StrictRuntimeBoundary(
+                StrictRuntimeBoundaryDiagnostic::UnreifiableType {
+                    stable_binding_id: private_id.clone(),
+                },
+            )),
+            report_error_message(DirectPageScriptError::StrictRuntimeBoundary(
+                StrictRuntimeBoundaryDiagnostic::UncheckedBoundary {
+                    stable_binding_id: private_id.clone(),
+                },
+            )),
+        ];
+        assert_eq!(
+            categories.len(),
+            categories
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+        );
+        assert!(categories
+            .iter()
+            .all(|category| !category.contains(&private_id)));
+    }
 
     fn profiles() -> HostTypeSurfaceCatalogV1 {
         HostTypeSurfaceCatalogV1::new([HostTypeSurfaceV1::new(
