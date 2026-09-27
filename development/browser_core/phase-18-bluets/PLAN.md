@@ -4029,6 +4029,17 @@ operation. F2.2.2 must prevent diagnostics from entering staging, and F2.2.3
 must map only validated artifact paths under the granted root before any
 public build route is opened.
 
+**F2.2.2 no-emit-on-error admission:** The owner build/staging entry checks
+the separate grant before calling the registered-project compiler. It returns
+the exact check generation with no path when diagnostics prevent output, and
+does not invoke the trusted stage-population function. A denied project does
+not compile or advance its generation. A successful granted build can stage
+its bounded in-memory artifact set; errors retain existing output untouched.
+The lower-level staging function is now private to core's owner module, so
+callers cannot skip the build result gate through that API. F2.2.3 will
+replace the trusted population callback with validated artifact-to-path
+mapping before any public build route is enabled.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

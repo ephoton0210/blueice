@@ -340,6 +340,27 @@ impl fmt::Display for OwnerOutputWriteGrantError {
 
 impl std::error::Error for OwnerOutputWriteGrantError {}
 
+/// Owner-only build/staging failure. Compiler diagnostics are returned as a
+/// normal no-output check result, never as a partially staged artifact.
+#[derive(Debug)]
+pub enum OwnerBuildStageError {
+    NotGranted,
+    Compiler(CompilerServiceError),
+    Io(io::Error),
+}
+
+impl fmt::Display for OwnerBuildStageError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotGranted => formatter.write_str("output write was not granted"),
+            Self::Compiler(error) => write!(formatter, "compiler build failed: {error}"),
+            Self::Io(error) => write!(formatter, "compiler output staging failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for OwnerBuildStageError {}
+
 impl Default for CoreCompilerProjectCatalog {
     fn default() -> Self {
         Self::new(
@@ -486,7 +507,7 @@ impl CoreCompilerServiceSession {
     /// output grant, then atomically publishes one immutable generation
     /// directory. There is no compiler IPC/MCP call for this owner API.
     /// Artifact selection and no-emit-on-error policy are added separately.
-    pub fn stage_owner_output<F>(
+    fn stage_owner_output<F>(
         &self,
         generation: RegisteredProjectGeneration,
         populate: F,
@@ -507,6 +528,42 @@ impl CoreCompilerServiceSession {
             ));
         }
         output_staging::stage_and_publish(grant, generation, populate)
+    }
+
+    /// Compiles one core-owned project and stages output only if the result is
+    /// successful and this project has an independent owner write grant. An
+    /// error-bearing check returns `None` without invoking `populate` or
+    /// creating any staging path. No compiler IPC/MCP request calls this API.
+    pub fn build_and_stage_owner_output<F>(
+        &mut self,
+        project_id: RegisteredProjectId,
+        populate: F,
+    ) -> Result<(CompilerServiceCheck, Option<PathBuf>), OwnerBuildStageError>
+    where
+        F: FnOnce(&blueice_bluets::BuildOutput, &Path) -> io::Result<()>,
+    {
+        if !self.output_write_grants.contains_key(&project_id) {
+            return Err(OwnerBuildStageError::NotGranted);
+        }
+        let build = self
+            .adapter
+            .service
+            .build(project_id)
+            .map_err(OwnerBuildStageError::Compiler)?;
+        let check = build.check;
+        let Some(output) = build.output else {
+            return Ok((check, None));
+        };
+        if check.has_errors {
+            return Err(OwnerBuildStageError::Io(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "compiler returned artifacts with errors",
+            )));
+        }
+        let published = self
+            .stage_owner_output(check.generation, |stage| populate(&output, stage))
+            .map_err(OwnerBuildStageError::Io)?;
+        Ok((check, Some(published)))
     }
 }
 

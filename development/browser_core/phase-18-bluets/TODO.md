@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: F2.2.2.** Ensure a diagnostic-bearing registered-project
-build never enters output staging or changes a published generation.
+**Current leaf: F2.2.3.** Map compiler artifacts only to paths inside the
+owner-granted output root and reject escaping or colliding paths.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -694,7 +694,7 @@ Keep check read-only and owner registration sealed before listeners.
 - [ ] **F2.2** Stage output atomically and emit nothing on compiler error; reject
   paths outside the authorized output root.
   - [x] **F2.2.1** Write to a staging path and rename atomically. A trusted core owner can stage a current, separately granted generation under its existing canonical output root and atomically rename the complete staging directory to an immutable generation directory. Missing grants, stale generations, changed root aliases, duplicate destinations, and failed population refuse; failed stages are removed. This is the owner staging primitive, with compiler-error admission and artifact path mapping reserved for F2.2.2–F2.2.3.
-  - [ ] **F2.2.2** Emit nothing on compiler error.
+  - [x] **F2.2.2** Emit nothing on compiler error. The core owner build/staging entry checks for a separate output grant before compiling, then stages only a successful in-memory `BuildOutput`. Diagnostic-bearing builds return their check and no published path without invoking the staging writer; a denied build does not advance the generation. A focused owner-boundary test preserves preexisting output and proves a successful granted build can publish.
   - [ ] **F2.2.3** Reject output paths outside the authorized root.
 
 #### F3. Complete the MCP adapter.

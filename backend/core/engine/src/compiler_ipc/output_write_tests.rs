@@ -7,17 +7,21 @@ use blueice_bluets::{AuthorizedModule, AuthorizedModuleLoader, CompilerOptions};
 use std::path::Path;
 
 fn registration(project: &Path, output: &Path) -> RegisteredProjectRegistration {
+    registration_with_source(project, output, "export const answer = 42;")
+}
+
+fn registration_with_source(
+    project: &Path,
+    output: &Path,
+    source: &str,
+) -> RegisteredProjectRegistration {
     let entry = project.join("main.ts").to_str().unwrap().to_string();
     RegisteredProjectRegistration {
         canonical_project_root: project.to_str().unwrap().to_string(),
         canonical_config_root: project.join("blue-ts.json").to_str().unwrap().to_string(),
         canonical_output_root: output.to_str().unwrap().to_string(),
         entry_module: entry.clone(),
-        loader: AuthorizedModuleLoader::new(
-            [AuthorizedModule::new(entry, "export const answer = 42;")],
-            [],
-        )
-        .unwrap(),
+        loader: AuthorizedModuleLoader::new([AuthorizedModule::new(entry, source)], []).unwrap(),
         compiler_options: CompilerOptions::default(),
     }
 }
@@ -212,5 +216,85 @@ fn owner_staging_publishes_one_complete_generation_and_cleans_failed_stages() {
         std::fs::remove_file(&granted_output).unwrap();
         std::fs::rename(moved_root, &granted_output).unwrap();
     }
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn diagnostic_build_does_not_enter_staging_or_replace_prior_output() {
+    let directory = std::env::temp_dir().join(format!(
+        "blueice-owner-build-no-emit-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&directory).unwrap();
+    let directory = directory.canonicalize().unwrap();
+    let (plain_project, plain_output) = make_project(&directory, "plain");
+    let (valid_project, valid_output) = make_project(&directory, "valid");
+    let (invalid_project, invalid_output) = make_project(&directory, "invalid");
+    let invalid_source = "export const answer: number = 'wrong';";
+    std::fs::write(invalid_project.join("main.ts"), invalid_source).unwrap();
+    std::fs::write(invalid_output.join("keep.txt"), "unchanged").unwrap();
+    let mut catalog = CoreCompilerProjectCatalog::default();
+    let plain = catalog
+        .register_startup_project(registration(&plain_project, &plain_output))
+        .unwrap();
+    let valid = catalog
+        .register_startup_project_with_output_write_grant(registration(
+            &valid_project,
+            &valid_output,
+        ))
+        .unwrap();
+    let invalid = catalog
+        .register_startup_project_with_output_write_grant(registration_with_source(
+            &invalid_project,
+            &invalid_output,
+            invalid_source,
+        ))
+        .unwrap();
+    let mut session = catalog.seal();
+    let plain_id = RegisteredProjectId::from_wire(plain.id).unwrap();
+    assert!(matches!(
+        session.build_and_stage_owner_output(plain_id, |_, _| panic!("no grant")),
+        Err(OwnerBuildStageError::NotGranted)
+    ));
+    assert_eq!(
+        session
+            .adapter
+            .service
+            .check(plain_id)
+            .unwrap()
+            .generation
+            .sequence(),
+        1,
+        "a denied build must not advance the compiler generation"
+    );
+
+    let invalid_id = RegisteredProjectId::from_wire(invalid.id).unwrap();
+    let (check, published) = session
+        .build_and_stage_owner_output(invalid_id, |_, _| panic!("errors must not stage"))
+        .unwrap();
+    assert!(check.has_errors);
+    assert!(published.is_none());
+    assert_eq!(
+        std::fs::read_to_string(invalid_output.join("keep.txt")).unwrap(),
+        "unchanged"
+    );
+    assert_eq!(std::fs::read_dir(&invalid_output).unwrap().count(), 1);
+
+    let valid_id = RegisteredProjectId::from_wire(valid.id).unwrap();
+    let (check, published) = session
+        .build_and_stage_owner_output(valid_id, |output, stage| {
+            let javascript = &output.artifacts.values().next().unwrap().javascript;
+            std::fs::write(stage.join("main.js"), javascript)
+        })
+        .unwrap();
+    assert!(!check.has_errors);
+    let published = published.unwrap();
+    assert!(std::fs::read_to_string(published.join("main.js"))
+        .unwrap()
+        .contains("answer"));
     std::fs::remove_dir_all(directory).unwrap();
 }
