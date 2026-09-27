@@ -101,7 +101,8 @@ impl Parser {
     }
 
     pub(super) fn parse_array_pattern(&mut self) -> Result<Pattern, ParseError> {
-        self.expect_punct(Punct::LBracket)?;
+        // parse_binding_pattern dispatches here only after seeing '['.
+        self.advance();
         let mut elements = Vec::new();
         while !self.check_punct(Punct::RBracket) {
             if self.check_punct(Punct::Comma) {
@@ -137,12 +138,14 @@ impl Parser {
                 self.expect_punct(Punct::Comma)?;
             }
         }
-        self.expect_punct(Punct::RBracket)?;
+        // The loop exits only when the next token is ']'.
+        self.advance();
         Ok(Pattern::Array(elements))
     }
 
     pub(super) fn parse_object_pattern(&mut self) -> Result<Pattern, ParseError> {
-        self.expect_punct(Punct::LBrace)?;
+        // parse_binding_pattern dispatches here only after seeing '{'.
+        self.advance();
         let mut props = Vec::new();
         while !self.check_punct(Punct::RBrace) {
             if self.eat_punct(Punct::Ellipsis) {
@@ -174,14 +177,10 @@ impl Parser {
                         default,
                     });
                 } else {
-                    let Some((_, escaped)) = binding_identifier else {
+                    let Some((name, escaped)) = binding_identifier else {
                         return Err(self.syntax_error(
                             "expected a binding identifier in destructuring pattern",
                         ));
-                    };
-                    let name = match &key {
-                        PropertyKey::Identifier(n) => n.clone(),
-                        _ => return Err(self.error("expected ':' in destructuring pattern")),
                     };
                     self.validate_binding_identifier(&name, escaped)?;
                     let default = if self.eat_punct(Punct::Assign) {
@@ -200,7 +199,8 @@ impl Parser {
                 self.expect_punct(Punct::Comma)?;
             }
         }
-        self.expect_punct(Punct::RBrace)?;
+        // The loop exits only when the next token is '}'.
+        self.advance();
         Ok(Pattern::Object(props))
     }
 

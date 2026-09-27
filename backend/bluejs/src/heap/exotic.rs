@@ -249,7 +249,9 @@ impl Heap {
             .collect();
         self.ensure_room(state_bytes.saturating_sub(old_state_bytes), &protected)?;
         {
-            let (current, current_bytes, entry_bytes) = self.generator_state_slots_mut(object)?;
+            let (current, current_bytes, entry_bytes) = self
+                .generator_state_slots_mut(object)
+                .expect("protected generator survives collection");
             **current = state;
             *current_bytes = state_bytes;
             *entry_bytes = *entry_bytes - old_state_bytes + state_bytes;
@@ -332,8 +334,9 @@ impl Heap {
             .collect();
         self.ensure_room(control_bytes.saturating_sub(old_bytes), &protected)?;
         {
-            let (async_control, async_control_bytes, entry_bytes) =
-                self.async_generator_slots_mut(object)?;
+            let (async_control, async_control_bytes, entry_bytes) = self
+                .async_generator_slots_mut(object)
+                .expect("protected async generator survives collection");
             *async_control = Some(control);
             *async_control_bytes = control_bytes;
             *entry_bytes = *entry_bytes - old_bytes + control_bytes;
@@ -869,7 +872,9 @@ impl Heap {
         let old_bytes = regexp_bytes(self.regexp_slot_mut(object)?.0);
         let new_bytes = regexp_bytes(&regexp);
         self.ensure_room(new_bytes.saturating_sub(old_bytes), &[object])?;
-        let (current, entry_bytes) = self.regexp_slot_mut(object)?;
+        let (current, entry_bytes) = self
+            .regexp_slot_mut(object)
+            .expect("protected RegExp survives collection");
         *current = regexp;
         *entry_bytes = *entry_bytes - old_bytes + new_bytes;
         self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
