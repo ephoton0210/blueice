@@ -4194,6 +4194,12 @@ inline source, then compares the other report fields as before. Its focused
 real-process test and the full workspace rerun pass. Both runs reused the
 workspace's existing target directory.
 
+**G.1.2 real-process suite gate:** The successful workspace rerun includes
+launcher broker and supervised-child tests, real core-binary tests, MCP/core
+client tests, and the launcher debugger socket suite. None of these process
+test directories has an ignored test. The workspace result therefore covers
+all four required process suites without a second build or redundant rerun.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
