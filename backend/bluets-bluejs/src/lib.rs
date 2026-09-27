@@ -15,9 +15,9 @@ use blueice_bluejs as bluejs;
 use blueice_bluets::{
     compile, lex, source_locations_for_spans, BlueTsDebugInfo, CompilerOptions,
     DebugSourceLocation, Declaration, Diagnostic, FunctionBodyItem, FunctionDeclaration,
-    FunctionElseBranch, FunctionIfStatement, FunctionWhileStatement, Module, ModuleLoader, Project,
-    SourceId, SourceSpan, SymbolId, SymbolKind, Token, TokenKind, TypeId, VariableDeclaration,
-    VariableKind, LANGUAGE_VERSION,
+    FunctionElseBranch, FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement, Module,
+    ModuleLoader, Project, SourceId, SourceSpan, SymbolId, SymbolKind, Token, TokenKind, TypeId,
+    VariableDeclaration, VariableKind, LANGUAGE_VERSION,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;

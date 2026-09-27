@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: H.2.2.3.** Lower validated try/catch/finally bodies to BlueJS
-and verify direct-page completion behavior and excluded shapes.
+**Current leaf: H.2.2.4.** Verify nested safe points and stale-generation
+denial, compare against the pinned TypeScript oracle, and run workspace gates.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -781,7 +781,7 @@ Keep check read-only and owner registration sealed before listeners.
   - [ ] **H.2.2** Test matching BlueJS execution and safe points.
     - [x] **H.2.2.1** Parse the selected braced try/catch/finally shapes and preserve original spans; prove malformed or excluded shapes and the not-yet-lowered direct bridge fail closed. BlueTSC retains complete try, single-identifier catch, and finally bodies as structured items, while bare/typed catches and a handlerless try remain opaque. The direct bridge explicitly rejects the structured item at its original span until checker and AST lowering are installed. Public parser and direct-bridge regressions pass under the shared-target disk guard.
     - [x] **H.2.2.2** Check catch binding as a lexical `unknown` in every supported body expression and return, with no leakage into try/finally or the enclosing function; retain conservative required-return analysis. The checker walks structured bodies with a catch-local shadow, applies strict unknown assignability only there, validates unannotated return expressions, and preserves the conservative try fall-through rule; public frontend regressions and the BlueTS crate test/Clippy gates pass under the disk budget.
-    - [ ] **H.2.2.3** Lower only validated bodies to BlueJS `Stmt::Try`/`CatchClause` and test direct-page catch binding, normal/return/throw completion, finalizer precedence, and excluded shapes.
+    - [x] **H.2.2.3** Lower only validated bodies to BlueJS `Stmt::Try`/`CatchClause` and test direct-page catch binding, normal/return/throw completion, finalizer precedence, and excluded shapes. The direct bridge validates all three blocks and nested braced `if` branches, constructs BlueJS AST without reparsing, and rejects excluded shapes. Page-realm regressions cover catch scope, completion precedence, rethrow escape, and terminal instruction-budget failure; the bridge crate tests and all-target Clippy pass under the shared-target disk guard.
     - [ ] **H.2.2.4** Verify live nested safe-point mapping and stale-generation denial, compare syntax and diagnostics with the pinned TypeScript oracle, and run the workspace gates under the shared-target disk budget.
 - [ ] **H.3** Define control-flow narrowing and return paths through checker, emitter,
   direct execution, and oracle.

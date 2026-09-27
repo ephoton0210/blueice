@@ -289,10 +289,7 @@ fn lower_function_body(
                 body.push(lower_function_while(module, statement)?)
             }
             FunctionBodyItem::Try(statement) => {
-                return Err(unsupported(
-                    statement.span.clone(),
-                    "braced try execution awaits catch-scope checking and direct AST lowering",
-                ));
+                body.push(lower_function_try(module, statement)?);
             }
             FunctionBodyItem::Opaque(span) => {
                 return Err(unsupported(
@@ -341,6 +338,85 @@ fn lower_function_while(
         test,
         body: Box::new(body),
     })
+}
+
+fn lower_function_try(
+    module: &Module,
+    statement: &FunctionTryStatement,
+) -> Result<bluejs::Stmt, BridgeError> {
+    ensure_supported_try_body(&statement.block)?;
+    if let Some(handler) = &statement.handler {
+        ensure_supported_try_body(&handler.body)?;
+    }
+    if let Some(finalizer) = &statement.finalizer {
+        ensure_supported_try_body(finalizer)?;
+    }
+    let block = lower_function_body(module, &statement.block)?;
+    let handler = statement
+        .handler
+        .as_ref()
+        .map(|handler| {
+            Ok(bluejs::CatchClause {
+                param: Some(bluejs::Pattern::Identifier(handler.binding.clone())),
+                body: lower_function_body(module, &handler.body)?,
+            })
+        })
+        .transpose()?;
+    let finalizer = statement
+        .finalizer
+        .as_ref()
+        .map(|body| lower_function_body(module, body))
+        .transpose()?;
+    Ok(bluejs::Stmt::Try {
+        block,
+        handler,
+        finalizer,
+    })
+}
+
+fn ensure_supported_try_body(items: &[FunctionBodyItem]) -> Result<(), BridgeError> {
+    for item in items {
+        match item {
+            FunctionBodyItem::Variable(variable) => {
+                return Err(unsupported(
+                    variable.span.clone(),
+                    "block-local declarations are outside the direct try subset",
+                ));
+            }
+            FunctionBodyItem::While(statement) => {
+                return Err(unsupported(
+                    statement.span.clone(),
+                    "loops are outside the direct try subset",
+                ));
+            }
+            FunctionBodyItem::Try(statement) => {
+                return Err(unsupported(
+                    statement.span.clone(),
+                    "nested try statements are outside the direct try subset",
+                ));
+            }
+            FunctionBodyItem::If(statement) => ensure_supported_try_if(statement)?,
+            FunctionBodyItem::Opaque(span) => {
+                return Err(unsupported(
+                    span.clone(),
+                    "body syntax is outside the direct try subset",
+                ));
+            }
+            FunctionBodyItem::Expression { .. }
+            | FunctionBodyItem::Throw { .. }
+            | FunctionBodyItem::Return { .. } => {}
+        }
+    }
+    Ok(())
+}
+
+fn ensure_supported_try_if(statement: &FunctionIfStatement) -> Result<(), BridgeError> {
+    ensure_supported_try_body(&statement.consequent)?;
+    match &statement.alternate {
+        Some(FunctionElseBranch::Braced(body)) => ensure_supported_try_body(body),
+        Some(FunctionElseBranch::ElseIf(branch)) => ensure_supported_try_if(branch),
+        None => Ok(()),
+    }
 }
 
 fn ensure_supported_while_body(items: &[FunctionBodyItem]) -> Result<(), BridgeError> {

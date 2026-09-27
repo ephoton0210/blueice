@@ -597,22 +597,65 @@ fn lowers_braced_while_to_a_real_bluejs_loop_and_block() {
 }
 
 #[test]
-fn structured_try_remains_closed_to_the_direct_bridge_until_checker_and_lowering() {
+fn lowers_braced_try_catch_finally_to_bluejs_ast() {
     let source = "function f(): void { try { throw 1; } catch (caught) { throw caught; } finally { 0; } } f();";
-    let result = compile_direct_script(
+    let artifact = compile_direct_script(
         ENTRY,
         &MapLoader::from([ModuleSource::new(ENTRY, source)]),
         CompilerOptions::default(),
-    );
-    let Err(BridgeError::UnsupportedRuntimeTarget { span, message }) = result else {
-        panic!("the direct bridge must keep structured try closed until lowering");
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+        panic!("expected a direct script");
     };
-    assert_eq!(span.module, ENTRY);
-    assert_eq!(
-        &source[span.start..span.end],
-        "try { throw 1; } catch (caught) { throw caught; } finally { 0; }"
-    );
-    assert!(message.contains("try"));
+    let bluejs::Stmt::FunctionDecl(function) = &program.body[0] else {
+        panic!("expected a directly lowered named function");
+    };
+    assert!(matches!(
+        function.body.as_slice(),
+        [bluejs::Stmt::Try {
+            block,
+            handler: Some(bluejs::CatchClause {
+                param: Some(bluejs::Pattern::Identifier(binding)),
+                body,
+            }),
+            finalizer: Some(finalizer),
+        }] if binding == "caught"
+            && matches!(block.as_slice(), [bluejs::Stmt::Throw(_)])
+            && matches!(body.as_slice(), [bluejs::Stmt::Throw(_)])
+            && matches!(finalizer.as_slice(), [bluejs::Stmt::Expr(_)])
+    ));
+}
+
+#[test]
+fn direct_try_rejects_excluded_blocks_without_reparsing_javascript() {
+    for source in [
+        "function f(): void { try { let inner = 1; } finally { 0; } } f();",
+        "function f(): void { try { 0; } catch (error) { const inner = 1; } } f();",
+        "function f(): void { try { 0; } finally { if (true) { var inner = 1; } } } f();",
+        "function f(): void { try { while (true) {} } finally { 0; } } f();",
+        "function f(): void { try { 0; } catch (error) { while (true) {} } } f();",
+        "function f(): void { try { 0; } finally { while (true) {} } } f();",
+        "function f(): void { try { try { 0; } finally { 1; } } finally { 2; } } f();",
+        "function f(): void { try { 0; } catch (error) { if (true) { try { 1; } finally { 2; } } } } f();",
+        "function f(): void { try { 0; } catch { 1; } } f();",
+        "function f(): void { try { 0; } catch (error: any) { 1; } } f();",
+        "function f(): void { try { 0; } catch ({error}) { 1; } } f();",
+        "function f(): void { try { 0; } catch (first) { 1; } catch (second) { 2; } } f();",
+        "function f(): void { try { 0; } } f();",
+        "try { 0; } catch (error) { 1; }",
+        "const f = () => { try { 0; } catch (error) { 1; } }; f();",
+    ] {
+        let result = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(
+            matches!(result, Err(BridgeError::UnsupportedRuntimeTarget { .. } | BridgeError::BlueTs(_))),
+            "excluded direct try shape must fail closed: {source}"
+        );
+    }
 }
 
 #[test]

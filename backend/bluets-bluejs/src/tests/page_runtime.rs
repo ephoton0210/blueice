@@ -102,6 +102,99 @@ fn direct_page_while_runs_zero_and_multiple_iterations() {
 }
 
 #[test]
+fn direct_page_try_catches_exact_value_and_restores_outer_binding_in_finally() {
+    let source = "function f(caught: number): number { let observed: number = 0; try { throw 7; } catch (caught) { if (caught === 7) { observed += 1; } } finally { if (caught === 99) { observed += 10; } } return observed; } f(99);";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    assert_eq!(
+        owner.execute_program(7, &attachment).unwrap(),
+        bluejs::Value::Number(11.0)
+    );
+}
+
+#[test]
+fn direct_page_try_finally_preserves_or_replaces_normal_return_and_throw() {
+    for (source, expected) in [
+        ("function f(): number { try { 1; } finally { 2; } return 3; } f();", 3.0),
+        ("function f(): number { try { return 5; } finally { 0; } return 0; } f();", 5.0),
+        ("function f(): number { try { return 5; } finally { return 9; } return 0; } f();", 9.0),
+        ("function f(): number { try { throw 5; } finally { return 9; } return 0; } f();", 9.0),
+        ("function f(): number { try { throw 5; } catch (error) { if (error === 5) { return 6; } } finally { 0; } return 0; } f();", 6.0),
+    ] {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        let mut owner = DirectPageRealmOwner::default();
+        owner.open_realm(7, origin()).unwrap();
+        let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+        assert_eq!(
+            owner.execute_program(7, &attachment).unwrap(),
+            bluejs::Value::Number(expected),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn direct_page_try_finally_throw_overrides_return_and_catch_rethrow_escapes() {
+    for (source, expected) in [
+        ("function f(): number { try { return 5; } finally { throw 9; } return 0; } f();", 9.0),
+        ("function f(): void { try { throw 5; } catch (error) { throw 6; } finally { 0; } } f();", 6.0),
+    ] {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        let mut owner = DirectPageRealmOwner::default();
+        owner.open_realm(7, origin()).unwrap();
+        let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+        assert!(matches!(
+            owner.execute_program(7, &attachment),
+            Err(BridgeError::PageRuntime(
+                bluejs::BlueJsPageRuntimeError::Runtime(bluejs::RuntimeError::Thrown(
+                    bluejs::Value::Number(value)
+                ))
+            )) if value == expected
+        ), "{source}");
+    }
+}
+
+#[test]
+fn direct_page_try_cannot_catch_or_override_a_fatal_instruction_limit() {
+    let source = "function spin(): void { while (true) {} } function f(): number { try { spin(); } catch (error) { return 1; } finally { return 2; } return 0; } f();";
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut runtime_config = bluejs::BlueJsPageRuntimeConfig::default();
+    runtime_config.vm.instruction_budget = 128;
+    let mut owner =
+        DirectPageRealmOwner::new(runtime_config, DirectDebugRetentionLimits::default()).unwrap();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    assert!(matches!(
+        owner.execute_program(7, &attachment),
+        Err(BridgeError::PageRuntime(
+            bluejs::BlueJsPageRuntimeError::Runtime(bluejs::RuntimeError::InstructionLimit)
+        ))
+    ));
+}
+
+#[test]
 fn direct_page_while_runs_inside_an_existing_braced_if_branch() {
     let artifact = compile_direct_script(
         ENTRY,
