@@ -2578,6 +2578,53 @@ test module retains the same 11 cases. This keeps the implementation below
 the repository's 1,300-line maintenance threshold as strict output work
 continues and uses the same build target.
 
+**E3.2.3.2.2 first emitted crossing contract:** The first standalone strict
+profile admits only a directly named `export function` with required primitive
+`string` parameters, an explicit `string` result, and one unconditional
+`return` expression. That expression may use only those parameters, primitive
+string literals, parentheses, and string concatenation (`+`). The checker
+must reject every other statement or expression shape, including calls,
+property access, object creation, assignments, fallthrough, overloads,
+generics, optional/default/rest parameters, and `async` functions. No runtime
+import, ambient declaration, global reference, default/value re-export, or
+other runtime declaration is admitted in a strict module. Type-only imports
+and declarations may remain because they erase; each source module in a
+multi-module graph is checked independently. This intentionally small
+language ensures there is no unreviewed foreign value between the two
+observable crossings: JavaScript caller to each parameter, and the function
+result back to JavaScript. Both crossings must call helper v1, including when
+the body returns its input unchanged. A module with no selected crossing is
+refused rather than receiving a strict label by vacuity.
+
+The owner selects each crossing through a build configuration descriptor, not
+through TypeScript source text. A descriptor identifies the canonical
+root-relative module, exported function name, exact UTF-8 byte span of its
+declaration, stable contract ID, nonnegative safe-integer string-byte budget,
+and the fixed `bluets-runtime-helper-v1` version. The same descriptor applies
+the budget at every parameter ingress and result egress; a later profile may
+add independent budgets only with a new descriptor version. The compiler
+requires exactly one descriptor for every emitted function and rejects stale,
+duplicate, missing, unused, out-of-graph, or conflicting descriptors. It
+checks the parser's exact span and signature before emission, includes the
+ordered descriptor data in the project fingerprint, and retains an ordered
+checked-boundary record with the output. The CLI accepts these records only
+from its owner-read config, not from a source annotation or imported module.
+Direct compiler callers must also supply the descriptor explicitly. Missing
+descriptor data never silently selects a default budget.
+
+Emission uses one fixed helper import alias and path per module, validated
+against source identifiers to prevent capture. It inserts a validation call
+for every parameter immediately inside the function body and wraps the
+return expression in a validation call at that return's exact source span.
+Only these inserted calls can support the strict claim. Source-map provenance
+maps inserted code to the corresponding parameter/body or return expression;
+the publisher verifies the checked-boundary record, helper version, imports,
+and retained calls before replacing the previous build. Both ES2020 and
+ES2022 must pass that gate. A stronger checker or different target cannot
+turn an unsupported crossing into a successful strict artifact merely by
+erasing its syntax. Until all of these checks run, standalone strict build
+continues to refuse before publication.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
