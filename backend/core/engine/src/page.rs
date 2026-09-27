@@ -327,6 +327,7 @@ impl Page {
 
     /// Converts a core hit-test NodeId into the same child-private handle
     /// used by script IPC, if the hit still belongs to this live document.
+    #[cfg(unix)]
     pub(crate) fn script_handle_for_raw_node(&mut self, raw: u64) -> Option<u64> {
         let node = NodeId::from_u64(raw);
         self.doc
