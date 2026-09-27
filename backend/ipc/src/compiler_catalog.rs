@@ -349,6 +349,20 @@ fn validate_identity(value: &str, decoded_bytes: &mut usize) -> io::Result<()> {
 /// aliases before their equality or containment can authorize future output.
 /// This does not resolve a host filesystem path or grant write access.
 fn validate_path_identity(value: &str) -> io::Result<()> {
+    #[cfg(windows)]
+    if Path::new(value).is_absolute() {
+        // Canonical Windows host paths may use a verbatim `\\?\` prefix.
+        // Check the original segments before path parsing can normalize them;
+        // validate_existing_path later proves the exact filesystem spelling.
+        if value.chars().any(char::is_control)
+            || value
+                .split(['/', '\\'])
+                .any(|component| matches!(component, "." | ".."))
+        {
+            return Err(invalid("compiler catalog path identity is not canonical"));
+        }
+        return Ok(());
+    }
     let path = value.split_once("://").map_or(value, |(_, path)| path);
     if path.is_empty()
         || path.ends_with('/')
@@ -365,6 +379,12 @@ fn validate_path_identity(value: &str) -> io::Result<()> {
 }
 
 fn is_descendant(path: &str, root: &str) -> bool {
+    #[cfg(windows)]
+    if Path::new(root).is_absolute() {
+        return Path::new(path)
+            .strip_prefix(root)
+            .is_ok_and(|relative| !relative.as_os_str().is_empty());
+    }
     path.strip_prefix(root)
         .is_some_and(|remainder| remainder.starts_with('/') && remainder.len() > 1)
 }
@@ -666,11 +686,20 @@ mod tests {
     #[test]
     fn physical_catalog_checks_existing_canonical_roots_and_input_files() {
         let fixture = PhysicalFixture::new();
-        assert!(fixture.catalog.validate().is_ok());
-        assert!(CompilerCatalogBootstrap::from_json_slice(
-            &serde_json::to_vec(&fixture.catalog).unwrap()
-        )
-        .is_ok());
+        fixture.catalog.validate().unwrap();
+        CompilerCatalogBootstrap::from_json_slice(&serde_json::to_vec(&fixture.catalog).unwrap())
+            .unwrap();
+
+        #[cfg(windows)]
+        {
+            let mut aliased = fixture.catalog.clone();
+            aliased.projects[0].canonical_output_root =
+                format!(r"{}\nested\..\output", fixture.directory.display());
+            assert_eq!(
+                aliased.validate().unwrap_err().to_string(),
+                "compiler catalog path identity is not canonical"
+            );
+        }
 
         let mut missing_output = fixture.catalog.clone();
         missing_output.projects[0].canonical_output_root =
