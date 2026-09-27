@@ -111,6 +111,10 @@ fn nested_module_pause_retains_its_entry_graph_after_dependency_evaluation() {
 fn linked_module_nested_pause_preserves_each_frame_generation() {
     let entry = "pages/linked-entry.mjs";
     let dependency = "pages/linked-dep.mjs";
+    let oversized = "x".repeat(VM_DEBUGGER_MAX_VALUE_PAYLOAD_BYTES / 2 + 1);
+    let entry_source = format!(
+        "import {{ inner }} from './linked-dep.mjs'; export const rootValue = 9; export const oversized = '{oversized}'; export const answer = inner() + rootValue;"
+    );
     let mut registry = BlueJsProgramRegistry::default();
     let dependency_handle = registry
         .install_precompiled(
@@ -121,9 +125,7 @@ fn linked_module_nested_pause_preserves_each_frame_generation() {
     let entry_handle = registry
         .install_precompiled(
             BlueJsSourceIdentity::new(entry, "sha256:linked-entry").unwrap(),
-            module_code(
-                "import { inner } from './linked-dep.mjs'; export const answer = inner() + 1;",
-            ),
+            module_code(&entry_source),
         )
         .unwrap();
     let graph = HashMap::from([
@@ -171,10 +173,51 @@ fn linked_module_nested_pause_preserves_each_frame_generation() {
     assert_eq!(stack.frames[1].program_generation, entry_generation);
     assert_eq!(stack.frames[1].code_unit_ordinal, 0);
     assert!(!stack.stack_truncated);
+    let root_entry = stack.frames[1]
+        .scope_entries
+        .iter()
+        .find(|entry| {
+            vm.debugger_linked_value_preview(1, &stack, **entry)
+                == Ok(VmDebuggerValuePreview::NumberBits(9.0_f64.to_bits()))
+        })
+        .copied()
+        .expect("the retained entry root must expose its initialized slot");
+    assert!(stack.frames[1].scope_entries.iter().any(|entry| matches!(
+        vm.debugger_linked_value_preview(1, &stack, *entry),
+        Err(RuntimeError::Unsupported(
+            "debugger value exceeds the payload byte budget"
+        ))
+    )));
+    assert!(vm
+        .debugger_linked_value_preview(2, &stack, root_entry)
+        .is_err());
+    assert!(vm
+        .debugger_linked_value_preview(
+            1,
+            &stack,
+            VmDebuggerScopeEntry {
+                slot_ordinal: u32::MAX,
+                ..root_entry
+            },
+        )
+        .is_err());
+    let mut moved_stack = stack.clone();
+    moved_stack.frames[0].bytecode_offset += 1;
+    assert!(vm
+        .debugger_linked_value_preview(1, &moved_stack, root_entry)
+        .is_err());
+    let mut truncated_stack = stack.clone();
+    truncated_stack.frames[1].scope_truncated = true;
+    assert!(vm
+        .debugger_linked_value_preview(1, &truncated_stack, root_entry)
+        .is_err());
     assert!(matches!(
         vm.resume_debugger_nested_execution(1),
         Ok(VmDebuggerNestedExecutionState::FrameReturned { .. })
     ));
+    assert!(vm
+        .debugger_linked_value_preview(1, &stack, root_entry)
+        .is_err());
     assert_eq!(
         vm.resume_debugger_module_execution(),
         Ok(VmDebuggerExecutionState::Completed)

@@ -51,6 +51,48 @@ impl Vm {
                     (&child.execution.bindings, &child.execution.cells)
                 }
             };
+        self.debugger_binding_preview(bindings, cells, entry)
+    }
+
+    /// Reads one retained module entry-root slot while a distinct dependency
+    /// child is paused. The complete two-frame snapshot must still match;
+    /// ordinary root value selectors cannot be used for this state.
+    pub fn debugger_linked_value_preview(
+        &self,
+        frame_serial: u64,
+        expected_stack: &VmDebuggerStackSnapshot,
+        entry: VmDebuggerScopeEntry,
+    ) -> Result<VmDebuggerValuePreview, RuntimeError> {
+        let current = self.debugger_linked_stack_snapshot(
+            frame_serial,
+            VM_DEBUGGER_MAX_STACK_FRAMES,
+            VM_DEBUGGER_MAX_SCOPE_ENTRIES,
+        )?;
+        if &current != expected_stack
+            || current.stack_truncated
+            || current.frames.iter().any(|frame| frame.scope_truncated)
+            || current.frames[1].code_unit_ordinal != 0
+            || !current.frames[1].scope_entries.contains(&entry)
+        {
+            return Err(RuntimeError::Unsupported(
+                "debugger linked value target is not an active entry-root slot",
+            ));
+        }
+        let root = self
+            .debugger_module_continuation
+            .as_ref()
+            .ok_or(RuntimeError::Unsupported(
+                "debugger linked entry continuation is unavailable",
+            ))?;
+        self.debugger_binding_preview(&root.execution.bindings, &root.execution.cells, entry)
+    }
+
+    fn debugger_binding_preview(
+        &self,
+        bindings: &[Option<Value>],
+        cells: &HashMap<usize, ObjectId>,
+        entry: VmDebuggerScopeEntry,
+    ) -> Result<VmDebuggerValuePreview, RuntimeError> {
         let slot = entry.slot_ordinal as usize;
         let value = if let Some(cell) = cells.get(&slot) {
             self.heap.get_own(*cell, "value")?

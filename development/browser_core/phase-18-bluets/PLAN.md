@@ -1893,6 +1893,20 @@ without a partial payload; after HTTP reload, old relation, Value, and type
 display targets also refuse. The focused real-socket test passes for both
 script kinds without changing debugger v41 or the compiler/runtime ABI.
 
+**C3.1.3.5.3.1 native linked entry value:** BlueJS now reads one entry-root
+slot directly from the retained module continuation while a distinct
+dependency child is paused. It first reacquires the full two-frame linked
+snapshot, compares every frame generation, safe point, active slot, and
+truncation flag with the caller's expected snapshot, then uses the existing
+plain-data copier and its fixed depth/node/payload limits. The page runtime
+rechecks exact tab ownership, both installed program handles, invocation
+serial, and the complete snapshot before asking the VM for the value. Native
+and page-realm regressions read an initialized `9`, refuse wrong serial,
+slot, moved child frame, wrong realm/program, and resume-stale targets; a
+4 KiB-plus string refuses without a partial preview. Five focused linked
+tests and eleven existing plain-preview tests pass. This leaf adds no private
+wire route or public Value authority.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

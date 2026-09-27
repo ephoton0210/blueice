@@ -846,6 +846,30 @@ impl BlueJsPageRuntime {
         Ok(snapshot)
     }
 
+    /// Copies one active entry-root binding while its dependency child is
+    /// paused. Both page-owned programs and the complete retained stack must
+    /// still match the caller's snapshot before the native VM reads the slot.
+    pub fn debugger_linked_value_preview(
+        &self,
+        tab_id: u64,
+        frame: BlueJsPageDebuggerLinkedFrame,
+        expected_stack: &VmDebuggerStackSnapshot,
+        entry: VmDebuggerScopeEntry,
+    ) -> Result<VmDebuggerValuePreview, BlueJsPageRuntimeError> {
+        let current = self.debugger_linked_stack_snapshot(tab_id, frame, 2, 256)?;
+        if &current != expected_stack {
+            return Err(BlueJsPageRuntimeError::DebuggerNestedFrameUnavailable);
+        }
+        let realm = self
+            .realms
+            .get(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        realm
+            .vm
+            .debugger_linked_value_preview(frame.invocation_serial, &current, entry)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
     /// Copies only the retained paused root, or the exact nested child and
     /// its waiting root, in child-first order. The selected program must
     /// still belong to this tab and match the VM's installed generation.
@@ -2108,7 +2132,7 @@ mod tests {
                 &origin(),
                 source("page:///linked-entry.mjs"),
                 &BlueJsProgramV1::Module(
-                    parse_module("import { inner } from './linked-dep.mjs'; export const answer = inner() + 1;")
+                    parse_module("import { inner } from './linked-dep.mjs'; export const rootValue = 9; export const answer = inner() + rootValue;")
                         .unwrap(),
                 ),
             )
@@ -2141,6 +2165,34 @@ mod tests {
             snapshot.frames[1].program_generation,
             entry.generation().as_u64()
         );
+        let root_entry = snapshot.frames[1]
+            .scope_entries
+            .iter()
+            .find(|entry| {
+                runtime.debugger_linked_value_preview(7, frame, &snapshot, **entry)
+                    == Ok(VmDebuggerValuePreview::NumberBits(9.0_f64.to_bits()))
+            })
+            .copied()
+            .expect("the exact entry root must retain its initialized binding");
+        assert!(runtime
+            .debugger_linked_value_preview(8, frame, &snapshot, root_entry)
+            .is_err());
+        let mut moved_snapshot = snapshot.clone();
+        moved_snapshot.frames[0].bytecode_offset += 1;
+        assert!(runtime
+            .debugger_linked_value_preview(7, frame, &moved_snapshot, root_entry)
+            .is_err());
+        assert!(runtime
+            .debugger_linked_value_preview(
+                7,
+                frame,
+                &snapshot,
+                VmDebuggerScopeEntry {
+                    slot_ordinal: u32::MAX,
+                    ..root_entry
+                },
+            )
+            .is_err());
         assert!(runtime
             .debugger_stack_snapshot(7, entry, None, 2, 256)
             .is_err());
@@ -2154,6 +2206,9 @@ mod tests {
             dependency_program: entry,
             ..frame
         };
+        assert!(runtime
+            .debugger_linked_value_preview(7, wrong_dependency, &snapshot, root_entry)
+            .is_err());
         assert!(runtime
             .debugger_linked_stack_snapshot(7, wrong_dependency, 2, 256)
             .is_err());
@@ -2173,6 +2228,9 @@ mod tests {
         ));
         assert!(runtime
             .debugger_linked_stack_snapshot(7, frame, 2, 256)
+            .is_err());
+        assert!(runtime
+            .debugger_linked_value_preview(7, frame, &snapshot, root_entry)
             .is_err());
         assert_eq!(
             runtime.resume_debugger_module_execution(7),

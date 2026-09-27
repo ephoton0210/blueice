@@ -18,9 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: C3.1.3.5.3.** Add exact linked entry-root value inspection
-through BlueJS and the private page-host/child route, with live-generation
-and bounded-preview refusals.
+**Current leaf: C3.1.3.5.3.2.** Define the private linked-value selector and
+complete page-host route, with exact echo and no-partial denial tests.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -499,6 +498,9 @@ channel with explicit owner/client grants.
       - [x] **C3.1.3.5.1** Decide the exact same-slot join, independent owner/client grants and same-stream receipts, linked value shape, and stale/no-partial refusal contract in PLAN.md; keep debugger v41 unchanged in this design leaf. PLAN.md fixes exact echoed ordinary/linked selectors, a separate linked value request under the existing bounded-value grant, complete same-stream linked-scope receipts, and full typed refusals after movement or replacement. Public debugger v41 and the metadata manifest are unchanged.
       - [x] **C3.1.3.5.2** Prove on real classic and module Launcher sockets that a single active slot's static relation resolves to its separately granted compiler type display while the same slot yields a separately granted bounded runtime preview. Check exact target echoes, denied independent grants, and expiry after step and HTTP reload. A focused Launcher/core/child socket test pairs the compiler `number` display with the same initialized root slot's bounded `9` preview, verifies static-only, relation-only, and value-only grant refusals on separate streams, and rejects both old targets after a real step and HTTP replacement.
       - [ ] **C3.1.3.5.3** Implement generation-bound linked entry-root value inspection in BlueJS and the private page-host/child route. Accept only a complete live linked stack and exact active slot; reject moved, cross-program, stale, and over-budget reads without a partial preview. Bump the private protocol only when the route is complete.
+        - [x] **C3.1.3.5.3.1** Read one active linked entry-root slot through the retained BlueJS module continuation and an exact page-realm API. Revalidate the complete dependency/entry stack and native preview budget; test wrong serial/slot, moved frame, wrong realm, and resume expiry without private wire changes. Native and page-runtime tests prove an initialized entry binding returns `9`, reject wrong serial/slot, changed child frame, wrong realm/program, and reads after resume, and reject a 4 KiB-plus string through the existing bounded preview copier. Five linked-module and eleven ordinary-preview focused tests pass.
+        - [ ] **C3.1.3.5.3.2** Define a strict private linked-value target and echoed bounded snapshot, add the page-host route and owner-side tests for malformed, moved, cross-program, and over-budget requests; bump the private protocol only with the complete route.
+        - [ ] **C3.1.3.5.3.3** Adapt and validate the private linked-value reply in the child executor and core-facing debugger interface, preserving exact stack/program echo and no-partial denials; then check off C3.1.3.5.3.
       - [ ] **C3.1.3.5.4** Add a public linked value request/reply under the existing independent bounded-value owner/client grant and a complete same-stream `GetLinkedScopes` receipt. Revalidate the linked pause and remint the bounded preview in core; add IPC/core denial tests and bump the public protocol only with the complete route.
       - [ ] **C3.1.3.5.5** Prove a linked entry-root slot's static type display and runtime preview on real Launcher sockets, including absent grants/receipts and step/resume, HTTP reload, and supervised child cutover expiry. Run the full workspace, Clippy, and formatting gates, then check off C3.1.3.5, C3.1.3, and C3.1.
 - [ ] **C3.2** On reload, close, cache eviction, or hibernation, invalidate or
