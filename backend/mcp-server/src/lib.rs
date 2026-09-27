@@ -6,6 +6,9 @@
 pub mod compiler;
 
 #[cfg(unix)]
+mod compiler_output;
+
+#[cfg(unix)]
 pub mod server;
 
 #[cfg(unix)]

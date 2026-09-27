@@ -36,6 +36,19 @@ pub(super) struct CompilerProjectParams {
     pub(super) project_id: u64,
 }
 
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(super) struct CompilerOutputSessionParams {
+    pub(super) output_session_id: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(super) struct CompilerOutputProjectParams {
+    pub(super) output_session_id: Option<String>,
+    pub(super) project_id: u64,
+}
+
 /// Exact-generation static compiler metadata lookup. Every component is an
 /// opaque core-minted number; this shape intentionally has no source text,
 /// path, resolver, compiler-option, artifact, or output-write field.
@@ -563,7 +576,7 @@ pub(super) fn compiler_metadata_receipt_error_reply(
 pub(super) struct CompilerMcpAdapter {
     connection: Arc<Mutex<CompilerConnection<UnixStream>>>,
     pub(super) receipt: CompilerMcpSessionReceipt,
-    session_state: Arc<Mutex<CompilerMcpSessionState>>,
+    pub(super) session_state: Arc<Mutex<CompilerMcpSessionState>>,
 }
 
 impl CompilerMcpAdapter {
@@ -693,6 +706,27 @@ pub(super) fn compiler_reply_to_result(
     );
     let text = serde_json::to_string_pretty(&CompilerMcpReply { session, reply })
         .unwrap_or_else(|_| "{}".to_string());
+    let text = wrap_untrusted_compiler_content(&text);
+    if failed {
+        CallToolResult::error(vec![Content::text(text)])
+    } else {
+        CallToolResult::success(vec![Content::text(text)])
+    }
+}
+
+pub(super) fn output_reply_to_result(
+    receipt: &blueice_ipc::compiler_output::CompilerOutputSessionReceipt,
+    reply: blueice_ipc::compiler_output::CompilerOutputReply,
+) -> CallToolResult {
+    let failed = matches!(
+        reply,
+        blueice_ipc::compiler_output::CompilerOutputReply::Error { .. }
+    );
+    let text = serde_json::to_string_pretty(&serde_json::json!({
+        "output_session": receipt,
+        "reply": reply,
+    }))
+    .unwrap_or_else(|_| "{}".to_string());
     let text = wrap_untrusted_compiler_content(&text);
     if failed {
         CallToolResult::error(vec![Content::text(text)])

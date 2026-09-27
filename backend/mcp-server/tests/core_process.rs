@@ -31,6 +31,8 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+#[path = "core_process/compiler_output.rs"]
+mod compiler_output;
 #[path = "core_process/compiler_round_trip.rs"]
 mod compiler_round_trip;
 
@@ -367,6 +369,20 @@ async fn launcher_managed_core_keeps_mcp_browser_and_fixed_compiler_adapters_pai
         .serve(client_transport)
         .await
         .expect("MCP client must negotiate the in-memory transport");
+
+    let tools = client
+        .list_tools(None)
+        .await
+        .expect("query-only tool inventory");
+    assert!(!tools.tools.iter().any(|tool| tool.name == "bluetsc_build"));
+    assert!(!tools
+        .tools
+        .iter()
+        .any(|tool| tool.name == "bluetsc_list_output_projects"));
+    assert!(client
+        .call_tool(CallToolRequestParams::new("bluetsc_build"))
+        .await
+        .is_err());
 
     let compiler_session = compiler_session_id(
         &client

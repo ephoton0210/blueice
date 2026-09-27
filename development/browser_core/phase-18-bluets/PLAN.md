@@ -4135,6 +4135,20 @@ A real subprocess covers valid publication, rejection of a query receipt,
 permission mode, cleanup, and refusal to start an output listener with an
 ungranted owner catalog. MCP still has no output adapter until F3.2.1.3.
 
+**F3.2.1.3 optional MCP build attachment:** A new explicit constructor pairs
+the browser and query sockets with the separately configured output socket.
+The output client validates its independent Hello receipt, accepts only a
+well-formed granted-project inventory, and checks each build result against
+the requested project. MCP's active tool router omits output capabilities,
+output inventory, and build entirely when no output connection was attached;
+a direct call to the absent route fails. An attached client must supply the
+`ow-` output receipt and inventoried project ID to build. Before that request,
+MCP revokes its old query-generation evidence under the same lock used by
+query operations, so a build cannot leave a usable stale static receipt.
+The build result is source-free and omits the physical output path. A real
+MCP/core test covers the advertised tools, wrong query receipt, inventory
+gate, publication, and stale query generation.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
