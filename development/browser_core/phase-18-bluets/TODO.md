@@ -18,7 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E3.2.1.** Emit a versioned strict-runtime helper file.
+**Current leaf: E3.2.1.2.** Implement the deterministic helper v1 source and
+write it into staged strict-runtime output for direct publisher verification.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -630,6 +631,8 @@ channel with explicit owner/client grants.
 - [ ] **E3.2** Emit a versioned helper and bind its identity to the artifact
   manifest; reject any target that erases a required check.
   - [ ] **E3.2.1** Emit a versioned helper file.
+    - [x] **E3.2.1.1** Decide the helper v1 contract, output name, and admission order. The current reviewed live page boundaries are primitive strings, so helper v1 validates only primitive-string type, Unicode scalar well-formedness, and bounded UTF-8 bytes with intrinsic string indexing and operators; unsupported structured values fail closed. The deterministic `bluets.runtime-helper.v1.mjs` file is staged beside emitted modules with an MPL header. Standalone strict-runtime admission remains gated until E3.2.2 binds the file identity to the manifest and E3.2.3 proves checks cannot be erased; PLAN.md records the decision and the staging test boundary.
+    - [ ] **E3.2.1.2** Implement the pure, versioned helper source and stage the exact helper file through the build publisher. Test its deterministic bytes and internal strict staging output without opening standalone strict-runtime admission before the identity and target gates are complete; then close E3.2.1.
   - [ ] **E3.2.2** Bind the helper identity into the artifact manifest.
   - [ ] **E3.2.3** Reject any target that erases a required check.
 - [ ] **E3.3** Make direct-page and emitted ESM reject the same malformed value;

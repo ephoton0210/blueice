@@ -2510,6 +2510,23 @@ live crossings cover the six required classes without treating a static
 compiler validation snapshot as a runtime object or duplicating the build
 target.
 
+**E3.2.1.1 emitted helper v1 decision:** The only reviewed live page
+contracts today are primitive string results for document text and canonical
+origin. The first emitted strict-runtime helper therefore supports that
+closed subset: require a primitive string, reject unpaired UTF-16 surrogates,
+and count its UTF-8 bytes under an owner-selected nonnegative integer limit.
+It must use string indexing, length, comparisons, and arithmetic on that
+primitive rather than calling replaceable global encoders, prototype
+methods, getters, or callbacks. Unsupported object and array contracts are
+not treated as validated strings. The helper is fixed UTF-8 source with an
+MPL header and a stable `bluets.runtime-helper.v1.mjs` output name, written
+in the same staged atomic publication as the emitted modules. E3.2.1.2 will
+test that writer directly with strict metadata and verify exact bytes; the
+public standalone strict-runtime build gate remains closed until the
+manifest binds the helper identity and output-target checks are enforced in
+E3.2.2–E3.2.3. A helper file alone is no proof that generated modules call
+it at every required boundary.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
