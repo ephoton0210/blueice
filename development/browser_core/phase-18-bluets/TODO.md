@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: H.2.1.** Define the supported catch binding and finally
-semantics before adding try/catch/finally execution and safe-point tests.
+**Current leaf: H.2.2.** Test the chosen braced try/catch/finally form through
+checker scope, direct execution, completion precedence, and safe points.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -777,7 +777,7 @@ Keep check read-only and owner registration sealed before listeners.
     - [x] **H.1.2.3** Verify loop-back safe-point mapping and pause/step/resume behavior against the exact live source and generation. A direct BlueTS page-runtime test pauses in the named function, steps through three iterations, sees a repeated loop-back offset retain its exact original function-declaration source span, resumes the root, then resumes a second independent nested frame. Navigation invalidates both old frame authority and safe-point-map validation. The existing v1 child-map granularity is the whole original function declaration, not a loop-line span; [PLAN.md](PLAN.md#h11-first-loop-form-after-release-gate) records that boundary.
     - [x] **H.1.2.4** Compare accepted syntax and diagnostics with the pinned TypeScript oracle, run the focused and workspace gates, and record the completed loop boundary. Three new TypeScript 5.9.3 fixtures match zero/multiple-iteration output, both condition/body call-error lines, and conservative missing-return diagnostics; the entire pinned oracle matrix passes. The first full workspace run hit the 60 GiB shared-target cap and stopped safely; after cleaning generated Cargo artifacts and defaulting local dev/test debug info to zero, workspace tests, all-target Clippy with warnings denied, all-target build, rustfmt, and whitespace checks pass with one 12 GiB target and about 629 GiB free on the host. [PLAN.md](PLAN.md#h11-first-loop-form-after-release-gate) records the v1 whole-function child-span granularity and disk-bound local gate.
 - [ ] **H.2** Define try/catch/finally with matching BlueJS execution and safe points.
-  - [ ] **H.2.1** Define supported catch-binding and finally semantics.
+  - [x] **H.2.1** Define supported catch-binding and finally semantics. [PLAN.md](PLAN.md#h21-first-trycatchfinally-form) chooses a named-function braced try with one unannotated identifier catch binding, a finally block, or both. Catch is lexical and typed `unknown`; finally runs on ordinary normal/return/throw completion and its own return/throw overrides a pending one. Fatal resource/host errors remain terminal, and the conservative checker derives no required-return proof from try. Bare, typed, destructured, multiple, and nested catches/tries, block-local declarations and loops, and top-level/anonymous forms remain outside the direct bridge. H.2.2 owns checker, runtime, safe-point, and stale-generation evidence for this design-only decision.
   - [ ] **H.2.2** Test matching BlueJS execution and safe points.
 - [ ] **H.3** Define control-flow narrowing and return paths through checker, emitter,
   direct execution, and oracle.
