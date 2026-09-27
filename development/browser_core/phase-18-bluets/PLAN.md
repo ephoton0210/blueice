@@ -2311,6 +2311,22 @@ The retained-byte counter measures the concrete payload held by these owners;
 it is not a claim about allocator metadata or VM heap. The remaining subleaves
 implement each retained owner and close with a real-process two-tab audit.
 
+**E2.2.1.3.2 direct-page retained metadata charge:** BlueTS now computes a
+checked owned-heap payload for static source/type/symbol records and nested
+reifiable contract plans. The bridge adds its safe-point map, breakpoint spans,
+root slots, and inline retained record. Each `DirectDebugRegistry` entry stores
+the measured charge before admission; overflow refuses retention. The direct
+page realm owner sums only live program handles in the requested tab, while
+bytecode and VM heap remain in their separate runtime statistics. A two-tab
+public-boundary test proves a longer retained contract/symbol source costs more,
+navigation zeroes only the replaced tab, and close removes only its owner.
+The module-graph regression sums both program records and observes zero after
+pruning; a compiler metadata test confirms retained contracts add bytes. The
+metric counts vector and string capacities plus logical map-entry payload,
+excluding allocator metadata and BTreeMap node overhead. All affected files
+are below 1,300 lines. Child, core debugger-map, and verified-source charges
+remain in the following subleaves.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

@@ -313,6 +313,96 @@ fn direct_page_validation_work_is_charged_to_the_initiating_tab_and_generation()
 }
 
 #[test]
+fn direct_page_retained_debug_payload_is_charged_to_each_live_tab() {
+    let profiles = catalog();
+    let artifact = profiles.generate("test-empty-v1").unwrap();
+    let short_loader = AuthorizedModuleLoader::new(
+        [AuthorizedModule::new(
+            "page:///app/main.ts",
+            "interface ShortShape { value: string; } const shortName: string = 'one'; shortName;",
+        )],
+        [],
+    )
+    .unwrap();
+    let long_loader = AuthorizedModuleLoader::new(
+        [AuthorizedModule::new(
+            "page:///app/main.ts",
+            "interface MuchLongerRetainedContractShape { value: string; } const muchLongerRetainedSymbolName: string = 'two'; muchLongerRetainedSymbolName;",
+        )],
+        [],
+    )
+    .unwrap();
+    let (mut tabs, first_tab) = loaded_tabs();
+    let second_tab = tabs.open_tab();
+    tabs.get_mut(second_tab).unwrap().load_html_str(
+        "<main>second</main>",
+        Some("https://example.test/second.html".to_string()),
+    );
+    let mut host = DirectPageScriptHost::new(profiles);
+    assert_eq!(host.retained_debug_payload_bytes(first_tab).unwrap(), None);
+    let execute = |host: &mut DirectPageScriptHost,
+                   tabs: &TabManager,
+                   tab_id,
+                   loader: &AuthorizedModuleLoader| {
+        host.execute(
+            tabs,
+            DirectPageScriptRequest {
+                tab_id,
+                kind: DirectPageScriptKind::Classic,
+                entry: "page:///app/main.ts".to_string(),
+                loader,
+                compiler_options: CompilerOptions::default(),
+                feature_profile: "test-empty-v1".to_string(),
+                supplied_manifest: &artifact.manifest,
+                supplied_declaration_source: &artifact.declaration_source,
+                supplied_runtime_bindings: &artifact.runtime_bindings,
+            },
+        )
+    };
+    assert_eq!(
+        execute(&mut host, &tabs, first_tab, &short_loader).unwrap(),
+        blueice_bluejs::Value::String("one".into())
+    );
+    assert_eq!(
+        execute(&mut host, &tabs, second_tab, &long_loader).unwrap(),
+        blueice_bluejs::Value::String("two".into())
+    );
+    let first_bytes = host
+        .retained_debug_payload_bytes(first_tab)
+        .unwrap()
+        .unwrap();
+    let second_bytes = host
+        .retained_debug_payload_bytes(second_tab)
+        .unwrap()
+        .unwrap();
+    assert!(first_bytes > 0);
+    assert!(
+        second_bytes > first_bytes,
+        "longer retained names must cost more"
+    );
+    assert_eq!(
+        host.retained_debug_payload_bytes(first_tab).unwrap(),
+        Some(first_bytes)
+    );
+
+    tabs.get_mut(first_tab).unwrap().load_html_str(
+        "<main>replacement</main>",
+        Some("https://example.test/replacement.html".to_string()),
+    );
+    host.synchronize_tab(&tabs, first_tab).unwrap();
+    assert_eq!(
+        host.retained_debug_payload_bytes(first_tab).unwrap(),
+        Some(0)
+    );
+    assert_eq!(
+        host.retained_debug_payload_bytes(second_tab).unwrap(),
+        Some(second_bytes)
+    );
+    host.close_page(second_tab);
+    assert_eq!(host.retained_debug_payload_bytes(second_tab).unwrap(), None);
+}
+
+#[test]
 fn strict_runtime_rejects_missing_unreifiable_and_unchecked_live_boundaries_separately() {
     let profiles = core_script_host_type_catalog();
     let artifact = profiles

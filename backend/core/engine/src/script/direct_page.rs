@@ -353,6 +353,21 @@ impl DirectPageScriptHost {
             .map_err(DirectPageScriptError::Bridge)
     }
 
+    /// Returns the private retained BlueTS metadata payload for one live tab.
+    /// Bytecode and VM heap remain in `realm_stats` and are not counted here.
+    pub fn retained_debug_payload_bytes(
+        &self,
+        tab_id: TabId,
+    ) -> Result<Option<usize>, DirectPageScriptError> {
+        if !self.live_documents.contains_key(&tab_id) {
+            return Ok(None);
+        }
+        self.realms
+            .retained_debug_payload_bytes(tab_id.as_u64())
+            .map(Some)
+            .map_err(DirectPageScriptError::Bridge)
+    }
+
     /// Returns only the current document's private contract-validation work.
     /// A rejected result is charged before the error is returned; navigation
     /// and tab close release the old generation's counters.

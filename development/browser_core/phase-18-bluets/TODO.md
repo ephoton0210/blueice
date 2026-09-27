@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E2.2.1.3.2.** Attribute direct-page retained BlueTS debug and
-contract metadata bytes to the owning tab.
+**Current leaf: E2.2.1.3.3.** Attribute child static BlueTS metadata and
+deferred debugger source graphs to their exact tab/document generation.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -593,7 +593,7 @@ channel with explicit owner/client grants.
     - [x] **E2.2.1.2** Charge out-of-process document validation to the initiating tab and document generation, including failed snapshot admission. The core records each validated string copy and attempted node before source authorization or child synchronization, retains the failed attempt under the exact document generation, and clears the predecessor's charge on replacement or close. A two-tab public-boundary test proves independent successful/rejected charges, no child document for the rejected tab, and scoped lifecycle release. The cohesive `prepare_document` path moved into the bounded document-admission submodule so the executor facade remains below 1,300 lines.
     - [ ] **E2.2.1.3** Audit retained page cache owners, charge their bounded payload bytes to the initiating tab or prove zero retention, and verify replacement/close releases the charge.
       - [x] **E2.2.1.3.1** Decide the live-page cache ownership and accounting model. The plan now separates stateless page compilation and ephemeral primitive contract plans from retained direct/child debug metadata, child deferred source graphs, core debugger maps, and the shared verified HTTP source cache. It excludes the sealed project compiler's incremental cache because it has no initiating page tab. The decision charges bounded retained payload bytes once to the exact tab/document owner, avoids counting VM bytecode/heap twice, partitions source cache retention by document, and requires release on replacement/close. This is a design-only leaf with a reviewable owner table in PLAN.md.
-      - [ ] **E2.2.1.3.2** Attribute direct-page retained BlueTS debug and contract metadata payload bytes to the owning tab; prove two-tab isolation and release on navigation/close.
+      - [x] **E2.2.1.3.2** Attribute direct-page retained BlueTS debug and contract metadata payload bytes to the owning tab. Checked counters cover static source/type/symbol records, nested reifiable contract plans, safe-point maps, breakpoint spans, and root slots at each live BlueJS program generation. The direct-page host sums only handles in the addressed tab's realm; a two-tab public-boundary test proves independent, content-sensitive charges and release on navigation/close. A module-graph test proves all live program charges are summed and pruned, while a compiler metadata test proves retained contracts increase the charge. All touched files remain below 1,300 lines.
       - [ ] **E2.2.1.3.3** Attribute child static BlueTS metadata and deferred debugger source-graph payload to its exact tab/document generation; expose bounded private child accounting to core and prove lifecycle release.
       - [ ] **E2.2.1.3.4** Account core-retained debugger identity and metadata maps by exact tab/document generation, including failed child admission and replacement.
       - [ ] **E2.2.1.3.5** Partition the verified HTTP source cache by initiating tab/document generation and release its payload charge on navigation/close while preserving same-document cache hits and integrity checks.

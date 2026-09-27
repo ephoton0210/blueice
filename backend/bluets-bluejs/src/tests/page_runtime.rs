@@ -287,10 +287,39 @@ fn direct_module_graph_retains_exact_static_metadata_for_every_page_generation()
         assert_eq!(retained.static_info().sources[0].module, *module_id);
         assert_eq!(retained.safe_point_map(), &module_attachment.safe_point_map);
     }
+    let expected_bytes: usize = attachment
+        .modules
+        .values()
+        .map(|module| {
+            debug
+                .get(runtime.program_registry(), module.handle)
+                .unwrap()
+                .retained_payload_bytes()
+        })
+        .sum();
+    assert!(expected_bytes > 0);
+    assert_eq!(
+        debug
+            .retained_payload_bytes_for_live_handles(
+                runtime.program_registry(),
+                runtime.program_handles(7).unwrap(),
+            )
+            .unwrap(),
+        expected_bytes
+    );
 
     runtime.navigate(7, origin()).unwrap();
     assert_eq!(debug.prune_invalid(runtime.program_registry()), 2);
     assert!(debug.is_empty());
+    assert_eq!(
+        debug
+            .retained_payload_bytes_for_live_handles(
+                runtime.program_registry(),
+                runtime.program_handles(7).unwrap(),
+            )
+            .unwrap(),
+        0
+    );
 }
 
 #[test]

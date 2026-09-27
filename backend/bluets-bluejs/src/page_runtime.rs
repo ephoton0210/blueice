@@ -170,6 +170,18 @@ impl DirectPageRealmOwner {
         self.debug_registry.len()
     }
 
+    /// Counts only retained BlueTS debug and contract payload paired with the
+    /// live programs of this exact page realm.
+    pub fn retained_debug_payload_bytes(&self, tab_id: u64) -> Result<usize, BridgeError> {
+        let handles = self
+            .runtime
+            .program_handles(tab_id)
+            .map_err(BridgeError::PageRuntime)?;
+        self.debug_registry
+            .retained_payload_bytes_for_live_handles(self.runtime.program_registry(), handles)
+            .map_err(BridgeError::DebugAttachment)
+    }
+
     /// Returns bounded resource accounting for one live realm.
     pub fn realm_stats(&self, tab_id: u64) -> Result<bluejs::BlueJsPageRealmStats, BridgeError> {
         self.runtime

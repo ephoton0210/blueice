@@ -124,6 +124,26 @@ impl Default for ValidationLimits {
 }
 
 impl ContractPlan {
+    /// Owned heap payload retained by this plan, excluding allocator and
+    /// BTreeMap node overhead. This is a checked accounting measure, not RSS.
+    pub(crate) fn owned_heap_payload_bytes(&self) -> Option<usize> {
+        let mut bytes = self
+            .id
+            .capacity()
+            .checked_add(self.fingerprint.capacity())?;
+        bytes = bytes.checked_add(contract_heap_payload_bytes(&self.root)?)?;
+        bytes = bytes.checked_add(
+            self.definitions
+                .len()
+                .checked_mul(std::mem::size_of::<(String, Contract)>())?,
+        )?;
+        for (name, contract) in &self.definitions {
+            bytes = bytes.checked_add(name.capacity())?;
+            bytes = bytes.checked_add(contract_heap_payload_bytes(contract)?)?;
+        }
+        Some(bytes)
+    }
+
     /// Lowers a supported static type into a pure runtime plan.  Callers supply
     /// the checker-approved named type table; unresolved or erased types are
     /// rejected rather than treated as an unchecked escape hatch.
@@ -179,6 +199,39 @@ impl ContractPlan {
                 visited_nodes: state.attempted_nodes,
             },
         )
+    }
+}
+
+fn contract_heap_payload_bytes(contract: &Contract) -> Option<usize> {
+    match contract {
+        Contract::Null
+        | Contract::Undefined
+        | Contract::Boolean
+        | Contract::Number
+        | Contract::String => Some(0),
+        Contract::Literal(value) | Contract::Reference(value) => Some(value.capacity()),
+        Contract::Array(item) => {
+            std::mem::size_of::<Contract>().checked_add(contract_heap_payload_bytes(item)?)
+        }
+        Contract::Tuple(items) | Contract::Union(items) | Contract::Intersection(items) => {
+            let mut bytes = items
+                .capacity()
+                .checked_mul(std::mem::size_of::<Contract>())?;
+            for item in items {
+                bytes = bytes.checked_add(contract_heap_payload_bytes(item)?)?;
+            }
+            Some(bytes)
+        }
+        Contract::Record(fields) => {
+            let mut bytes = fields
+                .capacity()
+                .checked_mul(std::mem::size_of::<ContractField>())?;
+            for field in fields {
+                bytes = bytes.checked_add(field.name.capacity())?;
+                bytes = bytes.checked_add(contract_heap_payload_bytes(&field.contract)?)?;
+            }
+            Some(bytes)
+        }
     }
 }
 

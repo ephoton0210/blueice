@@ -279,6 +279,23 @@ fn build_root_symbol_slots(
 }
 
 impl BlueTsSafePointMapV1 {
+    /// Checked heap payload held by this map, excluding its inline fields.
+    pub fn owned_heap_payload_bytes(&self) -> Option<usize> {
+        let mut bytes = self
+            .compiler_options_fingerprint
+            .capacity()
+            .checked_add(self.source_set_hash.capacity())?;
+        bytes = bytes.checked_add(
+            self.entries
+                .capacity()
+                .checked_mul(std::mem::size_of::<BlueTsSafePointEntryV1>())?,
+        )?;
+        for entry in &self.entries {
+            bytes = bytes.checked_add(entry.source.capacity())?;
+        }
+        Some(bytes)
+    }
+
     /// Resolves only an instruction inside a compiler-recorded owning root
     /// statement or direct child function to its original BlueTS byte span.
     /// Other instructions stay unbound; no nearest-statement or generated-
