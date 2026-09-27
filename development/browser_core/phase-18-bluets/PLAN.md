@@ -2481,6 +2481,22 @@ source position or protected text. These are distinct real string-value
 classes. A malformed type, nested value, or cycle is not representable by
 the installed string-only callback and remains in E2.3.1.3.
 
+**E2.3.1.3 structured live crossing:** The existing owner-only paused
+debugger-value preview is a real VM-to-child-to-core value boundary. It is
+selected only by native debugger execution control and an exact live frame,
+safe point, and scope slot; the public debugger still marks bounded values
+planned. BlueJS reads stored own data directly, never invokes a getter or
+proxy trap, and bounds depth, node count, container length, and copied bytes
+before producing the private snapshot. A BlueTS page in a real child/core
+socket test reaches that boundary with one initialized root value at a time:
+a plain number crosses, while an array with a non-index own property, a
+self-referential object, and an object deeper than the preview limit each
+return only the fixed invalid-state refusal. Existing VM-level accessor tests
+also verify no getter runs during preview. This uses an already reviewed
+debugger capability rather than adding a page-visible structured host API;
+E2.3.1.4 will make the six requested value classes independently visible in
+the final regression gate and verify report redaction.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

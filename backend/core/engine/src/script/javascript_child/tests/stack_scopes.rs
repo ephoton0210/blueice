@@ -5,6 +5,128 @@
 use super::*;
 
 #[test]
+fn live_debugger_value_crossing_accepts_plain_data_and_refuses_active_or_unbounded_shapes() {
+    let (path, token, child) = spawn_child();
+    let (mut tabs, tab_id) = loaded_tabs(
+        "<script type=\"application/x-blueice-typescript\">let value: number = 42; 0;</script>",
+        "https://example.test/preview-valid.html",
+    );
+    let mut executor =
+        OutOfProcessJavaScriptPageExecutor::connect_with_debugger_execution_control(&path, &token)
+            .unwrap();
+    for (index, (label, source)) in [
+        ("valid", "let value: number = 42; 0;"),
+        ("cyclic", "let value: any = {}; value.self = value; 0;"),
+        (
+            "deep",
+            "let value = { a: { b: { c: { d: { e: 1 } } } } }; 0;",
+        ),
+        ("malformed-array", "let value: any = [1]; value.x = 2; 0;"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if index > 0 {
+            tabs.get_mut(tab_id).unwrap().load_html_str(
+                &format!("<script type=\"application/x-blueice-typescript\">{source}</script>"),
+                Some(format!("https://example.test/preview-{label}.html")),
+            );
+        }
+        let generation = index as u64 + 1;
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let programs = executor.debugger_programs(tab_id, generation).unwrap();
+        let program = *programs.first().unwrap_or_else(|| {
+            panic!(
+                "{label} has no program; reports: {:?}",
+                executor.drain_blue_ts_reports_for_tab(tab_id)
+            )
+        });
+        let halt = executor
+            .debugger_safe_points(
+                tab_id,
+                generation,
+                program.program_handle,
+                program.program_generation,
+            )
+            .unwrap()
+            .into_iter()
+            .filter(|point| point.code_unit_ordinal == 0)
+            .max_by_key(|point| point.bytecode_offset)
+            .unwrap();
+        executor
+            .arm_debugger_root_safe_point_breakpoint(
+                tab_id,
+                generation,
+                program.program_handle,
+                program.program_generation,
+                halt.code_unit_ordinal,
+                halt.bytecode_offset,
+            )
+            .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let stack = executor
+            .debugger_stack_snapshot(tab_id, generation, program, None, 1, 256)
+            .unwrap();
+        let root = &stack.frames[0];
+        let state = executor
+            .debugger_execution_state(
+                tab_id,
+                generation,
+                program.program_handle,
+                program.program_generation,
+            )
+            .unwrap();
+        assert!(matches!(
+            state,
+            JavaScriptPageDebuggerExecutionState::Paused { .. }
+        ));
+        assert_eq!(root.scope_entries.len(), 1, "{label}: {stack:?}");
+        let previews: Vec<_> = root
+            .scope_entries
+            .iter()
+            .copied()
+            .map(|scope_entry| {
+                executor.debugger_value_snapshot(
+                    tab_id,
+                    generation,
+                    JavaScriptPageDebuggerValueTarget {
+                        program,
+                        frame: None,
+                        frame_index: 0,
+                        safe_point: JavaScriptPageDebuggerSafePoint {
+                            code_unit_ordinal: root.code_unit_ordinal,
+                            bytecode_offset: root.bytecode_offset,
+                        },
+                        scope_entry,
+                    },
+                )
+            })
+            .collect();
+        if label == "valid" {
+            assert!(
+                previews.iter().any(|result| {
+                    *result
+                        == Ok(JavaScriptPageDebuggerValuePreview::NumberBits(
+                            42.0_f64.to_bits(),
+                        ))
+                }),
+                "valid: state={state:?}, halt={halt:?}, stack={stack:?}, previews={previews:?}"
+            );
+        } else {
+            assert_eq!(
+                previews,
+                [Err(JavaScriptPageDebuggerError::InvalidExecutionState)],
+                "{label} must refuse the one live value without copying it"
+            );
+        }
+    }
+    drop(executor);
+    shutdown_child(&path, &token);
+    child.join().unwrap();
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn launcher_supervised_bluets_classic_and_module_values_and_static_scopes_cross_core() {
     use blueice_ipc::debugger::{
         DebuggerCapability, DebuggerCapabilityState, DebuggerPageRealm, DebuggerReply,
