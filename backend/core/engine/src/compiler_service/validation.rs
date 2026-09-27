@@ -76,6 +76,34 @@ pub(super) fn capped_diagnostics(
     }
 }
 
+/// Keeps a deterministic prefix under both record and byte limits. The fixed
+/// allowance covers the code, severity, span offsets, and retained location
+/// slot in addition to the two variable-length strings.
+pub(super) fn retain_bounded_diagnostics(
+    diagnostics: &[Diagnostic],
+    max_entries: usize,
+    max_bytes: usize,
+) -> (Vec<Diagnostic>, bool) {
+    let mut retained = Vec::new();
+    let mut bytes = 0usize;
+    for diagnostic in diagnostics {
+        let Some(next_bytes) = bytes
+            .checked_add(diagnostic.span.module.len())
+            .and_then(|sum| sum.checked_add(diagnostic.message.len()))
+            .and_then(|sum| sum.checked_add(64))
+        else {
+            break;
+        };
+        if retained.len() >= max_entries || next_bytes > max_bytes {
+            break;
+        }
+        bytes = next_bytes;
+        retained.push(diagnostic.clone());
+    }
+    let truncated = retained.len() != diagnostics.len();
+    (retained, truncated)
+}
+
 /// Materializes only compiler-minted numeric handles for pagination. The
 /// returned page never includes source text, module identities, names, type
 /// displays, contract plans, compiler options, or runtime values.
@@ -137,7 +165,14 @@ pub(super) fn validate_build_output(
     {
         return Err(CompilerServiceError::BuildOutputFingerprintMismatch);
     }
-    let artifact_count = output.artifacts.len() + output.declaration_modules.len();
+    let artifact_count = output
+        .artifacts
+        .len()
+        .checked_add(output.declaration_modules.len())
+        .ok_or(CompilerServiceError::BuildOutputLimit {
+            resource: "artifact count",
+            limit: limits.max_build_artifacts,
+        })?;
     if artifact_count > limits.max_build_artifacts {
         return Err(CompilerServiceError::BuildOutputLimit {
             resource: "artifact count",
@@ -145,21 +180,40 @@ pub(super) fn validate_build_output(
         });
     }
     let mut total_bytes = output.fingerprint.len();
-    for artifact in output.artifacts.values() {
+    for (module_key, artifact) in &output.artifacts {
+        total_bytes = add_response_bytes(total_bytes, module_key.len(), limits)?;
         total_bytes = add_response_bytes(total_bytes, artifact.module_id.len(), limits)?;
+        total_bytes = add_response_bytes(total_bytes, artifact.fingerprint.len(), limits)?;
         total_bytes = add_response_bytes(total_bytes, artifact.javascript.len(), limits)?;
         if let Some(source_map) = artifact.source_map.as_ref() {
             total_bytes = add_response_bytes(total_bytes, source_map.file.len(), limits)?;
             total_bytes = add_response_bytes(total_bytes, source_map.mappings.len(), limits)?;
             for source in &source_map.sources {
+                total_bytes = add_response_bytes(total_bytes, 24, limits)?;
                 total_bytes = add_response_bytes(total_bytes, source.len(), limits)?;
             }
             for source in &source_map.sources_content {
+                total_bytes = add_response_bytes(total_bytes, 24, limits)?;
                 total_bytes = add_response_bytes(total_bytes, source.len(), limits)?;
             }
         }
         if let Some(declaration) = artifact.declaration.as_ref() {
             total_bytes = add_response_bytes(total_bytes, declaration.len(), limits)?;
+        }
+        if let Some(strict) = artifact.strict_runtime.as_ref() {
+            total_bytes = add_response_bytes(total_bytes, strict.helper_version.len(), limits)?;
+            total_bytes = add_runtime_site_bytes(total_bytes, &strict.helper_import, limits)?;
+            for boundary in &strict.boundaries {
+                total_bytes = add_response_bytes(total_bytes, 32, limits)?;
+                total_bytes = add_response_bytes(total_bytes, boundary.contract_id.len(), limits)?;
+                total_bytes = add_response_bytes(total_bytes, boundary.function.len(), limits)?;
+                total_bytes =
+                    add_response_bytes(total_bytes, boundary.source_span.module.len(), limits)?;
+                for site in &boundary.ingress {
+                    total_bytes = add_runtime_site_bytes(total_bytes, site, limits)?;
+                }
+                total_bytes = add_runtime_site_bytes(total_bytes, &boundary.egress, limits)?;
+            }
         }
     }
     for (module_id, declaration) in &output.declaration_modules {
@@ -173,6 +227,16 @@ pub(super) fn validate_build_output(
         });
     }
     Ok(())
+}
+
+fn add_runtime_site_bytes(
+    total: usize,
+    site: &blueice_bluets::EmittedRuntimeSite,
+    limits: CompilerServiceLimits,
+) -> Result<usize, CompilerServiceError> {
+    let total = add_response_bytes(total, 24, limits)?;
+    let total = add_response_bytes(total, site.source_span.module.len(), limits)?;
+    add_response_bytes(total, site.expected_text.len(), limits)
 }
 
 pub(super) fn add_response_bytes(

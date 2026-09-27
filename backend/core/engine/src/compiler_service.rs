@@ -33,6 +33,9 @@ pub struct CompilerServiceLimits {
     /// immediate check reply remains separately capped; later diagnostic
     /// pagination can inspect this larger, fixed core-owned retention set.
     pub max_retained_diagnostics: usize,
+    /// Combined UTF-8 bytes and fixed record overhead retained for one
+    /// generation's diagnostic prefix, independent of the entry count.
+    pub max_retained_diagnostic_bytes: usize,
     pub max_diagnostics: usize,
     pub max_static_sources: usize,
     pub max_static_types: usize,
@@ -64,6 +67,7 @@ impl Default for CompilerServiceLimits {
         Self {
             max_projects: 128,
             max_retained_diagnostics: 4_096,
+            max_retained_diagnostic_bytes: 8 * 1_024 * 1_024,
             max_diagnostics: 256,
             max_static_sources: 4_096,
             max_static_types: 16_384,
@@ -990,15 +994,11 @@ impl RegisteredProjectCompilerService {
                 project_id,
                 sequence,
             };
-            let diagnostics_truncated =
-                result.compilation.diagnostics.len() > limits.max_retained_diagnostics;
-            let retained_diagnostics = result
-                .compilation
-                .diagnostics
-                .iter()
-                .take(limits.max_retained_diagnostics)
-                .cloned()
-                .collect::<Vec<_>>();
+            let (retained_diagnostics, diagnostics_truncated) = retain_bounded_diagnostics(
+                &result.compilation.diagnostics,
+                limits.max_retained_diagnostics,
+                limits.max_retained_diagnostic_bytes,
+            );
             let retained_diagnostic_locations =
                 diagnostic_locations(&project.registration.loader, &retained_diagnostics);
             let diagnostics = capped_diagnostics(

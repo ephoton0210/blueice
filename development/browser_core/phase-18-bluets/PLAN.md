@@ -4004,6 +4004,18 @@ project/generation/fingerprint consistency before accepting a replacement
 generation receipt. This fingerprint is deterministic cache provenance, not a
 cryptographic authorization token or an output-write grant.
 
+**F2.1.2 bounded results:** The registered-project service now charges every
+retained build component against its artifact byte budget, including module
+map keys, repeated artifact fingerprints, source-map entries, declarations,
+and strict runtime helper/crossing records. Its artifact count uses checked
+arithmetic. Diagnostic retention uses an independent combined byte budget
+as well as the existing count limit, keeping a deterministic prefix and
+reporting truncation even if the first diagnostic is too large. Existing
+work-set retention bounds both entry count and combined identity bytes; the
+core IPC adapter additionally caps each check list and page by its own field,
+entry, and response budgets. The limits apply before any future output
+transaction or MCP build response can carry these results.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

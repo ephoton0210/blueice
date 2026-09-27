@@ -4,8 +4,80 @@
 
 use super::*;
 use blueice_bluets::{
-    AuthorizedModule, AuthorizedModuleResolution, DiagnosticCode, RuntimePolicy, SourceSpan,
+    AuthorizedModule, AuthorizedModuleResolution, DiagnosticCode, EmittedRuntimeSite,
+    EmittedStrictModule, RuntimePolicy, SourceSpan,
 };
+
+#[test]
+fn build_limit_counts_strict_runtime_metadata_not_just_javascript() {
+    let mut service = RegisteredProjectCompilerService::default();
+    let id = service
+        .register(registration("export const result = answer;"))
+        .unwrap();
+    let build = service.build(id).unwrap();
+    let mut output = build.output.unwrap();
+    let artifact = output.artifacts.values_mut().next().unwrap();
+    artifact.strict_runtime = Some(EmittedStrictModule {
+        helper_version: "bluets-v1".into(),
+        helper_import: EmittedRuntimeSite {
+            source_span: SourceSpan::new(ENTRY, 0, 1),
+            generated_start: 0,
+            expected_text: "x".repeat(65_536),
+        },
+        boundaries: Vec::new(),
+    });
+    assert!(matches!(
+        validate_build_output(
+            &output,
+            &build.check.project_fingerprint,
+            CompilerServiceLimits {
+                max_build_artifact_bytes: 32 * 1_024,
+                ..CompilerServiceLimits::default()
+            }
+        ),
+        Err(CompilerServiceError::BuildOutputLimit {
+            resource: "bytes",
+            limit: 32_768,
+        })
+    ));
+}
+
+#[test]
+fn retained_diagnostics_obey_a_combined_byte_budget_and_report_truncation() {
+    let first = Diagnostic::error(
+        DiagnosticCode::TypeMismatch,
+        SourceSpan::new(ENTRY, 0, 1),
+        "first",
+    );
+    let second = Diagnostic::error(
+        DiagnosticCode::TypeMismatch,
+        SourceSpan::new(ENTRY, 2, 3),
+        "second",
+    );
+    let first_bytes = first.span.module.len() + first.message.len() + 64;
+    let (retained, truncated) =
+        retain_bounded_diagnostics(&[first.clone(), second], 4, first_bytes);
+    assert_eq!(retained, vec![first]);
+    assert!(truncated);
+
+    let mut service = RegisteredProjectCompilerService::new(CompilerServiceLimits {
+        max_retained_diagnostic_bytes: 1,
+        ..CompilerServiceLimits::default()
+    });
+    let id = service
+        .register(registration("export const invalid: number = 'wrong';"))
+        .unwrap();
+    let check = service.check(id).unwrap();
+    assert!(check.has_errors);
+    assert!(check.diagnostics.entries.is_empty());
+    assert!(check.diagnostics.truncated);
+    let page = service
+        .diagnostic_inventory(check.generation, None, 1)
+        .unwrap();
+    assert!(page.entries.is_empty());
+    assert!(page.next_cursor.is_none());
+    assert!(page.truncated);
+}
 
 const ENTRY: &str = "project:///app/main.ts";
 const DEPENDENCY: &str = "project:///app/math.ts";
@@ -521,6 +593,24 @@ fn registration_and_build_response_limits_fail_closed() {
         service.build(id),
         Err(CompilerServiceError::BuildOutputLimit {
             resource: "bytes",
+            limit: 1,
+        })
+    ));
+}
+
+#[test]
+fn build_artifact_count_limit_refuses_a_multi_module_output() {
+    let mut service = RegisteredProjectCompilerService::new(CompilerServiceLimits {
+        max_build_artifacts: 1,
+        ..CompilerServiceLimits::default()
+    });
+    let id = service
+        .register(registration("export const value: number = answer;"))
+        .unwrap();
+    assert!(matches!(
+        service.build(id),
+        Err(CompilerServiceError::BuildOutputLimit {
+            resource: "artifact count",
             limit: 1,
         })
     ));
