@@ -625,6 +625,15 @@ pub trait PageJavaScriptDebuggerLocations {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 
+    /// Private linked entry-root value read. The public owner and client
+    /// grants are separate from this core-facing operation.
+    fn debugger_linked_value_snapshot(
+        &mut self,
+        _target: JavaScriptPageDebuggerLinkedValueTarget,
+    ) -> Result<JavaScriptPageDebuggerValuePreview, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
     /// Private static-only paused-slot relation. The public debugger has no
     /// request or grant for it until its independent receipt work is complete.
     fn debugger_static_scope_relation(

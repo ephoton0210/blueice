@@ -214,6 +214,27 @@ impl<C: PageHostClient> ChildLinkedDebuggerAdapter<'_, C> {
         Ok(*snapshot)
     }
 
+    pub(super) fn value(
+        &mut self,
+        target: PageHostDebuggerLinkedValueTarget,
+    ) -> Result<PageHostDebuggerValuePreview, JavaScriptPageDebuggerError> {
+        if !target.is_well_formed() {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let reply = self
+            .child
+            .debugger_linked_value_snapshot(target.clone())
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerLinkedValueSnapshot(snapshot)
+                if snapshot.is_well_formed() && snapshot.target == target =>
+            {
+                Ok(snapshot.preview)
+            }
+            _ => Err(child_debugger_reply_error(&reply)),
+        }
+    }
+
     pub(super) fn spans(
         &mut self,
         frame: PageHostDebuggerLinkedFrame,

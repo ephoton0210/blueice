@@ -587,6 +587,16 @@ pub trait PageHostClient {
         ))
     }
 
+    fn debugger_linked_value_snapshot(
+        &mut self,
+        _target: PageHostDebuggerLinkedValueTarget,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement linked debugger value inspection",
+        ))
+    }
+
     /// Private static compiler relation at one exact paused slot. Test
     /// transports remain default-denied, and this is not a public grant.
     fn debugger_static_scope_relation(

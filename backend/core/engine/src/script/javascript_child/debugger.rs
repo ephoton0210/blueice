@@ -886,6 +886,13 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         self.core_debugger_value_snapshot(tab_id, document_generation, target)
     }
 
+    fn debugger_linked_value_snapshot(
+        &mut self,
+        target: JavaScriptPageDebuggerLinkedValueTarget,
+    ) -> Result<JavaScriptPageDebuggerValuePreview, JavaScriptPageDebuggerError> {
+        self.core_debugger_linked_value_snapshot(target)
+    }
+
     fn debugger_stack_available(&self) -> bool {
         self.debugger_execution_control_available()
             && self.child.debugger_stack_snapshot_available()

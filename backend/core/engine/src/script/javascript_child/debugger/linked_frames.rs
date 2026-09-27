@@ -206,6 +206,54 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         })
     }
 
+    pub(super) fn core_debugger_linked_value_snapshot(
+        &mut self,
+        target: JavaScriptPageDebuggerLinkedValueTarget,
+    ) -> Result<JavaScriptPageDebuggerValuePreview, JavaScriptPageDebuggerError> {
+        if !self.debugger_linked_frames_available()
+            || !self.child.debugger_value_snapshot_available()
+        {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        if target.frame_index != 1 {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let scope = self.core_debugger_linked_scope_snapshot(target.expected_stack)?;
+        if scope
+            .scope_entries
+            .iter()
+            .filter(|entry| entry.slot_ordinal == target.scope_entry.slot_ordinal)
+            .count()
+            != 1
+            || !scope.scope_entries.contains(&target.scope_entry)
+        {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
+        let top = target.expected_stack.frames[0].frame;
+        let active = self
+            .debugger_linked_frames
+            .get(&top.tab_id)
+            .filter(|active| {
+                active.frames == target.expected_stack.frames
+                    && active.child_stack.max_scope_entries == PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES
+            })
+            .ok_or(JavaScriptPageDebuggerError::InvalidExecutionState)?;
+        let child_target = PageHostDebuggerLinkedValueTarget {
+            frame: active.child,
+            expected_stack: Box::new(active.child_stack.clone()),
+            frame_index: target.frame_index,
+            scope_entry: PageHostDebuggerScopeEntry {
+                slot_ordinal: target.scope_entry.slot_ordinal,
+                scope_depth: target.scope_entry.scope_depth,
+            },
+        };
+        let preview = (ChildLinkedDebuggerAdapter {
+            child: &mut self.child,
+        })
+        .value(child_target)?;
+        Ok(remint_child_debugger_value(preview))
+    }
+
     pub(super) fn core_resume_debugger_linked_nested_execution(
         &mut self,
         top_frame: JavaScriptPageDebuggerFrame,

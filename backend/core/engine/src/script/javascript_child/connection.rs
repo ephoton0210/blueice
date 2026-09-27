@@ -712,6 +712,15 @@ impl PageHostClient for PageHostConnection {
         self.request(PageHostRequest::GetDebuggerValueSnapshot { target })
     }
 
+    fn debugger_linked_value_snapshot(
+        &mut self,
+        target: PageHostDebuggerLinkedValueTarget,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::GetDebuggerLinkedValueSnapshot {
+            target: Box::new(target),
+        })
+    }
+
     fn debugger_static_scope_relation(
         &mut self,
         target: PageHostDebuggerStaticScopeTarget,

@@ -1921,6 +1921,19 @@ Launcher child-owner linked-pause test pass; this leaf adds no public debugger
 request or grant. The child executor and core-facing adapter follow in
 C3.1.3.5.3.3.
 
+**C3.1.3.5.3.3 child and core-facing linked value:** The child client now
+transports the v42 linked-value request. A strict private adapter accepts only
+a well-formed bounded reply that echoes the complete frame, stack, selected
+root frame, and slot. The core-facing selector contains only its reminted
+two-frame identity and root slot. The executor rechecks the full live linked
+scope, exact entry slot, and retained private stack before sending the child
+request, then remints the plain-data preview only after the adapter accepts
+the exact echo. The public debugger still has no linked Value request or
+receipt. The focused engine regression reads `9` and refuses wrong frame and
+slot, swapped program order, altered child echo, and over-budget child data.
+The native, private wire, owner, and core-facing parts of C3.1.3.5.3 are now
+complete; public authorization and same-stream receipt are C3.1.3.5.4.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

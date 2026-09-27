@@ -400,6 +400,15 @@ pub struct JavaScriptPageDebuggerLinkedScopeSnapshot {
     pub scope_entries: Vec<JavaScriptPageDebuggerScopeEntry>,
 }
 
+/// Core-owned selector for one linked entry-root value. The complete stack
+/// and slot are identities only; public Value authority is checked later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerLinkedValueTarget {
+    pub expected_stack: JavaScriptPageDebuggerLinkedStackSnapshot,
+    pub frame_index: u32,
+    pub scope_entry: JavaScriptPageDebuggerScopeEntry,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JavaScriptPageDebuggerLinkedExecutionState {
     Pending,

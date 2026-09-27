@@ -21,6 +21,9 @@ fn core_linked_pause_remints_both_frames_and_gates_all_spans() {
         relation_reply: Option<PageHostReply>,
         relation_calls: usize,
         relation_target: Option<PageHostDebuggerStaticScopeTarget>,
+        value_reply: Option<PageHostReply>,
+        value_calls: usize,
+        value_target: Option<PageHostDebuggerLinkedValueTarget>,
     }
     impl PageHostClient for LinkedCoreChild {
         fn synchronize_document(&mut self, _: PageHostDocument) -> io::Result<PageHostReply> {
@@ -36,6 +39,10 @@ fn core_linked_pause_remints_both_frames_and_gates_all_spans() {
         }
 
         fn debugger_linked_frames_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_value_snapshot_available(&self) -> bool {
             true
         }
 
@@ -92,6 +99,22 @@ fn core_linked_pause_remints_both_frames_and_gates_all_spans() {
                             symbol_id: 2,
                             type_id: 1,
                         },
+                    },
+                ))
+            }))
+        }
+
+        fn debugger_linked_value_snapshot(
+            &mut self,
+            target: PageHostDebuggerLinkedValueTarget,
+        ) -> io::Result<PageHostReply> {
+            self.value_calls += 1;
+            self.value_target = Some(target.clone());
+            Ok(self.value_reply.clone().unwrap_or_else(|| {
+                PageHostReply::DebuggerLinkedValueSnapshot(Box::new(
+                    page_host::PageHostDebuggerLinkedValueSnapshot {
+                        target,
+                        preview: PageHostDebuggerValuePreview::NumberBits(9.0_f64.to_bits()),
                     },
                 ))
             }))
@@ -176,6 +199,9 @@ fn core_linked_pause_remints_both_frames_and_gates_all_spans() {
         relation_reply: None,
         relation_calls: 0,
         relation_target: None,
+        value_reply: None,
+        value_calls: 0,
+        value_target: None,
     };
     let mut executor =
         OutOfProcessJavaScriptPageExecutor::new_with_debugger_execution_control(child);
@@ -334,6 +360,76 @@ fn core_linked_pause_remints_both_frames_and_gates_all_spans() {
             }],
         })
     );
+    let value_target = JavaScriptPageDebuggerLinkedValueTarget {
+        expected_stack,
+        frame_index: 1,
+        scope_entry: JavaScriptPageDebuggerScopeEntry {
+            slot_ordinal: 0,
+            scope_depth: 0,
+        },
+    };
+    assert_eq!(
+        executor.debugger_linked_value_snapshot(value_target),
+        Ok(JavaScriptPageDebuggerValuePreview::NumberBits(
+            9.0_f64.to_bits()
+        ))
+    );
+    let private_value = executor.child.value_target.clone().unwrap();
+    assert_eq!(private_value.frame, child_frame);
+    assert_eq!(private_value.frame_index, 1);
+    assert_eq!(private_value.expected_stack.frames, stack.frames);
+    assert_eq!(
+        private_value.expected_stack.max_scope_entries,
+        PAGE_HOST_DEBUGGER_MAX_SCOPE_ENTRIES
+    );
+    assert_eq!(executor.child.value_calls, 1);
+    let mut wrong_echo = private_value.clone();
+    wrong_echo.scope_entry.slot_ordinal += 1;
+    executor.child.value_reply = Some(PageHostReply::DebuggerLinkedValueSnapshot(Box::new(
+        page_host::PageHostDebuggerLinkedValueSnapshot {
+            target: wrong_echo,
+            preview: PageHostDebuggerValuePreview::NumberBits(9.0_f64.to_bits()),
+        },
+    )));
+    assert!(executor
+        .debugger_linked_value_snapshot(value_target)
+        .is_err());
+    executor.child.value_reply = Some(PageHostReply::DebuggerLinkedValueSnapshot(Box::new(
+        page_host::PageHostDebuggerLinkedValueSnapshot {
+            target: private_value,
+            preview: PageHostDebuggerValuePreview::StringUnits(vec![u16::from(b'x'); 2_049]),
+        },
+    )));
+    assert!(executor
+        .debugger_linked_value_snapshot(value_target)
+        .is_err());
+    executor.child.value_reply = None;
+    assert_eq!(executor.child.value_calls, 3);
+    for denied in [
+        JavaScriptPageDebuggerLinkedValueTarget {
+            frame_index: 0,
+            ..value_target
+        },
+        JavaScriptPageDebuggerLinkedValueTarget {
+            scope_entry: JavaScriptPageDebuggerScopeEntry {
+                slot_ordinal: u32::MAX,
+                ..value_target.scope_entry
+            },
+            ..value_target
+        },
+        JavaScriptPageDebuggerLinkedValueTarget {
+            expected_stack: JavaScriptPageDebuggerLinkedStackSnapshot {
+                frames: [
+                    value_target.expected_stack.frames[1],
+                    value_target.expected_stack.frames[0],
+                ],
+            },
+            ..value_target
+        },
+    ] {
+        assert!(executor.debugger_linked_value_snapshot(denied).is_err());
+    }
+    assert_eq!(executor.child.value_calls, 3);
     assert_eq!(
         executor.capture_core_linked_pause(tab_id, 1, public_entry, 4),
         Ok(frames)
