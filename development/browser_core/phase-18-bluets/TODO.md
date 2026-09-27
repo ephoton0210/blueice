@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E3.2.3.2.** Add explicit emitted boundary checks before any
-standalone strict-runtime target can be admitted.
+**Current leaf: E3.2.3.2.2.** Define the supported emitted boundary descriptor
+and fail-closed admission model before injecting helper calls.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -636,7 +636,10 @@ channel with explicit owner/client grants.
   - [x] **E3.2.2** Bind the helper identity into the artifact manifest. Strict metadata now records helper v1 version, fixed relative file name, and SHA-256 of the exact embedded bytes. The atomic publisher verifies that strict metadata matches the file it will write, refuses missing or tampered identity, and refuses a helper claim in a checked build before replacing output. Its focused test confirms the serialized manifest and preservation of prior output on refusal; all 11 BlueTSC binary tests and workspace Clippy pass.
   - [ ] **E3.2.3** Reject any target that erases a required check.
     - [x] **E3.2.3.1** Audit the current strict emitted path and define a fail-closed target gate. The compiler currently passes checked and strict through the same static checker, `emit_javascript` has no runtime-policy input or helper-call insertion, and standalone options do not require declared global calls. A helper file and manifest hash alone therefore do not justify a strict claim. PLAN.md records the missing explicit boundary descriptor and call-site proof; the existing CLI refusal remains the gate until the next steps.
-    - [ ] **E3.2.3.2** Carry owner-selected reifiable emitted boundary records into the checked graph and insert helper imports/calls at every supported strict ingress/egress crossing. Reject unsupported, unresolved, or potentially ambient crossings instead of labelling erased output strict. Split this implementation further if a complete boundary route is too large for one reviewable change.
+    - [ ] **E3.2.3.2** Carry owner-selected reifiable emitted boundary records into the checked graph and insert helper imports/calls at every supported strict ingress/egress crossing. Reject unsupported, unresolved, or potentially ambient crossings instead of labelling erased output strict.
+      - [x] **E3.2.3.2.1** Move BlueTSC binary tests into their own MPL-licensed submodule before adding emitted-boundary code. The binary owner file fell from 1,221 to 933 lines, the new test file has 291 lines, and all 11 binary tests, workspace Clippy, and formatting pass using the same target.
+      - [ ] **E3.2.3.2.2** Define the smallest supported emitted ingress/egress boundary and an owner-selected descriptor that ties contract identity, source location, fixed limits, and helper v1 version to checked output. Specify refusal for unsupported or ambient values before implementation.
+      - [ ] **E3.2.3.2.3** Carry those descriptors through checking and emit deterministic helper imports/calls at every supported strict crossing, with tests for exact source placement, typed rejection, and preservation across modules; then close E3.2.3.2.
     - [ ] **E3.2.3.3** Audit ES2020/ES2022 emitted modules and source maps for retained exact helper calls, verify publisher/manifest consistency, and open standalone strict build only for fully covered targets. Prove unsupported output fails before publication and then close E3.2.3 and E3.2.
 - [ ] **E3.3** Make direct-page and emitted ESM reject the same malformed value;
   a weaker artifact must never claim strict-runtime.

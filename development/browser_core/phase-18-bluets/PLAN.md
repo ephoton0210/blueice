@@ -2570,6 +2570,14 @@ the crossing route; E3.2.3.3 proves target retention and opens only covered
 strict output. No module is considered safe merely because its manifest
 names a helper.
 
+**E3.2.3.2.1 bounded BlueTSC owner file:** Before adding emitted-boundary
+metadata, the binary's existing Rust unit tests moved to an MPL-licensed
+`bluetsc/tests.rs` submodule. The command-line owner now holds only the
+publisher and policy code (933 lines instead of 1,221), while its 291-line
+test module retains the same 11 cases. This keeps the implementation below
+the repository's 1,300-line maintenance threshold as strict output work
+continues and uses the same build target.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
