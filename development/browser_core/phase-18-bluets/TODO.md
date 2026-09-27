@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: D.3.3.** Prove policy isolation between tabs and supervised
-children at the public boundary.
+**Current leaf: D.3.4.** Prove tab and supervised-child resource attribution
+at the public boundary.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -547,7 +547,7 @@ channel with explicit owner/client grants.
   host-neutral unit test.
   - [x] **D.3.1** Multiple tabs: separate results and attribution. An existing real core-binary test navigates two independent HTTP pages, then uses public IPC envelopes to retrieve each BlueTS report under its own tab ID and document generation. It now requires distinct tab IDs and proves a second tab-one read is empty before tab two is drained, so tab-one consumption cannot replay or take tab-two results. The focused subprocess test, formatting, and diff checks pass with the shared target cache.
   - [x] **D.3.2** Reload: no state carried across generations. Existing real core-binary HTTP replacement coverage requires one fresh BlueTS report for each document with distinct public document generations. The real Launcher/core/child debugger reload test rejects predecessor breakpoint, instruction-step, and source-span-step targets as `StaleRealm`, then inventories a new realm and program for the same tab. Both focused subprocess tests pass with the shared target cache; PLAN.md names their exact public-boundary evidence.
-  - [ ] **D.3.3** Policy isolation between tabs and children.
+  - [x] **D.3.3** Policy isolation between tabs and children. A new real Launcher/core/BlueJS-child test uses two HTTP origins whose documents declare the same external BlueTS module path, but the owner manifest authorizes only the first origin's URL. Public report envelopes show execution for tab one and fixed source-free authorization rejection for tab two. After a two-tab supervised child cutover, both outcomes persist on fresh navigations; the second origin's server records document fetches only, never the unauthorized module path. The focused real-process test passes; the new MPL-headed test module stays below 1,300 lines.
   - [ ] **D.3.4** Tab/child resource attribution.
 
 ## P1 — strict contracts and compiler service

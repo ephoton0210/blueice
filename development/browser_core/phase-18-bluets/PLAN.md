@@ -2156,6 +2156,19 @@ inventoried under a different realm generation. Both focused tests pass with
 the shared target cache. Together they prove the old execution and debugger
 identities cannot be carried into the successor document.
 
+**D.3.3 tab/child source-policy isolation:** A real public Launcher/core/
+supervised-BlueJS-child regression serves two HTTP origins with documents
+declaring the same `/approved.ts` BlueTS module path. The owner HTTP manifest
+pins only the first origin's full canonical URL and SHA-256 integrity. Public
+report envelopes prove that tab one's module executes while tab two receives
+only the fixed source-free authorization rejection. The test then cuts over
+both tabs to a new supervised core/child generation and repeats the public
+navigations with the same split outcome. The second origin's HTTP request log
+contains only document fetches before and after cutover: neither child can
+borrow the first tab's owner-authorized module URL or trigger an unauthorized
+fetch. The focused subprocess test passes using the shared target cache; the
+new MPL-headed module is below the 1,300-line limit.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

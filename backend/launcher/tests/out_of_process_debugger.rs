@@ -55,6 +55,8 @@ mod metadata_policy;
 mod module_lifecycle;
 #[path = "out_of_process_debugger/nested_frames.rs"]
 mod nested_frames;
+#[path = "out_of_process_debugger/policy_isolation.rs"]
+mod policy_isolation;
 #[path = "out_of_process_debugger/runtime_values.rs"]
 mod runtime_values;
 #[path = "out_of_process_debugger/scope_relations.rs"]
