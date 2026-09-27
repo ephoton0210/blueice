@@ -81,6 +81,21 @@ fn plan_of(value: &Type) -> ContractPlan {
     ContractPlan::from_type("test", value, &schema()).unwrap()
 }
 
+#[test]
+fn optional_dot_receiver_contract_validates_data_without_installing_a_callback() {
+    let types = named_types("type Maybe = { value: number } | null;");
+    let plan = ContractPlan::from_type("Maybe", &named("Maybe"), &types).unwrap();
+    assert_eq!(plan.validate(&ContractValue::Null), Ok(()));
+    assert_eq!(
+        plan.validate(&object(vec![("value", number(41.0))])),
+        Ok(())
+    );
+    assert!(plan.validate(&object(vec![])).is_err());
+    assert!(plan
+        .validate(&object(vec![("value", string("wrong"))]))
+        .is_err());
+}
+
 fn string(value: &str) -> ContractValue {
     ContractValue::String(value.to_string())
 }

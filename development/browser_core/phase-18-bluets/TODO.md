@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: I.3.2.** Verify optional-read contract behavior and pinned
-TypeScript oracle evidence, then run the final workspace gates.
+**Current leaf: none.** H and I are complete. J is gated on a user-proposed
+large feature; no such proposal is pending.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -809,10 +809,10 @@ Keep check read-only and owner registration sealed before listeners.
   - [x] **I.2.2** Checker test. A focused optional-property checker accepts one top-level read from a preceding module-local annotated `const` with a required primitive record/interface field and a nullish arm. Inference returns `field | undefined`; existing `??` removes `undefined`. Public compiler tests reject a typed use that omits that possibility, a missing field, computed/call/side-effecting forms, mutable or optional-field receivers, and an invalid call in the `??` fallback. BlueTS crate tests, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
   - [x] **I.2.3** Emitter test. A public BlueTSC regression confirms the local interface and type annotations are erased while `receiver?.value ?? 0` remains in the emitted JavaScript. The BlueTS crate suite, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
   - [x] **I.2.4** Direct-runtime test without reparsing emitted JavaScript. The direct bridge lowers checked `local?.field` tokens into BlueJS `OptionalMember` AST/bytecode. Page-realm tests execute non-nullish and both `null`/`undefined` short-circuit branches, yielding `41`; a structural AST test confirms the bridge path. Optional access inside template substitution remains explicitly rejected with its original source span. BlueTS and bridge crate suites, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
-- [ ] **I.3** Verify its provenance, debugger behavior, contracts, and TypeScript
+- [x] **I.3** Verify its provenance, debugger behavior, contracts, and TypeScript
   oracle evidence before choosing another form.
   - [x] **I.3.1** Provenance and debugger behavior verified. A checked direct-page optional read retains its original declaration byte span and a bound root safe point; a live debugger pause resolves to that position. Navigation invalidates the old safe-point map, static debug record and paused root continuation. Bridge crate tests, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
-  - [ ] **I.3.2** Contract behavior and TypeScript oracle evidence verified.
+  - [x] **I.3.2** Contract behavior and TypeScript oracle evidence verified. The local optional read adds no host source or direct-page contract inventory. Its pure receiver contract accepts a valid record or `null` and rejects a missing or wrongly typed field. Pinned TypeScript 5.9.3 and BlueTSC both print `41` for the accepted fixture and reject two invalid reads on matching source lines. The complete oracle matrix, workspace tests, all-target build and Clippy, rustfmt and whitespace checks pass with one 13 GiB target and about 628 GiB host space free. J remains gated on a proposed large feature.
 
 ### J. Decide large features only when requested.
 

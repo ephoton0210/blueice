@@ -205,6 +205,8 @@ fn direct_page_optional_dot_read_short_circuits_null_and_undefined_receivers() {
             CompilerOptions::default(),
         )
         .unwrap();
+        assert!(artifact.debug_info.contracts.is_empty());
+        assert_eq!(artifact.sources.len(), 1);
         let mut owner = DirectPageRealmOwner::default();
         owner.open_realm(7, origin()).unwrap();
         let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();

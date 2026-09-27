@@ -415,6 +415,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "optional-dot-property",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/optional-dot-property/main.ts"),
+        )],
+        expected_stdout: Some("41\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "object-shorthand-expression",
         modules: &[ (
             "memory:///main.ts",
@@ -815,6 +824,24 @@ const CASES: &[OracleCase] = &[
             ExpectedDiagnostic {
                 code: DiagnosticCode::TypeMismatch,
                 line: 17,
+            },
+        ],
+    },
+    OracleCase {
+        name: "optional-dot-property-error",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/optional-dot-property-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[
+            ExpectedDiagnostic {
+                code: DiagnosticCode::TypeMismatch,
+                line: 10,
+            },
+            ExpectedDiagnostic {
+                code: DiagnosticCode::TypeMismatch,
+                line: 11,
             },
         ],
     },
