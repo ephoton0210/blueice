@@ -2358,6 +2358,16 @@ pending JavaScript modules in the exact live document. Tests show larger
 nested syntax raises the charge and that advance, navigation, and close drop
 the affected tab's pending ASTs; bytecode and source graphs stay separate.
 
+**E2.2.1.3.3.2.3 complete deferred queue:** The child sums the
+`VecDeque`'s retained slot capacity and the separately counted JavaScript
+source graphs, JavaScript parsed AST/module maps, and BlueTS module
+attachments for one exact document. The slot allocation includes each
+pending record's inline fields. Advancing execution shrinks the queue after
+completed records are popped, releasing an empty queue's reserved buffer.
+A mixed-language two-tab regression checks the sum and independent execution,
+replacement, and close release. E2.2.1.3.3.3 may now transport a bounded
+numeric total to core without exposing source or AST data.
+
 **E2.2.1.3.2 direct-page retained metadata charge:** BlueTS now computes a
 checked owned-heap payload for static source/type/symbol records and nested
 reifiable contract plans. The bridge adds its safe-point map, breakpoint spans,

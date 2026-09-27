@@ -1143,6 +1143,34 @@ impl BlueJsChildHost {
             .ok_or_else(host_failure)
     }
 
+    /// Counts the complete pending debugger queue allocation and its nested
+    /// source graphs, parsed ASTs, and BlueTS module attachments for one
+    /// exact live child document. Runtime bytecode and static registry data
+    /// have separate owners.
+    pub fn retained_deferred_payload_bytes(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+    ) -> Result<usize, PageHostReply> {
+        let document = self.exact_document(tab_id, document_generation)?;
+        let slots = document
+            .pending_debugger_executions
+            .capacity()
+            .checked_mul(std::mem::size_of::<PendingDebuggerExecution>())
+            .ok_or_else(host_failure)?;
+        let source_graphs =
+            self.retained_deferred_source_graph_bytes(tab_id, document_generation)?;
+        let javascript_asts =
+            self.retained_deferred_javascript_ast_bytes(tab_id, document_generation)?;
+        let bluets_attachments =
+            self.retained_deferred_bluets_attachment_bytes(tab_id, document_generation)?;
+        slots
+            .checked_add(source_graphs)
+            .and_then(|bytes| bytes.checked_add(javascript_asts))
+            .and_then(|bytes| bytes.checked_add(bluets_attachments))
+            .ok_or_else(host_failure)
+    }
+
     /// Recomputes actual VM-managed usage from the live realm table on each
     /// request. No cached predecessor generation or conservative reservation
     /// is included, and checked sums fail closed instead of wrapping.

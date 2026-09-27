@@ -15,6 +15,104 @@ fn javascript_module(ordinal: u32, source: &str) -> PageHostScript {
 }
 
 #[test]
+fn child_deferred_queue_counts_all_pending_payload_and_releases_empty_capacity() {
+    let bluets_id = "blueice://page/deferred-module.ts";
+    let bluets_module = PageHostScript {
+        ordinal: 2,
+        language: PageHostScriptLanguage::BlueTs,
+        kind: PageHostScriptKind::Module,
+        graph: graph(
+            bluets_id,
+            vec![PageHostSource::new(
+                bluets_id,
+                "export const answer: number = 42;",
+            )],
+        ),
+    };
+    let mut host = BlueJsChildHost::default();
+    let first = debugger_document(
+        1,
+        vec![
+            javascript_module(0, "export const value = 1;"),
+            blue_ts_classic(1, "const classicValue: number = 2; classicValue;"),
+            bluets_module,
+        ],
+    );
+    let mut second = debugger_document(
+        1,
+        vec![javascript_module(0, "export const otherValue = 3;")],
+    );
+    second.tab_id = 8;
+    for document in [first, second] {
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument { document }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+    }
+    let first_slots = host.documents[&7].pending_debugger_executions.capacity()
+        * std::mem::size_of::<PendingDebuggerExecution>();
+    let first_components = host.retained_deferred_source_graph_bytes(7, 1).unwrap()
+        + host.retained_deferred_javascript_ast_bytes(7, 1).unwrap()
+        + host
+            .retained_deferred_bluets_attachment_bytes(7, 1)
+            .unwrap();
+    assert!(first_slots > 0 && first_components > 0);
+    assert_eq!(
+        host.retained_deferred_payload_bytes(7, 1).unwrap(),
+        first_slots + first_components
+    );
+    let second_bytes = host.retained_deferred_payload_bytes(8, 1).unwrap();
+    assert!(second_bytes > 0);
+
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+            if reports.len() == 3
+                && reports.iter().all(|report| report.outcome == PageHostScriptOutcome::Executed)
+    ));
+    assert_eq!(host.retained_deferred_payload_bytes(7, 1).unwrap(), 0);
+    assert_eq!(host.documents[&7].pending_debugger_executions.capacity(), 0);
+    assert_eq!(
+        host.retained_deferred_payload_bytes(8, 1).unwrap(),
+        second_bytes
+    );
+
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(
+                2,
+                vec![javascript_module(0, "export const replacement = 4;")],
+            ),
+        }),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(host.retained_deferred_payload_bytes(7, 2).unwrap() > 0);
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(3, Vec::new()),
+        }),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(host.retained_deferred_payload_bytes(7, 2).is_err());
+    assert_eq!(host.retained_deferred_payload_bytes(7, 3).unwrap(), 0);
+    assert_eq!(
+        host.retained_deferred_payload_bytes(8, 1).unwrap(),
+        second_bytes
+    );
+    assert!(matches!(
+        host.handle_request(PageHostRequest::CloseRealm {
+            tab_id: 8,
+            document_generation: 1,
+        }),
+        PageHostReply::RealmClosed { .. }
+    ));
+    assert!(host.retained_deferred_payload_bytes(8, 1).is_err());
+}
+
+#[test]
 fn child_pending_javascript_source_graphs_follow_exact_document_lifetimes() {
     let mut host = BlueJsChildHost::default();
     let first = debugger_document(1, vec![javascript_module(0, "export const value = 1;")]);

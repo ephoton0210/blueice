@@ -863,6 +863,11 @@ impl BlueJsChildHost {
                 outcome,
             ));
         }
+        self.documents
+            .get_mut(&tab_id)
+            .expect("the advancing document remains live")
+            .pending_debugger_executions
+            .shrink_to_fit();
         if self.refresh_debugger_programs(tab_id).is_err() {
             return self.fail_debugger_execution_document(tab_id);
         }
