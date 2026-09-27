@@ -32,6 +32,7 @@ use std::io::{self, Read, Write};
 pub mod ai;
 pub mod compiler;
 pub mod compiler_catalog;
+pub mod compiler_output;
 pub mod debugger;
 pub mod extension;
 pub mod gatekeeper;

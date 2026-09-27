@@ -4101,6 +4101,17 @@ evidence for that project; the independent receipt prevents a query session
 from being interpreted as write authority. The launcher relay, if used for
 this endpoint, must pin accepted output streams to one core generation.
 
+**F3.2.1.2.1 output wire protocol:** `compiler_output` v1 is independent of
+the query-only compiler protocol and has a 64 KiB frame limit. It admits an
+exact-version Hello only with a core-minted `ow-`-prefixed 32-byte receipt;
+the query protocol's 64-hex attestation cannot pass this receipt's structural
+check. Post-Hello requests contain only that receipt and, for build, an
+opaque project ID. Unknown path, source, resolver, and option fields are
+rejected on decode. The build result carries only its exact generation,
+bounded project fingerprint, diagnostic status, and publication bit. No
+listener consumes this new vocabulary yet; F3.2.1.2.2 must bind it to the
+sealed owner's grant map and staging method.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource
