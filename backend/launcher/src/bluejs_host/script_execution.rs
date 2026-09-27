@@ -115,8 +115,9 @@ pub(super) fn prepare_module_graph(
     Ok((graph, programs))
 }
 
-/// Prepares an explicit BlueTS classic declaration through the same closed
-/// caller-authorized graph validation used for JavaScript. The compiler sees
+/// Prepares an explicit BlueTS classic declaration through a closed
+/// caller-authorized graph. Type-only imports may resolve declaration inputs,
+/// but the direct script bridge refuses every runtime import. The compiler sees
 /// no filesystem, URL, import-map, page-selected profile, or callback
 /// authority. Its only ambient declaration comes from the exact generated
 /// owner-selected profile: copied snapshots by default, or bounded live DOM
@@ -126,9 +127,7 @@ pub(super) fn prepare_bluets_classic(
     page_dom_profile: PageDomProfile,
 ) -> Result<DirectScript, &'static str> {
     let modules = validate_graph(&graph)?;
-    if modules.len() != 1 || !graph.resolutions.is_empty() {
-        return Err("classic BlueTS source graph is not closed");
-    }
+    validate_resolutions(&graph, &modules)?;
     let loader = bluets_loader(&graph, modules)?;
     compile_direct_script(
         &graph.entry,

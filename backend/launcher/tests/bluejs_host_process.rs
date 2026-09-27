@@ -22,6 +22,9 @@ use std::os::unix::net::UnixStream;
 // derives its path from this integration-test executable.
 const CHILD_BINARY: &str = env!("CARGO_BIN_EXE_blueice-bluejs-host");
 
+#[path = "bluejs_host_process/direct_page_acceptance.rs"]
+mod direct_page_acceptance;
+
 fn graph(entry: &str, modules: Vec<PageHostSource>) -> PageHostModuleGraph {
     PageHostModuleGraph {
         entry: entry.to_string(),

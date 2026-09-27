@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: D.1.1.** Build a real classic BlueTS fixture that proves
-type-only import elision and original source mapping.
+**Current leaf: D.1.2.** Build a real ESM BlueTS fixture that proves an
+authorized resolver identity and original source mapping.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -531,7 +531,7 @@ channel with explicit owner/client grants.
 
 - [ ] **D.1** A real classic and ESM BlueTS fixture covers type-only import
   elision, authorized resolver identity, and original source mapping.
-  - [ ] **D.1.1** Classic fixture: type-only import elision and original source mapping.
+  - [x] **D.1.1** Classic fixture: type-only import elision and original source mapping. A real supervised BlueJS child accepts a core-supplied closed classic BlueTS graph with one type-only declaration edge, installs and executes only the entry program, and maps the original typed declaration's exact UTF-8 bytes and UTF-16 column through a verified safe point and source provenance. The classic child now validates closed static resolution records before compilation; the direct script bridge still rejects runtime imports. The same real-process test confirms a runtime-import graph installs no program. All 116 Launcher library tests, 13 real child-process tests, Launcher Clippy, formatting, and line-count checks pass.
   - [ ] **D.1.2** ESM fixture: authorized resolver identity and original source mapping.
 - [ ] **D.2** A real page exercises a declared contract and shows its bounded
   failure without exposing protected content.

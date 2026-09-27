@@ -2083,6 +2083,23 @@ collection, node, and payload over-budget reads. All were registered in the
 current Launcher test inventory and passed in the complete sequential
 workspace suite. C4.1 needs no additional wire or runtime route.
 
+**D.1.1 real classic direct-page acceptance:** The supervised BlueJS child
+previously rejected every multi-source classic BlueTS graph before the direct
+bridge could erase a compiler-only `import type` edge. The child now validates
+the exact caller-supplied closed resolution records and lets the direct script
+compiler consume them; `lower_script` still rejects any runtime import. A
+real child-process fixture supplies an entry source and a type-only declaration
+module, then proves that only one classic program is installed and executed.
+Its exact verified safe-point span names the original typed declaration byte
+range after an astral-prefix comment, retains the matching UTF-16 column, and
+resolves to the entry's canonical source identity. A replacement document
+with an ordinary runtime import remains rejected and installs no program.
+All 116 Launcher library tests, 13 real child-process tests, Launcher Clippy,
+formatting, and diff checks pass. The original test owner remains 1,124 lines;
+the new MPL-headed direct-page module is 194 lines. This proves the real child
+transport; browser HTTP policy and public socket acceptance are covered by
+later D leaves.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes
