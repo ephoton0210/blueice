@@ -2497,6 +2497,19 @@ debugger capability rather than adding a page-visible structured host API;
 E2.3.1.4 will make the six requested value classes independently visible in
 the final regression gate and verify report redaction.
 
+**E2.3.1.4 six-case gate:** Named loaded-page tests cover a valid copied
+document-text value, an oversized pre-capture refusal, and a zero-node-budget
+refusal charged to the initiating tab. Four independently named real
+child/core BlueTS debugger tests share only their setup: a plain value is
+copied from one exact paused root slot, while a non-plain array, a cyclic
+object, and a value beyond the fixed depth limit are each refused before a
+preview is returned. The malformed array contains a private marker, and the
+fixed refusal and any page-script report omit it. No public debugger
+bounded-value capability was enabled by these tests. These two reviewed
+live crossings cover the six required classes without treating a static
+compiler validation snapshot as a runtime object or duplicating the build
+target.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
