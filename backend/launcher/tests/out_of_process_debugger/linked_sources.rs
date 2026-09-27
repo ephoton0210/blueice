@@ -36,6 +36,7 @@ fn launcher_links_two_receipted_bluets_sources_and_expires_the_graph_on_reload()
                 thread::sleep(Duration::from_millis(10));
                 continue;
             };
+            stream.set_nonblocking(false).unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();

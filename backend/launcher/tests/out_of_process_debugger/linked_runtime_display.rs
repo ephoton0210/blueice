@@ -54,6 +54,7 @@ impl LinkedRuntimeFixture {
                     thread::sleep(Duration::from_millis(10));
                     continue;
                 };
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(5)))
                     .unwrap();
