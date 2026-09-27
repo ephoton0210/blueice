@@ -39,6 +39,20 @@ fn optional_spread_calls_and_lexical_iteration_heads_compile() {
     }
 }
 
+#[test]
+fn assignment_references_and_disposable_iteration_compile_through_the_public_pipeline() {
+    for source in [
+        "let target = {}; [target.x] = [1]; ({ x: target.y } = { x: 2 }); target.x + target.y;",
+        "class A { set x(value) {} } class B extends A { m() { super.x ||= 4; [super.x] = [5]; } }",
+        "class C { #x; m() { [this.#x] = [1]; ({ x: this.#x } = { x: 2 }); } }",
+        "let slot; slot ||= 3; slot &&= 4; slot ??= 5;",
+        "for (using resource of [null]) { resource; }",
+    ] {
+        let program = crate::parse(source).unwrap();
+        crate::compile(&program).unwrap();
+    }
+}
+
 fn missing_private_member() -> Expr {
     Expr::Member {
         object: Box::new(Expr::Number(1.0)),

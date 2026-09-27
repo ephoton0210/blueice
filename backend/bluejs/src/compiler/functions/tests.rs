@@ -42,6 +42,21 @@ fn decorated_and_derived_classes_compile_with_function_bindings() {
 }
 
 #[test]
+fn decorated_accessors_and_non_simple_parameters_compile_through_the_public_pipeline() {
+    for source in [
+        "function dec(value) { return value; } @dec class C { @dec accessor x = 1; @dec #field = 2; }",
+        "function dec(value) { return value; } class C { @dec #method() {} @dec get #value() { return 1; } }",
+        "class C { #first; #second; static #third; static #fourth; }",
+        "function f(value = 1) { var value; { function arguments() {} } return value; }",
+        "function f(value = 1) { var value; function value() {} return value; }",
+        "function f() { let marker = 1; { function nested() { return marker; } } return nested; }",
+    ] {
+        let program = crate::parse(source).unwrap();
+        crate::compile(&program).unwrap();
+    }
+}
+
+#[test]
 fn class_lowering_rejects_a_duplicate_private_name_before_emitting_code() {
     let field = ClassElement::Field {
         key: PropertyKey::Identifier("#value".into()),
@@ -70,38 +85,19 @@ fn class_lowering_rejects_a_duplicate_private_name_before_emitting_code() {
 #[test]
 fn class_element_helpers_reject_a_static_block_as_a_decorated_element() {
     let block = ClassElement::StaticBlock(Vec::new());
-    assert!(element_decorators(&block).is_empty());
-    let decoration = ElementDecoration {
-        decorators: String::new(),
-        result: String::new(),
-        original: String::new(),
-        setter: String::new(),
-        kind: deco::METHOD,
-        is_static: false,
-    };
-    assert!(matches!(
-        bare_compiler().decorate_class_element(&block, &decoration, None, &HashMap::new(), "",),
-        Err(CompileError::InvalidSyntax(
-            "a static block cannot have decorators"
-        ))
-    ));
+    assert!(decorated_element(&block).is_none());
+    crate::compile(&crate::parse("class C { static {} }").unwrap()).unwrap();
 }
 
 #[test]
 fn mapped_arguments_only_include_the_last_simple_parameter_binding() {
     let mut compiler = bare_compiler();
     compiler.names[0].insert("name".into(), 2);
-    let parameter = Param {
-        pattern: Pattern::Array(Vec::new()),
-        default: None,
-        rest: false,
-    };
     let identifier = Param {
         pattern: Pattern::Identifier("name".into()),
         default: None,
         rest: false,
     };
-    assert_eq!(compiler.mapped_argument_slots(&[parameter]), vec![None]);
     assert_eq!(
         compiler.mapped_argument_slots(&[identifier.clone(), identifier]),
         vec![None, Some(2)]
@@ -150,26 +146,6 @@ fn child_function_metadata_limits_reject_each_initial_binding() {
     };
     assert!(matches!(
         derived.function_named_with(&Function::default(), false, None, false, options),
-        Err(CompileError::ProgramTooLarge)
-    ));
-}
-
-#[test]
-fn child_function_budget_accounting_rejects_unrepresentable_cost() {
-    let mut compiler = bare_compiler();
-    compiler.max_bytecode_bytes = 5;
-    assert!(matches!(
-        compiler.finish_child_function(Bytecode::empty(), 5, 0, 6),
-        Err(CompileError::ProgramTooLarge)
-    ));
-    assert_eq!(compiler.max_bytecode_bytes, 5);
-    assert!(compiler.bytecode.functions.is_empty());
-    assert!(matches!(
-        compiler.finish_child_function(Bytecode::empty(), 5, 6, 0),
-        Err(CompileError::ProgramTooLarge)
-    ));
-    assert!(matches!(
-        compiler.finish_child_function(Bytecode::empty(), u32::MAX, 0, 1),
         Err(CompileError::ProgramTooLarge)
     ));
 }

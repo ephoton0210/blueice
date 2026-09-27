@@ -28,6 +28,19 @@ fn bare_compiler() -> Compiler {
 }
 
 #[test]
+fn disposal_and_labelled_control_flow_compile_through_the_public_pipeline() {
+    for source in [
+        "async function f() { await using resource = null; return 1; }",
+        "for (using resource of [null]) { if (resource) break; }",
+        "outer: for (;;) { try { break outer; } finally { 1; } }",
+        "switch (1) { case 1: { using resource = null; break; } default: break; }",
+    ] {
+        let program = crate::parse(source).unwrap();
+        crate::compile(&program).unwrap();
+    }
+}
+
+#[test]
 fn top_level_function_provenance_rejects_an_exhausted_child_table_before_emitting() {
     let program = crate::parse("function f() {}").unwrap();
     let mut compiler = bare_compiler();

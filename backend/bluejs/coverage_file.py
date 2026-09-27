@@ -287,8 +287,8 @@ def report_section(files: dict[Path, dict], totals: dict, update_option: str) ->
         f"This is a separate BlueJS coverage measurement at {provenance()}. "
         "It measures the Rust test suite independently of the Test262 "
         "inventory and historical verification above. "
-        f"`python3 backend/bluejs/coverage_file.py {update_option}` "
-        "cleared prior LLVM execution profiles, reused instrumented Cargo "
+        f"Reproduce it with `python3 backend/bluejs/coverage_file.py {update_option}`. "
+        "This measurement cleared prior LLVM execution profiles, reused instrumented Cargo "
         "build artifacts, ran the complete default BlueJS Rust test suite, "
         "exported fresh per-file JSON and source-line text, and released raw "
         "profiles and incremental compilation caches afterward. "
@@ -419,7 +419,6 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
     with tempfile.TemporaryDirectory(prefix="bluejs-coverage-") as tmp:
         output = Path(tmp) / "coverage.json"
         text_output = Path(tmp) / "coverage.txt"
-        completed = False
         try:
             subprocess.run(
                 ["cargo", "llvm-cov", "clean", "--profraw-only"],
@@ -457,7 +456,6 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
             result = source_union_export(
                 json.loads(output.read_text()), text_output.read_text()
             )
-            completed = True
             return result
         finally:
             try:
@@ -480,8 +478,7 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
                     ):
                         if path.exists():
                             shutil.rmtree(path)
-                    if completed:
-                        prune_superseded_test_executables(target)
+                    prune_superseded_test_executables(target)
 
 
 def main(argv: list[str] | None = None) -> int:

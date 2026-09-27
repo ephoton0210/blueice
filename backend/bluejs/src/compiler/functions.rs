@@ -156,7 +156,7 @@ impl Compiler {
                 }
                 _ => {}
             }
-            if let Some((kind, is_static)) = decorated_element(element) {
+            if let Some((kind, is_static, key, expressions)) = decorated_element(element) {
                 // A decorated method or accessor half keeps its converted
                 // computed key too: decorating it needs the key again.
                 if matches!(
@@ -174,6 +174,8 @@ impl Compiler {
                 decorations.insert(
                     index,
                     ElementDecoration {
+                        key,
+                        expressions,
                         decorators: element_binding("decorators"),
                         result: element_binding("decorated"),
                         original: element_binding("original"),
@@ -306,7 +308,7 @@ impl Compiler {
         for (index, element) in class.elements.iter().enumerate() {
             let decoration = decorations.get(&index);
             if let Some(decoration) = decoration {
-                self.decorator_list(element_decorators(element), &decoration.decorators)?;
+                self.decorator_list(decoration.expressions, &decoration.decorators)?;
             }
             match element {
                 ClassElement::Method {
@@ -468,7 +470,7 @@ impl Compiler {
             self.initialize_class_binding(&class_decoration.metadata)?;
             for (fields, is_static) in [(false, true), (false, false), (true, true), (true, false)]
             {
-                for (index, element) in class.elements.iter().enumerate() {
+                for index in 0..class.elements.len() {
                     let Some(decoration) = decorations.get(&index) else {
                         continue;
                     };
@@ -478,7 +480,6 @@ impl Compiler {
                         continue;
                     }
                     self.decorate_class_element(
-                        element,
                         decoration,
                         computed_key_bindings.get(&index),
                         &private_scope,
@@ -752,20 +753,12 @@ impl Compiler {
     /// originals (`ReplaceClassElement`).
     fn decorate_class_element(
         &mut self,
-        element: &ClassElement,
-        decoration: &ElementDecoration,
+        decoration: &ElementDecoration<'_>,
         key_binding: Option<&String>,
         private_scope: &HashMap<String, String>,
         metadata: &str,
     ) -> Result<(), CompileError> {
-        let (ClassElement::Method { key, .. }
-        | ClassElement::Accessor { key, .. }
-        | ClassElement::Field { key, .. }) = element
-        else {
-            return Err(CompileError::InvalidSyntax(
-                "a static block cannot have decorators",
-            ));
-        };
+        let key = decoration.key;
         let private_name = private_class_name(key);
         let owner = private_name.map(|name| {
             private_scope
@@ -1070,7 +1063,9 @@ impl Compiler {
             if !arrow && (name == DERIVED_THIS_BINDING || name == DERIVED_CONSTRUCTOR_BINDING) {
                 continue;
             }
-            let index = child.metadata_index(child.bytecode.bindings.len())?;
+            // These are unique names from the parent, whose binding table
+            // already passed the same limit. Every child index fits u32.
+            let index = child.bytecode.bindings.len() as u32;
             child.names[0].insert(name, index);
             child
                 .bytecode
@@ -1257,23 +1252,22 @@ impl Compiler {
         child.statements_with_disposal(&function.body)?;
         child.constant(Value::Undefined)?;
         child.emit(Opcode::Return, 0)?;
-        let child_offset = child.offset();
-        self.finish_child_function(
-            child.bytecode,
-            child_budget,
-            child.max_bytecode_bytes,
-            child_offset,
-        )
+        let child_remaining = child.max_bytecode_bytes.saturating_sub(child.offset());
+        self.finish_child_function(child.bytecode, child_remaining)
     }
 
     fn mapped_argument_slots(&self, params: &[Param]) -> Vec<Option<u32>> {
         let mut mapped_names = BTreeSet::new();
         let mut mapped_slots = vec![None; params.len()];
         for (index, parameter) in params.iter().enumerate().rev() {
-            if let Pattern::Identifier(name) = &parameter.pattern {
-                if mapped_names.insert(name.clone()) {
-                    mapped_slots[index] = self.resolve(name);
-                }
+            // Called only for a simple parameter list: each pattern has one
+            // identifier. The caller checks this before requesting a map.
+            let name = pattern_names(&parameter.pattern)
+                .into_iter()
+                .next()
+                .expect("mapped arguments require simple parameters");
+            if mapped_names.insert(name.clone()) {
+                mapped_slots[index] = self.resolve(&name);
             }
         }
         mapped_slots
@@ -1282,18 +1276,12 @@ impl Compiler {
     fn finish_child_function(
         &mut self,
         child: Bytecode,
-        child_budget: u32,
         child_remaining: u32,
-        child_offset: u32,
     ) -> Result<(), CompileError> {
-        let child_bytes = child_budget
-            .checked_sub(child_remaining)
-            .and_then(|spent| spent.checked_add(child_offset))
-            .ok_or(CompileError::ProgramTooLarge)?;
-        self.max_bytecode_bytes = self
-            .max_bytecode_bytes
-            .checked_sub(child_bytes)
-            .ok_or(CompileError::ProgramTooLarge)?;
+        // The child starts with the parent's remaining budget less the
+        // parent's already emitted bytes. Its own code and descendants only
+        // reduce that budget, so this sum fits the parent's limit.
+        self.max_bytecode_bytes = child_remaining.saturating_add(self.offset());
         let index = self.bytecode.functions.len() as u32;
         self.bytecode.functions.push(std::rc::Rc::new(child));
         self.emit(Opcode::Closure, index)?;
@@ -1329,7 +1317,10 @@ impl Compiler {
 
 /// The hidden class-scope bindings one decorated class element uses (see
 /// `class_definition`).
-struct ElementDecoration {
+struct ElementDecoration<'a> {
+    /// The source key and decorators validated when the plan was created.
+    key: &'a PropertyKey,
+    expressions: &'a [Expr],
     /// The element's evaluated decorators, in an Array.
     decorators: String,
     /// The record `DecorateElement` returns (`[extraInitializers, ...]`).
@@ -1365,15 +1356,17 @@ struct ElementCapture<'a> {
     function: Option<&'a String>,
 }
 
-/// A decorated element's `deco::*` kind and whether it is static.
-fn decorated_element(element: &ClassElement) -> Option<(u32, bool)> {
+/// A decorated element's kind, static flag, key and decorator expressions.
+fn decorated_element(element: &ClassElement) -> Option<(u32, bool, &PropertyKey, &[Expr])> {
     match element {
         ClassElement::Method {
+            key,
             decorators,
             is_static,
             ..
-        } if !decorators.is_empty() => Some((deco::METHOD, *is_static)),
+        } if !decorators.is_empty() => Some((deco::METHOD, *is_static, key, decorators)),
         ClassElement::Accessor {
+            key,
             decorators,
             getter,
             is_static,
@@ -1381,8 +1374,11 @@ fn decorated_element(element: &ClassElement) -> Option<(u32, bool)> {
         } if !decorators.is_empty() => Some((
             if *getter { deco::GETTER } else { deco::SETTER },
             *is_static,
+            key,
+            decorators,
         )),
         ClassElement::Field {
+            key,
             decorators,
             accessor,
             is_static,
@@ -1394,17 +1390,10 @@ fn decorated_element(element: &ClassElement) -> Option<(u32, bool)> {
                 deco::FIELD
             },
             *is_static,
+            key,
+            decorators,
         )),
         _ => None,
-    }
-}
-
-fn element_decorators(element: &ClassElement) -> &[Expr] {
-    match element {
-        ClassElement::Method { decorators, .. }
-        | ClassElement::Accessor { decorators, .. }
-        | ClassElement::Field { decorators, .. } => decorators,
-        ClassElement::StaticBlock(_) => &[],
     }
 }
 

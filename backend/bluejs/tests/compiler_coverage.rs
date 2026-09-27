@@ -92,6 +92,43 @@ fn metadata_limits_reject_each_table_before_an_index_overflows() {
 }
 
 #[test]
+fn derived_constructor_metadata_limit_and_spread_recursion_use_public_compilation() {
+    for source in [
+        "(class extends null {});",
+        "let captured; (class extends null {});",
+        "var captured; (class extends null {});",
+        "class Derived extends Object {}",
+        "class Derived extends Object { constructor() { super(); } }",
+    ] {
+        let program = parse(source).unwrap();
+        let mut first_success = None;
+        for limit in 0..64 {
+            let limits = CompileLimits {
+                max_metadata_entries: limit,
+                ..CompileLimits::default()
+            };
+            match compile_with_limits(&program, limits) {
+                Ok(_) => {
+                    first_success.get_or_insert(limit);
+                }
+                Err(CompileError::ProgramTooLarge) => {
+                    assert!(
+                        first_success.is_none(),
+                        "{source} at metadata limit {limit}"
+                    );
+                }
+                Err(error) => panic!("{source} at metadata limit {limit}: {error:?}"),
+            }
+        }
+        assert!(first_success.is_some(), "{source}");
+    }
+
+    let spread_recursion =
+        parse("'use strict'; const f = function self(...args) { return self(...args); };").unwrap();
+    compile(&spread_recursion).unwrap();
+}
+
+#[test]
 fn eval_limits_cover_visible_bindings_and_the_final_halt() {
     let outer = compile(&parse("eval('');").unwrap()).unwrap();
     let mut vm = Vm::new(VmConfig {
