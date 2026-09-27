@@ -217,6 +217,38 @@ pub struct PageHostModuleGraph {
     pub resolver_fingerprint: String,
 }
 
+impl PageHostModuleGraph {
+    /// Counts heap allocations retained by this graph. Inline graph and
+    /// vector-element headers belong to their enclosing record or vector;
+    /// VM program storage is accounted separately.
+    pub fn owned_heap_payload_bytes(&self) -> Option<usize> {
+        let mut bytes = self
+            .modules
+            .capacity()
+            .checked_mul(std::mem::size_of::<PageHostSource>())?
+            .checked_add(
+                self.resolutions
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<PageHostStaticResolution>())?,
+            )?
+            .checked_add(self.entry.capacity())?
+            .checked_add(self.resolver_fingerprint.capacity())?;
+        for module in &self.modules {
+            bytes = bytes
+                .checked_add(module.canonical_module_id.capacity())?
+                .checked_add(module.source.capacity())?
+                .checked_add(module.source_hash.capacity())?;
+        }
+        for resolution in &self.resolutions {
+            bytes = bytes
+                .checked_add(resolution.from_module.capacity())?
+                .checked_add(resolution.specifier.capacity())?
+                .checked_add(resolution.canonical_target.capacity())?;
+        }
+        Some(bytes)
+    }
+}
+
 /// Script grammar selected by the trusted page pipeline, never by a filename
 /// suffix or the child host's own MIME sniffing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

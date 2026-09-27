@@ -2311,6 +2311,25 @@ The retained-byte counter measures the concrete payload held by these owners;
 it is not a claim about allocator metadata or VM heap. The remaining subleaves
 implement each retained owner and close with a real-process two-tab audit.
 
+**E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
+JavaScript module source graphs alongside parsed program ASTs, while BlueTS
+modules retain bridge attachments with their own module maps. The source-graph
+heap payload is counted first, including vector capacity and owned strings;
+the parsed AST, BlueTS attachment, and inline pending-record payload require
+separate checked counts before the combined deferred total is exposed to core.
+Execution pops a completed record; document replacement and close drop its
+entire queue. The source-graph-only query must not be presented as the full
+deferred charge.
+
+**E2.2.1.3.3.2.1 source-graph charge:** `PageHostModuleGraph` computes the
+checked heap payload of its vector capacities and owned strings. The child
+query selects only pending JavaScript module graphs for an exact live
+tab/document and sums their payload; the graph's inline header remains for
+the later pending-record count. A two-tab child-host regression demonstrates
+that larger source content costs more and that execution, document replacement,
+and close release only the affected pending graphs. No private wire field or
+core charge is claimed by this step.
+
 **E2.2.1.3.2 direct-page retained metadata charge:** BlueTS now computes a
 checked owned-heap payload for static source/type/symbol records and nested
 reifiable contract plans. The bridge adds its safe-point map, breakpoint spans,

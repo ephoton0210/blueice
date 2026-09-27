@@ -1076,6 +1076,27 @@ impl BlueJsChildHost {
             .map_err(|_| host_failure())
     }
 
+    /// Counts source graphs in pending JavaScript modules for one exact child
+    /// document. Other pending-record payloads are accounted in later steps.
+    pub fn retained_deferred_source_graph_bytes(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+    ) -> Result<usize, PageHostReply> {
+        let document = self.exact_document(tab_id, document_generation)?;
+        document
+            .pending_debugger_executions
+            .iter()
+            .filter_map(|pending| match &pending.execution {
+                DeferredChildExecution::JavaScriptModule { graph, .. } => Some(graph),
+                _ => None,
+            })
+            .try_fold(0usize, |bytes, graph| {
+                bytes.checked_add(graph.owned_heap_payload_bytes()?)
+            })
+            .ok_or_else(host_failure)
+    }
+
     /// Recomputes actual VM-managed usage from the live realm table on each
     /// request. No cached predecessor generation or conservative reservation
     /// is included, and checked sums fail closed instead of wrapping.
