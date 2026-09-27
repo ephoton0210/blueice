@@ -4158,6 +4158,15 @@ valid build increments the compiler generation only once. The query-only MCP
 router also has no build route. This proves that a successful query check or
 project receipt never implies write authority.
 
+**F3.3.1 real MCP failure inspection:** A launcher-managed core now receives
+two owner-selected virtual projects through its sealed catalog: one produces
+a type diagnostic, and the other produces a reifiable local contract. A real
+MCP client inventories and describes both project handles, checks each
+generation, reads a nonempty diagnostic page, inventories and describes a
+static type, then validates a mismatched JSON snapshot to obtain a concrete
+contract failure. Source text and physical paths never appear in those
+replies; the exact session/project/generation receipts gate every query.
+
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
 The supervised-child route now also has its first concrete external-resource

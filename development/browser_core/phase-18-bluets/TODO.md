@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: F3.3.1.** Inspect a diagnostic, a type, and a contract failure
-through a real MCP client.
+**Current leaf: F3.3.2.** Check and build an authorized project through a real
+MCP client.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -718,7 +718,7 @@ Keep check read-only and owner registration sealed before listeners.
 - [ ] **F3.3** Through a real MCP client, inspect a diagnostic/type/contract
   failure and check/build an authorized project; reject stale, guessed,
   oversized, private, and unauthorized requests.
-  - [ ] **F3.3.1** Inspect a diagnostic, a type, and a contract failure through a real MCP client.
+  - [x] **F3.3.1** Inspect a diagnostic, a type, and a contract failure through a real MCP client. A launcher-managed core receives two owner-selected virtual projects: one with a type error and one with a reifiable local contract. The MCP client inventories exact project IDs, checks each, reads a nonempty retained diagnostic page, inventories and reads a static type, and validates a JSON value that fails the inventoried contract. Every reply stays source-free and generation-bound; the real process test passes.
   - [ ] **F3.3.2** Check and build an authorized project.
   - [ ] **F3.3.3** Reject stale, guessed, oversized, private, and unauthorized requests.
 

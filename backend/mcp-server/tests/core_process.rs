@@ -31,6 +31,8 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+#[path = "core_process/compiler_failures.rs"]
+mod compiler_failures;
 #[path = "core_process/compiler_output.rs"]
 mod compiler_output;
 #[path = "core_process/compiler_round_trip.rs"]
