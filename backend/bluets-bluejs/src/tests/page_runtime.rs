@@ -6,6 +6,7 @@
 
 use super::*;
 use blueice_bluets::{AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution};
+use std::collections::BTreeMap;
 
 fn artifact() -> DirectScript {
     compile_direct_script(
@@ -181,6 +182,119 @@ fn direct_page_endless_while_exhausts_its_vm_instruction_budget() {
             bluejs::BlueJsPageRuntimeError::Runtime(bluejs::RuntimeError::InstructionLimit)
         ))
     ));
+}
+
+#[test]
+fn direct_page_while_loopback_keeps_its_live_source_map_and_nested_frame() {
+    let source = "function count(value: number): number { let total: number = 0; while (value > 0) { total += value; value -= 1; } return total; } count(3);";
+    let function_end = source.find(" count(3);").unwrap();
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let mut debug = DirectDebugRegistry::default();
+    let attachment = artifact
+        .attach_debug_in_page_realm(&mut runtime, 7, &origin(), &mut debug)
+        .unwrap();
+    attachment
+        .safe_point_map
+        .validate_against(runtime.program_registry(), attachment.handle)
+        .unwrap();
+    let first_child = attachment
+        .safe_point_map
+        .entries
+        .iter()
+        .find(|entry| entry.code_unit.ordinal() == 1)
+        .expect("the named function must have mapped child instructions");
+    let point = bluejs::BlueJsSafePoint {
+        code_unit: first_child.code_unit,
+        bytecode_offset: first_child.bytecode_offset,
+    };
+    let bluejs::BlueJsPageDebuggerNestedExecutionState::Paused {
+        frame,
+        bytecode_offset: mut offset,
+    } = runtime
+        .execute_program_until_nested_debugger_pause(7, attachment.handle, point)
+        .unwrap()
+    else {
+        panic!("the loop's named function must pause in its child frame");
+    };
+    assert_eq!(frame.program(), attachment.handle);
+    assert_eq!(frame.code_unit_ordinal(), 1);
+
+    let mut visits = BTreeMap::<u32, usize>::new();
+    let mut returned = false;
+    for _ in 0..256 {
+        let mapped = attachment
+            .safe_point_map
+            .source_span_for_safe_point(frame.code_unit_ordinal(), offset)
+            .expect("each paused loop instruction must retain checked BlueTS provenance");
+        assert_eq!(mapped.source, ENTRY);
+        assert_eq!((mapped.start_byte, mapped.end_byte), (0, function_end));
+        assert_eq!(
+            &source[mapped.start_byte..mapped.end_byte],
+            &source[..function_end]
+        );
+        *visits.entry(offset).or_default() += 1;
+        match runtime.step_debugger_nested_instruction(frame).unwrap() {
+            bluejs::BlueJsPageDebuggerNestedExecutionState::Paused {
+                frame: same_frame,
+                bytecode_offset,
+            } => {
+                assert_eq!(same_frame, frame);
+                offset = bytecode_offset;
+            }
+            bluejs::BlueJsPageDebuggerNestedExecutionState::FrameReturned { .. } => {
+                returned = true;
+                break;
+            }
+            state => panic!("unexpected nested loop state: {state:?}"),
+        }
+    }
+    assert!(
+        returned,
+        "the finite loop must return within the step bound"
+    );
+    assert!(
+        visits.values().any(|count| *count >= 2),
+        "a loop-back instruction must revisit the same mapped safe point"
+    );
+    assert!(runtime.step_debugger_nested_instruction(frame).is_err());
+    assert_eq!(
+        runtime.resume_debugger_execution(7),
+        Ok(bluejs::BlueJsPageDebuggerExecutionState::Completed)
+    );
+
+    let bluejs::BlueJsPageDebuggerNestedExecutionState::Paused {
+        frame: second_frame,
+        ..
+    } = runtime
+        .execute_program_until_nested_debugger_pause(7, attachment.handle, point)
+        .unwrap()
+    else {
+        panic!("a new invocation must pause independently");
+    };
+    assert_ne!(second_frame, frame);
+    assert!(matches!(
+        runtime.resume_debugger_nested_execution(second_frame),
+        Ok(bluejs::BlueJsPageDebuggerNestedExecutionState::FrameReturned { .. })
+    ));
+    assert_eq!(
+        runtime.resume_debugger_execution(7),
+        Ok(bluejs::BlueJsPageDebuggerExecutionState::Completed)
+    );
+    runtime.navigate(7, origin()).unwrap();
+    assert!(attachment
+        .safe_point_map
+        .validate_against(runtime.program_registry(), attachment.handle)
+        .is_err());
+    assert!(runtime
+        .step_debugger_nested_instruction(second_frame)
+        .is_err());
 }
 
 #[test]
