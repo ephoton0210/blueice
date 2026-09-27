@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
-use blueice_bluets::{BuildArtifact, SourceMap};
+use blueice_bluets::{BuildArtifact, MapLoader, SourceMap};
 use std::collections::BTreeMap;
 
 fn args(values: &[&str]) -> Result<Args, String> {
@@ -170,6 +170,7 @@ fn test_metadata() -> BuildMetadata {
         runtime_policy: "checked",
         runtime_helper: None,
         strict_boundaries: Vec::new(),
+        strict_artifacts: Vec::new(),
         source_map: true,
         declaration: true,
         entries: vec!["src/main.js".to_string()],
@@ -177,6 +178,40 @@ fn test_metadata() -> BuildMetadata {
         imports: BTreeMap::new(),
         has_configured_imports: false,
     }
+}
+
+fn strict_fixture(root: &Path) -> (BTreeMap<String, BuildArtifact>, BuildMetadata) {
+    let source = "export function echo(value: string): string { return value; }";
+    fs::write(root.join("main.ts"), source).unwrap();
+    let boundary = StrictRuntimeBoundary {
+        contract_id: "echo-v1".to_string(),
+        function: "echo".to_string(),
+        span: SourceSpan::new("main.ts", 0, source.len()),
+        max_string_bytes: 64,
+        helper_version: RUNTIME_HELPER_V1_VERSION.to_string(),
+    };
+    let compiled = compile(
+        "main.ts",
+        &MapLoader::from([ModuleSource::new("main.ts", source)]),
+        CompilerOptions {
+            runtime_policy: RuntimePolicy::StrictRuntime,
+            source_map: true,
+            declaration: true,
+            strict_runtime_boundaries: vec![boundary.clone()],
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(!compiled.has_errors(), "{:?}", compiled.diagnostics);
+    let artifacts = compiled.output.unwrap().artifacts;
+    let mut metadata = test_metadata();
+    metadata.language_version = blueice_bluets::LANGUAGE_VERSION;
+    metadata.runtime_policy = RuntimePolicy::StrictRuntime.as_str();
+    metadata.runtime_helper = Some(runtime_helper_v1_identity());
+    metadata.strict_boundaries = vec![StrictBoundaryManifest::from(&boundary)];
+    metadata.strict_artifacts = strict_artifact_inventory(&artifacts);
+    metadata.entries = vec!["main.js".to_string()];
+    metadata.fingerprint = fingerprint_entries(&[artifacts["main.ts"].fingerprint.clone()]);
+    (artifacts, metadata)
 }
 
 #[test]
@@ -223,6 +258,7 @@ fn publishing_replaces_a_complete_output_directory_only_after_staging() {
     let manifest = fs::read_to_string(output.join("bluetsc.manifest.json")).unwrap();
     assert!(manifest.contains("\"languageVersion\": \"blue-ts-test\""));
     assert!(!manifest.contains("\"strictBoundaries\""));
+    assert!(!manifest.contains("\"strictArtifacts\""));
     assert!(!manifest.contains(&root.to_string_lossy().into_owned()));
     assert!(!output.join("obsolete.js").exists());
     fs::remove_dir_all(temporary).unwrap();
@@ -234,17 +270,8 @@ fn strict_publisher_stages_the_exact_versioned_helper_and_releases_it_on_replace
     let root = temporary.join("source");
     let output = temporary.join("output");
     fs::create_dir_all(&root).unwrap();
-    let mut metadata = test_metadata();
-    metadata.runtime_policy = RuntimePolicy::StrictRuntime.as_str();
-    metadata.runtime_helper = Some(runtime_helper_v1_identity());
-    publish_build(
-        &root,
-        &output,
-        &BTreeMap::new(),
-        &BTreeMap::new(),
-        &metadata,
-    )
-    .unwrap();
+    let (artifacts, mut metadata) = strict_fixture(&root);
+    publish_build(&root, &output, &artifacts, &BTreeMap::new(), &metadata).unwrap();
     assert_eq!(
         fs::read_to_string(output.join(RUNTIME_HELPER_V1_FILE)).unwrap(),
         RUNTIME_HELPER_V1_SOURCE
@@ -257,29 +284,21 @@ fn strict_publisher_stages_the_exact_versioned_helper_and_releases_it_on_replace
     assert_eq!(manifest["runtimeHelper"]["version"], identity.version);
     assert_eq!(manifest["runtimeHelper"]["file"], identity.file);
     assert_eq!(manifest["runtimeHelper"]["sha256"], identity.sha256);
+    assert_eq!(manifest["strictBoundaries"][0]["contractId"], "echo-v1");
+    assert_eq!(manifest["strictArtifacts"][0]["module"], "main.ts");
+    assert_eq!(
+        manifest["strictArtifacts"][0]["emittedJavascriptSha256"],
+        sha256_label(artifacts["main.ts"].javascript.as_bytes())
+    );
 
     metadata.runtime_helper.as_mut().unwrap().sha256 = "sha256:wrong".into();
-    assert!(publish_build(
-        &root,
-        &output,
-        &BTreeMap::new(),
-        &BTreeMap::new(),
-        &metadata
-    )
-    .is_err());
+    assert!(publish_build(&root, &output, &artifacts, &BTreeMap::new(), &metadata).is_err());
     assert_eq!(
         fs::read_to_string(output.join(RUNTIME_HELPER_V1_FILE)).unwrap(),
         RUNTIME_HELPER_V1_SOURCE
     );
     metadata.runtime_helper = None;
-    assert!(publish_build(
-        &root,
-        &output,
-        &BTreeMap::new(),
-        &BTreeMap::new(),
-        &metadata
-    )
-    .is_err());
+    assert!(publish_build(&root, &output, &artifacts, &BTreeMap::new(), &metadata).is_err());
 
     metadata.runtime_policy = RuntimePolicy::Checked.as_str();
     metadata.runtime_helper = Some(runtime_helper_v1_identity());
@@ -292,6 +311,16 @@ fn strict_publisher_stages_the_exact_versioned_helper_and_releases_it_on_replace
     )
     .is_err());
     metadata.runtime_helper = None;
+    assert!(publish_build(
+        &root,
+        &output,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &metadata
+    )
+    .is_err());
+    metadata.strict_boundaries.clear();
+    metadata.strict_artifacts.clear();
     publish_build(
         &root,
         &output,
@@ -301,6 +330,102 @@ fn strict_publisher_stages_the_exact_versioned_helper_and_releases_it_on_replace
     )
     .unwrap();
     assert!(!output.join(RUNTIME_HELPER_V1_FILE).exists());
+    fs::remove_dir_all(temporary).unwrap();
+}
+
+#[test]
+fn strict_publisher_rejects_manifest_and_call_tampering_before_replacement() {
+    let temporary = unique_test_directory("strict-publish-audit");
+    let root = temporary.join("source");
+    let output = temporary.join("output");
+    fs::create_dir_all(&root).unwrap();
+    let (artifacts, metadata) = strict_fixture(&root);
+    publish_build(&root, &output, &artifacts, &BTreeMap::new(), &metadata).unwrap();
+    let original_js = fs::read(output.join("main.js")).unwrap();
+    let original_manifest = fs::read(output.join("bluetsc.manifest.json")).unwrap();
+    let assert_refused =
+        |candidate_metadata: &BuildMetadata,
+         candidate_artifacts: &BTreeMap<String, BuildArtifact>| {
+            let error = publish_build(
+                &root,
+                &output,
+                candidate_artifacts,
+                &BTreeMap::new(),
+                candidate_metadata,
+            )
+            .unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+            assert_eq!(fs::read(output.join("main.js")).unwrap(), original_js);
+            assert_eq!(
+                fs::read(output.join("bluetsc.manifest.json")).unwrap(),
+                original_manifest
+            );
+        };
+
+    let mut wrong_budget = metadata.clone();
+    wrong_budget.strict_boundaries[0].max_string_bytes -= 1;
+    assert_refused(&wrong_budget, &artifacts);
+    let mut wrong_digest = metadata.clone();
+    wrong_digest.strict_artifacts[0].emitted_javascript_sha256 = "sha256:wrong".to_string();
+    assert_refused(&wrong_digest, &artifacts);
+    let mut wrong_fingerprint = metadata.clone();
+    wrong_fingerprint.fingerprint = "bts-tampered".to_string();
+    assert_refused(&wrong_fingerprint, &artifacts);
+    let mut wrong_target = metadata.clone();
+    wrong_target.target = "es2018";
+    assert_refused(&wrong_target, &artifacts);
+    let mut wrong_language = metadata.clone();
+    wrong_language.language_version = "blue-ts-old";
+    assert_refused(&wrong_language, &artifacts);
+    let mut wrong_declarations = metadata.clone();
+    wrong_declarations.declaration_modules = vec!["missing.d.ts".to_string()];
+    assert_refused(&wrong_declarations, &artifacts);
+
+    let mut wrong_import = artifacts.clone();
+    let changed_import =
+        wrong_import["main.ts"]
+            .javascript
+            .replacen("import {", "import /* changed */ {", 1);
+    wrong_import.get_mut("main.ts").unwrap().javascript = changed_import;
+    assert_refused(&metadata, &wrong_import);
+    let mut missing_call = artifacts.clone();
+    let changed_call = missing_call["main.ts"].javascript.replacen(
+        "__bluetsValidateStringV1(",
+        "__bluetsOther(",
+        1,
+    );
+    missing_call.get_mut("main.ts").unwrap().javascript = changed_call;
+    assert_refused(&metadata, &missing_call);
+    let mut extra_runtime = artifacts.clone();
+    extra_runtime
+        .get_mut("main.ts")
+        .unwrap()
+        .javascript
+        .push_str("\nglobalText();\n");
+    assert_refused(&metadata, &extra_runtime);
+    let mut changed_map = artifacts.clone();
+    changed_map
+        .get_mut("main.ts")
+        .unwrap()
+        .source_map
+        .as_mut()
+        .unwrap()
+        .mappings
+        .push_str("AAAA");
+    assert_refused(&metadata, &changed_map);
+    let mut missing_map = artifacts.clone();
+    missing_map.get_mut("main.ts").unwrap().source_map = None;
+    assert_refused(&metadata, &missing_map);
+    let mut missing_record = artifacts.clone();
+    missing_record.get_mut("main.ts").unwrap().strict_runtime = None;
+    assert_refused(&metadata, &missing_record);
+
+    let mut checked_metadata = metadata.clone();
+    checked_metadata.runtime_policy = RuntimePolicy::Checked.as_str();
+    checked_metadata.runtime_helper = None;
+    checked_metadata.strict_boundaries.clear();
+    checked_metadata.strict_artifacts.clear();
+    assert_refused(&checked_metadata, &artifacts);
     fs::remove_dir_all(temporary).unwrap();
 }
 

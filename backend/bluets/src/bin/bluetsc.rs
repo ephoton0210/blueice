@@ -266,7 +266,7 @@ struct CompileSummary {
     has_errors: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BuildMetadata {
     language_version: &'static str,
@@ -277,6 +277,8 @@ struct BuildMetadata {
     runtime_helper: Option<RuntimeHelperIdentity>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     strict_boundaries: Vec<StrictBoundaryManifest>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    strict_artifacts: Vec<StrictArtifactIdentity>,
     source_map: bool,
     declaration: bool,
     entries: Vec<String>,
@@ -286,7 +288,7 @@ struct BuildMetadata {
     has_configured_imports: bool,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeHelperIdentity {
     version: &'static str,
@@ -306,6 +308,17 @@ struct StrictBoundaryManifest {
     helper_version: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StrictArtifactIdentity {
+    module: String,
+    emitted_javascript_sha256: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_map_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    declaration_sha256: Option<String>,
+}
+
 impl From<&StrictRuntimeBoundary> for StrictBoundaryManifest {
     fn from(boundary: &StrictRuntimeBoundary) -> Self {
         Self {
@@ -321,18 +334,42 @@ impl From<&StrictRuntimeBoundary> for StrictBoundaryManifest {
 }
 
 fn runtime_helper_v1_identity() -> RuntimeHelperIdentity {
-    let hash = digest(&SHA256, RUNTIME_HELPER_V1_SOURCE.as_bytes());
     RuntimeHelperIdentity {
         version: RUNTIME_HELPER_V1_VERSION,
         file: RUNTIME_HELPER_V1_FILE,
-        sha256: format!(
-            "sha256:{}",
-            hash.as_ref()
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>()
-        ),
+        sha256: sha256_label(RUNTIME_HELPER_V1_SOURCE.as_bytes()),
     }
+}
+
+fn sha256_label(bytes: &[u8]) -> String {
+    let hash = digest(&SHA256, bytes);
+    format!(
+        "sha256:{}",
+        hash.as_ref()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    )
+}
+
+fn strict_artifact_inventory(
+    artifacts: &BTreeMap<String, BuildArtifact>,
+) -> Vec<StrictArtifactIdentity> {
+    artifacts
+        .iter()
+        .map(|(module, artifact)| StrictArtifactIdentity {
+            module: module.clone(),
+            emitted_javascript_sha256: sha256_label(artifact.javascript.as_bytes()),
+            source_map_sha256: artifact
+                .source_map
+                .as_ref()
+                .map(|map| sha256_label(map.to_json().as_bytes())),
+            declaration_sha256: artifact
+                .declaration
+                .as_ref()
+                .map(|declaration| sha256_label(declaration.as_bytes())),
+        })
+        .collect()
 }
 
 fn compile_entries(
@@ -416,6 +453,11 @@ fn build_metadata(invocation: &Invocation, summary: &CompileSummary) -> BuildMet
             .iter()
             .map(StrictBoundaryManifest::from)
             .collect(),
+        strict_artifacts: if invocation.options.runtime_policy == RuntimePolicy::StrictRuntime {
+            strict_artifact_inventory(&summary.artifacts)
+        } else {
+            Vec::new()
+        },
         source_map: invocation.options.source_map,
         declaration: invocation.options.declaration,
         entries,
@@ -860,6 +902,7 @@ fn publish_build(
             "build metadata does not bind the exact runtime helper",
         ));
     }
+    strict_publish::verify(metadata, artifacts, declaration_modules)?;
     let output = absolute_path(out_dir)?;
     if output == root || (output.exists() && fs::canonicalize(&output)? == root) {
         return Err(io::Error::new(
@@ -1028,3 +1071,6 @@ fn project_module_id(root: &Path, path: &Path) -> String {
 #[cfg(test)]
 #[path = "bluetsc/tests.rs"]
 mod tests;
+
+#[path = "bluetsc/strict_publish.rs"]
+mod strict_publish;
