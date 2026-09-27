@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E2.2.1.3.4.** Account core-retained debugger identity and
-metadata maps by exact tab/document generation.
+**Current leaf: E2.2.1.3.4.2.** Account core-retained active nested and
+linked debugger frame payload under the exact document.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -607,6 +607,8 @@ channel with explicit owner/client grants.
           - [x] **E2.2.1.3.3.3.2** Populate the new fields from exact child owner queries and prove local two-tab/static/deferred release and accounting refusal. The child computes static and full deferred totals for the exact live document, fails closed on conversion or envelope errors, and sends only numbers. A mixed two-tab child-host test checks both values against owner queries, execution release, and independent tab retention; existing replacement/close and stale-generation checks cover the owner queries. Core caches and releases a valid nonzero numeric pair in its generation-bound test.
           - [x] **E2.2.1.3.3.3.3** Prove the complete numeric route through real child/core processes with two-tab isolation, failed/stale refusal, replacement, and close release; then check off E2.2.1.3.3.3 and E2.2.1.3.3. Core now refreshes exact realm stats after each successful debugger advance and clears cached stats if a test transport becomes unsupported, preventing stale deferred charges. A launcher-supervised real child/core test observes nonzero charges in two BlueTS tabs, zero deferred charges after execution, isolated replacement and close, stale-generation refusal, and no cached or child realm after oversized snapshot rejection.
       - [ ] **E2.2.1.3.4** Account core-retained debugger identity and metadata maps by exact tab/document generation, including failed child admission and replacement.
+        - [x] **E2.2.1.3.4.1** Count core program, static-metadata, and execution-deferral map entries for the exact live tab/document; prove discovery, replacement, failed admission, and close release. A checked core-only query counts logical outer/inner BTreeMap entry payload only after validating the live document generation and exact deferral generation. The real two-tab child/core test proves program and metadata discovery each add a charge to one tab, the other tab remains unchanged, replacement invalidates the old generation, failed snapshot admission leaves zero debugger identity retention, and close removes the record.
+        - [ ] **E2.2.1.3.4.2** Count active nested/linked frame map entries and linked scope-vector payload, combine all core debugger map charges, and prove frame lifecycle release without double-counting child-owned state; then check off E2.2.1.3.4.
       - [ ] **E2.2.1.3.5** Partition the verified HTTP source cache by initiating tab/document generation and release its payload charge on navigation/close while preserving same-document cache hits and integrity checks.
       - [ ] **E2.2.1.3.6** Recount all live-page retained cache owners and prove the combined tab charges and lifecycle release through real core/child processes; document the page compiler/primitive-plan zero-retention paths.
   - [ ] **E2.2.2** Report policy and source position without protected content.

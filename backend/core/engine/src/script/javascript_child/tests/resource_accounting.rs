@@ -192,6 +192,35 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
     assert_eq!(second_pending.document_generation, 1);
     assert!(first_pending.static_metadata_bytes > 0 && first_pending.deferred_payload_bytes > 0);
     assert!(second_pending.static_metadata_bytes > 0 && second_pending.deferred_payload_bytes > 0);
+    let first_identity = executor
+        .retained_debugger_identity_map_bytes(first_tab, 1)
+        .unwrap();
+    let second_identity = executor
+        .retained_debugger_identity_map_bytes(second_tab, 1)
+        .unwrap();
+    assert!(first_identity > 0 && second_identity > 0);
+    let program = executor.debugger_programs(first_tab, 1).unwrap()[0];
+    let after_program_discovery = executor
+        .retained_debugger_identity_map_bytes(first_tab, 1)
+        .unwrap();
+    assert!(after_program_discovery > first_identity);
+    assert!(!executor
+        .debugger_static_metadata(
+            first_tab,
+            1,
+            program.program_handle,
+            program.program_generation,
+        )
+        .unwrap()
+        .is_empty());
+    let after_metadata_discovery = executor
+        .retained_debugger_identity_map_bytes(first_tab, 1)
+        .unwrap();
+    assert!(after_metadata_discovery > after_program_discovery);
+    assert_eq!(
+        executor.retained_debugger_identity_map_bytes(second_tab, 1),
+        Some(second_identity)
+    );
 
     executor.synchronize_and_execute(&tabs).unwrap();
     let first_executed = executor.realm_stats(first_tab).unwrap().clone();
@@ -216,6 +245,18 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
     assert_eq!(replacement.document_generation, 2);
     assert!(replacement.static_metadata_bytes > 0 && replacement.deferred_payload_bytes > 0);
     assert_eq!(executor.realm_stats(second_tab), Some(&second_executed));
+    assert_eq!(
+        executor.retained_debugger_identity_map_bytes(first_tab, 1),
+        None
+    );
+    let replacement_identity = executor
+        .retained_debugger_identity_map_bytes(first_tab, 2)
+        .unwrap();
+    assert!(replacement_identity > 0 && replacement_identity < after_metadata_discovery);
+    assert_eq!(
+        executor.retained_debugger_identity_map_bytes(second_tab, 1),
+        Some(second_identity)
+    );
     assert!(matches!(
         executor.child.debugger_realm_stats(first_tab.as_u64(), 1),
         Ok(PageHostReply::Error {
@@ -227,6 +268,10 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
     assert!(tabs.close_tab(second_tab));
     executor.synchronize_and_execute(&tabs).unwrap();
     assert_eq!(executor.realm_stats(second_tab), None);
+    assert_eq!(
+        executor.retained_debugger_identity_map_bytes(second_tab, 1),
+        None
+    );
     assert_eq!(
         executor
             .realm_stats(first_tab)
@@ -241,6 +286,10 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
     );
     executor.synchronize_and_execute(&tabs).unwrap();
     assert_eq!(executor.realm_stats(first_tab), None);
+    assert_eq!(
+        executor.retained_debugger_identity_map_bytes(first_tab, 3),
+        Some(0)
+    );
     assert!(matches!(
         executor.child.debugger_realm_stats(first_tab.as_u64(), 3),
         Ok(PageHostReply::Error { .. })
@@ -248,6 +297,10 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
     assert!(tabs.close_tab(first_tab));
     executor.synchronize_and_execute(&tabs).unwrap();
     assert_eq!(executor.realm_stats(first_tab), None);
+    assert_eq!(
+        executor.retained_debugger_identity_map_bytes(first_tab, 3),
+        None
+    );
     drop(executor);
     drop(host);
 }

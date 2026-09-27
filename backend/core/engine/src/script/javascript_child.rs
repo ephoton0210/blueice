@@ -1272,6 +1272,7 @@ mod document_admission;
 use document_admission::*;
 mod debugger;
 mod debugger_state;
+mod retained_payload;
 use debugger_state::*;
 mod private_debugger_adapter;
 mod report_mapping;

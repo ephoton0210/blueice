@@ -2311,6 +2311,28 @@ The retained-byte counter measures the concrete payload held by these owners;
 it is not a claim about allocator metadata or VM heap. The remaining subleaves
 implement each retained owner and close with a real-process two-tab audit.
 
+**E2.2.1.3.4 core debugger maps:** Program and static-metadata inventories
+each retain an outer tab entry and a child-to-public identity map with fixed
+opaque keys and values. An execution-deferral entry is another fixed-size
+core record. Active nested frames retain a fixed record, while a linked pause
+also retains two child stack scope vectors whose capacities must be counted.
+These maps are keyed by tab, so each query must additionally validate the
+live document generation before summing logical map-entry payload. The child
+already owns its own debugger metadata and stack; core counts only its copies.
+Program/metadata/deferral identities and active-frame payload are separate
+substeps, with replacement, failed admission, and close tests at the core
+boundary.
+
+**E2.2.1.3.4.1 core identity-map charge:** A checked exact-document query
+counts logical outer and inner `BTreeMap` entry payload for core-minted
+program and static-metadata identities plus the execution-deferral record.
+It validates both the live document and deferral generation, reports zero for
+a rejected successor with no debugger records, and returns no value for a
+closed or stale document. A real launcher-child/core test shows program and
+metadata discovery increase only one tab's charge; replacement, failed
+snapshot admission, and close release the appropriate records. Active
+nested/linked frames and their scope vectors follow in E2.2.1.3.4.2.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
