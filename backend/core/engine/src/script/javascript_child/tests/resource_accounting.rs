@@ -199,6 +199,22 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
         .retained_debugger_identity_map_bytes(second_tab, 1)
         .unwrap();
     assert!(first_identity > 0 && second_identity > 0);
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first_tab, 1),
+        Some(
+            usize::try_from(first_pending.static_metadata_bytes).unwrap()
+                + usize::try_from(first_pending.deferred_payload_bytes).unwrap()
+                + first_identity
+        )
+    );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(second_tab, 1),
+        Some(
+            usize::try_from(second_pending.static_metadata_bytes).unwrap()
+                + usize::try_from(second_pending.deferred_payload_bytes).unwrap()
+                + second_identity
+        )
+    );
     let program = executor.debugger_programs(first_tab, 1).unwrap()[0];
     let after_program_discovery = executor
         .retained_debugger_identity_map_bytes(first_tab, 1)
@@ -218,6 +234,14 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
         .unwrap();
     assert!(after_metadata_discovery > after_program_discovery);
     assert_eq!(
+        executor.retained_page_cache_payload_bytes(first_tab, 1),
+        Some(
+            usize::try_from(first_pending.static_metadata_bytes).unwrap()
+                + usize::try_from(first_pending.deferred_payload_bytes).unwrap()
+                + after_metadata_discovery
+        )
+    );
+    assert_eq!(
         executor.retained_debugger_identity_map_bytes(second_tab, 1),
         Some(second_identity)
     );
@@ -235,6 +259,15 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
     );
     assert_eq!(first_executed.deferred_payload_bytes, 0);
     assert_eq!(second_executed.deferred_payload_bytes, 0);
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first_tab, 1),
+        Some(
+            usize::try_from(first_executed.static_metadata_bytes).unwrap()
+                + executor
+                    .retained_debugger_payload_bytes(first_tab, 1)
+                    .unwrap()
+        )
+    );
 
     tabs.get_mut(first_tab).unwrap().load_html_str(
         "<script type=\"application/x-blueice-typescript\">const replacement: number = 3;</script>",
@@ -249,10 +282,22 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
         executor.retained_debugger_identity_map_bytes(first_tab, 1),
         None
     );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first_tab, 1),
+        None
+    );
     let replacement_identity = executor
         .retained_debugger_identity_map_bytes(first_tab, 2)
         .unwrap();
     assert!(replacement_identity > 0 && replacement_identity < after_metadata_discovery);
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first_tab, 2),
+        Some(
+            usize::try_from(replacement.static_metadata_bytes).unwrap()
+                + usize::try_from(replacement.deferred_payload_bytes).unwrap()
+                + replacement_identity
+        )
+    );
     assert_eq!(
         executor.retained_debugger_identity_map_bytes(second_tab, 1),
         Some(second_identity)
@@ -273,6 +318,10 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
         None
     );
     assert_eq!(
+        executor.retained_page_cache_payload_bytes(second_tab, 1),
+        None
+    );
+    assert_eq!(
         executor
             .realm_stats(first_tab)
             .unwrap()
@@ -290,6 +339,10 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
         executor.retained_debugger_identity_map_bytes(first_tab, 3),
         Some(0)
     );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first_tab, 3),
+        Some(0)
+    );
     assert!(matches!(
         executor.child.debugger_realm_stats(first_tab.as_u64(), 3),
         Ok(PageHostReply::Error { .. })
@@ -301,6 +354,170 @@ fn real_child_and_core_refresh_two_tab_retained_totals_after_execution_and_lifec
         executor.retained_debugger_identity_map_bytes(first_tab, 3),
         None
     );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first_tab, 3),
+        None
+    );
+    drop(executor);
+    drop(host);
+}
+
+#[test]
+fn real_child_core_and_http_source_sum_each_live_document_once() {
+    use blueice_launcher::bluejs_host::SpawnedBlueJsHost;
+
+    const SOURCE: &str = "const remoteValue: number = 5; remoteValue;";
+    let mut responses = BTreeMap::new();
+    responses.insert(
+        "/shared.ts".to_string(),
+        HttpTestResponse::script("text/typescript", SOURCE),
+    );
+    let (origin, requested, server) = spawn_local_resource_server(responses, 3);
+    let policy = HttpScriptResourcePolicy::new(
+        HttpScriptResourceOriginRule::same_document_origin(),
+        HttpScriptIntegrityManifest::new([(
+            format!("{origin}/shared.ts"),
+            sha256_integrity(SOURCE.as_bytes()),
+        )])
+        .unwrap(),
+        HttpScriptResourceLimits::default(),
+    )
+    .unwrap();
+    let html = "<script type=\"application/x-blueice-typescript\" src=\"/shared.ts\"></script>";
+    let (mut tabs, first_tab) = loaded_tabs(html, &format!("{origin}/first.html"));
+    let second_tab = tabs.open_tab();
+    tabs.get_mut(second_tab)
+        .unwrap()
+        .load_html_str(html, Some(format!("{origin}/second.html")));
+    let (host, config) = SpawnedBlueJsHost::spawn_for_core().unwrap();
+    let mut executor = OutOfProcessJavaScriptPageExecutor::connect_with_external_source_authorizer(
+        config.socket_path(),
+        config.session_token(),
+        HttpOutOfProcessPageScriptSourceAuthorizer::new(policy),
+    )
+    .unwrap();
+    executor.enable_debugger_execution_control();
+
+    executor.synchronize_and_execute(&tabs).unwrap();
+    for tab_id in [first_tab, second_tab] {
+        let stats = executor.realm_stats(tab_id).unwrap();
+        assert!(stats.static_metadata_bytes > 0 && stats.deferred_payload_bytes > 0);
+        let core_bytes = executor.retained_debugger_payload_bytes(tab_id, 1).unwrap();
+        assert!(core_bytes > 0);
+        assert_eq!(
+            executor.retained_external_source_payload_bytes(tab_id, 1),
+            Some(SOURCE.len())
+        );
+        assert_eq!(
+            executor.retained_page_cache_payload_bytes(tab_id, 1),
+            Some(
+                usize::try_from(stats.static_metadata_bytes).unwrap()
+                    + usize::try_from(stats.deferred_payload_bytes).unwrap()
+                    + core_bytes
+                    + SOURCE.len()
+            )
+        );
+    }
+    assert_eq!(requested.lock().unwrap().len(), 2);
+    let second_before = executor.retained_page_cache_payload_bytes(second_tab, 1);
+    let first_before = executor
+        .retained_page_cache_payload_bytes(first_tab, 1)
+        .unwrap();
+    let program = executor.debugger_programs(first_tab, 1).unwrap()[0];
+    let after_discovery = executor
+        .retained_page_cache_payload_bytes(first_tab, 1)
+        .unwrap();
+    assert!(after_discovery > first_before);
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(second_tab, 1),
+        second_before
+    );
+    assert!(!executor
+        .debugger_static_metadata(
+            first_tab,
+            1,
+            program.program_handle,
+            program.program_generation,
+        )
+        .unwrap()
+        .is_empty());
+    assert!(
+        executor
+            .retained_page_cache_payload_bytes(first_tab, 1)
+            .unwrap()
+            > after_discovery
+    );
+
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(
+        executor
+            .realm_stats(first_tab)
+            .unwrap()
+            .deferred_payload_bytes,
+        0
+    );
+    assert_eq!(
+        executor
+            .realm_stats(second_tab)
+            .unwrap()
+            .deferred_payload_bytes,
+        0
+    );
+    assert_eq!(requested.lock().unwrap().len(), 2);
+    let second_executed = executor.retained_page_cache_payload_bytes(second_tab, 1);
+
+    tabs.get_mut(first_tab)
+        .unwrap()
+        .load_html_str(html, Some(format!("{origin}/replacement.html")));
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first_tab, 1),
+        None
+    );
+    assert!(
+        executor
+            .retained_page_cache_payload_bytes(first_tab, 2)
+            .unwrap()
+            > SOURCE.len()
+    );
+    assert_eq!(
+        executor.retained_external_source_payload_bytes(first_tab, 2),
+        Some(SOURCE.len())
+    );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(second_tab, 1),
+        second_executed
+    );
+    assert_eq!(requested.lock().unwrap().len(), 3);
+
+    assert!(tabs.close_tab(second_tab));
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(second_tab, 1),
+        None
+    );
+    let oversized = "x".repeat(page_host::PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES + 1);
+    tabs.get_mut(first_tab).unwrap().load_html_str(
+        &format!("<main>{oversized}</main><script>blueiceDocumentText();</script>"),
+        Some(format!("{origin}/rejected.html")),
+    );
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first_tab, 2),
+        None
+    );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first_tab, 3),
+        Some(0)
+    );
+    assert!(tabs.close_tab(first_tab));
+    executor.synchronize_and_execute(&tabs).unwrap();
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first_tab, 3),
+        None
+    );
+    assert_eq!(requested.lock().unwrap().len(), 3);
+    server.join().unwrap();
     drop(executor);
     drop(host);
 }

@@ -368,6 +368,24 @@ impl DirectPageScriptHost {
             .map_err(DirectPageScriptError::Bridge)
     }
 
+    /// Refuses a stale direct-page generation before reading realm metadata.
+    /// An observed document with no admitted direct realm retains zero debug
+    /// payload, including after an external source denial.
+    pub fn retained_debug_payload_bytes_for_document(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Result<Option<usize>, DirectPageScriptError> {
+        match self.live_documents.get(&tab_id) {
+            None => return Ok(Some(0)),
+            Some(identity) if identity.document_generation != document_generation => {
+                return Ok(None);
+            }
+            Some(_) => {}
+        }
+        self.retained_debug_payload_bytes(tab_id)
+    }
+
     /// Returns only the current document's private contract-validation work.
     /// A rejected result is charged before the error is returned; navigation
     /// and tab close release the old generation's counters.

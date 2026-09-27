@@ -237,6 +237,25 @@ impl DirectPageInlineExecutor {
             })
     }
 
+    /// Counts direct-realm debug metadata and retained verified source for
+    /// one observed document; bytecode and VM heap remain separate realm use.
+    pub fn retained_page_cache_payload_bytes(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Result<Option<usize>, DirectPageInlineExecutorError> {
+        let Some(source_bytes) =
+            self.retained_external_source_payload_bytes(tab_id, document_generation)
+        else {
+            return Ok(None);
+        };
+        let debug_bytes = self
+            .host
+            .retained_debug_payload_bytes_for_document(tab_id, document_generation)
+            .map_err(DirectPageInlineExecutorError::Lifecycle)?;
+        Ok(debug_bytes.and_then(|debug_bytes| debug_bytes.checked_add(source_bytes)))
+    }
+
     /// Removes and returns every retained execution report.
     pub fn drain_reports(&mut self) -> Vec<DirectPageScriptExecutionReport> {
         self.reports.drain(..).collect()
@@ -726,6 +745,12 @@ mod tests {
             executor.retained_external_source_payload_bytes(tab_id, 1),
             Some(17)
         );
+        assert_eq!(
+            executor
+                .retained_page_cache_payload_bytes(tab_id, 1)
+                .unwrap(),
+            Some(17)
+        );
         executor.synchronize_and_execute(&tabs).unwrap();
         assert_eq!(*authorizations.borrow(), 1);
         tabs.get_mut(tab_id)
@@ -740,6 +765,12 @@ mod tests {
             executor.retained_external_source_payload_bytes(tab_id, 2),
             Some(17)
         );
+        assert_eq!(
+            executor
+                .retained_page_cache_payload_bytes(tab_id, 2)
+                .unwrap(),
+            Some(17)
+        );
         assert_eq!(*authorizations.borrow(), 2);
         assert!(!retained.borrow().contains(&(tab_id, 1)));
         assert!(tabs.close_tab(tab_id));
@@ -748,7 +779,63 @@ mod tests {
             executor.retained_external_source_payload_bytes(tab_id, 2),
             None
         );
+        assert_eq!(
+            executor
+                .retained_page_cache_payload_bytes(tab_id, 2)
+                .unwrap(),
+            None
+        );
         assert!(retained.borrow().is_empty());
+    }
+
+    #[test]
+    fn direct_live_cache_total_includes_debug_metadata_and_releases_it() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script type=\"application/x-blueice-typescript\">const answer: number = 42; answer;</script>",
+            Some("https://example.test/first.html".to_string()),
+        );
+        let mut executor = executor();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let metadata = executor
+            .host
+            .retained_debug_payload_bytes(tab_id)
+            .unwrap()
+            .unwrap();
+        assert!(metadata > 0);
+        assert_eq!(
+            executor
+                .retained_page_cache_payload_bytes(tab_id, 1)
+                .unwrap(),
+            Some(metadata)
+        );
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<main>replacement</main>",
+            Some("https://example.test/second.html".to_string()),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor
+                .retained_page_cache_payload_bytes(tab_id, 1)
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            executor
+                .retained_page_cache_payload_bytes(tab_id, 2)
+                .unwrap(),
+            Some(0)
+        );
+        assert!(tabs.close_tab(tab_id));
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor
+                .retained_page_cache_payload_bytes(tab_id, 2)
+                .unwrap(),
+            None
+        );
     }
 
     #[test]

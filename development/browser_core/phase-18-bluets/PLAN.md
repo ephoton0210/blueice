@@ -2364,6 +2364,32 @@ Partitioning could otherwise retain arbitrarily many empty-source keys, so
 the cache also caps entries at 4,096 and advances the policy fingerprint to
 `core-page-http-resource-authorizer-v3`.
 
+**E2.2.1.3.6 final live-page cache recount:** Core exposes one checked
+exact-tab/document sum of child static BlueTS metadata, child pending debugger
+payload, core debugger maps and active frames, and verified HTTP source. The
+direct route sums its exact-generation BlueJS debug/contract metadata and
+verified source. Each component is owned by one layer and counted once; VM
+bytecode/heap, validation work counters, and completed temporary graph copies
+remain in their own accounting. A custom source authorizer without a retained
+payload meter leaves the aggregate unavailable rather than reporting a false
+zero. A two-tab launcher-supervised child test combines real external BlueTS
+HTTP source with all three debugger/cache owners, then checks execution,
+independent replacement and close, stale tuples, and failed snapshot
+admission. Direct-route tests check metadata and source totals separately.
+
+The live-page compiler has zero independent retained cache: each direct
+declaration calls the stateless `compile_direct_script` or
+`compile_direct_module_graph`, then passes its temporary artifact to the
+realm attachment. Only copied realm debug metadata and VM state survive, and
+those are already attributed to the realm. `DirectPageScriptHost` owns no
+compiler or incremental-project field. Primitive host-boundary validation
+likewise calls `HostBindingContractV1::plan()` inside
+`validate_string_metered()` and drops that temporary plan after the call;
+the retained compiler-generated contract plans inside debug metadata are
+counted by the direct/child static meters. The sealed project compiler's
+incremental cache belongs to its owner-registered project, which has no page
+tab identity.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph

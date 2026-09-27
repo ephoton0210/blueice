@@ -351,7 +351,15 @@ fn http_source_cache_is_isolated_and_released_through_real_child_lifecycle() {
         Some(SOURCE.len())
     );
     assert_eq!(
+        executor.retained_page_cache_payload_bytes(first_tab, 1),
+        Some(SOURCE.len())
+    );
+    assert_eq!(
         executor.retained_external_source_payload_bytes(second_tab, 1),
+        Some(SOURCE.len())
+    );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(second_tab, 1),
         Some(SOURCE.len())
     );
     assert_eq!(executor.drain_reports_for_tab(first_tab).len(), 2);
@@ -364,6 +372,10 @@ fn http_source_cache_is_isolated_and_released_through_real_child_lifecycle() {
     executor.synchronize_and_execute(&tabs).unwrap();
     assert_eq!(
         executor.retained_external_source_payload_bytes(first_tab, 1),
+        None
+    );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(first_tab, 1),
         None
     );
     assert_eq!(
@@ -381,6 +393,10 @@ fn http_source_cache_is_isolated_and_released_through_real_child_lifecycle() {
         executor.retained_external_source_payload_bytes(second_tab, 1),
         None
     );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(second_tab, 1),
+        None
+    );
     let third_tab = tabs.open_tab();
     tabs.get_mut(third_tab)
         .unwrap()
@@ -388,6 +404,10 @@ fn http_source_cache_is_isolated_and_released_through_real_child_lifecycle() {
     executor.synchronize_and_execute(&tabs).unwrap();
     assert_eq!(
         executor.retained_external_source_payload_bytes(third_tab, 1),
+        Some(0)
+    );
+    assert_eq!(
+        executor.retained_page_cache_payload_bytes(third_tab, 1),
         Some(0)
     );
     assert!(matches!(

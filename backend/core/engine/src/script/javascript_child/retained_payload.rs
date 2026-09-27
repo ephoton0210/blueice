@@ -7,6 +7,31 @@
 use super::*;
 
 impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
+    /// Sums the distinct retained page-cache owners for one live document.
+    /// Bytecode and VM heap remain in realm stats and are excluded here.
+    pub fn retained_page_cache_payload_bytes(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Option<usize> {
+        let document = self.live_documents.get(&tab_id)?;
+        if document.document_generation != document_generation {
+            return None;
+        }
+        let child_payload = match self.realm_stats.get(&tab_id) {
+            Some(stats) if stats.document_generation == document_generation => {
+                usize::try_from(stats.static_metadata_bytes)
+                    .ok()?
+                    .checked_add(usize::try_from(stats.deferred_payload_bytes).ok()?)?
+            }
+            Some(_) => return None,
+            None => 0,
+        };
+        child_payload
+            .checked_add(self.retained_debugger_payload_bytes(tab_id, document_generation)?)?
+            .checked_add(self.retained_external_source_payload_bytes(tab_id, document_generation)?)
+    }
+
     /// Retained verified HTTP source payload for one exact live document.
     pub fn retained_external_source_payload_bytes(
         &self,
