@@ -2248,6 +2248,20 @@ proves that the failed result never installed its callback or copied its value
 into the VM. The focused test passes with the shared target cache; E2.1.2
 will separately prove validation does not invoke active page behavior.
 
+**E2.1.2 validation has no executable inputs or side effects:** The runtime
+validator accepts `&ContractValue`, whose closed set of owned variants contains
+only primitives, vectors, and ordered string-keyed maps. No variant can hold a
+JavaScript object, getter, Proxy, callback, or host handle. The installed
+document boundaries copy text and origin into Rust strings before building
+that data-only value; the validator traverses it without VM access. At the
+loaded-page boundary, a regression supplies an over-budget snapshot, an inline
+script, and an external BlueTS module with a counted source authorizer. The
+contract rejects both scripts with source-free reports, records zero source
+authorizer calls, and sends no document to the child. Thus validation neither
+invokes page code nor enters the source-fetch path. This proof applies to the
+currently installed immutable snapshot bindings; future VM-object boundaries
+must provide a separately reviewed, pure data-copy step before validation.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: E2.1.2.** Prove no getter, proxy trap, page callback, or
-fetch runs during validation.
+**Current leaf: E2.2.1.** Charge validation and cache cost to the initiating
+tab.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -582,10 +582,10 @@ channel with explicit owner/client grants.
 
 #### E2. Validate at the crossing.
 
-- [ ] **E2.1** Run the pure bounded validator before data enters the VM; invoke
+- [x] **E2.1** Run the pure bounded validator before data enters the VM; invoke
   no getter, proxy, page callback, or fetch during validation.
   - [x] **E2.1.1** Validate before the value enters the VM. The live direct-page host validates the copied document-text and origin snapshots with pure bounded plans before calling BlueJS's realm binding registrar. A strict-runtime regression now rejects an oversized document result with zero programs and no bound profile, then successfully installs a same-name callback in that exact realm; BlueJS would reject it if the failed boundary had already installed a callback or copied the value into the VM. The focused test passes with the shared target cache.
-  - [ ] **E2.1.2** Prove no getter, proxy trap, page callback, or fetch runs during validation.
+  - [x] **E2.1.2** Prove no getter, proxy trap, page callback, or fetch runs during validation. `ContractPlan::validate_with_limits` accepts only the owned, data-only `ContractValue` tree, which cannot contain a getter, Proxy, callback, or host object; the live boundary converts its copied snapshot string into that tree. The over-budget loaded-page regression includes an inline callback and an external BlueTS module, then observes zero external source-authorizer calls, no document sent to the child, and source-free rejection reports for both scripts. Validation completes before the source fetch authority or any page script can run.
 - [ ] **E2.2** Attribute validation/cache cost to the initiating tab and report
   policy plus source position without protected content.
   - [ ] **E2.2.1** Charge cost to the initiating tab.

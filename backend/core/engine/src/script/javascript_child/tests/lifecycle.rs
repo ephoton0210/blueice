@@ -323,10 +323,34 @@ fn core_validates_and_installs_source_free_document_snapshots_in_the_real_child(
 
 #[test]
 fn over_budget_core_snapshot_is_never_sent_to_the_child() {
+    struct CountedSourceAuthorizer(Arc<AtomicU64>);
+
+    impl OutOfProcessPageScriptSourceAuthorizer for CountedSourceAuthorizer {
+        fn authorize(
+            &self,
+            _request: &OutOfProcessPageScriptSourceRequest,
+        ) -> Result<
+            AuthorizedOutOfProcessPageScriptGraph,
+            OutOfProcessPageScriptSourceAuthorizationError,
+        > {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Err(OutOfProcessPageScriptSourceAuthorizationError::new(
+                "the source authorizer must not run during snapshot validation",
+            ))
+        }
+    }
+
     let oversized = "x".repeat(blueice_ipc::page_host::PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES + 1);
-    let html = format!("<p>{oversized}</p><script>blueiceDocumentText();</script>");
+    let html = format!(
+        "<p>{oversized}</p><script>blueiceDocumentText();</script>\
+         <script type=\"application/x-blueice-typescript-module\" src=\"/private.ts\"></script>"
+    );
     let (tabs, tab_id) = loaded_tabs(&html, "https://example.test/app/index.html");
-    let mut executor = OutOfProcessJavaScriptPageExecutor::new(RecordingChild::default());
+    let authorizer_calls = Arc::new(AtomicU64::new(0));
+    let mut executor = OutOfProcessJavaScriptPageExecutor::with_external_source_authorizer(
+        RecordingChild::default(),
+        CountedSourceAuthorizer(Arc::clone(&authorizer_calls)),
+    );
     executor.synchronize_and_execute(&tabs).unwrap();
     assert_eq!(
         executor.drain_reports_for_tab(tab_id),
@@ -337,6 +361,21 @@ fn over_budget_core_snapshot_is_never_sent_to_the_child() {
             kind: BlueJsPageScriptKind::Classic,
             category: "host binding contract rejected the page script",
         }]
+    );
+    assert_eq!(
+        executor.drain_blue_ts_reports_for_tab(tab_id),
+        vec![BlueTsPageExecutionReport::Rejected {
+            tab_id: tab_id.as_u64(),
+            document_generation: 1,
+            ordinal: 1,
+            kind: DirectPageScriptKind::Module,
+            category: "host binding contract rejected the page script",
+        }]
+    );
+    assert_eq!(
+        authorizer_calls.load(Ordering::SeqCst),
+        0,
+        "snapshot validation must finish before any source fetch authority runs"
     );
     let child = executor.into_child();
     assert!(child.documents.is_empty());
