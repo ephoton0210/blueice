@@ -592,9 +592,7 @@ fn config_target_and_runtime_policy_are_validated_and_applied() {
         .assert_success();
     scratch
         .run(&["build", "--config", "bluetsc.json"])
-        .assert_failure(
-            "strict-runtime build requires the versioned runtime boundary helper, which standalone BlueTSC does not install",
-        );
+        .assert_failure("strict-runtime build requires owner-selected strictBoundaries in config");
     assert!(
         !scratch.path("strict-dist").exists(),
         "a strict-runtime build without its helper must not publish an artifact"

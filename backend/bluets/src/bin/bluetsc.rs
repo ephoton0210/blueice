@@ -113,9 +113,10 @@ fn main() -> ExitCode {
     }
     if args.command == Command::Build
         && invocation.options.runtime_policy == RuntimePolicy::StrictRuntime
+        && invocation.options.strict_runtime_boundaries.is_empty()
     {
         eprintln!(
-            "bluetsc: strict-runtime build requires the versioned runtime boundary helper, which standalone BlueTSC does not install"
+            "bluetsc: strict-runtime build requires owner-selected strictBoundaries in config"
         );
         return ExitCode::FAILURE;
     }

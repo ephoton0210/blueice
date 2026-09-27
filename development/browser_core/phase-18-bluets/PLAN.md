@@ -2752,6 +2752,24 @@ or record and proves every refusal leaves the previous JavaScript and
 manifest intact. All 13 BlueTSC binary tests and workspace Clippy pass with
 the reused target. Public CLI strict build admission remains E3.2.3.3.3.
 
+**E3.2.3.3.3 strict CLI admission:** `bluetsc build` now requires an explicit
+owner `strictBoundaries` configuration for strict-runtime. Missing records
+still fail before compilation; stale, unsupported, ambient, or unpaired
+records fail in compilation with no output; only the fully admitted
+primitive-string profile reaches the pre-staging publisher audit. A real
+BlueTSC process test builds both ES2020 and ES2022 with helper v1, source
+maps, declarations, exact boundary and artifact identities, and two retained
+calls. Where Node is installed, it imports each published module, accepts a
+valid Unicode string, and rejects a number, oversized string, and unpaired
+surrogate with the fixed helper refusal. The test then updates the descriptor
+to the current source span but changes the body to call an ambient global;
+the CLI reports `BTS4000` and preserves the previous JavaScript and
+manifest. The previous no-descriptor strict build regression still refuses.
+All 166 BlueTS library tests, 13 BlueTSC binary tests, 7 CLI tests, 18 CLI
+coverage tests, workspace Clippy, and formatting pass in the same target
+directory. E3.2's helper, manifest, target, and publication gates are closed;
+E3.3 still requires direct-page/emitted malformed-value parity.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
