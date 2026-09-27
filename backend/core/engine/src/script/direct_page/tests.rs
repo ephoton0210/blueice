@@ -233,6 +233,66 @@ fn document_text_contract_rejects_an_oversized_snapshot_before_admission() {
 }
 
 #[test]
+fn document_text_contract_refuses_exhausted_validation_before_vm_capture() {
+    let profiles = core_script_host_type_catalog();
+    let artifact = profiles
+        .generate(CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1)
+        .unwrap();
+    let loader = AuthorizedModuleLoader::new(
+        [AuthorizedModule::new(
+            "page:///app/main.ts",
+            "blueiceDocumentText();",
+        )],
+        [],
+    )
+    .unwrap();
+    let (mut tabs, tab_id) = loaded_tabs();
+    tabs.get_mut(tab_id).unwrap().load_html_str(
+        "<main>private document</main>",
+        Some("https://example.test/app/index.html".into()),
+    );
+    let mut host = DirectPageScriptHost::with_realm_owner_and_contract_limits(
+        profiles,
+        DirectPageRealmOwner::default(),
+        CoreScriptBindingContractLimits {
+            document_text: blueice_bluets::ValidationLimits {
+                max_nodes: 0,
+                ..blueice_bluets::ValidationLimits::default()
+            },
+            ..CoreScriptBindingContractLimits::default()
+        },
+    );
+    assert!(matches!(
+        host.execute(
+            &tabs,
+            DirectPageScriptRequest {
+                tab_id,
+                kind: DirectPageScriptKind::Classic,
+                entry: "page:///app/main.ts".into(),
+                loader: &loader,
+                compiler_options: CompilerOptions::default(),
+                feature_profile: CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1.into(),
+                supplied_manifest: &artifact.manifest,
+                supplied_declaration_source: &artifact.declaration_source,
+                supplied_runtime_bindings: &artifact.runtime_bindings,
+            },
+        ),
+        Err(DirectPageScriptError::BindingContractViolation {
+            stable_binding_id: "dom.document-text",
+            contract_id: CORE_SCRIPT_DOCUMENT_TEXT_RESULT_CONTRACT_V1,
+            ..
+        })
+    ));
+    let usage = host.validation_usage(tab_id).unwrap();
+    assert_eq!(usage.document_generation, 2);
+    assert_eq!(usage.attempts, 1);
+    assert_eq!(usage.visited_nodes, 1);
+    assert!(usage.copied_value_bytes > 0);
+    assert_eq!(host.debug_record_count(), 0);
+    assert_eq!(host.realm_stats(tab_id).unwrap().program_count, 0);
+}
+
+#[test]
 fn direct_page_validation_work_is_charged_to_the_initiating_tab_and_generation() {
     let profiles = core_script_host_type_catalog();
     let artifact = profiles

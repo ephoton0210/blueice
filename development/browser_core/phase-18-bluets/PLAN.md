@@ -2470,6 +2470,17 @@ validation, explicit owner capability, and rejection before host/VM effects;
 no test may claim cyclic/deep live coverage by fabricating an impossible
 snapshot or calling the plan validator in isolation.
 
+**E2.3.1.2 current string crossing:** The loaded-page direct host already
+accepts a valid document-text result and rejects an overlong copied snapshot
+before program admission. A zero-node owner-selected validation budget now
+rejects even a short copied document result after accounting one attempted
+node to that tab and generation; no BlueJS program or debug record is
+installed. The inline page executor repeats overlong and exhausted cases
+through the public report seam, returning the same fixed category without a
+source position or protected text. These are distinct real string-value
+classes. A malformed type, nested value, or cycle is not representable by
+the installed string-only callback and remains in E2.3.1.3.
+
 **E2.2.1.3.3.2 deferred child records:** The pending debugger queue stores
 JavaScript module source graphs alongside parsed program ASTs, while BlueTS
 modules retain bridge attachments with their own module maps. The source-graph
