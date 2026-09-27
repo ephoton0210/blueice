@@ -2124,6 +2124,16 @@ and classic script kind. It must carry the fixed host-binding contract category
 within 64 bytes. The focused subprocess test passes with the ordinary target
 cache; protected-content checks are completed separately in D.2.2.
 
+**D.2.2 protected-content boundary:** The same real HTTP document now
+includes separate private markers in its oversized body and inline BlueTS
+source. The test records the exact public IPC frame while using the normal
+framed reader, caps the reply at 512 bytes, and requires both markers and a
+128-byte document-text run to be absent from its serialized payload. The
+decoded reply remains one fixed-category contract rejection and contains no
+source or diagnostic field. The focused real core-binary test, formatting,
+and diff checks pass with the shared target cache; D.2 is complete for this
+declared immutable document-text boundary.
+
 **C3.1.3.2.1 root declaration-slot evidence:** BlueJS bytecode now records a
 compiler-resolved root-scope slot in root statement order only for a
 single-identifier variable or named function declaration. The compiler takes

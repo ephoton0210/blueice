@@ -643,6 +643,8 @@ fn real_subprocess_rejects_an_oversized_document_text_binding_before_inline_admi
     // limit. Exercise it through real navigation and process IPC so the page
     // cannot turn a rejection into either source/diagnostic disclosure or a
     // partially admitted BlueJS program.
+    const PRIVATE_BODY: &str = "PRIVATE_DOCUMENT_TOKEN_7c1a";
+    const PRIVATE_SOURCE: &str = "PRIVATE_INLINE_SOURCE_TOKEN_8d2b";
     let socket_path = unique_socket_path("inline-contract");
     let frame_dir = std::env::temp_dir().join(format!(
         "blueice-core-binary-test-inline-contract-frames-{}",
@@ -659,12 +661,11 @@ fn real_subprocess_rejects_an_oversized_document_text_binding_before_inline_admi
         let mut buf = [0u8; 1024];
         let _ = stream.read(&mut buf);
         let oversized_text = "x".repeat(1_048_577);
-        let body = format!("<main>{oversized_text}</main>",)
-            + concat!(
-                "<script type=\"application/x-blueice-typescript\">",
-                "blueiceDocumentText();",
-                "</script>"
-            );
+        let body = format!(
+            "<main>{PRIVATE_BODY}{oversized_text}</main>\
+             <script type=\"application/x-blueice-typescript\">\
+             /* {PRIVATE_SOURCE} */ blueiceDocumentText();</script>"
+        );
         stream
             .write_all(
                 format!(
@@ -715,10 +716,36 @@ fn real_subprocess_rejects_an_oversized_document_text_binding_before_inline_admi
         &blueice_ipc::ClientMessage::GetBlueTsScriptReports,
     )
     .unwrap();
-    let reports = match blueice_ipc::read_server_message(&mut stream).unwrap() {
+    // Capture the actual public frame while the shared IPC reader handles its
+    // normal timeout/partial-read semantics. The frame must not serialize any
+    // page text or inline source, even when the decoded report is bounded.
+    struct RecordingReader<'a> {
+        stream: &'a mut UnixStream,
+        bytes: Vec<u8>,
+    }
+    impl Read for RecordingReader<'_> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let count = self.stream.read(buf)?;
+            self.bytes.extend_from_slice(&buf[..count]);
+            Ok(count)
+        }
+    }
+    let mut recorded = RecordingReader {
+        stream: &mut stream,
+        bytes: Vec::new(),
+    };
+    let reports = match blueice_ipc::read_server_message(&mut recorded).unwrap() {
         blueice_ipc::ServerMessage::BlueTsScriptReports(reports) => reports,
         other => panic!("expected BlueTsScriptReports, got {other:?}"),
     };
+    assert!(
+        recorded.bytes.len() <= 512,
+        "the public report frame is bounded"
+    );
+    let wire = std::str::from_utf8(&recorded.bytes[4..]).unwrap();
+    assert!(!wire.contains(PRIVATE_BODY));
+    assert!(!wire.contains(PRIVATE_SOURCE));
+    assert!(!wire.contains(&"x".repeat(128)));
     assert_eq!(reports.len(), 1);
     assert_eq!(reports[0].tab_id, 1);
     assert_eq!(reports[0].document_generation, 1);

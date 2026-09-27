@@ -18,8 +18,8 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: D.2.2.** Assert the real-page contract-failure report leaks
-no protected content.
+**Current leaf: D.3.1.** Prove separate results and attribution for multiple
+tabs at the public boundary.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -535,10 +535,13 @@ channel with explicit owner/client grants.
   declaration coordinates, source provenance, and closed resolution authority.
   - [x] **D.1.1** Classic fixture: type-only import elision and original source mapping. A real supervised BlueJS child accepts a core-supplied closed classic BlueTS graph with one type-only declaration edge, installs and executes only the entry program, and maps the original typed declaration's exact UTF-8 bytes and UTF-16 column through a verified safe point and source provenance. The classic child now validates closed static resolution records before compilation; the direct script bridge still rejects runtime imports. The same real-process test confirms a runtime-import graph installs no program. All 116 Launcher library tests, 13 real child-process tests, Launcher Clippy, formatting, and line-count checks pass.
   - [x] **D.1.2** ESM fixture: authorized resolver identity and original source mapping. A real supervised child accepts an explicit resolver edge whose canonical target differs from relative-path resolution, installs and executes both ESM programs, and maps typed declarations in both original modules with exact UTF-8 byte ranges and UTF-16 columns. Changing only the resolver fingerprint changes compiler-options identity; removing the authorized edge rejects the graph and installs no program. The focused real-child test, Launcher Clippy, formatting, and line-count checks pass using the shared target cache.
-- [ ] **D.2** A real page exercises a declared contract and shows its bounded
-  failure without exposing protected content.
+- [x] **D.2** A real page exercises a declared contract and shows its bounded
+  failure without exposing protected content. The real core-binary HTTP and
+  public IPC fixture proves the fixed, attributed, small rejection report and
+  inspects the raw reply frame for absence of page-body and script-source
+  markers.
   - [x] **D.2.1** Trigger a contract failure on a real page and show its bounded report. The existing real core-binary HTTP fixture exceeds the core-selected one-mebibyte document-text contract before inline admission. Its focused subprocess test now requires exactly one addressed tab/document/classic-script report, the fixed contract-rejection category, and a category no longer than 64 bytes; the test passes using the shared target cache.
-  - [ ] **D.2.2** Assert the report leaks no protected content.
+  - [x] **D.2.2** Assert the report leaks no protected content. The oversized HTTP page now contains distinct private body and inline-source markers. The focused real-process test records the actual public IPC reply frame, bounds it to 512 bytes, and proves neither marker nor a 128-byte page-text run appears in the serialized report. The normal decoded report remains the fixed contract category, with no source or diagnostic payload. The focused test, formatting, and diff checks pass using the shared target cache.
 - [ ] **D.3** Public-boundary tests cover multiple tabs, reload, policy isolation,
   and tab/child resource attribution; no required result depends only on a
   host-neutral unit test.
