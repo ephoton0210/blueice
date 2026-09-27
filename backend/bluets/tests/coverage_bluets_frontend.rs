@@ -254,6 +254,39 @@ fn immutable_typeof_guard_emits_the_original_runtime_condition_without_types() {
 }
 
 #[test]
+fn callback_method_overloads_retain_both_literal_tag_signatures() {
+    let source = "interface Visitor { visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; } type RecordVisitor = { visit(kind: 'text', callback: (value: string) => void): void; visit(kind: 'count', callback: (value: number) => void): void; };";
+    let module = parse_module(ENTRY, source).unwrap();
+    let [Declaration::Interface(interface), Declaration::TypeAlias(alias)] =
+        module.declarations.as_slice()
+    else {
+        panic!("expected one interface and record alias");
+    };
+    let blueice_bluets::Type::Record(record_fields) = &alias.value else {
+        panic!("expected record alias");
+    };
+    for fields in [&interface.fields, record_fields] {
+        assert_eq!(fields.len(), 2);
+        assert!(fields.iter().all(|field| field.name == "visit"));
+        for (field, tag) in fields.iter().zip(["'text'", "'count'"]) {
+            let blueice_bluets::Type::Function { parameters, result } = &field.value else {
+                panic!("each visit overload must retain its function signature");
+            };
+            assert_eq!(parameters.len(), 2);
+            assert_eq!(
+                parameters[0].annotation,
+                Some(blueice_bluets::Type::Literal(tag.into()))
+            );
+            assert!(matches!(
+                parameters[1].annotation,
+                Some(blueice_bluets::Type::Function { .. })
+            ));
+            assert_eq!(result.as_ref(), &blueice_bluets::Type::Void);
+        }
+    }
+}
+
+#[test]
 fn braced_while_retains_its_condition_and_body_without_proving_a_return() {
     let source =
         "function count(value: number): number { while (value > 0) { value -= 1; } return value; }";

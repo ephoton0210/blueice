@@ -51,18 +51,34 @@ pub(super) fn property_type(
     budget: &mut TypeExpansionBudget,
 ) -> PropertyType {
     match value {
-        Type::Record(fields) => fields
-            .iter()
-            .find(|field| field.name == property)
-            .map(|field| PropertyType::Found {
-                value: if field.optional {
+        Type::Record(fields) => {
+            let mut values = Vec::new();
+            let mut readonly = false;
+            for field in fields.iter().filter(|field| field.name == property) {
+                // Keep every same-named signature in declaration order. The
+                // first field preserves the existing simple-lookup budget.
+                if !values.is_empty() && !budget.consume() {
+                    return PropertyType::Exhausted;
+                }
+                values.push(if field.optional {
                     Type::Union(vec![field.value.clone(), Type::Undefined])
                 } else {
                     field.value.clone()
+                });
+                readonly |= field.readonly;
+            }
+            match values.len() {
+                0 => PropertyType::Missing,
+                1 => PropertyType::Found {
+                    value: values.pop().expect("one matching field"),
+                    readonly,
                 },
-                readonly: field.readonly,
-            })
-            .unwrap_or(PropertyType::Missing),
+                _ => PropertyType::Found {
+                    value: Type::Intersection(values),
+                    readonly,
+                },
+            }
+        }
         Type::Named { .. } => {
             match instantiate_named(value, aliases, visited, budget, "property") {
                 Some(value) => property_type(&value, property, aliases, visited, budget),
