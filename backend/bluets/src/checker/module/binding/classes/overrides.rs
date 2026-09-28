@@ -19,6 +19,10 @@ enum RestShape {
     MatchingArrays,
     DerivedCoversFixed(usize),
     BaseCoversFixed(usize),
+    ShiftedArrays {
+        derived_fixed: usize,
+        inherited_fixed: usize,
+    },
 }
 
 impl ModuleChecker<'_> {
@@ -47,8 +51,8 @@ impl ModuleChecker<'_> {
             ) else {
                 continue;
             };
-            // Compare matching array rests or expand a derived array rest
-            // against the base's remaining fixed positions.
+            // Align fixed positions and array rest elements where both
+            // signatures have a supported rest shape.
             let Some(rest_shape) = rest_shape(&derived.parameters, inherited.parameters) else {
                 continue;
             };
@@ -65,14 +69,19 @@ impl ModuleChecker<'_> {
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
             // TypeScript compares class-method parameters bivariantly, then
             // requires the overriding result to fit the inherited result.
-            // An override may omit inherited positions or add omittable ones;
-            // it cannot require more positions than the base declares.
+            // An override may omit inherited positions or add omittable ones.
+            // With array rests on both sides, TypeScript also permits a
+            // longer required fixed prefix when aligned types agree.
             let required_derived = derived
                 .parameters
                 .iter()
                 .filter(|parameter| !parameter.optional && !parameter.rest)
                 .count();
-            let parameters_compatible = required_derived <= inherited.parameters.len()
+            let arity_compatible = matches!(
+                rest_shape,
+                RestShape::MatchingArrays | RestShape::ShiftedArrays { .. }
+            ) || required_derived <= inherited.parameters.len();
+            let parameters_compatible = arity_compatible
                 && match rest_shape {
                     RestShape::None | RestShape::MatchingArrays => {
                         derived.parameters.iter().zip(inherited.parameters).all(
@@ -143,6 +152,54 @@ impl ModuleChecker<'_> {
                                     &mut budget,
                                 )
                             })
+                    }
+                    RestShape::ShiftedArrays {
+                        derived_fixed,
+                        inherited_fixed,
+                    } => {
+                        let Some(Type::Array(derived_element)) = derived
+                            .parameters
+                            .last()
+                            .and_then(|parameter| parameter.annotation.as_ref())
+                        else {
+                            unreachable!("rest shape requires an array annotation")
+                        };
+                        let Some(Type::Array(inherited_element)) = inherited
+                            .parameters
+                            .last()
+                            .and_then(|parameter| parameter.annotation.as_ref())
+                        else {
+                            unreachable!("rest shape requires an array annotation")
+                        };
+                        (0..derived_fixed.max(inherited_fixed)).all(|index| {
+                            let derived_type = if index < derived_fixed {
+                                derived.parameters[index]
+                                    .annotation
+                                    .as_ref()
+                                    .unwrap_or(&Type::Unknown)
+                            } else {
+                                derived_element
+                            };
+                            let inherited_type = if index < inherited_fixed {
+                                inherited.parameters[index]
+                                    .annotation
+                                    .as_ref()
+                                    .unwrap_or(&Type::Unknown)
+                            } else {
+                                inherited_element
+                            };
+                            parameter_types_compatible(
+                                derived_type,
+                                inherited_type,
+                                &self.types,
+                                &mut budget,
+                            )
+                        }) && parameter_types_compatible(
+                            derived_element,
+                            inherited_element,
+                            &self.types,
+                            &mut budget,
+                        )
                     }
                 };
             let compatible = parameters_compatible
@@ -276,11 +333,20 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
         return Some(RestShape::DerivedCoversFixed(derived_fixed.len()));
     }
     let (inherited_rest, inherited_fixed) = inherited.split_last()?;
-    (inherited_rest.rest
-        && inherited_fixed.len() == derived_fixed.len()
-        && !inherited_fixed.iter().any(|parameter| parameter.rest)
-        && matches!(inherited_rest.annotation.as_ref(), Some(Type::Array(_))))
-    .then_some(RestShape::MatchingArrays)
+    if !inherited_rest.rest
+        || inherited_fixed.iter().any(|parameter| parameter.rest)
+        || !matches!(inherited_rest.annotation.as_ref(), Some(Type::Array(_)))
+    {
+        return None;
+    }
+    if inherited_fixed.len() == derived_fixed.len() {
+        Some(RestShape::MatchingArrays)
+    } else {
+        Some(RestShape::ShiftedArrays {
+            derived_fixed: derived_fixed.len(),
+            inherited_fixed: inherited_fixed.len(),
+        })
+    }
 }
 
 fn parameter_types_compatible(

@@ -5778,6 +5778,23 @@ TS2416/TS2417 lines. BlueTS, bridge, and full workspace tests, workspace
 all-target Clippy, rustfmt, and whitespace checks pass with the reused
 12 GiB Cargo target.
 
+### J.3.1.3.4.4.2.3.2.2.3 Both-side array rests with shifted prefixes
+
+The bounded class override relation now aligns each fixed parameter with
+the other method's fixed parameter or array rest element, then compares the
+two rest element types. TypeScript accepts a derived method with additional
+required fixed parameters when both signatures end in array rest and those
+types fit, so this shape does not use the single-rest required-arity limit.
+The instance and static comparisons retain the original derived member span.
+Tuple rest expansion remains in the next leaf.
+
+Public checked-compile cases cover two accepted forms, including the longer
+required prefix, and three rejected prefix, element, and static forms with
+exact original spans and no artifact. Five pinned TypeScript 5.9.3 `--noEmit`
+cases agree on acceptance and TS2416/TS2417 lines. BlueTS, bridge, and full
+workspace tests, workspace all-target Clippy, rustfmt, and whitespace checks
+pass with the reused 12 GiB Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
