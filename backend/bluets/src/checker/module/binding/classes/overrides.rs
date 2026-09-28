@@ -18,6 +18,7 @@ enum RestShape {
     None,
     MatchingArrays,
     DerivedCoversFixed(usize),
+    BaseCoversFixed(usize),
 }
 
 impl ModuleChecker<'_> {
@@ -109,6 +110,35 @@ impl ModuleChecker<'_> {
                                 parameter_types_compatible(
                                     element,
                                     base.annotation.as_ref().unwrap_or(&Type::Unknown),
+                                    &self.types,
+                                    &mut budget,
+                                )
+                            })
+                    }
+                    RestShape::BaseCoversFixed(prefix) => {
+                        let Some(Type::Array(element)) = inherited
+                            .parameters
+                            .last()
+                            .and_then(|parameter| parameter.annotation.as_ref())
+                        else {
+                            unreachable!("rest shape requires an array annotation")
+                        };
+                        derived
+                            .parameters
+                            .iter()
+                            .enumerate()
+                            .all(|(index, derived)| {
+                                let base_type = if index < prefix {
+                                    inherited.parameters[index]
+                                        .annotation
+                                        .as_ref()
+                                        .unwrap_or(&Type::Unknown)
+                                } else {
+                                    element
+                                };
+                                parameter_types_compatible(
+                                    derived.annotation.as_ref().unwrap_or(&Type::Unknown),
+                                    base_type,
                                     &self.types,
                                     &mut budget,
                                 )
@@ -227,6 +257,13 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
     let inherited_has_rest = inherited.iter().any(|parameter| parameter.rest);
     if !derived_has_rest && !inherited_has_rest {
         return Some(RestShape::None);
+    }
+    if !derived_has_rest {
+        let (inherited_rest, inherited_fixed) = inherited.split_last()?;
+        return (inherited_rest.rest
+            && !inherited_fixed.iter().any(|parameter| parameter.rest)
+            && matches!(inherited_rest.annotation.as_ref(), Some(Type::Array(_))))
+        .then_some(RestShape::BaseCoversFixed(inherited_fixed.len()));
     }
     let (derived_rest, derived_fixed) = derived.split_last()?;
     if !derived_rest.rest

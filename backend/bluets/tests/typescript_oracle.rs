@@ -2281,6 +2281,54 @@ fn pinned_derived_array_rest_overrides_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_fixed_derived_base_rest_overrides_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 6] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-override-base-rest-valid/main.ts"),
+            &[],
+        ),
+        (
+            "required-at-rest",
+            include_str!("fixtures/typescript_oracle/class-override-base-rest-required/main.ts"),
+            &[],
+        ),
+        (
+            "extra-required",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-base-rest-extra-required/main.ts"
+            ),
+            &[(7, "TS2416")],
+        ),
+        (
+            "instance-type-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-base-rest-instance-type-error/main.ts"
+            ),
+            &[(7, "TS2416")],
+        ),
+        (
+            "later-type-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-base-rest-later-type-error/main.ts"
+            ),
+            &[(7, "TS2416")],
+        ),
+        (
+            "static-type-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-base-rest-static-type-error/main.ts"
+            ),
+            &[(6, "TS2417")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

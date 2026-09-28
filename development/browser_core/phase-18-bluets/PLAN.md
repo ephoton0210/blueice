@@ -5760,6 +5760,24 @@ original member spans, and no artifact. Four pinned TypeScript 5.9.3
 bridge, and full workspace tests, workspace all-target Clippy, rustfmt, and
 whitespace checks pass with the reused 12 GiB Cargo target.
 
+### J.3.1.3.4.4.2.3.2.2.2 Fixed derived positions over base array rest
+
+The override checker now aligns each fixed derived parameter with the
+inherited fixed prefix or, once that prefix ends, the base's array rest
+element type. It accepts a shorter derived signature, an optional position,
+and one required position at the base rest slot when their types fit;
+further required positions and type mismatches still fail under the bounded
+method relation. Both instance and static sides use the original derived
+member span. Differing fixed prefixes with rest on both sides remain in the
+next leaf.
+
+Public checked-compile cases cover two accepted source forms, four rejected
+arity or instance/static type forms including a later position, and no
+artifact. Six pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+TS2416/TS2417 lines. BlueTS, bridge, and full workspace tests, workspace
+all-target Clippy, rustfmt, and whitespace checks pass with the reused
+12 GiB Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
