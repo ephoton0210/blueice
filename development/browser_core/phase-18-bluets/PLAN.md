@@ -5680,6 +5680,23 @@ lines. BlueTS, bridge, and full workspace tests, workspace all-target
 Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB Cargo
 target.
 
+### J.3.1.3.4.4.2.2 Value-imported method overrides
+
+When a local override walk reaches a value-imported class, the checker now
+reads the already bound instance or constructor-side record and compares its
+single method signature with the derived method. This covers direct imports,
+local import aliases, and class exports whose own base was imported in an
+earlier module. The same bounded local traversal and method-side separation
+apply; overload groups and optional/rest or differing arities remain in
+their dedicated leaves.
+
+Public checked-compile cases cover two accepted direct/transitive forms,
+seven rejected parameter/result forms, original member spans, and no
+artifact. Nine pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance
+and TS2416/TS2417 lines. BlueTS, bridge, and full workspace tests,
+workspace all-target Clippy, rustfmt, and whitespace checks pass with the
+reused 12 GiB Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

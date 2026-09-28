@@ -81,6 +81,24 @@ fn compile_imported_base_type_reexport(main: &str) -> blueice_bluets::Compilatio
     )
 }
 
+fn compile_imported_base_override(main: &str) -> blueice_bluets::Compilation {
+    compile(
+        ENTRY,
+        &MapLoader::from([
+            ModuleSource::new(ENTRY, main),
+            ModuleSource::new(
+                "memory:///middle.ts",
+                include_str!("fixtures/typescript_oracle/class-override-imported/middle.ts"),
+            ),
+            ModuleSource::new(
+                "memory:///base.ts",
+                include_str!("fixtures/typescript_oracle/class-override-imported/base.ts"),
+            ),
+        ]),
+        CompilerOptions::default(),
+    )
+}
+
 fn diagnostics(source: &str) -> Vec<Diagnostic> {
     compile_with_helper(source).diagnostics
 }
@@ -1655,6 +1673,71 @@ fn ancestor_class_method_overrides_find_inherited_instance_and_static_signatures
         assert_eq!(failures[0].span.module, ENTRY);
         assert_eq!(
             &source[failures[0].span.start..failures[0].span.end],
+            member,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
+fn imported_class_method_overrides_check_direct_and_transitive_base_surfaces() {
+    for main in [
+        include_str!("fixtures/typescript_oracle/class-override-imported/direct-valid.ts"),
+        include_str!("fixtures/typescript_oracle/class-override-imported/transitive-valid.ts"),
+    ] {
+        let accepted = compile_imported_base_override(main);
+        assert!(accepted.output.is_none());
+        assert!(
+            accepted
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{:#?}",
+            accepted.diagnostics
+        );
+    }
+    for (main, member) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-override-imported/alias-static-error.ts"),
+            "static parse(value: string): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-imported/direct-instance-error.ts"),
+            "read(value: string): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-imported/direct-static-error.ts"),
+            "static parse(value: string): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-imported/transitive-instance-error.ts"),
+            "read(value: string): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-imported/transitive-static-error.ts"),
+            "static parse(value: string): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-imported/transitive-instance-result-error.ts"),
+            "read(value: number): string { return 'wrong'; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-imported/direct-static-result-error.ts"),
+            "static parse(value: number): string { return 'wrong'; }",
+        ),
+    ] {
+        let compilation = compile_imported_base_override(main);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+        assert_eq!(failures[0].span.module, ENTRY);
+        assert_eq!(
+            &main[failures[0].span.start..failures[0].span.end],
             member,
             "{failures:#?}"
         );

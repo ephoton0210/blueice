@@ -2047,6 +2047,94 @@ fn pinned_ancestor_method_overrides_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_imported_method_overrides_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    for (name, main, expected_error) in [
+        (
+            "direct-valid",
+            include_str!("fixtures/typescript_oracle/class-override-imported/direct-valid.ts"),
+            None,
+        ),
+        (
+            "transitive-valid",
+            include_str!("fixtures/typescript_oracle/class-override-imported/transitive-valid.ts"),
+            None,
+        ),
+        (
+            "alias-static-error",
+            include_str!("fixtures/typescript_oracle/class-override-imported/alias-static-error.ts"),
+            Some((6, "TS2417")),
+        ),
+        (
+            "direct-instance-error",
+            include_str!("fixtures/typescript_oracle/class-override-imported/direct-instance-error.ts"),
+            Some((7, "TS2416")),
+        ),
+        (
+            "direct-static-error",
+            include_str!("fixtures/typescript_oracle/class-override-imported/direct-static-error.ts"),
+            Some((6, "TS2417")),
+        ),
+        (
+            "transitive-instance-error",
+            include_str!("fixtures/typescript_oracle/class-override-imported/transitive-instance-error.ts"),
+            Some((7, "TS2416")),
+        ),
+        (
+            "transitive-static-error",
+            include_str!("fixtures/typescript_oracle/class-override-imported/transitive-static-error.ts"),
+            Some((6, "TS2417")),
+        ),
+        (
+            "transitive-instance-result-error",
+            include_str!("fixtures/typescript_oracle/class-override-imported/transitive-instance-result-error.ts"),
+            Some((7, "TS2416")),
+        ),
+        (
+            "direct-static-result-error",
+            include_str!("fixtures/typescript_oracle/class-override-imported/direct-static-result-error.ts"),
+            Some((6, "TS2417")),
+        ),
+    ] {
+        let temporary = TestDirectory::new();
+        let input = temporary.path().join("main.ts");
+        fs::write(&input, main).unwrap();
+        fs::write(temporary.path().join("base.ts"), include_str!("fixtures/typescript_oracle/class-override-imported/base.ts")).unwrap();
+        fs::write(temporary.path().join("middle.ts"), include_str!("fixtures/typescript_oracle/class-override-imported/middle.ts")).unwrap();
+        let output = Command::new(&tsc)
+            .args([
+                "--target", "ES2022", "--module", "ES2022", "--strict", "--pretty", "false",
+                "--allowImportingTsExtensions", "--noEmit",
+            ])
+            .arg(&input)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.success(),
+            expected_error.is_none(),
+            "{name}: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert_eq!(
+            typescript_diagnostic_lines(&output),
+            expected_error.map_or_else(Vec::new, |(line, _)| vec![line]),
+            "{name}"
+        );
+        if let Some((line, code)) = expected_error {
+            assert!(
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .any(|text| text.contains(&format!("({line},")) && text.contains(code)),
+                "{name}: missing {code} at line {line}"
+            );
+        }
+        assert_eq!(fs::read_dir(temporary.path()).unwrap().count(), 3);
+    }
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);
