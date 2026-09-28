@@ -141,6 +141,7 @@ fn with_replaces_one_index_in_a_copy() {
     truthy("[1,2,3].with(-1,'x').join()==='1,2,x'");
     truthy("[1,,3].with(0,9).hasOwnProperty(1)");
     truthy("[1,2,3].with(1.9,'x').join()==='1,x,3'");
+    truthy("[1,2,3].with(NaN,'x').join()==='x,2,3'");
 }
 
 #[test]

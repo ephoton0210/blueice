@@ -286,15 +286,13 @@ impl Parser {
                     };
                     (value, default)
                 } else {
-                    if !shorthand_is_identifier_reference {
-                        return Err(self.syntax_error(
-                            "destructuring assignment shorthand requires an IdentifierReference",
-                        ));
-                    }
-                    let PropertyKey::Identifier(name) = &key else {
-                        return Err(
-                            self.syntax_error("expected ':' in destructuring assignment pattern")
-                        );
+                    let name = match (&key, shorthand_is_identifier_reference) {
+                        (PropertyKey::Identifier(name), true) => name,
+                        _ => {
+                            return Err(self.syntax_error(
+                                "destructuring assignment shorthand requires an IdentifierReference",
+                            ));
+                        }
                     };
                     let default = if self.eat_punct(Punct::Assign) {
                         Some(self.parse_assignment_allowing_in()?)
@@ -670,16 +668,11 @@ impl Parser {
         self.parse_update_expression()
     }
 
-    /// `YieldExpression` occupies the `AssignmentExpression` grammar tier,
-    /// not `UnaryExpression`.  Keeping this check at the unary boundary
-    /// rejects `void yield` while retaining a top-level `yield value` and a
-    /// parenthesized yield expression where the grammar admits one.
+    /// `YieldExpression` belongs to `AssignmentExpression`, so `parse_unary`
+    /// cannot produce one directly. Parenthesized yields remain available
+    /// through the assignment parser where the grammar permits them.
     pub(super) fn parse_unary_operand(&mut self) -> Result<Expr, ParseError> {
-        let operand = self.parse_unary()?;
-        if self.generator_depth != 0 && matches!(operand, Expr::Yield { .. }) {
-            return Err(self.syntax_error("yield cannot be used as a unary operand"));
-        }
-        Ok(operand)
+        self.parse_unary()
     }
 
     pub(super) fn parse_update_expression(&mut self) -> Result<Expr, ParseError> {

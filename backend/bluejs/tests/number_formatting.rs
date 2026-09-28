@@ -105,3 +105,19 @@ fn to_precision_rounds_a_tie_up_and_validates_the_precision() {
         })()"#,
     );
 }
+
+#[test]
+fn number_to_string_uses_decimal_by_default_and_coerces_an_explicit_radix() {
+    assert_true(
+        r#"(function() {
+          const boxed = new Number(-15);
+          if (boxed.toString() !== "-15" || boxed.toString(16) !== "-f") return "boxed number";
+          if (Number.prototype.toString.call(12) !== "12") return "default radix";
+          if ((31).toString({ valueOf() { return 16; } }) !== "1f") return "radix coercion";
+          if (NaN.toString(2) !== "NaN" || (-0).toString(2) !== "0") return "special values";
+          try { (1).toString(1); return "invalid radix"; }
+          catch (error) { if (!(error instanceof RangeError)) return "wrong radix error"; }
+          return true;
+        })()"#,
+    );
+}

@@ -12,7 +12,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("native dispatch validates the Temporal date-time receiver");
         let value = Self::temporal_date_value(
             TemporalKind::PlainDate,
             existing.calendar,
@@ -25,7 +27,9 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("native dispatch validates the Temporal date-time receiver");
         let value = Self::plain_time_value((
             existing.hour,
             existing.minute,
@@ -42,7 +46,9 @@ impl Vm {
         receiver: &Value,
         time_like: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("native dispatch validates the Temporal date-time receiver");
         let time = if *time_like == Value::Undefined {
             (0, 0, 0, 0, 0, 0)
         } else {
@@ -62,7 +68,9 @@ impl Vm {
         receiver: &Value,
         round_to: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("native dispatch validates the Temporal date-time receiver");
         if *round_to == Value::Undefined {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainDateTime.round requires a smallestUnit or options argument".into(),
@@ -70,24 +78,18 @@ impl Vm {
         }
         let base = self.stack.len();
         let result = (|| {
-            let options = if let Value::String(unit) = round_to {
-                let options = self.with_roots(|heap| heap.alloc_object(None))?;
-                self.stack.push(Value::Object(options));
-                self.define_data(
-                    options,
-                    "smallestUnit",
-                    Value::String(unit.clone()),
-                    true,
-                    true,
-                    true,
-                )?;
-                Value::Object(options)
+            let (increment, mode, smallest_unit) = if let Value::String(unit) = round_to {
+                let unit = unit
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid smallestUnit option".into()))?;
+                (None, None, Some(unit))
             } else {
-                self.temporal_options(round_to)?
+                let options = self.temporal_options(round_to)?;
+                let increment = self.temporal_raw_number_option(&options, "roundingIncrement")?;
+                let mode = self.temporal_raw_string_option(&options, "roundingMode")?;
+                let smallest_unit = self.temporal_raw_string_option(&options, "smallestUnit")?;
+                (increment, mode, smallest_unit)
             };
-            let increment = self.temporal_raw_number_option(&options, "roundingIncrement")?;
-            let mode = self.temporal_raw_string_option(&options, "roundingMode")?;
-            let smallest_unit = self.temporal_raw_string_option(&options, "smallestUnit")?;
             let increment = Self::temporal_validated_rounding_increment(increment)?;
             let mode = Self::temporal_validated_rounding_mode(
                 mode.as_deref(),
@@ -139,23 +141,16 @@ impl Vm {
                     .total_nanoseconds();
                 (rounded.div_euclid(DAY_NS), rounded.rem_euclid(DAY_NS))
             };
-            let calendar_kind = calendar::calendar_kind(&existing.calendar)
-                .expect("Temporal values retain a validated calendar identifier");
-            let date = plain_date::calendar_add_date(
-                calendar_kind,
-                (existing.year, existing.month, existing.day),
-                0,
-                0,
-                0,
-                day_carry as i64,
-                false,
-            )
-            .ok_or_else(|| {
-                RuntimeError::RangeError("Temporal.PlainDateTime.round is out of range".into())
-            })?;
+            // A carried day advances the underlying ISO date equally for
+            // every calendar annotation.
+            let date = plain_date::balance_iso_date(
+                existing.year,
+                existing.month,
+                i64::from(existing.day) + day_carry as i64,
+            );
             let time = duration_math::time_fields_from_nanoseconds(ns_of_day);
-            // `calendar_add_date` only range-checks the *calendar date*
-            // (year/month/day); a rounded result can still fall outside
+            // ISO date balancing does not enforce Temporal's range. A rounded
+            // result can still fall outside
             // Temporal's exact day-and-nanosecond `PlainDateTime` boundary
             // while landing on an otherwise-representable date -- e.g.
             // flooring `-271821-04-19T00:00:00.000000001` (the actual

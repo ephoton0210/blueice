@@ -13,15 +13,27 @@ fn expression_grammar_rejects_invalid_await_yield_import_and_optional_tags() {
         "import.42",
         "({ *method: 1 })",
         "({ *get value() {} })",
+        "({ true } = source);",
+        "({ ['key'] } = source);",
+        "function* g() { return +yield; }",
     ] {
         assert!(parse(source).is_err(), "{source} should fail to parse");
     }
-    for source in ["await;", "new await value;", "a\\u0077ait 1;"] {
+    for source in [
+        "await;",
+        "new await value;",
+        "a\\u0077ait 1;",
+        "const value = import.42;",
+    ] {
         assert!(
             parse_module(source).is_err(),
             "{source} should fail to parse as a module"
         );
     }
+    assert!(parse_module("const value = import. 42;")
+        .expect_err("an import phase name must be an identifier")
+        .message
+        .starts_with("expected a phase or 'meta' after 'import.'"));
 }
 
 #[test]
