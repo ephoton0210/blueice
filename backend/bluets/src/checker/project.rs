@@ -36,6 +36,7 @@ pub(super) fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnosti
                 Declaration::Import(import) => !import.type_only,
                 Declaration::Variable(variable) => !variable.declared,
                 Declaration::Function(function) => !function.declared && !function.overload,
+                Declaration::Class(_) => true,
                 Declaration::Raw(_) => true,
                 Declaration::DefaultExport(_)
                 | Declaration::ValueExport(_)

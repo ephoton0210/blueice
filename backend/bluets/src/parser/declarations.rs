@@ -129,6 +129,16 @@ impl Parser {
                 let async_start = self.consume("async");
                 if self.consume("function") {
                     self.parse_function(start, exported, false, declared, async_start);
+                } else if self.consume("class") {
+                    if declared || async_start {
+                        self.unsupported(
+                            self.previous().span(&self.id),
+                            "declared and async classes are not in the first class form",
+                        );
+                        self.skip_statement();
+                    } else {
+                        self.parse_class(start, exported);
+                    }
                 } else if self.peek("const")
                     && self
                         .tokens
@@ -153,7 +163,6 @@ impl Parser {
                     "enum",
                     "namespace",
                     "module",
-                    "class",
                     "abstract",
                     "implements",
                     "decorator",
@@ -239,6 +248,8 @@ impl Parser {
     }
 }
 
+#[path = "declarations/class.rs"]
+mod class;
 #[path = "declarations/function_body.rs"]
 mod function_body;
 #[path = "declarations/imports_exports.rs"]

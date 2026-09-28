@@ -118,6 +118,75 @@ fn rejects_runtime_enums_explicitly() {
 }
 
 #[test]
+fn retains_named_class_headers_and_bodies_without_claiming_class_semantics() {
+    let source = "class Base { value(): number { return 1; } }\nexport class Child extends Base { constructor() { super(); } }";
+    let module = parse_module("memory:///classes.ts", source).unwrap();
+    assert_eq!(module.declarations.len(), 2);
+    let Declaration::Class(base) = &module.declarations[0] else {
+        panic!("expected the base class");
+    };
+    assert_eq!(base.name, "Base");
+    assert_eq!(&source[base.name_span.start..base.name_span.end], "Base");
+    assert_eq!(base.extends_name, None);
+    assert_eq!(
+        &source[base.body_span.start..base.body_span.end],
+        "{ value(): number { return 1; } }"
+    );
+    assert!(!base.exported);
+    let Declaration::Class(child) = &module.declarations[1] else {
+        panic!("expected the child class");
+    };
+    assert_eq!(child.name, "Child");
+    assert_eq!(child.extends_name.as_deref(), Some("Base"));
+    let heritage = child.extends_span.as_ref().unwrap();
+    assert_eq!(&source[heritage.start..heritage.end], "Base");
+    assert_eq!(
+        child
+            .body
+            .iter()
+            .map(|token| token.text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["constructor", "(", ")", "{", "super", "(", ")", ";", "}"]
+    );
+    assert!(child.exported);
+    assert_eq!(
+        &source[child.span.start..child.span.end],
+        "export class Child extends Base { constructor() { super(); } }"
+    );
+}
+
+#[test]
+fn class_header_errors_and_unimplemented_forms_fail_closed() {
+    for source in [
+        "class Missing",
+        "class { }",
+        "class Box<T> {}",
+        "class C extends Base.Member {}",
+        "class C extends Base[0] {}",
+        "class C implements Shape {}",
+    ] {
+        assert!(
+            parse_module("memory:///classes.ts", source).is_err(),
+            "{source}"
+        );
+    }
+    let compilation = crate::compile(
+        "memory:///classes.ts",
+        &crate::MapLoader::from([crate::ModuleSource::new(
+            "memory:///classes.ts",
+            "class Ready {}",
+        )]),
+        crate::CompilerOptions::default(),
+    );
+    assert!(compilation.has_errors());
+    assert!(compilation.output.is_none());
+    assert_eq!(
+        compilation.diagnostics[0].code,
+        DiagnosticCode::UnsupportedSyntax
+    );
+}
+
+#[test]
 fn rejects_tsx_modules_even_when_they_contain_no_tag_tokens() {
     let diagnostics =
         parse_module("memory:///view.tsx", "const label: string = 'BlueIce';").unwrap_err();

@@ -5016,6 +5016,28 @@ Rust work uses the one shared `target` through
 limits. Reuse cached oracle dependencies and bounded temporary fixtures;
 do not create a second Cargo target or duplicate package installations.
 
+### J.3.1.1 Named class parser shell
+
+The first class leaf is a parser representation, not an executable class
+claim. `class Name { ... }` and `export class Name extends Base { ... }`
+retain the name, optional single-identifier heritage, bounded original body
+tokens, export bit, and source spans. Missing names/bodies and unterminated
+bodies are parser errors; generics, computed heritage, and `implements` stay
+explicitly unsupported in this form. The checker reports `UnsupportedSyntax`
+for every retained class, so BlueTSC publishes no output and direct BlueTS
+cannot execute a partially erased class. The bridge also has an explicit
+class refusal if given such an unchecked module. J.3.1.2 will replace the
+opaque member tokens with checked constructor and method structures.
+Public parser tests prove the exact source spans and token body for two
+declarations, including an exported subclass, and reject incomplete,
+generic, computed, and implemented headers. A public `compile` call returns
+`UnsupportedSyntax` and no artifact for a retained class; the existing
+frontend rejection fixture now expects that precise fail-closed stage.
+The BlueTS and bridge library suites, workspace tests with local Unix-socket
+access, workspace all-target Clippy, and rustfmt pass with one disk-budgeted
+Cargo target of about 13 GiB and about 716 GiB free. A final focused parser
+test covers the added computed-heritage refusal after the workspace run.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

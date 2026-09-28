@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -841,6 +841,29 @@ exists. A passed first form does not close its whole feature family.
   - [ ] **J.3.1** Add class declarations, constructors, methods,
     inheritance, and `super` through checker, BlueTSC emit, direct page
     execution, source maps, strict boundaries, and pinned-oracle fixtures.
+    - [x] **J.3.1.1** Retain a bounded named class declaration, optional
+      identifier heritage, body tokens, export flag, and original spans in
+      the public parser. Reject incomplete/unsupported forms and keep the
+      checker fail-closed until class semantics are installed. Public parser
+      regressions preserve source ranges and body tokens across two classes,
+      reject incomplete/generic/computed/implemented headers, and prove a
+      checked build emits no artifact. The direct bridge explicitly refuses
+      an unchecked class. BlueTS and bridge library suites, the full
+      workspace test suite with local socket access, all-target Clippy, and
+      rustfmt pass under the shared-target disk guard; the last computed
+      heritage case passed its focused rerun. The target remains about
+      13 GiB with about 716 GiB free on the host.
+    - [ ] **J.3.1.2** Parse constructor and method signatures/bodies as
+      structured members, retaining type-erasure edits and original spans.
+    - [ ] **J.3.1.3** Bind class instance/static types and check constructor,
+      method, inheritance, `this`, and `super` uses against pinned `tsc`.
+    - [ ] **J.3.1.4** Emit checked class JavaScript and declarations from the
+      shared IR with stable source maps and atomic build behavior.
+    - [ ] **J.3.1.5** Lower checked classes directly to BlueJS class AST;
+      verify page-realm construction, method calls, inheritance, and `super`.
+    - [ ] **J.3.1.6** Verify strict-boundary policy, original-source debugger
+      mapping, stale-generation refusal, pinned-oracle parity, and the
+      disk-budgeted workspace gates before checking off J.3.1.
   - [ ] **J.3.2** Add fields, accessors, private members, parameter
     properties, and static initialization in separately tested forms;
     verify order, visibility, declarations, and debugger provenance.

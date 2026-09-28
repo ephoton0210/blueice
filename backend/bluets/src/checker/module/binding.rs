@@ -132,7 +132,7 @@ impl<'a> ModuleChecker<'a> {
                             .push(signature);
                     }
                 }
-                Declaration::Raw(_) => {}
+                Declaration::Class(_) | Declaration::Raw(_) => {}
             }
         }
         self.bind_ambient_declarations();
@@ -514,6 +514,11 @@ impl<'a> ModuleChecker<'a> {
                 }
                 Declaration::Variable(variable) => self.check_variable(variable),
                 Declaration::Function(function) => self.check_function(function),
+                Declaration::Class(class) => self.diagnostics.push(Diagnostic::error(
+                    DiagnosticCode::UnsupportedSyntax,
+                    class.span.clone(),
+                    "class members and runtime semantics are not installed yet",
+                )),
                 Declaration::Import(_)
                 | Declaration::TypeExport(_)
                 | Declaration::DefaultExport(_)

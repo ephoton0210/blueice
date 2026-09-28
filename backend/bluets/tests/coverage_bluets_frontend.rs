@@ -573,7 +573,10 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "@dec class A {}",
             "decorators and TSX/JSX are not in the initial BlueTS matrix",
         ),
-        ("class A {}", "`class` is not in the initial BlueTS matrix"),
+        (
+            "class A {}",
+            "class members and runtime semantics are not installed yet",
+        ),
         (
             "abstract class A {}",
             "`abstract` declarations are not in the initial BlueTS matrix",

@@ -51,6 +51,7 @@ pub enum Declaration {
     Interface(InterfaceDeclaration),
     Variable(VariableDeclaration),
     Function(FunctionDeclaration),
+    Class(ClassDeclaration),
     Raw(RawDeclaration),
 }
 
@@ -65,6 +66,7 @@ impl Declaration {
             Self::Interface(declaration) => &declaration.span,
             Self::Variable(declaration) => &declaration.span,
             Self::Function(declaration) => &declaration.span,
+            Self::Class(declaration) => &declaration.span,
             Self::Raw(declaration) => &declaration.span,
         }
     }
@@ -128,6 +130,21 @@ pub struct ValueExportBinding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawDeclaration {
     pub tokens: Vec<Token>,
+    pub span: SourceSpan,
+}
+
+/// A bounded named class shell. Members remain original tokens until the
+/// class checker and direct lowering install a shared structured grammar.
+/// That intermediate state is rejected by the checker before any emission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassDeclaration {
+    pub name: String,
+    pub name_span: SourceSpan,
+    pub extends_name: Option<String>,
+    pub extends_span: Option<SourceSpan>,
+    pub body: Vec<Token>,
+    pub body_span: SourceSpan,
+    pub exported: bool,
     pub span: SourceSpan,
 }
 

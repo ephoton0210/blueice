@@ -63,6 +63,12 @@ pub(super) fn lower_script(
                     "declared, overloaded, or exported functions require a non-script bridge mode",
                 ));
             }
+            Declaration::Class(class) => {
+                return Err(unsupported(
+                    class.span.clone(),
+                    "class members and runtime semantics are not installed yet",
+                ));
+            }
         }
     }
     Ok((body, finalize_provenance(module, provenance)?))
@@ -176,6 +182,12 @@ pub(super) fn lower_module(
                 return Err(unsupported(
                     function.span.clone(),
                     "declared or overloaded functions cannot be lowered to a direct module",
+                ));
+            }
+            Declaration::Class(class) => {
+                return Err(unsupported(
+                    class.span.clone(),
+                    "class members and runtime semantics are not installed yet",
                 ));
             }
         }
