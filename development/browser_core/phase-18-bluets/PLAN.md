@@ -5129,6 +5129,27 @@ then pinned-oracle checker closure. This order lets each checker step retain
 the current fail-closed class admission rule until the full checker, emitted
 JavaScript, and direct runtime are ready.
 
+### J.3.1.3.1 Class method-group checker gate
+
+The checker now validates retained class method groups without admitting
+classes for execution. A signature group without its immediate implementation
+reports its last signature's original span. Duplicate implementations report
+each duplicate member's span. Explicitly typed overload signatures compare
+their argument and return types to the implementation through the existing
+bounded structural relation; incompatible types and exhausted expansion
+budgets receive distinct diagnostics. The seven fixture sources compare
+accepted groups and the TS2391, TS2393, and TS2394 failure lines against the
+pinned TypeScript 5.9.3 executable under `--noEmit`.
+
+The class `UnsupportedSyntax` refusal now occurs during binding for every
+runtime policy, including `transpile-only`; a public regression verifies no
+artifact escapes through that mode. The direct BlueTS bridge continues to
+reject unchecked class nodes. The full BlueTS and bridge crate suites,
+workspace all-target Clippy, rustfmt, and whitespace checks pass using the
+same compact Cargo target and the existing pinned Test262 corpus via an
+ignored symlink. J.3.1.3.2 must add class constructor and instance/static
+types before valid classes can be checked as values.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

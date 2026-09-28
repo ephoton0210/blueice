@@ -8,7 +8,7 @@
 
 use blueice_bluets::{
     compile, parse_module, ClassMemberKind, CompilerOptions, Declaration, Diagnostic,
-    DiagnosticCode, FunctionBodyItem, MapLoader, ModuleSource,
+    DiagnosticCode, FunctionBodyItem, MapLoader, ModuleSource, RuntimePolicy,
 };
 
 const ENTRY: &str = "memory:///main.ts";
@@ -127,19 +127,108 @@ fn class_method_oracle_fixtures_remain_source_bound_and_emit_nothing() {
         }
         let compilation = compile_with_helper(source);
         assert!(compilation.output.is_none(), "{name} emitted an artifact");
+        let unsupported = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
         assert_eq!(
-            compilation.diagnostics.len(),
+            unsupported.len(),
             1,
             "{name}: {:#?}",
             compilation.diagnostics
         );
-        assert_eq!(
-            compilation.diagnostics[0].code,
-            DiagnosticCode::UnsupportedSyntax,
-            "{name}"
-        );
-        assert_eq!(compilation.diagnostics[0].span, class.span, "{name}");
+        assert_eq!(unsupported[0].span, class.span, "{name}");
     }
+}
+
+#[test]
+fn class_method_groups_report_original_source_checker_failures() {
+    type Case = (
+        &'static str,
+        &'static str,
+        &'static [(DiagnosticCode, usize)],
+    );
+    let cases: [Case; 7] = [
+        (
+            "overloads",
+            include_str!("fixtures/typescript_oracle/class-method-overloads/main.ts"),
+            &[],
+        ),
+        (
+            "record-return",
+            include_str!("fixtures/typescript_oracle/class-method-record-return/main.ts"),
+            &[],
+        ),
+        (
+            "deferred-private",
+            include_str!("fixtures/typescript_oracle/class-method-deferred-private/main.ts"),
+            &[],
+        ),
+        (
+            "orphan-signature",
+            include_str!("fixtures/typescript_oracle/class-method-orphan-signature/main.ts"),
+            &[(DiagnosticCode::TypeMismatch, 6)],
+        ),
+        (
+            "interrupted-signature",
+            include_str!("fixtures/typescript_oracle/class-method-interrupted-signature/main.ts"),
+            &[(DiagnosticCode::TypeMismatch, 6)],
+        ),
+        (
+            "incompatible-overload",
+            include_str!("fixtures/typescript_oracle/class-method-incompatible-overload/main.ts"),
+            &[(DiagnosticCode::TypeMismatch, 6)],
+        ),
+        (
+            "duplicate-implementations",
+            include_str!(
+                "fixtures/typescript_oracle/class-method-duplicate-implementations/main.ts"
+            ),
+            &[
+                (DiagnosticCode::DuplicateDeclaration, 6),
+                (DiagnosticCode::DuplicateDeclaration, 7),
+            ],
+        ),
+    ];
+    for (name, source, expected) in cases {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none(), "{name} emitted an artifact");
+        let found = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .map(|diagnostic| {
+                (
+                    diagnostic.code,
+                    source[..diagnostic.span.start]
+                        .bytes()
+                        .filter(|byte| *byte == b'\n')
+                        .count()
+                        + 1,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(found, expected, "{name}: {:#?}", compilation.diagnostics);
+    }
+}
+
+#[test]
+fn transpile_only_does_not_emit_unchecked_classes() {
+    let source = include_str!("fixtures/typescript_oracle/class-method-overloads/main.ts");
+    let result = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            runtime_policy: RuntimePolicy::TranspileOnly,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(result.output.is_none());
+    assert!(result
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
 }
 
 #[test]

@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.1.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -925,11 +925,19 @@ exists. A passed first form does not close its whole feature family.
             compact Cargo target.
     - [ ] **J.3.1.3** Bind class instance/static types and check constructor,
       method, inheritance, `this`, and `super` uses against pinned `tsc`.
-      - [ ] **J.3.1.3.1** Validate bounded class method groups before any
+      - [x] **J.3.1.3.1** Validate bounded class method groups before any
         class can type-check: missing/interrupted implementations, duplicate
         implementations, and signature/implementation incompatibility must
         report original-source diagnostics matching pinned TypeScript 5.9.3.
-        Keep class emission and direct execution refused.
+        Keep class emission and direct execution refused. The checker now
+        reports the last orphan/interrupted signature, both duplicate method
+        implementations, and an incompatible typed overload at their
+        original lines. The pinned compiler reports TS2391, TS2393, and
+        TS2394 at the same lines in seven bounded `--noEmit` fixtures. One
+        unconditional class refusal also closes the transpile-only no-output
+        path while class emission and direct lowering remain unavailable.
+        BlueTS and bridge crate suites, workspace all-target Clippy, rustfmt,
+        and whitespace checks pass with one reused compact Cargo target.
       - [ ] **J.3.1.3.2** Bind a named class's constructor value and separate
         instance/static types; check construction and member lookup without
         confusing the two sides. Cover duplicate names and source spans.

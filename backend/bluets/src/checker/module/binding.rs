@@ -6,6 +6,7 @@
 
 use super::*;
 
+mod classes;
 mod functions;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,7 +133,12 @@ impl<'a> ModuleChecker<'a> {
                             .push(signature);
                     }
                 }
-                Declaration::Class(_) | Declaration::Raw(_) => {}
+                Declaration::Class(class) => self.diagnostics.push(Diagnostic::error(
+                    DiagnosticCode::UnsupportedSyntax,
+                    class.span.clone(),
+                    "class members and runtime semantics are not installed yet",
+                )),
+                Declaration::Raw(_) => {}
             }
         }
         self.bind_ambient_declarations();
@@ -514,11 +520,7 @@ impl<'a> ModuleChecker<'a> {
                 }
                 Declaration::Variable(variable) => self.check_variable(variable),
                 Declaration::Function(function) => self.check_function(function),
-                Declaration::Class(class) => self.diagnostics.push(Diagnostic::error(
-                    DiagnosticCode::UnsupportedSyntax,
-                    class.span.clone(),
-                    "class members and runtime semantics are not installed yet",
-                )),
+                Declaration::Class(class) => self.validate_class_method_groups(class),
                 Declaration::Import(_)
                 | Declaration::TypeExport(_)
                 | Declaration::DefaultExport(_)
