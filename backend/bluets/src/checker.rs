@@ -90,6 +90,7 @@ struct FunctionSignature {
 #[derive(Clone, PartialEq, Eq)]
 struct ClassConstructorBinding {
     signatures: Vec<FunctionSignature>,
+    /// An omitted derived constructor whose base signature is not yet bound.
     inherited: bool,
 }
 

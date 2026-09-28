@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.3.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.3.4.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1229,9 +1229,22 @@ exists. A passed first form does not close its whole feature family.
             TS2769/TS2322 lines. BlueTS, bridge, and full workspace tests,
             all-target Clippy, rustfmt, and whitespace checks pass with the
             reused 12 GiB target.
-          - [ ] **J.3.1.3.4.3.3** Reuse inherited constructor signatures when
+          - [x] **J.3.1.3.4.3.3** Reuse inherited constructor signatures when
             a derived class declares no constructor, with bounded argument
-            checking and selected instance inference.
+            checking and selected instance inference. After class binding,
+            omitted constructors copy resolved local/imported base overload
+            signatures with the derived instance return type; explicit
+            derived constructors retain their own signatures. The existing
+            bounded call selector checks inherited arguments and arity at
+            original `new` spans, while instance inference yields the
+            derived class. Public checked-compile tests cover multi-level
+            local and imported bases, rejected arguments and arity,
+            incompatible inferred shape, explicit constructor precedence,
+            exact spans, and no output. Six pinned TypeScript 5.9.3
+            `--noEmit` cases agree on acceptance and TS2769/TS2554/TS2741/
+            TS2345 lines. BlueTS, bridge, and full workspace tests,
+            all-target Clippy, rustfmt, and whitespace checks pass with the
+            reused 12 GiB target.
           - [ ] **J.3.1.3.4.3.4** Carry inherited instance/static and
             constructor surfaces through closed-module exports and imports,
             including locally aliased class exports.

@@ -5551,6 +5551,25 @@ on acceptance and TS2769/TS2322 lines. BlueTS, bridge, and full workspace
 suites, workspace all-target Clippy, rustfmt, and whitespace checks pass with
 the reused 12 GiB Cargo target.
 
+### J.3.1.3.4.3.3 Inherited constructor signatures
+
+After class binding, a local derived class without a constructor copies the
+resolved constructor overload signatures of its local or value-imported base.
+The copied signatures return the derived instance type and feed the existing
+bounded argument and arity selector at the original `new` call span. A
+derived class that declares its own constructor retains that signature.
+An unresolved base leaves constructor selection deferred behind the heritage
+diagnostic and class-output refusal; checking `super` in constructor bodies
+follows in J.3.1.3.4.5.
+
+Public checked-compile cases cover a multi-level local base, an imported
+base, bad arguments, missing arguments, incompatible inferred instance shape,
+explicit constructor precedence, exact spans, and no artifact. Six pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2769/TS2554/
+TS2741/TS2345 lines. BlueTS, bridge, and full workspace suites, workspace
+all-target Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB
+Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

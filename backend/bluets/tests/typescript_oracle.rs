@@ -1617,6 +1617,62 @@ fn pinned_inherited_static_overloads_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_inherited_constructor_signatures_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 5] = [
+        (
+            "local-valid",
+            include_str!("fixtures/typescript_oracle/class-inherited-constructor-valid/main.ts"),
+            &[],
+        ),
+        (
+            "wrong-argument",
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-constructor-argument-error/main.ts"
+            ),
+            &[(11, "TS2769")],
+        ),
+        (
+            "wrong-arity",
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-constructor-arity-error/main.ts"
+            ),
+            &[(7, "TS2554")],
+        ),
+        (
+            "wrong-result",
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-constructor-result-error/main.ts"
+            ),
+            &[(7, "TS2741")],
+        ),
+        (
+            "own-constructor",
+            include_str!(
+                "fixtures/typescript_oracle/class-derived-own-constructor-argument-error/main.ts"
+            ),
+            &[(7, "TS2345")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+    assert_pinned_class_module_cases(
+        &tsc,
+        &[(
+            "imported-valid",
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-imported-constructor-valid/main.ts"
+            ),
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-imported-constructor-valid/box.ts"
+            ),
+            None,
+        )],
+    );
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

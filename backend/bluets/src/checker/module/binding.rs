@@ -570,6 +570,7 @@ impl<'a> ModuleChecker<'a> {
         self.validate_class_heritage_cycles();
         self.bind_inherited_class_instance_methods();
         self.bind_inherited_class_static_methods();
+        self.bind_inherited_class_constructors();
         for declaration in &self.module.declarations {
             match declaration {
                 Declaration::TypeAlias(alias) => {

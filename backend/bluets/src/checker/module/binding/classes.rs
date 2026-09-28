@@ -182,7 +182,7 @@ impl ModuleChecker<'_> {
             class.name.clone(),
             ClassConstructorBinding {
                 signatures: class_constructor_signatures(class),
-                inherited: class.extends_name.is_some(),
+                inherited: class.extends_name.is_some() && !class_declares_constructor(class),
             },
         );
     }
@@ -395,6 +395,44 @@ impl ModuleChecker<'_> {
         }
         for (name, value) in surfaces {
             self.values.insert(name, value);
+        }
+    }
+
+    pub(super) fn bind_inherited_class_constructors(&mut self) {
+        for declaration in &self.module.declarations {
+            let Declaration::Class(class) = declaration else {
+                continue;
+            };
+            let Some(base_name) = class.extends_name.as_deref() else {
+                continue;
+            };
+            if class_declares_constructor(class) {
+                continue;
+            }
+            let Some(base) = self.class_constructors.get(base_name).cloned() else {
+                continue;
+            };
+            if base.inherited {
+                continue;
+            }
+            let signatures = base
+                .signatures
+                .into_iter()
+                .map(|mut signature| {
+                    signature.return_type = Type::Named {
+                        name: class.name.clone(),
+                        arguments: Vec::new(),
+                    };
+                    signature
+                })
+                .collect();
+            self.class_constructors.insert(
+                class.name.clone(),
+                ClassConstructorBinding {
+                    signatures,
+                    inherited: false,
+                },
+            );
         }
     }
 
@@ -907,9 +945,8 @@ impl ModuleChecker<'_> {
                 .end,
         );
         if binding.inherited {
-            // An omitted derived constructor inherits the parent signature.
-            // Heritage resolution and super calls belong to J.3.1.3.4;
-            // the class remains unconditionally refused until then.
+            // The base signature is unresolved. Its heritage diagnostic and
+            // the class-output refusal prevent an invented constructor check.
             return;
         }
         let arguments = split_call_arguments(call.arguments)
@@ -1087,6 +1124,13 @@ fn class_constructor_signatures(class: &ClassDeclaration) -> Vec<FunctionSignatu
         .collect()
 }
 
+fn class_declares_constructor(class: &ClassDeclaration) -> bool {
+    class
+        .members
+        .iter()
+        .any(|member| member.constructor.is_some())
+}
+
 pub(in crate::checker) fn class_export(class: &ClassDeclaration) -> ExportedClass {
     ExportedClass {
         source_name: class.name.clone(),
@@ -1094,7 +1138,7 @@ pub(in crate::checker) fn class_export(class: &ClassDeclaration) -> ExportedClas
         constructor_type: class_constructor_side_type(class),
         constructor_binding: ClassConstructorBinding {
             signatures: class_constructor_signatures(class),
-            inherited: class.extends_name.is_some(),
+            inherited: class.extends_name.is_some() && !class_declares_constructor(class),
         },
         value_exported: class.exported,
     }
