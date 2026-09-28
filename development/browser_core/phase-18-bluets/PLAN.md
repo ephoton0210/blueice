@@ -5150,6 +5150,30 @@ same compact Cargo target and the existing pinned Test262 corpus via an
 ignored symlink. J.3.1.3.2 must add class constructor and instance/static
 types before valid classes can be checked as values.
 
+### J.3.1.3.2.1 Local class type and constructor-side binding
+
+J.3.1.3.2 is split into local dual-namespace binding, checked construction,
+and instance/static member access with closed-module imports and exports.
+The first step binds each local named class to a structural instance type
+whose method fields retain their original source spans. The separate value
+side is a constructor-side record with a `prototype` field of that instance
+type. This lets the checker distinguish `Reader.prototype` from `Reader`
+without pretending a class is a callable function. Construction and full
+member-call validation remain the next leaves.
+
+Illegal class/class, type-alias/class, and value/class collisions report the
+second name's original span. A class/interface same-name declaration is
+legal in TypeScript; either source order therefore avoids an invented
+duplicate diagnostic while actual declaration merging waits for J.3.5.
+No class symbol enters published debugger metadata and no class artifact is
+emitted while class execution remains unsupported. Seven pinned TypeScript
+5.9.3 `--noEmit` cases cover accepted instance/constructor-side assignments,
+a wrong-side TS2741, TS2300/TS2451 collisions, and both interface/class
+orders. The public BlueTS compile test reads the same fixture sources,
+checks corresponding diagnostics and exact duplicate identifier spans, and
+confirms no output. The BlueTS crate suite, workspace all-target Clippy,
+rustfmt, and whitespace checks pass with the reused compact Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

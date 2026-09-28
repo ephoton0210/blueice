@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.2.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -941,6 +941,28 @@ exists. A passed first form does not close its whole feature family.
       - [ ] **J.3.1.3.2** Bind a named class's constructor value and separate
         instance/static types; check construction and member lookup without
         confusing the two sides. Cover duplicate names and source spans.
+        - [x] **J.3.1.3.2.1** Bind a local named class in both type and value
+          namespaces with distinct instance and constructor-side shapes;
+          retain method spans and reject illegal class/type-alias/value name
+          collisions. Preserve legal interface merging for its later leaf.
+          Keep all class output refused while this representation is partial.
+          Local class types now retain source-bound method function fields;
+          the constructor-side value exposes a typed `prototype` rather than
+          the instance methods. Public checked-compile tests prove compatible
+          instance and constructor-side assignments, a wrong-side mismatch,
+          illegal name collisions at the second identifier span, and no
+          false duplicate for either class/interface declaration order.
+          The pinned TypeScript 5.9.3 `--noEmit` oracle accepts or diagnoses
+          all seven corresponding cases; every BlueTSC class still has no
+          artifact. BlueTS crate tests, workspace all-target Clippy, rustfmt,
+          and whitespace checks pass with the same compact Cargo target.
+        - [ ] **J.3.1.3.2.2** Check bounded `new Class(...)` construction and
+          infer the instance side, including constructor argument errors,
+          original spans, and pinned-oracle cases.
+        - [ ] **J.3.1.3.2.3** Check instance versus constructor-side member
+          lookup and calls, including closed-module class exports/imports;
+          reject a method on the wrong side and compare accepted/rejected
+          cases with pinned TypeScript without admitting class output.
       - [ ] **J.3.1.3.3** Check constructor and method parameter, return,
         overload-call, body, and `this` types through the shared class IR.
       - [ ] **J.3.1.3.4** Check named inheritance, overrides, cycles, and

@@ -232,6 +232,93 @@ fn transpile_only_does_not_emit_unchecked_classes() {
 }
 
 #[test]
+fn class_type_and_constructor_value_bind_separately_at_original_spans() {
+    type Case = (
+        &'static str,
+        &'static str,
+        &'static [(DiagnosticCode, usize)],
+    );
+    let cases: [Case; 5] = [
+        (
+            "dual-binding",
+            include_str!("fixtures/typescript_oracle/class-dual-binding/main.ts"),
+            &[],
+        ),
+        (
+            "wrong-side",
+            include_str!("fixtures/typescript_oracle/class-dual-binding-wrong-side/main.ts"),
+            &[(DiagnosticCode::TypeMismatch, 8)],
+        ),
+        (
+            "duplicate-name",
+            include_str!("fixtures/typescript_oracle/class-duplicate-name/main.ts"),
+            &[(DiagnosticCode::DuplicateDeclaration, 6)],
+        ),
+        (
+            "type-alias-collision",
+            include_str!("fixtures/typescript_oracle/class-type-alias-collision/main.ts"),
+            &[(DiagnosticCode::DuplicateDeclaration, 6)],
+        ),
+        (
+            "value-collision",
+            include_str!("fixtures/typescript_oracle/class-value-collision/main.ts"),
+            &[(DiagnosticCode::DuplicateDeclaration, 6)],
+        ),
+    ];
+    for (name, source, expected) in cases {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none(), "{name} emitted an artifact");
+        for diagnostic in &compilation.diagnostics {
+            if diagnostic.code == DiagnosticCode::DuplicateDeclaration {
+                assert_eq!(
+                    &source[diagnostic.span.start..diagnostic.span.end],
+                    "Reader",
+                    "{name} must identify the second declaration's name"
+                );
+            } else if name == "wrong-side" && diagnostic.code == DiagnosticCode::TypeMismatch {
+                assert!(
+                    source[diagnostic.span.start..diagnostic.span.end]
+                        .starts_with("const invalid: Reader = Reader"),
+                    "{name} must identify the incorrect assignment"
+                );
+            }
+        }
+        let found = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .map(|diagnostic| {
+                (
+                    diagnostic.code,
+                    source[..diagnostic.span.start]
+                        .bytes()
+                        .filter(|byte| *byte == b'\n')
+                        .count()
+                        + 1,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(found, expected, "{name}: {:#?}", compilation.diagnostics);
+    }
+
+    for source in [
+        "interface Reader {} class Reader {}",
+        "class Reader {} interface Reader {}",
+    ] {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none());
+        assert!(
+            compilation
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != DiagnosticCode::DuplicateDeclaration),
+            "class/interface merging is a later leaf, not an illegal name collision: {:#?}",
+            compilation.diagnostics
+        );
+    }
+}
+
+#[test]
 fn braced_try_catch_finally_retains_the_catch_name_bodies_and_source_span() {
     let source =
         "function f(): void { try { throw 1; } catch (caught) { throw caught; } finally { 0; } }";

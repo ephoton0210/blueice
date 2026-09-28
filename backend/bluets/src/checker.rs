@@ -77,6 +77,7 @@ struct TypeDefinition {
 enum TypeDefinitionKind {
     Alias,
     Interface,
+    Class,
 }
 
 #[derive(Debug, Clone)]

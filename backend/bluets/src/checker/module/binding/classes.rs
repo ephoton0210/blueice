@@ -8,6 +8,38 @@ use super::*;
 use crate::parser::{ClassDeclaration, ClassMethod};
 
 impl ModuleChecker<'_> {
+    pub(super) fn bind_class(&mut self, class: &ClassDeclaration) {
+        let existing_type = self
+            .types
+            .get(&class.name)
+            .map(|definition| definition.kind);
+        if self.values.contains_key(&class.name)
+            || matches!(
+                existing_type,
+                Some(TypeDefinitionKind::Alias | TypeDefinitionKind::Class)
+            )
+        {
+            self.duplicate(&class.name, class.name_span.clone());
+            return;
+        }
+
+        // TypeScript permits an interface with the same name as a class.
+        // Retain the prior interface surface until declaration merging is
+        // checked later; class output is refused throughout this phase.
+        if existing_type.is_none() {
+            self.types.insert(
+                class.name.clone(),
+                TypeDefinition {
+                    kind: TypeDefinitionKind::Class,
+                    parameters: Vec::new(),
+                    value: class_instance_type(class),
+                },
+            );
+        }
+        self.values
+            .insert(class.name.clone(), class_constructor_side_type(class));
+    }
+
     pub(super) fn validate_class_method_groups(&mut self, class: &ClassDeclaration) {
         let mut implementations: BTreeMap<&str, usize> = BTreeMap::new();
         for group in &class.method_groups {
@@ -87,6 +119,49 @@ impl ModuleChecker<'_> {
             }
         }
     }
+}
+
+fn class_instance_type(class: &ClassDeclaration) -> Type {
+    let mut fields = Vec::new();
+    for group in &class.method_groups {
+        let members = group.signature_member_indices.iter().copied().chain(
+            group
+                .signature_member_indices
+                .is_empty()
+                .then_some(group.implementation_member_index)
+                .flatten(),
+        );
+        for index in members {
+            let method = class.members[index]
+                .method
+                .as_ref()
+                .expect("method group member is parsed");
+            fields.push(TypeField {
+                name: method.name.clone(),
+                readonly: false,
+                optional: false,
+                value: Type::Function {
+                    parameters: method.parameters.clone(),
+                    result: Box::new(method.return_type.clone().unwrap_or(Type::Unknown)),
+                },
+                span: method.span.clone(),
+            });
+        }
+    }
+    Type::Record(fields)
+}
+
+fn class_constructor_side_type(class: &ClassDeclaration) -> Type {
+    Type::Record(vec![TypeField {
+        name: "prototype".to_string(),
+        readonly: true,
+        optional: false,
+        value: Type::Named {
+            name: class.name.clone(),
+            arguments: Vec::new(),
+        },
+        span: class.name_span.clone(),
+    }])
 }
 
 fn class_method_overload_is_compatible(

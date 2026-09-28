@@ -67,17 +67,23 @@ impl<'a> ModuleChecker<'a> {
                     );
                 }
                 Declaration::Interface(interface) => {
-                    self.insert_type(
-                        &interface.name,
-                        TypeDefinition {
-                            kind: TypeDefinitionKind::Interface,
-                            parameters: interface.type_parameters.clone(),
-                            value: interface_value(interface),
-                        },
-                        interface.span.clone(),
-                        SymbolKind::Interface,
-                        interface.exported,
-                    );
+                    if !self
+                        .types
+                        .get(&interface.name)
+                        .is_some_and(|definition| definition.kind == TypeDefinitionKind::Class)
+                    {
+                        self.insert_type(
+                            &interface.name,
+                            TypeDefinition {
+                                kind: TypeDefinitionKind::Interface,
+                                parameters: interface.type_parameters.clone(),
+                                value: interface_value(interface),
+                            },
+                            interface.span.clone(),
+                            SymbolKind::Interface,
+                            interface.exported,
+                        );
+                    }
                 }
                 Declaration::Variable(variable) => {
                     let value_type = variable.annotation.clone().unwrap_or(Type::Unknown);
@@ -133,11 +139,14 @@ impl<'a> ModuleChecker<'a> {
                             .push(signature);
                     }
                 }
-                Declaration::Class(class) => self.diagnostics.push(Diagnostic::error(
-                    DiagnosticCode::UnsupportedSyntax,
-                    class.span.clone(),
-                    "class members and runtime semantics are not installed yet",
-                )),
+                Declaration::Class(class) => {
+                    self.bind_class(class);
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::UnsupportedSyntax,
+                        class.span.clone(),
+                        "class members and runtime semantics are not installed yet",
+                    ));
+                }
                 Declaration::Raw(_) => {}
             }
         }

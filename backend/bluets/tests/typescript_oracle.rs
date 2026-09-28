@@ -19,6 +19,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const PINNED_TYPESCRIPT_VERSION: &str = "5.9.3";
 static TEST_DIRECTORY_COUNTER: AtomicU64 = AtomicU64::new(0);
+type NoEmitCase = (&'static str, &'static str, &'static [(usize, &'static str)]);
 
 struct OracleCase {
     name: &'static str,
@@ -945,8 +946,7 @@ fn pinned_bluetsc_oracle_matches_the_supported_fixture_matrix() {
 fn pinned_class_method_boundary_matches_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);
-    type Case = (&'static str, &'static str, &'static [(usize, &'static str)]);
-    let cases: [Case; 7] = [
+    let cases: [NoEmitCase; 7] = [
         (
             "overloads",
             include_str!("fixtures/typescript_oracle/class-method-overloads/main.ts"),
@@ -985,11 +985,60 @@ fn pinned_class_method_boundary_matches_typescript_without_emit() {
             &[(6, "TS2393"), (7, "TS2393")],
         ),
     ];
-    for (name, source, expected_errors) in cases {
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_class_dual_binding_matches_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "dual-binding",
+            include_str!("fixtures/typescript_oracle/class-dual-binding/main.ts"),
+            &[],
+        ),
+        (
+            "wrong-side",
+            include_str!("fixtures/typescript_oracle/class-dual-binding-wrong-side/main.ts"),
+            &[(8, "TS2741")],
+        ),
+        (
+            "duplicate-name",
+            include_str!("fixtures/typescript_oracle/class-duplicate-name/main.ts"),
+            &[(5, "TS2300"), (6, "TS2300")],
+        ),
+        (
+            "type-alias-collision",
+            include_str!("fixtures/typescript_oracle/class-type-alias-collision/main.ts"),
+            &[(5, "TS2300"), (6, "TS2300")],
+        ),
+        (
+            "value-collision",
+            include_str!("fixtures/typescript_oracle/class-value-collision/main.ts"),
+            &[(5, "TS2451"), (6, "TS2451")],
+        ),
+        (
+            "interface-then-class",
+            "interface Reader {} class Reader {}",
+            &[],
+        ),
+        (
+            "class-then-interface",
+            "class Reader {} interface Reader {}",
+            &[],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+fn assert_pinned_no_emit_cases(tsc: &Path, cases: &[NoEmitCase]) {
+    for &(name, source, expected_errors) in cases {
         let temporary = TestDirectory::new();
         let input = temporary.path().join("main.ts");
         fs::write(&input, source).unwrap();
-        let output = run_tsc(&tsc, &input, temporary.path(), true, false);
+        let output = run_tsc(tsc, &input, temporary.path(), true, false);
         assert_eq!(
             output.status.success(),
             expected_errors.is_empty(),
