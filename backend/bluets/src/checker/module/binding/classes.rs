@@ -2,10 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Bounded class-method checks before class runtime admission.
+//! Bounded class constructor and method checks before runtime admission.
 
 use super::*;
-use crate::parser::{ClassDeclaration, ClassMethod};
+use crate::parser::{ClassConstructor, ClassDeclaration, ClassMethod};
 
 impl ModuleChecker<'_> {
     pub(in crate::checker::module) fn check_type_only_class_value_uses(
@@ -165,6 +165,147 @@ impl ModuleChecker<'_> {
                 inherited: class.extends_name.is_some(),
             },
         );
+    }
+
+    pub(super) fn validate_class_constructor_group(&mut self, class: &ClassDeclaration) {
+        let constructors = class
+            .members
+            .iter()
+            .enumerate()
+            .filter_map(|(index, member)| member.constructor.as_ref().map(|value| (index, value)))
+            .collect::<Vec<_>>();
+        let implementations = constructors
+            .iter()
+            .filter(|(_, constructor)| constructor.body.is_some())
+            .collect::<Vec<_>>();
+
+        for (_, constructor) in &constructors {
+            let mut scope = self.values.clone();
+            for (index, parameter) in constructor.parameters.iter().enumerate() {
+                if parameter.rest && index + 1 != constructor.parameters.len() {
+                    self.type_error(
+                        &parameter.span,
+                        "a rest parameter must be last".to_string(),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                }
+                if parameter.rest && parameter.optional {
+                    self.type_error(
+                        &parameter.span,
+                        "a rest parameter cannot be optional or have a default initializer"
+                            .to_string(),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                }
+                if parameter.rest
+                    && parameter
+                        .annotation
+                        .as_ref()
+                        .is_some_and(|annotation| !matches!(annotation, Type::Array(_)))
+                {
+                    self.type_error(
+                        &parameter.span,
+                        "the bounded rest-parameter rule requires an array annotation".to_string(),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                }
+                if let Some(annotation) = &parameter.annotation {
+                    self.check_type(annotation, &parameter.span);
+                }
+                if let Some(default) = &parameter.default {
+                    if constructor.body.is_none() {
+                        self.type_error(
+                            &parameter.span,
+                            "a constructor overload signature cannot have a default initializer"
+                                .to_string(),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                    } else {
+                        self.check_direct_runtime_expression(default, &scope, &parameter.span);
+                        let actual = self.infer_expression(default, &scope);
+                        let expected = parameter.annotation.clone().unwrap_or(Type::Unknown);
+                        if !self.is_assignable_bounded(&actual, &expected, &parameter.span) {
+                            self.type_error(
+                                &parameter.span,
+                                format!(
+                                    "default initializer has type `{}`, which is not assignable to parameter `{}` of type `{}`",
+                                    type_label(&actual),
+                                    parameter.name,
+                                    type_label(&expected)
+                                ),
+                                DiagnosticCode::TypeMismatch,
+                            );
+                        }
+                    }
+                }
+                scope.insert(
+                    parameter.name.clone(),
+                    parameter.annotation.clone().unwrap_or(Type::Unknown),
+                );
+            }
+        }
+
+        if implementations.len() > 1 {
+            for (_, constructor) in implementations {
+                self.type_error(
+                    &constructor.span,
+                    "multiple constructor implementations are not allowed".to_string(),
+                    DiagnosticCode::DuplicateDeclaration,
+                );
+            }
+            return;
+        }
+
+        let Some(&(implementation_index, implementation)) = implementations.first() else {
+            if let Some((_, signature)) = constructors.last() {
+                self.type_error(
+                    &signature.span,
+                    "constructor implementation is missing".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+            return;
+        };
+
+        for &(signature_index, signature) in &constructors {
+            if signature.body.is_some() {
+                continue;
+            }
+            if signature_index >= *implementation_index
+                || class.members[signature_index + 1..*implementation_index]
+                    .iter()
+                    .any(|member| member.constructor.is_none())
+            {
+                self.type_error(
+                    &signature.span,
+                    "constructor overload requires an immediately following implementation"
+                        .to_string(),
+                    DiagnosticCode::TypeMismatch,
+                );
+                continue;
+            }
+            match class_constructor_overload_is_compatible(
+                signature,
+                implementation,
+                &self.types,
+                self.max_type_expansions,
+            ) {
+                Ok(true) => {}
+                Ok(false) => self.type_error(
+                    &signature.span,
+                    "constructor overload is incompatible with its implementation".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                ),
+                Err(()) => self.type_error(
+                    &signature.span,
+                    format!(
+                        "constructor overload compatibility exceeds the {} generic-expansion limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                ),
+            }
+        }
     }
 
     pub(super) fn validate_class_method_groups(&mut self, class: &ClassDeclaration) {
@@ -516,6 +657,51 @@ fn class_constructor_side_type(class: &ClassDeclaration) -> Type {
     }];
     fields.extend(class_method_fields(class, true));
     Type::Record(fields)
+}
+
+fn class_constructor_overload_is_compatible(
+    signature: &ClassConstructor,
+    implementation: &ClassConstructor,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    max_type_expansions: usize,
+) -> Result<bool, ()> {
+    let required_signature = signature
+        .parameters
+        .iter()
+        .filter(|parameter| !parameter.optional)
+        .count();
+    let required_implementation = implementation
+        .parameters
+        .iter()
+        .filter(|parameter| !parameter.optional)
+        .count();
+    if required_signature < required_implementation
+        || signature.parameters.len() > implementation.parameters.len()
+    {
+        return Ok(false);
+    }
+
+    let mut budget = TypeExpansionBudget::new(max_type_expansions);
+    let substitutions = BTreeMap::new();
+    for (signature_parameter, implementation_parameter) in
+        signature.parameters.iter().zip(&implementation.parameters)
+    {
+        let actual = parameter_expected_type(signature_parameter, &substitutions);
+        let expected = parameter_expected_type(implementation_parameter, &substitutions);
+        if !is_assignable(
+            &actual,
+            &expected,
+            aliases,
+            &mut HashSet::new(),
+            &mut budget,
+        ) {
+            return if budget.exhausted { Err(()) } else { Ok(false) };
+        }
+        if budget.exhausted {
+            return Err(());
+        }
+    }
+    Ok(true)
 }
 
 fn class_method_overload_is_compatible(

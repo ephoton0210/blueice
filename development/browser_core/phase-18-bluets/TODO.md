@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.3.1.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.3.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1069,9 +1069,18 @@ exists. A passed first form does not close its whole feature family.
                 socket tests run outside the filesystem sandbox.
       - [ ] **J.3.1.3.3** Check constructor and method parameter, return,
         overload-call, body, and `this` types through the shared class IR.
-        - [ ] **J.3.1.3.3.1** Validate bounded constructor overload groups,
+        - [x] **J.3.1.3.3.1** Validate bounded constructor overload groups,
           parameter types, and default values at original source spans
           against pinned TypeScript while keeping class output refused.
+          The checker now validates missing, interrupted, duplicate, and
+          incompatible constructor implementations, parameter annotations,
+          rest rules, and implementation-only default values through original
+          member/parameter spans. Public checked-compile tests cover accepted
+          overloads/defaults, exact rejected spans, both duplicate spans, and
+          no artifact. Nine pinned TypeScript 5.9.3 `--noEmit` cases agree on
+          acceptance and TS2390/TS2392/TS2394/TS2304/TS2322/TS2371 lines.
+          BlueTS, bridge, workspace tests, all-target Clippy, rustfmt, and
+          whitespace checks pass with the reused 12 GiB Cargo target.
         - [ ] **J.3.1.3.3.2** Check constructor bodies through their typed
           parameter and local scopes, including invalid returns; defer
           inherited `super` to J.3.1.3.4.

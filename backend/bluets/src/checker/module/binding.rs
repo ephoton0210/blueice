@@ -599,7 +599,10 @@ impl<'a> ModuleChecker<'a> {
                 }
                 Declaration::Variable(variable) => self.check_variable(variable),
                 Declaration::Function(function) => self.check_function(function),
-                Declaration::Class(class) => self.validate_class_method_groups(class),
+                Declaration::Class(class) => {
+                    self.validate_class_constructor_group(class);
+                    self.validate_class_method_groups(class);
+                }
                 Declaration::Import(_)
                 | Declaration::TypeExport(_)
                 | Declaration::DefaultExport(_)

@@ -404,6 +404,112 @@ fn class_construction_checks_arguments_and_infers_instance_shape() {
 }
 
 #[test]
+fn class_constructor_groups_and_parameters_are_checked_at_source_spans() {
+    let cases = [
+        (
+            "missing implementation",
+            include_str!(
+                "fixtures/typescript_oracle/class-constructor-missing-implementation/main.ts"
+            ),
+            DiagnosticCode::TypeMismatch,
+            "constructor(value: number);",
+        ),
+        (
+            "interrupted overload",
+            include_str!(
+                "fixtures/typescript_oracle/class-constructor-interrupted-overload/main.ts"
+            ),
+            DiagnosticCode::TypeMismatch,
+            "constructor(value: number);",
+        ),
+        (
+            "duplicate implementation",
+            include_str!(
+                "fixtures/typescript_oracle/class-constructor-duplicate-implementation/main.ts"
+            ),
+            DiagnosticCode::DuplicateDeclaration,
+            "constructor(value: number) {}",
+        ),
+        (
+            "incompatible overload",
+            include_str!(
+                "fixtures/typescript_oracle/class-constructor-incompatible-overload/main.ts"
+            ),
+            DiagnosticCode::TypeMismatch,
+            "constructor(value: string);",
+        ),
+        (
+            "unknown parameter type",
+            include_str!("fixtures/typescript_oracle/class-constructor-unknown-type/main.ts"),
+            DiagnosticCode::UnknownType,
+            "value: Missing",
+        ),
+        (
+            "invalid default",
+            include_str!("fixtures/typescript_oracle/class-constructor-invalid-default/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "value: number = 'bad'",
+        ),
+        (
+            "default in signature",
+            include_str!("fixtures/typescript_oracle/class-constructor-overload-default/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "value: number = 1",
+        ),
+    ];
+    for (name, source, code, expected_span) in cases {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none(), "{name} emitted an artifact");
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert!(!failures.is_empty(), "{name} was accepted");
+        assert_eq!(failures[0].code, code, "{name}: {failures:#?}");
+        assert_eq!(
+            &source[failures[0].span.start..failures[0].span.end],
+            expected_span,
+            "{name}: {failures:#?}"
+        );
+    }
+    let accepted = compile_with_helper(include_str!(
+        "fixtures/typescript_oracle/class-construction-overloads/main.ts"
+    ));
+    assert!(accepted.output.is_none());
+    assert!(accepted
+        .diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
+    let accepted = compile_with_helper(include_str!(
+        "fixtures/typescript_oracle/class-constructor-valid-default/main.ts"
+    ));
+    assert!(accepted.output.is_none());
+    assert!(accepted
+        .diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
+
+    let source = include_str!(
+        "fixtures/typescript_oracle/class-constructor-duplicate-implementation/main.ts"
+    );
+    let compilation = compile_with_helper(source);
+    let duplicates = compilation
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code == DiagnosticCode::DuplicateDeclaration)
+        .map(|diagnostic| &source[diagnostic.span.start..diagnostic.span.end])
+        .collect::<Vec<_>>();
+    assert_eq!(
+        duplicates,
+        [
+            "constructor(value: number) {}",
+            "constructor(value: string) {}"
+        ]
+    );
+}
+
+#[test]
 fn class_construction_scan_obeys_the_type_expansion_budget() {
     let source =
         "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";

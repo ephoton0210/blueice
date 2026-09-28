@@ -1099,6 +1099,69 @@ fn pinned_class_construction_matches_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_class_constructor_validation_matches_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 9] = [
+        (
+            "valid-overloads",
+            include_str!("fixtures/typescript_oracle/class-construction-overloads/main.ts"),
+            &[],
+        ),
+        (
+            "valid-default",
+            include_str!("fixtures/typescript_oracle/class-constructor-valid-default/main.ts"),
+            &[],
+        ),
+        (
+            "missing-implementation",
+            include_str!(
+                "fixtures/typescript_oracle/class-constructor-missing-implementation/main.ts"
+            ),
+            &[(6, "TS2390")],
+        ),
+        (
+            "interrupted-overload",
+            include_str!(
+                "fixtures/typescript_oracle/class-constructor-interrupted-overload/main.ts"
+            ),
+            &[(6, "TS2390")],
+        ),
+        (
+            "duplicate-implementation",
+            include_str!(
+                "fixtures/typescript_oracle/class-constructor-duplicate-implementation/main.ts"
+            ),
+            &[(6, "TS2392"), (7, "TS2392")],
+        ),
+        (
+            "incompatible-overload",
+            include_str!(
+                "fixtures/typescript_oracle/class-constructor-incompatible-overload/main.ts"
+            ),
+            &[(6, "TS2394")],
+        ),
+        (
+            "unknown-type",
+            include_str!("fixtures/typescript_oracle/class-constructor-unknown-type/main.ts"),
+            &[(6, "TS2304")],
+        ),
+        (
+            "invalid-default",
+            include_str!("fixtures/typescript_oracle/class-constructor-invalid-default/main.ts"),
+            &[(6, "TS2322")],
+        ),
+        (
+            "overload-default",
+            include_str!("fixtures/typescript_oracle/class-constructor-overload-default/main.ts"),
+            &[(6, "TS2371")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

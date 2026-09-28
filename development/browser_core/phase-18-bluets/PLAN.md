@@ -5317,6 +5317,24 @@ its Unix socket tests run outside the filesystem sandbox. J.3.1.3.2's local
 and closed-module type/value separation is complete; constructor and method
 body semantics follow in J.3.1.3.3.
 
+### J.3.1.3.3.1 Constructor overload and parameter validation
+
+The class checker now validates every parsed constructor parameter annotation
+and implementation default in source order. A default can read an earlier
+typed parameter, while an overload signature cannot own a default. Constructor
+signatures require one immediately following implementation; missing,
+interrupted, duplicate, and incompatible groups report original member spans.
+The compatibility relation uses the same bounded type-expansion budget as
+class method overloads. Class output remains refused.
+
+Public checked-compile coverage checks accepted overload and default forms,
+rejected parameter types/defaults and group shapes, both duplicate member
+spans, and no artifact. Nine pinned TypeScript 5.9.3 `--noEmit` cases agree on
+acceptance and TS2390, TS2392, TS2394, TS2304, TS2322, and TS2371 lines.
+The BlueTS and bridge crate suites, full workspace suite, workspace all-target
+Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB Cargo
+target. Constructor body scope and return checking follow in J.3.1.3.3.2.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
