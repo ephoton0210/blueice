@@ -374,6 +374,45 @@ fn dynamic_import_honours_type_text_and_type_bytes() {
 }
 
 #[test]
+fn dynamic_import_keeps_javascript_and_each_synthetic_type_distinct() {
+    let config = VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            ..HeapConfig::default()
+        },
+        ..VmConfig::default()
+    };
+    let mut vm = vm_with(config, &[("data.js", "text")], &[("data.js", &[7, 8])]);
+    vm.set_dynamic_module_sources(HashMap::from([(
+        "t/data.js".to_string(),
+        "export default 11;".to_string(),
+    )]));
+    vm.set_json_module_sources(HashMap::from([(
+        "t/data.js".to_string(),
+        "{\"value\": 12}".to_string(),
+    )]));
+    vm.install_test262_done().unwrap();
+    vm.set_module_loader_context("t/main.js", HashMap::new());
+    let source = r#"Promise.all([
+      import('./data.js'),
+      import('./data.js', { with: { type: 'json' } }),
+      import('./data.js', { with: { type: 'text' } }),
+      import('./data.js', { with: { type: 'bytes' } }),
+      import('./data.js')
+    ]).then(([js, json, text, bytes, again]) => {
+      const valid = js === again && js.default === 11 && json.default.value === 12
+        && text.default === 'text' && bytes.default.join() === '7,8'
+        && bytes.default.buffer.immutable === true
+        && js !== json && json !== text && text !== bytes;
+      if (valid) $DONE(); else $DONE(new Error('module type identity'));
+    }, error => $DONE(error));"#;
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
+#[test]
 fn a_deferred_import_of_a_text_or_bytes_resource_yields_its_default() {
     let script = "
         Promise.all([
@@ -411,6 +450,22 @@ fn a_synthetic_module_has_no_source_phase_representation() {
         }, e => $DONE(e));";
     let done = run_script(&[("data.txt", "hello")], &[("data.bin", &[9, 8])], script);
     assert_eq!(done, Some(Ok(())));
+}
+
+#[test]
+fn a_static_source_import_does_not_synthesize_a_typed_module() {
+    for (kind, text, bytes) in [
+        ("text", vec![("data", "text")], Vec::new()),
+        ("bytes", Vec::new(), vec![("data", &[7_u8, 8][..])]),
+    ] {
+        let source =
+            format!("import source resource from './data' with {{ type: '{kind}' }}; resource");
+        let result = run(&[("main.js", &source)], &text, &bytes);
+        assert!(
+            matches!(result, Err(RuntimeError::TypeError(ref message)) if message.contains("source-phase representation")),
+            "{kind}: {result:?}"
+        );
+    }
 }
 
 #[test]

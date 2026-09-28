@@ -64,6 +64,29 @@ fn an_incomplete_import_reports_a_syntax_error_at_eof() {
 }
 
 #[test]
+fn incomplete_import_export_and_attribute_clauses_are_known_syntax_errors() {
+    for source in [
+        "import name from;",
+        "import { value as } from './m.js';",
+        "import { value from './m.js';",
+        "import * as from './m.js';",
+        "import name from './m.js' with { type: 1 };",
+        "import name from './m.js' with { type };",
+        "import name from './m.js' with { type: 'json', other: };",
+        "import source name from;",
+        "export * from;",
+        "export * as from './m.js';",
+        "export { value as } from './m.js';",
+        "export { value from './m.js';",
+        "export { value } from;",
+        "export default async function;",
+        "export const value = ;",
+    ] {
+        assert_module_syntax_error(source);
+    }
+}
+
+#[test]
 fn contextual_keywords_in_import_and_export_declarations_reject_escapes() {
     for source in [
         "import {a \\u0061s b} from './m.js';",

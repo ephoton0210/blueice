@@ -56,10 +56,18 @@ impl Vm {
                 if is_dynamic_import {
                     // `entry` is already the resolved target: `dynamic_import_job`
                     // resolves the specifier against its referrer before this call.
-                    if ModuleType::split_module_key(entry).1 == ModuleType::JavaScript {
-                        self.ensure_dynamic_module_compiled(entry, &mut owned_modules)?;
+                    let (_, module_type) = ModuleType::split_module_key(entry);
+                    if let Some(synthetic_type) =
+                        synthetic::SyntheticModuleType::from_module_type(module_type)
+                    {
+                        self.ensure_synthetic_module(
+                            entry,
+                            synthetic_type,
+                            &mut owned_modules,
+                            &mut roots,
+                        )?;
                     } else {
-                        self.ensure_synthetic_module(entry, &mut owned_modules, &mut roots)?;
+                        self.ensure_dynamic_module_compiled(entry, &mut owned_modules)?;
                     }
                 }
                 if fresh_graph {

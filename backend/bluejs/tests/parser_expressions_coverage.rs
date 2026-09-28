@@ -41,3 +41,43 @@ fn nested_new_and_nested_destructuring_keep_their_grammar_boundaries() {
     parse("new new Constructor()").expect("a nested new expression retains constructor precedence");
     assert!(parse("({ value } = source").is_err());
 }
+
+#[test]
+fn incomplete_operator_operands_and_member_forms_are_syntax_errors() {
+    for source in [
+        "value = ;",
+        "value || ;",
+        "value && ;",
+        "value | ;",
+        "value ^ ;",
+        "value & ;",
+        "value == ;",
+        "value < ;",
+        "value << ;",
+        "value + ;",
+        "value * ;",
+        "value ** ;",
+        "!;",
+        "~;",
+        "typeof ;",
+        "void ;",
+        "delete ;",
+        "new ;",
+        "value ? : other;",
+        "value ? other;",
+        "value[;",
+        "value.;",
+        "value?.;",
+        "new value.;",
+        "fn(,);",
+        "fn(...);",
+        "[...];",
+        "({ ... });",
+        "({ key: });",
+        "[item =] = source;",
+        "({ item = } = source);",
+    ] {
+        let error = parse(source).expect_err(source);
+        assert!(error.known_syntax, "{source}: {error:?}");
+    }
+}

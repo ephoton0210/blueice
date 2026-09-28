@@ -46,6 +46,31 @@ fn methods_coerce_arguments_in_left_to_right_order() {
 }
 
 #[test]
+fn every_numeric_math_method_propagates_symbol_conversion_errors() {
+    let source = r#"(function() {
+      const bad = Symbol("number");
+      const unary = ["abs", "acos", "acosh", "asin", "asinh", "atan", "atanh", "cbrt",
+                     "ceil", "clz32", "cos", "cosh", "exp", "expm1", "f16round",
+                     "floor", "fround", "log", "log1p", "log2", "log10", "round",
+                     "sign", "sin", "sinh", "sqrt", "tan", "tanh", "trunc"];
+      const variadic = ["hypot", "max", "min"];
+      const binary = ["atan2", "imul", "pow"];
+      function throwsType(name, args) {
+        try { Math[name](...args); return false; }
+        catch (error) { return error instanceof TypeError; }
+      }
+      for (const name of unary.concat(variadic, binary)) {
+        if (!throwsType(name, [bad])) return name + " accepted a Symbol";
+      }
+      for (const name of variadic.concat(binary)) {
+        if (!throwsType(name, [1, bad])) return name + " accepted a second Symbol";
+      }
+      return true;
+    })()"#;
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
 fn math_initialization_releases_its_root_when_native_installation_exhausts_the_heap() {
     let code = compile(&parse("Math.PI").unwrap()).unwrap();
     let limit = 75_000;

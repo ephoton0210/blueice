@@ -9,6 +9,27 @@
 
 use super::*;
 
+/// A module whose record is synthesized from host data rather than parsed as
+/// JavaScript. Keeping this separate from `ModuleType` makes the source-text
+/// case impossible inside `ensure_synthetic_module`.
+#[derive(Clone, Copy)]
+pub(super) enum SyntheticModuleType {
+    Json,
+    Text,
+    Bytes,
+}
+
+impl SyntheticModuleType {
+    pub(super) fn from_module_type(module_type: ModuleType) -> Option<Self> {
+        match module_type {
+            ModuleType::JavaScript => None,
+            ModuleType::Json => Some(Self::Json),
+            ModuleType::Text => Some(Self::Text),
+            ModuleType::Bytes => Some(Self::Bytes),
+        }
+    }
+}
+
 impl Vm {
     /// The synthetic-module half of HostLoadImportedModule: builds the Module
     /// Record for a request whose `with { type }` attribute names a synthetic
@@ -39,15 +60,16 @@ impl Vm {
     pub(super) fn ensure_synthetic_module(
         &mut self,
         key: &str,
+        module_type: SyntheticModuleType,
         modules: &mut HashMap<String, Bytecode>,
         roots: &mut Vec<RootId>,
     ) -> Result<(), RuntimeError> {
         if modules.contains_key(key) {
             return Ok(());
         }
-        let (path, module_type) = ModuleType::split_module_key(key);
+        let (path, _) = ModuleType::split_module_key(key);
         let value = match module_type {
-            ModuleType::Json => {
+            SyntheticModuleType::Json => {
                 let Some(source) = self.json_module_sources.get(path).cloned() else {
                     return Err(RuntimeError::TypeError(format!(
                         "host did not provide a JSON module source for {path}"
@@ -60,7 +82,7 @@ impl Vm {
                         ))
                     })?
             }
-            ModuleType::Text => {
+            SyntheticModuleType::Text => {
                 let Some(source) = self.text_module_sources.get(path).cloned() else {
                     return Err(RuntimeError::TypeError(format!(
                         "host did not provide a text module source for {path}"
@@ -68,7 +90,7 @@ impl Vm {
                 };
                 Value::String(source.into())
             }
-            ModuleType::Bytes => {
+            SyntheticModuleType::Bytes => {
                 let Some(bytes) = self.bytes_module_sources.get(path).cloned() else {
                     return Err(RuntimeError::TypeError(format!(
                         "host did not provide a bytes module source for {path}"
@@ -76,12 +98,15 @@ impl Vm {
                 };
                 self.create_bytes_module_value(bytes)?
             }
-            ModuleType::JavaScript => {
-                unreachable!("Source Text Modules are never synthesized")
-            }
         };
         if let Value::Object(id) = value {
-            roots.push(self.heap.root(id)?);
+            // A JSON parse or bytes-module allocation just returned this
+            // object; neither caller nor this branch allocates before rooting.
+            roots.push(
+                self.heap
+                    .root(id)
+                    .expect("a newly synthesized module value is live"),
+            );
         }
         let mut code = Bytecode::empty();
         code.module = true;
@@ -134,14 +159,19 @@ impl Vm {
                 .get(name)
                 .expect("module key was collected from this map");
             for import in &code.module_imports {
-                if import.module_type != ModuleType::JavaScript
-                    && !matches!(import.import_name, ModuleImportName::Source)
+                if let Some(synthetic_type) =
+                    SyntheticModuleType::from_module_type(import.module_type)
                 {
-                    targets.push(Self::resolve_module_target(
-                        name,
-                        &import.module_request,
-                        import.module_type,
-                    )?);
+                    if !matches!(import.import_name, ModuleImportName::Source) {
+                        targets.push((
+                            Self::resolve_module_target(
+                                name,
+                                &import.module_request,
+                                import.module_type,
+                            )?,
+                            synthetic_type,
+                        ));
+                    }
                 }
             }
             for export in &code.module_exports {
@@ -167,17 +197,16 @@ impl Vm {
                     } => (module_request, *module_type),
                     ModuleExport::Local { .. } | ModuleExport::Source { .. } => continue,
                 };
-                if module_type != ModuleType::JavaScript {
-                    targets.push(Self::resolve_module_target(
-                        name,
-                        module_request,
-                        module_type,
-                    )?);
+                if let Some(synthetic_type) = SyntheticModuleType::from_module_type(module_type) {
+                    targets.push((
+                        Self::resolve_module_target(name, module_request, module_type)?,
+                        synthetic_type,
+                    ));
                 }
             }
         }
-        for target in targets {
-            self.ensure_synthetic_module(&target, modules, roots)?;
+        for (target, synthetic_type) in targets {
+            self.ensure_synthetic_module(&target, synthetic_type, modules, roots)?;
         }
         Ok(())
     }
