@@ -5373,6 +5373,27 @@ defaults, exact source spans, and no artifact. Seven pinned TypeScript 5.9.3
 lines. BlueTS, bridge, and full workspace suites, workspace all-target Clippy,
 rustfmt, and whitespace checks pass with the reused 12 GiB Cargo target.
 
+### J.3.1.3.3.3.2 Method return annotations and flow
+
+The shared class-method IR now retains the exact source span of a return
+annotation. Instance and static method signatures validate that type, and
+implementation bodies compare source-ordered direct and nested returns with
+the declared type. Bare returns are checked as `undefined`; `void` and types
+accepting `undefined` permit fallthrough. Structured bodies that can reach
+their end without a required result report the original method span. An
+unresolved annotation reports its type name without a cascading return
+diagnostic. Overload implementation bodies follow the same checks. Class
+output remains refused.
+
+Public checked-compile cases cover accepted all-branch and `void` returns,
+invalid instance, static, bare, `void`, and overload-body returns, fallthrough,
+and an unknown annotation at exact source spans with no artifact. Eight pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2322, TS2366, and
+TS2304 diagnostic lines. BlueTS, bridge, and full workspace suites, workspace
+all-target Clippy, rustfmt, and whitespace checks pass in the reused 12 GiB
+Cargo target. This closes J.3.1.3.3.3; bounded `this` and overload-call
+inference remain in J.3.1.3.3.4.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

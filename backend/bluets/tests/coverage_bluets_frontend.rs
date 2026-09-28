@@ -640,6 +640,77 @@ fn class_method_parameters_and_bodies_use_typed_scopes_on_both_sides() {
 }
 
 #[test]
+fn class_method_declared_returns_use_original_spans() {
+    let accepted = compile_with_helper(include_str!(
+        "fixtures/typescript_oracle/class-method-returns-valid/main.ts"
+    ));
+    assert!(accepted.output.is_none());
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, code, expected_span) in [
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-method-returns-invalid-instance/main.ts"
+            ),
+            DiagnosticCode::ReturnTypeMismatch,
+            "return 'bad';",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-method-returns-invalid-static/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+            "return 'bad';",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-method-returns-invalid-void/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+            "return 1;",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-method-returns-bare/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+            "return;",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-method-returns-fallthrough/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+            "read(flag: boolean): number {\n        if (flag) { return 1; }\n    }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-method-returns-unknown-type/main.ts"),
+            DiagnosticCode::UnknownType,
+            "Missing",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-method-returns-overload-body/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+            "return 'bad';",
+        ),
+    ] {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert!(!failures.is_empty(), "{source}");
+        assert_eq!(failures[0].code, code, "{failures:#?}");
+        assert_eq!(
+            &source[failures[0].span.start..failures[0].span.end],
+            expected_span,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
 fn class_construction_scan_obeys_the_type_expansion_budget() {
     let source =
         "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";

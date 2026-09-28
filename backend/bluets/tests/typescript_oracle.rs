@@ -1256,6 +1256,58 @@ fn pinned_class_method_body_scopes_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_class_method_returns_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 8] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-method-returns-valid/main.ts"),
+            &[],
+        ),
+        (
+            "invalid-instance",
+            include_str!(
+                "fixtures/typescript_oracle/class-method-returns-invalid-instance/main.ts"
+            ),
+            &[(6, "TS2322")],
+        ),
+        (
+            "invalid-static",
+            include_str!("fixtures/typescript_oracle/class-method-returns-invalid-static/main.ts"),
+            &[(6, "TS2322")],
+        ),
+        (
+            "invalid-void",
+            include_str!("fixtures/typescript_oracle/class-method-returns-invalid-void/main.ts"),
+            &[(6, "TS2322")],
+        ),
+        (
+            "bare-return",
+            include_str!("fixtures/typescript_oracle/class-method-returns-bare/main.ts"),
+            &[(6, "TS2322")],
+        ),
+        (
+            "fallthrough",
+            include_str!("fixtures/typescript_oracle/class-method-returns-fallthrough/main.ts"),
+            &[(6, "TS2366")],
+        ),
+        (
+            "unknown-type",
+            include_str!("fixtures/typescript_oracle/class-method-returns-unknown-type/main.ts"),
+            &[(6, "TS2304")],
+        ),
+        (
+            "overload-body",
+            include_str!("fixtures/typescript_oracle/class-method-returns-overload-body/main.ts"),
+            &[(7, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

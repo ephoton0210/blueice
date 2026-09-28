@@ -7,6 +7,18 @@
 use super::*;
 use crate::parser::{ClassConstructor, ClassDeclaration, ClassMethod};
 
+#[derive(Clone, Copy)]
+enum ClassBodyReturnRule<'a> {
+    Constructor {
+        class_name: &'a str,
+        instance_type: &'a Type,
+    },
+    Method {
+        return_type: Option<&'a Type>,
+        allows_implicit_undefined: bool,
+    },
+}
+
 impl ModuleChecker<'_> {
     pub(in crate::checker::module) fn check_type_only_class_value_uses(
         &mut self,
@@ -332,7 +344,14 @@ impl ModuleChecker<'_> {
                 continue;
             };
             let scope = self.class_body_parameter_scope(&constructor.parameters);
-            self.check_class_body_items(body, &scope, Some((&class.name, &instance_type)));
+            self.check_class_body_items(
+                body,
+                &scope,
+                ClassBodyReturnRule::Constructor {
+                    class_name: &class.name,
+                    instance_type: &instance_type,
+                },
+            );
         }
     }
 
@@ -343,9 +362,46 @@ impl ModuleChecker<'_> {
             .filter_map(|member| member.method.as_ref())
         {
             self.validate_class_parameters(&method.parameters, method.body.is_some(), "method");
+            let return_type = method.return_type.as_ref().filter(|return_type| {
+                let before = self.diagnostics.len();
+                self.check_type(
+                    return_type,
+                    method.return_type_span.as_ref().unwrap_or(&method.span),
+                );
+                !self.diagnostics[before..]
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == DiagnosticCode::UnknownType)
+            });
             if let Some(body) = &method.body {
                 let scope = self.class_body_parameter_scope(&method.parameters);
-                self.check_class_body_items(body, &scope, None);
+                let allows_implicit_undefined = return_type.is_none_or(|return_type| {
+                    self.return_type_allows_implicit_undefined(return_type, &method.span)
+                });
+                self.check_class_body_items(
+                    body,
+                    &scope,
+                    ClassBodyReturnRule::Method {
+                        return_type,
+                        allows_implicit_undefined,
+                    },
+                );
+                if let Some(return_type) = return_type {
+                    if !allows_implicit_undefined
+                        && matches!(
+                            Self::function_body_termination(body),
+                            StructuredTermination::FallsThrough
+                        )
+                    {
+                        self.type_error(
+                            &method.span,
+                            format!(
+                                "class method with return type `{}` can complete without returning a value",
+                                type_label(return_type)
+                            ),
+                            DiagnosticCode::ReturnTypeMismatch,
+                        );
+                    }
+                }
             }
         }
     }
@@ -372,7 +428,7 @@ impl ModuleChecker<'_> {
         &mut self,
         items: &[FunctionBodyItem],
         scope: &BTreeMap<String, Type>,
-        constructor_return: Option<(&str, &Type)>,
+        return_rule: ClassBodyReturnRule<'_>,
     ) {
         let mut scope = scope.clone();
         for item in items {
@@ -390,55 +446,81 @@ impl ModuleChecker<'_> {
                     self.check_direct_runtime_expression(tokens, &scope, span);
                 }
                 FunctionBodyItem::Return { tokens, span } => {
-                    if tokens.is_empty() {
-                        continue;
+                    if !tokens.is_empty() {
+                        self.check_direct_runtime_expression(tokens, &scope, span);
                     }
-                    self.check_direct_runtime_expression(tokens, &scope, span);
-                    let Some((class_name, instance_type)) = constructor_return else {
-                        continue;
-                    };
-                    let actual = self.infer_expression(tokens, &scope);
-                    let primitive = Type::Union(vec![
-                        Type::Null,
-                        Type::Undefined,
-                        Type::Boolean,
-                        Type::Number,
-                        Type::String,
-                    ]);
-                    if !self.is_assignable_bounded(&actual, &primitive, span)
-                        && !self.is_assignable_bounded(&actual, instance_type, span)
-                    {
-                        self.type_error(
-                            span,
-                            format!(
-                                "constructor return type `{}` is not assignable to class `{}`",
-                                type_label(&actual),
-                                class_name
-                            ),
-                            DiagnosticCode::ReturnTypeMismatch,
-                        );
+                    match return_rule {
+                        ClassBodyReturnRule::Constructor {
+                            class_name,
+                            instance_type,
+                        } if !tokens.is_empty() => {
+                            let actual = self.infer_expression(tokens, &scope);
+                            let primitive = Type::Union(vec![
+                                Type::Null,
+                                Type::Undefined,
+                                Type::Boolean,
+                                Type::Number,
+                                Type::String,
+                            ]);
+                            if !self.is_assignable_bounded(&actual, &primitive, span)
+                                && !self.is_assignable_bounded(&actual, instance_type, span)
+                            {
+                                self.type_error(
+                                    span,
+                                    format!(
+                                        "constructor return type `{}` is not assignable to class `{}`",
+                                        type_label(&actual),
+                                        class_name
+                                    ),
+                                    DiagnosticCode::ReturnTypeMismatch,
+                                );
+                            }
+                        }
+                        ClassBodyReturnRule::Method {
+                            return_type: Some(return_type),
+                            allows_implicit_undefined,
+                        } => {
+                            let actual = if tokens.is_empty() {
+                                Type::Undefined
+                            } else {
+                                self.infer_expression(tokens, &scope)
+                            };
+                            if (!tokens.is_empty() || !allows_implicit_undefined)
+                                && !self.is_assignable_bounded(&actual, return_type, span)
+                            {
+                                self.type_error(
+                                    span,
+                                    format!(
+                                        "class method return type `{}` is not assignable to `{}`",
+                                        type_label(&actual),
+                                        type_label(return_type)
+                                    ),
+                                    DiagnosticCode::ReturnTypeMismatch,
+                                );
+                            }
+                        }
+                        ClassBodyReturnRule::Constructor { .. }
+                        | ClassBodyReturnRule::Method {
+                            return_type: None, ..
+                        } => {}
                     }
                 }
                 FunctionBodyItem::If(statement) => {
-                    self.check_class_body_if(statement, &scope, constructor_return)
+                    self.check_class_body_if(statement, &scope, return_rule)
                 }
                 FunctionBodyItem::While(statement) => {
                     self.check_direct_runtime_expression(&statement.test, &scope, &statement.span);
-                    self.check_class_body_items(&statement.body, &scope, constructor_return);
+                    self.check_class_body_items(&statement.body, &scope, return_rule);
                 }
                 FunctionBodyItem::Try(statement) => {
-                    self.check_class_body_items(&statement.block, &scope, constructor_return);
+                    self.check_class_body_items(&statement.block, &scope, return_rule);
                     if let Some(handler) = &statement.handler {
                         let mut catch_scope = scope.clone();
                         catch_scope.insert(handler.binding.clone(), Type::Unknown);
-                        self.check_class_body_items(
-                            &handler.body,
-                            &catch_scope,
-                            constructor_return,
-                        );
+                        self.check_class_body_items(&handler.body, &catch_scope, return_rule);
                     }
                     if let Some(finalizer) = &statement.finalizer {
-                        self.check_class_body_items(finalizer, &scope, constructor_return);
+                        self.check_class_body_items(finalizer, &scope, return_rule);
                     }
                 }
                 FunctionBodyItem::Opaque(_) => {}
@@ -450,16 +532,16 @@ impl ModuleChecker<'_> {
         &mut self,
         statement: &FunctionIfStatement,
         scope: &BTreeMap<String, Type>,
-        constructor_return: Option<(&str, &Type)>,
+        return_rule: ClassBodyReturnRule<'_>,
     ) {
         self.check_direct_runtime_expression(&statement.test, scope, &statement.span);
-        self.check_class_body_items(&statement.consequent, scope, constructor_return);
+        self.check_class_body_items(&statement.consequent, scope, return_rule);
         match &statement.alternate {
             Some(FunctionElseBranch::Braced(body)) => {
-                self.check_class_body_items(body, scope, constructor_return);
+                self.check_class_body_items(body, scope, return_rule);
             }
             Some(FunctionElseBranch::ElseIf(branch)) => {
-                self.check_class_body_if(branch, scope, constructor_return);
+                self.check_class_body_if(branch, scope, return_rule);
             }
             None => {}
         }

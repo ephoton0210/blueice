@@ -124,7 +124,7 @@ impl<'a> ModuleChecker<'a> {
     /// fall-through result. `void` is special in TypeScript return positions;
     /// the bounded assignability relation otherwise covers `undefined`,
     /// `any`, `unknown`, aliases, and unions containing one of those types.
-    fn return_type_allows_implicit_undefined(
+    pub(super) fn return_type_allows_implicit_undefined(
         &mut self,
         return_type: &Type,
         span: &SourceSpan,
@@ -141,7 +141,7 @@ impl<'a> ModuleChecker<'a> {
     /// sequential path. An `if` does so only when both structured branches do.
     /// The unknown result preserves the standalone parser's existing opaque
     /// syntax behavior; the direct bridge rejects that syntax independently.
-    fn function_body_termination(items: &[FunctionBodyItem]) -> StructuredTermination {
+    pub(super) fn function_body_termination(items: &[FunctionBodyItem]) -> StructuredTermination {
         for item in items {
             match item {
                 FunctionBodyItem::Return { .. } | FunctionBodyItem::Throw { .. } => {

@@ -139,16 +139,21 @@ impl Parser {
         self.index = name_index + 1;
         let parameters = self.parse_parameters();
         let return_start = self.current().start;
-        let return_type = if self.consume(":") {
+        let (return_type, return_type_span) = if self.consume(":") {
+            let type_start = self.current().start;
             let value = self.parse_type_until(&["{", ";"]);
+            let type_end = self.previous().end;
             self.edits.push(TextEdit {
                 start: return_start,
                 end: self.current().start,
                 replacement: String::new(),
             });
-            Some(value)
+            (
+                Some(value),
+                Some(SourceSpan::new(&self.id, type_start, type_end)),
+            )
         } else {
-            None
+            (None, None)
         };
         let body = if self.consume("{") {
             let body_start = self.previous().start;
@@ -176,6 +181,7 @@ impl Parser {
             is_static,
             parameters,
             return_type,
+            return_type_span,
             body,
             span: member.span.clone(),
         });

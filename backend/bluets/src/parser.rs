@@ -191,6 +191,8 @@ pub struct ClassMethod {
     pub is_static: bool,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
+    /// Original annotation tokens, excluding the colon and trailing gap.
+    pub return_type_span: Option<SourceSpan>,
     pub body: Option<Vec<FunctionBodyItem>>,
     pub span: SourceSpan,
 }
