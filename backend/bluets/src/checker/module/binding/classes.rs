@@ -343,7 +343,14 @@ impl ModuleChecker<'_> {
             let Some(body) = &constructor.body else {
                 continue;
             };
-            let scope = self.class_body_parameter_scope(&constructor.parameters);
+            let mut scope = self.class_body_parameter_scope(&constructor.parameters);
+            scope.insert(
+                "this".to_string(),
+                Type::Named {
+                    name: class.name.clone(),
+                    arguments: Vec::new(),
+                },
+            );
             self.check_class_body_items(
                 body,
                 &scope,
@@ -373,7 +380,16 @@ impl ModuleChecker<'_> {
                     .any(|diagnostic| diagnostic.code == DiagnosticCode::UnknownType)
             });
             if let Some(body) = &method.body {
-                let scope = self.class_body_parameter_scope(&method.parameters);
+                let mut scope = self.class_body_parameter_scope(&method.parameters);
+                if !method.is_static {
+                    scope.insert(
+                        "this".to_string(),
+                        Type::Named {
+                            name: class.name.clone(),
+                            arguments: Vec::new(),
+                        },
+                    );
+                }
                 let allows_implicit_undefined = return_type.is_none_or(|return_type| {
                     self.return_type_allows_implicit_undefined(return_type, &method.span)
                 });

@@ -253,6 +253,7 @@ pub(super) fn starts_runtime_expression_statement(token: &Token) -> bool {
             | "false"
             | "null"
             | "undefined"
+            | "this"
             | "new"
             | "delete"
             | "typeof"

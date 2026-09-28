@@ -16,7 +16,7 @@ impl<'a> ModuleChecker<'a> {
         let [base, dot, property] = tokens else {
             return;
         };
-        if base.kind != TokenKind::Identifier
+        if base.kind != TokenKind::Identifier && !base.is("this")
             || !dot.is(".")
             || !matches!(property.kind, TokenKind::Identifier | TokenKind::Keyword)
         {

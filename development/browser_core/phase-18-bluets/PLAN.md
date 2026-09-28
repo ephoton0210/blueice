@@ -5394,6 +5394,24 @@ all-target Clippy, rustfmt, and whitespace checks pass in the reused 12 GiB
 Cargo target. This closes J.3.1.3.3.3; bounded `this` and overload-call
 inference remain in J.3.1.3.3.4.
 
+### J.3.1.3.3.4.1 Instance `this` in class bodies
+
+The bounded function-body parser now retains expression statements starting
+with `this`. Constructor and instance method bodies bind `this` to their
+class's instance type. Expression inference uses that binding for a bare
+`this`, member reads, and method-call results; runtime checks validate its
+method arguments and reject constructor-side methods through the same member
+relation as ordinary instances. Every diagnostic retains the original call,
+read, local declaration, or return span. Class output remains refused.
+
+Public checked-compile coverage asserts an accepted constructor call and
+self-return, wrong arguments, wrong-side call and read, incompatible inferred
+call result, incompatible `this` return, exact spans, and no artifact. Six
+pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2345,
+TS2576, and TS2322 lines. BlueTS, bridge, and full workspace suites,
+workspace all-target Clippy, rustfmt, and whitespace checks pass with the
+reused 12 GiB Cargo target. Constructor-side `this` follows in J.3.1.3.3.4.2.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

@@ -351,6 +351,9 @@ impl<'a> ModuleChecker<'a> {
                 }
             };
         }
+        if first.is("this") && tokens.len() == 1 {
+            return scope.get("this").cloned().unwrap_or(Type::Unknown);
+        }
         match first.text.as_str() {
             "true" | "false" => Type::Boolean,
             "null" => Type::Null,

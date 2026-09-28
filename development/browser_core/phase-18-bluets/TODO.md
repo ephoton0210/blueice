@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.3.4.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.3.4.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1123,6 +1123,28 @@ exists. A passed first form does not close its whole feature family.
         - [ ] **J.3.1.3.3.4** Resolve bounded `this` types in class bodies
           and select instance/static method overload calls with return
           inference and pinned-oracle diagnostics.
+          - [x] **J.3.1.3.3.4.1** Bind instance `this` in constructor and
+            instance method bodies; check bounded method reads/calls, wrong
+            side use, and inferred results at original spans against pinned
+            TypeScript while class output stays refused. The parser retains
+            `this` expression statements; the checker binds instance `this`
+            in constructor and instance method scopes and resolves member
+            reads/calls and self returns through the bound class type. Public
+            tests assert accepted forms, inferred result errors, wrong-side
+            diagnostics, exact spans, and no output. Six pinned TypeScript
+            5.9.3 `--noEmit` cases agree on acceptance and TS2345/TS2576/
+            TS2322 lines. BlueTS, bridge, and full workspace tests,
+            all-target Clippy, rustfmt, and whitespace checks pass with the
+            reused 12 GiB target.
+          - [ ] **J.3.1.3.3.4.2** Bind constructor-side `this` in static method
+            bodies; check bounded static reads/calls, wrong side use, and
+            inferred results against pinned TypeScript.
+          - [ ] **J.3.1.3.3.4.3** Select local instance-method overload calls
+            on values and `this`, infer selected returns, and check rejected
+            calls against pinned TypeScript.
+          - [ ] **J.3.1.3.3.4.4** Select local static-method overload calls
+            on class values and static `this`, infer selected returns, and
+            check rejected calls against pinned TypeScript.
       - [ ] **J.3.1.3.4** Check named inheritance, overrides, cycles, and
         `super` constructor/method uses with pinned-oracle fixtures.
       - [ ] **J.3.1.3.5** Close the accepted/rejected class checker matrix
