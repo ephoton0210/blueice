@@ -5837,6 +5837,26 @@ TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/TS2417
 lines. BlueTS, bridge, and full workspace tests, workspace all-target
 Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB target.
 
+### J.3.1.3.4.4.2.3.2.3.2.2 Inherited fixed-length tuple rest overrides
+
+The bounded override relation now treats each inherited tuple rest element
+as a required positional parameter. A derived fixed signature compares
+only its supplied positions and cannot require more than the expanded base
+arity. A derived array rest is compared with every remaining inherited
+tuple element. Both paths use the existing bivariant parameter relation,
+covariant result check, and original derived member span. Both-side tuple
+rest compatibility remains in the next leaf, and class output stays refused.
+
+Public checked-compile coverage accepts a shorter instance signature and
+a static array rest against a homogeneous tuple, rejects fixed-position
+type, fixed arity, and later array element mismatches, and confirms no
+artifact. Four pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance
+and TS2416/TS2417 lines. The parser currently treats a parenthesized union
+array annotation as a function type, so the accepted array case uses a
+homogeneous tuple; that syntax limitation is outside this override leaf.
+BlueTS, bridge, and full workspace tests, workspace all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
