@@ -8,6 +8,54 @@ use super::*;
 use crate::parser::{ClassDeclaration, ClassMethod};
 
 impl ModuleChecker<'_> {
+    pub(in crate::checker::module) fn check_type_only_class_value_uses(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let mut inspected = 0usize;
+        for (index, token) in tokens.iter().enumerate() {
+            if token.kind != TokenKind::Identifier
+                || !self.type_only_classes.contains(&token.text)
+                || scope.contains_key(&token.text)
+            {
+                continue;
+            }
+            let previous = index.checked_sub(1).and_then(|index| tokens.get(index));
+            let next = tokens.get(index + 1);
+            let runtime_use = tokens.len() == 1
+                || previous.is_some_and(|previous| previous.is("new"))
+                || next.is_some_and(|next| next.is("(") || next.is("."))
+                || previous.is_some_and(|previous| {
+                    matches!(
+                        previous.text.as_str(),
+                        "(" | "[" | "{" | "," | "=" | "return" | "throw"
+                    )
+                }) && !next.is_some_and(|next| next.is(">") || next.is(":"));
+            if !runtime_use {
+                continue;
+            }
+            inspected += 1;
+            if inspected > self.max_type_expansions {
+                self.type_error(
+                    span,
+                    format!(
+                        "type-only class value scan exceeds the {} generic-expansion limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                );
+                return;
+            }
+            self.type_error(
+                &SourceSpan::new(&span.module, token.start, token.end),
+                format!("type-only class {} cannot be used as a value", token.text),
+                DiagnosticCode::UnknownName,
+            );
+        }
+    }
+
     pub(super) fn bind_imported_class(
         &mut self,
         local_name: &str,
@@ -65,7 +113,7 @@ impl ModuleChecker<'_> {
         );
     }
 
-    pub(in crate::checker::module) fn is_local_class_constructor_value(
+    pub(in crate::checker::module) fn is_bound_class_constructor_value(
         &self,
         name: &str,
         scope: &BTreeMap<String, Type>,
@@ -210,7 +258,7 @@ impl ModuleChecker<'_> {
         let Some(call) = constructor_call_parts(tokens) else {
             return;
         };
-        if !self.is_local_class_constructor_value(&call.callee.text, scope) {
+        if !self.is_bound_class_constructor_value(&call.callee.text, scope) {
             return;
         }
         let Some(binding) = self.class_constructors.get(&call.callee.text) else {
@@ -286,7 +334,7 @@ impl ModuleChecker<'_> {
             if !tokens[start].is("new")
                 || tokens[start + 1].kind != TokenKind::Identifier
                 || !tokens[start + 2].is("(")
-                || !self.is_local_class_constructor_value(&tokens[start + 1].text, scope)
+                || !self.is_bound_class_constructor_value(&tokens[start + 1].text, scope)
             {
                 continue;
             }
@@ -309,7 +357,7 @@ impl ModuleChecker<'_> {
         }
     }
 
-    pub(in crate::checker::module) fn check_local_class_calls_in_expression(
+    pub(in crate::checker::module) fn check_bound_class_calls_in_expression(
         &mut self,
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
@@ -335,7 +383,7 @@ impl ModuleChecker<'_> {
             if callee.kind != TokenKind::Identifier
                 || !tokens[start + 1].is("(")
                 || start > 0 && (tokens[start - 1].is("new") || tokens[start - 1].is("."))
-                || !self.is_local_class_constructor_value(&callee.text, scope)
+                || !self.is_bound_class_constructor_value(&callee.text, scope)
             {
                 continue;
             }

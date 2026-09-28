@@ -26,6 +26,7 @@ pub(super) struct ModuleChecker<'a> {
     values: BTreeMap<String, Type>,
     functions: BTreeMap<String, Vec<FunctionSignature>>,
     class_constructors: BTreeMap<String, ClassConstructorBinding>,
+    type_only_classes: BTreeSet<String>,
     function_implementations: BTreeSet<String>,
     type_parameters: BTreeSet<String>,
     max_type_expansions: usize,

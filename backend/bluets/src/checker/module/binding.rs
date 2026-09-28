@@ -51,6 +51,7 @@ impl<'a> ModuleChecker<'a> {
             values: BTreeMap::new(),
             functions: BTreeMap::new(),
             class_constructors: BTreeMap::new(),
+            type_only_classes: BTreeSet::new(),
             function_implementations: BTreeSet::new(),
             type_parameters: BTreeSet::new(),
             max_type_expansions,
@@ -387,6 +388,9 @@ impl<'a> ModuleChecker<'a> {
             if binding.type_only {
                 if binding.imported == "*" {
                     if let Some(source_types) = exported {
+                        if exported_classes.is_some_and(|classes| !classes.is_empty()) {
+                            self.type_only_classes.insert(binding.local.clone());
+                        }
                         for (name, definition) in source_types {
                             let local = format!("{}.{}", binding.local, name);
                             let mut definition = definition.clone();
@@ -426,6 +430,7 @@ impl<'a> ModuleChecker<'a> {
                 if let Some(class) =
                     exported_classes.and_then(|classes| classes.get(&binding.imported))
                 {
+                    self.type_only_classes.insert(binding.local.clone());
                     source_type.value = specialize_imported_class_type(
                         &class.instance_type,
                         &class.source_name,
@@ -442,10 +447,28 @@ impl<'a> ModuleChecker<'a> {
             } else {
                 if let Some(class) = exported_classes
                     .and_then(|classes| classes.get(&binding.imported))
-                    .filter(|class| class.value_exported)
                     .cloned()
                 {
-                    self.bind_imported_class(&binding.local, &class, &import.span);
+                    if class.value_exported {
+                        self.bind_imported_class(&binding.local, &class, &import.span);
+                    } else {
+                        self.type_only_classes.insert(binding.local.clone());
+                        self.insert_type(
+                            &binding.local,
+                            TypeDefinition {
+                                kind: TypeDefinitionKind::Class,
+                                parameters: Vec::new(),
+                                value: specialize_imported_class_type(
+                                    &class.instance_type,
+                                    &class.source_name,
+                                    &binding.local,
+                                ),
+                            },
+                            import.span.clone(),
+                            SymbolKind::Import,
+                            false,
+                        );
+                    }
                     continue;
                 }
                 self.insert_value(
@@ -793,11 +816,12 @@ impl<'a> ModuleChecker<'a> {
             );
             return;
         }
+        self.check_type_only_class_value_uses(tokens, scope, span);
         if self.check_optional_property_read(tokens, scope, span) {
             return;
         }
         self.check_class_constructions_in_expression(tokens, scope, span);
-        self.check_local_class_calls_in_expression(tokens, scope, span);
+        self.check_bound_class_calls_in_expression(tokens, scope, span);
         self.check_function_call(tokens, scope, span);
         self.check_member_calls_in_expression(tokens, scope, span);
         self.check_direct_property_access(tokens, scope, span);

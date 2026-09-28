@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.2.3.3.2.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.3.1.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -938,7 +938,7 @@ exists. A passed first form does not close its whole feature family.
         path while class emission and direct lowering remain unavailable.
         BlueTS and bridge crate suites, workspace all-target Clippy, rustfmt,
         and whitespace checks pass with one reused compact Cargo target.
-      - [ ] **J.3.1.3.2** Bind a named class's constructor value and separate
+      - [x] **J.3.1.3.2** Bind a named class's constructor value and separate
         instance/static types; check construction and member lookup without
         confusing the two sides. Cover duplicate names and source spans.
         - [x] **J.3.1.3.2.1** Bind a local named class in both type and value
@@ -970,7 +970,7 @@ exists. A passed first form does not close its whole feature family.
           TS2345/TS2554/TS2741 diagnostic lines; BlueTSC still emits no
           class artifact. BlueTS and bridge crate tests, workspace all-target
           Clippy, rustfmt, and whitespace checks pass in one reused target.
-        - [ ] **J.3.1.3.2.3** Check instance versus constructor-side member
+        - [x] **J.3.1.3.2.3** Check instance versus constructor-side member
           lookup and calls, including closed-module class exports/imports;
           reject a method on the wrong side and a class value called without
           `new`; compare accepted/rejected cases with pinned TypeScript
@@ -1017,7 +1017,7 @@ exists. A passed first form does not close its whole feature family.
               and TS2576/TS2345/TS2769 lines. BlueTS and bridge crate
               suites, workspace all-target Clippy, rustfmt, and whitespace
               checks pass with the reused compact target.
-          - [ ] **J.3.1.3.2.3.3** Carry class instance and constructor-side
+          - [x] **J.3.1.3.2.3.3** Carry class instance and constructor-side
             types through closed-module exports/imports, then verify both
             member sides and call refusals against pinned TypeScript.
             - [x] **J.3.1.3.2.3.3.1** Export local class instance definitions
@@ -1033,7 +1033,7 @@ exists. A passed first form does not close its whole feature family.
               TS2576/TS2459 lines. BlueTS and bridge crate suites,
               workspace all-target Clippy, rustfmt, and whitespace checks
               pass with the reused compact target.
-            - [ ] **J.3.1.3.2.3.3.2** Bind value-imported classes with their
+            - [x] **J.3.1.3.2.3.3.2** Bind value-imported classes with their
               constructor-side shape and construction signatures; validate
               imported static/instance lookup, construction, and bare-call
               refusal with pinned TypeScript while class output stays refused.
@@ -1052,11 +1052,34 @@ exists. A passed first form does not close its whole feature family.
                 now includes an aliased self-return case. BlueTS and bridge
                 crate suites, workspace all-target Clippy, rustfmt, and
                 whitespace checks pass with the reused compact target.
-              - [ ] **J.3.1.3.2.3.3.2.2** Check value-imported construction,
+              - [x] **J.3.1.3.2.3.3.2.2** Check value-imported construction,
                 static and instance member calls, wrong-side access, and bare
                 class calls at original spans against pinned TypeScript.
+                Value imports reuse the bound class constructor and member
+                relations. Type-only class imports and classes exported only
+                with `export type` diagnose runtime use at the original name;
+                a shadowing parameter and erased type assertion stay valid.
+                Public tests check three accepted and eight rejected closed
+                module forms, exact spans, and no artifact. Eleven pinned
+                TypeScript 5.9.3 two-file `--noEmit` cases agree on acceptance
+                and TS2345/TS2339/TS2576/TS2348/TS1361/TS1362 lines.
+                BlueTS and bridge crate suites, workspace all-target Clippy,
+                rustfmt, and whitespace checks pass in the reused compact
+                target. The full workspace suite also passes when its Unix
+                socket tests run outside the filesystem sandbox.
       - [ ] **J.3.1.3.3** Check constructor and method parameter, return,
         overload-call, body, and `this` types through the shared class IR.
+        - [ ] **J.3.1.3.3.1** Validate bounded constructor overload groups,
+          parameter types, and default values at original source spans
+          against pinned TypeScript while keeping class output refused.
+        - [ ] **J.3.1.3.3.2** Check constructor bodies through their typed
+          parameter and local scopes, including invalid returns; defer
+          inherited `super` to J.3.1.3.4.
+        - [ ] **J.3.1.3.3.3** Check method body parameters, locals, and
+          declared returns on both instance and static sides.
+        - [ ] **J.3.1.3.3.4** Resolve bounded `this` types in class bodies
+          and select instance/static method overload calls with return
+          inference and pinned-oracle diagnostics.
       - [ ] **J.3.1.3.4** Check named inheritance, overrides, cycles, and
         `super` constructor/method uses with pinned-oracle fixtures.
       - [ ] **J.3.1.3.5** Close the accepted/rejected class checker matrix

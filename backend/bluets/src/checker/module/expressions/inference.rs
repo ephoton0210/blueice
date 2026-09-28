@@ -46,7 +46,7 @@ impl<'a> ModuleChecker<'a> {
         }
         let tokens = strip_outer_parentheses(tokens);
         if let Some(call) = constructor_call_parts(tokens) {
-            if self.is_local_class_constructor_value(&call.callee.text, scope) {
+            if self.is_bound_class_constructor_value(&call.callee.text, scope) {
                 return Type::Named {
                     name: call.callee.text.clone(),
                     arguments: Vec::new(),
@@ -114,7 +114,7 @@ impl<'a> ModuleChecker<'a> {
             if let PropertyType::Found { value, .. } = found {
                 match value {
                     Type::Function { result, .. } => return *result,
-                    Type::Intersection(overloads) if matches!(call.receiver, [receiver] if self.is_local_class_constructor_value(&receiver.text, scope)) => {
+                    Type::Intersection(overloads) if matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope)) => {
                         if let Some(signatures) = method_overload_signatures(&overloads) {
                             return self.infer_function_call(
                                 &signatures,

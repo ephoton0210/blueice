@@ -755,6 +755,124 @@ fn closed_module_value_imports_bind_both_class_sides_with_local_names() {
 }
 
 #[test]
+fn closed_module_class_value_calls_check_both_sides_and_type_only_use() {
+    let box_module = include_str!("fixtures/typescript_oracle/class-value-import-calls/box.ts");
+    for (main, box_module) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-value-import-calls/main.ts"),
+            box_module,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-value-import-calls-alias/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-value-import-calls-alias/box.ts"),
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-type-import-value-safe/main.ts"),
+            box_module,
+        ),
+    ] {
+        let compilation = compile_class_module_pair(main, box_module);
+        assert!(compilation.output.is_none());
+        assert!(
+            compilation
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{:#?}",
+            compilation.diagnostics
+        );
+    }
+
+    for (main, line, expected_span, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-value-import-constructor-error/main.ts"),
+            6,
+            "new LocalBox('text')",
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-value-import-static-error/main.ts"),
+            6,
+            "LocalBox.make('text')",
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-value-import-wrong-constructor-side/main.ts"
+            ),
+            6,
+            "LocalBox.read(1)",
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-value-import-wrong-instance-side/main.ts"
+            ),
+            7,
+            "box.make(2)",
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-value-import-bare-call/main.ts"),
+            6,
+            "LocalBox(1)",
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-type-import-value-use/main.ts"),
+            6,
+            "LocalBox",
+            DiagnosticCode::UnknownName,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-type-import-bare-value/main.ts"),
+            6,
+            "LocalBox",
+            DiagnosticCode::UnknownName,
+        ),
+    ] {
+        let compilation = compile_class_module_pair(main, box_module);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{:#?}", compilation.diagnostics);
+        let failure = failures[0];
+        assert_eq!(failure.code, code);
+        assert_eq!(failure.span.module, ENTRY);
+        assert_eq!(
+            main[..failure.span.start]
+                .bytes()
+                .filter(|byte| *byte == b'\n')
+                .count()
+                + 1,
+            line
+        );
+        assert_eq!(&main[failure.span.start..failure.span.end], expected_span);
+    }
+
+    let main = include_str!("fixtures/typescript_oracle/class-type-export-value-use/main.ts");
+    let box_module =
+        include_str!("fixtures/typescript_oracle/class-type-import-type-export/box.ts");
+    let compilation = compile_class_module_pair(main, box_module);
+    assert!(compilation.output.is_none());
+    let failures = compilation
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+        .collect::<Vec<_>>();
+    assert_eq!(failures.len(), 1, "{:#?}", compilation.diagnostics);
+    assert_eq!(failures[0].code, DiagnosticCode::UnknownName);
+    assert_eq!(failures[0].span.module, ENTRY);
+    assert_eq!(
+        &main[failures[0].span.start..failures[0].span.end],
+        "LocalBox"
+    );
+}
+
+#[test]
 fn braced_try_catch_finally_retains_the_catch_name_bodies_and_source_span() {
     let source =
         "function f(): void { try { throw 1; } catch (caught) { throw caught; } finally { 0; } }";

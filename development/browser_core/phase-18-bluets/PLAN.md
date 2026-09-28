@@ -5295,6 +5295,28 @@ bridge crate suites, workspace all-target Clippy, rustfmt, and whitespace
 checks pass with the reused compact target. Imported construction and member
 calls are the next leaf.
 
+### J.3.1.3.2.3.3.2.2 Imported class construction and member calls
+
+Value-imported classes now use the same bounded constructor and member-call
+relations as local classes. Direct and locally aliased imports support
+`new`, static calls, and instance calls with selected return types. Invalid
+constructor or method arguments, wrong-side member calls, and class calls
+without `new` report the original use span. A bounded runtime-expression
+scan also reports a class imported only for types, or exported only with
+`export type`, when used as a value. It respects a shadowing runtime binding
+and skips erased type-assertion operands. The closed source graph still
+refuses every class artifact.
+
+Public checked-compile tests cover three accepted and eight rejected
+two-module forms, exact source spans, and no output. Eleven pinned TypeScript
+5.9.3 `--noEmit` graphs agree on acceptance and TS2345, TS2339, TS2576,
+TS2348, TS1361, and TS1362 diagnostic lines. The BlueTS and bridge crate
+suites, workspace all-target Clippy, rustfmt, and whitespace checks pass with
+the reused compact Cargo target. The full workspace suite also passes when
+its Unix socket tests run outside the filesystem sandbox. J.3.1.3.2's local
+and closed-module type/value separation is complete; constructor and method
+body semantics follow in J.3.1.3.3.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

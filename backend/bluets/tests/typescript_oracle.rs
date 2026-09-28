@@ -1268,6 +1268,87 @@ fn pinned_class_value_import_bindings_match_typescript_without_emit() {
     assert_pinned_class_module_cases(&tsc, &cases);
 }
 
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_class_value_import_calls_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let box_module = include_str!("fixtures/typescript_oracle/class-value-import-calls/box.ts");
+    let cases: [NoEmitClassModuleCase; 11] = [
+        (
+            "direct-calls",
+            include_str!("fixtures/typescript_oracle/class-value-import-calls/main.ts"),
+            box_module,
+            None,
+        ),
+        (
+            "aliased-calls",
+            include_str!("fixtures/typescript_oracle/class-value-import-calls-alias/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-value-import-calls-alias/box.ts"),
+            None,
+        ),
+        (
+            "type-only-safe",
+            include_str!("fixtures/typescript_oracle/class-type-import-value-safe/main.ts"),
+            box_module,
+            None,
+        ),
+        (
+            "constructor-error",
+            include_str!("fixtures/typescript_oracle/class-value-import-constructor-error/main.ts"),
+            box_module,
+            Some((6, "TS2345")),
+        ),
+        (
+            "static-error",
+            include_str!("fixtures/typescript_oracle/class-value-import-static-error/main.ts"),
+            box_module,
+            Some((6, "TS2345")),
+        ),
+        (
+            "wrong-constructor-side",
+            include_str!(
+                "fixtures/typescript_oracle/class-value-import-wrong-constructor-side/main.ts"
+            ),
+            box_module,
+            Some((6, "TS2339")),
+        ),
+        (
+            "wrong-instance-side",
+            include_str!(
+                "fixtures/typescript_oracle/class-value-import-wrong-instance-side/main.ts"
+            ),
+            box_module,
+            Some((7, "TS2576")),
+        ),
+        (
+            "bare-call",
+            include_str!("fixtures/typescript_oracle/class-value-import-bare-call/main.ts"),
+            box_module,
+            Some((6, "TS2348")),
+        ),
+        (
+            "type-only-value-use",
+            include_str!("fixtures/typescript_oracle/class-type-import-value-use/main.ts"),
+            box_module,
+            Some((6, "TS1361")),
+        ),
+        (
+            "type-only-bare-value",
+            include_str!("fixtures/typescript_oracle/class-type-import-bare-value/main.ts"),
+            box_module,
+            Some((6, "TS1361")),
+        ),
+        (
+            "type-export-value-use",
+            include_str!("fixtures/typescript_oracle/class-type-export-value-use/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-type-import-type-export/box.ts"),
+            Some((6, "TS1362")),
+        ),
+    ];
+    assert_pinned_class_module_cases(&tsc, &cases);
+}
+
 fn assert_pinned_class_module_cases(tsc: &Path, cases: &[NoEmitClassModuleCase]) {
     for &(name, main, box_module, expected_error) in cases {
         let temporary = TestDirectory::new();
