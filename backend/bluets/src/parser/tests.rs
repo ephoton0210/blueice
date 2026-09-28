@@ -357,6 +357,52 @@ fn incomplete_methods_fail_and_unsupported_accessors_remain_opaque() {
 }
 
 #[test]
+fn preserves_union_and_record_method_return_types_without_losing_body_boundaries() {
+    let source = "class Reader { union(): string | number { return 1; } record(): { value: number } { return { value: 1 }; } }";
+    let module = parse_module("memory:///reader.ts", source).unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members.len(), 2);
+    assert_eq!(
+        class.members[0].method.as_ref().unwrap().return_type,
+        Some(Type::Union(vec![Type::String, Type::Number]))
+    );
+    assert!(matches!(
+        class.members[1].method.as_ref().unwrap().return_type,
+        Some(Type::Record(_))
+    ));
+    assert!(class
+        .members
+        .iter()
+        .all(|member| member.method.as_ref().unwrap().body.is_some()));
+    assert_eq!(module.edits.len(), 2);
+    assert_eq!(
+        &source[class.members[1].span.start..class.members[1].span.end],
+        "record(): { value: number } { return { value: 1 }; }"
+    );
+}
+
+#[test]
+fn routes_unimplemented_class_member_shapes_to_opaque_shells() {
+    for source in [
+        "class C { public read() {} }",
+        "class C { private read() {} }",
+        "class C { get value() { return 1; } }",
+        "class C { [key]() {} }",
+        "class C { #secret() {} }",
+        "class C { generic<T>() {} }",
+    ] {
+        let module = parse_module("memory:///opaque.ts", source).unwrap();
+        let Declaration::Class(class) = &module.declarations[0] else {
+            panic!("expected a class");
+        };
+        assert_eq!(class.members.len(), 1, "{source}");
+        assert_eq!(class.members[0].kind, ClassMemberKind::Opaque, "{source}");
+    }
+}
+
+#[test]
 fn rejects_tsx_modules_even_when_they_contain_no_tag_tokens() {
     let diagnostics =
         parse_module("memory:///view.tsx", "const label: string = 'BlueIce';").unwrap_err();

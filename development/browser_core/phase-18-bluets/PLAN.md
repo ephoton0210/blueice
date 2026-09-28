@@ -5086,6 +5086,19 @@ artifact; another test covers malformed methods and opaque accessors. The
 BlueTS crate and bridge library suites, workspace all-target Clippy,
 rustfmt, and whitespace checks pass under the shared-target disk guard.
 
+### J.3.1.2.3.2 Bounded method return types and opaque routes
+
+The member boundary scan now walks bounded return-type tokens past union
+arms and balanced record types before deciding which `{` opens the method
+body. The existing type parser then retains the actual union or record
+return type and its erasure span. Richer class member syntax remains opaque:
+public/private modifiers, accessor prefixes, computed and private keys, and
+generic method heads have explicit public parser fixtures that prove they
+do not become a plain named method. Every class remains checker-rejected,
+so these opaque forms cannot execute or leak into BlueTSC output. The full
+BlueTS crate suite, workspace all-target Clippy with warnings denied,
+rustfmt, and whitespace checks pass in the shared disk-budgeted target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

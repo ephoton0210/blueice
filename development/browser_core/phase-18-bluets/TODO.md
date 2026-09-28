@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.2.3.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.2.3.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -886,9 +886,15 @@ exists. A passed first form does not close its whole feature family.
           malformed methods, opaque accessors, and no emitted artifact.
           BlueTS and bridge crate suites, workspace all-target Clippy,
           rustfmt, and whitespace checks pass in one guarded target.
-        - [ ] **J.3.1.2.3.2** Expand bounded method type grammar and explicitly
+        - [x] **J.3.1.2.3.2** Expand bounded method type grammar and explicitly
           reject or route remaining modifiers, computed keys, generics,
-          accessors, and private forms to their later leaves.
+          accessors, and private forms to their later leaves. The member
+          boundary scan now distinguishes record-type braces from the body,
+          retaining union and record return types. Public tests prove both
+          forms and route modifiers, accessors, computed/private keys, and
+          generic methods to opaque shells; checker refusal still prevents
+          execution. The BlueTS crate suite, all-target workspace Clippy,
+          rustfmt, and whitespace checks pass in the shared guarded target.
         - [ ] **J.3.1.2.3.3** Verify method overload grouping and accepted /
           rejected syntax against pinned TypeScript 5.9.3, then check off
           J.3.1.2.3 and J.3.1.2.

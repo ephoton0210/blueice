@@ -189,22 +189,15 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
             if let Some(parameters_end) =
                 matching_closing_delimiter(tokens, index + 1, tokens.len(), "(", ")")
             {
-                let mut after_signature = parameters_end + 1;
-                if tokens
-                    .get(after_signature)
-                    .is_some_and(|token| token.is(":"))
-                    && tokens.get(after_signature + 1).is_some_and(|token| {
-                        matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
-                    })
+                let boundary = method_body_boundary(tokens, parameters_end + 1);
+                let member_end = match boundary
+                    .and_then(|index| tokens.get(index).map(|token| (index, token)))
                 {
-                    after_signature += 2;
-                }
-                let member_end = match tokens.get(after_signature) {
-                    Some(token) if token.is("{") => {
-                        matching_closing_delimiter(tokens, after_signature, tokens.len(), "{", "}")
+                    Some((index, token)) if token.is("{") => {
+                        matching_closing_delimiter(tokens, index, tokens.len(), "{", "}")
                             .map(|end| end + 1)
                     }
-                    Some(token) if token.is(";") => Some(after_signature + 1),
+                    Some((index, token)) if token.is(";") => Some(index + 1),
                     _ => None,
                 };
                 if let Some(end) = member_end {
@@ -242,6 +235,42 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
         index = end;
     }
     members
+}
+
+/// Finds the class element's body or signature semicolon without treating a
+/// record return type as the method body. The type parser validates the
+/// retained tokens later; this scan only preserves the source boundary.
+fn method_body_boundary(tokens: &[Token], after_parameters: usize) -> Option<usize> {
+    if !tokens.get(after_parameters)?.is(":") {
+        return Some(after_parameters);
+    }
+    let type_start = after_parameters + 1;
+    let mut index = type_start;
+    while index < tokens.len() {
+        let token = &tokens[index];
+        if token.is(";") {
+            return Some(index);
+        }
+        if token.is("{") {
+            let record_type = index == type_start
+                || tokens.get(index - 1).is_some_and(|previous| {
+                    matches!(previous.text.as_str(), "|" | "&" | "<" | "," | "(" | "=>")
+                });
+            if !record_type {
+                return Some(index);
+            }
+            index = matching_closing_delimiter(tokens, index, tokens.len(), "{", "}")? + 1;
+            continue;
+        }
+        if token.is("(") || token.is("[") {
+            let closing = if token.is("(") { ")" } else { "]" };
+            index =
+                matching_closing_delimiter(tokens, index, tokens.len(), &token.text, closing)? + 1;
+            continue;
+        }
+        index += 1;
+    }
+    None
 }
 
 fn class_member_shell(
