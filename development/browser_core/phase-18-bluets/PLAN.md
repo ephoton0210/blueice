@@ -5795,6 +5795,30 @@ cases agree on acceptance and TS2416/TS2417 lines. BlueTS, bridge, and full
 workspace tests, workspace all-target Clippy, rustfmt, and whitespace checks
 pass with the reused 12 GiB Cargo target.
 
+### J.3.1.3.4.4.2.3.2.3 Tuple rest expansion
+
+Tuple rest support is split into fixed-length annotation admission,
+fixed-length override comparison, and optional/labeled/variadic tuple
+syntax. The fixed-length comparison is further divided by the direction
+of the tuple rest and a both-side case. This keeps parser, validation,
+and override behavior individually reviewable against pinned TypeScript.
+
+### J.3.1.3.4.4.2.3.2.3.1 Fixed-length tuple rest annotations
+
+Class constructor, instance, and static method parameters now accept a
+parsed fixed-length tuple as a rest annotation. The shared parameter
+validator still rejects a primitive rest annotation and checks each tuple
+element type at the original parameter span. This admission does not yet
+expand tuple elements for inherited override comparison; class output
+remains refused.
+
+Public checked-compile coverage accepts all three class parameter sites,
+rejects a primitive rest and unknown tuple element at their original spans,
+and confirms no artifact. Three pinned TypeScript 5.9.3 `--noEmit` cases
+agree on acceptance and TS2370/TS2304 lines. BlueTS, bridge, and full
+workspace tests, workspace all-target Clippy, rustfmt, and whitespace checks
+pass with the reused 12 GiB Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

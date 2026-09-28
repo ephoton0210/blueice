@@ -2364,6 +2364,31 @@ fn pinned_shifted_array_rest_overrides_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_class_tuple_rest_annotations_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 3] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-tuple-rest-valid/main.ts"),
+            &[],
+        ),
+        (
+            "primitive-error",
+            include_str!("fixtures/typescript_oracle/class-tuple-rest-primitive-error/main.ts"),
+            &[(6, "TS2370")],
+        ),
+        (
+            "unknown-element",
+            include_str!("fixtures/typescript_oracle/class-tuple-rest-unknown-element/main.ts"),
+            &[(6, "TS2304")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

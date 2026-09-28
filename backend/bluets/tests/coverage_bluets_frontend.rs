@@ -2082,6 +2082,54 @@ fn shifted_array_rest_overrides_align_fixed_and_element_types() {
 }
 
 #[test]
+fn class_parameters_accept_fixed_tuple_rest_annotations() {
+    let valid = include_str!("fixtures/typescript_oracle/class-tuple-rest-valid/main.ts");
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
+        CompilerOptions::default(),
+    );
+    assert!(accepted.output.is_none());
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, code, span) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-tuple-rest-primitive-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "...parts: number",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-tuple-rest-unknown-element/main.ts"),
+            DiagnosticCode::UnknownType,
+            "...parts: [Missing, string]",
+        ),
+    ] {
+        let compilation = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, code);
+        assert_eq!(failures[0].span.module, ENTRY);
+        assert_eq!(&source[failures[0].span.start..failures[0].span.end], span);
+    }
+}
+
+#[test]
 fn class_construction_scan_obeys_the_type_expansion_budget() {
     let source =
         "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";

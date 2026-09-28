@@ -546,14 +546,13 @@ impl ModuleChecker<'_> {
                 );
             }
             if parameter.rest
-                && parameter
-                    .annotation
-                    .as_ref()
-                    .is_some_and(|annotation| !matches!(annotation, Type::Array(_)))
+                && parameter.annotation.as_ref().is_some_and(|annotation| {
+                    !matches!(annotation, Type::Array(_) | Type::Tuple(_))
+                })
             {
                 self.type_error(
                     &parameter.span,
-                    "the bounded rest-parameter rule requires an array annotation".to_string(),
+                    "a rest parameter requires an array or tuple annotation".to_string(),
                     DiagnosticCode::TypeMismatch,
                 );
             }
