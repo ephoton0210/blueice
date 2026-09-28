@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1297,6 +1297,26 @@ exists. A passed first form does not close its whole feature family.
                 12 GiB target.
         - [ ] **J.3.1.3.4.4** Validate inherited method overrides and overload
           compatibility at original member spans against pinned TypeScript.
+          - [x] **J.3.1.3.4.4.1** Validate direct local-base instance and
+            static method overrides with explicitly annotated single
+            signatures and equal required arity, including
+            accepted compatible overrides and rejected parameter/return
+            types at original member spans against pinned TypeScript. The
+            bounded checker compares method parameters bivariantly and
+            return types covariantly, while preserving separate instance and
+            static sides. Public checked-compile cases cover accepted exact
+            and narrower parameter overrides, four rejected instance/static
+            parameter/result forms, original member spans, and no output.
+            Five pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance
+            and TS2416/TS2417 lines. BlueTS, bridge, and full workspace
+            tests, all-target Clippy, rustfmt, and whitespace checks pass
+            with the reused 12 GiB target.
+          - [ ] **J.3.1.3.4.4.2** Validate overrides across deeper local and
+            value-imported bases with bounded lookup and optional/rest or
+            differing-arity method parameters against pinned TypeScript.
+          - [ ] **J.3.1.3.4.4.3** Validate inherited method overload-set
+            compatibility, including implementation and signature selection,
+            against pinned TypeScript.
         - [ ] **J.3.1.3.4.5** Check derived constructor `super` calls, arguments,
           and required placement against pinned TypeScript.
         - [ ] **J.3.1.3.4.6** Check instance and static `super` method reads and

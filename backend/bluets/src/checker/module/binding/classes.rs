@@ -7,6 +7,8 @@
 use super::*;
 use crate::parser::{ClassConstructor, ClassDeclaration, ClassMethod};
 
+mod overrides;
+
 #[derive(Clone, Copy)]
 enum ClassBodyReturnRule<'a> {
     Constructor {
