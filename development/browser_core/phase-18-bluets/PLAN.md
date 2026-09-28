@@ -6317,6 +6317,44 @@ workspace tests, all-target Clippy, rustfmt, and whitespace checks pass with
 the reused 12 GiB target. Concrete and constrained generic tuple spreads are
 the next leaf.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.6.1 Named tuple spread admission policy
+
+A named tuple spread first resolves through the local or imported type
+definition, completes declared generic defaults, substitutes concrete type
+arguments, and expands within the existing type-expansion budget. A finite
+tuple contributes its elements at the spread position, preserving optional
+positions and labels for declarations. An array-typed spread contributes one
+symbolic tail. A tuple containing an array tail keeps that tail and any
+required suffix; neither parser nor checker constructs an unbounded element
+vector. Expansion must also charge the resulting finite positions against a
+bounded size, so a chain of aliases cannot evade the budget by multiplying
+tuple elements.
+
+The parser retains named spread syntax in the shared tuple element metadata;
+the checker resolves it before positional assignment, indexing, contextual
+tuple construction, pure contract planning, or class override comparison.
+Declaration output retains the source spelling. A concrete expanded tuple
+may use the existing tuple relations and runtime contract bounds. A generic
+spread whose type parameter has an array or tuple constraint retains its
+parameter identity during comparison: the constraint bounds possible
+elements, but replacing the parameter with that constraint would accept
+some invalid overrides. Equal symbolic parameters can be compared directly;
+other relations require a bounded proof from their constraints. Generic
+runtime contracts remain unreifiable until a concrete instantiation is
+available.
+
+An unconstrained parameter, unknown name, cyclic expansion, excessive
+expansion, or shape requiring multiple variable tails produces a diagnostic
+before artifact output. No such case is silently widened to `unknown` or an
+array. Existing array-only tuple spreads remain admitted while this work is
+staged. Local pinned TypeScript 5.9.3 `--noEmit` probes accept a concrete
+`[boolean, ...Pair]`, a concrete `Prefix<[string, boolean]>`, and a matching
+`Base<T extends string[]>` override. They report TS2322 for a missing
+concrete position, TS2574 for an unconstrained spread, and TS2416 for
+incompatible concrete and constrained-generic overrides. This decision
+changes no parser or checker behavior; the following leaves implement each
+surface with public-boundary regressions.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

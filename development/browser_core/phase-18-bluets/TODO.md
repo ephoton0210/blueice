@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.6.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.6.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1820,6 +1820,33 @@ exists. A passed first form does not close its whole feature family.
                         and constrained generic tuple spreads in admitted
                         type uses and override comparison, with bounded
                         expansion and explicit rejection of unresolved forms.
+                        - [x] **J.3.1.3.4.4.2.3.2.3.3.3.6.1** Specify the
+                          bounded expansion, symbolic-rest, and rejection
+                          policy before admitting named tuple spreads.
+                          PLAN.md records finite tuple splicing, one
+                          preserved array tail, generic identity and
+                          constraint handling, existing expansion budgets,
+                          and fail-closed diagnostics. Local TypeScript 5.9.3
+                          `--noEmit` probes establish TS2322 for a missing
+                          concrete tuple position, TS2574 for an unconstrained
+                          spread, and TS2416 for incompatible concrete and
+                          constrained-generic overrides. This design-only
+                          leaf admits no new syntax.
+                        - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.2** Expand finite
+                          concrete named tuple spreads across admitted type
+                          uses, declarations, and pure contracts, with public
+                          acceptance and rejection against pinned TypeScript.
+                        - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.3** Specialize
+                          concrete generic tuple and array spreads while
+                          preserving one symbolic array tail and bounded
+                          type expansion.
+                        - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.4** Compare
+                          expanded concrete tuple spread rest parameters in
+                          class overrides in both directions.
+                        - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.5** Compare
+                          constrained generic tuple spreads symbolically and
+                          reject unresolved, cyclic, or unsupported shapes
+                          before output.
                     - [ ] **J.3.1.3.4.4.2.3.2.3.3.4** Expand optional tuple
                       spreads in bounded call arguments and tuple literals
                       without inventing required positions.
