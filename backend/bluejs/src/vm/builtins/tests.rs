@@ -38,6 +38,15 @@ fn sparse_array_scans_propagate_stale_object_and_instruction_errors() {
     );
     stale(vm.index_scan(objects[0], 65_536), objects[0]);
 
+    // A short scan does not enumerate keys up front. Its first property
+    // probe must still report a receiver collected after scan creation.
+    vm.remaining_instructions = vm.config.instruction_budget;
+    let mut short_scan = vm.index_scan(objects[0], 1).unwrap();
+    stale(
+        vm.array_next_present(&mut short_scan, objects[0], 0),
+        objects[0],
+    );
+
     let object = vm.heap.alloc_object(None).unwrap();
     let mut forward = vm.index_scan(object, 1).unwrap();
     let mut backward = vm.index_scan(object, 1).unwrap();
@@ -73,6 +82,68 @@ fn sparse_array_length_rejects_a_foreign_object_handle() {
         vm.array_like_length(foreign),
         Err(RuntimeError::Heap(HeapError::InvalidObject(id))) if id == foreign
     ));
+}
+
+#[test]
+fn sparse_scans_visit_stored_indices_in_both_directions_after_mutation() {
+    let mut vm = Vm::default();
+    vm.remaining_instructions = vm.config.instruction_budget;
+    let object = vm.heap.alloc_object(None).unwrap();
+    vm.stack.push(Value::Object(object));
+    vm.heap.set(object, "1", Value::Number(1.0)).unwrap();
+    vm.heap.set(object, "900000", Value::Number(9.0)).unwrap();
+
+    let mut scan = vm.index_scan(object, 1_000_000).unwrap();
+    assert_eq!(
+        vm.array_next_present(&mut scan, object, 0),
+        Ok(Some((1, Value::Number(1.0))))
+    );
+    assert_eq!(
+        vm.array_previous_present(&mut scan, object, 1_000_000),
+        Ok(Some((900_000, Value::Number(9.0))))
+    );
+    vm.heap.set(object, "600000", Value::Number(6.0)).unwrap();
+    assert_eq!(
+        vm.array_next_present(&mut scan, object, 2),
+        Ok(Some((600_000, Value::Number(6.0))))
+    );
+    assert_eq!(
+        vm.array_previous_present(&mut scan, object, 900_000),
+        Ok(Some((600_000, Value::Number(6.0))))
+    );
+    assert_eq!(vm.array_next_present(&mut scan, object, 900_001), Ok(None));
+    assert_eq!(vm.array_previous_present(&mut scan, object, 1), Ok(None));
+
+    let mut dense = vm.index_scan(object, 2).unwrap();
+    assert_eq!(
+        vm.array_next_present(&mut dense, object, 0),
+        Ok(Some((1, Value::Number(1.0))))
+    );
+    assert_eq!(
+        vm.array_previous_present(&mut dense, object, 2),
+        Ok(Some((1, Value::Number(1.0))))
+    );
+    assert_eq!(vm.array_previous_present(&mut dense, object, 1), Ok(None));
+}
+
+#[test]
+fn sparse_scan_falls_back_when_a_proxy_or_many_keys_can_materialize_indices() {
+    let mut vm = Vm::default();
+    vm.remaining_instructions = vm.config.instruction_budget;
+    let proxy = vm
+        .execute(&crate::compile(&crate::parse("new Proxy({ 0: 1 }, {})").unwrap()).unwrap())
+        .unwrap()
+        .object_id()
+        .unwrap();
+    vm.stack.push(Value::Object(proxy));
+    let mut scan = vm.index_scan(proxy, 65_536).unwrap();
+    assert_eq!(vm.scan_next(&mut scan, proxy, 1), Ok(Some(1)));
+
+    let dense = vm.array_from(vec![Value::Bool(true); 16_385]).unwrap();
+    let object = dense.object_id().unwrap();
+    vm.stack.push(dense);
+    let mut scan = vm.index_scan(object, 65_536).unwrap();
+    assert_eq!(vm.scan_next(&mut scan, object, 20_000), Ok(Some(20_000)));
 }
 
 #[test]
