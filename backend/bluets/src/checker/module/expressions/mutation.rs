@@ -32,15 +32,23 @@ impl<'a> ModuleChecker<'a> {
             &mut budget,
         ) {
             PropertyType::Found { .. } | PropertyType::Indeterminate => {}
-            PropertyType::Missing => self.type_error(
-                span,
-                format!(
-                    "property `{}` does not exist on type `{}`",
-                    property.text,
-                    type_label(&value)
-                ),
-                DiagnosticCode::TypeMismatch,
-            ),
+            PropertyType::Missing => {
+                let direct_span = SourceSpan::new(&span.module, base.start, property.end);
+                let diagnostic_span = if self.is_local_class_constructor_value(&base.text, scope) {
+                    &direct_span
+                } else {
+                    span
+                };
+                self.type_error(
+                    diagnostic_span,
+                    format!(
+                        "property `{}` does not exist on type `{}`",
+                        property.text,
+                        type_label(&value)
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
             PropertyType::Exhausted => self.type_error(
                 span,
                 format!(

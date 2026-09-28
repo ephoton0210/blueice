@@ -751,6 +751,7 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         self.check_class_constructions_in_expression(tokens, scope, span);
+        self.check_local_class_calls_in_expression(tokens, scope, span);
         self.check_function_call(tokens, scope, span);
         self.check_member_calls_in_expression(tokens, scope, span);
         self.check_direct_property_access(tokens, scope, span);

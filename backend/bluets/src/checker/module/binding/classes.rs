@@ -8,6 +8,17 @@ use super::*;
 use crate::parser::{ClassDeclaration, ClassMethod};
 
 impl ModuleChecker<'_> {
+    pub(in crate::checker::module) fn is_local_class_constructor_value(
+        &self,
+        name: &str,
+        scope: &BTreeMap<String, Type>,
+    ) -> bool {
+        self.class_constructors.contains_key(name)
+            && scope
+                .get(name)
+                .is_some_and(|value| self.values.get(name) == Some(value))
+    }
+
     pub(super) fn bind_class(&mut self, class: &ClassDeclaration) {
         let existing_type = self
             .types
@@ -136,6 +147,9 @@ impl ModuleChecker<'_> {
         let Some(call) = constructor_call_parts(tokens) else {
             return;
         };
+        if !self.is_local_class_constructor_value(&call.callee.text, scope) {
+            return;
+        }
         let Some(binding) = self.class_constructors.get(&call.callee.text) else {
             return;
         };
@@ -209,9 +223,7 @@ impl ModuleChecker<'_> {
             if !tokens[start].is("new")
                 || tokens[start + 1].kind != TokenKind::Identifier
                 || !tokens[start + 2].is("(")
-                || !self
-                    .class_constructors
-                    .contains_key(&tokens[start + 1].text)
+                || !self.is_local_class_constructor_value(&tokens[start + 1].text, scope)
             {
                 continue;
             }
@@ -231,6 +243,59 @@ impl ModuleChecker<'_> {
                 return;
             }
             self.check_class_construction(&tokens[start..=end], scope, span);
+        }
+    }
+
+    pub(in crate::checker::module) fn check_local_class_calls_in_expression(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        if !tokens.iter().any(|token| token.is("(")) {
+            return;
+        }
+        let mut openings = Vec::new();
+        let mut closes = vec![None; tokens.len()];
+        for (index, token) in tokens.iter().enumerate() {
+            if token.is("(") {
+                openings.push(index);
+            } else if token.is(")") {
+                if let Some(opening) = openings.pop() {
+                    closes[opening] = Some(index);
+                }
+            }
+        }
+        let mut inspected = 0usize;
+        for start in 0..tokens.len().saturating_sub(1) {
+            let callee = &tokens[start];
+            if callee.kind != TokenKind::Identifier
+                || !tokens[start + 1].is("(")
+                || start > 0 && (tokens[start - 1].is("new") || tokens[start - 1].is("."))
+                || !self.is_local_class_constructor_value(&callee.text, scope)
+            {
+                continue;
+            }
+            let Some(end) = closes[start + 1] else {
+                continue;
+            };
+            inspected += 1;
+            if inspected > self.max_type_expansions {
+                self.type_error(
+                    span,
+                    format!(
+                        "class call scan exceeds the {} generic-expansion limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                );
+                return;
+            }
+            self.type_error(
+                &SourceSpan::new(&span.module, callee.start, tokens[end].end),
+                format!("class {} cannot be called without `new`", callee.text),
+                DiagnosticCode::TypeMismatch,
+            );
         }
     }
 }

@@ -5199,6 +5199,25 @@ whitespace checks pass using the same compact target. J.3.1.3.2.3 must
 finish instance/static member lookup, direct class-call refusal, and
 closed-module class imports/exports.
 
+### J.3.1.3.2.3.1 Local instance member access and class-call refusal
+
+The bound instance method shape now supports a local class instance's method
+read and call. A missing instance method on the constructor side reports the
+original `Class.method` or `Class.method(...)` span. A bounded expression scan
+rejects direct and nested calls of a local class value without `new` at the
+original call span. It checks the active scope, so a parameter that shadows
+the class remains callable or constructible. The scan uses the compiler's type-expansion limit
+and reports ResourceLimit when that bound is crossed. Class output remains
+unconditionally refused.
+
+Six pinned TypeScript 5.9.3 `--noEmit` fixtures cover the accepted instance
+method read and call, both wrong-side accesses, direct and nested class calls,
+and a shadowed callable parameter. Public BlueTS tests assert accepted versus
+rejected behavior, precise spans, no artifact, and the scan budget. The BlueTS
+and bridge crate suites, workspace all-target Clippy, rustfmt, and whitespace
+checks pass using the reused compact Cargo target. Static methods and
+closed-module class bindings remain separate J.3.1.3.2.3 leaves.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

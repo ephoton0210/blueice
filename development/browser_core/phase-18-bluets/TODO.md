@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.2.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.2.3.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -975,6 +975,27 @@ exists. A passed first form does not close its whole feature family.
           reject a method on the wrong side and a class value called without
           `new`; compare accepted/rejected cases with pinned TypeScript
           without admitting class output.
+          - [x] **J.3.1.3.2.3.1** Check local instance method lookup and calls,
+            reject instance methods on the constructor side, and reject a
+            direct class-value call without `new`. Preserve exact diagnostic
+            spans and compare accepted/rejected forms with pinned TypeScript.
+            A local class value cannot be called directly or from a nested
+            expression; the scan is bounded and respects lexical shadowing
+            for both calls and construction.
+            Wrong-side method reads/calls point to the original member
+            expression. Public tests check accepted instance method reads
+            and calls, four rejected forms, exact spans, a shadowed callable
+            parameter, no output, and the scan budget. Six pinned TypeScript
+            5.9.3 `--noEmit` cases match acceptance and TS2339/TS2348 lines.
+            BlueTS and bridge crate suites, workspace all-target Clippy,
+            rustfmt, and whitespace checks pass with the reused compact
+            target.
+          - [ ] **J.3.1.3.2.3.2** Parse and bind bounded static method groups;
+            check their lookup and calls against the constructor side while
+            rejecting static methods on an instance.
+          - [ ] **J.3.1.3.2.3.3** Carry class instance and constructor-side
+            types through closed-module exports/imports, then verify both
+            member sides and call refusals against pinned TypeScript.
       - [ ] **J.3.1.3.3** Check constructor and method parameter, return,
         overload-call, body, and `this` types through the shared class IR.
       - [ ] **J.3.1.3.4** Check named inheritance, overrides, cycles, and

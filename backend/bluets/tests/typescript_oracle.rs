@@ -1091,6 +1091,46 @@ fn pinned_class_construction_matches_typescript_without_emit() {
     assert_pinned_no_emit_cases(&tsc, &cases);
 }
 
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_local_class_method_sides_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 6] = [
+        (
+            "instance-method",
+            include_str!("fixtures/typescript_oracle/class-local-instance-method/main.ts"),
+            &[],
+        ),
+        (
+            "wrong-side-call",
+            include_str!("fixtures/typescript_oracle/class-local-instance-wrong-side-call/main.ts"),
+            &[(6, "TS2339")],
+        ),
+        (
+            "wrong-side-read",
+            include_str!("fixtures/typescript_oracle/class-local-instance-wrong-side-read/main.ts"),
+            &[(6, "TS2339")],
+        ),
+        (
+            "called-without-new",
+            include_str!("fixtures/typescript_oracle/class-local-called-without-new/main.ts"),
+            &[(6, "TS2348")],
+        ),
+        (
+            "nested-call-without-new",
+            include_str!("fixtures/typescript_oracle/class-local-nested-call-without-new/main.ts"),
+            &[(7, "TS2348")],
+        ),
+        (
+            "shadowed-call",
+            include_str!("fixtures/typescript_oracle/class-local-shadowed-call/main.ts"),
+            &[],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
 fn assert_pinned_no_emit_cases(tsc: &Path, cases: &[NoEmitCase]) {
     for &(name, source, expected_errors) in cases {
         let temporary = TestDirectory::new();

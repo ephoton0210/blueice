@@ -96,8 +96,22 @@ impl<'a> ModuleChecker<'a> {
                 return;
             }
             PropertyType::Missing => {
+                let call_span = SourceSpan::new(
+                    &span.module,
+                    tokens.first().expect("member call has a receiver").start,
+                    tokens.last().expect("member call has a closing token").end,
+                );
+                let diagnostic_span = if let [base] = call.receiver {
+                    if self.is_local_class_constructor_value(&base.text, scope) {
+                        &call_span
+                    } else {
+                        span
+                    }
+                } else {
+                    span
+                };
                 self.type_error(
-                    span,
+                    diagnostic_span,
                     format!(
                         "property `{}` does not exist on type `{}`",
                         call.member.text,

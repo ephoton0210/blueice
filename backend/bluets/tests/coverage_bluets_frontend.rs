@@ -421,6 +421,95 @@ fn class_construction_scan_obeys_the_type_expansion_budget() {
 }
 
 #[test]
+fn local_class_method_uses_keep_instance_and_constructor_sides_separate() {
+    for accepted in [
+        include_str!("fixtures/typescript_oracle/class-local-instance-method/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-local-shadowed-call/main.ts"),
+    ] {
+        let compilation = compile_with_helper(accepted);
+        assert!(compilation.output.is_none());
+        assert!(
+            compilation
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{:#?}",
+            compilation.diagnostics
+        );
+    }
+
+    for (source, expected_line, expected_span) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-local-instance-wrong-side-call/main.ts"),
+            6,
+            "Box.read(1)",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-local-instance-wrong-side-read/main.ts"),
+            6,
+            "Box.read",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-local-called-without-new/main.ts"),
+            6,
+            "Box()",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-local-nested-call-without-new/main.ts"),
+            7,
+            "Box()",
+        ),
+    ] {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{:#?}", compilation.diagnostics);
+        let failure = failures[0];
+        assert_eq!(failure.code, DiagnosticCode::TypeMismatch);
+        assert_eq!(
+            source[..failure.span.start]
+                .bytes()
+                .filter(|byte| *byte == b'\n')
+                .count()
+                + 1,
+            expected_line
+        );
+        assert_eq!(&source[failure.span.start..failure.span.end], expected_span);
+    }
+}
+
+#[test]
+fn local_class_call_scan_obeys_the_type_expansion_budget() {
+    let source = "class Box {} const pair = [Box(), Box()];";
+    let compilation = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            limits: CompilerLimits {
+                max_type_expansions: 1,
+                ..CompilerLimits::default()
+            },
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(compilation.output.is_none());
+    assert_eq!(
+        compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::ResourceLimit)
+            .count(),
+        1,
+        "{:#?}",
+        compilation.diagnostics
+    );
+}
+
+#[test]
 fn braced_try_catch_finally_retains_the_catch_name_bodies_and_source_span() {
     let source =
         "function f(): void { try { throw 1; } catch (caught) { throw caught; } finally { 0; } }";

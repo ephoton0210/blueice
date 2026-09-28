@@ -46,7 +46,7 @@ impl<'a> ModuleChecker<'a> {
         }
         let tokens = strip_outer_parentheses(tokens);
         if let Some(call) = constructor_call_parts(tokens) {
-            if self.class_constructors.contains_key(&call.callee.text) {
+            if self.is_local_class_constructor_value(&call.callee.text, scope) {
                 return Type::Named {
                     name: call.callee.text.clone(),
                     arguments: Vec::new(),
