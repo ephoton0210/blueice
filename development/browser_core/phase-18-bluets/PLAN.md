@@ -6064,6 +6064,25 @@ static array-tail mismatch at original member spans without output. Four
 pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/
 TS2417 diagnostic lines.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.3.2 Inherited trailing tuple rest overrides
+
+The override checker now recognizes an inherited rest parameter whose tuple
+ends in an array-typed rest element when the derived method has fixed
+parameters or an ordinary array rest. It aligns each supplied derived fixed
+position with an inherited fixed or tuple position and uses the repeated
+tail type beyond that prefix. An ordinary derived array rest is also compared
+once with the inherited tail after finite positions are aligned. The
+inherited tuple rest has no maximum arity, so additional compatible required
+derived positions are accepted; the existing bivariant parameter and
+covariant result checks remain in force.
+
+Both-side tuple rest shapes remain fail-closed until the next leaf. Public
+checked-compile cases cover accepted fixed and array forms, including a
+zero-prefix inherited rest with one required derived position, and reject
+incompatible instance and static element types at the original member spans
+without output. Four pinned TypeScript 5.9.3 `--noEmit` cases agree on
+acceptance and TS2416/TS2417 lines.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

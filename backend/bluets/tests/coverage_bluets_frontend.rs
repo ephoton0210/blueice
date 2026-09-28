@@ -2480,6 +2480,60 @@ fn derived_trailing_tuple_rest_overrides_compare_repeated_tail() {
 }
 
 #[test]
+fn inherited_trailing_tuple_rest_overrides_compare_repeated_tail() {
+    for valid in [
+        include_str!("fixtures/typescript_oracle/class-override-base-tail-valid/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-override-base-tail-zero-valid/main.ts"),
+    ] {
+        let accepted = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
+            CompilerOptions::default(),
+        );
+        assert!(accepted.output.is_none());
+        assert!(
+            accepted
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{:#?}",
+            accepted.diagnostics
+        );
+    }
+
+    for (source, member) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-override-base-tail-fixed-error/main.ts"),
+            "read(a: number, b: boolean): number { return a; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-base-tail-array-error/main.ts"),
+            "static parse(a: number, ...tail: boolean[]): number { return a; }",
+        ),
+    ] {
+        let compilation = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+        assert_eq!(failures[0].span.module, ENTRY);
+        assert_eq!(
+            &source[failures[0].span.start..failures[0].span.end],
+            member,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
 fn class_construction_scan_obeys_the_type_expansion_budget() {
     let source =
         "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";
