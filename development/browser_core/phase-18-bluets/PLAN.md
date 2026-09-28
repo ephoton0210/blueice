@@ -5659,6 +5659,27 @@ cases agree on acceptance and TS2416/TS2417 lines. BlueTS, bridge, and full
 workspace tests, workspace all-target Clippy, rustfmt, and whitespace
 checks pass with the reused 12 GiB Cargo target.
 
+J.3.1.3.4.4.2 is further split into nearest-method lookup along bounded local
+heritage, inherited surfaces from value-imported bases, and optional/rest or
+differing-arity parameter compatibility.
+
+### J.3.1.3.4.4.2.1 Deeper local method overrides
+
+The override checker now follows local named `extends` edges up to the
+configured type-expansion limit and compares a derived method with the
+nearest inherited method on the same instance or static side. An intervening
+overload group hides older ancestors and remains for the overload-set leaf.
+Existing heritage validation diagnoses cycles and over-limit chains, while
+class output remains refused.
+
+Public checked-compile cases cover accepted instance/static overrides
+through a middle class, rejected parameter and return types, nearest-method
+shadowing, exact original member spans, and no artifact. Six pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/TS2417
+lines. BlueTS, bridge, and full workspace tests, workspace all-target
+Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB Cargo
+target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

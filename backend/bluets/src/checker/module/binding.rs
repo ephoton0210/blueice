@@ -607,7 +607,7 @@ impl<'a> ModuleChecker<'a> {
                     self.validate_class_heritage_name(class);
                     self.validate_class_constructor_group(class);
                     self.validate_class_method_groups(class);
-                    self.validate_direct_class_method_overrides(class);
+                    self.validate_local_class_method_overrides(class);
                     self.check_class_constructor_bodies(class);
                     self.check_class_method_bodies(class);
                 }

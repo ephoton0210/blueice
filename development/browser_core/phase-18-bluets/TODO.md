@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1314,6 +1314,25 @@ exists. A passed first form does not close its whole feature family.
           - [ ] **J.3.1.3.4.4.2** Validate overrides across deeper local and
             value-imported bases with bounded lookup and optional/rest or
             differing-arity method parameters against pinned TypeScript.
+            - [x] **J.3.1.3.4.4.2.1** Resolve deeper local class heritage to
+              the nearest inherited instance/static method with bounded
+              traversal; validate explicitly annotated single signatures at
+              original member spans against pinned TypeScript. The override
+              checker now walks local `extends` edges up to the configured
+              expansion limit and stops at the nearest same-side declaration.
+              Public checked-compile cases cover accepted instance/static
+              overrides through a middle class, rejected parameter/result
+              types, nearest shadowing, original member spans, and no output.
+              Six pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance
+              and TS2416/TS2417 lines. BlueTS, bridge, and full workspace
+              tests, all-target Clippy, rustfmt, and whitespace checks pass
+              with the reused 12 GiB target.
+            - [ ] **J.3.1.3.4.4.2.2** Validate directly and transitively
+              value-imported inherited method surfaces on both sides against
+              pinned TypeScript.
+            - [ ] **J.3.1.3.4.4.2.3** Validate optional, rest, and differing
+              method arities under TypeScript's override variance at original
+              member spans.
           - [ ] **J.3.1.3.4.4.3** Validate inherited method overload-set
             compatibility, including implementation and signature selection,
             against pinned TypeScript.
