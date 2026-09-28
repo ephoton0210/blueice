@@ -39,14 +39,18 @@ impl ModuleChecker<'_> {
             ) else {
                 continue;
             };
-            // Rest parameters need positional expansion before comparison.
+            // Different fixed prefixes or one-sided rests need positional
+            // expansion. Matching final array rests compare as array types.
+            if !matching_array_rests(&derived.parameters, inherited.parameters) {
+                continue;
+            }
             if derived.return_type.is_none()
                 || inherited.return_type.is_none()
                 || derived
                     .parameters
                     .iter()
                     .chain(inherited.parameters)
-                    .any(|parameter| parameter.rest || parameter.annotation.is_none())
+                    .any(|parameter| parameter.annotation.is_none())
             {
                 continue;
             }
@@ -58,7 +62,7 @@ impl ModuleChecker<'_> {
             let required_derived = derived
                 .parameters
                 .iter()
-                .filter(|parameter| !parameter.optional)
+                .filter(|parameter| !parameter.optional && !parameter.rest)
                 .count();
             let parameters_compatible = required_derived <= inherited.parameters.len()
                 && derived
@@ -182,4 +186,28 @@ fn nearest_inherited_method<'a>(
         });
     }
     None
+}
+
+fn matching_array_rests(derived: &[Parameter], inherited: &[Parameter]) -> bool {
+    let has_rest = derived
+        .iter()
+        .chain(inherited)
+        .any(|parameter| parameter.rest);
+    if !has_rest {
+        return true;
+    }
+    let (Some((derived_rest, derived_fixed)), Some((inherited_rest, inherited_fixed))) =
+        (derived.split_last(), inherited.split_last())
+    else {
+        return false;
+    };
+    derived_rest.rest
+        && inherited_rest.rest
+        && derived_fixed.len() == inherited_fixed.len()
+        && !derived_fixed
+            .iter()
+            .chain(inherited_fixed)
+            .any(|parameter| parameter.rest)
+        && matches!(derived_rest.annotation.as_ref(), Some(Type::Array(_)))
+        && matches!(inherited_rest.annotation.as_ref(), Some(Type::Array(_)))
 }

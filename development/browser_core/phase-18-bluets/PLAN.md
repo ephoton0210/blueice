@@ -5718,6 +5718,27 @@ pinned TypeScript 5.9.3 `--noEmit` acceptance and TS2416/TS2417 lines.
 BlueTS, bridge, and full workspace tests, workspace all-target Clippy,
 rustfmt, and whitespace checks pass with the reused 12 GiB Cargo target.
 
+J.3.1.3.4.4.2.3.2 is further split into matching-prefix array rest,
+fixed/rest interactions, and tuple rest expansion. The first step uses the
+already parsed array rest annotation and keeps tuple work separate from the
+current array-only class parameter gate.
+
+### J.3.1.3.4.4.2.3.2.1 Matching-prefix array rest overrides
+
+The bounded class override comparison now handles a final array rest on
+both inherited and derived methods when their fixed parameter prefixes have
+the same length. It excludes rest from the required arity count, compares
+array element types through the existing bounded type relation, and still
+checks fixed parameters and covariant return types. Different fixed
+prefixes, one-sided rest, and tuple rest remain in their following leaves.
+
+Public checked-compile cases cover accepted instance/static overrides,
+five rejected element, prefix, and result forms at original member spans,
+and no artifact. Six pinned TypeScript 5.9.3 `--noEmit` cases agree on
+acceptance and TS2416/TS2417 lines. BlueTS, bridge, and full workspace
+tests, workspace all-target Clippy, rustfmt, and whitespace checks pass with
+the reused 12 GiB Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

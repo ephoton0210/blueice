@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1358,6 +1358,25 @@ exists. A passed first form does not close its whole feature family.
               - [ ] **J.3.1.3.4.4.2.3.2** Validate array and tuple rest
                 method parameters and their interactions with fixed
                 parameters against pinned TypeScript.
+                - [x] **J.3.1.3.4.4.2.3.2.1** Validate array rest overrides
+                  with matching fixed prefixes, including instance/static
+                  parameter and result types, against pinned TypeScript. The
+                  bounded override comparison now accepts matching final
+                  array rest positions, compares their element types through
+                  the existing array relation, and excludes rest from the
+                  required arity count. Public checked-compile cases cover
+                  accepted instance/static forms, five rejected element,
+                  prefix, and result forms, original member spans, and no
+                  output. Six pinned TypeScript 5.9.3 `--noEmit` cases agree
+                  on acceptance and TS2416/TS2417 lines. BlueTS, bridge,
+                  and full workspace tests, all-target Clippy, rustfmt, and
+                  whitespace checks pass with the reused 12 GiB target.
+                - [ ] **J.3.1.3.4.4.2.3.2.2** Validate fixed/rest parameter
+                  interactions and differing fixed prefixes against pinned
+                  TypeScript.
+                - [ ] **J.3.1.3.4.4.2.3.2.3** Validate tuple rest expansion
+                  and bounded override compatibility against pinned
+                  TypeScript.
           - [ ] **J.3.1.3.4.4.3** Validate inherited method overload-set
             compatibility, including implementation and signature selection,
             against pinned TypeScript.
