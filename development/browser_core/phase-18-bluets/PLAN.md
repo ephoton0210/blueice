@@ -5975,6 +5975,17 @@ artifact. Three pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance
 and the TS2322 line. Labeled rest positions in class overrides are checked
 in the next leaf using the existing positional relation.
 
+### J.3.1.3.4.4.2.3.2.3.3.2.2 Labeled tuple rest overrides
+
+The class override relation already compares tuple rest elements by declared
+position and optionality, without reading the label metadata. Instance and
+static overrides may rename those labels; incompatible element types or too
+many required positions still fail. Four pinned TypeScript 5.9.3 `--noEmit`
+cases agree on valid renamed positions and TS2416/TS2417 diagnostic lines.
+Public checked-compile cases assert the rejected member spans, only the
+expected mismatch diagnostic, and no output artifact. No checker change is
+needed for this leaf; the regressions lock in positional semantics.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
