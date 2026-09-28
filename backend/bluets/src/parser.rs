@@ -188,6 +188,7 @@ pub struct ClassConstructor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassMethod {
     pub name: String,
+    pub is_static: bool,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
     pub body: Option<Vec<FunctionBodyItem>>,
@@ -199,6 +200,7 @@ pub struct ClassMethod {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassMethodGroup {
     pub name: String,
+    pub is_static: bool,
     pub signature_member_indices: Vec<usize>,
     pub implementation_member_index: Option<usize>,
     pub span: SourceSpan,

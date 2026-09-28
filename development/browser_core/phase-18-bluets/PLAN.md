@@ -5218,6 +5218,23 @@ and bridge crate suites, workspace all-target Clippy, rustfmt, and whitespace
 checks pass using the reused compact Cargo target. Static methods and
 closed-module class bindings remain separate J.3.1.3.2.3 leaves.
 
+### J.3.1.3.2.3.2.1 Static method shell and side-aware groups
+
+The bounded class parser now recognizes `static name(...)` signatures and
+implementations as methods with an explicit static marker. The member shell
+and method retain their original source span. Method grouping keys on both
+name and side: a static overload and implementation form one group while an
+instance method of the same name remains separate. The duplicate method
+validator uses the same side-aware key, and the instance type builder omits
+static methods. A member spelled `static()` remains an instance method.
+
+The public parser boundary test checks these distinctions and confirms that
+class compilation still produces no artifact. The pinned TypeScript 5.9.3
+`--noEmit` oracle accepts the same source. The BlueTS and bridge crate suites,
+workspace all-target Clippy, rustfmt, and whitespace checks pass with the
+reused compact Cargo target. Static member type binding and call checks are
+the next leaf.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

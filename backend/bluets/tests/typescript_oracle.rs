@@ -1131,6 +1131,21 @@ fn pinned_local_class_method_sides_match_typescript_without_emit() {
     assert_pinned_no_emit_cases(&tsc, &cases);
 }
 
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_static_class_method_shell_matches_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    assert_pinned_no_emit_cases(
+        &tsc,
+        &[(
+            "static-method-shell",
+            include_str!("fixtures/typescript_oracle/class-static-method-shell/main.ts"),
+            &[],
+        )],
+    );
+}
+
 fn assert_pinned_no_emit_cases(tsc: &Path, cases: &[NoEmitCase]) {
     for &(name, source, expected_errors) in cases {
         let temporary = TestDirectory::new();

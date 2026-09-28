@@ -510,6 +510,70 @@ fn local_class_call_scan_obeys_the_type_expansion_budget() {
 }
 
 #[test]
+fn static_class_method_shells_keep_sides_and_source_spans() {
+    let source = include_str!("fixtures/typescript_oracle/class-static-method-shell/main.ts");
+    let module = parse_module(ENTRY, source).unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class declaration");
+    };
+    assert_eq!(class.members.len(), 4);
+    let methods = class
+        .members
+        .iter()
+        .map(|member| {
+            let method = member.method.as_ref().expect("parsed method");
+            (
+                method.name.as_str(),
+                method.is_static,
+                method.body.is_some(),
+                &source[member.span.start..member.span.end],
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        methods,
+        [
+            ("read", true, false, "static read(value: number): number;"),
+            (
+                "read",
+                true,
+                true,
+                "static read(value: number): number { return value; }"
+            ),
+            ("read", false, true, "read(): number { return 1; }"),
+            ("static", false, true, "static(): number { return 2; }"),
+        ]
+    );
+    assert_eq!(
+        class
+            .method_groups
+            .iter()
+            .map(|group| (
+                group.name.as_str(),
+                group.is_static,
+                group.signature_member_indices.as_slice(),
+                group.implementation_member_index,
+            ))
+            .collect::<Vec<_>>(),
+        [
+            ("read", true, &[0][..], Some(1)),
+            ("read", false, &[][..], Some(2)),
+            ("static", false, &[][..], Some(3)),
+        ]
+    );
+    let compilation = compile_with_helper(source);
+    assert!(compilation.output.is_none());
+    assert!(
+        compilation
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        compilation.diagnostics
+    );
+}
+
+#[test]
 fn braced_try_catch_finally_retains_the_catch_name_bodies_and_source_span() {
     let source =
         "function f(): void { try { throw 1; } catch (caught) { throw caught; } finally { 0; } }";

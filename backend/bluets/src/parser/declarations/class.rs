@@ -129,8 +129,14 @@ impl Parser {
     }
 
     fn parse_class_method(&mut self, start: usize, member: &mut ClassMemberShell) {
-        let name = self.tokens[start].text.clone();
-        self.index = start + 1;
+        let is_static = self.tokens[start].is("static")
+            && self
+                .tokens
+                .get(start + 2)
+                .is_some_and(|token| token.is("("));
+        let name_index = start + usize::from(is_static);
+        let name = self.tokens[name_index].text.clone();
+        self.index = name_index + 1;
         let parameters = self.parse_parameters();
         let return_start = self.current().start;
         let return_type = if self.consume(":") {
@@ -167,6 +173,7 @@ impl Parser {
         }
         member.method = Some(ClassMethod {
             name,
+            is_static,
             parameters,
             return_type,
             body,
@@ -184,10 +191,13 @@ fn class_method_groups(module: &str, members: &[ClassMemberShell]) -> Vec<ClassM
             continue;
         };
         let group_index = pending_signature_group
-            .filter(|&index| groups[index].name == method.name)
+            .filter(|&index| {
+                groups[index].name == method.name && groups[index].is_static == method.is_static
+            })
             .unwrap_or_else(|| {
                 groups.push(ClassMethodGroup {
                     name: method.name.clone(),
+                    is_static: method.is_static,
                     signature_member_indices: Vec::new(),
                     implementation_member_index: None,
                     span: member.span.clone(),
@@ -216,12 +226,20 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
             continue;
         }
         let start = index;
-        let name_token = &tokens[index];
+        let static_modifier = tokens[index].is("static")
+            && tokens.get(index + 1).is_some_and(|token| {
+                matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
+            })
+            && tokens.get(index + 2).is_some_and(|token| token.is("("));
+        let name_index = index + usize::from(static_modifier);
+        let name_token = &tokens[name_index];
         let method_head = matches!(name_token.kind, TokenKind::Identifier | TokenKind::Keyword)
-            && tokens.get(index + 1).is_some_and(|token| token.is("("));
+            && tokens
+                .get(name_index + 1)
+                .is_some_and(|token| token.is("("));
         if method_head {
             if let Some(parameters_end) =
-                matching_closing_delimiter(tokens, index + 1, tokens.len(), "(", ")")
+                matching_closing_delimiter(tokens, name_index + 1, tokens.len(), "(", ")")
             {
                 let boundary = method_body_boundary(tokens, parameters_end + 1);
                 let member_end = match boundary
@@ -240,7 +258,7 @@ fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> 
                         tokens,
                         start,
                         end,
-                        if name_token.is("constructor") {
+                        if !static_modifier && name_token.is("constructor") {
                             ClassMemberKind::Constructor
                         } else {
                             ClassMemberKind::Method

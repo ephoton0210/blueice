@@ -59,16 +59,18 @@ impl ModuleChecker<'_> {
     }
 
     pub(super) fn validate_class_method_groups(&mut self, class: &ClassDeclaration) {
-        let mut implementations: BTreeMap<&str, usize> = BTreeMap::new();
+        let mut implementations: BTreeMap<(bool, &str), usize> = BTreeMap::new();
         for group in &class.method_groups {
             if group.implementation_member_index.is_some() {
-                *implementations.entry(&group.name).or_default() += 1;
+                *implementations
+                    .entry((group.is_static, &group.name))
+                    .or_default() += 1;
             }
         }
 
         for group in &class.method_groups {
             if implementations
-                .get(group.name.as_str())
+                .get(&(group.is_static, group.name.as_str()))
                 .copied()
                 .unwrap_or(0)
                 > 1
@@ -345,6 +347,9 @@ fn class_constructor_signatures(class: &ClassDeclaration) -> Vec<FunctionSignatu
 fn class_instance_type(class: &ClassDeclaration) -> Type {
     let mut fields = Vec::new();
     for group in &class.method_groups {
+        if group.is_static {
+            continue;
+        }
         let members = group.signature_member_indices.iter().copied().chain(
             group
                 .signature_member_indices
