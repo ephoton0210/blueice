@@ -180,69 +180,11 @@ impl ModuleChecker<'_> {
             .collect::<Vec<_>>();
 
         for (_, constructor) in &constructors {
-            let mut scope = self.values.clone();
-            for (index, parameter) in constructor.parameters.iter().enumerate() {
-                if parameter.rest && index + 1 != constructor.parameters.len() {
-                    self.type_error(
-                        &parameter.span,
-                        "a rest parameter must be last".to_string(),
-                        DiagnosticCode::TypeMismatch,
-                    );
-                }
-                if parameter.rest && parameter.optional {
-                    self.type_error(
-                        &parameter.span,
-                        "a rest parameter cannot be optional or have a default initializer"
-                            .to_string(),
-                        DiagnosticCode::TypeMismatch,
-                    );
-                }
-                if parameter.rest
-                    && parameter
-                        .annotation
-                        .as_ref()
-                        .is_some_and(|annotation| !matches!(annotation, Type::Array(_)))
-                {
-                    self.type_error(
-                        &parameter.span,
-                        "the bounded rest-parameter rule requires an array annotation".to_string(),
-                        DiagnosticCode::TypeMismatch,
-                    );
-                }
-                if let Some(annotation) = &parameter.annotation {
-                    self.check_type(annotation, &parameter.span);
-                }
-                if let Some(default) = &parameter.default {
-                    if constructor.body.is_none() {
-                        self.type_error(
-                            &parameter.span,
-                            "a constructor overload signature cannot have a default initializer"
-                                .to_string(),
-                            DiagnosticCode::TypeMismatch,
-                        );
-                    } else {
-                        self.check_direct_runtime_expression(default, &scope, &parameter.span);
-                        let actual = self.infer_expression(default, &scope);
-                        let expected = parameter.annotation.clone().unwrap_or(Type::Unknown);
-                        if !self.is_assignable_bounded(&actual, &expected, &parameter.span) {
-                            self.type_error(
-                                &parameter.span,
-                                format!(
-                                    "default initializer has type `{}`, which is not assignable to parameter `{}` of type `{}`",
-                                    type_label(&actual),
-                                    parameter.name,
-                                    type_label(&expected)
-                                ),
-                                DiagnosticCode::TypeMismatch,
-                            );
-                        }
-                    }
-                }
-                scope.insert(
-                    parameter.name.clone(),
-                    parameter.annotation.clone().unwrap_or(Type::Unknown),
-                );
-            }
+            self.validate_class_parameters(
+                &constructor.parameters,
+                constructor.body.is_some(),
+                "constructor",
+            );
         }
 
         if implementations.len() > 1 {
@@ -284,6 +226,13 @@ impl ModuleChecker<'_> {
                 );
                 continue;
             }
+            if signature
+                .parameters
+                .iter()
+                .any(|parameter| parameter.default.is_some())
+            {
+                continue;
+            }
             match class_constructor_overload_is_compatible(
                 signature,
                 implementation,
@@ -308,6 +257,70 @@ impl ModuleChecker<'_> {
         }
     }
 
+    fn validate_class_parameters(&mut self, parameters: &[Parameter], has_body: bool, kind: &str) {
+        let mut scope = self.values.clone();
+        for (index, parameter) in parameters.iter().enumerate() {
+            if parameter.rest && index + 1 != parameters.len() {
+                self.type_error(
+                    &parameter.span,
+                    "a rest parameter must be last".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+            if parameter.rest && parameter.optional {
+                self.type_error(
+                    &parameter.span,
+                    "a rest parameter cannot be optional or have a default initializer".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+            if parameter.rest
+                && parameter
+                    .annotation
+                    .as_ref()
+                    .is_some_and(|annotation| !matches!(annotation, Type::Array(_)))
+            {
+                self.type_error(
+                    &parameter.span,
+                    "the bounded rest-parameter rule requires an array annotation".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+            if let Some(annotation) = &parameter.annotation {
+                self.check_type(annotation, &parameter.span);
+            }
+            if let Some(default) = &parameter.default {
+                if !has_body {
+                    self.type_error(
+                        &parameter.span,
+                        format!("a {kind} overload signature cannot have a default initializer"),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                } else {
+                    self.check_direct_runtime_expression(default, &scope, &parameter.span);
+                    let actual = self.infer_expression(default, &scope);
+                    let expected = parameter.annotation.clone().unwrap_or(Type::Unknown);
+                    if !self.is_assignable_bounded(&actual, &expected, &parameter.span) {
+                        self.type_error(
+                            &parameter.span,
+                            format!(
+                                "default initializer has type `{}`, which is not assignable to parameter `{}` of type `{}`",
+                                type_label(&actual),
+                                parameter.name,
+                                type_label(&expected)
+                            ),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                    }
+                }
+            }
+            scope.insert(
+                parameter.name.clone(),
+                parameter.annotation.clone().unwrap_or(Type::Unknown),
+            );
+        }
+    }
+
     pub(super) fn check_class_constructor_bodies(&mut self, class: &ClassDeclaration) {
         let instance_type = class_instance_type(class);
         for constructor in class
@@ -318,30 +331,48 @@ impl ModuleChecker<'_> {
             let Some(body) = &constructor.body else {
                 continue;
             };
-            let mut scope = self.values.clone();
-            for parameter in &constructor.parameters {
-                let value = parameter
-                    .annotation
-                    .clone()
-                    .or_else(|| {
-                        parameter
-                            .default
-                            .as_ref()
-                            .map(|tokens| self.infer_expression(tokens, &scope))
-                    })
-                    .unwrap_or(Type::Unknown);
-                scope.insert(parameter.name.clone(), value);
-            }
-            self.check_class_constructor_body_items(body, &scope, class, &instance_type);
+            let scope = self.class_body_parameter_scope(&constructor.parameters);
+            self.check_class_body_items(body, &scope, Some((&class.name, &instance_type)));
         }
     }
 
-    fn check_class_constructor_body_items(
+    pub(super) fn check_class_method_bodies(&mut self, class: &ClassDeclaration) {
+        for method in class
+            .members
+            .iter()
+            .filter_map(|member| member.method.as_ref())
+        {
+            self.validate_class_parameters(&method.parameters, method.body.is_some(), "method");
+            if let Some(body) = &method.body {
+                let scope = self.class_body_parameter_scope(&method.parameters);
+                self.check_class_body_items(body, &scope, None);
+            }
+        }
+    }
+
+    fn class_body_parameter_scope(&self, parameters: &[Parameter]) -> BTreeMap<String, Type> {
+        let mut scope = self.values.clone();
+        for parameter in parameters {
+            let value = parameter
+                .annotation
+                .clone()
+                .or_else(|| {
+                    parameter
+                        .default
+                        .as_ref()
+                        .map(|tokens| self.infer_expression(tokens, &scope))
+                })
+                .unwrap_or(Type::Unknown);
+            scope.insert(parameter.name.clone(), value);
+        }
+        scope
+    }
+
+    fn check_class_body_items(
         &mut self,
         items: &[FunctionBodyItem],
         scope: &BTreeMap<String, Type>,
-        class: &ClassDeclaration,
-        instance_type: &Type,
+        constructor_return: Option<(&str, &Type)>,
     ) {
         let mut scope = scope.clone();
         for item in items {
@@ -363,6 +394,9 @@ impl ModuleChecker<'_> {
                         continue;
                     }
                     self.check_direct_runtime_expression(tokens, &scope, span);
+                    let Some((class_name, instance_type)) = constructor_return else {
+                        continue;
+                    };
                     let actual = self.infer_expression(tokens, &scope);
                     let primitive = Type::Union(vec![
                         Type::Null,
@@ -379,48 +413,32 @@ impl ModuleChecker<'_> {
                             format!(
                                 "constructor return type `{}` is not assignable to class `{}`",
                                 type_label(&actual),
-                                class.name
+                                class_name
                             ),
                             DiagnosticCode::ReturnTypeMismatch,
                         );
                     }
                 }
                 FunctionBodyItem::If(statement) => {
-                    self.check_class_constructor_if(statement, &scope, class, instance_type)
+                    self.check_class_body_if(statement, &scope, constructor_return)
                 }
                 FunctionBodyItem::While(statement) => {
                     self.check_direct_runtime_expression(&statement.test, &scope, &statement.span);
-                    self.check_class_constructor_body_items(
-                        &statement.body,
-                        &scope,
-                        class,
-                        instance_type,
-                    );
+                    self.check_class_body_items(&statement.body, &scope, constructor_return);
                 }
                 FunctionBodyItem::Try(statement) => {
-                    self.check_class_constructor_body_items(
-                        &statement.block,
-                        &scope,
-                        class,
-                        instance_type,
-                    );
+                    self.check_class_body_items(&statement.block, &scope, constructor_return);
                     if let Some(handler) = &statement.handler {
                         let mut catch_scope = scope.clone();
                         catch_scope.insert(handler.binding.clone(), Type::Unknown);
-                        self.check_class_constructor_body_items(
+                        self.check_class_body_items(
                             &handler.body,
                             &catch_scope,
-                            class,
-                            instance_type,
+                            constructor_return,
                         );
                     }
                     if let Some(finalizer) = &statement.finalizer {
-                        self.check_class_constructor_body_items(
-                            finalizer,
-                            &scope,
-                            class,
-                            instance_type,
-                        );
+                        self.check_class_body_items(finalizer, &scope, constructor_return);
                     }
                 }
                 FunctionBodyItem::Opaque(_) => {}
@@ -428,21 +446,20 @@ impl ModuleChecker<'_> {
         }
     }
 
-    fn check_class_constructor_if(
+    fn check_class_body_if(
         &mut self,
         statement: &FunctionIfStatement,
         scope: &BTreeMap<String, Type>,
-        class: &ClassDeclaration,
-        instance_type: &Type,
+        constructor_return: Option<(&str, &Type)>,
     ) {
         self.check_direct_runtime_expression(&statement.test, scope, &statement.span);
-        self.check_class_constructor_body_items(&statement.consequent, scope, class, instance_type);
+        self.check_class_body_items(&statement.consequent, scope, constructor_return);
         match &statement.alternate {
             Some(FunctionElseBranch::Braced(body)) => {
-                self.check_class_constructor_body_items(body, scope, class, instance_type);
+                self.check_class_body_items(body, scope, constructor_return);
             }
             Some(FunctionElseBranch::ElseIf(branch)) => {
-                self.check_class_constructor_if(branch, scope, class, instance_type);
+                self.check_class_body_if(branch, scope, constructor_return);
             }
             None => {}
         }
@@ -502,6 +519,13 @@ impl ModuleChecker<'_> {
                     .method
                     .as_ref()
                     .expect("method group signature is parsed");
+                if signature
+                    .parameters
+                    .iter()
+                    .any(|parameter| parameter.default.is_some())
+                {
+                    continue;
+                }
                 match class_method_overload_is_compatible(
                     signature,
                     implementation,

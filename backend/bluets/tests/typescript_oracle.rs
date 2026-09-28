@@ -1207,6 +1207,55 @@ fn pinned_class_constructor_bodies_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_class_method_body_scopes_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "typed-scopes",
+            include_str!("fixtures/typescript_oracle/class-method-body-scopes/main.ts"),
+            &[],
+        ),
+        (
+            "instance-local",
+            include_str!(
+                "fixtures/typescript_oracle/class-method-body-invalid-instance-local/main.ts"
+            ),
+            &[(7, "TS2322")],
+        ),
+        (
+            "static-local",
+            include_str!(
+                "fixtures/typescript_oracle/class-method-body-invalid-static-local/main.ts"
+            ),
+            &[(7, "TS2322")],
+        ),
+        (
+            "invalid-call",
+            include_str!("fixtures/typescript_oracle/class-method-body-invalid-call/main.ts"),
+            &[(7, "TS2345")],
+        ),
+        (
+            "unknown-parameter",
+            include_str!("fixtures/typescript_oracle/class-method-body-unknown-parameter/main.ts"),
+            &[(6, "TS2304")],
+        ),
+        (
+            "invalid-default",
+            include_str!("fixtures/typescript_oracle/class-method-body-invalid-default/main.ts"),
+            &[(6, "TS2322")],
+        ),
+        (
+            "overload-default",
+            include_str!("fixtures/typescript_oracle/class-method-body-overload-default/main.ts"),
+            &[(6, "TS2371")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

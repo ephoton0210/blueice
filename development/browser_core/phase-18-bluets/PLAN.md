@@ -5355,6 +5355,24 @@ TS2741, and TS2409 diagnostic lines. BlueTS, bridge, and full workspace
 suites, workspace all-target Clippy, rustfmt, and whitespace checks pass with
 the reused 12 GiB Cargo target. Method-body checking follows in J.3.1.3.3.3.
 
+### J.3.1.3.3.3.1 Method parameters and body scopes
+
+Instance and static methods now validate every parameter annotation, bounded
+rest form, and default initializer; overload signatures reject defaults.
+Constructor and method bodies share one source-ordered structured walker,
+which checks typed local declarations, expression statements, calls, throws,
+and nested branch/loop/catch scopes. Method return expressions receive runtime
+checks here; declared return compatibility and fallthrough are the next leaf.
+An invalid overload-signature default is diagnosed at its parameter span
+without a redundant overload-compatibility error. Class output stays refused.
+
+Public checked-compile coverage checks accepted instance/static typed scopes
+and prior-parameter defaults, rejected locals, calls, parameter types and
+defaults, exact source spans, and no artifact. Seven pinned TypeScript 5.9.3
+`--noEmit` cases agree on acceptance and TS2322, TS2345, TS2304, and TS2371
+lines. BlueTS, bridge, and full workspace suites, workspace all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

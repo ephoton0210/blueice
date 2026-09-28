@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.3.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.3.3.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1096,6 +1096,21 @@ exists. A passed first form does not close its whole feature family.
           reused 12 GiB Cargo target.
         - [ ] **J.3.1.3.3.3** Check method body parameters, locals, and
           declared returns on both instance and static sides.
+          - [x] **J.3.1.3.3.3.1** Validate method parameter annotations and
+            defaults, then check source-ordered local scopes and calls in
+            instance and static bodies against pinned TypeScript. Constructor
+            and method bodies now share the same structured walker. Method
+            signatures validate annotations and reject defaults; implementations
+            check defaults, local declarations, runtime calls, and nested
+            body expressions through typed scopes. Invalid signature defaults
+            do not cascade into overload incompatibility. Public tests check
+            instance/static spans and no output; seven pinned TypeScript 5.9.3
+            `--noEmit` cases agree on TS2322/TS2345/TS2304/TS2371 lines.
+            BlueTS, bridge, and full workspace tests, all-target Clippy,
+            rustfmt, and whitespace checks pass with the reused 12 GiB target.
+          - [ ] **J.3.1.3.3.3.2** Validate method return annotations and
+            structured return/fallthrough paths on both sides against pinned
+            TypeScript, including overload implementation bodies.
         - [ ] **J.3.1.3.3.4** Resolve bounded `this` types in class bodies
           and select instance/static method overload calls with return
           inference and pinned-oracle diagnostics.

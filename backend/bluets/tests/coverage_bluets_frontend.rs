@@ -572,6 +572,74 @@ fn constructor_bodies_use_typed_scopes_and_check_object_returns() {
 }
 
 #[test]
+fn class_method_parameters_and_bodies_use_typed_scopes_on_both_sides() {
+    let accepted = compile_with_helper(include_str!(
+        "fixtures/typescript_oracle/class-method-body-scopes/main.ts"
+    ));
+    assert!(accepted.output.is_none());
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, code, expected_span) in [
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-method-body-invalid-instance-local/main.ts"
+            ),
+            DiagnosticCode::TypeMismatch,
+            "const wrong: string = value;",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-method-body-invalid-static-local/main.ts"
+            ),
+            DiagnosticCode::TypeMismatch,
+            "const wrong: string = value;",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-method-body-invalid-call/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "take(value);",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-method-body-unknown-parameter/main.ts"),
+            DiagnosticCode::UnknownType,
+            "value: Missing",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-method-body-invalid-default/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "value: number = 'bad'",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-method-body-overload-default/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "value: number = 1",
+        ),
+    ] {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert!(!failures.is_empty(), "{source}");
+        assert_eq!(failures[0].code, code, "{failures:#?}");
+        assert_eq!(
+            &source[failures[0].span.start..failures[0].span.end],
+            expected_span,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
 fn class_construction_scan_obeys_the_type_expansion_budget() {
     let source =
         "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";
