@@ -27,12 +27,15 @@ pub(super) fn expand_concrete_tuple_spreads(
             expanded.push(element.clone());
             continue;
         }
+        if let Type::Tuple(items) = &element.annotation {
+            expanded.extend(expand_concrete_tuple_spreads(
+                items, aliases, active, budget,
+            )?);
+            continue;
+        }
         let Type::Named { name, arguments } = &element.annotation else {
             return Err(TupleSpreadError::Unsupported);
         };
-        if !arguments.is_empty() {
-            return Err(TupleSpreadError::Unsupported);
-        }
         if !active.insert(name.clone()) {
             return Err(TupleSpreadError::Cyclic);
         }
@@ -45,27 +48,41 @@ pub(super) fn expand_concrete_tuple_spreads(
                 kind: TypeDefinitionKind::Alias,
                 parameters,
                 value,
-            }) if parameters.is_empty() => match value {
-                Type::Tuple(items) => expand_concrete_tuple_spreads(items, aliases, active, budget),
-                Type::Array(_) => Ok(vec![crate::parser::TupleTypeElement {
-                    annotation: value.clone(),
-                    optional: false,
-                    label: None,
-                    rest: true,
-                }]),
-                Type::Named { .. } => expand_concrete_tuple_spreads(
-                    &[crate::parser::TupleTypeElement {
-                        annotation: value.clone(),
-                        optional: false,
-                        label: None,
-                        rest: true,
-                    }],
-                    aliases,
-                    active,
-                    budget,
-                ),
-                _ => Err(TupleSpreadError::Unsupported),
-            },
+            }) => {
+                let specialized = complete_type_arguments(parameters, arguments).map(|completed| {
+                    let substitutions = parameters
+                        .iter()
+                        .map(|parameter| parameter.name.clone())
+                        .zip(completed)
+                        .collect();
+                    substitute_type(value, &substitutions)
+                });
+                match specialized {
+                    Some(Type::Tuple(items)) => {
+                        expand_concrete_tuple_spreads(&items, aliases, active, budget)
+                    }
+                    Some(annotation @ Type::Array(_)) => {
+                        Ok(vec![crate::parser::TupleTypeElement {
+                            annotation,
+                            optional: false,
+                            label: None,
+                            rest: true,
+                        }])
+                    }
+                    Some(annotation @ Type::Named { .. }) => expand_concrete_tuple_spreads(
+                        &[crate::parser::TupleTypeElement {
+                            annotation,
+                            optional: false,
+                            label: None,
+                            rest: true,
+                        }],
+                        aliases,
+                        active,
+                        budget,
+                    ),
+                    _ => Err(TupleSpreadError::Unsupported),
+                }
+            }
             Some(_) => Err(TupleSpreadError::Unsupported),
             None => Err(TupleSpreadError::Unresolved),
         };
@@ -94,10 +111,9 @@ pub(super) fn is_assignable(
     budget: &mut TypeExpansionBudget,
 ) -> bool {
     if let Type::Tuple(elements) = actual {
-        if elements
-            .iter()
-            .any(|element| element.rest && matches!(element.annotation, Type::Named { .. }))
-        {
+        if elements.iter().any(|element| {
+            element.rest && matches!(element.annotation, Type::Named { .. } | Type::Tuple(_))
+        }) {
             let Ok(expanded) =
                 expand_concrete_tuple_spreads(elements, aliases, &mut HashSet::new(), budget)
             else {
@@ -107,10 +123,9 @@ pub(super) fn is_assignable(
         }
     }
     if let Type::Tuple(elements) = expected {
-        if elements
-            .iter()
-            .any(|element| element.rest && matches!(element.annotation, Type::Named { .. }))
-        {
+        if elements.iter().any(|element| {
+            element.rest && matches!(element.annotation, Type::Named { .. } | Type::Tuple(_))
+        }) {
             let Ok(expanded) =
                 expand_concrete_tuple_spreads(elements, aliases, &mut HashSet::new(), budget)
             else {

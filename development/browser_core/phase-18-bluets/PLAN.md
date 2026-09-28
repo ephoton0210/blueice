@@ -6382,6 +6382,27 @@ diagnostic lines. BlueTS, bridge, and full workspace tests, all-target Clippy,
 rustfmt, and whitespace checks pass with the reused 12 GiB target. Concrete
 generic specialization is next.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.6.3 Concrete generic tuple spread specialization
+
+Generic tuple alias definitions may contain a rest type parameter constrained
+to an array or tuple. The checker validates the template's shape through its
+constraint but retains the parameter in the declared type. At a concrete use,
+it completes default type arguments, substitutes them through nested generic
+aliases, and expands a finite tuple argument into positions. An array
+argument remains one symbolic tail, including when a required suffix follows
+it. Each alias and produced position consumes the existing expansion budget.
+
+Public checked-compile cases cover direct and nested alias instantiation,
+finite tuple and array arguments, defaulted arguments, tuple constraints,
+preserved declaration spelling, and rejected arity, element, tail, and
+constraint mismatches. Unconstrained parameters and aliases that resolve to
+non-tuple/non-array types still fail before output. Seven pinned TypeScript
+5.9.3 `--noEmit` cases agree on acceptance and TS2322/TS2344/TS2574
+diagnostic lines. BlueTS, bridge, and full workspace tests, all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB target. Class
+method rest parameters with these named spreads remain explicitly rejected
+until the next override-comparison leaf.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

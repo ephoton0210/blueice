@@ -4935,6 +4935,75 @@ fn concrete_named_tuple_spreads_check_and_emit_at_public_boundary() {
 }
 
 #[test]
+fn concrete_generic_tuple_spreads_specialize_at_public_boundary() {
+    let source = include_str!("fixtures/typescript_oracle/tuple-spread-generic-valid/main.ts");
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            declaration: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    let declaration = accepted.output.unwrap().artifacts[ENTRY]
+        .declaration
+        .clone()
+        .unwrap();
+    assert!(
+        declaration.contains("Prefix<T extends unknown[]> = [number, ...T]"),
+        "{declaration}"
+    );
+    assert!(
+        declaration.contains("Tail<T extends string[] = string[]> = [boolean, ...T, number]"),
+        "{declaration}"
+    );
+
+    for source in [
+        include_str!("fixtures/typescript_oracle/tuple-spread-generic-arity-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-spread-generic-type-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-spread-generic-constraint-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-spread-generic-tail-error/main.ts"),
+    ] {
+        let rejected = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(
+            rejected.output.is_none(),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+        assert!(
+            rejected.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::TypeMismatch && diagnostic.span.module == ENTRY
+            }),
+            "{:#?}",
+            rejected.diagnostics
+        );
+    }
+    for source in [
+        include_str!("fixtures/typescript_oracle/tuple-spread-generic-nontuple-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-spread-generic-unconstrained-error/main.ts"),
+    ] {
+        let rejected = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(rejected.output.is_none());
+        assert!(rejected.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::UnsupportedSyntax && diagnostic.span.module == ENTRY
+        }));
+    }
+}
+
+#[test]
 fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
     let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");
     let accepted = compile(

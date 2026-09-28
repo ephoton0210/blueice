@@ -54,6 +54,7 @@ impl<'a> ModuleChecker<'a> {
             type_only_classes: BTreeSet::new(),
             function_implementations: BTreeSet::new(),
             type_parameters: BTreeSet::new(),
+            allowed_tuple_spread_parameters: BTreeMap::new(),
             max_type_expansions,
             strict_catch_unknown: false,
             record_spread_inference_failure: Cell::new(None),
@@ -574,11 +575,26 @@ impl<'a> ModuleChecker<'a> {
         for declaration in &self.module.declarations {
             match declaration {
                 Declaration::TypeAlias(alias) => {
+                    let previous_spreads = self.allowed_tuple_spread_parameters.clone();
+                    self.allowed_tuple_spread_parameters = alias
+                        .type_parameters
+                        .iter()
+                        .filter(|parameter| {
+                            matches!(parameter.constraint, Some(Type::Array(_) | Type::Tuple(_)))
+                        })
+                        .map(|parameter| {
+                            (
+                                parameter.name.clone(),
+                                parameter.constraint.clone().expect("filtered constraint"),
+                            )
+                        })
+                        .collect();
                     self.check_type_with_parameters(
                         &alias.value,
                         &alias.span,
                         &alias.type_parameters,
                     );
+                    self.allowed_tuple_spread_parameters = previous_spreads;
                 }
                 Declaration::Interface(interface) => {
                     for parent in &interface.heritage {
@@ -874,9 +890,16 @@ impl<'a> ModuleChecker<'a> {
                     .iter()
                     .any(|element| element.rest && matches!(element.annotation, Type::Named { .. }))
                 {
+                    let specialized = substitute_type(
+                        &Type::Tuple(values.clone()),
+                        &self.allowed_tuple_spread_parameters,
+                    );
+                    let Type::Tuple(specialized) = specialized else {
+                        unreachable!("tuple substitution retains a tuple")
+                    };
                     let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
                     if let Err(error) = expand_concrete_tuple_spreads(
-                        values,
+                        &specialized,
                         &self.types,
                         &mut HashSet::new(),
                         &mut budget,
@@ -1014,7 +1037,15 @@ impl<'a> ModuleChecker<'a> {
                 .get(&parameter.name)
                 .expect("completed generic arguments contain every parameter");
             let expected = substitute_type(constraint, &substitutions);
-            if !self.is_assignable_bounded(actual, &expected, span) {
+            let actual_bound = match actual {
+                Type::Named { name, arguments } if arguments.is_empty() => self
+                    .allowed_tuple_spread_parameters
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| actual.clone()),
+                _ => actual.clone(),
+            };
+            if !self.is_assignable_bounded(&actual_bound, &expected, span) {
                 self.type_error(
                     span,
                     format!(

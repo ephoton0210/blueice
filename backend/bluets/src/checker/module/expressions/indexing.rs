@@ -19,10 +19,9 @@ pub(super) fn indexed_value_type(
     match value {
         Type::Array(element) => (**element).clone(),
         Type::Tuple(values) => {
-            if values
-                .iter()
-                .any(|element| element.rest && matches!(element.annotation, Type::Named { .. }))
-            {
+            if values.iter().any(|element| {
+                element.rest && matches!(element.annotation, Type::Named { .. } | Type::Tuple(_))
+            }) {
                 let Ok(expanded) =
                     expand_concrete_tuple_spreads(values, aliases, &mut HashSet::new(), budget)
                 else {

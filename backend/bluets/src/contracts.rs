@@ -457,6 +457,15 @@ fn expand_contract_tuple_spreads(
             expanded.push(value.clone());
             continue;
         }
+        if let Type::Tuple(items) = &value.annotation {
+            expanded.extend(expand_contract_tuple_spreads(
+                items,
+                named_types,
+                active,
+                remaining,
+            )?);
+            continue;
+        }
         let Type::Named { name, arguments } = &value.annotation else {
             return Err(ContractError {
                 message: "tuple spread contract requires a concrete tuple or array type"

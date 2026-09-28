@@ -3273,6 +3273,55 @@ fn pinned_concrete_named_tuple_spreads_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_concrete_generic_tuple_spreads_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-spread-generic-valid/main.ts"),
+            &[],
+        ),
+        (
+            "arity-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-generic-arity-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-generic-type-error/main.ts"),
+            &[(5, "TS2322"), (5, "TS2322")],
+        ),
+        (
+            "constraint-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-spread-generic-constraint-error/main.ts"
+            ),
+            &[(5, "TS2344")],
+        ),
+        (
+            "tail-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-generic-tail-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "nontuple-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-generic-nontuple-error/main.ts"),
+            &[(5, "TS2574")],
+        ),
+        (
+            "unconstrained-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-spread-generic-unconstrained-error/main.ts"
+            ),
+            &[(4, "TS2574")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

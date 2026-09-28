@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.6.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.6.4.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1852,10 +1852,26 @@ exists. A passed first form does not close its whole feature family.
                           forms and TS2322 lines. BlueTS, bridge, and full
                           workspace tests, all-target Clippy, rustfmt, and
                           whitespace checks pass with the reused 12 GiB target.
-                        - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.3** Specialize
+                        - [x] **J.3.1.3.4.4.2.3.2.3.3.3.6.3** Specialize
                           concrete generic tuple and array spreads while
                           preserving one symbolic array tail and bounded
-                          type expansion.
+                          type expansion. The checker validates array- or
+                          tuple-constrained generic alias templates using
+                          their constraints for shape only, then substitutes
+                          concrete type arguments and defaults at use sites.
+                          Finite tuple arguments splice their positions;
+                          array arguments keep one symbolic tail and required
+                          suffix. Nested generic aliases specialize within
+                          the existing expansion budget. Public cases cover
+                          accepted direct, defaulted, nested, finite, and
+                          array-tail uses; wrong arity, element types, and
+                          constraints; and rejection of unconstrained or
+                          non-tuple spreads without output. Seven pinned
+                          TypeScript 5.9.3 `--noEmit` cases agree on
+                          acceptance and TS2322/TS2344/TS2574 lines.
+                          BlueTS, bridge, and full workspace tests,
+                          all-target Clippy, rustfmt, and whitespace checks
+                          pass with the reused 12 GiB target.
                         - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.4** Compare
                           expanded concrete tuple spread rest parameters in
                           class overrides in both directions.
