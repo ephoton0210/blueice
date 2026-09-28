@@ -3322,6 +3322,42 @@ fn pinned_concrete_generic_tuple_spreads_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_named_tuple_spread_overrides_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 4] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-override-named-spread-valid/main.ts"),
+            &[],
+        ),
+        (
+            "derived-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-named-spread-derived-error/main.ts"
+            ),
+            &[(6, "TS2416")],
+        ),
+        (
+            "inherited-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-named-spread-inherited-error/main.ts"
+            ),
+            &[(7, "TS2416")],
+        ),
+        (
+            "static-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-named-spread-static-error/main.ts"
+            ),
+            &[(6, "TS2417")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

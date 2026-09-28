@@ -21,6 +21,42 @@ enum ClassBodyReturnRule<'a> {
     },
 }
 
+fn specialize_class_rest_annotation(
+    annotation: &Type,
+    types: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> Result<Type, TupleSpreadError> {
+    let named = matches!(annotation, Type::Named { .. });
+    let mut resolved = annotation.clone();
+    let mut visited = HashSet::new();
+    while matches!(resolved, Type::Named { .. }) {
+        resolved = instantiate_named(&resolved, types, &mut visited, budget, "class rest").ok_or(
+            if budget.exhausted {
+                TupleSpreadError::Exhausted
+            } else {
+                TupleSpreadError::Unresolved
+            },
+        )?;
+    }
+    match resolved {
+        Type::Tuple(elements)
+            if named
+                || elements.iter().any(|element| {
+                    element.rest && !matches!(element.annotation, Type::Array(_))
+                }) =>
+        {
+            Ok(Type::Tuple(expand_concrete_tuple_spreads(
+                &elements,
+                types,
+                &mut HashSet::new(),
+                budget,
+            )?))
+        }
+        Type::Tuple(_) | Type::Array(_) => Ok(resolved),
+        _ => Err(TupleSpreadError::Unsupported),
+    }
+}
+
 impl ModuleChecker<'_> {
     pub(in crate::checker::module) fn check_type_only_class_value_uses(
         &mut self,
@@ -547,7 +583,10 @@ impl ModuleChecker<'_> {
             }
             if parameter.rest
                 && parameter.annotation.as_ref().is_some_and(|annotation| {
-                    !matches!(annotation, Type::Array(_) | Type::Tuple(_))
+                    !matches!(
+                        annotation,
+                        Type::Array(_) | Type::Tuple(_) | Type::Named { .. }
+                    )
                 })
             {
                 self.type_error(
@@ -556,15 +595,27 @@ impl ModuleChecker<'_> {
                     DiagnosticCode::TypeMismatch,
                 );
             }
-            if parameter.rest
-                && matches!(parameter.annotation.as_ref(), Some(Type::Tuple(elements)) if elements.iter().any(|element| element.rest && matches!(element.annotation, Type::Named { .. })))
-            {
-                self.type_error(
-                    &parameter.span,
-                    "class tuple rest parameter with a named spread awaits bounded specialization"
-                        .to_string(),
-                    DiagnosticCode::UnsupportedSyntax,
-                );
+            if parameter.rest {
+                if let Some(annotation @ (Type::Tuple(_) | Type::Named { .. })) =
+                    parameter.annotation.as_ref()
+                {
+                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                    if let Err(error) =
+                        specialize_class_rest_annotation(annotation, &self.types, &mut budget)
+                    {
+                        let code = if error == TupleSpreadError::Exhausted {
+                            DiagnosticCode::ResourceLimit
+                        } else {
+                            DiagnosticCode::UnsupportedSyntax
+                        };
+                        self.type_error(
+                            &parameter.span,
+                            "class tuple rest annotation cannot be specialized within the type budget"
+                                .to_string(),
+                            code,
+                        );
+                    }
+                }
             }
             if let Some(annotation) = &parameter.annotation {
                 self.check_type(annotation, &parameter.span);

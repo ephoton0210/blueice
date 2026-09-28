@@ -101,22 +101,38 @@ impl ModuleChecker<'_> {
             };
             // Align fixed positions and rest elements where the signatures
             // have a supported rest shape.
-            if derived
-                .parameters
-                .iter()
-                .chain(inherited.parameters)
-                .any(|parameter| {
-                    matches!(parameter.annotation.as_ref(), Some(Type::Tuple(elements)) if elements.iter().any(|element| element.rest && matches!(element.annotation, Type::Named { .. })))
-                })
-            {
+            let mut specialization_budget = TypeExpansionBudget::new(self.max_type_expansions);
+            let (Ok(derived_parameters), Ok(inherited_parameters)) = (
+                specialize_class_rest_parameters(
+                    &derived.parameters,
+                    &self.types,
+                    &mut specialization_budget,
+                ),
+                specialize_class_rest_parameters(
+                    inherited.parameters,
+                    &self.types,
+                    &mut specialization_budget,
+                ),
+            ) else {
                 self.type_error(
                     &derived.span,
-                    "class method override with a named tuple spread awaits bounded specialization"
+                    "class method rest annotations cannot be specialized within the type budget"
                         .to_string(),
-                    DiagnosticCode::UnsupportedSyntax,
+                    if specialization_budget.exhausted {
+                        DiagnosticCode::ResourceLimit
+                    } else {
+                        DiagnosticCode::UnsupportedSyntax
+                    },
                 );
                 continue;
-            }
+            };
+            let mut derived = derived.clone();
+            derived.parameters = derived_parameters;
+            let inherited = InheritedMethod {
+                base_name: inherited.base_name,
+                parameters: &inherited_parameters,
+                return_type: inherited.return_type,
+            };
             let Some(rest_shape) = rest_shape(&derived.parameters, inherited.parameters) else {
                 continue;
             };
@@ -1027,6 +1043,25 @@ impl ModuleChecker<'_> {
             }
         }
     }
+}
+
+fn specialize_class_rest_parameters(
+    parameters: &[Parameter],
+    types: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> Result<Vec<Parameter>, TupleSpreadError> {
+    let mut specialized = parameters.to_vec();
+    for parameter in &mut specialized {
+        if parameter.rest {
+            if let Some(annotation @ (Type::Tuple(_) | Type::Named { .. })) =
+                parameter.annotation.as_ref()
+            {
+                parameter.annotation =
+                    Some(specialize_class_rest_annotation(annotation, types, budget)?);
+            }
+        }
+    }
+    Ok(specialized)
 }
 
 fn nearest_inherited_method<'a>(

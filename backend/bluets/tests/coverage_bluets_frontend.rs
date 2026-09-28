@@ -5004,6 +5004,70 @@ fn concrete_generic_tuple_spreads_specialize_at_public_boundary() {
 }
 
 #[test]
+fn named_tuple_spread_class_overrides_compare_expanded_positions() {
+    let source =
+        include_str!("fixtures/typescript_oracle/class-override-named-spread-valid/main.ts");
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    );
+    assert!(accepted.output.is_none());
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for source in [
+        include_str!(
+            "fixtures/typescript_oracle/class-override-named-spread-derived-error/main.ts"
+        ),
+        include_str!(
+            "fixtures/typescript_oracle/class-override-named-spread-inherited-error/main.ts"
+        ),
+        include_str!("fixtures/typescript_oracle/class-override-named-spread-static-error/main.ts"),
+    ] {
+        let rejected = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::TypeMismatch && diagnostic.span.module == ENTRY
+            }),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    let bounded = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "type Trio = [number, string, boolean]; class Base { method(...args: Trio): void {} }",
+        )]),
+        CompilerOptions {
+            limits: CompilerLimits {
+                max_type_expansions: 2,
+                ..CompilerLimits::default()
+            },
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(bounded.output.is_none());
+    assert!(bounded
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::ResourceLimit));
+}
+
+#[test]
 fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
     let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");
     let accepted = compile(

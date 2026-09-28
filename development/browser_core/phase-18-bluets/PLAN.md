@@ -6403,6 +6403,27 @@ rustfmt, and whitespace checks pass with the reused 12 GiB target. Class
 method rest parameters with these named spreads remain explicitly rejected
 until the next override-comparison leaf.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.6.4 Concrete named spreads in class overrides
+
+Class rest parameter validation and inherited-method comparison now resolve a
+named alias or concrete generic instantiation to its tuple or array shape
+within the type-expansion budget. Finite named spreads contribute their
+expanded positions; an array alias remains one symbolic rest tail. Override
+arity and positional type checks reuse the existing fixed, trailing, and
+middle tuple relations after specialization. A failed or over-budget
+specialization reports a diagnostic instead of skipping the override check.
+
+Public checked-compile cases cover accepted instance overrides in both
+inheritance directions, static methods, concrete generic aliases, and an
+array-tail alias. Required arity, element, and static mismatches report a
+type diagnostic at the derived member; a small expansion budget rejects a
+large named rest. Class runtime emission remains outside this leaf, so the
+accepted fixture still has only the existing class-runtime unsupported
+diagnostics. Four pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance
+and TS2416/TS2417 diagnostic lines. BlueTS, bridge, and full workspace tests,
+all-target Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB
+target. Constrained symbolic generic tuple spreads are next.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
