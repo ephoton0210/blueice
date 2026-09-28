@@ -5620,6 +5620,19 @@ acceptance and TS2345/TS2322 lines. BlueTS, bridge, and full workspace
 tests, workspace all-target Clippy, rustfmt, and whitespace checks pass
 with the reused 12 GiB Cargo target.
 
+### J.3.1.3.4.3.4.2.2 Type-only inherited class re-export chains
+
+The existing class surface and type-only re-export fixed points already
+carry an imported-base derived class's inherited instance members through
+named aliases and star re-exports. A type-only import binds the resolved
+instance surface without publishing a runtime class value. The five-module
+public checked-compile regression verifies accepted inherited member calls,
+rejected arguments and selected results at original spans, and no output.
+Three pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+TS2345/TS2322 lines. BlueTS, bridge, and full workspace tests, workspace
+all-target Clippy, rustfmt, and whitespace checks pass with the reused
+12 GiB Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

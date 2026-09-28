@@ -49,6 +49,38 @@ fn compile_class_module_triplet(
     )
 }
 
+fn compile_imported_base_type_reexport(main: &str) -> blueice_bluets::Compilation {
+    compile(
+        ENTRY,
+        &MapLoader::from([
+            ModuleSource::new(ENTRY, main),
+            ModuleSource::new(
+                "memory:///second.ts",
+                include_str!(
+                    "fixtures/typescript_oracle/class-imported-base-type-reexport/second.ts"
+                ),
+            ),
+            ModuleSource::new(
+                "memory:///first.ts",
+                include_str!(
+                    "fixtures/typescript_oracle/class-imported-base-type-reexport/first.ts"
+                ),
+            ),
+            ModuleSource::new(
+                "memory:///box.ts",
+                include_str!("fixtures/typescript_oracle/class-imported-base-type-reexport/box.ts"),
+            ),
+            ModuleSource::new(
+                "memory:///base.ts",
+                include_str!(
+                    "fixtures/typescript_oracle/class-imported-base-type-reexport/base.ts"
+                ),
+            ),
+        ]),
+        CompilerOptions::default(),
+    )
+}
+
 fn diagnostics(source: &str) -> Vec<Diagnostic> {
     compile_with_helper(source).diagnostics
 }
@@ -1430,6 +1462,52 @@ fn exported_imported_base_derived_classes_retain_inherited_surfaces() {
         ),
     ] {
         let compilation = compile_class_module_triplet(main, direct_box, base);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+        assert_eq!(failures[0].span.module, ENTRY);
+        assert_eq!(
+            &main[failures[0].span.start..failures[0].span.end],
+            expected_span,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
+fn imported_base_derived_instance_surfaces_survive_type_reexport_chains() {
+    let accepted = compile_imported_base_type_reexport(include_str!(
+        "fixtures/typescript_oracle/class-imported-base-type-reexport/valid.ts"
+    ));
+    assert!(accepted.output.is_none());
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    for (main, expected_span) in [
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-imported-base-type-reexport/argument-error.ts"
+            ),
+            "child.label('wrong')",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-imported-base-type-reexport/result-error.ts"
+            ),
+            "const wrong: number = child.label(1);",
+        ),
+    ] {
+        let compilation = compile_imported_base_type_reexport(main);
         assert!(compilation.output.is_none());
         let failures = compilation
             .diagnostics

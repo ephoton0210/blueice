@@ -1861,6 +1861,99 @@ fn pinned_imported_base_derived_class_surfaces_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_imported_base_type_reexport_chain_matches_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    for (name, main, expected_error) in [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-imported-base-type-reexport/valid.ts"),
+            None,
+        ),
+        (
+            "argument-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-imported-base-type-reexport/argument-error.ts"
+            ),
+            Some((7, "TS2345")),
+        ),
+        (
+            "result-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-imported-base-type-reexport/result-error.ts"
+            ),
+            Some((7, "TS2322")),
+        ),
+    ] {
+        let temporary = TestDirectory::new();
+        let input = temporary.path().join("main.ts");
+        fs::write(&input, main).unwrap();
+        for (filename, source) in [
+            (
+                "second.ts",
+                include_str!(
+                    "fixtures/typescript_oracle/class-imported-base-type-reexport/second.ts"
+                ),
+            ),
+            (
+                "first.ts",
+                include_str!(
+                    "fixtures/typescript_oracle/class-imported-base-type-reexport/first.ts"
+                ),
+            ),
+            (
+                "box.ts",
+                include_str!("fixtures/typescript_oracle/class-imported-base-type-reexport/box.ts"),
+            ),
+            (
+                "base.ts",
+                include_str!(
+                    "fixtures/typescript_oracle/class-imported-base-type-reexport/base.ts"
+                ),
+            ),
+        ] {
+            fs::write(temporary.path().join(filename), source).unwrap();
+        }
+        let output = Command::new(&tsc)
+            .args([
+                "--target",
+                "ES2022",
+                "--module",
+                "ES2022",
+                "--strict",
+                "--pretty",
+                "false",
+                "--allowImportingTsExtensions",
+                "--noEmit",
+            ])
+            .arg(&input)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.success(),
+            expected_error.is_none(),
+            "{name}: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert_eq!(
+            typescript_diagnostic_lines(&output),
+            expected_error.map_or_else(Vec::new, |(line, _)| vec![line]),
+            "{name}"
+        );
+        if let Some((line, code)) = expected_error {
+            assert!(
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .any(|text| text.contains(&format!("({line},")) && text.contains(code)),
+                "{name}: missing {code} at line {line}"
+            );
+        }
+        assert_eq!(fs::read_dir(temporary.path()).unwrap().count(), 5);
+    }
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);
