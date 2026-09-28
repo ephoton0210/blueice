@@ -38,6 +38,7 @@ impl<'a> ModuleChecker<'a> {
             types: BTreeMap::new(),
             values: BTreeMap::new(),
             functions: BTreeMap::new(),
+            class_constructors: BTreeMap::new(),
             function_implementations: BTreeSet::new(),
             type_parameters: BTreeSet::new(),
             max_type_expansions,
@@ -749,6 +750,7 @@ impl<'a> ModuleChecker<'a> {
         if self.check_optional_property_read(tokens, scope, span) {
             return;
         }
+        self.check_class_constructions_in_expression(tokens, scope, span);
         self.check_function_call(tokens, scope, span);
         self.check_member_calls_in_expression(tokens, scope, span);
         self.check_direct_property_access(tokens, scope, span);

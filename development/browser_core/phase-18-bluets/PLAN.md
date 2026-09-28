@@ -5174,6 +5174,31 @@ checks corresponding diagnostics and exact duplicate identifier spans, and
 confirms no output. The BlueTS crate suite, workspace all-target Clippy,
 rustfmt, and whitespace checks pass with the reused compact Cargo target.
 
+### J.3.1.3.2.2 Bounded local class construction
+
+The checker now recognizes an exact `new LocalClass(...)` expression and
+infers the already-bound named instance type. A bounded scan also checks
+class construction nested in a supported expression such as a function-call
+argument. It selects declared constructor overload signatures when present,
+otherwise the implementation signature or the implicit zero-argument
+constructor. Argument count, primitive type, tuple spread, and type-expansion
+budgets use the existing function-call relation; a failure reports the
+original construction span. Eight pinned TypeScript 5.9.3 `--noEmit` cases
+cover accepted direct/overloaded calls, wrong argument and arity, an inferred
+instance-shape mismatch, and a nested invalid argument. The oracle's
+diagnostic parser now locates the source coordinate before the `error TS`
+marker, so parentheses in TypeScript diagnostic prose cannot hide a line.
+
+An inherited constructor may carry its parent's parameters. Heritage and
+`super` are J.3.1.3.4 work, so construction of a derived class remains
+checker-deferred while every class is still refused for output; a pinned
+accepted fixture prevents an invented zero-argument diagnostic. The public
+BlueTS test proves exact source spans, no artifact, and a bounded scan. The
+BlueTS and bridge crate suites, workspace all-target Clippy, rustfmt, and
+whitespace checks pass using the same compact target. J.3.1.3.2.3 must
+finish instance/static member lookup, direct class-call refusal, and
+closed-module class imports/exports.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

@@ -45,6 +45,14 @@ impl<'a> ModuleChecker<'a> {
             return Type::Unknown;
         }
         let tokens = strip_outer_parentheses(tokens);
+        if let Some(call) = constructor_call_parts(tokens) {
+            if self.class_constructors.contains_key(&call.callee.text) {
+                return Type::Named {
+                    name: call.callee.text.clone(),
+                    arguments: Vec::new(),
+                };
+            }
+        }
         if let Some((_, _, result)) = top_level_binary_parts(tokens, &[","], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {

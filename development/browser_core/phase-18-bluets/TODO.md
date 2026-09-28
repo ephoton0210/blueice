@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.2.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.2.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -956,13 +956,25 @@ exists. A passed first form does not close its whole feature family.
           all seven corresponding cases; every BlueTSC class still has no
           artifact. BlueTS crate tests, workspace all-target Clippy, rustfmt,
           and whitespace checks pass with the same compact Cargo target.
-        - [ ] **J.3.1.3.2.2** Check bounded `new Class(...)` construction and
+        - [x] **J.3.1.3.2.2** Check bounded `new Class(...)` construction and
           infer the instance side, including constructor argument errors,
-          original spans, and pinned-oracle cases.
+          original spans, and pinned-oracle cases. Local non-inherited classes
+          now select explicit constructor overload signatures or the implicit
+          zero-argument constructor, validate direct and nested calls, and
+          infer the named instance type for later assignments. Public tests
+          cover accepted calls, wrong argument and arity, inferred-shape
+          mismatch, exact call spans, and the scan's expansion budget. An
+          inherited constructor remains deferred to J.3.1.3.4, with an
+          accepted oracle case preventing a false zero-argument error. Eight
+          pinned TypeScript 5.9.3 `--noEmit` cases verify acceptance and
+          TS2345/TS2554/TS2741 diagnostic lines; BlueTSC still emits no
+          class artifact. BlueTS and bridge crate tests, workspace all-target
+          Clippy, rustfmt, and whitespace checks pass in one reused target.
         - [ ] **J.3.1.3.2.3** Check instance versus constructor-side member
           lookup and calls, including closed-module class exports/imports;
-          reject a method on the wrong side and compare accepted/rejected
-          cases with pinned TypeScript without admitting class output.
+          reject a method on the wrong side and a class value called without
+          `new`; compare accepted/rejected cases with pinned TypeScript
+          without admitting class output.
       - [ ] **J.3.1.3.3** Check constructor and method parameter, return,
         overload-call, body, and `this` types through the shared class IR.
       - [ ] **J.3.1.3.4** Check named inheritance, overrides, cycles, and

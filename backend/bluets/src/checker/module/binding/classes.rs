@@ -38,6 +38,13 @@ impl ModuleChecker<'_> {
         }
         self.values
             .insert(class.name.clone(), class_constructor_side_type(class));
+        self.class_constructors.insert(
+            class.name.clone(),
+            ClassConstructorBinding {
+                signatures: class_constructor_signatures(class),
+                inherited: class.extends_name.is_some(),
+            },
+        );
     }
 
     pub(super) fn validate_class_method_groups(&mut self, class: &ClassDeclaration) {
@@ -119,6 +126,155 @@ impl ModuleChecker<'_> {
             }
         }
     }
+
+    fn check_class_construction(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let Some(call) = constructor_call_parts(tokens) else {
+            return;
+        };
+        let Some(binding) = self.class_constructors.get(&call.callee.text) else {
+            return;
+        };
+        let call_span = SourceSpan::new(
+            span.module.clone(),
+            tokens.first().expect("constructor call has new").start,
+            tokens
+                .last()
+                .expect("constructor call has closing paren")
+                .end,
+        );
+        if binding.inherited {
+            // An omitted derived constructor inherits the parent signature.
+            // Heritage resolution and super calls belong to J.3.1.3.4;
+            // the class remains unconditionally refused until then.
+            return;
+        }
+        let arguments = split_call_arguments(call.arguments)
+            .expect("constructor call has a balanced argument list");
+        let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
+            self.type_error(
+                &call_span,
+                "a class constructor spread must have a fixed-length tuple type".to_string(),
+                DiagnosticCode::TypeMismatch,
+            );
+            return;
+        };
+        match self.select_function_signature(&binding.signatures, &actuals, None) {
+            Ok(Some(_)) => {}
+            Ok(None) => self.type_error(
+                &call_span,
+                format!(
+                    "no constructor of class {} accepts the supplied argument types",
+                    call.callee.text
+                ),
+                DiagnosticCode::TypeMismatch,
+            ),
+            Err(()) => self.type_error(
+                &call_span,
+                format!(
+                    "class constructor selection exceeds the {} generic-expansion limit",
+                    self.max_type_expansions
+                ),
+                DiagnosticCode::ResourceLimit,
+            ),
+        }
+    }
+
+    pub(in crate::checker::module) fn check_class_constructions_in_expression(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        if !tokens.iter().any(|token| token.is("new")) {
+            return;
+        }
+        let mut openings = Vec::new();
+        let mut closes = vec![None; tokens.len()];
+        for (index, token) in tokens.iter().enumerate() {
+            if token.is("(") {
+                openings.push(index);
+            } else if token.is(")") {
+                if let Some(opening) = openings.pop() {
+                    closes[opening] = Some(index);
+                }
+            }
+        }
+        let mut checked = 0usize;
+        for start in 0..tokens.len().saturating_sub(2) {
+            if !tokens[start].is("new")
+                || tokens[start + 1].kind != TokenKind::Identifier
+                || !tokens[start + 2].is("(")
+                || !self
+                    .class_constructors
+                    .contains_key(&tokens[start + 1].text)
+            {
+                continue;
+            }
+            let Some(end) = closes[start + 2] else {
+                continue;
+            };
+            checked += 1;
+            if checked > self.max_type_expansions {
+                self.type_error(
+                    span,
+                    format!(
+                        "class construction exceeds the {} generic-expansion limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                );
+                return;
+            }
+            self.check_class_construction(&tokens[start..=end], scope, span);
+        }
+    }
+}
+
+fn class_constructor_signatures(class: &ClassDeclaration) -> Vec<FunctionSignature> {
+    let constructors = class
+        .members
+        .iter()
+        .filter_map(|member| member.constructor.as_ref())
+        .collect::<Vec<_>>();
+    let overloads = constructors
+        .iter()
+        .copied()
+        .filter(|constructor| constructor.body.is_none())
+        .collect::<Vec<_>>();
+    let selected = if overloads.is_empty() {
+        constructors
+            .into_iter()
+            .filter(|constructor| constructor.body.is_some())
+            .collect::<Vec<_>>()
+    } else {
+        overloads
+    };
+    if selected.is_empty() {
+        return vec![FunctionSignature {
+            parameters: Vec::new(),
+            type_parameters: Vec::new(),
+            return_type: Type::Named {
+                name: class.name.clone(),
+                arguments: Vec::new(),
+            },
+        }];
+    }
+    selected
+        .into_iter()
+        .map(|constructor| FunctionSignature {
+            parameters: constructor.parameters.clone(),
+            type_parameters: Vec::new(),
+            return_type: Type::Named {
+                name: class.name.clone(),
+                arguments: Vec::new(),
+            },
+        })
+        .collect()
 }
 
 fn class_instance_type(class: &ClassDeclaration) -> Type {

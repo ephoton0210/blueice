@@ -7,8 +7,8 @@
 //! rejected construct, and the erased JavaScript for accepted ones.
 
 use blueice_bluets::{
-    compile, parse_module, ClassMemberKind, CompilerOptions, Declaration, Diagnostic,
-    DiagnosticCode, FunctionBodyItem, MapLoader, ModuleSource, RuntimePolicy,
+    compile, parse_module, ClassMemberKind, CompilerLimits, CompilerOptions, Declaration,
+    Diagnostic, DiagnosticCode, FunctionBodyItem, MapLoader, ModuleSource, RuntimePolicy,
 };
 
 const ENTRY: &str = "memory:///main.ts";
@@ -316,6 +316,108 @@ fn class_type_and_constructor_value_bind_separately_at_original_spans() {
             compilation.diagnostics
         );
     }
+}
+
+#[test]
+fn class_construction_checks_arguments_and_infers_instance_shape() {
+    for source in [
+        include_str!("fixtures/typescript_oracle/class-construction/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-construction-overloads/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-construction-inherited-deferred/main.ts"),
+    ] {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none());
+        assert!(
+            compilation
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "accepted constructor shapes have no additional diagnostic: {:#?}",
+            compilation.diagnostics
+        );
+    }
+
+    for (source, expected_line, expected_span) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-construction-argument-error/main.ts"),
+            6,
+            "new Box('wrong')",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-construction-arity-error/main.ts"),
+            6,
+            "new Box()",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-construction-default-arity-error/main.ts"
+            ),
+            6,
+            "new Empty(1)",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-construction-inferred-shape-error/main.ts"
+            ),
+            7,
+            "const invalid: { missing(): number } = inferred;",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-construction-nested-argument-error/main.ts"
+            ),
+            7,
+            "new Box('wrong')",
+        ),
+    ] {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{:#?}", compilation.diagnostics);
+        let failure = failures[0];
+        assert_eq!(failure.code, DiagnosticCode::TypeMismatch);
+        assert_eq!(
+            source[..failure.span.start]
+                .bytes()
+                .filter(|byte| *byte == b'\n')
+                .count()
+                + 1,
+            expected_line
+        );
+        assert_eq!(&source[failure.span.start..failure.span.end], expected_span);
+    }
+}
+
+#[test]
+fn class_construction_scan_obeys_the_type_expansion_budget() {
+    let source =
+        "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";
+    let compilation = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            limits: CompilerLimits {
+                max_type_expansions: 1,
+                ..CompilerLimits::default()
+            },
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(compilation.output.is_none());
+    assert_eq!(
+        compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::ResourceLimit)
+            .count(),
+        1,
+        "{:#?}",
+        compilation.diagnostics
+    );
 }
 
 #[test]

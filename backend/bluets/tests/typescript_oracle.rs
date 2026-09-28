@@ -1033,6 +1033,64 @@ fn pinned_class_dual_binding_matches_typescript_without_emit() {
     assert_pinned_no_emit_cases(&tsc, &cases);
 }
 
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_class_construction_matches_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 8] = [
+        (
+            "construction",
+            include_str!("fixtures/typescript_oracle/class-construction/main.ts"),
+            &[],
+        ),
+        (
+            "constructor-overloads",
+            include_str!("fixtures/typescript_oracle/class-construction-overloads/main.ts"),
+            &[],
+        ),
+        (
+            "inherited-deferred",
+            include_str!(
+                "fixtures/typescript_oracle/class-construction-inherited-deferred/main.ts"
+            ),
+            &[],
+        ),
+        (
+            "argument-error",
+            include_str!("fixtures/typescript_oracle/class-construction-argument-error/main.ts"),
+            &[(6, "TS2345")],
+        ),
+        (
+            "arity-error",
+            include_str!("fixtures/typescript_oracle/class-construction-arity-error/main.ts"),
+            &[(6, "TS2554")],
+        ),
+        (
+            "default-arity-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-construction-default-arity-error/main.ts"
+            ),
+            &[(6, "TS2554")],
+        ),
+        (
+            "inferred-shape-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-construction-inferred-shape-error/main.ts"
+            ),
+            &[(7, "TS2741")],
+        ),
+        (
+            "nested-argument-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-construction-nested-argument-error/main.ts"
+            ),
+            &[(7, "TS2345")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
 fn assert_pinned_no_emit_cases(tsc: &Path, cases: &[NoEmitCase]) {
     for &(name, source, expected_errors) in cases {
         let temporary = TestDirectory::new();
@@ -1256,8 +1314,8 @@ fn typescript_diagnostic_lines(output: &Output) -> Vec<usize> {
     );
     text.lines()
         .filter_map(|line| {
-            let (_, location) = line.rsplit_once('(')?;
-            let (location, _) = location.split_once("): error TS")?;
+            let (prefix, _) = line.split_once("): error TS")?;
+            let (_, location) = prefix.rsplit_once('(')?;
             location.split_once(',')?.0.parse().ok()
         })
         .collect()

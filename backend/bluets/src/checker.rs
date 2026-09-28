@@ -87,6 +87,11 @@ struct FunctionSignature {
     return_type: Type,
 }
 
+struct ClassConstructorBinding {
+    signatures: Vec<FunctionSignature>,
+    inherited: bool,
+}
+
 /// Static declarations selected by the host and injected into ordinary source
 /// modules after their local bindings. These declarations have no emitted
 /// JavaScript, symbols, runtime values, or resolution authority of their own.
@@ -606,6 +611,22 @@ fn direct_call_parts(tokens: &[Token]) -> Option<DirectCall<'_>> {
         callee,
         arguments: &tokens[close + 2..],
         generic: true,
+    })
+}
+
+fn constructor_call_parts(tokens: &[Token]) -> Option<DirectCall<'_>> {
+    let tokens = strip_outer_parentheses(tokens);
+    let [keyword, callee, opening, arguments @ ..] = tokens else {
+        return None;
+    };
+    (keyword.is("new")
+        && callee.kind == TokenKind::Identifier
+        && opening.is("(")
+        && split_call_arguments(arguments).is_some())
+    .then_some(DirectCall {
+        callee,
+        arguments,
+        generic: false,
     })
 }
 
