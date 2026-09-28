@@ -5986,6 +5986,38 @@ Public checked-compile cases assert the rejected member spans, only the
 expected mismatch diagnostic, and no output artifact. No checker change is
 needed for this leaf; the regressions lock in positional semantics.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.1 Variadic tuple rollout
+
+The shared `TupleTypeElement` already has a rest flag but the parser does not
+set it. Admission will start with one array-typed rest element at the end of
+a tuple, then extend to a rest with a required suffix, and finally to
+concrete or constrained generic tuple spreads. A rest is a symbolic tail:
+its array element type applies to arbitrarily many positions. It must not
+be expanded into an unbounded vector. The existing type-expansion budget
+continues to limit recursive type work; comparisons inspect each finite
+prefix and suffix once plus a tail relation.
+
+The parser will reject multiple rests and an optional element after a rest,
+matching TypeScript's tuple restrictions. It will keep `...T[]` and
+`...name: T[]` forms distinct only for declaration spelling; labels remain
+erased from type identity. Trailing rest admission must update tuple
+assignability, contextual tuple literals, indexed reads, type display,
+declaration output, and pure contract validation together. Runtime contracts
+will validate the finite prefix and each present tail element under their
+existing collection/node limits. Class override comparison remains
+fail-closed for rest-bearing tuples until a separate leaf installs its
+symbolic arity and element relation. A middle rest additionally needs a
+fixed suffix matched from the end, so it follows the trailing case. Concrete
+and constrained generic tuple spreads need bounded specialization before
+they can be admitted; unresolved spreads remain diagnostics.
+
+TypeScript's official tuple guidance documents open-ended trailing elements
+and leading/middle rest positions and the one-rest/no-optional-after-rest
+restrictions: https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-2.html.
+The pinned 5.9.3 oracle will determine acceptance and diagnostic lines for
+each implementation leaf. This design-only leaf admits no new syntax and
+changes no runtime behavior.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1558,6 +1558,30 @@ exists. A passed first form does not close its whole feature family.
                         whitespace checks pass with the reused 12 GiB target.
                     - [ ] **J.3.1.3.4.4.2.3.2.3.3.3** Parse variadic tuple
                       elements and compare bounded rest tails and arity.
+                      - [x] **J.3.1.3.4.4.2.3.2.3.3.3.1** Choose a symbolic
+                        rest-tail representation and fail-closed rollout.
+                        PLAN.md records a single array-typed rest element in
+                        the shared tuple metadata, bounded comparisons of
+                        fixed positions plus one symbolic tail, and separate
+                        trailing, nontrailing, and tuple-spread steps.
+                        No new syntax is admitted by this design-only leaf.
+                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.2** Parse and check a
+                        trailing array-typed tuple rest across admitted type
+                        uses, declarations, and pure contracts against pinned
+                        TypeScript.
+                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.3** Compare trailing
+                        tuple rest tails and arity in class method overrides
+                        against pinned TypeScript.
+                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.4** Parse and check a
+                        nontrailing array-typed tuple rest with a required
+                        suffix across admitted type uses and contracts.
+                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5** Compare nontrailing
+                        tuple rest positions and required suffixes in class
+                        method overrides against pinned TypeScript.
+                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6** Resolve concrete
+                        and constrained generic tuple spreads in admitted
+                        type uses and override comparison, with bounded
+                        expansion and explicit rejection of unresolved forms.
                     - [ ] **J.3.1.3.4.4.2.3.2.3.3.4** Expand optional tuple
                       spreads in bounded call arguments and tuple literals
                       without inventing required positions.
