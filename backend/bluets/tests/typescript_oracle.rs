@@ -1352,6 +1352,48 @@ fn pinned_instance_this_class_bodies_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_static_this_class_bodies_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 6] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-static-this-valid/main.ts"),
+            &[],
+        ),
+        (
+            "argument-error",
+            include_str!("fixtures/typescript_oracle/class-static-this-argument-error/main.ts"),
+            &[(7, "TS2345")],
+        ),
+        (
+            "wrong-side-call",
+            include_str!("fixtures/typescript_oracle/class-static-this-wrong-side-call/main.ts"),
+            &[(7, "TS2339")],
+        ),
+        (
+            "wrong-side-read",
+            include_str!("fixtures/typescript_oracle/class-static-this-wrong-side-read/main.ts"),
+            &[(7, "TS2339")],
+        ),
+        (
+            "inferred-result",
+            include_str!(
+                "fixtures/typescript_oracle/class-static-this-inferred-return-error/main.ts"
+            ),
+            &[(7, "TS2322")],
+        ),
+        (
+            "self-return",
+            include_str!("fixtures/typescript_oracle/class-static-this-self-return-error/main.ts"),
+            &[(7, "TS2741")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

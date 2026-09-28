@@ -104,6 +104,7 @@ impl<'a> ModuleChecker<'a> {
                 let diagnostic_span = if let [receiver] = call.receiver {
                     if self.is_bound_class_constructor_value(&receiver.text, scope)
                         || self.is_bound_class_instance_type(&base)
+                        || self.is_bound_class_static_this(receiver, scope)
                     {
                         &call_span
                     } else {
@@ -159,7 +160,7 @@ impl<'a> ModuleChecker<'a> {
             tokens.last().expect("member call has a closing token").end,
         );
         let bound_class_member = self.is_bound_class_instance_type(&base)
-            || matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope));
+            || matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope) || self.is_bound_class_static_this(receiver, scope));
         let (parameters, selected_overload) = match member_type {
             Type::Function { parameters, .. } => (parameters, false),
             Type::Intersection(overloads) if matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope)) =>

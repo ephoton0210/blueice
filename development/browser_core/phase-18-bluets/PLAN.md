@@ -5412,6 +5412,24 @@ TS2576, and TS2322 lines. BlueTS, bridge, and full workspace suites,
 workspace all-target Clippy, rustfmt, and whitespace checks pass with the
 reused 12 GiB Cargo target. Constructor-side `this` follows in J.3.1.3.3.4.2.
 
+### J.3.1.3.3.4.2 Static `this` in class bodies
+
+Static method bodies now bind `this` to the class's constructor-side record.
+The existing member relation checks static reads and calls and rejects
+instance-only members. Calls and reads through this bound `this` keep their
+original expression span; result inference flows into local and declared
+return checks. A constructor-side value is not accepted where the instance
+type is required. Overload selection on static `this` follows in
+J.3.1.3.3.4.4, and class output remains refused.
+
+Public checked-compile cases cover an accepted static call, wrong arguments,
+wrong-side reads and calls, an incompatible inferred local, and an invalid
+constructor-side self return at exact spans with no artifact. Six pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2345, TS2339,
+TS2322, and TS2741 lines. BlueTS, bridge, and full workspace suites,
+workspace all-target Clippy, rustfmt, and whitespace checks pass with the
+reused 12 GiB Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

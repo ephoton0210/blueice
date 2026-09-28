@@ -140,6 +140,14 @@ impl ModuleChecker<'_> {
         matches!(value, Type::Named { name, .. } if self.types.get(name).is_some_and(|definition| definition.kind == TypeDefinitionKind::Class))
     }
 
+    pub(in crate::checker::module) fn is_bound_class_static_this(
+        &self,
+        receiver: &Token,
+        scope: &BTreeMap<String, Type>,
+    ) -> bool {
+        receiver.is("this") && matches!(scope.get("this"), Some(Type::Record(_)))
+    }
+
     pub(super) fn bind_class(&mut self, class: &ClassDeclaration) {
         let existing_type = self
             .types
@@ -363,6 +371,7 @@ impl ModuleChecker<'_> {
     }
 
     pub(super) fn check_class_method_bodies(&mut self, class: &ClassDeclaration) {
+        let constructor_side = class_constructor_side_type(class);
         for method in class
             .members
             .iter()
@@ -381,15 +390,17 @@ impl ModuleChecker<'_> {
             });
             if let Some(body) = &method.body {
                 let mut scope = self.class_body_parameter_scope(&method.parameters);
-                if !method.is_static {
-                    scope.insert(
-                        "this".to_string(),
+                scope.insert(
+                    "this".to_string(),
+                    if method.is_static {
+                        constructor_side.clone()
+                    } else {
                         Type::Named {
                             name: class.name.clone(),
                             arguments: Vec::new(),
-                        },
-                    );
-                }
+                        }
+                    },
+                );
                 let allows_implicit_undefined = return_type.is_none_or(|return_type| {
                     self.return_type_allows_implicit_undefined(return_type, &method.span)
                 });

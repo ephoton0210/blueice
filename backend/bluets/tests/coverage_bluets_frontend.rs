@@ -774,6 +774,66 @@ fn instance_this_in_class_bodies_uses_instance_members_at_source_spans() {
 }
 
 #[test]
+fn static_this_in_class_bodies_uses_constructor_side_members_at_source_spans() {
+    let accepted = compile_with_helper(include_str!(
+        "fixtures/typescript_oracle/class-static-this-valid/main.ts"
+    ));
+    assert!(accepted.output.is_none());
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    for (source, code, expected_span) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-static-this-argument-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "this.answer('bad')",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-static-this-wrong-side-call/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "this.read()",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-static-this-wrong-side-read/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "this.read",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-static-this-inferred-return-error/main.ts"
+            ),
+            DiagnosticCode::TypeMismatch,
+            "const wrong: string = this.answer();",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-static-this-self-return-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+            "return this;",
+        ),
+    ] {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, code, "{failures:#?}");
+        assert_eq!(
+            &source[failures[0].span.start..failures[0].span.end],
+            expected_span,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
 fn class_construction_scan_obeys_the_type_expansion_budget() {
     let source =
         "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";
