@@ -18,8 +18,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: none.** H and I are complete. J is gated on a user-proposed
-large feature; no such proposal is pending.
+**Current leaf: J.3.1.** H and I are complete. The requested class, enum,
+decorator, namespace, JSX, CommonJS, and package-resolution expansion has
+passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
 messages and PLAN.md cite
 these IDs, and a parent is checked only when all its steps are.
@@ -814,17 +815,81 @@ Keep check read-only and owner registration sealed before listeners.
   - [x] **I.3.1** Provenance and debugger behavior verified. A checked direct-page optional read retains its original declaration byte span and a bound root safe point; a live debugger pause resolves to that position. Navigation invalidates the old safe-point map, static debug record and paused root continuation. Bridge crate tests, all-target Clippy, rustfmt and whitespace checks pass under the shared-target disk guard.
   - [x] **I.3.2** Contract behavior and TypeScript oracle evidence verified. The local optional read adds no host source or direct-page contract inventory. Its pure receiver contract accepts a valid record or `null` and rejects a missing or wrongly typed field. Pinned TypeScript 5.9.3 and BlueTSC both print `41` for the accepted fixture and reject two invalid reads on matching source lines. The complete oracle matrix, workspace tests, all-target build and Clippy, rustfmt and whitespace checks pass with one 13 GiB target and about 628 GiB host space free. J remains gated on a proposed large feature.
 
-### J. Decide large features only when requested.
+### J. Expand toward pinned TypeScript / `tsc` compatibility.
 
-- [ ] **J.1** For each proposed class/enum/decorator/namespace/JSX/CommonJS or
-  package/remote-declaration feature, record its runtime lowering and
-  host authority impact before adding it to the implementation backlog.
-  - [ ] **J.1.1** Record runtime lowering per proposal.
-  - [ ] **J.1.2** Record host authority impact per proposal.
-- [ ] **J.2** Require a debugger map, contract policy, and conformance plan for
-  each accepted proposal; defer features without that evidence.
-  - [ ] **J.2.1** Require a debugger map, a contract policy, and a conformance plan per accepted proposal.
-  - [ ] **J.2.2** Defer proposals lacking that evidence.
+The user requested class, enum, decorator, namespace, JSX/TSX, CommonJS,
+and arbitrary installed-package resolution. These are now development
+requirements, not optional proposals. [PLAN.md](PLAN.md#phase-j--requested-typescript-593-compatibility-expansion)
+records their lowering, authority, debugger, contract, and conformance plans.
+All implementation leaves below remain open until public-boundary evidence
+exists. A passed first form does not close its whole feature family.
+
+- [x] **J.1** Record runtime lowering and host authority impact for each
+  requested feature before implementation.
+  - [x] **J.1.1** Record runtime lowering for classes, enums, decorators,
+    namespaces, JSX, CommonJS, installed packages, and remote declarations.
+  - [x] **J.1.2** Record each feature's filesystem, network, package-runtime,
+    and BlueIce host-authority implications.
+- [x] **J.2** Require debugger mapping, contract policy, and conformance
+  evidence for each accepted feature.
+  - [x] **J.2.1** Record those three gates for every requested feature in
+    PLAN.md; compare against the pinned TypeScript 5.9.3 compiler.
+  - [x] **J.2.2** Retain the rule that a future proposal without all five
+    design records stays out of the implementation backlog.
+- [ ] **J.3** Implement runtime-bearing TypeScript declarations using the
+  shared BlueTS/BlueTSC front end and direct BlueJS lowering.
+  - [ ] **J.3.1** Add class declarations, constructors, methods,
+    inheritance, and `super` through checker, BlueTSC emit, direct page
+    execution, source maps, strict boundaries, and pinned-oracle fixtures.
+  - [ ] **J.3.2** Add fields, accessors, private members, parameter
+    properties, and static initialization in separately tested forms;
+    verify order, visibility, declarations, and debugger provenance.
+  - [ ] **J.3.3** Complete target-dependent native/downlevel class emit,
+    versioned helpers, option interactions, and Node/BlueJS parity.
+  - [ ] **J.3.4** Implement numeric/string/heterogeneous enums and `const enum`
+    semantics, including evaluation, reverse mapping, declaration emit,
+    isolation options, direct runtime, and oracle parity.
+  - [ ] **J.3.5** Implement runtime namespaces/modules and declaration merging,
+    including initialization order, export visibility, nested maps, direct
+    execution, and oracle parity.
+- [ ] **J.4** Implement the module and package ecosystem without widening
+  page or MCP authority through type declarations.
+  - [ ] **J.4.1** Add TypeScript 5.9.3 module-mode selection and CommonJS
+    checking/emit (`import = require`, `export =`, interop and cycles), plus
+    an explicit compatible runtime route for direct BlueTS execution.
+  - [ ] **J.4.2** Resolve arbitrary installed package names through the
+    configured, owner-authorized dependency tree, covering TypeScript's
+    versioned Node and bundler strategies, `package.json` conditions,
+    `@types`, and declaration selection.
+  - [ ] **J.4.3** Bind package resolution to canonical roots and exact
+    graph/config fingerprints; test symlink, path escape, cache invalidation,
+    and cross-platform behavior without implicit package installation.
+  - [ ] **J.4.4** Support explicitly authorized remote declaration sources
+    with pinned content identity and bounded fetch/cache behavior; reject
+    source-driven fetches and prove declarations grant no runtime host API.
+- [ ] **J.5** Implement TSX/JSX and both TypeScript 5.9.3 decorator modes.
+  - [ ] **J.5.1** Parse and check `.tsx` tags, attributes, spreads,
+    children, fragments, and JSX declarations against pinned `tsc`.
+  - [ ] **J.5.2** Emit each configured JSX mode with factory/import-source
+    options, source maps, and direct runtime with an authorized factory.
+  - [ ] **J.5.3** Implement standard decorators with their checker, helper,
+    evaluation/application order, class/field semantics, debugger maps,
+    and pinned-oracle evidence.
+  - [ ] **J.5.4** Implement opt-in legacy decorators and applicable
+    parameter/metadata options as a separate checked and tested mode.
+- [ ] **J.6** Close the full pinned-`tsc` compatibility claim.
+  - [ ] **J.6.1** Inventory every remaining TypeScript 5.9.3 syntax, checker,
+    library/declaration, `tsconfig`, resolution, emit-target, diagnostic,
+    incremental/project-reference, and CLI behavior gap; track and close
+    each compiler gap and each prerequisite of the advertised direct-runtime
+    host profile before claiming full compatibility.
+  - [ ] **J.6.2** Pass accepted/rejected, emitted JavaScript, declarations,
+    source-map, runtime, and option-combination differential suites against
+    pinned `tsc` on all applicable CI platforms, with no required skips.
+  - [ ] **J.6.3** Pass real BlueTS page/child debugger and authority tests,
+    BlueTSC CLI/MCP tests, workspace tests, formatting, all-target Clippy,
+    and coverage gates using one shared disk-budgeted Cargo target. Advertise
+    full parity only when J.6.1–J.6.3 are complete and no required gap is open.
 
 Phase 18 does not close general Phase 13 ECMAScript conformance, all Phase 17
 automation/AJAX, or unrelated Phase 12 MCP families.

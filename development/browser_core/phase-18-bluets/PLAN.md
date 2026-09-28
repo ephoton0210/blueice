@@ -4940,6 +4940,10 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 
 ## Explicit non-goals for the first release
 
+These limits describe the completed first release. Phase J below schedules
+the requested language and package features for later compatibility work;
+this section does not remove them from that backlog.
+
 - Claiming full `tsc`/`tsserver` compatibility, all TypeScript syntax, all diagnostics, or all JavaScript package ecosystems.
 - Using BlueTSC as an opaque wrapper around a bundled `tsc`, or permitting its emitter to drift from BlueTS's parser/checker/lowering rules.
 - Replacing BlueJS with a TypeScript VM, preserving universal runtime type tags, or adding a type check to every local operation.
@@ -4947,6 +4951,70 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 - Executing TSX/React, decorators, enums, runtime namespaces, CommonJS, Node builtins, arbitrary `node_modules`, arbitrary remote declarations, or custom compiler transformers.
 - Advertising complete web-platform typings before the corresponding BlueIce host APIs and their runtime behavior exist.
 - Exposing source text, static types, diagnostics, contracts or debugger scopes to an unauthenticated/unprivileged automation client.
+
+## Phase J — requested TypeScript 5.9.3 compatibility expansion
+
+On 2026-09-28 the user requested JSX/TSX, decorators, enums, CommonJS, and
+arbitrary package resolution as development requirements toward full
+TypeScript/`tsc` support. Classes and runtime namespaces are prerequisites
+already named by J.1 and remain in scope. The compatibility reference is the
+repository's pinned TypeScript 5.9.3 oracle. "Full" is a release claim only
+after J.6 inventories and closes the remaining compiler, configuration,
+declaration, emit, and CLI gaps; adding these named features alone is not
+sufficient. The compiler and direct-page paths share one checked IR. BlueTSC
+may emit code for a configured JavaScript host, while direct BlueTS execution
+also requires the corresponding BlueJS semantics and owner-authorized host
+bindings. A declaration or package name never creates such a binding.
+Remote declaration acquisition is a separately authorized BlueIce extension;
+it is not part of ordinary `tsc` package resolution.
+
+The following records the J.1 lowering and authority decision for each
+accepted proposal. Target-dependent transforms must use the configured
+TypeScript/ECMAScript version and retain a reproducible fingerprint.
+
+| Feature | Runtime lowering | Host authority and admission |
+| --- | --- | --- |
+| Classes | Preserve a native class when the BlueJS/output target supports its exact semantics; otherwise lower inheritance, fields, accessors, private members, parameter properties, and static initialization with versioned helpers and TypeScript-compatible order. | No new filesystem or network grant. Constructor, initializer, and computed-key effects enter the lowered capability summary and existing runtime budgets. |
+| Enums | Emit TypeScript-compatible runtime objects and numeric reverse mappings; evaluate members in declaration order. Inline `const enum` only under the matching compiler options; keep declaration output consistent. | No new host grant; computed member expressions retain their ordinary capability effects. |
+| Runtime namespaces/modules | Emit ordered namespace initialization and merge into the correct value object; ambient declarations emit no runtime object. | No new host grant. Namespace initialization executes only through the already authorized module or page. |
+| JSX/TSX | Parse `.tsx` distinctly; lower according to the selected `jsx` mode to a configured classic factory or automatic runtime import, or preserve JSX only in a non-executable output mode. Include fragments, attributes, spreads, and children. | A factory/runtime package is an ordinary executable dependency requiring resolver and page-loader authorization. JSX syntax never imports React or grants DOM capabilities by itself. |
+| Decorators | Keep standard and `experimentalDecorators` legacy semantics separate. Lower evaluation/application order, replacements, class/field/auto-accessor initialization, and the applicable metadata/parameter-decorator options with versioned helpers. | Decorator expressions are executable user code. Their helper and package effects enter the capability summary; metadata does not grant reflection or other host APIs. |
+| CommonJS | Select ESM/CJS per configured module rules; emit `require`, `exports`, `module.exports`, `import = require`, and `export =` with correct cache, cycle, and interop behavior. Direct BlueTS requires an explicit compatible loader/realm, not an ESM text rewrite. | Resolution reads only owner-authorized dependencies. Node builtins or dynamic `require` need an explicit host capability/runtime profile; a browser page receives none from CJS syntax alone. |
+| Installed packages | Resolve any package name present in the configured dependency tree using the selected TypeScript resolution mode, `package.json` conditions, declarations, `@types`, and symlink-aware canonical identities. This is a compile/resolution step, with no implicit package installation. | The owner sets canonical search roots. Imports outside those roots and source-requested package-manager hooks are refused; page execution still uses the page loader's origin and capability checks. |
+| Remote declarations | Fetch only explicitly configured declaration URLs through the existing authorizer, pin the content hash, and include it in graph/cache fingerprints. `.d.ts` has no runtime lowering. | No declaration may trigger a fetch or grant a runtime global. Network admission, size/time budgets, provenance, cache ownership, and replacement/close release remain host-owned. |
+
+The J.2 debugger, contract, and conformance decision is also per proposal:
+
+| Feature | Debugger mapping | Contract policy and conformance gate |
+| --- | --- | --- |
+| Classes | Bind constructor, methods, initializers, accessors, and generated helpers to original class/member spans or mark helper-only instructions unbound. | Preserve strict checks at constructor/field host crossings; compare class order, `this`/`super`, private access, `.js`, `.d.ts`, maps, and direct behavior with pinned `tsc` and Node/BlueJS. |
+| Enums | Map emitted member initialization and inlined references to their source declarations and uses. | Enum types do not validate foreign values automatically; compare numeric/string/reverse mapping, computed members, `const enum` options, declarations, and diagnostics. |
+| Namespaces | Map each merged declaration and generated initializer to its own source span. | Ambient declarations grant no runtime value or contract; test merging, visibility, initialization order, and emitted/declaration artifacts. |
+| JSX | Map each tag, attribute, spread, child, factory call, and generated import to its original TSX span. | Props from foreign data follow the existing strict boundary contract; test every selected JSX mode, JSX typing, factory options, emitted imports, maps, and direct execution where output is executable. |
+| Decorators | Map decorator expressions, application sites, replacement values, and helper frames to original declarations; expire maps with the program generation. | No implicit validation of decorator-produced values; test standard versus legacy order, replacement, metadata, declarations, maps, and target-specific output separately. |
+| CommonJS | Map wrapper, require call, export assignment, and interop helper to source; retain module identity across cycles. | Foreign module exports require a reviewed contract at strict boundaries; compare module mode, cache/cycle order, interop, diagnostics, CJS output, and source maps. |
+| Installed packages | Preserve canonical source identity and original positions through package declarations and selected export conditions. | Third-party types do not prove host bindings; test TypeScript resolver decisions, denied escapes, dependency changes, `@types`, conditional exports, and cold/warm cache invalidation. |
+| Remote declarations | Retain URL/hash provenance without exposing source to ungranted debugger clients. | Pinning and explicit authorization precede type use; test changed content, stale cache, denied fetch, budget exhaustion, and absence of runtime authority. |
+
+Use TypeScript's [module-resolution reference](https://www.typescriptlang.org/docs/handbook/modules/reference.html),
+[module-mode reference](https://www.typescriptlang.org/docs/handbook/modules/theory.html),
+[JSX modes](https://www.typescriptlang.org/tsconfig/jsx.html), and
+[standard-versus-legacy decorator explanation](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-0.html)
+as versioned design inputs. The pinned 5.9.3 executable, rather than a
+floating documentation page, decides oracle expectations.
+
+Implementation order is J.3 declarations, J.4 module/package foundation,
+J.5 JSX/decorators, then J.6 compatibility closure. Each leaf needs public
+parser/checker/emit tests, direct-page or explicit target-admission tests,
+debugger/source-map and strict-boundary tests, and accepted/rejected oracle
+fixtures. J.6 must enumerate every remaining `tsc` 5.9.3 syntax, diagnostic,
+`tsconfig`, library, emit target, declaration, project-reference, and CLI gap
+before any full-compatibility claim. The existing first-release gates remain
+valid; Phase J completion requires a fresh workspace and platform gate. Local
+Rust work uses the one shared `target` through
+`scripts/test-with-disk-budget.sh`, with its target-size and free-space
+limits. Reuse cached oracle dependencies and bounded temporary fixtures;
+do not create a second Cargo target or duplicate package installations.
 
 ## Checklist
 
