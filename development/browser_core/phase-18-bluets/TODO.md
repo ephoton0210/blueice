@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1172,6 +1172,32 @@ exists. A passed first form does not close its whole feature family.
             checks pass with the reused 12 GiB target.
       - [ ] **J.3.1.3.4** Check named inheritance, overrides, cycles, and
         `super` constructor/method uses with pinned-oracle fixtures.
+        - [x] **J.3.1.3.4.1** Validate bounded local and imported named class
+          heritage, unknown bases, known non-constructor values, and local
+          declaration order at original spans against pinned TypeScript.
+          The checker accepts bound local and imported class bases, reports
+          missing names, known non-constructor values, and forward local
+          class references at each heritage identifier, and keeps class
+          output refused. Opaque function, `any`, and unknown value bases
+          remain deferred. Public checked-compile tests cover acceptance,
+          three rejected forms, exact spans, and no artifact. Five pinned
+          TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+          TS2304/TS2507/TS2449 lines. BlueTS, bridge, and full workspace
+          tests, all-target Clippy, rustfmt, and whitespace checks pass with
+          the reused 12 GiB target.
+        - [ ] **J.3.1.3.4.2** Detect direct and indirect local inheritance
+          cycles within a bounded graph and compare class-name diagnostics
+          with pinned TypeScript.
+        - [ ] **J.3.1.3.4.3** Include inherited instance and static members
+          and inherited constructor signatures in bounded local class lookup
+          and construction, including class imports.
+        - [ ] **J.3.1.3.4.4** Validate inherited method overrides and overload
+          compatibility at original member spans against pinned TypeScript.
+        - [ ] **J.3.1.3.4.5** Check derived constructor `super` calls, arguments,
+          and required placement against pinned TypeScript.
+        - [ ] **J.3.1.3.4.6** Check instance and static `super` method reads and
+          calls, selected results, and wrong-side uses against pinned
+          TypeScript.
       - [ ] **J.3.1.3.5** Close the accepted/rejected class checker matrix
         against pinned TypeScript 5.9.3 and prove BlueTSC/direct admission
         still refuse classes until emit and runtime leaves are complete.

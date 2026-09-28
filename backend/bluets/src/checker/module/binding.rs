@@ -600,6 +600,7 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Variable(variable) => self.check_variable(variable),
                 Declaration::Function(function) => self.check_function(function),
                 Declaration::Class(class) => {
+                    self.validate_class_heritage_name(class);
                     self.validate_class_constructor_group(class);
                     self.validate_class_method_groups(class);
                     self.check_class_constructor_bodies(class);

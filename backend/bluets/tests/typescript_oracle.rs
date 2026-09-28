@@ -1478,6 +1478,45 @@ fn pinned_static_method_overloads_on_values_and_this_match_typescript_without_em
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_named_class_heritage_validation_matches_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 4] = [
+        (
+            "local-valid",
+            include_str!("fixtures/typescript_oracle/class-heritage-local-valid/main.ts"),
+            &[],
+        ),
+        (
+            "unknown-base",
+            include_str!("fixtures/typescript_oracle/class-heritage-unknown-base/main.ts"),
+            &[(5, "TS2304")],
+        ),
+        (
+            "nonconstructor-base",
+            include_str!("fixtures/typescript_oracle/class-heritage-nonconstructor-base/main.ts"),
+            &[(6, "TS2507")],
+        ),
+        (
+            "forward-base",
+            include_str!("fixtures/typescript_oracle/class-heritage-forward-base/main.ts"),
+            &[(5, "TS2449")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+    assert_pinned_class_module_cases(
+        &tsc,
+        &[(
+            "imported-valid",
+            include_str!("fixtures/typescript_oracle/class-heritage-imported-valid/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-heritage-imported-valid/box.ts"),
+            None,
+        )],
+    );
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

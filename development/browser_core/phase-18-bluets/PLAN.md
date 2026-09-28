@@ -5463,6 +5463,33 @@ BlueTS, bridge, and full workspace suites, workspace all-target Clippy,
 rustfmt, and whitespace checks pass with the reused 12 GiB Cargo target.
 Inheritance, overrides, cycles, and `super` follow in J.3.1.3.4.
 
+### J.3.1.3.4 Named class inheritance sequence
+
+J.3.1.3.4 is split into heritage name/value validation, bounded cycle
+detection, inherited member and constructor surfaces, override compatibility,
+derived constructor `super` checks, and `super` member checks. Each step uses
+the shared parsed class IR and pinned TypeScript 5.9.3 diagnostics while class
+output remains refused. The first step accepts local and imported class bases,
+checks an unknown or known non-constructor base, and checks declaration order;
+cycle diagnostics remain in J.3.1.3.4.2.
+
+### J.3.1.3.4.1 Named heritage binding
+
+The checker now validates each parsed named `extends` reference after local
+and imported class values have been bound. A bound class constructor is an
+accepted base; a missing name, known non-constructor value, or local class
+declared after its derived class gets a diagnostic on the original heritage
+identifier. Opaque function, `any`, and unknown value bases remain deferred
+because the current constructor model cannot prove their runtime base shape.
+Direct and indirect cycle diagnostics follow in J.3.1.3.4.2. Class output is
+still refused.
+
+Public checked-compile coverage proves local and imported acceptance, three
+rejected forms, original spans, and no artifact. Five pinned TypeScript 5.9.3
+`--noEmit` cases agree on acceptance and TS2304/TS2507/TS2449 lines. BlueTS,
+bridge, and full workspace suites, workspace all-target Clippy, rustfmt, and
+whitespace checks pass with the reused 12 GiB Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

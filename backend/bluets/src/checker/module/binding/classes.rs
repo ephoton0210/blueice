@@ -187,6 +187,45 @@ impl ModuleChecker<'_> {
         );
     }
 
+    pub(super) fn validate_class_heritage_name(&mut self, class: &ClassDeclaration) {
+        let (Some(base_name), Some(span)) = (&class.extends_name, &class.extends_span) else {
+            return;
+        };
+        // Cycle diagnostics are checked separately, including the direct
+        // self-reference. Do not report it as an unknown or forward base.
+        if base_name == &class.name {
+            return;
+        }
+        if self.class_constructors.contains_key(base_name) {
+            let declared_later = self.module.declarations.iter().any(|declaration| {
+                matches!(declaration, Declaration::Class(base)
+                    if &base.name == base_name && base.name_span.start > class.name_span.start)
+            });
+            if declared_later {
+                self.type_error(
+                    span,
+                    format!("class {base_name} is used before its declaration"),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+            return;
+        }
+        match self.values.get(base_name) {
+            None => self.type_error(
+                span,
+                format!("unknown class heritage name {base_name}"),
+                DiagnosticCode::UnknownName,
+            ),
+            Some(Type::Any | Type::Unknown) => {}
+            Some(_) if self.functions.contains_key(base_name) => {}
+            Some(_) => self.type_error(
+                span,
+                format!("class heritage {base_name} is not a constructor"),
+                DiagnosticCode::TypeMismatch,
+            ),
+        }
+    }
+
     pub(super) fn validate_class_constructor_group(&mut self, class: &ClassDeclaration) {
         let constructors = class
             .members
