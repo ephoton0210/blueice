@@ -898,6 +898,21 @@ exists. A passed first form does not close its whole feature family.
         - [ ] **J.3.1.2.3.3** Verify method overload grouping and accepted /
           rejected syntax against pinned TypeScript 5.9.3, then check off
           J.3.1.2.3 and J.3.1.2.
+          - [x] **J.3.1.2.3.3.1** Retain contiguous same-name method
+            signatures and their implementation as one source-bound group;
+            expose missing implementations and interrupted groups for the
+            later class checker without granting execution. Group indices
+            reference the original member vector, preserve a combined byte
+            span, and distinguish an orphan signature from an implementation.
+            Public parser tests cover contiguous overloads, repeated method
+            names after an implementation, an orphan signature, and an opaque
+            field interrupting a group. Checked class output remains absent.
+            The BlueTS crate suite, workspace all-target Clippy, and rustfmt
+            pass with the shared disk-budgeted target.
+          - [ ] **J.3.1.2.3.3.2** Check supported, deferred, and invalid
+            class-method syntax against pinned TypeScript 5.9.3 with a
+            bounded no-emit fixture; keep the checker fail-closed and close
+            the parser-only class member milestones.
     - [ ] **J.3.1.3** Bind class instance/static types and check constructor,
       method, inheritance, `this`, and `super` uses against pinned `tsc`.
     - [ ] **J.3.1.4** Emit checked class JavaScript and declarations from the

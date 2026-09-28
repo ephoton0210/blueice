@@ -79,6 +79,7 @@ impl Parser {
                 );
             }
         }
+        let method_groups = class_method_groups(&self.id, &members);
         let span = SourceSpan::new(&self.id, start, self.tokens[closing].end);
         let name_span = name_token.span(&self.id);
         self.index = closing + 1;
@@ -89,6 +90,7 @@ impl Parser {
             extends_span: heritage.as_ref().map(|token| token.span(&self.id)),
             body,
             members,
+            method_groups,
             body_span,
             exported,
             span,
@@ -171,6 +173,38 @@ impl Parser {
             span: member.span.clone(),
         });
     }
+}
+
+fn class_method_groups(module: &str, members: &[ClassMemberShell]) -> Vec<ClassMethodGroup> {
+    let mut groups: Vec<ClassMethodGroup> = Vec::new();
+    let mut pending_signature_group: Option<usize> = None;
+    for (member_index, member) in members.iter().enumerate() {
+        let Some(method) = &member.method else {
+            pending_signature_group = None;
+            continue;
+        };
+        let group_index = pending_signature_group
+            .filter(|&index| groups[index].name == method.name)
+            .unwrap_or_else(|| {
+                groups.push(ClassMethodGroup {
+                    name: method.name.clone(),
+                    signature_member_indices: Vec::new(),
+                    implementation_member_index: None,
+                    span: member.span.clone(),
+                });
+                groups.len() - 1
+            });
+        let group = &mut groups[group_index];
+        group.span = SourceSpan::new(module, group.span.start, member.span.end);
+        if method.body.is_none() {
+            group.signature_member_indices.push(member_index);
+            pending_signature_group = Some(group_index);
+        } else {
+            group.implementation_member_index = Some(member_index);
+            pending_signature_group = None;
+        }
+    }
+    groups
 }
 
 fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> {

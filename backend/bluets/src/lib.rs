@@ -52,11 +52,11 @@ pub use emitter::{
 };
 pub use parser::{
     parse_module, ClassConstructor, ClassDeclaration, ClassMemberKind, ClassMemberShell,
-    ClassMethod, Declaration, FunctionBodyItem, FunctionCatchClause, FunctionDeclaration,
-    FunctionElseBranch, FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement,
-    ImportDeclaration, InterfaceDeclaration, Module, Parameter, ParserLimits, RawDeclaration,
-    TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, ValueExportBinding,
-    ValueExportDeclaration, VariableDeclaration, VariableKind,
+    ClassMethod, ClassMethodGroup, Declaration, FunctionBodyItem, FunctionCatchClause,
+    FunctionDeclaration, FunctionElseBranch, FunctionIfStatement, FunctionTryStatement,
+    FunctionWhileStatement, ImportDeclaration, InterfaceDeclaration, Module, Parameter,
+    ParserLimits, RawDeclaration, TypeAliasDeclaration, TypeExportDeclaration, TypeParameter,
+    ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
 };
 pub use syntax::{lex, Token, TokenKind};
 

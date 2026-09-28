@@ -146,6 +146,9 @@ pub struct ClassDeclaration {
     /// Token-indexed member boundaries within `body`; opaque members remain
     /// unavailable to the checker and direct bridge.
     pub members: Vec<ClassMemberShell>,
+    /// Contiguous same-name method overloads, indexed into `members`.
+    /// A missing implementation remains visible for the class checker.
+    pub method_groups: Vec<ClassMethodGroup>,
     pub body_span: SourceSpan,
     pub exported: bool,
     pub span: SourceSpan,
@@ -188,6 +191,16 @@ pub struct ClassMethod {
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
     pub body: Option<Vec<FunctionBodyItem>>,
+    pub span: SourceSpan,
+}
+
+/// One source-ordered method declaration or overload set. Member indices
+/// refer to `ClassDeclaration::members` and preserve its original spans.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassMethodGroup {
+    pub name: String,
+    pub signature_member_indices: Vec<usize>,
+    pub implementation_member_index: Option<usize>,
     pub span: SourceSpan,
 }
 

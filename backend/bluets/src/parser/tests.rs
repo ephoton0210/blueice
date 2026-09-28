@@ -384,6 +384,56 @@ fn preserves_union_and_record_method_return_types_without_losing_body_boundaries
 }
 
 #[test]
+fn groups_contiguous_method_overloads_at_original_member_boundaries() {
+    let source = "class Reader { read(value: number): number; read(value: string): string; read(value: number | string): number | string { return value; } other() {} read(value: number): number; }";
+    let module = parse_module("memory:///reader.ts", source).unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.method_groups.len(), 3);
+    let overloads = &class.method_groups[0];
+    assert_eq!(overloads.name, "read");
+    assert_eq!(overloads.signature_member_indices, vec![0, 1]);
+    assert_eq!(overloads.implementation_member_index, Some(2));
+    assert_eq!(overloads.span.start, class.members[0].span.start);
+    assert_eq!(overloads.span.end, class.members[2].span.end);
+    assert_eq!(
+        &source[overloads.span.start..overloads.span.end],
+        "read(value: number): number; read(value: string): string; read(value: number | string): number | string { return value; }"
+    );
+    assert_eq!(class.method_groups[1].name, "other");
+    assert!(class.method_groups[1].signature_member_indices.is_empty());
+    assert_eq!(class.method_groups[1].implementation_member_index, Some(3));
+    assert_eq!(class.method_groups[2].name, "read");
+    assert_eq!(class.method_groups[2].signature_member_indices, vec![4]);
+    assert_eq!(class.method_groups[2].implementation_member_index, None);
+    assert!(crate::compile(
+        "memory:///reader.ts",
+        &crate::MapLoader::from([crate::ModuleSource::new("memory:///reader.ts", source)]),
+        crate::CompilerOptions::default(),
+    )
+    .output
+    .is_none());
+}
+
+#[test]
+fn opaque_class_member_interrupts_method_overload_group() {
+    let module = parse_module(
+        "memory:///reader.ts",
+        "class Reader { read(value: number): number; field = 1; read(value: number): number { return value; } }",
+    )
+    .unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.method_groups.len(), 2);
+    assert_eq!(class.method_groups[0].signature_member_indices, vec![0]);
+    assert_eq!(class.method_groups[0].implementation_member_index, None);
+    assert!(class.method_groups[1].signature_member_indices.is_empty());
+    assert_eq!(class.method_groups[1].implementation_member_index, Some(2));
+}
+
+#[test]
 fn routes_unimplemented_class_member_shapes_to_opaque_shells() {
     for source in [
         "class C { public read() {} }",
