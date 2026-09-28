@@ -168,6 +168,10 @@ fn debugger_admission_requires_the_owning_realm_and_matching_root_kind() {
         runtime.execute_program_until_nested_debugger_pause(7, module, module_child),
         Err(BlueJsPageRuntimeError::DebuggerRootScriptOnly)
     );
+    assert_eq!(
+        runtime.execute_module_graph_until_nested_debugger_pause(7, module, [module], module_root),
+        Err(BlueJsPageRuntimeError::DebuggerNestedCodeUnitOnly)
+    );
 }
 
 #[test]

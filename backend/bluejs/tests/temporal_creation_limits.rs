@@ -255,6 +255,26 @@ fn to_string_rounding_must_stay_within_the_representable_range() {
     );
 }
 
+#[test]
+fn date_string_methods_reject_foreign_receivers_and_round_non_iso_dates() {
+    for source in [
+        "Temporal.PlainDate.prototype.toString.call({})",
+        "Temporal.PlainDateTime.prototype.toString.call({})",
+        "Temporal.PlainDate.prototype.toLocaleString.call({})",
+        "Temporal.PlainDateTime.prototype.toLocaleString.call({})",
+    ] {
+        assert!(
+            matches!(evaluate_err(source), RuntimeError::TypeError(_)),
+            "{source}"
+        );
+    }
+    assert_string(
+        r#"new Temporal.PlainDateTime(2000, 1, 1, 23, 59, 59, 999, 0, 0, "gregory")
+            .toString({ smallestUnit: "second", roundingMode: "halfExpand" })"#,
+        "2000-01-02T00:00:00[u-ca=gregory]",
+    );
+}
+
 /// `PlainYearMonth/prototype/toPlainDate/limits.js`: the constructed date must
 /// be within `PlainDate`'s range even though the year-month is not.
 #[test]

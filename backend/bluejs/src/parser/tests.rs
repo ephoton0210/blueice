@@ -5,6 +5,18 @@
 use super::*;
 
 #[test]
+fn assignment_cover_lookahead_stops_at_the_matching_delimiter() {
+    assert!(Parser::new("[value].property").cover_assignment_target_has_lhs_suffix());
+    assert!(!Parser::new("{value}").cover_assignment_target_has_lhs_suffix());
+    assert!(!Parser::new("value").cover_assignment_target_has_lhs_suffix());
+    assert!(!Parser::new("[").cover_assignment_target_has_lhs_suffix());
+
+    let mut truncated = Parser::new("[");
+    truncated.tokens.pop();
+    assert!(!truncated.cover_assignment_target_has_lhs_suffix());
+}
+
+#[test]
 fn function_parser_rejects_malformed_direct_token_streams() {
     let mut parser = Parser::new("");
     assert!(parser.parse_params().is_err());

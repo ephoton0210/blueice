@@ -459,13 +459,17 @@ impl Parser {
         // `#name in object` is a distinct relational-expression production:
         // a private identifier cannot otherwise begin an expression.  Keep
         // its RHS at ShiftExpression precedence, matching ordinary `in`.
-        let mut left = if !self.no_in
-            && matches!(self.peek(), Token::PrivateIdentifier(_))
-            && matches!(self.peek_at(1), Token::Keyword(Keyword::In))
+        let private_name = if !self.no_in && matches!(self.peek_at(1), Token::Keyword(Keyword::In))
         {
-            let Token::PrivateIdentifier(name) = self.advance().clone() else {
-                unreachable!("private identifier was checked above")
-            };
+            match self.peek() {
+                Token::PrivateIdentifier(name) => Some(name.clone()),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let mut left = if let Some(name) = private_name {
+            self.advance();
             self.advance(); // `in`
             Expr::PrivateIn {
                 name,

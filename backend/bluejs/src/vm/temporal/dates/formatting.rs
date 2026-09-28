@@ -13,7 +13,9 @@ impl Vm {
         receiver: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("native dispatch validates the Temporal date receiver");
         let resolved_options = self.temporal_options(options)?;
         // `calendarName` is read before the time-precision options
         // (`fractionalSecondDigits`, `roundingMode`, `smallestUnit`),
@@ -113,20 +115,13 @@ impl Vm {
         const DAY_NS: i128 = 86_400_000_000_000;
         let day_carry = rounded.div_euclid(DAY_NS);
         let ns_of_day = rounded.rem_euclid(DAY_NS);
-        let calendar_kind = calendar::calendar_kind(&existing.calendar)
-            .expect("Temporal values retain a validated calendar identifier");
-        let date = plain_date::calendar_add_date(
-            calendar_kind,
-            (existing.year, existing.month, existing.day),
-            0,
-            0,
-            0,
-            day_carry as i64,
-            false,
-        )
-        .ok_or_else(|| {
-            RuntimeError::RangeError("Temporal.PlainDateTime.toString is out of range".into())
-        })?;
+        // Rounding changes only the time of day. A carried day advances the
+        // underlying ISO date equally for every calendar annotation.
+        let date = plain_date::balance_iso_date(
+            existing.year,
+            existing.month,
+            i64::from(existing.day) + day_carry as i64,
+        );
         let (hour, minute, second, millisecond, microsecond, nanosecond) =
             duration_math::time_fields_from_nanoseconds(ns_of_day);
         // `RoundISODateTime`'s result must itself be representable: rounding
@@ -189,7 +184,9 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        let existing = self
+            .temporal_date_receiver(receiver)
+            .expect("native dispatch validates the Temporal date receiver");
         let stack_base = self.stack.len();
         let result = (|| {
             let formatter = self.create_date_time_format(
@@ -203,7 +200,8 @@ impl Vm {
             self.stack.push(formatter.clone());
             if existing.kind == TemporalKind::PlainDate
                 && self
-                    .date_time_format_data(&formatter)?
+                    .date_time_format_data(&formatter)
+                    .expect("the formatter created above retains its DateTimeFormat data")
                     .options()
                     .time_style
                     .is_some()
