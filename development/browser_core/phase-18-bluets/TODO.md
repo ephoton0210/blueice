@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.3.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1587,6 +1587,28 @@ exists. A passed first form does not close its whole feature family.
                       - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.3** Compare trailing
                         tuple rest tails and arity in class method overrides
                         against pinned TypeScript.
+                        - [x] **J.3.1.3.4.4.2.3.2.3.3.3.3.1** Compare a derived
+                          trailing tuple rest with inherited fixed or array
+                          rest parameters. The checker aligns finite fixed
+                          positions, then compares one repeated tail against
+                          inherited fixed positions or the array rest element.
+                          It counts only required tuple positions for fixed
+                          bases and permits extra required positions against
+                          an inherited array rest when types fit. Public
+                          checked-compile cases cover accepted fixed/array
+                          forms and rejected fixed type, arity, and static
+                          array-tail type mismatches at member spans with no
+                          output. Four pinned TypeScript 5.9.3 `--noEmit`
+                          cases agree on TS2416/TS2417 lines. BlueTS,
+                          bridge, and full workspace tests, all-target
+                          Clippy, rustfmt, and whitespace checks pass with
+                          the reused 12 GiB target.
+                        - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.3.2** Compare an
+                          inherited trailing tuple rest with derived fixed or
+                          array rest parameters.
+                        - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.3.3** Compare trailing
+                          tuple rests on both sides, including shifted fixed
+                          prefixes.
                       - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.4** Parse and check a
                         nontrailing array-typed tuple rest with a required
                         suffix across admitted type uses and contracts.

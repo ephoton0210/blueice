@@ -28,6 +28,11 @@ enum RestShape {
         inherited_fixed: usize,
         inherited_array_rest: bool,
     },
+    DerivedTrailingTuple {
+        derived_fixed: usize,
+        inherited_fixed: usize,
+        inherited_array_rest: bool,
+    },
     InheritedTuple {
         derived_fixed: usize,
         inherited_fixed: usize,
@@ -93,7 +98,9 @@ impl ModuleChecker<'_> {
                 .count()
                 + if matches!(
                     rest_shape,
-                    RestShape::DerivedTuple { .. } | RestShape::BothTuples { .. }
+                    RestShape::DerivedTuple { .. }
+                        | RestShape::DerivedTrailingTuple { .. }
+                        | RestShape::BothTuples { .. }
                 ) {
                     let Some(Type::Tuple(elements)) = derived
                         .parameters
@@ -102,7 +109,10 @@ impl ModuleChecker<'_> {
                     else {
                         unreachable!("rest shape requires a tuple annotation")
                     };
-                    elements.iter().filter(|element| !element.optional).count()
+                    elements
+                        .iter()
+                        .filter(|element| !element.optional && !element.rest)
+                        .count()
                 } else {
                     0
                 };
@@ -130,6 +140,9 @@ impl ModuleChecker<'_> {
             ) || matches!(
                 rest_shape,
                 RestShape::DerivedTuple {
+                    inherited_array_rest: true,
+                    ..
+                } | RestShape::DerivedTrailingTuple {
                     inherited_array_rest: true,
                     ..
                 }
@@ -304,6 +317,74 @@ impl ModuleChecker<'_> {
                             parameter_types_compatible(
                                 derived_type,
                                 inherited_type,
+                                &self.types,
+                                &mut budget,
+                            )
+                        })
+                    }
+                    RestShape::DerivedTrailingTuple {
+                        derived_fixed,
+                        inherited_fixed,
+                        inherited_array_rest,
+                    } => {
+                        let Some(Type::Tuple(elements)) = derived
+                            .parameters
+                            .last()
+                            .and_then(|parameter| parameter.annotation.as_ref())
+                        else {
+                            unreachable!("rest shape requires a tuple annotation")
+                        };
+                        let (tail, fixed_elements) = elements
+                            .split_last()
+                            .expect("trailing tuple rest requires a rest element");
+                        let tail_type = tail.indexed_type();
+                        let inherited_element = if inherited_array_rest {
+                            let Some(Type::Array(element)) = inherited
+                                .parameters
+                                .last()
+                                .and_then(|parameter| parameter.annotation.as_ref())
+                            else {
+                                unreachable!("rest shape requires an array annotation")
+                            };
+                            Some(element.as_ref())
+                        } else {
+                            None
+                        };
+                        let derived_known = derived_fixed + fixed_elements.len();
+                        let positions = if inherited_array_rest {
+                            derived_known.max(inherited_fixed)
+                        } else {
+                            inherited_fixed
+                        };
+                        (0..positions).all(|index| {
+                            let derived_type = if index < derived_fixed {
+                                derived.parameters[index]
+                                    .annotation
+                                    .as_ref()
+                                    .unwrap_or(&Type::Unknown)
+                            } else if index - derived_fixed < fixed_elements.len() {
+                                &fixed_elements[index - derived_fixed].value_type()
+                            } else {
+                                &tail_type
+                            };
+                            let inherited_type = if index < inherited_fixed {
+                                inherited.parameters[index]
+                                    .annotation
+                                    .as_ref()
+                                    .unwrap_or(&Type::Unknown)
+                            } else {
+                                inherited_element.expect("rest shape requires an array annotation")
+                            };
+                            parameter_types_compatible(
+                                derived_type,
+                                inherited_type,
+                                &self.types,
+                                &mut budget,
+                            )
+                        }) && inherited_element.is_none_or(|element| {
+                            parameter_types_compatible(
+                                &tail_type,
+                                element,
                                 &self.types,
                                 &mut budget,
                             )
@@ -518,14 +599,29 @@ fn nearest_inherited_method<'a>(
 }
 
 fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShape> {
-    // Variadic tuple tails need a separate arity relation.
-    if derived.iter().chain(inherited).any(|parameter| {
+    // Inherited and both-side variadic tuple tails need separate relations.
+    if inherited.iter().any(|parameter| {
         matches!(
             parameter.annotation.as_ref(),
             Some(Type::Tuple(elements))
                 if elements.iter().any(|element| element.rest)
         )
     }) {
+        return None;
+    }
+    let derived_variadic = derived.iter().any(|parameter| {
+        matches!(
+            parameter.annotation.as_ref(),
+            Some(Type::Tuple(elements))
+                if elements.iter().any(|element| element.rest)
+        )
+    });
+    if derived_variadic
+        && !derived.last().is_some_and(|parameter| {
+            parameter.rest
+                && matches!(parameter.annotation.as_ref(), Some(Type::Tuple(elements)) if elements.last().is_some_and(|element| element.rest))
+        })
+    {
         return None;
     }
     let derived_has_rest = derived.iter().any(|parameter| parameter.rest);
@@ -552,10 +648,20 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
     if !derived_rest.rest || derived_fixed.iter().any(|parameter| parameter.rest) {
         return None;
     }
-    if matches!(derived_rest.annotation.as_ref(), Some(Type::Tuple(_))) {
+    if let Some(Type::Tuple(elements)) = derived_rest.annotation.as_ref() {
         let inherited_array_rest = inherited.last().is_some_and(|parameter| {
             parameter.rest && matches!(parameter.annotation.as_ref(), Some(Type::Array(_)))
         });
+        if elements.last().is_some_and(|element| element.rest) {
+            if inherited_has_rest && !inherited_array_rest {
+                return None;
+            }
+            return Some(RestShape::DerivedTrailingTuple {
+                derived_fixed: derived_fixed.len(),
+                inherited_fixed: inherited.len() - usize::from(inherited_array_rest),
+                inherited_array_rest,
+            });
+        }
         if inherited_has_rest && !inherited_array_rest {
             let (inherited_rest, inherited_fixed) = inherited.split_last()?;
             return (inherited_rest.rest

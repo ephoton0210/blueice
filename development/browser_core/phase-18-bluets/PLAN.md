@@ -6044,6 +6044,26 @@ forbidden optional after the rest; and no error artifact. Five pinned
 TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2322/TS1266
 lines.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.3.1 Derived trailing tuple rest overrides
+
+The override checker now recognizes a derived rest parameter whose tuple
+ends in an array-typed rest element when the inherited method has fixed
+parameters or an ordinary array rest. It aligns the finite fixed positions,
+uses the repeated tuple tail type for every remaining inherited position,
+and compares the repeated tail once against an inherited array rest element.
+Only nonoptional, nonrest tuple positions contribute to derived minimum
+arity. TypeScript permits extra required derived positions when the base has
+an array rest and all aligned types fit. The existing bivariant method
+parameter and covariant result relations still apply.
+
+Inherited or both-side variadic tuple rests remain fail-closed until their
+separate leaves. Public checked-compile cases cover accepted fixed and array
+forms, including extra required derived prefix positions, and reject a
+fixed element mismatch, excess required arity against a fixed base, and a
+static array-tail mismatch at original member spans without output. Four
+pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/
+TS2417 diagnostic lines.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
