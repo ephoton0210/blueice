@@ -5578,6 +5578,11 @@ already checked local inheritance shape for direct and locally aliased value
 exports; the second carries that shape across imported bases and re-exports.
 Both keep class output refused until the shared emit and runtime paths close.
 
+J.3.1.3.4.3.4.2 is further split into direct value export/import propagation
+for a value-imported base and the supported `export type` re-export chain.
+The parser currently refuses runtime `export { value } from` syntax, so this
+phase's re-export checker gate covers the type-only form it can represent.
+
 ### J.3.1.3.4.3.4.1 Local-base derived class exports
 
 The closed-module class export table now walks locally declared classes in
@@ -5596,6 +5601,24 @@ TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2345/TS2322
 lines. BlueTS, bridge, and full workspace suites, workspace all-target
 Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB Cargo
 target.
+
+### J.3.1.3.4.3.4.2.1 Value-imported base class exports
+
+The closed-module class export table now resolves value-imported base
+surfaces through the existing project graph and advances derived surfaces
+one module edge per pass. It merges inherited instance and static members
+and omitted-constructor overloads into direct and locally aliased class
+exports. Each surface carries its heritage depth, so the configured type
+expansion bound also applies across module edges. Type-only imports cannot
+provide a runtime base.
+
+Public checked-compile cases cover accepted direct and aliased imports,
+a four-module inheritance chain, rejected constructor/instance/static
+arguments, an incompatible selected result, original diagnostic spans,
+and no artifact. Seven pinned TypeScript 5.9.3 `--noEmit` cases agree on
+acceptance and TS2345/TS2322 lines. BlueTS, bridge, and full workspace
+tests, workspace all-target Clippy, rustfmt, and whitespace checks pass
+with the reused 12 GiB Cargo target.
 
 ## Checklist
 

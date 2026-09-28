@@ -1141,6 +1141,7 @@ pub(in crate::checker) fn class_export(class: &ClassDeclaration) -> ExportedClas
             inherited: class.extends_name.is_some() && !class_declares_constructor(class),
         },
         value_exported: class.exported,
+        heritage_depth: 0,
     }
 }
 

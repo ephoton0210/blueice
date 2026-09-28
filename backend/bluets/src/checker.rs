@@ -101,6 +101,7 @@ struct ExportedClass {
     constructor_type: Type,
     constructor_binding: ClassConstructorBinding,
     value_exported: bool,
+    heritage_depth: usize,
 }
 
 struct ProjectExports {

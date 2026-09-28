@@ -185,60 +185,58 @@ pub(super) fn exported_classes(
 ) -> BTreeMap<String, BTreeMap<String, ExportedClass>> {
     let mut modules = BTreeMap::new();
     for (id, module) in &project.modules {
-        let mut declared = BTreeMap::new();
-        let mut depths = BTreeMap::new();
-        for declaration in &module.declarations {
-            let Declaration::Class(class) = declaration else {
-                continue;
-            };
-            let mut value = module::class_export(class);
-            let mut depth = 0usize;
-            if let Some(base_name) = &class.extends_name {
-                if let Some(base) = declared.get(base_name) {
-                    depth = depths.get(base_name).copied().unwrap_or(0) + 1;
-                    if depth <= max_type_expansions {
-                        inherit_exported_class_surface(&mut value, base);
+        modules.insert(
+            id.clone(),
+            local_exported_class_surfaces(module, &BTreeMap::new(), max_type_expansions),
+        );
+    }
+    // A derived class may extend a value imported from another closed module.
+    // Advance those exported surfaces one module edge per bounded pass.
+    for _ in 0..project.modules.len() {
+        let snapshot = modules.clone();
+        let mut changed = false;
+        for (module_id, module) in &project.modules {
+            let mut imported = BTreeMap::new();
+            for declaration in &module.declarations {
+                let Declaration::Import(import) = declaration else {
+                    continue;
+                };
+                if import.type_only {
+                    continue;
+                }
+                let Some(source_id) = project
+                    .resolutions
+                    .get(&(module_id.clone(), import.specifier.clone()))
+                else {
+                    continue;
+                };
+                let Some(source_classes) = snapshot.get(source_id) else {
+                    continue;
+                };
+                for binding in &import.bindings {
+                    if binding.type_only {
+                        continue;
+                    }
+                    if let Some(base) = source_classes
+                        .get(&binding.imported)
+                        .filter(|base| base.value_exported)
+                    {
+                        imported.insert(binding.local.clone(), base.clone());
                     }
                 }
             }
-            depths.insert(class.name.clone(), depth);
-            declared.insert(class.name.clone(), value);
-        }
-        let mut exports = BTreeMap::new();
-        for declaration in &module.declarations {
-            match declaration {
-                Declaration::Class(class) if class.exported => {
-                    if let Some(value) = declared.get(&class.name) {
-                        exports.insert(class.name.clone(), value.clone());
-                    }
+            let exports = local_exported_class_surfaces(module, &imported, max_type_expansions);
+            let target = modules.entry(module_id.clone()).or_default();
+            for (name, value) in exports {
+                if target.get(&name) != Some(&value) {
+                    target.insert(name, value);
+                    changed = true;
                 }
-                Declaration::ValueExport(export) => {
-                    for binding in &export.bindings {
-                        if let Some(value) = declared.get(&binding.local) {
-                            let mut value = value.clone();
-                            value.value_exported = true;
-                            exports.insert(binding.exported.clone(), value);
-                        }
-                    }
-                }
-                Declaration::TypeExport(export) if export.specifier.is_none() => {
-                    for binding in &export.bindings {
-                        let (local, exported) = binding
-                            .split_once(" as ")
-                            .map_or((binding.as_str(), binding.as_str()), |(local, exported)| {
-                                (local, exported)
-                            });
-                        if let Some(value) = declared.get(local) {
-                            let mut value = value.clone();
-                            value.value_exported = false;
-                            exports.insert(exported.to_string(), value);
-                        }
-                    }
-                }
-                _ => {}
             }
         }
-        modules.insert(id.clone(), exports);
+        if !changed {
+            break;
+        }
     }
     for _ in 0..project.modules.len() {
         let mut changed = false;
@@ -294,6 +292,65 @@ pub(super) fn exported_classes(
         }
     }
     modules
+}
+
+fn local_exported_class_surfaces(
+    module: &Module,
+    imported: &BTreeMap<String, ExportedClass>,
+    max_type_expansions: usize,
+) -> BTreeMap<String, ExportedClass> {
+    let mut declared = BTreeMap::new();
+    for declaration in &module.declarations {
+        let Declaration::Class(class) = declaration else {
+            continue;
+        };
+        let mut value = module::class_export(class);
+        if let Some(base_name) = &class.extends_name {
+            if let Some(base) = declared.get(base_name).or_else(|| imported.get(base_name)) {
+                let depth = base.heritage_depth.saturating_add(1);
+                value.heritage_depth = depth;
+                if depth <= max_type_expansions {
+                    inherit_exported_class_surface(&mut value, base);
+                }
+            }
+        }
+        declared.insert(class.name.clone(), value);
+    }
+    let mut exports = BTreeMap::new();
+    for declaration in &module.declarations {
+        match declaration {
+            Declaration::Class(class) if class.exported => {
+                if let Some(value) = declared.get(&class.name) {
+                    exports.insert(class.name.clone(), value.clone());
+                }
+            }
+            Declaration::ValueExport(export) => {
+                for binding in &export.bindings {
+                    if let Some(value) = declared.get(&binding.local) {
+                        let mut value = value.clone();
+                        value.value_exported = true;
+                        exports.insert(binding.exported.clone(), value);
+                    }
+                }
+            }
+            Declaration::TypeExport(export) if export.specifier.is_none() => {
+                for binding in &export.bindings {
+                    let (local, exported) = binding
+                        .split_once(" as ")
+                        .map_or((binding.as_str(), binding.as_str()), |(local, exported)| {
+                            (local, exported)
+                        });
+                    if let Some(value) = declared.get(local) {
+                        let mut value = value.clone();
+                        value.value_exported = false;
+                        exports.insert(exported.to_string(), value);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    exports
 }
 
 fn inherit_exported_class_surface(derived: &mut ExportedClass, base: &ExportedClass) {

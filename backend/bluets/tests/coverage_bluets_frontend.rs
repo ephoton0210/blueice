@@ -33,6 +33,22 @@ fn compile_class_module_pair(main: &str, box_module: &str) -> blueice_bluets::Co
     )
 }
 
+fn compile_class_module_triplet(
+    main: &str,
+    box_module: &str,
+    base_module: &str,
+) -> blueice_bluets::Compilation {
+    compile(
+        ENTRY,
+        &MapLoader::from([
+            ModuleSource::new(ENTRY, main),
+            ModuleSource::new("memory:///box.ts", box_module),
+            ModuleSource::new("memory:///base.ts", base_module),
+        ]),
+        CompilerOptions::default(),
+    )
+}
+
 fn diagnostics(source: &str) -> Vec<Diagnostic> {
     compile_with_helper(source).diagnostics
 }
@@ -1312,6 +1328,108 @@ fn exported_local_derived_classes_retain_inherited_surfaces_across_imports() {
         ),
     ] {
         let compilation = compile_class_module_pair(main, box_module);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+        assert_eq!(failures[0].span.module, ENTRY);
+        assert_eq!(
+            &main[failures[0].span.start..failures[0].span.end],
+            expected_span,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
+fn exported_imported_base_derived_classes_retain_inherited_surfaces() {
+    let base = include_str!("fixtures/typescript_oracle/class-imported-base-derived-valid/base.ts");
+    let direct_box =
+        include_str!("fixtures/typescript_oracle/class-imported-base-derived-valid/box.ts");
+    for (main, box_module) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-imported-base-derived-valid/main.ts"),
+            direct_box,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-imported-base-derived-alias/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-imported-base-derived-alias/box.ts"),
+        ),
+    ] {
+        let accepted = compile_class_module_triplet(main, box_module, base);
+        assert!(accepted.output.is_none());
+        assert!(
+            accepted
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{:#?}",
+            accepted.diagnostics
+        );
+    }
+    let chained = compile(
+        ENTRY,
+        &MapLoader::from([
+            ModuleSource::new(
+                ENTRY,
+                include_str!(
+                    "fixtures/typescript_oracle/class-imported-base-derived-chain/main.ts"
+                ),
+            ),
+            ModuleSource::new(
+                "memory:///box.ts",
+                include_str!("fixtures/typescript_oracle/class-imported-base-derived-chain/box.ts"),
+            ),
+            ModuleSource::new(
+                "memory:///middle.ts",
+                include_str!(
+                    "fixtures/typescript_oracle/class-imported-base-derived-chain/middle.ts"
+                ),
+            ),
+            ModuleSource::new("memory:///base.ts", base),
+        ]),
+        CompilerOptions::default(),
+    );
+    assert!(chained.output.is_none());
+    assert!(
+        chained
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        chained.diagnostics
+    );
+    for (main, expected_span) in [
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-imported-base-derived-constructor-error/main.ts"
+            ),
+            "new Child('wrong')",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-imported-base-derived-instance-error/main.ts"
+            ),
+            "child.label('wrong')",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-imported-base-derived-static-error/main.ts"
+            ),
+            "Child.parse('wrong')",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-imported-base-derived-result-error/main.ts"
+            ),
+            "const wrong: string = Child.parse(1);",
+        ),
+    ] {
+        let compilation = compile_class_module_triplet(main, direct_box, base);
         assert!(compilation.output.is_none());
         let failures = compilation
             .diagnostics

@@ -1725,6 +1725,142 @@ fn pinned_exported_local_derived_class_surfaces_match_typescript_without_emit() 
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_imported_base_derived_class_surfaces_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let base = include_str!("fixtures/typescript_oracle/class-imported-base-derived-valid/base.ts");
+    let direct_box =
+        include_str!("fixtures/typescript_oracle/class-imported-base-derived-valid/box.ts");
+    for (name, main, box_module, expected_error) in [
+        (
+            "direct-valid",
+            include_str!("fixtures/typescript_oracle/class-imported-base-derived-valid/main.ts"),
+            direct_box,
+            None,
+        ),
+        (
+            "alias-valid",
+            include_str!("fixtures/typescript_oracle/class-imported-base-derived-alias/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-imported-base-derived-alias/box.ts"),
+            None,
+        ),
+        (
+            "constructor-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-imported-base-derived-constructor-error/main.ts"
+            ),
+            direct_box,
+            Some((6, "TS2345")),
+        ),
+        (
+            "instance-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-imported-base-derived-instance-error/main.ts"
+            ),
+            direct_box,
+            Some((7, "TS2345")),
+        ),
+        (
+            "static-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-imported-base-derived-static-error/main.ts"
+            ),
+            direct_box,
+            Some((6, "TS2345")),
+        ),
+        (
+            "result-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-imported-base-derived-result-error/main.ts"
+            ),
+            direct_box,
+            Some((6, "TS2322")),
+        ),
+    ] {
+        let temporary = TestDirectory::new();
+        let input = temporary.path().join("main.ts");
+        fs::write(&input, main).unwrap();
+        fs::write(temporary.path().join("box.ts"), box_module).unwrap();
+        fs::write(temporary.path().join("base.ts"), base).unwrap();
+        let output = Command::new(&tsc)
+            .args([
+                "--target",
+                "ES2022",
+                "--module",
+                "ES2022",
+                "--strict",
+                "--pretty",
+                "false",
+                "--allowImportingTsExtensions",
+                "--noEmit",
+            ])
+            .arg(&input)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.success(),
+            expected_error.is_none(),
+            "{name}: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert_eq!(
+            typescript_diagnostic_lines(&output),
+            expected_error.map_or_else(Vec::new, |(line, _)| vec![line]),
+            "{name}"
+        );
+        if let Some((line, code)) = expected_error {
+            assert!(
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .any(|text| text.contains(&format!("({line},")) && text.contains(code)),
+                "{name}: missing {code} at line {line}"
+            );
+        }
+        assert_eq!(fs::read_dir(temporary.path()).unwrap().count(), 3);
+    }
+    let temporary = TestDirectory::new();
+    let input = temporary.path().join("main.ts");
+    fs::write(
+        &input,
+        include_str!("fixtures/typescript_oracle/class-imported-base-derived-chain/main.ts"),
+    )
+    .unwrap();
+    fs::write(
+        temporary.path().join("box.ts"),
+        include_str!("fixtures/typescript_oracle/class-imported-base-derived-chain/box.ts"),
+    )
+    .unwrap();
+    fs::write(
+        temporary.path().join("middle.ts"),
+        include_str!("fixtures/typescript_oracle/class-imported-base-derived-chain/middle.ts"),
+    )
+    .unwrap();
+    fs::write(temporary.path().join("base.ts"), base).unwrap();
+    let output = Command::new(&tsc)
+        .args([
+            "--target",
+            "ES2022",
+            "--module",
+            "ES2022",
+            "--strict",
+            "--pretty",
+            "false",
+            "--allowImportingTsExtensions",
+            "--noEmit",
+        ])
+        .arg(&input)
+        .output()
+        .unwrap();
+    assert_success(
+        &output,
+        "four-module inherited class chain should type-check",
+    );
+    assert!(typescript_diagnostic_lines(&output).is_empty());
+    assert_eq!(fs::read_dir(temporary.path()).unwrap().count(), 4);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

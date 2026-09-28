@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.3.4.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.3.4.2.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1267,6 +1267,25 @@ exists. A passed first form does not close its whole feature family.
             - [ ] **J.3.1.3.4.3.4.2** Publish a derived class whose base is
               value-imported, and carry its inherited surfaces through
               closed-module re-exports and imports with pinned-oracle checks.
+              - [x] **J.3.1.3.4.3.4.2.1** Publish inherited instance/static
+                methods and constructor signatures when the derived class
+                extends a value-imported base, including local aliases and
+                bounded multi-module propagation; check direct value imports
+                against pinned TypeScript. The closed-module class export
+                table now propagates value-imported bases to a bounded fixed
+                point and tracks heritage depth across modules. Public
+                checked-compile cases cover direct and aliased imports,
+                a four-module inheritance chain, accepted construction and
+                instance/static calls, rejected arguments and selected
+                results at original spans, and no output. Seven pinned
+                TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+                TS2345/TS2322 lines. BlueTS, bridge, and full workspace
+                tests, all-target Clippy, rustfmt, and whitespace checks
+                pass with the reused 12 GiB target.
+              - [ ] **J.3.1.3.4.3.4.2.2** Carry the derived instance surface
+                through the supported `export type` re-export chain and
+                type-only imports, including aliases and rejected member
+                calls, against pinned TypeScript.
         - [ ] **J.3.1.3.4.4** Validate inherited method overrides and overload
           compatibility at original member spans against pinned TypeScript.
         - [ ] **J.3.1.3.4.5** Check derived constructor `super` calls, arguments,
