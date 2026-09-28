@@ -2807,6 +2807,77 @@ fn both_variable_tuple_rest_overrides_align_middle_and_suffixes() {
 }
 
 #[test]
+fn middle_and_fixed_tuple_rest_overrides_align_total_arity() {
+    let valid =
+        include_str!("fixtures/typescript_oracle/class-override-middle-fixed-valid/main.ts");
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
+        CompilerOptions::default(),
+    );
+    assert!(accepted.output.is_none());
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, member) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-override-middle-fixed-base-suffix-error/main.ts"),
+            "read(...parts: [number, string]): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-middle-fixed-base-element-error/main.ts"),
+            "read(...parts: [number, boolean, boolean]): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-middle-fixed-base-arity-error/main.ts"),
+            "read(...parts: [number]): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-middle-fixed-derived-suffix-error/main.ts"),
+            "read(...parts: [number, ...string[], number]): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-middle-fixed-derived-element-error/main.ts"),
+            "read(...parts: [number, ...boolean[], boolean]): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-middle-fixed-derived-arity-error/main.ts"),
+            "read(...parts: [number, ...string[], boolean]): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-middle-fixed-static-error/main.ts"),
+            "static parse(...parts: [number, string]): number { return 1; }",
+        ),
+    ] {
+        let compilation = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+        assert_eq!(failures[0].span.module, ENTRY);
+        assert_eq!(
+            &source[failures[0].span.start..failures[0].span.end],
+            member,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
 fn class_construction_scan_obeys_the_type_expansion_budget() {
     let source =
         "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";

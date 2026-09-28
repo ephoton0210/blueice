@@ -65,6 +65,11 @@ enum RestShape {
         derived_fixed: usize,
         inherited_fixed: usize,
     },
+    MiddleFixedTuples {
+        derived_fixed: usize,
+        inherited_fixed: usize,
+        derived_variable: bool,
+    },
 }
 
 impl ModuleChecker<'_> {
@@ -127,6 +132,7 @@ impl ModuleChecker<'_> {
                         | RestShape::BothTuples { .. }
                         | RestShape::BothTrailingTuples { .. }
                         | RestShape::BothVariableTuples { .. }
+                        | RestShape::MiddleFixedTuples { .. }
                 ) {
                     let Some(Type::Tuple(elements)) = derived
                         .parameters
@@ -199,6 +205,27 @@ impl ModuleChecker<'_> {
                 RestShape::InheritedMiddleTuple {
                     inherited_fixed,
                     derived_array_rest: false,
+                    ..
+                } => {
+                    required_derived >= middle_tuple_required(inherited.parameters, inherited_fixed)
+                }
+                RestShape::MiddleFixedTuples {
+                    inherited_fixed,
+                    derived_variable: true,
+                    ..
+                } => {
+                    let Some(Type::Tuple(elements)) = inherited
+                        .parameters
+                        .last()
+                        .and_then(|parameter| parameter.annotation.as_ref())
+                    else {
+                        unreachable!("rest shape requires a tuple annotation")
+                    };
+                    required_derived <= inherited_fixed + elements.len()
+                }
+                RestShape::MiddleFixedTuples {
+                    inherited_fixed,
+                    derived_variable: false,
                     ..
                 } => {
                     required_derived >= middle_tuple_required(inherited.parameters, inherited_fixed)
@@ -892,6 +919,65 @@ impl ModuleChecker<'_> {
                             })
                         })
                     }
+                    RestShape::MiddleFixedTuples {
+                        derived_fixed,
+                        inherited_fixed,
+                        derived_variable,
+                    } => {
+                        let Some(Type::Tuple(derived_elements)) = derived
+                            .parameters
+                            .last()
+                            .and_then(|parameter| parameter.annotation.as_ref())
+                        else {
+                            unreachable!("rest shape requires a tuple annotation")
+                        };
+                        let Some(Type::Tuple(inherited_elements)) = inherited
+                            .parameters
+                            .last()
+                            .and_then(|parameter| parameter.annotation.as_ref())
+                        else {
+                            unreachable!("rest shape requires a tuple annotation")
+                        };
+                        let length = if derived_variable {
+                            inherited_fixed + inherited_elements.len()
+                        } else {
+                            derived_fixed + derived_elements.len()
+                        };
+                        (0..length).all(|index| {
+                            if !budget.consume() {
+                                return false;
+                            }
+                            let derived_type = if index < derived_fixed {
+                                derived.parameters[index].annotation.clone()
+                            } else {
+                                tuple_type_at_length(
+                                    derived_elements,
+                                    length - derived_fixed,
+                                    index - derived_fixed,
+                                )
+                            };
+                            let inherited_type = if index < inherited_fixed {
+                                inherited.parameters[index].annotation.clone()
+                            } else {
+                                tuple_type_at_length(
+                                    inherited_elements,
+                                    length - inherited_fixed,
+                                    index - inherited_fixed,
+                                )
+                            };
+                            let (Some(derived_type), Some(inherited_type)) =
+                                (derived_type, inherited_type)
+                            else {
+                                return false;
+                            };
+                            parameter_types_compatible(
+                                &derived_type,
+                                &inherited_type,
+                                &self.types,
+                                &mut budget,
+                            )
+                        })
+                    }
                 };
             let compatible = parameters_compatible
                 && is_assignable(
@@ -1001,6 +1087,52 @@ fn nearest_inherited_method<'a>(
 }
 
 fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShape> {
+    if let (Some((derived_rest, derived_fixed)), Some((inherited_rest, inherited_fixed))) =
+        (derived.split_last(), inherited.split_last())
+    {
+        let middle_fixed_pair = match (
+            derived_rest.annotation.as_ref(),
+            inherited_rest.annotation.as_ref(),
+        ) {
+            (Some(Type::Tuple(derived_elements)), Some(Type::Tuple(inherited_elements))) => {
+                let derived_middle = derived_elements
+                    .iter()
+                    .position(|element| element.rest)
+                    .is_some_and(|index| index + 1 < derived_elements.len());
+                let inherited_middle = inherited_elements
+                    .iter()
+                    .position(|element| element.rest)
+                    .is_some_and(|index| index + 1 < inherited_elements.len());
+                let derived_is_fixed = derived_elements.iter().all(|element| !element.rest);
+                let inherited_is_fixed = inherited_elements.iter().all(|element| !element.rest);
+                if !derived_elements.iter().any(|element| element.optional)
+                    && !inherited_elements.iter().any(|element| element.optional)
+                    && ((derived_middle && inherited_is_fixed)
+                        || (inherited_middle && derived_is_fixed))
+                {
+                    Some(derived_middle)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        if let Some(derived_variable) = middle_fixed_pair {
+            if derived_rest.rest
+                && inherited_rest.rest
+                && !derived_fixed
+                    .iter()
+                    .chain(inherited_fixed)
+                    .any(|parameter| parameter.rest || parameter.optional)
+            {
+                return Some(RestShape::MiddleFixedTuples {
+                    derived_fixed: derived_fixed.len(),
+                    inherited_fixed: inherited_fixed.len(),
+                    derived_variable,
+                });
+            }
+        }
+    }
     if let (Some((derived_rest, derived_fixed)), Some((inherited_rest, inherited_fixed))) =
         (derived.split_last(), inherited.split_last())
     {

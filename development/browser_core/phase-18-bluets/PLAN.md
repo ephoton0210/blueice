@@ -6205,6 +6205,25 @@ trailing, and static types at original member spans with no output. Six
 pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/
 TS2417 diagnostic lines.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.2 Middle and fixed tuple rest overrides
+
+When one class method rest parameter has a nontrailing array rest and the
+opposing rest parameter has a required-only fixed tuple, the fixed tuple's
+total parameter count chooses a single witness length. The variable tuple
+must fit that length in the derived-middle direction; the derived fixed
+tuple must provide at least the inherited middle tuple's required count in
+the opposite direction. Prefix, repeated middle, and suffix positions are
+then compared at the chosen length with the existing bivariant method
+parameter relation. Each position consumes the type-expansion budget.
+
+This subleaf covers required-only tuple positions and ordinary fixed
+parameters. Public checked-compile cases cover short and longer fixed
+tuples, both inheritance directions, and static methods, plus incompatible
+suffix or middle types and insufficient required arity at original member
+spans with no output. Eight pinned TypeScript 5.9.3 `--noEmit` cases agree
+on acceptance and TS2416/TS2417 diagnostic lines. Optional fixed positions
+remain the final nontrailing override subleaf.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
