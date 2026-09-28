@@ -140,12 +140,19 @@ fn cached_find_with_a_replaced_pattern_is_not_decoded_as_compile() {
 /// A worker whose transport is two in-memory channels, so a test controls
 /// exactly what "the worker" replies. `_requests` keeps the request side open.
 fn scripted_worker(replies: Vec<Reply>) -> (Worker, Receiver<Vec<u8>>) {
+    scripted_worker_bytes(
+        replies
+            .iter()
+            .map(|reply| serde_json::to_vec(reply).unwrap())
+            .collect(),
+    )
+}
+
+fn scripted_worker_bytes(replies: Vec<Vec<u8>>) -> (Worker, Receiver<Vec<u8>>) {
     let (sender, requests) = mpsc::channel();
     let (reply, incoming) = mpsc::channel();
     for scripted in replies {
-        reply
-            .send(Ok(serde_json::to_vec(&scripted).unwrap()))
-            .unwrap();
+        reply.send(Ok(scripted)).unwrap();
     }
     let worker = Worker {
         child: exited_child(),
@@ -157,6 +164,22 @@ fn scripted_worker(replies: Vec<Reply>) -> (Worker, Receiver<Vec<u8>>) {
         input: None,
     };
     (worker, requests)
+}
+
+#[test]
+fn malformed_worker_reply_is_reported_as_a_transport_failure() {
+    let (mut worker, _requests) = scripted_worker_bytes(vec![b"{".to_vec()]);
+    assert!(matches!(
+        worker.request(
+            Request::Compile {
+                source: vec![97],
+                flags: String::new(),
+            },
+            Duration::from_millis(100),
+            None,
+        ),
+        Err(RuntimeError::RegexWorker(_))
+    ));
 }
 
 #[test]
@@ -413,4 +436,21 @@ fn the_worker_answers_compile_find_and_validate_requests() {
     assert_eq!(replies[2], serde_json::json!({"Found": null}));
     assert_eq!(replies[3]["Found"]["captures"], whole);
     assert_eq!(replies[4], serde_json::json!({"Validated": [true, false]}));
+}
+
+#[test]
+fn the_worker_serializes_named_capture_ranges() {
+    let pattern: Vec<u16> = "(?<word>a)".encode_utf16().collect();
+    let (ended, replies) = serve_requests(&[serde_json::json!({
+        "operation": "find",
+        "source": pattern,
+        "flags": "",
+        "input": [97],
+        "start": 0
+    })]);
+    assert!(ended.is_ok());
+    assert_eq!(
+        replies[0]["Found"]["names"],
+        serde_json::json!([["word", { "start": 0, "end": 1 }]])
+    );
 }

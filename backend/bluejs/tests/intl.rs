@@ -230,6 +230,87 @@ fn locale_objects_preserve_canonical_locale_state() {
 }
 
 #[test]
+fn locale_numeric_first_day_options_follow_weekday_order() {
+    for (day, expected) in [
+        (0, "sun"),
+        (1, "mon"),
+        (2, "tue"),
+        (3, "wed"),
+        (4, "thu"),
+        (5, "fri"),
+        (6, "sat"),
+        (7, "sun"),
+    ] {
+        let source = format!("new Intl.Locale('en', {{firstDayOfWeek: {day}}}).firstDayOfWeek");
+        assert_eq!(
+            evaluate(&source),
+            Ok(Value::String(expected.into())),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn collator_resolved_options_preserve_each_sensitivity() {
+    for sensitivity in ["base", "accent", "case", "variant"] {
+        let source = format!(
+            "new Intl.Collator('en', {{sensitivity: '{sensitivity}'}}).resolvedOptions().sensitivity"
+        );
+        assert_eq!(
+            evaluate(&source),
+            Ok(Value::String(sensitivity.into())),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn locale_option_getters_propagate_abrupt_completion() {
+    for option in [
+        "language",
+        "script",
+        "region",
+        "variants",
+        "calendar",
+        "collation",
+        "hourCycle",
+        "caseFirst",
+        "numeric",
+        "numberingSystem",
+        "firstDayOfWeek",
+    ] {
+        let source = format!(
+            "(() => {{ const options = {{ get {option}() {{ throw new Error('{option}'); }} }}; \
+             try {{ new Intl.Locale('en', options); return false; }} \
+             catch (error) {{ return error.message === '{option}'; }} }})()"
+        );
+        assert_eq!(evaluate(&source), Ok(Value::Bool(true)), "{option}");
+    }
+}
+
+#[test]
+fn intl_constructor_option_getters_propagate_abrupt_completion() {
+    for (constructor, option) in [
+        ("NumberFormat", "style"),
+        ("DateTimeFormat", "timeZone"),
+        ("ListFormat", "type"),
+        ("DurationFormat", "style"),
+        ("Collator", "usage"),
+        ("PluralRules", "type"),
+        ("RelativeTimeFormat", "style"),
+        ("Segmenter", "granularity"),
+        ("DisplayNames", "type"),
+    ] {
+        let source = format!(
+            "(() => {{ const options = {{ get {option}() {{ throw new Error('{option}'); }} }}; \
+             try {{ new Intl.{constructor}('en', options); return false; }} \
+             catch (error) {{ return error.message === '{option}'; }} }})()"
+        );
+        assert_eq!(evaluate(&source), Ok(Value::Bool(true)), "{constructor}");
+    }
+}
+
+#[test]
 fn collator_options_and_bound_comparison() {
     for source in [
         "'ä'.localeCompare('z','sv') > 0 && 'ä'.localeCompare('z','de') < 0",

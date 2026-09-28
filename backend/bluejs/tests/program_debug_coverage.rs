@@ -4,8 +4,106 @@
 
 use blueice_bluejs::{
     parse, BlueJsAstNodeKind, BlueJsProgramDebugError, BlueJsProgramRegistry, BlueJsProgramV1,
-    BlueJsSourceIdentity,
+    BlueJsSourceIdentity, CompileError,
 };
+
+#[test]
+fn program_registry_errors_have_stable_host_facing_diagnostics() {
+    use BlueJsProgramDebugError as Error;
+
+    for (error, expected) in [
+        (
+            Error::EmptyCanonicalModuleId,
+            "canonical module ID must not be empty",
+        ),
+        (Error::EmptySourceHash, "source hash must not be empty"),
+        (
+            Error::Compilation(CompileError::DuplicateBinding("x".into())),
+            "cannot compile structured program: duplicate or conflicting binding: x",
+        ),
+        (
+            Error::GenerationExhausted,
+            "BlueJS program generation space is exhausted",
+        ),
+        (
+            Error::CodeUnitLimitExceeded,
+            "BlueJS program has too many code units",
+        ),
+        (
+            Error::AstNodeLimitExceeded,
+            "BlueJS program has too many AST nodes",
+        ),
+        (
+            Error::UnknownProgram,
+            "BlueJS program handle is stale or unknown",
+        ),
+        (
+            Error::StaleSafePoint,
+            "BlueJS safe point belongs to another generation",
+        ),
+        (
+            Error::UnknownCodeUnit,
+            "BlueJS code unit is unknown for this generation",
+        ),
+        (
+            Error::InvalidInstructionBoundary,
+            "BlueJS offset is not an instruction boundary",
+        ),
+        (
+            Error::StaleAstNode,
+            "BlueJS AST node belongs to another generation",
+        ),
+        (
+            Error::UnknownAstNode,
+            "BlueJS AST node is unknown for this generation",
+        ),
+        (
+            Error::AstNodeUnbound,
+            "BlueJS AST node has no executable root safe point",
+        ),
+        (
+            Error::AstBytecodeShapeMismatch,
+            "BlueJS AST and bytecode top-level provenance disagree",
+        ),
+    ] {
+        assert_eq!(error.to_string(), expected);
+    }
+}
+
+#[test]
+fn failed_initial_install_does_not_consume_a_program_generation() {
+    let source = || BlueJsSourceIdentity::new("page:///debug.js", "sha256:debug").unwrap();
+    let mut registry = BlueJsProgramRegistry::default();
+    let invalid = BlueJsProgramV1::Script(parse("let duplicate; let duplicate;").unwrap());
+    assert!(matches!(
+        registry.install(source(), &invalid),
+        Err(BlueJsProgramDebugError::Compilation(
+            CompileError::DuplicateBinding(_)
+        ))
+    ));
+
+    let valid = BlueJsProgramV1::Script(parse("42;").unwrap());
+    let handle = registry.install(source(), &valid).unwrap();
+    assert_eq!(handle.generation().as_u64(), 1);
+}
+
+#[test]
+fn invalidated_programs_reject_resolution_and_replacement() {
+    let source = || BlueJsSourceIdentity::new("page:///debug.js", "sha256:debug").unwrap();
+    let program = BlueJsProgramV1::Script(parse("42;").unwrap());
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry.install(source(), &program).unwrap();
+    let node = registry.get(handle).unwrap().ast_nodes()[0].id();
+    assert!(registry.invalidate(handle));
+    assert_eq!(
+        registry.safe_point_for_ast_node(handle, node),
+        Err(BlueJsProgramDebugError::UnknownProgram)
+    );
+    assert_eq!(
+        registry.replace(handle, source(), &program),
+        Err(BlueJsProgramDebugError::UnknownProgram)
+    );
+}
 
 #[test]
 fn a_live_program_exposes_its_generation_source_and_executable_inventory() {

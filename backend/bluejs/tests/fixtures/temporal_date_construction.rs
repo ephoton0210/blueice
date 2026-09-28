@@ -20,6 +20,20 @@ fn invalid_object_handles_propagate_from_both_date_converters() {
 }
 
 #[test]
+fn unpaired_surrogates_fail_before_plain_date_strings_are_parsed() {
+    let mut vm = Vm::default();
+    let invalid = Value::String(JsString::from_code_units(vec![0xd800]));
+    assert!(matches!(
+        vm.temporal_to_plain_date(&invalid, &Value::Undefined),
+        Err(RuntimeError::RangeError(message)) if message == "invalid Temporal.PlainDate string"
+    ));
+    assert!(matches!(
+        vm.temporal_to_plain_date_time(&invalid, &Value::Undefined),
+        Err(RuntimeError::RangeError(message)) if message == "invalid Temporal.PlainDateTime string"
+    ));
+}
+
+#[test]
 fn all_calendar_date_unit_mappings_are_explicit() {
     use plain_date::DateUnit;
     use rounding::TemporalUnit;

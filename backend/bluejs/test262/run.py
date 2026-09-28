@@ -1284,9 +1284,21 @@ class Worker:
         self.timeout = timeout
         self.process = None
 
-    def close(self):
+    def close(self, flush_profile=False):
         if self.process is not None:
             process = self.process
+            if flush_profile:
+                # LLVM writes its execution profile when the adapter exits.
+                # Closing stdin lets its JSON-lines loop finish normally.
+                process.stdin.close()
+                try:
+                    process.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    pass
+                else:
+                    process.stdout.close()
+                    self.process = None
+                    return
             # The group also contains any isolated regex helper. This is needed
             # for crashes/whole-case timeouts outside the regex API deadline.
             try:
@@ -1309,7 +1321,8 @@ class Worker:
             except ProcessLookupError:
                 pass
             process.wait()
-            process.stdin.close()
+            if not process.stdin.closed:
+                process.stdin.close()
             process.stdout.close()
             self.process = None
 
@@ -1429,6 +1442,11 @@ def main():
         help="seconds between live progress reports; zero disables periodic reports",
     )
     parser.add_argument("--fetch", action="store_true")
+    parser.add_argument(
+        "--flush-profiles",
+        action="store_true",
+        help="let adapters exit normally so LLVM coverage profiles are written",
+    )
     args = parser.parse_args()
     if args.fetch:
         fetch(args.corpus)
@@ -1642,7 +1660,7 @@ def main():
         if reporter:
             reporter.join()
         for worker in workers:
-            worker.close()
+            worker.close(flush_profile=args.flush_profiles)
     report = {
         "snapshot": SNAPSHOT,
         "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(),

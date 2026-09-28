@@ -169,6 +169,70 @@ fn array_concat_keeps_non_array_values_as_elements() {
 }
 
 #[test]
+fn array_to_sorted_reports_an_invalid_comparator_before_reading_the_receiver() {
+    let mut vm = Vm::default();
+    let mut other_vm = Vm::default();
+    let foreign = other_vm.heap.alloc_object(None).unwrap();
+    assert!(matches!(
+        vm.array_to_sorted(&Value::Null, &Value::Object(foreign)),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(id))) if id == foreign
+    ));
+}
+
+#[test]
+fn creating_an_array_in_another_realm_propagates_heap_limits() {
+    let create_realm = crate::compile(&crate::parse("$262.createRealm()").unwrap()).unwrap();
+    let mut probe = Vm::default();
+    probe.install_test262_harness().unwrap();
+    probe.execute(&create_realm).unwrap();
+    let setup_bytes = probe.heap.stats().managed_bytes;
+    let realm = *probe.test262_realms.keys().next().unwrap();
+    probe.acting_realm = Some(realm);
+    probe.array_create_exact(1.0).unwrap();
+    let baseline = probe.heap.stats().managed_bytes;
+    let child_baseline = probe.test262_realms[&realm].vm.heap.stats().managed_bytes;
+    let mut completed = 0;
+    let mut exhausted = 0;
+    let mut ready = 0;
+
+    for limit in
+        (setup_bytes.saturating_sub(4_096)..=baseline.max(child_baseline) + 4_096).step_by(16)
+    {
+        let config = VmConfig {
+            heap: HeapConfig {
+                major_threshold_bytes: limit.min(HeapConfig::default().major_threshold_bytes),
+                max_heap_bytes: limit,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        };
+        let Ok(mut vm) = Vm::new(config) else {
+            continue;
+        };
+        match vm
+            .install_test262_harness()
+            .and_then(|()| vm.execute(&create_realm).map(|_| ()))
+        {
+            Ok(()) => {}
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => continue,
+            other => panic!("realm setup at heap limit {limit}: {other:?}"),
+        }
+        let realm = *vm.test262_realms.keys().next().unwrap();
+        ready += 1;
+        vm.acting_realm = Some(realm);
+        match vm.array_create_exact(1.0) {
+            Ok(_) => completed += 1,
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => exhausted += 1,
+            other => panic!("heap limit {limit}: {other:?}"),
+        }
+    }
+    assert!(
+        completed > 0 && exhausted > 0,
+        "setup {setup_bytes}, parent {baseline}, child {child_baseline}: {ready} ready, {completed} completed, {exhausted} exhausted"
+    );
+}
+
+#[test]
 fn math_extrema_replace_the_running_result_for_later_arguments() {
     let mut vm = Vm::default();
     assert_eq!(

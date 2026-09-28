@@ -137,3 +137,22 @@ fn acosh_and_atanh_stay_accurate_near_their_singularities() {
         })()"#,
     );
 }
+
+#[test]
+fn ordinary_math_inputs_cover_the_midrange_and_empty_hypotenuse() {
+    assert_true(
+        r#"Math.hypot() === 0 &&
+            Math.sign(3) === 1 && Math.sign(-3) === -1 &&
+            Math.abs(Math.acosh(3) - 1.762747174039086) < 1e-15 &&
+            Math.abs(Math.atanh(0.25) - 0.25541281188299536) < 1e-15"#,
+    );
+}
+
+#[test]
+fn precise_sum_rounds_once_at_halfway_and_at_the_finite_limit() {
+    assert_true(
+        r#"Math.sumPrecise([1, 2 ** -53]) === 1 &&
+            Math.sumPrecise([1, 2 ** -53, 2 ** -54]) === 1 + Number.EPSILON &&
+            Math.sumPrecise([Number.MAX_VALUE, 2 ** 970]) === Infinity"#,
+    );
+}

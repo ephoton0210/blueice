@@ -459,6 +459,60 @@ fn helper_rejects_oversized_frames_and_handles_out_of_range_starts() {
 }
 
 #[test]
+fn helper_process_reuses_cached_requests_and_exits_after_shutdown() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bluejs-regexp-worker"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut output = child.stdout.take().unwrap();
+    let mut read_frame = || {
+        let mut size = [0; 4];
+        output.read_exact(&mut size).unwrap();
+        let mut bytes = vec![0; u32::from_le_bytes(size) as usize];
+        output.read_exact(&mut bytes).unwrap();
+        bytes
+    };
+    assert_eq!(read_frame(), b"bluejs-regexp-worker/1");
+    let mut request = |value: Value| {
+        let bytes = serde_json::to_vec(&value).unwrap();
+        input
+            .write_all(&(bytes.len() as u32).to_le_bytes())
+            .unwrap();
+        input.write_all(&bytes).unwrap();
+        input.flush().unwrap();
+        serde_json::from_slice::<Value>(&read_frame()).unwrap()
+    };
+    assert_eq!(
+        request(json!({"operation":"compile","source":[97],"flags":""})),
+        json!("Compiled")
+    );
+    let first = request(json!({
+        "operation":"find","source":null,"flags":null,"input":[97,98,97],"start":0
+    }));
+    assert_eq!(first["Found"]["captures"][0], json!({"start":0,"end":1}));
+    let reused = request(json!({
+        "operation":"find","source":null,"flags":null,"input":null,"start":2
+    }));
+    assert_eq!(reused["Found"]["captures"][0], json!({"start":2,"end":3}));
+    assert_eq!(
+        request(json!({
+            "operation":"validate","patterns":[[[97],""],[[40],""]]
+        })),
+        json!({"Validated":[true,false]})
+    );
+    let bytes = serde_json::to_vec(&json!({"operation":"shutdown"})).unwrap();
+    input
+        .write_all(&(bytes.len() as u32).to_le_bytes())
+        .unwrap();
+    input.write_all(&bytes).unwrap();
+    drop(input);
+    assert!(child.wait().unwrap().success());
+}
+
+#[test]
 fn compilation_deadline_and_transport_limit_are_enforced() {
     let replies = adapter(
         &[

@@ -1278,6 +1278,36 @@ fn installing_the_lazy_object_prototype_methods_survives_running_out_of_heap() {
 }
 
 #[test]
+fn initializing_string_and_array_intrinsics_survives_heap_limits() {
+    let initial = Vm::default().heap.stats().managed_bytes;
+    let mut probe = Vm::default();
+    probe.string_intrinsics().unwrap();
+    let baseline = probe.heap.stats().managed_bytes;
+    let mut completed = 0;
+    let mut exhausted = 0;
+
+    for limit in (initial..=baseline + 16_384).step_by(64) {
+        let config = VmConfig {
+            heap: HeapConfig {
+                major_threshold_bytes: limit.min(HeapConfig::default().major_threshold_bytes),
+                max_heap_bytes: limit,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        };
+        let Ok(mut vm) = Vm::new(config) else {
+            continue;
+        };
+        match vm.string_intrinsics() {
+            Ok(_) => completed += 1,
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => exhausted += 1,
+            other => panic!("heap limit {limit}: {other:?}"),
+        }
+    }
+    assert!(completed > 0 && exhausted > 0);
+}
+
+#[test]
 fn a_native_accessor_cannot_replace_a_non_configurable_property() {
     let mut vm = Vm::default();
     let prototype = vm.function_prototype().unwrap();

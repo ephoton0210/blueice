@@ -1077,6 +1077,28 @@ class RunnerTests(unittest.TestCase):
             finally:
                 worker.close()
 
+    def test_supervisor_flushes_a_live_adapter_on_final_close(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / "adapter"
+            marker = Path(temporary) / "closed"
+            executable.write_text(
+                "#!/usr/bin/env python3\nimport json,sys\n"
+                "print('{\"ready\":1}',flush=True)\nfor line in sys.stdin:\n"
+                " print('{\"kind\":\"ok\"}',flush=True)\n"
+                f"open({str(marker)!r},'w').write('done')\n"
+            )
+            executable.chmod(0o755)
+            worker = Worker(executable, 1)
+            try:
+                self.assertEqual(worker.run({})["kind"], "ok")
+                process = worker.process
+                worker.close(flush_profile=True)
+                self.assertEqual(process.returncode, 0)
+                self.assertEqual(marker.read_text(), "done")
+                self.assertIsNone(worker.process)
+            finally:
+                worker.close()
+
     def test_windows_supervisor_uses_pipe_thread_and_process_kill(self):
         with tempfile.TemporaryDirectory() as temporary:
             executable = Path(temporary) / "adapter"

@@ -31,9 +31,15 @@ fn builtins_across_subsystems_handle_heap_limits_at_allocation_boundaries() {
         "Temporal.PlainDateTime.from('2024-02-29T12:34').toString() === '2024-02-29T12:34:00'",
         "new Intl.ListFormat('en').format(['A', 'B']) === 'A and B'",
         "typeof new Intl.DurationFormat('en').format({ hours: 1 }) === 'string'",
+        "new Intl.Collator('en').compare('a', 'b') < 0",
+        "new Intl.Locale('en', { firstDayOfWeek: 2 }).firstDayOfWeek === 'tue'",
         "(123.456).toFixed(2) === '123.46'",
         "JSON.stringify({ alpha: [1, 2] }) === '{\"alpha\":[1,2]}'",
         "(() => { let x = 3; return () => x + 1; })()() === 4",
+        "(function (a, b) { return a + b; }).bind(null, 1)(2) === 3",
+        "(() => { function F() {} return new F() instanceof F; })()",
+        "(() => { function F() {} return new F() instanceof F.bind(null); })()",
+        "(() => { const f = new Proxy(function () {}, { get: Reflect.get }); return ({} instanceof f) === false; })()",
         "(function* () { yield 1; return 2; })().next().value === 1",
         "Promise.resolve(3).then(value => value + 1) instanceof Promise",
         "new Proxy({ x: 1 }, { get(target, key) { return target[key]; } }).x === 1",
@@ -74,6 +80,59 @@ fn builtins_across_subsystems_handle_heap_limits_at_allocation_boundaries() {
         assert!(
             completed > 0 && exhausted > 0,
             "{source}, baseline {baseline}: {completed} completed, {exhausted} exhausted"
+        );
+    }
+}
+
+#[test]
+fn foreign_array_producers_propagate_allocation_failures_after_realm_setup() {
+    let setup = compile(&parse("globalThis.other = $262.createRealm().global").unwrap()).unwrap();
+    for source in [
+        "other.Array.prototype.toReversed.call([1,2,3]).join(',') === '3,2,1'",
+        "other.Array.prototype.toSorted.call([3,1,2]).join(',') === '1,2,3'",
+        "other.Array.prototype.toSpliced.call([1,2,3],1,1,4).join(',') === '1,4,3'",
+        "other.Array.prototype.with.call([1,2,3],1,4).join(',') === '1,4,3'",
+        "other.Array.prototype.map.call([1,2,3], x => x + 1).join(',') === '2,3,4'",
+        "other.Iterator.prototype.toArray.call([1,2,3].values()).join(',') === '1,2,3'",
+    ] {
+        let program = compile(&parse(source).unwrap()).unwrap();
+        let mut probe = Vm::default();
+        probe.install_test262_harness().unwrap();
+        probe.execute(&setup).unwrap();
+        let setup_bytes = probe.heap().stats().managed_bytes;
+        assert_eq!(
+            probe.execute(&program).unwrap(),
+            Value::Bool(true),
+            "{source}"
+        );
+        let completed_bytes = probe.heap().stats().managed_bytes;
+        let mut completed = 0;
+        let mut exhausted = 0;
+
+        for limit in (setup_bytes.saturating_sub(4_096)..=completed_bytes + 32_768).step_by(64) {
+            let mut config = VmConfig::default();
+            config.heap.max_heap_bytes = limit;
+            config.heap.major_threshold_bytes = config.heap.major_threshold_bytes.min(limit);
+            let Ok(mut vm) = Vm::new(config) else {
+                continue;
+            };
+            match vm
+                .install_test262_harness()
+                .and_then(|()| vm.execute(&setup).map(|_| ()))
+            {
+                Ok(()) => {}
+                Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => continue,
+                other => panic!("{source}, realm setup limit {limit}: {other:?}"),
+            }
+            match vm.execute(&program) {
+                Ok(Value::Bool(true)) => completed += 1,
+                Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => exhausted += 1,
+                other => panic!("{source}, method limit {limit}: {other:?}"),
+            }
+        }
+        assert!(
+            completed > 0 && exhausted > 0,
+            "{source}: setup {setup_bytes}, completed {completed_bytes}, {completed} completed, {exhausted} exhausted"
         );
     }
 }

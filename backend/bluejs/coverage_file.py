@@ -39,9 +39,9 @@ LINUX_REPORT = (
     / "development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md"
 )
 METRICS = ("lines", "functions", "regions")
-TEST_GROWTH_LIMIT = 16 * 1024**3
-TEST_TARGET_LIMIT = 64 * 1024**3
-HOST_GROWTH_LIMIT = 16 * 1024**3
+TEST_GROWTH_LIMIT = 32 * 1024**3
+TEST_TARGET_LIMIT = 128 * 1024**3
+HOST_GROWTH_LIMIT = 32 * 1024**3
 HOST_FREE_FLOOR = 20 * 1024**3
 TEST_RECLAIM_THRESHOLD = 4 * 1024**3
 
@@ -279,31 +279,48 @@ def provenance() -> str:
     )
 
 
-def report_section(files: dict[Path, dict], totals: dict, update_option: str) -> str:
+def report_section(
+    files: dict[Path, dict], totals: dict, update_option: str, include_test262: bool = False
+) -> str:
     sources = sorted(
         SOURCE_ROOT.rglob("*.rs"),
         key=lambda path: path.relative_to(SOURCE_ROOT).as_posix(),
     )
     unmeasured = len(sources) - len(files)
     rows = [markdown_row(path, files.get(path)) for path in sources]
+    complete_files = sum(is_complete(summary) for summary in files.values())
     raw_totals = totals.get("_raw", totals)
     total_cells = " | ".join(f"**{metric_cell(raw_totals[metric])}**" for metric in METRICS)
     total_complete = "☑" if is_complete(totals) else "☐"
     rows.append(
         f"| **Total ({len(files)} instrumented files)** | {total_cells} | {total_complete} |  |"
     )
+    test262_option = " --include-test262" if include_test262 else ""
+    interpreter = "python" if include_test262 else "python3"
+    reproduction = (
+        "With Python and PyYAML installed, reproduce it with "
+        if include_test262
+        else "Reproduce it with "
+    )
+    test262_scope = (
+        "then ran the full pinned Test262 inventory with the instrumented "
+        "adapter, "
+        if include_test262
+        else ""
+    )
+    excluded_scope = "" if include_test262 else "The full Test262 runner was not included. "
     measurement_note = (
         f"This is a separate BlueJS coverage measurement at {provenance()}. "
-        "It measures the Rust test suite independently of the Test262 "
-        "inventory and historical verification above. "
-        f"Reproduce it with `python3 backend/bluejs/coverage_file.py {update_option}`. "
+        "It is independent of the Test262 status and historical verification above. "
+        f"{reproduction}"
+        f"`{interpreter} backend/bluejs/coverage_file.py {update_option}{test262_option}`. "
         "This measurement cleared prior LLVM execution profiles, reused instrumented Cargo "
         "build artifacts, ran the complete default BlueJS Rust test suite, "
+        f"{test262_scope}"
         "exported fresh per-file JSON and source-line text, and released raw "
         "profiles and incremental compilation caches afterward. On Linux, "
         "test-binary DWARF was removed while retaining the coverage maps. "
-        "The opt-in Node "
-        "oracle and external full Test262 runner were not included. "
+        f"{excluded_scope}The opt-in Node oracle was not included. "
         "Workspace coverage was not remeasured at this revision."
     )
     table_note = (
@@ -322,9 +339,10 @@ def report_section(files: dict[Path, dict], totals: dict, update_option: str) ->
         "in the main columns determine completion. Region coverage "
         "is separate from branch coverage. "
         "To rerun any one "
-        "file independently, use `python3 backend/bluejs/coverage_file.py ast.rs` "
-        "(replace `ast.rs` with its source path). Each invocation reruns the "
-        "entire test suite, since tests outside a file can still exercise it."
+        f"file independently, use `python backend/bluejs/coverage_file.py "
+        f"ast.rs{test262_option}` (replace `ast.rs` with its source path). "
+        "Each invocation reruns the entire measured suite, since tests "
+        "outside a file can still exercise it."
     )
     return "\n".join(
         [
@@ -339,12 +357,20 @@ def report_section(files: dict[Path, dict], totals: dict, update_option: str) ->
             "| --- | ---: | ---: | ---: | :---: | --- |",
             *rows,
             "",
+            f"Raw LLVM lines, functions, and regions are all complete in "
+            f"**{complete_files} of {len(files)}** instrumented files; "
+            f"**{len(files) - complete_files}** remain incomplete.",
+            "",
         ]
     )
 
 
 def update_report(
-    report: Path, files: dict[Path, dict], totals: dict, update_option: str
+    report: Path,
+    files: dict[Path, dict],
+    totals: dict,
+    update_option: str,
+    include_test262: bool = False,
 ) -> None:
     text = report.read_text()
     start = text.find("## Later BlueJS per-file coverage (")
@@ -365,7 +391,12 @@ def update_report(
         raise ValueError("cannot find the section after BlueJS per-file coverage")
     if start < 0:
         start = end
-    new_text = text[:start] + report_section(files, totals, update_option) + "\n" + text[end:]
+    new_text = (
+        text[:start]
+        + report_section(files, totals, update_option, include_test262)
+        + "\n"
+        + text[end:]
+    )
     with tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", dir=report.parent, delete=False
     ) as output:
@@ -375,16 +406,20 @@ def update_report(
     os.replace(temporary, report)
 
 
-def update_macos_report(files: dict[Path, dict], totals: dict) -> None:
+def update_macos_report(
+    files: dict[Path, dict], totals: dict, include_test262: bool = False
+) -> None:
     if platform.system() != "Darwin":
         raise ValueError("the macOS report can only be regenerated on macOS")
-    update_report(MACOS_REPORT, files, totals, "--update-macos-report")
+    update_report(MACOS_REPORT, files, totals, "--update-macos-report", include_test262)
 
 
-def update_linux_report(files: dict[Path, dict], totals: dict) -> None:
+def update_linux_report(
+    files: dict[Path, dict], totals: dict, include_test262: bool = False
+) -> None:
     if platform.system() != "Linux":
         raise ValueError("the Linux report can only be regenerated on Linux")
-    update_report(LINUX_REPORT, files, totals, "--update-linux-report")
+    update_report(LINUX_REPORT, files, totals, "--update-linux-report", include_test262)
 
 
 def prune_superseded_test_executables(target: Path) -> None:
@@ -537,6 +572,8 @@ def run_bounded_command(
     host_growth_limit: int = HOST_GROWTH_LIMIT,
     free_floor: int = HOST_FREE_FLOOR,
     poll_interval: float = 5,
+    env: dict[str, str] | None = None,
+    accepted_returncodes: tuple[int, ...] = (0,),
 ) -> None:
     """Stop a test and its children before target or host growth exceeds budget."""
     if target.is_relative_to(cwd):
@@ -554,7 +591,7 @@ def run_bounded_command(
         f"{free_floor // 1024**3} GiB host reserve",
         flush=True,
     )
-    process = subprocess.Popen(argv, cwd=cwd, start_new_session=True)
+    process = subprocess.Popen(argv, cwd=cwd, env=env, start_new_session=True)
     try:
         while True:
             try:
@@ -586,14 +623,56 @@ def run_bounded_command(
                     f"host free {free / 1024**3:.1f} GiB"
                 )
             if returncode is not None:
-                if returncode:
+                if returncode not in accepted_returncodes:
                     raise subprocess.CalledProcessError(returncode, argv)
                 return
     finally:
         stop_process_group(process)
 
 
-def run_coverage() -> tuple[dict[Path, dict], dict]:
+def run_test262_coverage(python: Path, output: Path, target: Path) -> None:
+    adapter = target / "llvm-cov-target/debug/bluejs-test262"
+    corpus = REPO_ROOT / "development/browser_core/reference/test262"
+    if not adapter.is_file():
+        raise ValueError(f"instrumented Test262 adapter is missing: {adapter}")
+    environment = os.environ.copy()
+    environment["LLVM_PROFILE_FILE"] = str(
+        target / "llvm-cov-target/blueice-%p-%m.profraw"
+    )
+    run_bounded_command(
+        [
+            str(python),
+            str(REPO_ROOT / "backend/bluejs/test262/run.py"),
+            "--corpus",
+            str(corpus),
+            "--adapter",
+            str(adapter),
+            "--output",
+            str(output),
+            "--jobs",
+            "8",
+            "--progress-interval",
+            "60",
+            "--flush-profiles",
+        ],
+        cwd=REPO_ROOT,
+        target=target,
+        env=environment,
+        accepted_returncodes=(0, 1),
+    )
+    summary = json.loads((output / "summary.json").read_text())
+    expected = {"pass": 102_921, "excluded": 4, "stale_corpus": 1}
+    if (
+        not summary.get("complete_inventory")
+        or summary.get("scheduled_modes") != 102_926
+        or summary.get("results") != expected
+    ):
+        raise ValueError(
+            f"instrumented Test262 inventory changed: {summary.get('results')}"
+        )
+
+
+def run_coverage(*, include_test262: bool = False) -> tuple[dict[Path, dict], dict]:
     with tempfile.TemporaryDirectory(prefix="bluejs-coverage-") as tmp:
         output = Path(tmp) / "coverage.json"
         text_output = Path(tmp) / "coverage.txt"
@@ -617,6 +696,22 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
                 cwd=REPO_ROOT,
                 target=cargo_target(),
             )
+            if include_test262:
+                run_test262_coverage(sys.executable, Path(tmp) / "test262", cargo_target())
+                subprocess.run(
+                    [
+                        "cargo",
+                        "llvm-cov",
+                        "report",
+                        "-p",
+                        "blueice-bluejs",
+                        "--json",
+                        "--output-path",
+                        str(output),
+                    ],
+                    cwd=REPO_ROOT,
+                    check=True,
+                )
             subprocess.run(
                 [
                     "cargo",
@@ -674,6 +769,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="regenerate every row in the Linux report",
     )
+    parser.add_argument(
+        "--include-test262",
+        action="store_true",
+        help="combine the full pinned Test262 inventory with the Rust test suite",
+    )
     args = parser.parse_args(argv)
     if args.update_macos_report and args.update_linux_report:
         parser.error("update only one platform report")
@@ -681,12 +781,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("provide a source file or a platform report option")
     try:
         path = source_path(args.source_file) if args.source_file else None
-        files, totals = run_coverage()
+        files, totals = run_coverage(include_test262=args.include_test262)
         if args.update_macos_report:
-            update_macos_report(files, totals)
+            update_macos_report(files, totals, include_test262=args.include_test262)
             print(f"Updated {MACOS_REPORT.relative_to(REPO_ROOT)}")
         if args.update_linux_report:
-            update_linux_report(files, totals)
+            update_linux_report(files, totals, include_test262=args.include_test262)
             print(f"Updated {LINUX_REPORT.relative_to(REPO_ROOT)}")
         if path is not None:
             print(markdown_row(path, files.get(path)))

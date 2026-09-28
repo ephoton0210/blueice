@@ -116,6 +116,9 @@ fn malformed_module_clause_tails_and_declarations_are_known_syntax_errors() {
 #[test]
 fn contextual_keywords_in_import_and_export_declarations_reject_escapes() {
     for source in [
+        "\\u0069mport {a} from './m.js';",
+        "\\u0065xport {a}; var a;",
+        "import source name \\u0066rom './m.js';",
         "import {a \\u0061s b} from './m.js';",
         "import * \\u0061s ns from './m.js';",
         "import {} \\u0066rom './m.js';",

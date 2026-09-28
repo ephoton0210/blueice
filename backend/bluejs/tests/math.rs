@@ -86,3 +86,36 @@ fn math_initialization_releases_its_root_when_native_installation_exhausts_the_h
     assert!(matches!(vm.execute(&code), Err(RuntimeError::Heap(_))));
     assert!(vm.heap().stats().managed_bytes < limit);
 }
+
+#[test]
+fn math_initialization_handles_each_heap_allocation_boundary() {
+    let code = compile(&parse("Math.PI").unwrap()).unwrap();
+    let initial = Vm::default().heap().stats().managed_bytes;
+    let mut probe = Vm::default();
+    assert_eq!(
+        probe.execute(&code),
+        Ok(Value::Number(std::f64::consts::PI))
+    );
+    let baseline = probe.heap().stats().managed_bytes;
+    let mut completed = 0;
+    let mut exhausted = 0;
+
+    for limit in (initial..=baseline + 4_096).step_by(64) {
+        let Ok(mut vm) = Vm::new(VmConfig {
+            heap: HeapConfig {
+                major_threshold_bytes: limit,
+                max_heap_bytes: limit,
+                ..HeapConfig::default()
+            },
+            ..VmConfig::default()
+        }) else {
+            continue;
+        };
+        match vm.execute(&code) {
+            Ok(Value::Number(value)) if value == std::f64::consts::PI => completed += 1,
+            Err(RuntimeError::Heap(_)) => exhausted += 1,
+            other => panic!("heap limit {limit}: {other:?}"),
+        }
+    }
+    assert!(completed > 0 && exhausted > 0);
+}
