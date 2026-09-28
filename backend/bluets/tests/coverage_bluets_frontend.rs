@@ -1698,6 +1698,10 @@ fn imported_class_method_overrides_check_direct_and_transitive_base_surfaces() {
     }
     for (main, member) in [
         (
+            include_str!("fixtures/typescript_oracle/class-override-imported/required-extra-error.ts"),
+            "read(value: number, label: string): number { return value; }",
+        ),
+        (
             include_str!("fixtures/typescript_oracle/class-override-imported/alias-static-error.ts"),
             "static parse(value: string): number { return 1; }",
         ),
@@ -1738,6 +1742,80 @@ fn imported_class_method_overrides_check_direct_and_transitive_base_surfaces() {
         assert_eq!(failures[0].span.module, ENTRY);
         assert_eq!(
             &main[failures[0].span.start..failures[0].span.end],
+            member,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
+fn class_method_overrides_check_optional_and_differing_required_arities() {
+    for valid in [
+        include_str!("fixtures/typescript_oracle/class-override-arity-valid/main.ts"),
+        include_str!(
+            "fixtures/typescript_oracle/class-override-arity-instance-optional-required/main.ts"
+        ),
+        include_str!(
+            "fixtures/typescript_oracle/class-override-arity-static-optional-required/main.ts"
+        ),
+    ] {
+        let accepted = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
+            CompilerOptions::default(),
+        );
+        assert!(accepted.output.is_none());
+        assert!(
+            accepted
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{:#?}",
+            accepted.diagnostics
+        );
+    }
+    for (source, member) in [
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-override-arity-instance-extra-required/main.ts"
+            ),
+            "read(value: number, label: string): number { return value; }",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-override-arity-instance-optional-type-error/main.ts"
+            ),
+            "read(value: number, label?: number): number { return value; }",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-override-arity-static-extra-required/main.ts"
+            ),
+            "static parse(value: number, label: string): number { return value; }",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-override-arity-static-optional-type-error/main.ts"
+            ),
+            "static parse(value: number, label?: number): number { return value; }",
+        ),
+    ] {
+        let compilation = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+        assert_eq!(failures[0].span.module, ENTRY);
+        assert_eq!(
+            &source[failures[0].span.start..failures[0].span.end],
             member,
             "{failures:#?}"
         );

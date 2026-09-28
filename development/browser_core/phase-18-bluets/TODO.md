@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1333,14 +1333,31 @@ exists. A passed first form does not close its whole feature family.
               value-imported base's bound instance/static method surface,
               including an aliased import and inherited exports from another
               module. Public checked-compile cases cover two accepted forms,
-              seven rejected parameter/result forms, original member spans,
-              and no output. Nine pinned TypeScript 5.9.3 `--noEmit` cases
+              eight rejected parameter/result/arity forms, original member
+              spans, and no output. Ten pinned TypeScript 5.9.3 `--noEmit` cases
               agree on acceptance and TS2416/TS2417 lines. BlueTS, bridge,
               and full workspace tests, all-target Clippy, rustfmt, and
               whitespace checks pass with the reused 12 GiB target.
             - [ ] **J.3.1.3.4.4.2.3** Validate optional, rest, and differing
               method arities under TypeScript's override variance at original
               member spans.
+              - [x] **J.3.1.3.4.4.2.3.1** Validate optional/default and
+                differing required method arities, with accepted and rejected
+                instance/static overrides at original member spans against
+                pinned TypeScript. The override comparison now allows a
+                derived method to omit base parameters or add omittable ones,
+                rejects extra required positions, and compares overlapping
+                parameter types bivariantly, including optional positions.
+                Public checked-compile cases cover three accepted and four
+                rejected local forms, plus a rejected imported-base arity,
+                original member spans, and no output. Seven local cases and
+                the imported companion match pinned TypeScript 5.9.3
+                `--noEmit` acceptance and TS2416/TS2417 lines. BlueTS,
+                bridge, and full workspace tests, all-target Clippy, rustfmt,
+                and whitespace checks pass with the reused 12 GiB target.
+              - [ ] **J.3.1.3.4.4.2.3.2** Validate array and tuple rest
+                method parameters and their interactions with fixed
+                parameters against pinned TypeScript.
           - [ ] **J.3.1.3.4.4.3** Validate inherited method overload-set
             compatibility, including implementation and signature selection,
             against pinned TypeScript.

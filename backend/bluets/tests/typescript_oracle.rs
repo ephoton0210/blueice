@@ -2067,6 +2067,11 @@ fn pinned_imported_method_overrides_match_typescript_without_emit() {
             Some((6, "TS2417")),
         ),
         (
+            "required-extra-error",
+            include_str!("fixtures/typescript_oracle/class-override-imported/required-extra-error.ts"),
+            Some((7, "TS2416")),
+        ),
+        (
             "direct-instance-error",
             include_str!("fixtures/typescript_oracle/class-override-imported/direct-instance-error.ts"),
             Some((7, "TS2416")),
@@ -2131,6 +2136,63 @@ fn pinned_imported_method_overrides_match_typescript_without_emit() {
         }
         assert_eq!(fs::read_dir(temporary.path()).unwrap().count(), 3);
     }
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_method_override_arities_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-override-arity-valid/main.ts"),
+            &[],
+        ),
+        (
+            "instance-optional-required",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-arity-instance-optional-required/main.ts"
+            ),
+            &[],
+        ),
+        (
+            "static-optional-required",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-arity-static-optional-required/main.ts"
+            ),
+            &[],
+        ),
+        (
+            "instance-extra-required",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-arity-instance-extra-required/main.ts"
+            ),
+            &[(7, "TS2416")],
+        ),
+        (
+            "instance-optional-type-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-arity-instance-optional-type-error/main.ts"
+            ),
+            &[(7, "TS2416")],
+        ),
+        (
+            "static-extra-required",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-arity-static-extra-required/main.ts"
+            ),
+            &[(6, "TS2417")],
+        ),
+        (
+            "static-optional-type-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-arity-static-optional-type-error/main.ts"
+            ),
+            &[(6, "TS2417")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
 }
 
 #[test]

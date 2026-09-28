@@ -5691,11 +5691,32 @@ apply; overload groups and optional/rest or differing arities remain in
 their dedicated leaves.
 
 Public checked-compile cases cover two accepted direct/transitive forms,
-seven rejected parameter/result forms, original member spans, and no
-artifact. Nine pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance
+eight rejected parameter/result/arity forms, original member spans, and no
+artifact. Ten pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance
 and TS2416/TS2417 lines. BlueTS, bridge, and full workspace tests,
 workspace all-target Clippy, rustfmt, and whitespace checks pass with the
 reused 12 GiB Cargo target.
+
+J.3.1.3.4.4.2.3 is split into optional/default and differing required
+arities, then rest arrays/tuples and fixed/rest interactions. The first step
+keeps the existing single-signature, explicitly annotated method boundary.
+
+### J.3.1.3.4.4.2.3.1 Optional and differing-arity overrides
+
+For explicitly annotated single-signature methods without rest parameters,
+the override checker now allows the derived method to omit inherited
+parameters or add omittable optional/default parameters. It rejects a
+derived method that requires more positions than the base declares and
+compares overlapping parameter types bivariantly regardless of optional
+markers, following the pinned TypeScript method relation. Return types
+remain covariant and the comparison uses the existing expansion budget.
+
+Public checked-compile cases cover three accepted local forms, four
+rejected local forms, a rejected imported-base arity, original member spans,
+and no artifact. Seven local cases and the imported companion agree with
+pinned TypeScript 5.9.3 `--noEmit` acceptance and TS2416/TS2417 lines.
+BlueTS, bridge, and full workspace tests, workspace all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB Cargo target.
 
 ## Checklist
 

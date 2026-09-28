@@ -39,29 +39,29 @@ impl ModuleChecker<'_> {
             ) else {
                 continue;
             };
-            // Optional, rest, and differing-arity method variance belongs to
-            // the broader override relation. Preserve those cases for it.
+            // Rest parameters need positional expansion before comparison.
             if derived.return_type.is_none()
                 || inherited.return_type.is_none()
-                || derived.parameters.len() != inherited.parameters.len()
                 || derived
                     .parameters
                     .iter()
                     .chain(inherited.parameters)
-                    .any(|parameter| {
-                        parameter.optional
-                            || parameter.rest
-                            || parameter.default.is_some()
-                            || parameter.annotation.is_none()
-                    })
+                    .any(|parameter| parameter.rest || parameter.annotation.is_none())
             {
                 continue;
             }
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
             // TypeScript compares class-method parameters bivariantly, then
             // requires the overriding result to fit the inherited result.
-            let parameters_compatible =
-                derived
+            // An override may omit inherited positions or add omittable ones;
+            // it cannot require more positions than the base declares.
+            let required_derived = derived
+                .parameters
+                .iter()
+                .filter(|parameter| !parameter.optional)
+                .count();
+            let parameters_compatible = required_derived <= inherited.parameters.len()
+                && derived
                     .parameters
                     .iter()
                     .zip(inherited.parameters)
