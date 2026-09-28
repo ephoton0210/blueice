@@ -5857,6 +5857,29 @@ homogeneous tuple; that syntax limitation is outside this override leaf.
 BlueTS, bridge, and full workspace tests, workspace all-target Clippy,
 rustfmt, and whitespace checks pass with the reused 12 GiB target.
 
+### J.3.1.3.4.4.2.3.2.3.2.3 Both-side fixed-length tuple rests
+
+The bounded method override relation now expands fixed-length tuple rests
+on both sides and compares aligned positions through the existing
+bivariant parameter relation. It checks the derived required count against
+the inherited expanded length, allowing omitted inherited positions but
+rejecting extra required tuple elements. Return types remain covariant and
+diagnostics retain the original derived member span. Class output stays
+refused.
+
+Public checked-compile coverage accepts matching expanded signatures with
+shifted fixed prefixes on instance and static sides plus a shorter derived
+tuple. It rejects an instance element mismatch, excess required element,
+and static later-element mismatch, with no artifact. Four pinned TypeScript
+5.9.3 `--noEmit` cases agree on TS2416/TS2417 lines. BlueTS, bridge, and
+full workspace tests, workspace all-target Clippy, rustfmt, and whitespace
+checks pass with the reused 12 GiB target.
+
+The remaining tuple syntax work is split into optional, labeled, and
+variadic elements. Parenthesized union arrays are separately tracked for
+heterogeneous tuple-to-array override comparisons because the current
+type parser interprets a leading `(` as a function type.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

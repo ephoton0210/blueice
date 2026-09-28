@@ -33,6 +33,10 @@ enum RestShape {
         inherited_fixed: usize,
         derived_array_rest: bool,
     },
+    BothTuples {
+        derived_fixed: usize,
+        inherited_fixed: usize,
+    },
 }
 
 impl ModuleChecker<'_> {
@@ -87,7 +91,10 @@ impl ModuleChecker<'_> {
                 .iter()
                 .filter(|parameter| !parameter.optional && !parameter.rest)
                 .count()
-                + if matches!(rest_shape, RestShape::DerivedTuple { .. }) {
+                + if matches!(
+                    rest_shape,
+                    RestShape::DerivedTuple { .. } | RestShape::BothTuples { .. }
+                ) {
                     let Some(Type::Tuple(elements)) = derived
                         .parameters
                         .last()
@@ -100,6 +107,9 @@ impl ModuleChecker<'_> {
                     0
                 };
             let inherited_arity = if let RestShape::InheritedTuple {
+                inherited_fixed, ..
+            }
+            | RestShape::BothTuples {
                 inherited_fixed, ..
             } = rest_shape
             {
@@ -354,6 +364,51 @@ impl ModuleChecker<'_> {
                             )
                         })
                     }
+                    RestShape::BothTuples {
+                        derived_fixed,
+                        inherited_fixed,
+                    } => {
+                        let Some(Type::Tuple(derived_elements)) = derived
+                            .parameters
+                            .last()
+                            .and_then(|parameter| parameter.annotation.as_ref())
+                        else {
+                            unreachable!("rest shape requires a tuple annotation")
+                        };
+                        let Some(Type::Tuple(inherited_elements)) = inherited
+                            .parameters
+                            .last()
+                            .and_then(|parameter| parameter.annotation.as_ref())
+                        else {
+                            unreachable!("rest shape requires a tuple annotation")
+                        };
+                        let positions = (derived_fixed + derived_elements.len())
+                            .min(inherited_fixed + inherited_elements.len());
+                        (0..positions).all(|index| {
+                            let derived_type = if index < derived_fixed {
+                                derived.parameters[index]
+                                    .annotation
+                                    .as_ref()
+                                    .unwrap_or(&Type::Unknown)
+                            } else {
+                                &derived_elements[index - derived_fixed]
+                            };
+                            let inherited_type = if index < inherited_fixed {
+                                inherited.parameters[index]
+                                    .annotation
+                                    .as_ref()
+                                    .unwrap_or(&Type::Unknown)
+                            } else {
+                                &inherited_elements[index - inherited_fixed]
+                            };
+                            parameter_types_compatible(
+                                derived_type,
+                                inherited_type,
+                                &self.types,
+                                &mut budget,
+                            )
+                        })
+                    }
                 };
             let compatible = parameters_compatible
                 && is_assignable(
@@ -492,7 +547,14 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
             parameter.rest && matches!(parameter.annotation.as_ref(), Some(Type::Array(_)))
         });
         if inherited_has_rest && !inherited_array_rest {
-            return None;
+            let (inherited_rest, inherited_fixed) = inherited.split_last()?;
+            return (inherited_rest.rest
+                && !inherited_fixed.iter().any(|parameter| parameter.rest)
+                && matches!(inherited_rest.annotation.as_ref(), Some(Type::Tuple(_))))
+            .then_some(RestShape::BothTuples {
+                derived_fixed: derived_fixed.len(),
+                inherited_fixed: inherited_fixed.len(),
+            });
         }
         return Some(RestShape::DerivedTuple {
             derived_fixed: derived_fixed.len(),
