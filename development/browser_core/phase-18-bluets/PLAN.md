@@ -5534,6 +5534,23 @@ on acceptance and TS2345/TS2322 lines. BlueTS, bridge, and full workspace
 suites, workspace all-target Clippy, rustfmt, and whitespace checks pass with
 the reused 12 GiB Cargo target.
 
+### J.3.1.3.4.3.2 Inherited static methods
+
+Each local class's constructor-side record now retains its own `prototype`
+and static methods, then appends unshadowed static methods from local or
+value-imported named bases within the type-expansion limit. Static method
+bodies bind `this` to that merged record. Class values and static `this`
+reach inherited overload groups through the existing bounded call selector,
+and the selected return type flows into local and declared return checks.
+Class output remains refused.
+
+Public checked-compile cases cover multi-level and imported bases, accepted
+static overload calls, bad arguments, incompatible inferred results, exact
+spans, and no artifact. Four pinned TypeScript 5.9.3 `--noEmit` cases agree
+on acceptance and TS2769/TS2322 lines. BlueTS, bridge, and full workspace
+suites, workspace all-target Clippy, rustfmt, and whitespace checks pass with
+the reused 12 GiB Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

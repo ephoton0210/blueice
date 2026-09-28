@@ -340,6 +340,64 @@ impl ModuleChecker<'_> {
         }
     }
 
+    pub(super) fn bind_inherited_class_static_methods(&mut self) {
+        let local_classes = self
+            .module
+            .declarations
+            .iter()
+            .filter_map(|declaration| match declaration {
+                Declaration::Class(class) => Some((class.name.as_str(), class)),
+                _ => None,
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut surfaces = Vec::new();
+        for class in local_classes.values() {
+            if !self.class_constructors.contains_key(&class.name) {
+                continue;
+            }
+            let Type::Record(mut fields) = class_constructor_side_type(class) else {
+                unreachable!("class constructor side is a record")
+            };
+            let mut names = fields
+                .iter()
+                .map(|field| field.name.clone())
+                .collect::<BTreeSet<_>>();
+            let mut visited = BTreeSet::new();
+            let mut base_name = class.extends_name.as_deref();
+            for _ in 0..self.max_type_expansions {
+                let Some(name) = base_name else {
+                    break;
+                };
+                if !visited.insert(name) {
+                    break;
+                }
+                let inherited = if let Some(base) = local_classes.get(name) {
+                    base_name = base.extends_name.as_deref();
+                    class_constructor_side_type(base)
+                } else if self.class_constructors.contains_key(name) {
+                    base_name = None;
+                    self.values.get(name).cloned().unwrap_or(Type::Unknown)
+                } else {
+                    break;
+                };
+                let Type::Record(inherited) = inherited else {
+                    break;
+                };
+                fields.extend(
+                    inherited
+                        .iter()
+                        .filter(|field| !names.contains(&field.name))
+                        .cloned(),
+                );
+                names.extend(inherited.iter().map(|field| field.name.clone()));
+            }
+            surfaces.push((class.name.clone(), Type::Record(fields)));
+        }
+        for (name, value) in surfaces {
+            self.values.insert(name, value);
+        }
+    }
+
     pub(super) fn validate_class_constructor_group(&mut self, class: &ClassDeclaration) {
         let constructors = class
             .members
@@ -529,7 +587,11 @@ impl ModuleChecker<'_> {
     }
 
     pub(super) fn check_class_method_bodies(&mut self, class: &ClassDeclaration) {
-        let constructor_side = class_constructor_side_type(class);
+        let constructor_side = self
+            .values
+            .get(&class.name)
+            .cloned()
+            .unwrap_or_else(|| class_constructor_side_type(class));
         for method in class
             .members
             .iter()

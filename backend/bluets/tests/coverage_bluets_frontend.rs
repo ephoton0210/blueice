@@ -1145,6 +1145,58 @@ fn inherited_instance_methods_work_through_local_and_imported_class_bases() {
 }
 
 #[test]
+fn inherited_static_overloads_work_through_class_values_and_static_this() {
+    for accepted in [
+        compile_with_helper(include_str!(
+            "fixtures/typescript_oracle/class-inherited-static-valid/main.ts"
+        )),
+        compile_class_module_pair(
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-imported-static-valid/main.ts"
+            ),
+            include_str!("fixtures/typescript_oracle/class-inherited-imported-static-valid/box.ts"),
+        ),
+    ] {
+        assert!(accepted.output.is_none());
+        assert!(
+            accepted
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{:#?}",
+            accepted.diagnostics
+        );
+    }
+    for (source, expected_span) in [
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-static-argument-error/main.ts"
+            ),
+            "Child.parse(true)",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-inherited-static-result-error/main.ts"),
+            "const wrong: string = Child.parse(1);",
+        ),
+    ] {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+        assert_eq!(
+            &source[failures[0].span.start..failures[0].span.end],
+            expected_span,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
 fn class_construction_scan_obeys_the_type_expansion_budget() {
     let source =
         "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";

@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.3.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.3.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1215,9 +1215,20 @@ exists. A passed first form does not close its whole feature family.
             BlueTS, bridge, and full workspace tests, all-target Clippy,
             rustfmt, and whitespace checks pass with the reused 12 GiB
             target.
-          - [ ] **J.3.1.3.4.3.2** Inherit static method surfaces and
+          - [x] **J.3.1.3.4.3.2** Inherit static method surfaces and
             constructor-side lookups from local and imported class bases,
-            including static `this` and overload result inference.
+            including static `this` and overload result inference. The
+            checker appends unshadowed ancestor static methods to each
+            local class constructor-side record while retaining the child's
+            own `prototype`. Class values and static `this` use that record
+            for bounded overload calls and selected return inference. Public
+            checked-compile cases cover multi-level and imported bases,
+            accepted static overload calls, invalid arguments, incompatible
+            inferred results, original spans, and no class output. Four
+            pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+            TS2769/TS2322 lines. BlueTS, bridge, and full workspace tests,
+            all-target Clippy, rustfmt, and whitespace checks pass with the
+            reused 12 GiB target.
           - [ ] **J.3.1.3.4.3.3** Reuse inherited constructor signatures when
             a derived class declares no constructor, with bounded argument
             checking and selected instance inference.
