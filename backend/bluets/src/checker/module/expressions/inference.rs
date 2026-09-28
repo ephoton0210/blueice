@@ -116,7 +116,7 @@ impl<'a> ModuleChecker<'a> {
                     Type::Function { result, .. } => return *result,
                     Type::Intersection(overloads)
                         if self.is_bound_class_instance_type(&base)
-                            || matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope)) =>
+                            || matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope) || self.is_bound_class_static_this(receiver, scope)) =>
                     {
                         if let Some(signatures) = method_overload_signatures(&overloads) {
                             return self.infer_function_call(

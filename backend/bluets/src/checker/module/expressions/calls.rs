@@ -163,7 +163,7 @@ impl<'a> ModuleChecker<'a> {
             || matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope) || self.is_bound_class_static_this(receiver, scope));
         let (parameters, selected_overload) = match member_type {
             Type::Function { parameters, .. } => (parameters, false),
-            Type::Intersection(overloads) if matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope)) =>
+            Type::Intersection(overloads) if matches!(call.receiver, [receiver] if self.is_bound_class_constructor_value(&receiver.text, scope) || self.is_bound_class_static_this(receiver, scope)) =>
             {
                 let Some(signatures) = method_overload_signatures(&overloads) else {
                     return;

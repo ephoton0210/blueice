@@ -5448,6 +5448,21 @@ lines. BlueTS, bridge, and full workspace suites, workspace all-target Clippy,
 rustfmt, and whitespace checks pass with the reused 12 GiB Cargo target.
 Static overload selection follows in J.3.1.3.3.4.4.
 
+### J.3.1.3.3.4.4 Static method overload calls
+
+Bound class values and static `this` in class method bodies now use the same
+bounded overload-signature selector. It checks argument lists at the original
+call span, and the selected signature supplies the inferred result for local
+initializers and declared method returns. Class output remains refused.
+
+Public checked-compile cases cover accepted number/string overload calls,
+bad arguments on both receivers, incompatible inferred locals and returns,
+exact spans, and no artifact. Five pinned TypeScript 5.9.3 `--noEmit` cases
+agree on acceptance and TS2769/TS2322 lines. This closes J.3.1.3.3;
+BlueTS, bridge, and full workspace suites, workspace all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB Cargo target.
+Inheritance, overrides, cycles, and `super` follow in J.3.1.3.4.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

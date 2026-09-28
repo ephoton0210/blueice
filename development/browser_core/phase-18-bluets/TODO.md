@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.3.4.4.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1067,7 +1067,7 @@ exists. A passed first form does not close its whole feature family.
                 rustfmt, and whitespace checks pass in the reused compact
                 target. The full workspace suite also passes when its Unix
                 socket tests run outside the filesystem sandbox.
-      - [ ] **J.3.1.3.3** Check constructor and method parameter, return,
+      - [x] **J.3.1.3.3** Check constructor and method parameter, return,
         overload-call, body, and `this` types through the shared class IR.
         - [x] **J.3.1.3.3.1** Validate bounded constructor overload groups,
           parameter types, and default values at original source spans
@@ -1120,7 +1120,7 @@ exists. A passed first form does not close its whole feature family.
             agree on TS2322/TS2366/TS2304 lines. BlueTS, bridge, and full
             workspace tests, all-target Clippy, rustfmt, and whitespace
             checks pass with the reused 12 GiB target.
-        - [ ] **J.3.1.3.3.4** Resolve bounded `this` types in class bodies
+        - [x] **J.3.1.3.3.4** Resolve bounded `this` types in class bodies
           and select instance/static method overload calls with return
           inference and pinned-oracle diagnostics.
           - [x] **J.3.1.3.3.4.1** Bind instance `this` in constructor and
@@ -1159,9 +1159,17 @@ exists. A passed first form does not close its whole feature family.
             cases agree on acceptance and TS2769/TS2322 lines. BlueTS,
             bridge, and full workspace tests, all-target Clippy, rustfmt,
             and whitespace checks pass with the reused 12 GiB target.
-          - [ ] **J.3.1.3.3.4.4** Select local static-method overload calls
+          - [x] **J.3.1.3.3.4.4** Select local static-method overload calls
             on class values and static `this`, infer selected returns, and
-            check rejected calls against pinned TypeScript.
+            check rejected calls against pinned TypeScript. Bound class
+            values and static `this` now share bounded static overload
+            selection and selected-result inference. Public checked-compile
+            cases cover accepted number/string calls, rejected arguments,
+            incompatible inferred locals and returns, exact spans, and no
+            class output. Five pinned TypeScript 5.9.3 `--noEmit` cases agree
+            on acceptance and TS2769/TS2322 lines. BlueTS, bridge, and full
+            workspace tests, all-target Clippy, rustfmt, and whitespace
+            checks pass with the reused 12 GiB target.
       - [ ] **J.3.1.3.4** Check named inheritance, overrides, cycles, and
         `super` constructor/method uses with pinned-oracle fixtures.
       - [ ] **J.3.1.3.5** Close the accepted/rejected class checker matrix
