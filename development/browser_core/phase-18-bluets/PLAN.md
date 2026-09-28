@@ -5335,6 +5335,26 @@ The BlueTS and bridge crate suites, full workspace suite, workspace all-target
 Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB Cargo
 target. Constructor body scope and return checking follow in J.3.1.3.3.2.
 
+### J.3.1.3.3.2 Constructor body scopes and returns
+
+Constructor implementations now walk their structured body in source order.
+Parameter annotations and defaults seed the scope; local declarations add
+checked annotations or inferred initializer types. Expression statements,
+throws, calls, and returns use that scope. Braced `if`, `while`, and `try`
+paths are checked recursively with local branch and catch scopes. A bare
+return and a primitive return follow TypeScript constructor behavior. Returned
+objects must fit the bounded class instance method shape, with diagnostics at
+the original return span. Class output remains refused, and inherited `super`
+is still the J.3.1.3.4 heritage task.
+
+Public checked-compile tests cover accepted typed locals and primitive or
+aliased-primitive returns; rejected locals, calls, direct object returns, and
+nested object returns check original spans and no output. Seven pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2322, TS2345,
+TS2741, and TS2409 diagnostic lines. BlueTS, bridge, and full workspace
+suites, workspace all-target Clippy, rustfmt, and whitespace checks pass with
+the reused 12 GiB Cargo target. Method-body checking follows in J.3.1.3.3.3.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

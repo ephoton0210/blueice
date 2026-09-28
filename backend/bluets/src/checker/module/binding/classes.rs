@@ -308,6 +308,146 @@ impl ModuleChecker<'_> {
         }
     }
 
+    pub(super) fn check_class_constructor_bodies(&mut self, class: &ClassDeclaration) {
+        let instance_type = class_instance_type(class);
+        for constructor in class
+            .members
+            .iter()
+            .filter_map(|member| member.constructor.as_ref())
+        {
+            let Some(body) = &constructor.body else {
+                continue;
+            };
+            let mut scope = self.values.clone();
+            for parameter in &constructor.parameters {
+                let value = parameter
+                    .annotation
+                    .clone()
+                    .or_else(|| {
+                        parameter
+                            .default
+                            .as_ref()
+                            .map(|tokens| self.infer_expression(tokens, &scope))
+                    })
+                    .unwrap_or(Type::Unknown);
+                scope.insert(parameter.name.clone(), value);
+            }
+            self.check_class_constructor_body_items(body, &scope, class, &instance_type);
+        }
+    }
+
+    fn check_class_constructor_body_items(
+        &mut self,
+        items: &[FunctionBodyItem],
+        scope: &BTreeMap<String, Type>,
+        class: &ClassDeclaration,
+        instance_type: &Type,
+    ) {
+        let mut scope = scope.clone();
+        for item in items {
+            match item {
+                FunctionBodyItem::Variable(variable) => {
+                    self.check_variable_in_scope(variable, &scope);
+                    let value = variable
+                        .annotation
+                        .clone()
+                        .unwrap_or_else(|| self.infer_expression(&variable.initializer, &scope));
+                    scope.insert(variable.name.clone(), value);
+                }
+                FunctionBodyItem::Expression { tokens, span }
+                | FunctionBodyItem::Throw { tokens, span } => {
+                    self.check_direct_runtime_expression(tokens, &scope, span);
+                }
+                FunctionBodyItem::Return { tokens, span } => {
+                    if tokens.is_empty() {
+                        continue;
+                    }
+                    self.check_direct_runtime_expression(tokens, &scope, span);
+                    let actual = self.infer_expression(tokens, &scope);
+                    let primitive = Type::Union(vec![
+                        Type::Null,
+                        Type::Undefined,
+                        Type::Boolean,
+                        Type::Number,
+                        Type::String,
+                    ]);
+                    if !self.is_assignable_bounded(&actual, &primitive, span)
+                        && !self.is_assignable_bounded(&actual, instance_type, span)
+                    {
+                        self.type_error(
+                            span,
+                            format!(
+                                "constructor return type `{}` is not assignable to class `{}`",
+                                type_label(&actual),
+                                class.name
+                            ),
+                            DiagnosticCode::ReturnTypeMismatch,
+                        );
+                    }
+                }
+                FunctionBodyItem::If(statement) => {
+                    self.check_class_constructor_if(statement, &scope, class, instance_type)
+                }
+                FunctionBodyItem::While(statement) => {
+                    self.check_direct_runtime_expression(&statement.test, &scope, &statement.span);
+                    self.check_class_constructor_body_items(
+                        &statement.body,
+                        &scope,
+                        class,
+                        instance_type,
+                    );
+                }
+                FunctionBodyItem::Try(statement) => {
+                    self.check_class_constructor_body_items(
+                        &statement.block,
+                        &scope,
+                        class,
+                        instance_type,
+                    );
+                    if let Some(handler) = &statement.handler {
+                        let mut catch_scope = scope.clone();
+                        catch_scope.insert(handler.binding.clone(), Type::Unknown);
+                        self.check_class_constructor_body_items(
+                            &handler.body,
+                            &catch_scope,
+                            class,
+                            instance_type,
+                        );
+                    }
+                    if let Some(finalizer) = &statement.finalizer {
+                        self.check_class_constructor_body_items(
+                            finalizer,
+                            &scope,
+                            class,
+                            instance_type,
+                        );
+                    }
+                }
+                FunctionBodyItem::Opaque(_) => {}
+            }
+        }
+    }
+
+    fn check_class_constructor_if(
+        &mut self,
+        statement: &FunctionIfStatement,
+        scope: &BTreeMap<String, Type>,
+        class: &ClassDeclaration,
+        instance_type: &Type,
+    ) {
+        self.check_direct_runtime_expression(&statement.test, scope, &statement.span);
+        self.check_class_constructor_body_items(&statement.consequent, scope, class, instance_type);
+        match &statement.alternate {
+            Some(FunctionElseBranch::Braced(body)) => {
+                self.check_class_constructor_body_items(body, scope, class, instance_type);
+            }
+            Some(FunctionElseBranch::ElseIf(branch)) => {
+                self.check_class_constructor_if(branch, scope, class, instance_type);
+            }
+            None => {}
+        }
+    }
+
     pub(super) fn validate_class_method_groups(&mut self, class: &ClassDeclaration) {
         let mut implementations: BTreeMap<(bool, &str), usize> = BTreeMap::new();
         for group in &class.method_groups {

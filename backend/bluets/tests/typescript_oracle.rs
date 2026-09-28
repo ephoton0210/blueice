@@ -1162,6 +1162,51 @@ fn pinned_class_constructor_validation_matches_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_class_constructor_bodies_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "typed-locals",
+            include_str!("fixtures/typescript_oracle/class-constructor-body-valid/main.ts"),
+            &[],
+        ),
+        (
+            "primitive-return",
+            include_str!("fixtures/typescript_oracle/class-constructor-body-primitive-return/main.ts"),
+            &[],
+        ),
+        (
+            "aliased-primitive-return",
+            include_str!("fixtures/typescript_oracle/class-constructor-body-aliased-primitive-return/main.ts"),
+            &[],
+        ),
+        (
+            "invalid-local",
+            include_str!("fixtures/typescript_oracle/class-constructor-body-invalid-local/main.ts"),
+            &[(7, "TS2322")],
+        ),
+        (
+            "invalid-call",
+            include_str!("fixtures/typescript_oracle/class-constructor-body-invalid-call/main.ts"),
+            &[(8, "TS2345")],
+        ),
+        (
+            "invalid-return",
+            include_str!("fixtures/typescript_oracle/class-constructor-body-invalid-return/main.ts"),
+            &[(9, "TS2741"), (9, "TS2409")],
+        ),
+        (
+            "nested-return",
+            include_str!("fixtures/typescript_oracle/class-constructor-body-nested-return/main.ts"),
+            &[(10, "TS2741"), (10, "TS2409")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

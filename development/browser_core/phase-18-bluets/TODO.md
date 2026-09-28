@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.3.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.3.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1081,9 +1081,19 @@ exists. A passed first form does not close its whole feature family.
           acceptance and TS2390/TS2392/TS2394/TS2304/TS2322/TS2371 lines.
           BlueTS, bridge, workspace tests, all-target Clippy, rustfmt, and
           whitespace checks pass with the reused 12 GiB Cargo target.
-        - [ ] **J.3.1.3.3.2** Check constructor bodies through their typed
+        - [x] **J.3.1.3.3.2** Check constructor bodies through their typed
           parameter and local scopes, including invalid returns; defer
-          inherited `super` to J.3.1.3.4.
+          inherited `super` to J.3.1.3.4. The checker now walks structured
+          body items with source-ordered parameter/local scopes, nested
+          branches, loops, and catch scopes. Runtime expressions and calls
+          use those scopes; constructor returns accept primitives and require
+          returned objects to fit the bounded class instance shape. Public
+          checked-compile tests verify accepted/rejected spans and no output.
+          Seven pinned TypeScript 5.9.3 `--noEmit` cases agree on TS2322,
+          TS2345, TS2741, and TS2409 lines, including nested returns and a
+          primitive type alias. BlueTS, bridge, and full workspace tests,
+          all-target Clippy, rustfmt, and whitespace checks pass with the
+          reused 12 GiB Cargo target.
         - [ ] **J.3.1.3.3.3** Check method body parameters, locals, and
           declared returns on both instance and static sides.
         - [ ] **J.3.1.3.3.4** Resolve bounded `this` types in class bodies

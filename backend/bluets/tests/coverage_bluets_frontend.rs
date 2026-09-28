@@ -510,6 +510,68 @@ fn class_constructor_groups_and_parameters_are_checked_at_source_spans() {
 }
 
 #[test]
+fn constructor_bodies_use_typed_scopes_and_check_object_returns() {
+    for source in [
+        include_str!("fixtures/typescript_oracle/class-constructor-body-valid/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-constructor-body-primitive-return/main.ts"),
+        include_str!(
+            "fixtures/typescript_oracle/class-constructor-body-aliased-primitive-return/main.ts"
+        ),
+    ] {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none());
+        assert!(
+            compilation
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{:#?}",
+            compilation.diagnostics
+        );
+    }
+
+    for (source, code, expected_span) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-constructor-body-invalid-local/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "const wrong: string = value;",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-constructor-body-invalid-call/main.ts"),
+            DiagnosticCode::TypeMismatch,
+            "take(value);",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-constructor-body-invalid-return/main.ts"
+            ),
+            DiagnosticCode::ReturnTypeMismatch,
+            "return other;",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-constructor-body-nested-return/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+            "return other;",
+        ),
+    ] {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert!(!failures.is_empty(), "{source}");
+        assert_eq!(failures[0].code, code, "{failures:#?}");
+        assert_eq!(
+            &source[failures[0].span.start..failures[0].span.end],
+            expected_span,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
 fn class_construction_scan_obeys_the_type_expansion_budget() {
     let source =
         "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";

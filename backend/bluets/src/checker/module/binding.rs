@@ -602,6 +602,7 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Class(class) => {
                     self.validate_class_constructor_group(class);
                     self.validate_class_method_groups(class);
+                    self.check_class_constructor_bodies(class);
                 }
                 Declaration::Import(_)
                 | Declaration::TypeExport(_)
