@@ -68,3 +68,9 @@ fn a_template_placeholder_inherits_the_generator_and_async_context_of_its_functi
          first.value === 1 && second.value === 'v' && second.done === true",
     );
 }
+
+#[test]
+fn a_template_placeholder_rejects_trailing_statements_as_known_syntax() {
+    let error = parse("`head${value; other}tail`").expect_err("a placeholder is one expression");
+    assert!(error.known_syntax, "{error:?}");
+}

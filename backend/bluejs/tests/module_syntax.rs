@@ -34,6 +34,19 @@ fn module_validation_rejects_invalid_super_private_names_and_duplicate_names() {
 }
 
 #[test]
+fn module_declarations_reject_nonbindings_and_ill_formed_export_names() {
+    for source in [
+        "import { value as 0 } from './m.js';",
+        "import name from 0;",
+        "import '\\uD800';",
+        "import name\n\\u0066rom './m.js';",
+        "export { name as '\\uD800' }; var name;",
+    ] {
+        assert_module_syntax_error(source);
+    }
+}
+
+#[test]
 fn contextual_keywords_in_import_and_export_declarations_reject_escapes() {
     for source in [
         "import {a \\u0061s b} from './m.js';",

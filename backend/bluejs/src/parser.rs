@@ -397,7 +397,7 @@ struct Parser {
     /// The byte offset of each character of `source` (and of its end), for
     /// mapping the tokenizer's character offsets to `source` byte ranges.
     /// `None` for ASCII text, where the two are the same.
-    char_to_byte: Option<Vec<u32>>,
+    char_to_byte: Option<Vec<usize>>,
 }
 
 impl Parser {
@@ -428,7 +428,6 @@ impl Parser {
                 .char_indices()
                 .map(|(offset, _)| offset)
                 .chain([source.len()])
-                .map(|offset| u32::try_from(offset).unwrap_or(u32::MAX))
                 .collect()
         });
         Parser {
@@ -469,12 +468,9 @@ impl Parser {
     /// token's end is right even when the last thing consumed was a RegExp or
     /// tagged template, which the parser scans outside the token stream.
     fn source_text_from(&self, start: usize) -> SourceText {
-        if self.source.len() > u32::MAX as usize {
-            return SourceText::default();
-        }
         let end = self.positions[self.pos];
         let to_byte = |offset: usize| match &self.char_to_byte {
-            Some(offsets) => offsets[offset] as usize,
+            Some(offsets) => offsets[offset],
             None => offset,
         };
         SourceText::range(&self.source, to_byte(start), to_byte(end))
@@ -693,8 +689,6 @@ impl Parser {
             return Ok(statement);
         }
         let token = &self.tokens[start];
-        let is_use_strict_valued =
-            matches!(&statement, Stmt::Expr(Expr::String(value)) if value == "use strict");
         let is_directive = matches!(&statement, Stmt::Expr(Expr::String(_)))
             && matches!(token.token, Token::String(_))
             && (self.pos == start + 1
@@ -705,14 +699,17 @@ impl Parser {
         } else {
             prologue.legacy_octal |= token.legacy_octal_escape;
         }
-        if !is_use_strict_valued {
-            return Ok(statement);
+        let value = match statement {
+            Stmt::Expr(Expr::String(value)) => value,
+            other => return Ok(other),
+        };
+        if value != "use strict" {
+            return Ok(Stmt::Expr(Expr::String(value)));
         }
         if !is_directive || token.string_escaped {
-            let Stmt::Expr(expression) = statement else {
-                unreachable!("a use strict-valued statement is an expression statement")
-            };
-            return Ok(Stmt::Expr(Expr::Parenthesized(Box::new(expression))));
+            return Ok(Stmt::Expr(Expr::Parenthesized(Box::new(Expr::String(
+                value,
+            )))));
         }
         if prologue.legacy_octal {
             return Err(ParseError {
@@ -724,7 +721,7 @@ impl Parser {
             });
         }
         self.strict = true;
-        Ok(statement)
+        Ok(Stmt::Expr(Expr::String(value)))
     }
 
     /// `{ FunctionBody }` of a function, method, accessor or arrow: a

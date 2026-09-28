@@ -47,6 +47,19 @@ fn advance_stops_at_the_terminal_token() {
 }
 
 #[test]
+fn template_placeholder_parser_rejects_tokens_after_one_expression() {
+    let error = Parser::new("value")
+        .parse_template_placeholder("value; other")
+        .expect_err("a placeholder contains exactly one expression");
+    assert!(
+        error
+            .message
+            .starts_with("unexpected trailing tokens after expression"),
+        "{error:?}"
+    );
+}
+
+#[test]
 fn contextual_async_and_class_lookahead_accept_the_supported_forms() {
     let mut with_statement = Parser::new("with({value:1})value");
     assert!(with_statement.parse_with_stmt().is_ok());
