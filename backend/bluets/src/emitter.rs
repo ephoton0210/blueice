@@ -531,11 +531,19 @@ fn type_to_ts(value: &Type) -> String {
             values
                 .iter()
                 .map(|value| {
-                    format!(
-                        "{}{}",
-                        type_to_ts(&value.annotation),
-                        if value.optional { "?" } else { "" }
-                    )
+                    if let Some(label) = &value.label {
+                        format!(
+                            "{label}{}: {}",
+                            if value.optional { "?" } else { "" },
+                            type_to_ts(&value.annotation)
+                        )
+                    } else {
+                        format!(
+                            "{}{}",
+                            type_to_ts(&value.annotation),
+                            if value.optional { "?" } else { "" }
+                        )
+                    }
                 })
                 .collect::<Vec<_>>()
                 .join(", ")

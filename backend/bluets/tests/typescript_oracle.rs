@@ -2424,6 +2424,31 @@ fn pinned_optional_tuple_elements_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_labeled_tuple_elements_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 3] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-labeled-valid/main.ts"),
+            &[],
+        ),
+        (
+            "mixed-valid",
+            include_str!("fixtures/typescript_oracle/tuple-labeled-mixed-valid/main.ts"),
+            &[],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/tuple-labeled-type-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_derived_tuple_rest_overrides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

@@ -3885,6 +3885,56 @@ fn optional_tuple_elements_check_and_emit_at_public_boundary() {
 }
 
 #[test]
+fn labeled_tuple_elements_check_and_emit_at_public_boundary() {
+    for (source, expected) in [
+        (
+            include_str!("fixtures/typescript_oracle/tuple-labeled-valid/main.ts"),
+            "Pair = [first: number, second?: string]",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-labeled-mixed-valid/main.ts"),
+            "Mixed = [first: number, string]",
+        ),
+    ] {
+        let accepted = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions {
+                declaration: true,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(
+            accepted.diagnostics.is_empty(),
+            "{:#?}",
+            accepted.diagnostics
+        );
+        let artifact = &accepted.output.unwrap().artifacts[ENTRY];
+        assert!(!artifact.javascript.contains("first:"));
+        assert!(
+            artifact.declaration.as_deref().unwrap().contains(expected),
+            "{:#?}",
+            artifact.declaration
+        );
+    }
+
+    let source = include_str!("fixtures/typescript_oracle/tuple-labeled-type-error/main.ts");
+    let rejected = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    );
+    assert!(rejected.output.is_none());
+    assert!(
+        rejected.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::TypeMismatch && diagnostic.span.module == ENTRY
+        }),
+        "{:#?}",
+        rejected.diagnostics
+    );
+}
+
+#[test]
 fn named_default_function_exports_preserve_esm_and_emit_a_public_declaration() {
     let source = "export default function greeting(name: string): string { return `Hello, ${name}`; }\nconsole.log(greeting('Ada'));\n";
     let compilation = compile_with_helper(source);

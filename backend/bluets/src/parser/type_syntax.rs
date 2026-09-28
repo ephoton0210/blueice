@@ -141,9 +141,36 @@ impl Parser {
             let mut saw_optional = false;
             while !self.at_eof() && !self.consume("]") {
                 let start = self.current().start;
-                let annotation = self.parse_type_until(&["?", ",", "]"]);
+                let labeled = matches!(
+                    self.current().kind,
+                    TokenKind::Identifier | TokenKind::Keyword
+                ) && (self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| token.is(":"))
+                    || (self
+                        .tokens
+                        .get(self.index + 1)
+                        .is_some_and(|token| token.is("?"))
+                        && self
+                            .tokens
+                            .get(self.index + 2)
+                            .is_some_and(|token| token.is(":"))));
+                let (label, optional) = if labeled {
+                    let label = self.consume_identifier_or_keyword();
+                    let optional = self.consume("?");
+                    self.expect(":");
+                    (label, optional)
+                } else {
+                    (None, false)
+                };
+                let annotation = self.parse_type_until(if labeled {
+                    &[",", "]"]
+                } else {
+                    &["?", ",", "]"]
+                });
                 let end = self.previous().end;
-                let optional = self.consume("?");
+                let optional = optional || (!labeled && self.consume("?"));
                 if saw_optional && !optional {
                     self.error_at(
                         SourceSpan::new(&self.id, start, end),
@@ -154,6 +181,7 @@ impl Parser {
                 saw_optional |= optional;
                 values.push(TupleTypeElement {
                     optional,
+                    label,
                     ..TupleTypeElement::required(annotation)
                 });
                 if !self.consume(",") {

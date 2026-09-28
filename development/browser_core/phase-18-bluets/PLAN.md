@@ -5960,6 +5960,21 @@ and an excess required argument. Four pinned TypeScript 5.9.3 `--noEmit`
 cases agree on acceptance and the TS2416/TS2417 diagnostic lines. The public
 front end reports the rejected member span and emits no artifact.
 
+### J.3.1.3.4.4.2.3.2.3.3.2.1 Labeled tuple syntax and type erasure
+
+The parser recognizes `name: T` and `name?: T` tuple positions and stores
+their labels in the shared tuple-element metadata. Labels do not participate
+in tuple assignability or type identity; positions and optionality do. The
+declaration emitter reproduces labels and places the optional marker before
+the colon, while JavaScript emission erases both. TypeScript 5.9.3 also
+accepts a tuple mixing labeled and unlabeled positions, so BlueTS admits it.
+
+Public checked-compile cases cover declaration output, assignment across
+different labels, a partly labeled tuple, and a wrong element type without an
+artifact. Three pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance
+and the TS2322 line. Labeled rest positions in class overrides are checked
+in the next leaf using the existing positional relation.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
