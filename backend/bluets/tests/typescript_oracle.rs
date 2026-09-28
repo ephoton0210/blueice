@@ -938,6 +938,76 @@ fn pinned_bluetsc_oracle_matches_the_supported_fixture_matrix() {
     }
 }
 
+/// Parser-only class fixtures compare TypeScript syntax and overload rules.
+/// BlueTS must still reject every class before output until J.3.1.3–J.3.1.6.
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_class_method_parser_fixtures_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases = [
+        (
+            "overloads",
+            include_str!("fixtures/typescript_oracle/class-method-overloads/main.ts"),
+            None,
+        ),
+        (
+            "record-return",
+            include_str!("fixtures/typescript_oracle/class-method-record-return/main.ts"),
+            None,
+        ),
+        (
+            "deferred-private",
+            include_str!("fixtures/typescript_oracle/class-method-deferred-private/main.ts"),
+            None,
+        ),
+        (
+            "orphan-signature",
+            include_str!("fixtures/typescript_oracle/class-method-orphan-signature/main.ts"),
+            Some((6, "TS2391")),
+        ),
+        (
+            "interrupted-signature",
+            include_str!("fixtures/typescript_oracle/class-method-interrupted-signature/main.ts"),
+            Some((6, "TS2391")),
+        ),
+        (
+            "incompatible-overload",
+            include_str!("fixtures/typescript_oracle/class-method-incompatible-overload/main.ts"),
+            Some((6, "TS2394")),
+        ),
+    ];
+    for (name, source, expected_error) in cases {
+        let temporary = TestDirectory::new();
+        let input = temporary.path().join("main.ts");
+        fs::write(&input, source).unwrap();
+        let output = run_tsc(&tsc, &input, temporary.path(), true, false);
+        assert_eq!(
+            output.status.success(),
+            expected_error.is_none(),
+            "{name}: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        let expected_lines = expected_error.map_or_else(Vec::new, |(line, _)| vec![line]);
+        assert_eq!(
+            typescript_diagnostic_lines(&output),
+            expected_lines,
+            "{name}"
+        );
+        if let Some((_, code)) = expected_error {
+            assert!(
+                String::from_utf8_lossy(&output.stdout).contains(code),
+                "{name}"
+            );
+        }
+        assert_eq!(
+            fs::read_dir(temporary.path()).unwrap().count(),
+            1,
+            "{name} emitted an artifact"
+        );
+    }
+}
+
 fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
     let temporary = TestDirectory::new();
     write_esm_package(temporary.path());

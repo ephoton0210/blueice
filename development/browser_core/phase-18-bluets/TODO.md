@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.2.3.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.1.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -853,7 +853,7 @@ exists. A passed first form does not close its whole feature family.
       rustfmt pass under the shared-target disk guard; the last computed
       heritage case passed its focused rerun. The target remains about
       13 GiB with about 716 GiB free on the host.
-    - [ ] **J.3.1.2** Parse constructor and method signatures/bodies as
+    - [x] **J.3.1.2** Parse constructor and method signatures/bodies as
       structured members, retaining type-erasure edits and original spans.
       - [x] **J.3.1.2.1** Partition bounded class-body tokens into exact
         constructor/method member shells with original spans; retain
@@ -873,7 +873,7 @@ exists. A passed first form does not close its whole feature family.
         erasure positions, empty bodies, signatures, and malformed forms.
         BlueTS and bridge crate suites, workspace all-target Clippy,
         rustfmt, and whitespace checks pass in the shared guarded target.
-      - [ ] **J.3.1.2.3** Parse method parameters, return types, and bodies,
+      - [x] **J.3.1.2.3** Parse method parameters, return types, and bodies,
         including accepted overload signatures, with the same provenance
         and explicit unsupported-shape tests.
         - [x] **J.3.1.2.3.1** Parse simple named method signatures and
@@ -895,7 +895,7 @@ exists. A passed first form does not close its whole feature family.
           generic methods to opaque shells; checker refusal still prevents
           execution. The BlueTS crate suite, all-target workspace Clippy,
           rustfmt, and whitespace checks pass in the shared guarded target.
-        - [ ] **J.3.1.2.3.3** Verify method overload grouping and accepted /
+        - [x] **J.3.1.2.3.3** Verify method overload grouping and accepted /
           rejected syntax against pinned TypeScript 5.9.3, then check off
           J.3.1.2.3 and J.3.1.2.
           - [x] **J.3.1.2.3.3.1** Retain contiguous same-name method
@@ -909,12 +909,37 @@ exists. A passed first form does not close its whole feature family.
             field interrupting a group. Checked class output remains absent.
             The BlueTS crate suite, workspace all-target Clippy, and rustfmt
             pass with the shared disk-budgeted target.
-          - [ ] **J.3.1.2.3.3.2** Check supported, deferred, and invalid
+          - [x] **J.3.1.2.3.3.2** Check supported, deferred, and invalid
             class-method syntax against pinned TypeScript 5.9.3 with a
             bounded no-emit fixture; keep the checker fail-closed and close
-            the parser-only class member milestones.
+            the parser-only class member milestones. Six source fixtures
+            cover contiguous overloads, record returns, a deferred private
+            method, orphan and interrupted signatures, and an incompatible
+            implementation. The pinned compiler accepts or reports TS2391 /
+            TS2394 on the exact expected lines under `--noEmit`, leaving no
+            output files. Public BlueTS parser tests retain method groups and
+            opaque boundaries from those same sources; every checked class
+            still reports `UnsupportedSyntax` with no BlueTSC artifact. The
+            full BlueTS crate suite, pinned oracle leaf, workspace all-target
+            Clippy, rustfmt, and whitespace checks pass using one shared
+            compact Cargo target.
     - [ ] **J.3.1.3** Bind class instance/static types and check constructor,
       method, inheritance, `this`, and `super` uses against pinned `tsc`.
+      - [ ] **J.3.1.3.1** Validate bounded class method groups before any
+        class can type-check: missing/interrupted implementations, duplicate
+        implementations, and signature/implementation incompatibility must
+        report original-source diagnostics matching pinned TypeScript 5.9.3.
+        Keep class emission and direct execution refused.
+      - [ ] **J.3.1.3.2** Bind a named class's constructor value and separate
+        instance/static types; check construction and member lookup without
+        confusing the two sides. Cover duplicate names and source spans.
+      - [ ] **J.3.1.3.3** Check constructor and method parameter, return,
+        overload-call, body, and `this` types through the shared class IR.
+      - [ ] **J.3.1.3.4** Check named inheritance, overrides, cycles, and
+        `super` constructor/method uses with pinned-oracle fixtures.
+      - [ ] **J.3.1.3.5** Close the accepted/rejected class checker matrix
+        against pinned TypeScript 5.9.3 and prove BlueTSC/direct admission
+        still refuse classes until emit and runtime leaves are complete.
     - [ ] **J.3.1.4** Emit checked class JavaScript and declarations from the
       shared IR with stable source maps and atomic build behavior.
     - [ ] **J.3.1.5** Lower checked classes directly to BlueJS class AST;

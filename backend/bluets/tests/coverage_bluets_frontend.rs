@@ -7,8 +7,8 @@
 //! rejected construct, and the erased JavaScript for accepted ones.
 
 use blueice_bluets::{
-    compile, parse_module, CompilerOptions, Declaration, Diagnostic, FunctionBodyItem, MapLoader,
-    ModuleSource,
+    compile, parse_module, ClassMemberKind, CompilerOptions, Declaration, Diagnostic,
+    DiagnosticCode, FunctionBodyItem, MapLoader, ModuleSource,
 };
 
 const ENTRY: &str = "memory:///main.ts";
@@ -52,6 +52,94 @@ fn emitted(source: &str) -> String {
     let result = compile_with_helper(source);
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     result.output.unwrap().artifacts[ENTRY].javascript.clone()
+}
+
+#[test]
+fn class_method_oracle_fixtures_remain_source_bound_and_emit_nothing() {
+    let cases = [
+        (
+            "overloads",
+            include_str!("fixtures/typescript_oracle/class-method-overloads/main.ts"),
+        ),
+        (
+            "record-return",
+            include_str!("fixtures/typescript_oracle/class-method-record-return/main.ts"),
+        ),
+        (
+            "deferred-private",
+            include_str!("fixtures/typescript_oracle/class-method-deferred-private/main.ts"),
+        ),
+        (
+            "orphan-signature",
+            include_str!("fixtures/typescript_oracle/class-method-orphan-signature/main.ts"),
+        ),
+        (
+            "interrupted-signature",
+            include_str!("fixtures/typescript_oracle/class-method-interrupted-signature/main.ts"),
+        ),
+        (
+            "incompatible-overload",
+            include_str!("fixtures/typescript_oracle/class-method-incompatible-overload/main.ts"),
+        ),
+    ];
+    for (name, source) in cases {
+        let module = parse_module(ENTRY, source)
+            .unwrap_or_else(|errors| panic!("{name} failed bounded class parsing: {errors:#?}"));
+        let [Declaration::Class(class)] = module.declarations.as_slice() else {
+            panic!("{name} did not retain exactly one class");
+        };
+        assert_eq!(class.name, "Reader", "{name}");
+        assert_eq!(
+            &source[class.span.start..class.span.end],
+            source[source.find("class Reader").unwrap()..].trim_end(),
+            "{name}"
+        );
+        match name {
+            "overloads" => {
+                assert_eq!(class.method_groups.len(), 1);
+                assert_eq!(class.method_groups[0].signature_member_indices, [0, 1]);
+                assert_eq!(class.method_groups[0].implementation_member_index, Some(2));
+            }
+            "record-return" => {
+                assert_eq!(class.method_groups.len(), 1);
+                assert_eq!(class.method_groups[0].implementation_member_index, Some(0));
+            }
+            "deferred-private" => {
+                assert_eq!(class.method_groups.len(), 0);
+                assert_eq!(class.members[0].kind, ClassMemberKind::Opaque);
+            }
+            "orphan-signature" => {
+                assert_eq!(class.method_groups[0].signature_member_indices, [0]);
+                assert_eq!(class.method_groups[0].implementation_member_index, None);
+            }
+            "interrupted-signature" => {
+                assert_eq!(class.method_groups.len(), 2);
+                assert_eq!(class.method_groups[0].implementation_member_index, None);
+                assert_eq!(class.members[1].kind, ClassMemberKind::Opaque);
+                assert_eq!(class.method_groups[1].implementation_member_index, Some(2));
+            }
+            "incompatible-overload" => {
+                assert_eq!(class.method_groups.len(), 1);
+                assert_eq!(class.method_groups[0].signature_member_indices, [0]);
+                assert_eq!(class.method_groups[0].implementation_member_index, Some(1));
+            }
+            _ => unreachable!(),
+        }
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none(), "{name} emitted an artifact");
+        assert_eq!(
+            compilation.diagnostics.len(),
+            1,
+            "{name}: {:#?}",
+            compilation.diagnostics
+        );
+        assert_eq!(
+            compilation.diagnostics[0].code,
+            DiagnosticCode::UnsupportedSyntax,
+            "{name}"
+        );
+        assert_eq!(compilation.diagnostics[0].span, class.span, "{name}");
+    }
 }
 
 #[test]

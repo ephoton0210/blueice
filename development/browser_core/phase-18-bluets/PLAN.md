@@ -5099,6 +5099,36 @@ so these opaque forms cannot execute or leak into BlueTSC output. The full
 BlueTS crate suite, workspace all-target Clippy with warnings denied,
 rustfmt, and whitespace checks pass in the shared disk-budgeted target.
 
+### J.3.1.2.3.3 Class method overload grouping and parser oracle
+
+The class parser retains contiguous same-name method signatures and their
+implementation as one group of indices into the original member vector. A
+later implementation of the same name begins a new group. Missing
+implementations and an opaque field interrupting a group remain visible to
+the later checker; no method becomes executable through this parser change.
+
+Six shared source fixtures close the parser-only oracle leaf J.3.1.2.3.3.2.
+The pinned TypeScript 5.9.3 executable accepts number/string overloads with
+a union implementation, a record return type, and a private method. BlueTS
+retains the first two as structured method groups and routes the private
+method to an opaque member pending J.3.2. The pinned compiler rejects an
+orphan signature and a signature interrupted by a field with TS2391, and an
+incompatible overload implementation with TS2394; each diagnostic is on the
+fixture's expected line. The oracle uses `--noEmit` and verifies no output
+files remain.
+
+The public BlueTS parser test reads those same sources, checks original class
+spans, method group indices, and the opaque boundary, then confirms every
+checked class has one `UnsupportedSyntax` diagnostic at that span and no
+BlueTSC artifact. J.3.1.2.3.3, J.3.1.2.3, and J.3.1.2 are complete; class
+semantic acceptance remains gated on J.3.1.3–6.
+
+J.3.1.3 is split into method-group validation, class constructor and
+instance/static binding, body and `this` checking, inheritance and `super`,
+then pinned-oracle checker closure. This order lets each checker step retain
+the current fail-closed class admission rule until the full checker, emitted
+JavaScript, and direct runtime are ready.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
