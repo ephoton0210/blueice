@@ -70,6 +70,7 @@ enum RestShape {
         inherited_fixed: usize,
         derived_variable: bool,
     },
+    OptionalFixedMiddleTuples,
 }
 
 impl ModuleChecker<'_> {
@@ -230,6 +231,7 @@ impl ModuleChecker<'_> {
                 } => {
                     required_derived >= middle_tuple_required(inherited.parameters, inherited_fixed)
                 }
+                RestShape::OptionalFixedMiddleTuples => false,
                 _ => required_derived <= inherited_arity,
             };
             let parameters_compatible = arity_compatible
@@ -978,6 +980,7 @@ impl ModuleChecker<'_> {
                             )
                         })
                     }
+                    RestShape::OptionalFixedMiddleTuples => false,
                 };
             let compatible = parameters_compatible
                 && is_assignable(
@@ -1105,19 +1108,20 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
                     .is_some_and(|index| index + 1 < inherited_elements.len());
                 let derived_is_fixed = derived_elements.iter().all(|element| !element.rest);
                 let inherited_is_fixed = inherited_elements.iter().all(|element| !element.rest);
-                if !derived_elements.iter().any(|element| element.optional)
-                    && !inherited_elements.iter().any(|element| element.optional)
-                    && ((derived_middle && inherited_is_fixed)
-                        || (inherited_middle && derived_is_fixed))
+                if (derived_middle && inherited_is_fixed) || (inherited_middle && derived_is_fixed)
                 {
-                    Some(derived_middle)
+                    Some((
+                        derived_middle,
+                        derived_elements.iter().any(|element| element.optional)
+                            || inherited_elements.iter().any(|element| element.optional),
+                    ))
                 } else {
                     None
                 }
             }
             _ => None,
         };
-        if let Some(derived_variable) = middle_fixed_pair {
+        if let Some((derived_variable, has_optional)) = middle_fixed_pair {
             if derived_rest.rest
                 && inherited_rest.rest
                 && !derived_fixed
@@ -1125,10 +1129,14 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
                     .chain(inherited_fixed)
                     .any(|parameter| parameter.rest || parameter.optional)
             {
-                return Some(RestShape::MiddleFixedTuples {
-                    derived_fixed: derived_fixed.len(),
-                    inherited_fixed: inherited_fixed.len(),
-                    derived_variable,
+                return Some(if has_optional {
+                    RestShape::OptionalFixedMiddleTuples
+                } else {
+                    RestShape::MiddleFixedTuples {
+                        derived_fixed: derived_fixed.len(),
+                        inherited_fixed: inherited_fixed.len(),
+                        derived_variable,
+                    }
                 });
             }
         }

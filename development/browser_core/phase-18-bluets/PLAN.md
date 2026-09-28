@@ -6242,6 +6242,22 @@ the original member span with no output. Five pinned TypeScript 5.9.3
 Optional positions in a fixed tuple rest and ordinary method parameters
 remain separate leaves.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.2 Optional fixed tuples against middle rests
+
+A fixed tuple rest with optional trailing elements is a distinct override
+shape from a required-only fixed tuple. When it faces a middle rest, the
+checker now emits an incompatibility at the overriding member in either
+direction. An inherited optional fixed tuple may terminate before the
+middle rest's required suffix. A derived optional fixed tuple has a bounded
+maximum and cannot match the inherited middle rest's unbounded form. The
+gate keeps the required-only fixed tuple relation separate, so it does not
+invent a required optional position to select a witness length.
+
+Public checked-compile cases cover both directions, a longer fixed tuple,
+and a static method with one mismatch at the original member span and no
+output. Four pinned TypeScript 5.9.3 `--noEmit` cases agree on TS2416/TS2417
+diagnostic lines. Optional ordinary method parameters remain the next leaf.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

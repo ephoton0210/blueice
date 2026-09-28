@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1738,10 +1738,23 @@ exists. A passed first form does not close its whole feature family.
                               BlueTS, bridge, and full workspace tests,
                               all-target Clippy, rustfmt, and whitespace
                               checks pass with the reused 12 GiB target.
-                            - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.2** Compare
+                            - [x] **J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.2** Compare
                               a middle tuple rest with a fixed tuple rest
                               that has optional suffix positions, preserving
-                              the required suffix boundary.
+                              the required suffix boundary. The override gate
+                              rejects this shape in both directions rather
+                              than silently skipping compatibility, matching
+                              fixed tuples that may terminate before the
+                              suffix and bounded optional fixed tuples that
+                              cannot match the middle rest's unbounded form.
+                              Public checked-compile cases cover instance
+                              and static sides and one or more required
+                              positions at original member spans with no
+                              output. Four pinned TypeScript 5.9.3 `--noEmit`
+                              cases agree on TS2416/TS2417 lines. BlueTS,
+                              bridge, and full workspace tests, all-target
+                              Clippy, rustfmt, and whitespace checks pass
+                              with the reused 12 GiB target.
                             - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.3** Compare
                               optional ordinary parameters before tuple rest
                               parameters without shifting their positions or
