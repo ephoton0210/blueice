@@ -444,7 +444,9 @@ fn regex_protocol_faults_and_missing_helper_fail_closed() {
         "early_exit",
         "bad_ready",
         "after_ready_exit",
+        "closed_before_ready",
         "malformed",
+        "truncated_reply",
         "oversized",
         "invalid_range",
         "compile_reply",
@@ -456,6 +458,14 @@ fn regex_protocol_faults_and_missing_helper_fail_closed() {
         );
         assert_eq!(replies[0]["kind"], "worker_error", "{mode}: {replies:?}");
     }
+    let long_pattern = adapter(
+        &[json!({
+            "source": "new RegExp('a'.repeat(100000)).test('a')",
+            "mode": "sloppy"
+        })],
+        Some(("close_after_header", &script)),
+    );
+    assert_eq!(long_pattern[0]["kind"], "worker_error", "{long_pattern:?}");
     let missing = directory.join("missing");
     for source in ["/a/", "new RegExp('a')"] {
         let replies = adapter(
@@ -465,6 +475,54 @@ fn regex_protocol_faults_and_missing_helper_fail_closed() {
         assert_eq!(replies[0]["kind"], "worker_error");
     }
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn regex_helper_reports_closed_output_during_frame_header_and_body() {
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::UnixStream;
+
+    let (read, write) = UnixStream::pair().unwrap();
+    drop(read);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bluejs-regexp-worker"))
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(OwnedFd::from(write)))
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    assert!(!child.wait().unwrap().success());
+
+    let (mut output, write) = UnixStream::pair().unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_bluejs-regexp-worker"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::from(OwnedFd::from(write)))
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut length = [0; 4];
+    output.read_exact(&mut length).unwrap();
+    let mut ready = vec![0; u32::from_le_bytes(length) as usize];
+    output.read_exact(&mut ready).unwrap();
+    assert_eq!(ready, b"bluejs-regexp-worker/1");
+
+    let patterns = vec![(vec![97u16], String::new()); 100_000];
+    let request = serde_json::to_vec(&json!({
+        "operation": "validate",
+        "patterns": patterns,
+    }))
+    .unwrap();
+    input
+        .write_all(&(request.len() as u32).to_le_bytes())
+        .unwrap();
+    input.write_all(&request).unwrap();
+    input.flush().unwrap();
+    output.read_exact(&mut length).unwrap();
+    assert!(u32::from_le_bytes(length) > 100_000);
+    drop(output);
+    drop(input);
+    assert!(!child.wait().unwrap().success());
 }
 
 #[test]

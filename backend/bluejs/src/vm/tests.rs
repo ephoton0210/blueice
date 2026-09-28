@@ -6,6 +6,31 @@ use super::*;
 use crate::heap::TemporalKind;
 
 #[test]
+fn collection_and_array_helpers_reject_foreign_heap_handles() {
+    let mut vm = Vm::default();
+    let mut other = Vm::default();
+    let foreign = other.heap.alloc_object(None).unwrap();
+    let value = Value::Object(foreign);
+
+    assert!(matches!(
+        vm.array_to_sorted(&Value::Null, &value),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+    assert!(matches!(
+        vm.collection_iterator_next(true, &value),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+
+    let callback = vm
+        .execute(&crate::compile(&crate::parse("(function () {})").unwrap()).unwrap())
+        .unwrap();
+    assert!(matches!(
+        vm.collection_for_each(foreign, true, &[callback]),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+}
+
+#[test]
 fn temporal_zone_helpers_reject_foreign_handles_and_invalid_stored_zones() {
     let mut vm = Vm::default();
     let mut other = Vm::default();

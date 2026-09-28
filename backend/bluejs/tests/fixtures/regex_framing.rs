@@ -137,6 +137,18 @@ fn cached_find_with_a_replaced_pattern_is_not_decoded_as_compile() {
     ));
 }
 
+#[test]
+fn batch_validation_uses_the_real_cached_worker() {
+    assert_eq!(
+        super::validate(
+            vec![(vec![97], String::new()), (vec![40], String::new())],
+            DEFAULT_TIMEOUT,
+        )
+        .unwrap(),
+        vec![true, false]
+    );
+}
+
 /// A worker whose transport is two in-memory channels, so a test controls
 /// exactly what "the worker" replies. `_requests` keeps the request side open.
 fn scripted_worker(replies: Vec<Reply>) -> (Worker, Receiver<Vec<u8>>) {
