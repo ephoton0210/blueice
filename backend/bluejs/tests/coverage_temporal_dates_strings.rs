@@ -583,6 +583,21 @@ fn plain_date_and_date_time_to_zoned_date_time() {
 }
 
 #[test]
+fn time_zone_conversion_preserves_invalid_utf16_and_property_errors() {
+    run(r#"
+      const date = Temporal.PlainDate.from("2020-01-01");
+      range(() => Temporal.Now.plainDateISO('\uD800'));
+      range(() => Temporal.Now.plainDateTimeISO('\uD800'));
+      range(() => date.toZonedDateTime('\uD800'));
+      range(() => new Temporal.Instant(0n).toZonedDateTimeISO('\uD800'));
+      same(() => { try { date.toZonedDateTime({ get timeZone() { throw new RangeError('zone'); } }); } catch (error) { return error.message; } }, 'zone');
+      same(() => { try { date.toZonedDateTime({ timeZone: 'UTC', get plainTime() { throw new RangeError('plainTime'); } }); } catch (error) { return error.message; } }, 'plainTime');
+      const dateTime = Temporal.PlainDateTime.from('2020-01-01T12:00');
+      same(() => { try { dateTime.toZonedDateTime('UTC', { get disambiguation() { throw new RangeError('disambiguation'); } }); } catch (error) { return error.message; } }, 'disambiguation');
+    "#);
+}
+
+#[test]
 fn instant_to_zoned_date_time_iso() {
     run(r#"
       const i = Temporal.Instant.from("2020-06-15T12:34:56.789Z");

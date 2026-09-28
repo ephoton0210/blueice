@@ -2,9 +2,9 @@
 
 Snapshot: `72faf8ec1445c55149615e8b35187830783aba1a`.
 
-## Latest complete macOS rerun (2026-09-28)
+## Latest complete macOS rerun (2026-09-29)
 
-At base source commit `4716bf160` with the coverage and synthetic-module changes in the macOS report, the pinned, unfiltered 53,582-file / 102,926-mode inventory produced **102,921 pass, 0 fail, 0 unsupported, 0 timeout, 0 harness error, 1 `stale_corpus`, and 4 `excluded`** in 228.262 seconds. Thus all **102,921 dispatched modes passed (100%)**, while the raw scheduled pass rate is **99.995%**. The runner returns 1 because the five non-pass dispositions remain visible. `analyze.py` reconciled every path, mode, source hash, status, feature count, and group count; its current output is `target/test262-macos-20260928-complete76-analysis/`. Exact path/mode/status/source-hash comparison against complete75 found zero changes across all 102,926 modes. The detailed dispositions below still apply, and the [macOS report](TEST262_MACOS_REPORT.md) records this latest run.
+At source commit `dee6e8718` plus the uncommitted coverage changes in the macOS report, the pinned, unfiltered 53,582-file / 102,926-mode inventory produced **102,921 pass, 0 fail, 0 unsupported, 0 timeout, 0 harness error, 1 `stale_corpus`, and 4 `excluded`** in 239.079 seconds. Thus all **102,921 dispatched modes passed (100%)**, while the raw scheduled pass rate is **99.995%**. The runner returns 1 because the five non-pass dispositions remain visible. `analyze.py` reconciled every path, mode, source hash, status, feature count, and group count; its current output is `target/test262-macos-20260929-batch1-analysis/`. Exact path/mode/status/expected-outcome/actual-kind/actual-phase/source-hash comparison against the preceding 2026-09-28 batch5 run found zero changes across all 102,926 modes. The detailed dispositions below still apply, and the [macOS report](TEST262_MACOS_REPORT.md) records this latest run.
 
 ## Previous milestone (2026-09-23): 0 failures
 

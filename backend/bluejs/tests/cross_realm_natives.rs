@@ -9,7 +9,45 @@
 //! creates belong to the realm of the function, and errors raised by
 //! callbacks belong to the callback's realm.
 
-use blueice_bluejs::{compile, parse, Value, Vm, VmConfig};
+use blueice_bluejs::{compile, parse, HeapError, RuntimeError, Value, Vm, VmConfig};
+
+#[test]
+fn foreign_array_copy_methods_report_heap_limits_while_creating_realm_results() {
+    for source in [
+        "var other = $262.createRealm().global; other.Array.prototype.toReversed.call([1, 2, 3])",
+        "var other = $262.createRealm().global; other.Array.prototype.toSorted.call([undefined, 2, 1])",
+        "var other = $262.createRealm().global; other.Array.prototype.toSpliced.call([1, 2, 3], 1, 1, 7)",
+        "var other = $262.createRealm().global; other.Array.prototype.with.call([1, 2, 3], 1, 7)",
+    ] {
+        let program = compile(&parse(source).unwrap()).unwrap();
+        let mut probe = Vm::default();
+        probe.install_test262_harness().unwrap();
+        probe.execute(&program).unwrap();
+        let baseline = probe.heap().stats().managed_bytes;
+        let mut completed = 0;
+        let mut exhausted = 0;
+        for limit in (baseline.saturating_sub(16_384)..=baseline + 16_384).step_by(64) {
+            let mut config = VmConfig::default();
+            config.heap.max_heap_bytes = limit;
+            config.heap.major_threshold_bytes = config.heap.major_threshold_bytes.min(limit);
+            let Ok(mut vm) = Vm::new(config) else {
+                continue;
+            };
+            let result = vm
+                .install_test262_harness()
+                .and_then(|()| vm.execute(&program).map(|_| ()));
+            match result {
+                Ok(()) => completed += 1,
+                Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => exhausted += 1,
+                Err(other) => panic!("{source}, heap limit {limit}: {other:?}"),
+            }
+        }
+        assert!(
+            completed > 0 && exhausted > 0,
+            "{source}, baseline {baseline}: {completed} completed, {exhausted} exhausted"
+        );
+    }
+}
 
 fn evaluate(source: &str, nursery_capacity: Option<usize>) -> Value {
     let mut config = VmConfig::default();

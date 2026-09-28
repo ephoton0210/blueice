@@ -82,10 +82,16 @@ impl Vm {
             }
         }
         // `RequireInternalSlot(this, ...)` is every Temporal prototype
-        // member's first step, ahead of any argument access.
-        if let Some(kind) = function.temporal_receiver_kind() {
-            self.require_temporal_receiver(&receiver, kind)?;
-        }
+        // member's first step, ahead of any argument access. Duration methods
+        // also need the record, so read it once at this boundary.
+        let duration_record = match function.temporal_receiver_kind() {
+            Some(TemporalKind::Duration) => Some(self.temporal_duration_receiver(&receiver)?),
+            Some(kind) => {
+                self.require_temporal_receiver(&receiver, kind)?;
+                None
+            }
+            None => None,
+        };
         let first = native::argument(&args, 0);
         match function {
             NativeFunction::Host(index) => {
@@ -413,32 +419,40 @@ impl Vm {
                 self.temporal_now_plain(TemporalKind::PlainTime, first)
             }
             NativeFunction::TemporalNowZonedDateTimeIso => self.temporal_now_zoned_date_time(first),
-            NativeFunction::TemporalDurationWith => self.temporal_duration_with(&receiver, first),
-            NativeFunction::TemporalDurationNegated => {
-                self.temporal_duration_negated(&receiver, false)
+            NativeFunction::TemporalDurationWith => {
+                self.temporal_duration_with(duration_record.unwrap(), first)
             }
-            NativeFunction::TemporalDurationAbs => self.temporal_duration_negated(&receiver, true),
+            NativeFunction::TemporalDurationNegated => {
+                self.temporal_duration_negated(duration_record.unwrap(), false)
+            }
+            NativeFunction::TemporalDurationAbs => {
+                self.temporal_duration_negated(duration_record.unwrap(), true)
+            }
             NativeFunction::TemporalDurationAdd => {
-                self.temporal_duration_add(&receiver, first, false)
+                self.temporal_duration_add(duration_record.unwrap(), first, false)
             }
             NativeFunction::TemporalDurationSubtract => {
-                self.temporal_duration_add(&receiver, first, true)
+                self.temporal_duration_add(duration_record.unwrap(), first, true)
             }
-            NativeFunction::TemporalDurationRound => self.temporal_duration_round(&receiver, first),
-            NativeFunction::TemporalDurationTotal => self.temporal_duration_total(&receiver, first),
+            NativeFunction::TemporalDurationRound => {
+                self.temporal_duration_round(duration_record.unwrap(), first)
+            }
+            NativeFunction::TemporalDurationTotal => {
+                self.temporal_duration_total(duration_record.unwrap(), first)
+            }
             NativeFunction::TemporalDurationCompare => self.temporal_duration_compare(
                 first,
                 native::argument(&args, 1),
                 native::argument(&args, 2),
             ),
             NativeFunction::TemporalDurationToString => {
-                self.temporal_duration_to_string(&receiver, first)
+                self.temporal_duration_to_string(duration_record.unwrap(), first)
             }
             NativeFunction::TemporalDurationToJson => {
-                self.temporal_duration_to_string(&receiver, &Value::Undefined)
+                self.temporal_duration_to_string(duration_record.unwrap(), &Value::Undefined)
             }
             NativeFunction::TemporalDurationToLocaleString => {
-                self.temporal_duration_to_locale_string(&receiver, &args)
+                self.temporal_duration_to_locale_string(&receiver, duration_record.unwrap(), &args)
             }
             NativeFunction::TemporalDurationValueOf => self.temporal_duration_value_of(),
             NativeFunction::TemporalDateWith(_) => {

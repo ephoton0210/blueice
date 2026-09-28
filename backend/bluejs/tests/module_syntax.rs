@@ -87,6 +87,33 @@ fn incomplete_import_export_and_attribute_clauses_are_known_syntax_errors() {
 }
 
 #[test]
+fn malformed_module_clause_tails_and_declarations_are_known_syntax_errors() {
+    for source in [
+        "import './m.js' with;",
+        "import './m.js' with { 1: 'x' };",
+        "import './m.js' with { type 'json' };",
+        "import './m.js' with { type: 'json' other: 'x' };",
+        "import './m.js' extra;",
+        "import source name from './m.js' with;",
+        "import source name from './m.js' extra;",
+        "import * as ns from './m.js' with;",
+        "import { value } from './m.js' with;",
+        "export * from './m.js' with;",
+        "export default 1 extra;",
+        "export { value } from './m.js' with;",
+        "export { value } from './m.js' extra;",
+        "export var value = ;",
+        "export let value = ;",
+        "export const value = ;",
+        "export function value( {}",
+        "export function () {}",
+        "export class {}",
+    ] {
+        assert_module_syntax_error(source);
+    }
+}
+
+#[test]
 fn contextual_keywords_in_import_and_export_declarations_reject_escapes() {
     for source in [
         "import {a \\u0061s b} from './m.js';",

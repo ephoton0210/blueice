@@ -18,7 +18,7 @@ impl Vm {
 
     /// Reads a validated `Temporal.Duration` receiver's own record.
     pub(in super::super) fn temporal_duration_receiver(
-        &mut self,
+        &self,
         receiver: &Value,
     ) -> Result<blueice_ecma402::DurationRecord, RuntimeError> {
         let object = receiver.object_id().ok_or_else(|| {

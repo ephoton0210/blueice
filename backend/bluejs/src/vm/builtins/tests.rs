@@ -65,6 +65,28 @@ fn sparse_array_length_rejects_a_symbol() {
 }
 
 #[test]
+fn sparse_array_length_rejects_a_foreign_object_handle() {
+    let mut vm = Vm::default();
+    let mut other_vm = Vm::default();
+    let foreign = other_vm.heap.alloc_object(None).unwrap();
+    assert!(matches!(
+        vm.array_like_length(foreign),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(id))) if id == foreign
+    ));
+}
+
+#[test]
+fn number_helpers_reject_foreign_receivers_and_normalize_nan_digits() {
+    let mut vm = Vm::default();
+    let foreign = Vm::default().heap.alloc_object(None).unwrap();
+    assert!(matches!(
+        vm.number_receiver(&Value::Object(foreign)),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(id))) if id == foreign
+    ));
+    assert_eq!(vm.number_digits_argument(&Value::Number(f64::NAN)), Ok(0.0));
+}
+
+#[test]
 fn array_concat_keeps_non_array_values_as_elements() {
     let mut vm = Vm::default();
     vm.remaining_instructions = vm.config.instruction_budget;

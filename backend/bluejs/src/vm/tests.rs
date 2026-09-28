@@ -1290,3 +1290,13 @@ fn a_native_accessor_cannot_replace_a_non_configurable_property() {
         Err(RuntimeError::TypeError(message)) if message == "cannot install native accessor"
     ));
 }
+
+#[test]
+fn temporal_duration_receiver_rejects_invalid_internal_values() {
+    let vm = Vm::default();
+    let invalid = Value::Undefined;
+    assert!(matches!(
+        vm.temporal_duration_receiver(&invalid),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
