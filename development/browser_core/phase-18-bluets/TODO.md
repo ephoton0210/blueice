@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.3.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.6.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1651,7 +1651,7 @@ exists. A passed first form does not close its whole feature family.
                         full workspace tests, all-target Clippy, rustfmt,
                         and whitespace checks pass with the reused 12 GiB
                         target.
-                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5** Compare nontrailing
+                      - [x] **J.3.1.3.4.4.2.3.2.3.3.3.5** Compare nontrailing
                         tuple rest positions and required suffixes in class
                         method overrides against pinned TypeScript.
                         - [x] **J.3.1.3.4.4.2.3.2.3.3.3.5.1** Compare a derived
@@ -1685,7 +1685,7 @@ exists. A passed first form does not close its whole feature family.
                           TS2417 lines. BlueTS, bridge, and full workspace
                           tests, all-target Clippy, rustfmt, and whitespace
                           checks pass with the reused 12 GiB target.
-                        - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5.3** Compare
+                        - [x] **J.3.1.3.4.4.2.3.2.3.3.3.5.3** Compare
                           nontrailing tuple rests with tuple rests on both
                           sides, including shifted prefixes and suffixes.
                           - [x] **J.3.1.3.4.4.2.3.2.3.3.3.5.3.1** Compare
@@ -1719,7 +1719,7 @@ exists. A passed first form does not close its whole feature family.
                             full workspace tests, all-target Clippy,
                             rustfmt, and whitespace checks pass with the
                             reused 12 GiB target.
-                          - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5.3.3** Compare
+                          - [x] **J.3.1.3.4.4.2.3.2.3.3.3.5.3.3** Compare
                             middle/trailing tuple rest pairs that have
                             optional fixed positions without inventing a
                             required argument.
@@ -1755,7 +1755,7 @@ exists. A passed first form does not close its whole feature family.
                               bridge, and full workspace tests, all-target
                               Clippy, rustfmt, and whitespace checks pass
                               with the reused 12 GiB target.
-                            - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.3** Compare
+                            - [x] **J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.3** Compare
                               optional ordinary parameters before tuple rest
                               parameters without shifting their positions or
                               inventing a required argument.
@@ -1797,10 +1797,25 @@ exists. A passed first form does not close its whole feature family.
                                 tests, all-target Clippy, rustfmt, and
                                 whitespace checks pass with the reused
                                 12 GiB target.
-                              - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.3.3**
+                              - [x] **J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.3.3**
                                 Compare ordinary optional prefixes when a
                                 middle tuple rest faces a fixed tuple rest
-                                parameter.
+                                parameter. The checker retains `undefined`
+                                for optional ordinary prefixes and requires
+                                every prefix slot when the opposing fixed
+                                tuple has required elements. An empty fixed
+                                tuple does not turn an optional ordinary
+                                prefix into a required argument. Public
+                                checked-compile cases cover accepted instance
+                                and static overrides in both directions,
+                                rejected prefix types and empty-tuple arities,
+                                with one diagnostic at the original member
+                                span and no output. Six pinned TypeScript
+                                5.9.3 `--noEmit` cases agree on acceptance
+                                and TS2416/TS2417 lines. BlueTS, bridge,
+                                and full workspace tests, all-target Clippy,
+                                rustfmt, and whitespace checks pass with the
+                                reused 12 GiB target.
                       - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6** Resolve concrete
                         and constrained generic tuple spreads in admitted
                         type uses and override comparison, with bounded

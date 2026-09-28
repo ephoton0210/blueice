@@ -212,25 +212,20 @@ impl ModuleChecker<'_> {
                     required_derived >= middle_tuple_required(inherited.parameters, inherited_fixed)
                 }
                 RestShape::MiddleFixedTuples {
+                    derived_fixed,
                     inherited_fixed,
                     derived_variable: true,
-                    ..
                 } => {
-                    let Some(Type::Tuple(elements)) = inherited
-                        .parameters
-                        .last()
-                        .and_then(|parameter| parameter.annotation.as_ref())
-                    else {
-                        unreachable!("rest shape requires a tuple annotation")
-                    };
-                    required_derived <= inherited_fixed + elements.len()
+                    middle_tuple_required(&derived.parameters, derived_fixed)
+                        <= fixed_tuple_required(inherited.parameters, inherited_fixed)
                 }
                 RestShape::MiddleFixedTuples {
+                    derived_fixed,
                     inherited_fixed,
                     derived_variable: false,
-                    ..
                 } => {
-                    required_derived >= middle_tuple_required(inherited.parameters, inherited_fixed)
+                    fixed_tuple_required(&derived.parameters, derived_fixed)
+                        >= middle_tuple_required(inherited.parameters, inherited_fixed)
                 }
                 RestShape::OptionalFixedMiddleTuples => false,
                 _ => required_derived <= inherited_arity,
@@ -955,7 +950,7 @@ impl ModuleChecker<'_> {
                                 return false;
                             }
                             let derived_type = if index < derived_fixed {
-                                derived.parameters[index].annotation.clone()
+                                Some(override_parameter_type(&derived.parameters[index]))
                             } else {
                                 tuple_type_at_length(
                                     derived_elements,
@@ -964,7 +959,7 @@ impl ModuleChecker<'_> {
                                 )
                             };
                             let inherited_type = if index < inherited_fixed {
-                                inherited.parameters[index].annotation.clone()
+                                Some(override_parameter_type(&inherited.parameters[index]))
                             } else {
                                 tuple_type_at_length(
                                     inherited_elements,
@@ -1132,7 +1127,7 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
                 && !derived_fixed
                     .iter()
                     .chain(inherited_fixed)
-                    .any(|parameter| parameter.rest || parameter.optional)
+                    .any(|parameter| parameter.rest)
             {
                 return Some(if has_optional {
                     RestShape::OptionalFixedMiddleTuples
@@ -1369,6 +1364,23 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
             derived_fixed: derived_fixed.len(),
             inherited_fixed: inherited_fixed.len(),
         })
+    }
+}
+
+fn fixed_tuple_required(parameters: &[Parameter], fixed: usize) -> usize {
+    let Some(Type::Tuple(elements)) = parameters
+        .last()
+        .and_then(|parameter| parameter.annotation.as_ref())
+    else {
+        unreachable!("rest shape requires a tuple annotation")
+    };
+    if elements.is_empty() {
+        parameters[..fixed]
+            .iter()
+            .filter(|parameter| !parameter.optional)
+            .count()
+    } else {
+        fixed + elements.len()
     }
 }
 

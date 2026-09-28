@@ -6299,6 +6299,24 @@ Nine pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
 TS2416/TS2417 diagnostic lines. Opposing fixed tuple rests with ordinary
 optional prefixes remain the next leaf.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.3.3 Optional ordinary prefixes with fixed tuple rests
+
+Middle tuple rest overrides now compare an ordinary optional prefix with a
+fixed tuple rest counterpart using the annotation or `undefined`. The arity
+gate counts all declared ordinary prefix slots when the fixed tuple has
+required elements, so a required suffix cannot occupy an optional prefix's
+position. With an empty fixed tuple, the gate counts only required ordinary
+prefixes, allowing the optional prefix to be omitted.
+
+Public checked-compile cases cover accepted instance and static overrides in
+both directions, plus wrong prefix types and too-short empty-tuple cases. Each
+rejection reports one type diagnostic at the original member span without
+emitting output. Six pinned TypeScript 5.9.3 `--noEmit` cases agree on
+acceptance and TS2416/TS2417 diagnostic lines. BlueTS, bridge, and full
+workspace tests, all-target Clippy, rustfmt, and whitespace checks pass with
+the reused 12 GiB target. Concrete and constrained generic tuple spreads are
+the next leaf.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
