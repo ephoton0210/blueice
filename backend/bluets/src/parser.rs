@@ -438,6 +438,14 @@ impl TupleTypeElement {
     pub fn is_rest(&self) -> bool {
         self.rest
     }
+
+    pub(crate) fn value_type(&self) -> Type {
+        if self.optional {
+            Type::Union(vec![self.annotation.clone(), Type::Undefined])
+        } else {
+            self.annotation.clone()
+        }
+    }
 }
 
 /// The supported, reifiable portion of the TypeScript type grammar.

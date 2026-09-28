@@ -138,10 +138,24 @@ impl Parser {
             self.parse_type_primary(&[])
         } else if self.consume("[") {
             let mut values = Vec::new();
+            let mut saw_optional = false;
             while !self.at_eof() && !self.consume("]") {
-                values.push(TupleTypeElement::required(
-                    self.parse_type_until(&[",", "]"]),
-                ));
+                let start = self.current().start;
+                let annotation = self.parse_type_until(&["?", ",", "]"]);
+                let end = self.previous().end;
+                let optional = self.consume("?");
+                if saw_optional && !optional {
+                    self.error_at(
+                        SourceSpan::new(&self.id, start, end),
+                        DiagnosticCode::ParseError,
+                        "a required tuple element cannot follow an optional element",
+                    );
+                }
+                saw_optional |= optional;
+                values.push(TupleTypeElement {
+                    optional,
+                    ..TupleTypeElement::required(annotation)
+                });
                 if !self.consume(",") {
                     self.expect("]");
                     break;

@@ -5918,6 +5918,32 @@ class tuple-rest accepted/rejected tests, and emitter regressions pass.
 Full workspace tests, workspace all-target Clippy, rustfmt, and whitespace
 checks pass with the reused 12 GiB Cargo target.
 
+### J.3.1.3.4.4.2.3.2.3.3.1.3 Optional tuple types outside overrides
+
+The tuple type parser now accepts trailing `?` elements and diagnoses a
+required element after an optional one at its source span. Tuple
+assignability compares the required and maximum lengths and each present
+element against its expected type, allowing `undefined` at optional
+positions. Indexed reads include `undefined` for an optional position.
+Type labels, identities, and declarations retain the optional marker;
+JavaScript emission still erases it.
+
+Pure contracts lower an optional tuple to a bounded-length plan, validate
+each present element, and accept explicit `undefined` at an optional slot.
+Optional tuple spreads are rejected by the current bounded call and tuple
+literal expansion paths pending a separate step. Class override comparison
+skips optional tuple rest shapes until the next leaf; class output remains
+refused. The parser still rejects `undefined` as a binding name, so a
+shadowed `undefined` cannot be tested through admitted BlueTS source here;
+simple inference consults the local scope before using the intrinsic type.
+Public checked-compile cases cover accepted declarations and
+indexing, wrong type and invalid element order, emitted declarations, and
+no error artifact. Contract cases cover minimum and maximum lengths,
+present types, and explicit `undefined`. Five pinned TypeScript 5.9.3
+`--noEmit` cases agree on acceptance and TS2322/TS1257 lines. BlueTS,
+bridge, and full workspace tests, workspace all-target Clippy, rustfmt, and
+whitespace checks pass with the reused 12 GiB target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

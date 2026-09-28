@@ -530,7 +530,13 @@ fn type_to_ts(value: &Type) -> String {
             "[{}]",
             values
                 .iter()
-                .map(|value| type_to_ts(&value.annotation))
+                .map(|value| {
+                    format!(
+                        "{}{}",
+                        type_to_ts(&value.annotation),
+                        if value.optional { "?" } else { "" }
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         ),

@@ -45,6 +45,10 @@ pub enum Contract {
     Literal(String),
     Array(Box<Contract>),
     Tuple(Vec<Contract>),
+    OptionalTuple {
+        items: Vec<Contract>,
+        required: usize,
+    },
     Record(Vec<ContractField>),
     Union(Vec<Contract>),
     /// Every component must validate. This keeps inherited record contracts
@@ -213,7 +217,10 @@ fn contract_heap_payload_bytes(contract: &Contract) -> Option<usize> {
         Contract::Array(item) => {
             std::mem::size_of::<Contract>().checked_add(contract_heap_payload_bytes(item)?)
         }
-        Contract::Tuple(items) | Contract::Union(items) | Contract::Intersection(items) => {
+        Contract::Tuple(items)
+        | Contract::OptionalTuple { items, .. }
+        | Contract::Union(items)
+        | Contract::Intersection(items) => {
             let mut bytes = items
                 .capacity()
                 .checked_mul(std::mem::size_of::<Contract>())?;
@@ -316,11 +323,32 @@ fn lower(
             definitions,
             active,
         )?))),
-        Type::Tuple(values) => values
-            .iter()
-            .map(|value| lower(&value.annotation, named_types, definitions, active))
-            .collect::<Result<Vec<_>, _>>()
-            .map(Contract::Tuple),
+        Type::Tuple(values) => {
+            if values.iter().any(|value| value.rest) {
+                return Err(ContractError {
+                    message: "variadic tuple elements are not runtime contracts yet".to_string(),
+                });
+            }
+            let items = values
+                .iter()
+                .map(|value| {
+                    let item = lower(&value.annotation, named_types, definitions, active)?;
+                    Ok(if value.optional {
+                        Contract::Union(vec![item, Contract::Undefined])
+                    } else {
+                        item
+                    })
+                })
+                .collect::<Result<Vec<_>, ContractError>>()?;
+            if values.iter().any(|value| value.optional) {
+                Ok(Contract::OptionalTuple {
+                    items,
+                    required: values.iter().filter(|value| !value.optional).count(),
+                })
+            } else {
+                Ok(Contract::Tuple(items))
+            }
+        }
         Type::Record(fields) => {
             lower_fields(fields, named_types, definitions, active).map(Contract::Record)
         }
@@ -422,6 +450,29 @@ fn validate_contract(
                 return Err(ValidationError {
                     path: path.to_string(),
                     expected: format!("tuple of length {}", items.len()),
+                    observed: format!("array of length {}", values.len()),
+                });
+            }
+            for (index, (item, item_value)) in items.iter().zip(values).enumerate() {
+                validate_contract(
+                    item,
+                    item_value,
+                    definitions,
+                    &format!("{path}[{index}]"),
+                    depth + 1,
+                    state,
+                )?;
+            }
+            Ok(())
+        }
+        Contract::OptionalTuple { items, required } => {
+            let ContractValue::Array(values) = value else {
+                return mismatch(path, "tuple", value);
+            };
+            if values.len() < *required || values.len() > items.len() {
+                return Err(ValidationError {
+                    path: path.to_string(),
+                    expected: format!("tuple of length {}..={}", required, items.len()),
                     observed: format!("array of length {}", values.len()),
                 });
             }
@@ -544,7 +595,7 @@ fn contract_label(contract: &Contract) -> String {
         Contract::String => "string",
         Contract::Literal(value) => value,
         Contract::Array(_) => "array",
-        Contract::Tuple(_) => "tuple",
+        Contract::Tuple(_) | Contract::OptionalTuple { .. } => "tuple",
         Contract::Record(_) => "object",
         Contract::Union(_) => "union",
         Contract::Intersection(_) => "intersection",

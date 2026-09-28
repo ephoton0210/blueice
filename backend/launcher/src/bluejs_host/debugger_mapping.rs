@@ -275,7 +275,9 @@ pub(super) fn debugger_contract_root_kind(
         Contract::String => DebuggerStaticMetadataContractRootKind::String,
         Contract::Literal(_) => DebuggerStaticMetadataContractRootKind::Literal,
         Contract::Array(_) => DebuggerStaticMetadataContractRootKind::Array,
-        Contract::Tuple(_) => DebuggerStaticMetadataContractRootKind::Tuple,
+        Contract::Tuple(_) | Contract::OptionalTuple { .. } => {
+            DebuggerStaticMetadataContractRootKind::Tuple
+        }
         Contract::Record(_) => DebuggerStaticMetadataContractRootKind::Record,
         Contract::Union(_) => DebuggerStaticMetadataContractRootKind::Union,
         Contract::Intersection(_) => DebuggerStaticMetadataContractRootKind::Intersection,

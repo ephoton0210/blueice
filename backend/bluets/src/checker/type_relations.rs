@@ -92,18 +92,28 @@ pub(super) fn is_assignable(
                 })
                 && is_assignable(actual_result, expected_result, aliases, visited, budget)
         }
-        (Type::Tuple(actual), Type::Tuple(expected)) if actual.len() == expected.len() => {
-            actual.iter().zip(expected).all(|(actual, expected)| {
-                actual.optional == expected.optional
-                    && actual.rest == expected.rest
-                    && is_assignable(
+        (Type::Tuple(actual), Type::Tuple(expected)) => {
+            let actual_required = actual.iter().filter(|element| !element.optional).count();
+            let expected_required = expected.iter().filter(|element| !element.optional).count();
+            actual_required >= expected_required
+                && actual.len() <= expected.len()
+                && actual.iter().zip(expected).all(|(actual, expected)| {
+                    if actual.rest != expected.rest || (actual.optional && !expected.optional) {
+                        return false;
+                    }
+                    let expected_type = if expected.optional {
+                        Type::Union(vec![expected.annotation.clone(), Type::Undefined])
+                    } else {
+                        expected.annotation.clone()
+                    };
+                    is_assignable(
                         &actual.annotation,
-                        &expected.annotation,
+                        &expected_type,
                         aliases,
                         &mut visited.clone(),
                         budget,
                     )
-            })
+                })
         }
         (Type::Record(actual), Type::Record(expected)) => expected.iter().all(|expected_field| {
             actual
@@ -282,7 +292,13 @@ pub(super) fn type_identity(value: &Type) -> String {
             "[{}]",
             values
                 .iter()
-                .map(|value| type_identity(&value.annotation))
+                .map(|value| {
+                    format!(
+                        "{}{}",
+                        type_identity(&value.annotation),
+                        if value.optional { "?" } else { "" }
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join(",")
         ),
@@ -320,7 +336,13 @@ pub(crate) fn type_label(value: &Type) -> String {
             "[{}]",
             values
                 .iter()
-                .map(|value| type_label(&value.annotation))
+                .map(|value| {
+                    format!(
+                        "{}{}",
+                        type_label(&value.annotation),
+                        if value.optional { "?" } else { "" }
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         ),

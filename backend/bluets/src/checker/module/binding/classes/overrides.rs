@@ -518,6 +518,16 @@ fn nearest_inherited_method<'a>(
 }
 
 fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShape> {
+    // Optional and variadic tuple positions need their own arity relation.
+    if derived.iter().chain(inherited).any(|parameter| {
+        matches!(
+            parameter.annotation.as_ref(),
+            Some(Type::Tuple(elements))
+                if elements.iter().any(|element| element.optional || element.rest)
+        )
+    }) {
+        return None;
+    }
     let derived_has_rest = derived.iter().any(|parameter| parameter.rest);
     let inherited_has_rest = inherited.iter().any(|parameter| parameter.rest);
     if !derived_has_rest && !inherited_has_rest {

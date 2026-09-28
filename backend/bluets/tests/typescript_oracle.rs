@@ -2389,6 +2389,41 @@ fn pinned_class_tuple_rest_annotations_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_optional_tuple_elements_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 5] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-optional-valid/main.ts"),
+            &[],
+        ),
+        (
+            "wrong-type",
+            include_str!("fixtures/typescript_oracle/tuple-optional-wrong-type/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "required-after",
+            include_str!("fixtures/typescript_oracle/tuple-optional-required-after/main.ts"),
+            &[(5, "TS1257")],
+        ),
+        (
+            "index-valid",
+            include_str!("fixtures/typescript_oracle/tuple-optional-index-valid/main.ts"),
+            &[],
+        ),
+        (
+            "index-error",
+            include_str!("fixtures/typescript_oracle/tuple-optional-index-error/main.ts"),
+            &[(6, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_derived_tuple_rest_overrides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

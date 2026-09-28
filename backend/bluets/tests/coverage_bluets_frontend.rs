@@ -3748,6 +3748,88 @@ export { nonNull };
 }
 
 #[test]
+fn optional_tuple_elements_check_and_emit_at_public_boundary() {
+    let valid = include_str!("fixtures/typescript_oracle/tuple-optional-valid/main.ts");
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
+        CompilerOptions {
+            declaration: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    let artifact = &accepted.output.unwrap().artifacts[ENTRY];
+    assert!(artifact.javascript.contains("export const one"));
+    assert!(!artifact.javascript.contains("string?"));
+    let declaration = artifact.declaration.as_deref().unwrap();
+    for name in ["one", "two", "undef"] {
+        assert!(
+            declaration.contains(&format!("{name}: [number, string?]")),
+            "{declaration}"
+        );
+    }
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/tuple-optional-wrong-type/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-optional-required-after/main.ts"),
+            DiagnosticCode::ParseError,
+        ),
+    ] {
+        let rejected = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == code && diagnostic.span.module == ENTRY }),
+            "{:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    let indexed = include_str!("fixtures/typescript_oracle/tuple-optional-index-valid/main.ts");
+    let indexed_result = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, indexed)]),
+        CompilerOptions::default(),
+    );
+    assert!(
+        indexed_result.diagnostics.is_empty(),
+        "{:#?}",
+        indexed_result.diagnostics
+    );
+    let indexed_error =
+        include_str!("fixtures/typescript_oracle/tuple-optional-index-error/main.ts");
+    let indexed_result = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, indexed_error)]),
+        CompilerOptions::default(),
+    );
+    assert!(indexed_result.output.is_none());
+    assert!(
+        indexed_result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch),
+        "{:#?}",
+        indexed_result.diagnostics
+    );
+}
+
+#[test]
 fn named_default_function_exports_preserve_esm_and_emit_a_public_declaration() {
     let source = "export default function greeting(name: string): string { return `Hello, ${name}`; }\nconsole.log(greeting('Ada'));\n";
     let compilation = compile_with_helper(source);

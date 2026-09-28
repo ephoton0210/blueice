@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.1.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.1.4.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1499,10 +1499,23 @@ exists. A passed first form does not close its whole feature family.
                         no new syntax admitted. Full workspace tests,
                         all-target Clippy, rustfmt, and whitespace checks
                         pass with the reused 12 GiB target.
-                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.1.3** Parse and check
+                      - [x] **J.3.1.3.4.4.2.3.2.3.3.1.3** Parse and check
                         optional tuple elements across admitted type uses,
                         including output and contracts, against pinned
-                        TypeScript.
+                        TypeScript. The parser retains trailing optional
+                        flags and rejects required elements after them.
+                        Tuple assignability accepts valid bounded lengths;
+                        indexed reads include `undefined`; declaration text
+                        retains `?`; runtime contracts validate bounded
+                        lengths and present element types, including explicit
+                        `undefined`. Optional tuple spreads and class
+                        overrides remain outside this leaf. Public checked
+                        compilation and contract cases cover accepted and
+                        rejected forms, no error artifact, and five pinned
+                        TypeScript 5.9.3 `--noEmit` cases agree on TS2322/
+                        TS1257 lines. BlueTS, bridge, and full workspace
+                        tests, all-target Clippy, rustfmt, and whitespace
+                        checks pass with the reused 12 GiB target.
                       - [ ] **J.3.1.3.4.4.2.3.2.3.3.1.4** Compare optional
                         tuple rest arity and element types in class method
                         overrides against pinned TypeScript.
@@ -1511,6 +1524,9 @@ exists. A passed first form does not close its whole feature family.
                       override compatibility.
                     - [ ] **J.3.1.3.4.4.2.3.2.3.3.3** Parse variadic tuple
                       elements and compare bounded rest tails and arity.
+                    - [ ] **J.3.1.3.4.4.2.3.2.3.3.4** Expand optional tuple
+                      spreads in bounded call arguments and tuple literals
+                      without inventing required positions.
                   - [ ] **J.3.1.3.4.4.2.3.2.3.4** Parse parenthesized union
                     array annotations needed to compare heterogeneous tuple
                     rest elements with an array-rest counterpart.

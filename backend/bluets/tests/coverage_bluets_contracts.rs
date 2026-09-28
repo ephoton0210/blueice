@@ -330,6 +330,26 @@ fn tuples_require_the_exact_length_and_position_wise_types() {
 }
 
 #[test]
+fn optional_tuple_contract_accepts_only_its_bounded_lengths_and_element_types() {
+    let types = named_types("type Pair = [number, string?];");
+    let plan = ContractPlan::from_type("Pair", &named("Pair"), &types).unwrap();
+    for value in [
+        array(vec![number(1.0)]),
+        array(vec![number(1.0), string("a")]),
+        array(vec![number(1.0), ContractValue::Undefined]),
+    ] {
+        assert_eq!(plan.validate(&value), Ok(()));
+    }
+    for value in [
+        array(vec![]),
+        array(vec![number(1.0), number(2.0)]),
+        array(vec![number(1.0), string("a"), string("extra")]),
+    ] {
+        assert!(plan.validate(&value).is_err(), "{value:?}");
+    }
+}
+
+#[test]
 fn records_check_required_optional_and_nested_fields() {
     let plan = plan_for("Address");
     assert_eq!(plan.validate(&address("Main")), Ok(()));

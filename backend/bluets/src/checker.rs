@@ -800,6 +800,12 @@ fn push_contextual_tuple_element(
         let Type::Tuple(spread) = infer_simple(&tokens[1..], scope) else {
             return None;
         };
+        if spread
+            .iter()
+            .any(|element| element.optional || element.rest)
+        {
+            return None;
+        }
         values.extend(spread.into_iter().map(|element| element.annotation));
     } else {
         values.push(infer_simple(tokens, scope));
@@ -819,6 +825,8 @@ fn infer_simple(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
         Type::Boolean
     } else if first.text == "null" {
         Type::Null
+    } else if first.text == "undefined" {
+        scope.get("undefined").cloned().unwrap_or(Type::Undefined)
     } else if first.kind == TokenKind::Identifier {
         scope.get(&first.text).cloned().unwrap_or(Type::Unknown)
     } else {

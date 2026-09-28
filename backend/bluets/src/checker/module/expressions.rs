@@ -212,6 +212,9 @@ impl<'a> ModuleChecker<'a> {
                 let Type::Tuple(values) = self.infer_expression(&argument[1..], scope) else {
                     return Err(());
                 };
+                if values.iter().any(|value| value.optional || value.rest) {
+                    return Err(());
+                }
                 actuals.extend(values.into_iter().map(|value| value.annotation));
             } else {
                 actuals.push(match *argument {
