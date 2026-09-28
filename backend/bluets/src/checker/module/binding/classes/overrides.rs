@@ -102,7 +102,7 @@ impl ModuleChecker<'_> {
                     else {
                         unreachable!("rest shape requires a tuple annotation")
                     };
-                    elements.len()
+                    elements.iter().filter(|element| !element.optional).count()
                 } else {
                     0
                 };
@@ -291,7 +291,7 @@ impl ModuleChecker<'_> {
                                     .as_ref()
                                     .unwrap_or(&Type::Unknown)
                             } else {
-                                &elements[index - derived_fixed].annotation
+                                &elements[index - derived_fixed].value_type()
                             };
                             let inherited_type = if index < inherited_fixed {
                                 inherited.parameters[index]
@@ -354,7 +354,7 @@ impl ModuleChecker<'_> {
                                     .as_ref()
                                     .unwrap_or(&Type::Unknown)
                             } else {
-                                &elements[index - inherited_fixed].annotation
+                                &elements[index - inherited_fixed].value_type()
                             };
                             parameter_types_compatible(
                                 derived_type,
@@ -391,7 +391,7 @@ impl ModuleChecker<'_> {
                                     .as_ref()
                                     .unwrap_or(&Type::Unknown)
                             } else {
-                                &derived_elements[index - derived_fixed].annotation
+                                &derived_elements[index - derived_fixed].value_type()
                             };
                             let inherited_type = if index < inherited_fixed {
                                 inherited.parameters[index]
@@ -399,7 +399,7 @@ impl ModuleChecker<'_> {
                                     .as_ref()
                                     .unwrap_or(&Type::Unknown)
                             } else {
-                                &inherited_elements[index - inherited_fixed].annotation
+                                &inherited_elements[index - inherited_fixed].value_type()
                             };
                             parameter_types_compatible(
                                 derived_type,
@@ -518,12 +518,12 @@ fn nearest_inherited_method<'a>(
 }
 
 fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShape> {
-    // Optional and variadic tuple positions need their own arity relation.
+    // Variadic tuple tails need a separate arity relation.
     if derived.iter().chain(inherited).any(|parameter| {
         matches!(
             parameter.annotation.as_ref(),
             Some(Type::Tuple(elements))
-                if elements.iter().any(|element| element.optional || element.rest)
+                if elements.iter().any(|element| element.rest)
         )
     }) {
         return None;

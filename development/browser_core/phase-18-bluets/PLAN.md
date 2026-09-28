@@ -5944,6 +5944,22 @@ present types, and explicit `undefined`. Five pinned TypeScript 5.9.3
 bridge, and full workspace tests, workspace all-target Clippy, rustfmt, and
 whitespace checks pass with the reused 12 GiB target.
 
+### J.3.1.3.4.4.2.3.2.3.3.1.4 Optional tuple rest overrides
+
+Class override checking now admits rest annotations with optional tuple
+elements. A derived tuple contributes only its required elements to the
+minimum parameter count, while every declared element of an inherited tuple
+counts toward its maximum accepted position. At an optional position, compare
+the element's value type, including `undefined`; the existing bivariant
+method-parameter relation still applies. Variadic tuple tails remain outside
+this relation until J.3.1.3.4.4.2.3.2.3.3.3.
+
+Public checked-compile cases cover accepted fixed, shorter tuple, optional
+derived, and shifted static overrides, plus instance/static element mismatches
+and an excess required argument. Four pinned TypeScript 5.9.3 `--noEmit`
+cases agree on acceptance and the TS2416/TS2417 diagnostic lines. The public
+front end reports the rejected member span and emits no artifact.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
