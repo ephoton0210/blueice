@@ -4,7 +4,7 @@
 
 //! Pure, bounded runtime-contract plans for reifiable BlueTS types.
 
-use crate::parser::{Type, TypeField};
+use crate::parser::{TupleTypeElement, Type, TypeField};
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
@@ -354,6 +354,7 @@ fn lower(
             active,
         )?))),
         Type::Tuple(values) => {
+            let values = expand_contract_tuple_spreads(values, named_types, active, &mut 1_024)?;
             if values.iter().filter(|value| value.rest).count() > 1 {
                 return Err(ContractError {
                     message: "a tuple contract cannot contain multiple rest elements".to_string(),
@@ -439,6 +440,70 @@ fn lower(
             message: format!("generic type `{name}` needs an explicit reifiable contract"),
         }),
     }
+}
+
+fn expand_contract_tuple_spreads(
+    values: &[TupleTypeElement],
+    named_types: &BTreeMap<String, Type>,
+    active: &mut HashSet<String>,
+    remaining: &mut usize,
+) -> Result<Vec<TupleTypeElement>, ContractError> {
+    let mut expanded = Vec::new();
+    for value in values {
+        *remaining = remaining.checked_sub(1).ok_or_else(|| ContractError {
+            message: "tuple spread contract exceeds the expansion limit".to_string(),
+        })?;
+        if !value.rest || matches!(value.annotation, Type::Array(_)) {
+            expanded.push(value.clone());
+            continue;
+        }
+        let Type::Named { name, arguments } = &value.annotation else {
+            return Err(ContractError {
+                message: "tuple spread contract requires a concrete tuple or array type"
+                    .to_string(),
+            });
+        };
+        if !arguments.is_empty() || !active.insert(name.clone()) {
+            return Err(ContractError {
+                message: "tuple spread contract is generic or cyclic".to_string(),
+            });
+        }
+        let replacement = match named_types.get(name) {
+            Some(Type::Tuple(items)) => {
+                expand_contract_tuple_spreads(items, named_types, active, remaining)
+            }
+            Some(Type::Array(_)) => Ok(vec![TupleTypeElement {
+                annotation: named_types[name].clone(),
+                optional: false,
+                label: None,
+                rest: true,
+            }]),
+            Some(Type::Named { .. }) => expand_contract_tuple_spreads(
+                &[TupleTypeElement {
+                    annotation: named_types[name].clone(),
+                    optional: false,
+                    label: None,
+                    rest: true,
+                }],
+                named_types,
+                active,
+                remaining,
+            ),
+            _ => Err(ContractError {
+                message: "tuple spread contract requires a concrete tuple or array type"
+                    .to_string(),
+            }),
+        };
+        active.remove(name);
+        expanded.extend(replacement?);
+    }
+    if expanded.iter().filter(|value| value.rest).count() > 1 {
+        return Err(ContractError {
+            message: "a tuple contract cannot contain multiple rest elements".to_string(),
+        });
+    }
+    crate::parser::require_tuple_positions_before_suffix(&mut expanded);
+    Ok(expanded)
 }
 
 fn lower_fields(

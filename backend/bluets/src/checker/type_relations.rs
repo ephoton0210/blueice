@@ -4,6 +4,88 @@
 
 use super::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TupleSpreadError {
+    Unresolved,
+    Unsupported,
+    Cyclic,
+    Exhausted,
+}
+
+pub(super) fn expand_concrete_tuple_spreads(
+    elements: &[crate::parser::TupleTypeElement],
+    aliases: &BTreeMap<String, TypeDefinition>,
+    active: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> Result<Vec<crate::parser::TupleTypeElement>, TupleSpreadError> {
+    let mut expanded = Vec::new();
+    for element in elements {
+        if !element.rest || matches!(element.annotation, Type::Array(_)) {
+            if !budget.consume() {
+                return Err(TupleSpreadError::Exhausted);
+            }
+            expanded.push(element.clone());
+            continue;
+        }
+        let Type::Named { name, arguments } = &element.annotation else {
+            return Err(TupleSpreadError::Unsupported);
+        };
+        if !arguments.is_empty() {
+            return Err(TupleSpreadError::Unsupported);
+        }
+        if !active.insert(name.clone()) {
+            return Err(TupleSpreadError::Cyclic);
+        }
+        if !budget.consume() {
+            active.remove(name);
+            return Err(TupleSpreadError::Exhausted);
+        }
+        let replacement = match aliases.get(name) {
+            Some(TypeDefinition {
+                kind: TypeDefinitionKind::Alias,
+                parameters,
+                value,
+            }) if parameters.is_empty() => match value {
+                Type::Tuple(items) => expand_concrete_tuple_spreads(items, aliases, active, budget),
+                Type::Array(_) => Ok(vec![crate::parser::TupleTypeElement {
+                    annotation: value.clone(),
+                    optional: false,
+                    label: None,
+                    rest: true,
+                }]),
+                Type::Named { .. } => expand_concrete_tuple_spreads(
+                    &[crate::parser::TupleTypeElement {
+                        annotation: value.clone(),
+                        optional: false,
+                        label: None,
+                        rest: true,
+                    }],
+                    aliases,
+                    active,
+                    budget,
+                ),
+                _ => Err(TupleSpreadError::Unsupported),
+            },
+            Some(_) => Err(TupleSpreadError::Unsupported),
+            None => Err(TupleSpreadError::Unresolved),
+        };
+        active.remove(name);
+        expanded.extend(replacement?);
+    }
+    if expanded.iter().filter(|element| element.rest).count() > 1
+        || expanded.iter().enumerate().any(|(index, element)| {
+            element.rest
+                && expanded[index + 1..]
+                    .iter()
+                    .any(|following| following.optional)
+        })
+    {
+        return Err(TupleSpreadError::Unsupported);
+    }
+    crate::parser::require_tuple_positions_before_suffix(&mut expanded);
+    Ok(expanded)
+}
+
 pub(super) fn is_assignable(
     actual: &Type,
     expected: &Type,
@@ -11,6 +93,32 @@ pub(super) fn is_assignable(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
+    if let Type::Tuple(elements) = actual {
+        if elements
+            .iter()
+            .any(|element| element.rest && matches!(element.annotation, Type::Named { .. }))
+        {
+            let Ok(expanded) =
+                expand_concrete_tuple_spreads(elements, aliases, &mut HashSet::new(), budget)
+            else {
+                return false;
+            };
+            return is_assignable(&Type::Tuple(expanded), expected, aliases, visited, budget);
+        }
+    }
+    if let Type::Tuple(elements) = expected {
+        if elements
+            .iter()
+            .any(|element| element.rest && matches!(element.annotation, Type::Named { .. }))
+        {
+            let Ok(expanded) =
+                expand_concrete_tuple_spreads(elements, aliases, &mut HashSet::new(), budget)
+            else {
+                return false;
+            };
+            return is_assignable(actual, &Type::Tuple(expanded), aliases, visited, budget);
+        }
+    }
     if matches!(actual, Type::Any | Type::Unknown) || matches!(expected, Type::Any | Type::Unknown)
     {
         return true;

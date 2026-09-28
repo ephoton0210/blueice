@@ -223,6 +223,15 @@ fn access_candidates(
             push_type(*element, result, budget)?;
         }
         Type::Tuple(values) if property.is_none() || index.is_some() => {
+            let values = if values
+                .iter()
+                .any(|element| element.rest && matches!(element.annotation, Type::Named { .. }))
+            {
+                expand_concrete_tuple_spreads(&values, &checker.types, &mut HashSet::new(), budget)
+                    .map_err(|_| ())?
+            } else {
+                values
+            };
             for value in tuple_indexed_candidates(&values, index) {
                 push_type(value, result, budget)?;
             }

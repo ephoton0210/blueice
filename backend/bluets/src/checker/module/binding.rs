@@ -743,7 +743,19 @@ impl<'a> ModuleChecker<'a> {
         if variable.initializer.is_empty() || variable.declared {
             return;
         }
-        let inferred = if matches!(annotation, Type::Tuple(_)) {
+        let mut contextual = annotation.clone();
+        let mut contextual_budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let mut visited = HashSet::new();
+        while let Some(expanded) = instantiate_named(
+            &contextual,
+            &self.types,
+            &mut visited,
+            &mut contextual_budget,
+            "contextual tuple",
+        ) {
+            contextual = expanded;
+        }
+        let inferred = if matches!(contextual, Type::Tuple(_)) {
             infer_contextual_tuple_literal(&variable.initializer, scope)
                 .unwrap_or_else(|| self.infer_expression(&variable.initializer, scope))
         } else {
@@ -857,6 +869,38 @@ impl<'a> ModuleChecker<'a> {
             Type::Tuple(values) => {
                 for value in values {
                     self.check_type(&value.annotation, span);
+                }
+                if values
+                    .iter()
+                    .any(|element| element.rest && matches!(element.annotation, Type::Named { .. }))
+                {
+                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                    if let Err(error) = expand_concrete_tuple_spreads(
+                        values,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ) {
+                        let (code, message) = match error {
+                            TupleSpreadError::Exhausted => (
+                                DiagnosticCode::ResourceLimit,
+                                "tuple spread exceeds the generic-expansion limit",
+                            ),
+                            TupleSpreadError::Cyclic => (
+                                DiagnosticCode::UnsupportedSyntax,
+                                "cyclic tuple spread cannot be resolved",
+                            ),
+                            TupleSpreadError::Unresolved => (
+                                DiagnosticCode::UnsupportedSyntax,
+                                "tuple spread names an unresolved type",
+                            ),
+                            TupleSpreadError::Unsupported => (
+                                DiagnosticCode::UnsupportedSyntax,
+                                "tuple spread requires one concrete tuple or array type",
+                            ),
+                        };
+                        self.type_error(span, message.to_string(), code);
+                    }
                 }
             }
             Type::Union(values) | Type::Intersection(values) => {

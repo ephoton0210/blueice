@@ -4825,6 +4825,116 @@ fn trailing_tuple_rest_checks_and_emits_at_public_boundary() {
 }
 
 #[test]
+fn concrete_named_tuple_spreads_check_and_emit_at_public_boundary() {
+    let source = include_str!("fixtures/typescript_oracle/tuple-spread-concrete-valid/main.ts");
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            declaration: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    let artifact = &accepted.output.unwrap().artifacts[ENTRY];
+    let declaration = artifact.declaration.as_deref().unwrap();
+    for expected in [
+        "WithHead = [boolean, ...Pair]",
+        "WithTail = [...WithHead, null]",
+        "RequireTail = [...OptionalPrefix, string]",
+        "direct: [...Pair]",
+    ] {
+        assert!(declaration.contains(expected), "{declaration}");
+    }
+
+    for source in [
+        include_str!("fixtures/typescript_oracle/tuple-spread-concrete-arity-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-spread-concrete-type-error/main.ts"),
+        include_str!(
+            "fixtures/typescript_oracle/tuple-spread-concrete-optional-suffix-error/main.ts"
+        ),
+        include_str!(
+            "fixtures/typescript_oracle/tuple-spread-concrete-optional-arity-error/main.ts"
+        ),
+    ] {
+        let rejected = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::TypeMismatch && diagnostic.span.module == ENTRY
+            }),
+            "{:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    for source in [
+        "type Primitive = number; export type Bad = [...Primitive];",
+        "export type Loop = [...Loop];",
+        "export type Missing = [...Absent];",
+    ] {
+        let rejected = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(rejected.output.is_none(), "{source}");
+        assert!(
+            rejected.diagnostics.iter().any(|diagnostic| {
+                matches!(
+                    diagnostic.code,
+                    DiagnosticCode::UnsupportedSyntax | DiagnosticCode::UnknownType
+                ) && diagnostic.span.module == ENTRY
+            }),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    let bounded = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "type Pair = [number, string]; export type Spread = [...Pair];",
+        )]),
+        CompilerOptions {
+            limits: CompilerLimits {
+                max_type_expansions: 2,
+                ..CompilerLimits::default()
+            },
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(bounded.output.is_none());
+    assert!(bounded
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::ResourceLimit));
+
+    let override_pending = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "type Pair = [number, string]; class Base { method(...args: [...Pair]): void {} } class Derived extends Base { override method(...args: [string, string]): void {} }",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(override_pending.output.is_none());
+    assert!(override_pending
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
+}
+
+#[test]
 fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
     let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");
     let accepted = compile(

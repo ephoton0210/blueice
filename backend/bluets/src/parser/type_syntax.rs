@@ -188,10 +188,10 @@ impl Parser {
                         );
                     }
                 }
-                if rest && !matches!(annotation, Type::Array(_)) {
+                if rest && !matches!(annotation, Type::Array(_) | Type::Named { .. }) {
                     self.unsupported(
                         SourceSpan::new(&self.id, start, end),
-                        "tuple rest element must have an array annotation",
+                        "tuple rest element must have an array or named tuple annotation",
                     );
                 }
                 if saw_optional && !optional && !rest {

@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.6.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.6.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1832,10 +1832,26 @@ exists. A passed first form does not close its whole feature family.
                           spread, and TS2416 for incompatible concrete and
                           constrained-generic overrides. This design-only
                           leaf admits no new syntax.
-                        - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.2** Expand finite
+                        - [x] **J.3.1.3.4.4.2.3.2.3.3.3.6.2** Expand finite
                           concrete named tuple spreads across admitted type
                           uses, declarations, and pure contracts, with public
                           acceptance and rejection against pinned TypeScript.
+                          The checker expands local concrete tuple aliases
+                          within its type budget for assignment, contextual
+                          literals, and indexed reads; declarations retain
+                          source spelling. Pure contracts validate each
+                          expanded position under a 1,024-position lowering
+                          bound. An optional spread position before a
+                          required suffix becomes a required position whose
+                          value can be `undefined`. Public cases reject
+                          wrong types, short tuples, invalid or cyclic
+                          aliases, and exhausted budgets without output.
+                          Class tuple rest parameters with named spreads are
+                          rejected pending the override leaf. Five pinned
+                          TypeScript 5.9.3 `--noEmit` cases agree on accepted
+                          forms and TS2322 lines. BlueTS, bridge, and full
+                          workspace tests, all-target Clippy, rustfmt, and
+                          whitespace checks pass with the reused 12 GiB target.
                         - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.3** Specialize
                           concrete generic tuple and array spreads while
                           preserving one symbolic array tail and bounded

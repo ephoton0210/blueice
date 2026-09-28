@@ -101,6 +101,22 @@ impl ModuleChecker<'_> {
             };
             // Align fixed positions and rest elements where the signatures
             // have a supported rest shape.
+            if derived
+                .parameters
+                .iter()
+                .chain(inherited.parameters)
+                .any(|parameter| {
+                    matches!(parameter.annotation.as_ref(), Some(Type::Tuple(elements)) if elements.iter().any(|element| element.rest && matches!(element.annotation, Type::Named { .. })))
+                })
+            {
+                self.type_error(
+                    &derived.span,
+                    "class method override with a named tuple spread awaits bounded specialization"
+                        .to_string(),
+                    DiagnosticCode::UnsupportedSyntax,
+                );
+                continue;
+            }
             let Some(rest_shape) = rest_shape(&derived.parameters, inherited.parameters) else {
                 continue;
             };

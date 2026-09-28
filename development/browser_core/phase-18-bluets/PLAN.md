@@ -6355,6 +6355,33 @@ incompatible concrete and constrained-generic overrides. This decision
 changes no parser or checker behavior; the following leaves implement each
 surface with public-boundary regressions.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.6.2 Concrete named tuple spreads
+
+The parser retains a named tuple rest element for checking. The checker now
+expands a concrete local alias to a finite tuple before assignment, contextual
+tuple literal comparison, and indexed reads. Each alias and emitted position
+charges the existing type-expansion budget. Nested aliases and an array alias
+resolve recursively, while cycles, unresolved names, and non-tuple or
+non-array targets report diagnostics before output. The declaration emitter
+retains the original named spread syntax.
+
+The pure contract lowerer expands the same concrete shape with a separate
+1,024-position bound and validates every resulting position. A spread tuple's
+optional element becomes required when a later suffix element is required;
+the widened element type still includes `undefined`. This keeps short tuple
+assignments and short runtime values from skipping the suffix. Class method
+rest parameters with named spreads are explicitly rejected until their
+bounded override and call relation is implemented.
+
+Public checked-compile cases cover nested aliases, direct spreads, optional
+positions, declaration output, indexed reads, type and arity errors, invalid
+and cyclic aliases, and the expansion limit. A public pure-contract case
+checks valid values and rejects wrong positions and short suffixes. Five
+pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2322
+diagnostic lines. BlueTS, bridge, and full workspace tests, all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB target. Concrete
+generic specialization is next.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

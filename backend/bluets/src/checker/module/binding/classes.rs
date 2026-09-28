@@ -556,6 +556,16 @@ impl ModuleChecker<'_> {
                     DiagnosticCode::TypeMismatch,
                 );
             }
+            if parameter.rest
+                && matches!(parameter.annotation.as_ref(), Some(Type::Tuple(elements)) if elements.iter().any(|element| element.rest && matches!(element.annotation, Type::Named { .. })))
+            {
+                self.type_error(
+                    &parameter.span,
+                    "class tuple rest parameter with a named spread awaits bounded specialization"
+                        .to_string(),
+                    DiagnosticCode::UnsupportedSyntax,
+                );
+            }
             if let Some(annotation) = &parameter.annotation {
                 self.check_type(annotation, &parameter.span);
             }

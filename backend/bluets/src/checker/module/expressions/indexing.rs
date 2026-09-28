@@ -18,7 +18,21 @@ pub(super) fn indexed_value_type(
 ) -> Type {
     match value {
         Type::Array(element) => (**element).clone(),
-        Type::Tuple(values) => alternatives_type(tuple_indexed_candidates(values, index)),
+        Type::Tuple(values) => {
+            if values
+                .iter()
+                .any(|element| element.rest && matches!(element.annotation, Type::Named { .. }))
+            {
+                let Ok(expanded) =
+                    expand_concrete_tuple_spreads(values, aliases, &mut HashSet::new(), budget)
+                else {
+                    return Type::Unknown;
+                };
+                alternatives_type(tuple_indexed_candidates(&expanded, index))
+            } else {
+                alternatives_type(tuple_indexed_candidates(values, index))
+            }
+        }
         Type::Record(fields) if index.is_none() => alternatives_type(
             fields
                 .iter()

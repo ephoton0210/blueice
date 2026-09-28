@@ -459,6 +459,19 @@ impl TupleTypeElement {
     }
 }
 
+/// A concrete tuple spread can place an optional source position before a
+/// required suffix. The position then remains present and accepts undefined.
+pub(crate) fn require_tuple_positions_before_suffix(elements: &mut [TupleTypeElement]) {
+    let mut required_suffix = false;
+    for element in elements.iter_mut().rev() {
+        if element.optional && required_suffix {
+            element.annotation = Type::Union(vec![element.annotation.clone(), Type::Undefined]);
+            element.optional = false;
+        }
+        required_suffix |= !element.optional && !element.rest;
+    }
+}
+
 /// The supported, reifiable portion of the TypeScript type grammar.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {

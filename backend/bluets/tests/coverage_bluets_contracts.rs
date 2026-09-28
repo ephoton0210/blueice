@@ -379,6 +379,46 @@ fn trailing_tuple_rest_contract_checks_every_present_tail_element() {
 }
 
 #[test]
+fn concrete_named_tuple_spread_contract_checks_expanded_positions() {
+    let types = named_types(
+        "type Pair = [number, string]; type WithHead = [boolean, ...Pair]; type WithTail = [...WithHead, null];",
+    );
+    let plan = ContractPlan::from_type("WithTail", &named("WithTail"), &types).unwrap();
+    assert_eq!(
+        plan.validate(&array(vec![
+            ContractValue::Boolean(true),
+            number(1.0),
+            string("one"),
+            ContractValue::Null,
+        ])),
+        Ok(())
+    );
+    assert!(plan
+        .validate(&array(vec![ContractValue::Boolean(true), number(1.0)]))
+        .is_err());
+    assert!(plan
+        .validate(&array(vec![
+            ContractValue::Boolean(true),
+            string("wrong"),
+            string("one"),
+            ContractValue::Null,
+        ]))
+        .is_err());
+
+    let optional = named_types(
+        "type OptionalPrefix = [number?]; type RequireTail = [...OptionalPrefix, string];",
+    );
+    let plan = ContractPlan::from_type("RequireTail", &named("RequireTail"), &optional).unwrap();
+    assert_eq!(
+        plan.validate(&array(vec![ContractValue::Undefined, string("tail")])),
+        Ok(())
+    );
+    assert!(plan
+        .validate(&array(vec![ContractValue::Undefined]))
+        .is_err());
+}
+
+#[test]
 fn middle_tuple_rest_contract_checks_required_suffix_from_the_end() {
     let types = named_types("type Packet = [head: number, ...body: string[], done: boolean];");
     let plan = ContractPlan::from_type("Packet", &named("Packet"), &types).unwrap();
