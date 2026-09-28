@@ -5070,6 +5070,22 @@ library suites, workspace all-target Clippy, rustfmt, and whitespace checks
 pass in the shared disk-budgeted target; the final body-span assertion has a
 focused passing rerun.
 
+### J.3.1.2.3.1 Simple named methods
+
+Simple `name(parameters)` methods now reuse the shared parameter and
+function-body parser. A one-token return annotation is parsed as a type
+and erased from the eventual JavaScript; a semicolon retains a method
+overload signature, while braces retain structured body items. Each method
+keeps its original member span and name. Incomplete method headers are
+parser errors; accessor syntax and richer method shapes remain opaque until
+J.3.1.2.3.2. The class checker still returns `UnsupportedSyntax`, so neither
+an overload signature nor an implementation reaches emission or execution.
+A public parser test verifies a same-name signature/implementation pair,
+parameter/return types, four erasure positions, original span, and no
+artifact; another test covers malformed methods and opaque accessors. The
+BlueTS crate and bridge library suites, workspace all-target Clippy,
+rustfmt, and whitespace checks pass under the shared-target disk guard.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

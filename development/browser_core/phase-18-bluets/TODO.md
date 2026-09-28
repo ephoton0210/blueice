@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.2.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.2.3.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -876,6 +876,22 @@ exists. A passed first form does not close its whole feature family.
       - [ ] **J.3.1.2.3** Parse method parameters, return types, and bodies,
         including accepted overload signatures, with the same provenance
         and explicit unsupported-shape tests.
+        - [x] **J.3.1.2.3.1** Parse simple named method signatures and
+          implementations with shared parameter/body grammar, one-token
+          return types, erasure edits, and exact spans; keep class checking
+          fail-closed and test malformed methods. Method shells now retain
+          parameters, optional return type, signature-only or structured
+          body status, and original source spans. Public tests cover a
+          same-name signature/implementation pair, four erasure edits,
+          malformed methods, opaque accessors, and no emitted artifact.
+          BlueTS and bridge crate suites, workspace all-target Clippy,
+          rustfmt, and whitespace checks pass in one guarded target.
+        - [ ] **J.3.1.2.3.2** Expand bounded method type grammar and explicitly
+          reject or route remaining modifiers, computed keys, generics,
+          accessors, and private forms to their later leaves.
+        - [ ] **J.3.1.2.3.3** Verify method overload grouping and accepted /
+          rejected syntax against pinned TypeScript 5.9.3, then check off
+          J.3.1.2.3 and J.3.1.2.
     - [ ] **J.3.1.3** Bind class instance/static types and check constructor,
       method, inheritance, `this`, and `super` uses against pinned `tsc`.
     - [ ] **J.3.1.4** Emit checked class JavaScript and declarations from the

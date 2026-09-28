@@ -301,6 +301,62 @@ fn constructor_signatures_and_incomplete_forms_keep_the_parser_closed() {
 }
 
 #[test]
+fn parses_simple_named_method_signatures_and_bodies_at_original_spans() {
+    let source = "class Counter { read(value: number): number; read(value: number): number { return value; } }";
+    let module = parse_module("memory:///methods.ts", source).unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members.len(), 2);
+    let signature = class.members[0].method.as_ref().unwrap();
+    assert!(signature.body.is_none());
+    assert_eq!(signature.parameters[0].annotation, Some(Type::Number));
+    assert_eq!(signature.return_type, Some(Type::Number));
+    let implementation = class.members[1].method.as_ref().unwrap();
+    assert_eq!(implementation.name, "read");
+    assert_eq!(implementation.return_type, Some(Type::Number));
+    assert!(matches!(
+        implementation.body.as_ref().unwrap()[0],
+        FunctionBodyItem::Return { .. }
+    ));
+    assert_eq!(
+        &source[implementation.span.start..implementation.span.end],
+        "read(value: number): number { return value; }"
+    );
+    assert_eq!(module.edits.len(), 4);
+    let compilation = crate::compile(
+        "memory:///methods.ts",
+        &crate::MapLoader::from([crate::ModuleSource::new("memory:///methods.ts", source)]),
+        crate::CompilerOptions::default(),
+    );
+    assert!(compilation.has_errors());
+    assert!(compilation.output.is_none());
+}
+
+#[test]
+fn incomplete_methods_fail_and_unsupported_accessors_remain_opaque() {
+    for source in [
+        "class Bad { read(value: ) {} }",
+        "class Bad { read(value: number) }",
+        "class Bad { read(value: number {} }",
+    ] {
+        assert!(
+            parse_module("memory:///bad.ts", source).is_err(),
+            "{source}"
+        );
+    }
+    let module = parse_module(
+        "memory:///opaque.ts",
+        "class C { get value() { return 1; } }",
+    )
+    .unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members[0].kind, ClassMemberKind::Opaque);
+}
+
+#[test]
 fn rejects_tsx_modules_even_when_they_contain_no_tag_tokens() {
     let diagnostics =
         parse_module("memory:///view.tsx", "const label: string = 'BlueIce';").unwrap_err();

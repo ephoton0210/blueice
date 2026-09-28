@@ -61,8 +61,13 @@ impl Parser {
         for member in &mut members {
             if member.kind == ClassMemberKind::Constructor {
                 self.parse_class_constructor(opening + 1 + member.token_start, member);
+            } else if member.kind == ClassMemberKind::Method {
+                self.parse_class_method(opening + 1 + member.token_start, member);
             } else if member.kind == ClassMemberKind::Opaque
-                && body[member.token_start].is("constructor")
+                && matches!(
+                    body[member.token_start].kind,
+                    TokenKind::Identifier | TokenKind::Keyword
+                )
                 && body
                     .get(member.token_start + 1)
                     .is_some_and(|token| token.is("("))
@@ -70,7 +75,7 @@ impl Parser {
                 self.error_at(
                     member.span.clone(),
                     DiagnosticCode::ParseError,
-                    "incomplete constructor declaration",
+                    "incomplete class method declaration",
                 );
             }
         }
@@ -116,6 +121,52 @@ impl Parser {
         }
         member.constructor = Some(ClassConstructor {
             parameters,
+            body,
+            span: member.span.clone(),
+        });
+    }
+
+    fn parse_class_method(&mut self, start: usize, member: &mut ClassMemberShell) {
+        let name = self.tokens[start].text.clone();
+        self.index = start + 1;
+        let parameters = self.parse_parameters();
+        let return_start = self.current().start;
+        let return_type = if self.consume(":") {
+            let value = self.parse_type_until(&["{", ";"]);
+            self.edits.push(TextEdit {
+                start: return_start,
+                end: self.current().start,
+                replacement: String::new(),
+            });
+            Some(value)
+        } else {
+            None
+        };
+        let body = if self.consume("{") {
+            let body_start = self.previous().start;
+            let mut body = Vec::new();
+            let mut returns = Vec::new();
+            let mut locals = Vec::new();
+            self.parse_function_body(body_start, &mut body, &mut returns, &mut locals);
+            Some(body)
+        } else if self.consume(";") {
+            None
+        } else {
+            self.error_here(DiagnosticCode::ParseError, "expected a method body");
+            return;
+        };
+        if self.previous().end != member.span.end {
+            self.error_at(
+                member.span.clone(),
+                DiagnosticCode::ParseError,
+                "method body did not match its source boundary",
+            );
+            return;
+        }
+        member.method = Some(ClassMethod {
+            name,
+            parameters,
+            return_type,
             body,
             span: member.span.clone(),
         });
@@ -208,5 +259,6 @@ fn class_member_shell(
         token_end: end,
         span: SourceSpan::new(module, tokens[start].start, tokens[end - 1].end),
         constructor: None,
+        method: None,
     }
 }
