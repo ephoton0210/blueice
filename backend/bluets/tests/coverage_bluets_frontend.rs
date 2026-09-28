@@ -22,6 +22,17 @@ fn compile_with_helper(source: &str) -> blueice_bluets::Compilation {
     compile(ENTRY, &loader, CompilerOptions::default())
 }
 
+fn compile_class_type_import(main: &str, box_module: &str) -> blueice_bluets::Compilation {
+    compile(
+        ENTRY,
+        &MapLoader::from([
+            ModuleSource::new(ENTRY, main),
+            ModuleSource::new("memory:///box.ts", box_module),
+        ]),
+        CompilerOptions::default(),
+    )
+}
+
 fn diagnostics(source: &str) -> Vec<Diagnostic> {
     compile_with_helper(source).diagnostics
 }
@@ -633,6 +644,66 @@ fn static_class_methods_bind_to_constructor_side_and_check_calls() {
         );
         assert_eq!(&source[failure.span.start..failure.span.end], expected_span);
     }
+}
+
+#[test]
+fn closed_module_type_imports_retain_class_instance_method_shapes() {
+    for (main, box_module) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-type-import/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-type-import/box.ts"),
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-type-import-alias/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-type-import-alias/box.ts"),
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-type-import-type-export/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-type-import-type-export/box.ts"),
+        ),
+    ] {
+        let compilation = compile_class_type_import(main, box_module);
+        assert!(compilation.output.is_none());
+        assert!(
+            compilation
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{:#?}",
+            compilation.diagnostics
+        );
+    }
+
+    let main = include_str!("fixtures/typescript_oracle/class-type-import-wrong-side/main.ts");
+    let box_module = include_str!("fixtures/typescript_oracle/class-type-import-wrong-side/box.ts");
+    let compilation = compile_class_type_import(main, box_module);
+    assert!(compilation.output.is_none());
+    let failures = compilation
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+        .collect::<Vec<_>>();
+    assert_eq!(failures.len(), 1, "{:#?}", compilation.diagnostics);
+    let failure = failures[0];
+    assert_eq!(failure.code, DiagnosticCode::TypeMismatch);
+    assert_eq!(failure.span.module, ENTRY);
+    assert_eq!(&main[failure.span.start..failure.span.end], "box.make()");
+
+    let main = include_str!("fixtures/typescript_oracle/class-type-import-private/main.ts");
+    let box_module = include_str!("fixtures/typescript_oracle/class-type-import-private/box.ts");
+    let compilation = compile_class_type_import(main, box_module);
+    let failures = compilation
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+        .collect::<Vec<_>>();
+    assert_eq!(failures.len(), 1, "{:#?}", compilation.diagnostics);
+    assert_eq!(failures[0].code, DiagnosticCode::UnknownType);
+    assert_eq!(failures[0].span.module, ENTRY);
+    assert_eq!(
+        &main[failures[0].span.start..failures[0].span.end],
+        "import type { Box } from './box.ts';"
+    );
 }
 
 #[test]

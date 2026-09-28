@@ -103,7 +103,7 @@ impl<'a> ModuleChecker<'a> {
                 );
                 let diagnostic_span = if let [receiver] = call.receiver {
                     if self.is_local_class_constructor_value(&receiver.text, scope)
-                        || self.is_local_class_instance_type(&base)
+                        || self.is_bound_class_instance_type(&base)
                     {
                         &call_span
                     } else {
@@ -158,7 +158,7 @@ impl<'a> ModuleChecker<'a> {
             tokens.first().expect("member call has a receiver").start,
             tokens.last().expect("member call has a closing token").end,
         );
-        let local_class_member = self.is_local_class_instance_type(&base)
+        let bound_class_member = self.is_bound_class_instance_type(&base)
             || matches!(call.receiver, [receiver] if self.is_local_class_constructor_value(&receiver.text, scope));
         let (parameters, selected_overload) = match member_type {
             Type::Function { parameters, .. } => (parameters, false),
@@ -260,7 +260,7 @@ impl<'a> ModuleChecker<'a> {
                 return;
             }
         };
-        let argument_span = if selected_overload || local_class_member {
+        let argument_span = if selected_overload || bound_class_member {
             &call_span
         } else {
             span

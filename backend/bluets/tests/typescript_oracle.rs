@@ -1186,6 +1186,82 @@ fn pinned_static_class_binding_matches_typescript_without_emit() {
     assert_pinned_no_emit_cases(&tsc, &cases);
 }
 
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_class_type_imports_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases = [
+        (
+            "direct",
+            include_str!("fixtures/typescript_oracle/class-type-import/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-type-import/box.ts"),
+            None,
+        ),
+        (
+            "local-export-alias",
+            include_str!("fixtures/typescript_oracle/class-type-import-alias/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-type-import-alias/box.ts"),
+            None,
+        ),
+        (
+            "type-export-alias",
+            include_str!("fixtures/typescript_oracle/class-type-import-type-export/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-type-import-type-export/box.ts"),
+            None,
+        ),
+        (
+            "wrong-side",
+            include_str!("fixtures/typescript_oracle/class-type-import-wrong-side/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-type-import-wrong-side/box.ts"),
+            Some((7, "TS2576")),
+        ),
+        (
+            "private-class",
+            include_str!("fixtures/typescript_oracle/class-type-import-private/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-type-import-private/box.ts"),
+            Some((5, "TS2459")),
+        ),
+    ];
+    for (name, main, box_module, expected_error) in cases {
+        let temporary = TestDirectory::new();
+        let input = temporary.path().join("main.ts");
+        fs::write(&input, main).unwrap();
+        fs::write(temporary.path().join("box.ts"), box_module).unwrap();
+        let output = Command::new(&tsc)
+            .args([
+                "--target",
+                "ES2022",
+                "--module",
+                "ES2022",
+                "--strict",
+                "--pretty",
+                "false",
+                "--allowImportingTsExtensions",
+                "--noEmit",
+            ])
+            .arg(&input)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.success(),
+            expected_error.is_none(),
+            "{name}: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert_eq!(
+            typescript_diagnostic_lines(&output),
+            expected_error.map_or_else(Vec::new, |(line, _)| vec![line]),
+            "{name}"
+        );
+        if let Some((line, code)) = expected_error {
+            assert!(String::from_utf8_lossy(&output.stdout).contains(&format!("({line},")));
+            assert!(String::from_utf8_lossy(&output.stdout).contains(code));
+        }
+        assert_eq!(fs::read_dir(temporary.path()).unwrap().count(), 2);
+    }
+}
+
 fn assert_pinned_no_emit_cases(tsc: &Path, cases: &[NoEmitCase]) {
     for &(name, source, expected_errors) in cases {
         let temporary = TestDirectory::new();

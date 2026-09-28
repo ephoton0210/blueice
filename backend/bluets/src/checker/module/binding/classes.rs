@@ -19,8 +19,8 @@ impl ModuleChecker<'_> {
                 .is_some_and(|value| self.values.get(name) == Some(value))
     }
 
-    pub(in crate::checker::module) fn is_local_class_instance_type(&self, value: &Type) -> bool {
-        matches!(value, Type::Named { name, .. } if self.class_constructors.contains_key(name))
+    pub(in crate::checker::module) fn is_bound_class_instance_type(&self, value: &Type) -> bool {
+        matches!(value, Type::Named { name, .. } if self.types.get(name).is_some_and(|definition| definition.kind == TypeDefinitionKind::Class))
     }
 
     pub(super) fn bind_class(&mut self, class: &ClassDeclaration) {
@@ -348,7 +348,7 @@ fn class_constructor_signatures(class: &ClassDeclaration) -> Vec<FunctionSignatu
         .collect()
 }
 
-fn class_instance_type(class: &ClassDeclaration) -> Type {
+pub(in crate::checker) fn class_instance_type(class: &ClassDeclaration) -> Type {
     Type::Record(class_method_fields(class, false))
 }
 

@@ -88,6 +88,38 @@ pub(super) fn exported_types(
                         },
                     );
                 }
+                Declaration::Class(class) if class.exported => {
+                    values.insert(
+                        class.name.clone(),
+                        TypeDefinition {
+                            kind: TypeDefinitionKind::Class,
+                            parameters: Vec::new(),
+                            value: module::class_instance_type(class),
+                        },
+                    );
+                }
+                Declaration::ValueExport(export) => {
+                    for binding in &export.bindings {
+                        if let Some(definition) = declared
+                            .get(&binding.local)
+                            .filter(|definition| definition.kind == TypeDefinitionKind::Class)
+                        {
+                            values.insert(binding.exported.clone(), definition.clone());
+                        }
+                    }
+                }
+                Declaration::TypeExport(export) if export.specifier.is_none() => {
+                    for binding in &export.bindings {
+                        let (local, exported) = binding
+                            .split_once(" as ")
+                            .map_or((binding.as_str(), binding.as_str()), |(local, exported)| {
+                                (local, exported)
+                            });
+                        if let Some(definition) = declared.get(local) {
+                            values.insert(exported.to_string(), definition.clone());
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -166,6 +198,14 @@ pub(super) fn local_type_definitions(module: &Module) -> BTreeMap<String, TypeDe
                     kind: TypeDefinitionKind::Interface,
                     parameters: interface.type_parameters.clone(),
                     value: interface_value(interface),
+                },
+            )),
+            Declaration::Class(class) => Some((
+                class.name.clone(),
+                TypeDefinition {
+                    kind: TypeDefinitionKind::Class,
+                    parameters: Vec::new(),
+                    value: module::class_instance_type(class),
                 },
             )),
             _ => None,

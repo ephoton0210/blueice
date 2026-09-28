@@ -38,3 +38,4 @@ pub(super) struct ModuleChecker<'a> {
 
 mod binding;
 mod expressions;
+pub(in crate::checker) use binding::class_instance_type;

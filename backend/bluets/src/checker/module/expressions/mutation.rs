@@ -35,7 +35,7 @@ impl<'a> ModuleChecker<'a> {
             PropertyType::Missing => {
                 let direct_span = SourceSpan::new(&span.module, base.start, property.end);
                 let diagnostic_span = if self.is_local_class_constructor_value(&base.text, scope)
-                    || self.is_local_class_instance_type(&value)
+                    || self.is_bound_class_instance_type(&value)
                 {
                     &direct_span
                 } else {

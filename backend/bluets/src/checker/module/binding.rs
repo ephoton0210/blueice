@@ -8,6 +8,7 @@ use super::*;
 
 mod classes;
 mod functions;
+pub(in crate::checker) use classes::class_instance_type;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StructuredTermination {
@@ -246,6 +247,9 @@ impl<'a> ModuleChecker<'a> {
                 {
                     exported_names.insert(function.name.clone());
                 }
+                Declaration::Class(class) if class.exported => {
+                    exported_names.insert(class.name.clone());
+                }
                 _ => {}
             }
         }
@@ -268,6 +272,7 @@ impl<'a> ModuleChecker<'a> {
                                     && !function.declared
                                     && !function.overload
                             }
+                            Declaration::Class(class) => class.name == binding.local,
                             _ => false,
                         });
                 if !has_local_runtime_binding {

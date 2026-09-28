@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.2.3.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.2.3.3.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1020,6 +1020,23 @@ exists. A passed first form does not close its whole feature family.
           - [ ] **J.3.1.3.2.3.3** Carry class instance and constructor-side
             types through closed-module exports/imports, then verify both
             member sides and call refusals against pinned TypeScript.
+            - [x] **J.3.1.3.2.3.3.1** Export local class instance definitions
+              through the closed type surface and bind `import type` class
+              names, including local export aliases. Verify imported member
+              types and original diagnostics with pinned TypeScript. Direct
+              `export class`, local `export {Class as Alias}`, and local
+              `export type {Class as Alias}` expose the instance definition;
+              private classes remain unavailable. Public tests check imported
+              method reads/calls, a wrong-side static call, a private-class
+              import, original spans, and no artifact. Four pinned TypeScript
+              5.9.3 two-file `--noEmit` cases agree on acceptance and
+              TS2576/TS2459 lines. BlueTS and bridge crate suites,
+              workspace all-target Clippy, rustfmt, and whitespace checks
+              pass with the reused compact target.
+            - [ ] **J.3.1.3.2.3.3.2** Bind value-imported classes with their
+              constructor-side shape and construction signatures; validate
+              imported static/instance lookup, construction, and bare-call
+              refusal with pinned TypeScript while class output stays refused.
       - [ ] **J.3.1.3.3** Check constructor and method parameter, return,
         overload-call, body, and `this` types through the shared class IR.
       - [ ] **J.3.1.3.4** Check named inheritance, overrides, cycles, and

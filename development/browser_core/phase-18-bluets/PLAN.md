@@ -5255,6 +5255,25 @@ lines. The BlueTS and bridge crate suites, workspace all-target Clippy,
 rustfmt, and whitespace checks pass using the reused compact Cargo target.
 Closed-module class binding is the remaining J.3.1.3.2.3 leaf.
 
+### J.3.1.3.2.3.3.1 Closed-module class instance type imports
+
+The closed project type surface now includes an exported class's instance
+definition. A local value export alias or local `export type` alias can also
+expose the class type without exposing a private class by accident. `import
+type` binds that definition in the consuming module, allowing instance method
+reads and calls through the imported name. The value-export validator now
+recognizes a class as a local runtime declaration, while class output remains
+refused. Imported class instances use their original member spans for a
+wrong-side static method diagnostic.
+
+Public checked-compile tests use two-module graphs for direct and aliased
+imports, accepted instance methods, a rejected static method on an instance,
+and a rejected private-class import. Four pinned TypeScript 5.9.3 `--noEmit`
+graphs match acceptance and TS2576/TS2459 diagnostic lines. The BlueTS and
+bridge crate suites, workspace all-target Clippy, rustfmt, and whitespace
+checks pass using the reused compact Cargo target. Value-imported class
+constructors and static sides are the next leaf.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
