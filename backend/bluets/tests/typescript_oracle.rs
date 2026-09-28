@@ -1394,6 +1394,49 @@ fn pinned_static_this_class_bodies_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_instance_method_overloads_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 5] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-instance-overload-valid/main.ts"),
+            &[],
+        ),
+        (
+            "argument-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-instance-overload-argument-error/main.ts"
+            ),
+            &[(11, "TS2769")],
+        ),
+        (
+            "inferred-result",
+            include_str!(
+                "fixtures/typescript_oracle/class-instance-overload-inferred-error/main.ts"
+            ),
+            &[(11, "TS2322")],
+        ),
+        (
+            "this-return",
+            include_str!(
+                "fixtures/typescript_oracle/class-instance-overload-this-return-error/main.ts"
+            ),
+            &[(9, "TS2322")],
+        ),
+        (
+            "this-argument",
+            include_str!(
+                "fixtures/typescript_oracle/class-instance-overload-this-argument-error/main.ts"
+            ),
+            &[(9, "TS2769")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

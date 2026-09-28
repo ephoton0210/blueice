@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.3.4.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.3.4.4.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1148,9 +1148,17 @@ exists. A passed first form does not close its whole feature family.
             TS2345/TS2339/TS2322/TS2741 lines. BlueTS, bridge, and full
             workspace tests, all-target Clippy, rustfmt, and whitespace
             checks pass with the reused 12 GiB target.
-          - [ ] **J.3.1.3.3.4.3** Select local instance-method overload calls
+          - [x] **J.3.1.3.3.4.3** Select local instance-method overload calls
             on values and `this`, infer selected returns, and check rejected
-            calls against pinned TypeScript.
+            calls against pinned TypeScript. Bound class instances now use
+            the bounded function-signature selector for overloaded methods,
+            preserving the callback-specific overload path for other
+            receivers. Public tests assert accepted value/`this` calls,
+            mismatched arguments, selected return types, original spans,
+            and no class output. Five pinned TypeScript 5.9.3 `--noEmit`
+            cases agree on acceptance and TS2769/TS2322 lines. BlueTS,
+            bridge, and full workspace tests, all-target Clippy, rustfmt,
+            and whitespace checks pass with the reused 12 GiB target.
           - [ ] **J.3.1.3.3.4.4** Select local static-method overload calls
             on class values and static `this`, infer selected returns, and
             check rejected calls against pinned TypeScript.

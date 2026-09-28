@@ -5430,6 +5430,24 @@ TS2322, and TS2741 lines. BlueTS, bridge, and full workspace suites,
 workspace all-target Clippy, rustfmt, and whitespace checks pass with the
 reused 12 GiB Cargo target.
 
+### J.3.1.3.3.4.3 Instance method overload calls
+
+Bound class instances, including `this` in instance bodies, now select a
+method overload with the bounded function-signature relation. The selected
+signature supplies the inferred return type for local initializers and
+declared method returns; an unmatched argument list reports the original
+call span. This class path precedes the existing exact callback-overload
+rule, which remains available for other structural receivers. Class output
+remains refused.
+
+Public checked-compile cases cover accepted number/string overloads on an
+instance and `this`, bad arguments through both receivers, incompatible
+inferred locals and returns, exact spans, and no artifact. Five pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2769/TS2322
+lines. BlueTS, bridge, and full workspace suites, workspace all-target Clippy,
+rustfmt, and whitespace checks pass with the reused 12 GiB Cargo target.
+Static overload selection follows in J.3.1.3.3.4.4.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
