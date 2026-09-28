@@ -212,7 +212,7 @@ impl<'a> ModuleChecker<'a> {
                 let Type::Tuple(values) = self.infer_expression(&argument[1..], scope) else {
                     return Err(());
                 };
-                actuals.extend(values);
+                actuals.extend(values.into_iter().map(|value| value.annotation));
             } else {
                 actuals.push(match *argument {
                     [literal] if literal.kind == TokenKind::String => {

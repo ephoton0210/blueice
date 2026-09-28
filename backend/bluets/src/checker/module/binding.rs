@@ -854,7 +854,12 @@ impl<'a> ModuleChecker<'a> {
                 }
             }
             Type::Array(value) => self.check_type(value, span),
-            Type::Tuple(values) | Type::Union(values) | Type::Intersection(values) => {
+            Type::Tuple(values) => {
+                for value in values {
+                    self.check_type(&value.annotation, span);
+                }
+            }
+            Type::Union(values) | Type::Intersection(values) => {
                 for value in values {
                     self.check_type(value, span);
                 }

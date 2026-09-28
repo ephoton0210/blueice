@@ -291,7 +291,7 @@ impl ModuleChecker<'_> {
                                     .as_ref()
                                     .unwrap_or(&Type::Unknown)
                             } else {
-                                &elements[index - derived_fixed]
+                                &elements[index - derived_fixed].annotation
                             };
                             let inherited_type = if index < inherited_fixed {
                                 inherited.parameters[index]
@@ -354,7 +354,7 @@ impl ModuleChecker<'_> {
                                     .as_ref()
                                     .unwrap_or(&Type::Unknown)
                             } else {
-                                &elements[index - inherited_fixed]
+                                &elements[index - inherited_fixed].annotation
                             };
                             parameter_types_compatible(
                                 derived_type,
@@ -391,7 +391,7 @@ impl ModuleChecker<'_> {
                                     .as_ref()
                                     .unwrap_or(&Type::Unknown)
                             } else {
-                                &derived_elements[index - derived_fixed]
+                                &derived_elements[index - derived_fixed].annotation
                             };
                             let inherited_type = if index < inherited_fixed {
                                 inherited.parameters[index]
@@ -399,7 +399,7 @@ impl ModuleChecker<'_> {
                                     .as_ref()
                                     .unwrap_or(&Type::Unknown)
                             } else {
-                                &inherited_elements[index - inherited_fixed]
+                                &inherited_elements[index - inherited_fixed].annotation
                             };
                             parameter_types_compatible(
                                 derived_type,

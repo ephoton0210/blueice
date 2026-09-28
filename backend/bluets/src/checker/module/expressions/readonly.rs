@@ -225,11 +225,11 @@ fn access_candidates(
         Type::Tuple(values) if property.is_none() || index.is_some() => {
             if let Some(index) = index {
                 if let Some(value) = values.get(index) {
-                    push_type(value.clone(), result, budget)?;
+                    push_type(value.annotation.clone(), result, budget)?;
                 }
             } else {
                 for value in values {
-                    push_type(value, result, budget)?;
+                    push_type(value.annotation, result, budget)?;
                 }
             }
         }
@@ -298,7 +298,15 @@ fn deep_contains_readonly(
             Ok(false)
         }
         Type::Array(element) => deep_contains_readonly(element, aliases, budget, depth + 1),
-        Type::Tuple(parts) | Type::Union(parts) | Type::Intersection(parts) => {
+        Type::Tuple(parts) => {
+            for part in parts {
+                if deep_contains_readonly(&part.annotation, aliases, budget, depth + 1)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        Type::Union(parts) | Type::Intersection(parts) => {
             for part in parts {
                 if deep_contains_readonly(part, aliases, budget, depth + 1)? {
                     return Ok(true);

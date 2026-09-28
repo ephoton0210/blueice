@@ -528,7 +528,11 @@ fn type_to_ts(value: &Type) -> String {
         Type::Array(value) => format!("{}[]", type_to_ts(value)),
         Type::Tuple(values) => format!(
             "[{}]",
-            values.iter().map(type_to_ts).collect::<Vec<_>>().join(", ")
+            values
+                .iter()
+                .map(|value| type_to_ts(&value.annotation))
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
         Type::Record(fields) => format!(
             "{{ {} }}",

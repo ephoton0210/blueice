@@ -94,7 +94,15 @@ pub(super) fn is_assignable(
         }
         (Type::Tuple(actual), Type::Tuple(expected)) if actual.len() == expected.len() => {
             actual.iter().zip(expected).all(|(actual, expected)| {
-                is_assignable(actual, expected, aliases, &mut visited.clone(), budget)
+                actual.optional == expected.optional
+                    && actual.rest == expected.rest
+                    && is_assignable(
+                        &actual.annotation,
+                        &expected.annotation,
+                        aliases,
+                        &mut visited.clone(),
+                        budget,
+                    )
             })
         }
         (Type::Record(actual), Type::Record(expected)) => expected.iter().all(|expected_field| {
@@ -210,7 +218,12 @@ pub(super) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
         Type::Tuple(values) => Type::Tuple(
             values
                 .iter()
-                .map(|value| substitute_type(value, substitutions))
+                .map(|value| crate::parser::TupleTypeElement {
+                    annotation: substitute_type(&value.annotation, substitutions),
+                    optional: value.optional,
+                    label: value.label.clone(),
+                    rest: value.rest,
+                })
                 .collect(),
         ),
         Type::Record(fields) => Type::Record(
@@ -269,7 +282,7 @@ pub(super) fn type_identity(value: &Type) -> String {
             "[{}]",
             values
                 .iter()
-                .map(type_identity)
+                .map(|value| type_identity(&value.annotation))
                 .collect::<Vec<_>>()
                 .join(",")
         ),
@@ -305,7 +318,11 @@ pub(crate) fn type_label(value: &Type) -> String {
         Type::Array(value) => format!("{}[]", type_label(value)),
         Type::Tuple(values) => format!(
             "[{}]",
-            values.iter().map(type_label).collect::<Vec<_>>().join(", ")
+            values
+                .iter()
+                .map(|value| type_label(&value.annotation))
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
         Type::Record(_) => "record".to_string(),
         Type::Function { .. } => "function".to_string(),

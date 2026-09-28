@@ -11,7 +11,7 @@
 
 use blueice_bluets::{
     compile, CompilerOptions, Contract, ContractError, ContractPlan, ContractValue, Declaration,
-    MapLoader, ModuleSource, Type, ValidationError, ValidationLimits,
+    MapLoader, ModuleSource, TupleTypeElement, Type, ValidationError, ValidationLimits,
 };
 use std::collections::BTreeMap;
 
@@ -296,7 +296,10 @@ fn arrays_report_the_path_of_the_first_bad_element() {
 
 #[test]
 fn tuples_require_the_exact_length_and_position_wise_types() {
-    let plan = plan_of(&Type::Tuple(vec![Type::String, Type::Number]));
+    let plan = plan_of(&Type::Tuple(vec![
+        TupleTypeElement::required(Type::String),
+        TupleTypeElement::required(Type::Number),
+    ]));
     assert_eq!(
         plan.validate(&array(vec![string("k"), number(1.0)])),
         Ok(())
@@ -575,7 +578,10 @@ fn unreifiable_types_are_rejected_with_an_explanation() {
     // The rejection surfaces from any nesting position.
     let nested = [
         Type::Array(Box::new(Type::Any)),
-        Type::Tuple(vec![Type::String, Type::Void]),
+        Type::Tuple(vec![
+            TupleTypeElement::required(Type::String),
+            TupleTypeElement::required(Type::Void),
+        ]),
         Type::Union(vec![Type::String, Type::Unknown]),
         Type::Intersection(vec![Type::Never, Type::String]),
         Type::Array(Box::new(named("Missing"))),

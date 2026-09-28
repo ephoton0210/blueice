@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.1.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.1.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1483,10 +1483,22 @@ exists. A passed first form does not close its whole feature family.
                         required tuples without admitting new syntax, then
                         admit optional forms only with type checking and
                         emission support, followed by override comparison.
-                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.1.2** Migrate required
+                      - [x] **J.3.1.3.4.4.2.3.2.3.3.1.2** Migrate required
                         tuple types to the shared element metadata while
                         preserving current parser, checker, emitter, and
                         runtime-contract behavior at public boundaries.
+                        Parsed and inferred fixed tuples now use required
+                        elements with all metadata flags clear; type
+                        substitution, comparison, indexing, declaration
+                        output, and contract lowering read their annotations.
+                        Public construction admits required elements only;
+                        metadata accessors remain read-only until the later
+                        semantics are installed.
+                        Existing public BlueTS/BlueJS, exact tuple contract,
+                        fixed tuple class, and emitter regressions pass with
+                        no new syntax admitted. Full workspace tests,
+                        all-target Clippy, rustfmt, and whitespace checks
+                        pass with the reused 12 GiB target.
                       - [ ] **J.3.1.3.4.4.2.3.2.3.3.1.3** Parse and check
                         optional tuple elements across admitted type uses,
                         including output and contracts, against pinned

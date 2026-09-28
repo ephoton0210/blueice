@@ -8,7 +8,8 @@ use crate::compiler::{is_declaration_module, Project};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{
     Declaration, FunctionBodyItem, FunctionDeclaration, FunctionElseBranch, FunctionIfStatement,
-    FunctionWhileStatement, InterfaceDeclaration, Module, Parameter, TypeField, TypeParameter,
+    FunctionWhileStatement, InterfaceDeclaration, Module, Parameter, TupleTypeElement, TypeField,
+    TypeParameter,
 };
 use crate::syntax::{Token, TokenKind};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -729,7 +730,12 @@ fn infer_type_arguments(
         }
         (Type::Tuple(templates), Type::Tuple(actuals)) if templates.len() == actuals.len() => {
             for (template, actual) in templates.iter().zip(actuals) {
-                infer_type_arguments(template, actual, type_parameters, substitutions);
+                infer_type_arguments(
+                    &template.annotation,
+                    &actual.annotation,
+                    type_parameters,
+                    substitutions,
+                );
             }
         }
         (Type::Record(templates), Type::Record(actuals)) => {
@@ -777,7 +783,9 @@ fn infer_contextual_tuple_literal(
     if start + 1 < tokens.len() {
         push_contextual_tuple_element(&tokens[start..tokens.len() - 1], scope, &mut values)?;
     }
-    Some(Type::Tuple(values))
+    Some(Type::Tuple(
+        values.into_iter().map(TupleTypeElement::required).collect(),
+    ))
 }
 
 fn push_contextual_tuple_element(
@@ -792,7 +800,7 @@ fn push_contextual_tuple_element(
         let Type::Tuple(spread) = infer_simple(&tokens[1..], scope) else {
             return None;
         };
-        values.extend(spread);
+        values.extend(spread.into_iter().map(|element| element.annotation));
     } else {
         values.push(infer_simple(tokens, scope));
     }

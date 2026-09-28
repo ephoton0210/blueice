@@ -55,8 +55,8 @@ pub use parser::{
     ClassMethod, ClassMethodGroup, Declaration, FunctionBodyItem, FunctionCatchClause,
     FunctionDeclaration, FunctionElseBranch, FunctionIfStatement, FunctionTryStatement,
     FunctionWhileStatement, ImportDeclaration, InterfaceDeclaration, Module, Parameter,
-    ParserLimits, RawDeclaration, TypeAliasDeclaration, TypeExportDeclaration, TypeParameter,
-    ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
+    ParserLimits, RawDeclaration, TupleTypeElement, TypeAliasDeclaration, TypeExportDeclaration,
+    TypeParameter, ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
 };
 pub use syntax::{lex, Token, TokenKind};
 

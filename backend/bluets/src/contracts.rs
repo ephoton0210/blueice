@@ -318,7 +318,7 @@ fn lower(
         )?))),
         Type::Tuple(values) => values
             .iter()
-            .map(|value| lower(value, named_types, definitions, active))
+            .map(|value| lower(&value.annotation, named_types, definitions, active))
             .collect::<Result<Vec<_>, _>>()
             .map(Contract::Tuple),
         Type::Record(fields) => {

@@ -5899,6 +5899,25 @@ and contract behavior have public tests; class method override expansion
 follows as a separate leaf. This sequence prevents an optional tuple from
 being silently treated as a required tuple in another BlueTS use.
 
+### J.3.1.3.4.4.2.3.2.3.3.1.2 Required tuple element metadata migration
+
+The public tuple type now stores an element record with annotation,
+optional, label, and rest metadata. Parsed type annotations and inferred
+tuple literals create required, unlabeled, non-rest elements. Type
+substitution, generic inference, assignability, indexed reads, readonly
+tracking, call spreads, declaration text, and runtime-contract lowering
+read the element annotation. The element record is re-exported so hosts can
+still construct a required tuple type through the public API. Its metadata
+fields are crate-visible with public read accessors; external callers cannot
+construct optional or rest elements before their semantics are installed.
+Optional tuple syntax remains rejected by the parser until the next leaf
+closes its semantics.
+
+Existing public BlueTS/BlueJS tests, exact-length tuple contract tests,
+class tuple-rest accepted/rejected tests, and emitter regressions pass.
+Full workspace tests, workspace all-target Clippy, rustfmt, and whitespace
+checks pass with the reused 12 GiB Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

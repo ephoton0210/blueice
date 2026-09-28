@@ -139,7 +139,9 @@ impl Parser {
         } else if self.consume("[") {
             let mut values = Vec::new();
             while !self.at_eof() && !self.consume("]") {
-                values.push(self.parse_type_until(&[",", "]"]));
+                values.push(TupleTypeElement::required(
+                    self.parse_type_until(&[",", "]"]),
+                ));
                 if !self.consume(",") {
                     self.expect("]");
                     break;

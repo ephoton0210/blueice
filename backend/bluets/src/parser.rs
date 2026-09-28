@@ -403,6 +403,43 @@ pub struct TypeParameter {
     pub span: SourceSpan,
 }
 
+/// One element of a parsed tuple type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TupleTypeElement {
+    pub(crate) annotation: Type,
+    pub(crate) optional: bool,
+    pub(crate) label: Option<String>,
+    pub(crate) rest: bool,
+}
+
+impl TupleTypeElement {
+    /// Construct the currently supported required, unlabeled tuple element.
+    pub fn required(annotation: Type) -> Self {
+        Self {
+            annotation,
+            optional: false,
+            label: None,
+            rest: false,
+        }
+    }
+
+    pub fn annotation(&self) -> &Type {
+        &self.annotation
+    }
+
+    pub fn is_optional(&self) -> bool {
+        self.optional
+    }
+
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
+    }
+
+    pub fn is_rest(&self) -> bool {
+        self.rest
+    }
+}
+
 /// The supported, reifiable portion of the TypeScript type grammar.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
@@ -421,7 +458,7 @@ pub enum Type {
         arguments: Vec<Type>,
     },
     Array(Box<Type>),
-    Tuple(Vec<Type>),
+    Tuple(Vec<TupleTypeElement>),
     Record(Vec<TypeField>),
     /// A bounded, non-generic method signature in an interface or record.
     /// It is erased from runtime code but retains exact parameter and result

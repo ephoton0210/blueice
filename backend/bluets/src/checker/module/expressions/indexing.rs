@@ -19,8 +19,20 @@ pub(super) fn indexed_value_type(
     match value {
         Type::Array(element) => (**element).clone(),
         Type::Tuple(values) => index.map_or_else(
-            || alternatives_type(values.to_vec()),
-            |index| values.get(index).cloned().unwrap_or(Type::Unknown),
+            || {
+                alternatives_type(
+                    values
+                        .iter()
+                        .map(|value| value.annotation.clone())
+                        .collect(),
+                )
+            },
+            |index| {
+                values
+                    .get(index)
+                    .map(|value| value.annotation.clone())
+                    .unwrap_or(Type::Unknown)
+            },
         ),
         Type::Record(fields) if index.is_none() => alternatives_type(
             fields
