@@ -226,6 +226,56 @@ impl ModuleChecker<'_> {
         }
     }
 
+    pub(super) fn validate_class_heritage_cycles(&mut self) {
+        let classes = self
+            .module
+            .declarations
+            .iter()
+            .filter_map(|declaration| match declaration {
+                Declaration::Class(class) => Some((class.name.as_str(), class)),
+                _ => None,
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut failures = Vec::new();
+        for class in classes.values() {
+            let mut current = *class;
+            let mut visited = BTreeSet::new();
+            let mut edges = 0usize;
+            while let Some(base_name) = current.extends_name.as_deref() {
+                if edges >= self.max_type_expansions {
+                    failures.push((
+                        class.name_span.clone(),
+                        DiagnosticCode::ResourceLimit,
+                        format!(
+                            "class heritage scan exceeds the {} generic-expansion limit",
+                            self.max_type_expansions
+                        ),
+                    ));
+                    break;
+                }
+                edges += 1;
+                if base_name == class.name {
+                    failures.push((
+                        class.name_span.clone(),
+                        DiagnosticCode::TypeMismatch,
+                        format!("class {} has a cyclic base expression", class.name),
+                    ));
+                    break;
+                }
+                if !visited.insert(base_name) {
+                    break;
+                }
+                let Some(base) = classes.get(base_name) else {
+                    break;
+                };
+                current = base;
+            }
+        }
+        for (span, code, message) in failures {
+            self.type_error(&span, message, code);
+        }
+    }
+
     pub(super) fn validate_class_constructor_group(&mut self, class: &ClassDeclaration) {
         let constructors = class
             .members

@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1185,9 +1185,18 @@ exists. A passed first form does not close its whole feature family.
           TS2304/TS2507/TS2449 lines. BlueTS, bridge, and full workspace
           tests, all-target Clippy, rustfmt, and whitespace checks pass with
           the reused 12 GiB target.
-        - [ ] **J.3.1.3.4.2** Detect direct and indirect local inheritance
+        - [x] **J.3.1.3.4.2** Detect direct and indirect local inheritance
           cycles within a bounded graph and compare class-name diagnostics
-          with pinned TypeScript.
+          with pinned TypeScript. The checker traverses local named heritage
+          edges up to the type-expansion limit, reports each cycle member at
+          its class name, and leaves classes merely depending on a cycle
+          without a cycle diagnostic. A resource-limit diagnostic bounds
+          longer chains. Public checked-compile tests cover self and mutual
+          cycles, forward-base overlap, exact spans, the resource bound, and
+          no output. Two pinned TypeScript 5.9.3 `--noEmit` cases agree on
+          TS2506/TS2449 lines. BlueTS, bridge, and full workspace tests,
+          all-target Clippy, rustfmt, and whitespace checks pass with the
+          reused 12 GiB target.
         - [ ] **J.3.1.3.4.3** Include inherited instance and static members
           and inherited constructor signatures in bounded local class lookup
           and construction, including class imports.

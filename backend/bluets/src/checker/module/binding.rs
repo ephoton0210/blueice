@@ -567,6 +567,7 @@ impl<'a> ModuleChecker<'a> {
     }
 
     pub(crate) fn check_types(&mut self) {
+        self.validate_class_heritage_cycles();
         for declaration in &self.module.declarations {
             match declaration {
                 Declaration::TypeAlias(alias) => {

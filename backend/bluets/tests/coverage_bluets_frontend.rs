@@ -1015,6 +1015,80 @@ fn named_class_heritage_validates_base_names_and_declaration_order() {
 }
 
 #[test]
+fn local_class_heritage_cycles_diagnose_cycle_members_only() {
+    let source = include_str!("fixtures/typescript_oracle/class-heritage-self-cycle/main.ts");
+    let compilation = compile_with_helper(source);
+    assert!(compilation.output.is_none());
+    let failures = compilation
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+        .collect::<Vec<_>>();
+    assert_eq!(failures.len(), 1, "{failures:#?}");
+    assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+    assert_eq!(
+        &source[failures[0].span.start..failures[0].span.end],
+        "Self"
+    );
+
+    let source = include_str!("fixtures/typescript_oracle/class-heritage-mutual-cycle/main.ts");
+    let compilation = compile_with_helper(source);
+    assert!(compilation.output.is_none());
+    let mut failures = compilation
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+        .collect::<Vec<_>>();
+    failures.sort_by_key(|diagnostic| diagnostic.span.start);
+    assert_eq!(failures.len(), 3, "{failures:#?}");
+    assert!(failures
+        .iter()
+        .all(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch));
+    assert_eq!(
+        failures
+            .iter()
+            .map(|diagnostic| diagnostic.span.start)
+            .collect::<Vec<_>>(),
+        vec![
+            source.find("class A").unwrap() + 6,
+            source.find("extends B").unwrap() + 8,
+            source.find("class B").unwrap() + 6,
+        ]
+    );
+    assert_eq!(
+        failures
+            .iter()
+            .map(|diagnostic| &source[diagnostic.span.start..diagnostic.span.end])
+            .collect::<Vec<_>>(),
+        vec!["A", "B", "B"]
+    );
+}
+
+#[test]
+fn local_class_heritage_cycle_scan_obeys_the_type_expansion_budget() {
+    let source = "class C {} class B extends C {} class A extends B {}";
+    let compilation = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            limits: CompilerLimits {
+                max_type_expansions: 1,
+                ..CompilerLimits::default()
+            },
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(compilation.output.is_none());
+    let failures = compilation
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code == DiagnosticCode::ResourceLimit)
+        .collect::<Vec<_>>();
+    assert_eq!(failures.len(), 1, "{:#?}", compilation.diagnostics);
+    assert_eq!(&source[failures[0].span.start..failures[0].span.end], "A");
+}
+
+#[test]
 fn class_construction_scan_obeys_the_type_expansion_budget() {
     let source =
         "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";

@@ -1517,6 +1517,26 @@ fn pinned_named_class_heritage_validation_matches_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_local_class_heritage_cycles_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 2] = [
+        (
+            "self-cycle",
+            include_str!("fixtures/typescript_oracle/class-heritage-self-cycle/main.ts"),
+            &[(5, "TS2506")],
+        ),
+        (
+            "mutual-cycle",
+            include_str!("fixtures/typescript_oracle/class-heritage-mutual-cycle/main.ts"),
+            &[(5, "TS2506"), (5, "TS2449"), (6, "TS2506")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

@@ -5490,6 +5490,24 @@ rejected forms, original spans, and no artifact. Five pinned TypeScript 5.9.3
 bridge, and full workspace suites, workspace all-target Clippy, rustfmt, and
 whitespace checks pass with the reused 12 GiB Cargo target.
 
+### J.3.1.3.4.2 Bounded local heritage cycles
+
+After named class binding, the checker traverses each local class's parsed
+`extends` edges with the configured type-expansion limit. It reports a direct
+or indirect cycle on the original class name of every cycle member; a class
+that merely depends on a cycle does not get a cycle diagnostic. The existing
+forward-base check still reports its distinct heritage-name error. Longer
+chains fail with a resource-limit diagnostic instead of unbounded traversal.
+Imported base graphs remain outside this local cycle step, and class output
+remains refused.
+
+Public checked-compile tests cover a self cycle, mutual cycle with a
+dependent class, exact cycle and forward-reference spans, a one-edge scan
+budget, and no artifact. Two pinned TypeScript 5.9.3 `--noEmit` cases agree
+on TS2506/TS2449 lines. BlueTS, bridge, and full workspace suites, workspace
+all-target Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB
+Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
