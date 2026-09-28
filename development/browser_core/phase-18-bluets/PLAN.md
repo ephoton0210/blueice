@@ -6278,6 +6278,27 @@ TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/TS2417
 diagnostic lines. Optional ordinary prefixes against fixed or array rest
 signatures and fixed tuple rests remain separate leaves.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.3.2 Optional prefixes with fixed or array rest counterparts
+
+The derived-middle and inherited-middle override relations now compare an
+ordinary optional parameter as its annotation or `undefined` before fixed
+or array rest counterparts. The tuple's required suffix still needs a
+separate position after every declared ordinary prefix slot. The arity gate
+therefore counts all ordinary prefix slots plus required tuple elements,
+even when a prefix annotation is optional. A short fixed method cannot
+silently occupy the suffix slot with that optional prefix. Array-rest
+counterparts retain their unbounded arity comparison at bounded witness
+lengths, starting after the derived middle tuple's minimum length.
+
+Public checked-compile cases cover accepted optional/`undefined` prefixes
+in derived and inherited fixed/array directions. Wrong prefix types, a
+fixed base with too few required positions, an optional fixed base, a
+fixed derived method that omits the required suffix, and a static mismatch
+report one type diagnostic at the original member span with no output.
+Nine pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+TS2416/TS2417 diagnostic lines. Opposing fixed tuple rests with ordinary
+optional prefixes remain the next leaf.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

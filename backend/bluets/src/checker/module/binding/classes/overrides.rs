@@ -189,9 +189,10 @@ impl ModuleChecker<'_> {
             ) || match rest_shape {
                 RestShape::DerivedMiddleTuple {
                     inherited_array_rest: false,
+                    derived_fixed,
                     ..
                 } => {
-                    required_derived
+                    middle_tuple_required(&derived.parameters, derived_fixed)
                         <= inherited
                             .parameters
                             .iter()
@@ -502,7 +503,8 @@ impl ModuleChecker<'_> {
                             None
                         };
                         let minimum_length = if inherited_array_rest {
-                            required_derived.max(inherited_fixed)
+                            middle_tuple_required(&derived.parameters, derived_fixed)
+                                .max(inherited_fixed)
                         } else {
                             inherited
                                 .parameters
@@ -521,7 +523,7 @@ impl ModuleChecker<'_> {
                                     return false;
                                 }
                                 let derived_type = if index < derived_fixed {
-                                    derived.parameters[index].annotation.clone()
+                                    Some(override_parameter_type(&derived.parameters[index]))
                                 } else {
                                     length.checked_sub(derived_fixed).and_then(|tuple_length| {
                                         tuple_type_at_length(
@@ -535,17 +537,15 @@ impl ModuleChecker<'_> {
                                     return false;
                                 };
                                 let inherited_type = if index < inherited_fixed {
-                                    inherited.parameters[index]
-                                        .annotation
-                                        .as_ref()
-                                        .unwrap_or(&Type::Unknown)
+                                    override_parameter_type(&inherited.parameters[index])
                                 } else {
                                     inherited_element
                                         .expect("rest shape requires an array annotation")
+                                        .clone()
                                 };
                                 parameter_types_compatible(
                                     &derived_type,
-                                    inherited_type,
+                                    &inherited_type,
                                     &self.types,
                                     &mut budget,
                                 )
@@ -716,7 +716,7 @@ impl ModuleChecker<'_> {
                                     return false;
                                 }
                                 let derived_type = if index < derived_fixed {
-                                    derived.parameters[index].annotation.clone()
+                                    Some(override_parameter_type(&derived.parameters[index]))
                                 } else {
                                     derived_element.cloned()
                                 };
@@ -724,7 +724,7 @@ impl ModuleChecker<'_> {
                                     return false;
                                 };
                                 let inherited_type = if index < inherited_fixed {
-                                    inherited.parameters[index].annotation.clone()
+                                    Some(override_parameter_type(&inherited.parameters[index]))
                                 } else {
                                     length
                                         .checked_sub(inherited_fixed)
@@ -1379,10 +1379,7 @@ fn middle_tuple_required(parameters: &[Parameter], fixed: usize) -> usize {
     else {
         unreachable!("rest shape requires a tuple annotation")
     };
-    parameters[..fixed]
-        .iter()
-        .filter(|parameter| !parameter.optional)
-        .count()
+    fixed
         + elements
             .iter()
             .filter(|element| !element.optional && !element.rest)

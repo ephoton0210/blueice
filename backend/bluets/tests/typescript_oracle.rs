@@ -3089,6 +3089,61 @@ fn pinned_ordinary_optional_variable_tuple_overrides_match_typescript_without_em
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_ordinary_optional_directional_tuple_overrides_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 9] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-override-ordinary-optional-direction-valid/main.ts"),
+            &[],
+        ),
+        (
+            "derived-fixed-error",
+            include_str!("fixtures/typescript_oracle/class-override-ordinary-optional-direction-derived-fixed-error/main.ts"),
+            &[(7, "TS2416")],
+        ),
+        (
+            "derived-array-error",
+            include_str!("fixtures/typescript_oracle/class-override-ordinary-optional-direction-derived-array-error/main.ts"),
+            &[(7, "TS2416")],
+        ),
+        (
+            "inherited-fixed-error",
+            include_str!("fixtures/typescript_oracle/class-override-ordinary-optional-direction-inherited-fixed-error/main.ts"),
+            &[(7, "TS2416")],
+        ),
+        (
+            "inherited-array-error",
+            include_str!("fixtures/typescript_oracle/class-override-ordinary-optional-direction-inherited-array-error/main.ts"),
+            &[(7, "TS2416")],
+        ),
+        (
+            "arity-error",
+            include_str!("fixtures/typescript_oracle/class-override-ordinary-optional-direction-arity-error/main.ts"),
+            &[(7, "TS2416")],
+        ),
+        (
+            "derived-arity-error",
+            include_str!("fixtures/typescript_oracle/class-override-ordinary-optional-direction-derived-arity-error/main.ts"),
+            &[(7, "TS2416")],
+        ),
+        (
+            "inherited-arity-error",
+            include_str!("fixtures/typescript_oracle/class-override-ordinary-optional-direction-inherited-arity-error/main.ts"),
+            &[(7, "TS2416")],
+        ),
+        (
+            "static-error",
+            include_str!("fixtures/typescript_oracle/class-override-ordinary-optional-direction-static-error/main.ts"),
+            &[(6, "TS2417")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_middle_and_fixed_tuple_rest_overrides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);
