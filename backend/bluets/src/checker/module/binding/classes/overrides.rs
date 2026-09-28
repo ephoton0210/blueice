@@ -48,6 +48,11 @@ enum RestShape {
         inherited_fixed: usize,
         derived_array_rest: bool,
     },
+    InheritedMiddleTuple {
+        derived_fixed: usize,
+        inherited_fixed: usize,
+        derived_array_rest: bool,
+    },
     BothTuples {
         derived_fixed: usize,
         inherited_fixed: usize,
@@ -168,21 +173,31 @@ impl ModuleChecker<'_> {
                     inherited_array_rest: true,
                     ..
                 }
-            ) || if matches!(
-                rest_shape,
+            ) || match rest_shape {
                 RestShape::DerivedMiddleTuple {
                     inherited_array_rest: false,
                     ..
+                } => {
+                    required_derived
+                        <= inherited
+                            .parameters
+                            .iter()
+                            .filter(|parameter| !parameter.optional)
+                            .count()
                 }
-            ) {
-                required_derived
-                    <= inherited
-                        .parameters
-                        .iter()
-                        .filter(|parameter| !parameter.optional)
-                        .count()
-            } else {
-                required_derived <= inherited_arity
+                RestShape::InheritedMiddleTuple {
+                    derived_fixed,
+                    inherited_fixed,
+                    derived_array_rest: true,
+                } => derived_fixed <= inherited_fixed + middle_tuple_prefix(inherited.parameters),
+                RestShape::InheritedMiddleTuple {
+                    inherited_fixed,
+                    derived_array_rest: false,
+                    ..
+                } => {
+                    required_derived >= middle_tuple_required(inherited.parameters, inherited_fixed)
+                }
+                _ => required_derived <= inherited_arity,
             };
             let parameters_compatible = arity_compatible
                 && match rest_shape {
@@ -625,6 +640,79 @@ impl ModuleChecker<'_> {
                             )
                         })
                     }
+                    RestShape::InheritedMiddleTuple {
+                        derived_fixed,
+                        inherited_fixed,
+                        derived_array_rest,
+                    } => {
+                        let Some(Type::Tuple(elements)) = inherited
+                            .parameters
+                            .last()
+                            .and_then(|parameter| parameter.annotation.as_ref())
+                        else {
+                            unreachable!("rest shape requires a tuple annotation")
+                        };
+                        let derived_element = if derived_array_rest {
+                            let Some(Type::Array(element)) = derived
+                                .parameters
+                                .last()
+                                .and_then(|parameter| parameter.annotation.as_ref())
+                            else {
+                                unreachable!("rest shape requires an array annotation")
+                            };
+                            Some(element.as_ref())
+                        } else {
+                            None
+                        };
+                        let minimum_length = if derived_array_rest {
+                            middle_tuple_required(inherited.parameters, inherited_fixed)
+                                .max(derived_fixed)
+                        } else {
+                            required_derived
+                        };
+                        let maximum_length = if derived_array_rest {
+                            inherited_fixed + elements.len() + derived_fixed + 1
+                        } else {
+                            derived_fixed
+                        };
+                        (minimum_length..=maximum_length).all(|length| {
+                            (0..length).all(|index| {
+                                if !budget.consume() {
+                                    return false;
+                                }
+                                let derived_type = if index < derived_fixed {
+                                    derived.parameters[index].annotation.clone()
+                                } else {
+                                    derived_element.cloned()
+                                };
+                                let Some(derived_type) = derived_type else {
+                                    return false;
+                                };
+                                let inherited_type = if index < inherited_fixed {
+                                    inherited.parameters[index].annotation.clone()
+                                } else {
+                                    length
+                                        .checked_sub(inherited_fixed)
+                                        .and_then(|tuple_length| {
+                                            tuple_type_at_length(
+                                                elements,
+                                                tuple_length,
+                                                index - inherited_fixed,
+                                            )
+                                        })
+                                };
+                                let Some(inherited_type) = inherited_type else {
+                                    return false;
+                                };
+                                parameter_types_compatible(
+                                    &derived_type,
+                                    &inherited_type,
+                                    &self.types,
+                                    &mut budget,
+                                )
+                            })
+                        })
+                    }
                     RestShape::BothTuples {
                         derived_fixed,
                         inherited_fixed,
@@ -865,6 +953,30 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
             });
         }
     }
+    if let Some((inherited_rest, inherited_fixed)) = inherited.split_last() {
+        let inherited_middle_rest = matches!(
+            inherited_rest.annotation.as_ref(),
+            Some(Type::Tuple(elements))
+                if elements.iter().position(|element| element.rest)
+                    .is_some_and(|index| index + 1 < elements.len())
+        );
+        if inherited_rest.rest
+            && !inherited_fixed.iter().any(|parameter| parameter.rest)
+            && inherited_middle_rest
+        {
+            let derived_array_rest = derived.last().is_some_and(|parameter| {
+                parameter.rest && matches!(parameter.annotation.as_ref(), Some(Type::Array(_)))
+            });
+            if derived.iter().any(|parameter| parameter.rest) && !derived_array_rest {
+                return None;
+            }
+            return Some(RestShape::InheritedMiddleTuple {
+                derived_fixed: derived.len() - usize::from(derived_array_rest),
+                inherited_fixed: inherited_fixed.len(),
+                derived_array_rest,
+            });
+        }
+    }
     let inherited_variadic = inherited.iter().any(|parameter| {
         matches!(
             parameter.annotation.as_ref(),
@@ -1008,6 +1120,36 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
             inherited_fixed: inherited_fixed.len(),
         })
     }
+}
+
+fn middle_tuple_required(parameters: &[Parameter], fixed: usize) -> usize {
+    let Some(Type::Tuple(elements)) = parameters
+        .last()
+        .and_then(|parameter| parameter.annotation.as_ref())
+    else {
+        unreachable!("rest shape requires a tuple annotation")
+    };
+    parameters[..fixed]
+        .iter()
+        .filter(|parameter| !parameter.optional)
+        .count()
+        + elements
+            .iter()
+            .filter(|element| !element.optional && !element.rest)
+            .count()
+}
+
+fn middle_tuple_prefix(parameters: &[Parameter]) -> usize {
+    let Some(Type::Tuple(elements)) = parameters
+        .last()
+        .and_then(|parameter| parameter.annotation.as_ref())
+    else {
+        unreachable!("rest shape requires a tuple annotation")
+    };
+    elements
+        .iter()
+        .position(|element| element.rest)
+        .expect("middle tuple rest shape requires a rest element")
 }
 
 fn parameter_types_compatible(

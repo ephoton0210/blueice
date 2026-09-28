@@ -6157,6 +6157,32 @@ a static mismatch. The original method member receives one type diagnostic
 and no output is emitted. Six pinned TypeScript 5.9.3 `--noEmit` cases agree
 on acceptance and TS2416/TS2417 diagnostic lines.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.5.2 Inherited nontrailing tuple rest overrides
+
+The inherited-side gate now recognizes a final tuple rest parameter with an
+array-typed middle and required suffix. A derived fixed signature selects
+each arity it admits, then aligns inherited tuple positions from the total
+arity, keeping the suffix anchored at the end. The fixed signature must
+supply at least the inherited minimum required positions; a longer fixed
+signature can match a longer middle segment when its positions fit.
+
+A derived array rest compares finite witness lengths through the inherited
+prefix, middle, and suffix boundaries. Its declared fixed prefix cannot move
+past the inherited fixed prefix (ordinary parameters plus fixed tuple
+elements), matching pinned TypeScript behavior for a shifted array rest.
+The remaining tail is compared through the existing bivariant method
+parameter relation. Each checked position consumes the type-expansion
+budget, and return covariance remains unchanged.
+
+Public checked-compile cases cover short and longer fixed overrides,
+leading and shifted tuple forms, homogeneous array rests, and static
+methods. Rejections cover a wrong suffix, wrong middle position, omitted
+required suffix, an optional derived position, incompatible array tail, and
+a shifted array prefix. Each reports the original member span with no output.
+Eight pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+TS2416/TS2417 diagnostic lines. Both-side middle-rest comparison remains
+the next separate leaf.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

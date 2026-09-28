@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.5.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.5.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1669,10 +1669,22 @@ exists. A passed first form does not close its whole feature family.
                           bridge, and full workspace tests, all-target
                           Clippy, rustfmt, and whitespace checks pass with
                           the reused 12 GiB target.
-                        - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5.2** Compare an
+                        - [x] **J.3.1.3.4.4.2.3.2.3.3.3.5.2** Compare an
                           inherited nontrailing tuple rest with derived fixed
-                          or array rest parameters, including the required
-                          suffix at bounded witness lengths.
+                          or array rest parameters. A fixed derived method
+                          compares each admitted arity with an end-aligned
+                          inherited suffix; an array rest compares bounded
+                          witness lengths and cannot shift its required
+                          prefix past the inherited fixed tuple prefix.
+                          Public checked-compile cases cover accepted short,
+                          long, leading, shifted fixed, instance, and static
+                          forms, plus rejected suffix, middle, too few,
+                          optional, array-tail, and shifted-array forms at
+                          original member spans with no output. Eight pinned
+                          TypeScript 5.9.3 `--noEmit` cases agree on TS2416/
+                          TS2417 lines. BlueTS, bridge, and full workspace
+                          tests, all-target Clippy, rustfmt, and whitespace
+                          checks pass with the reused 12 GiB target.
                         - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5.3** Compare
                           nontrailing tuple rests on both sides, including
                           shifted prefixes and suffixes.
