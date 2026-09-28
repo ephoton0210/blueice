@@ -1673,6 +1673,58 @@ fn pinned_inherited_constructor_signatures_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_exported_local_derived_class_surfaces_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let box_module =
+        include_str!("fixtures/typescript_oracle/class-export-inherited-direct/box.ts");
+    let cases: [NoEmitClassModuleCase; 6] = [
+        (
+            "direct-valid",
+            include_str!("fixtures/typescript_oracle/class-export-inherited-direct/main.ts"),
+            box_module,
+            None,
+        ),
+        (
+            "alias-valid",
+            include_str!("fixtures/typescript_oracle/class-export-inherited-alias/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-export-inherited-alias/box.ts"),
+            None,
+        ),
+        (
+            "constructor-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-export-inherited-constructor-error/main.ts"
+            ),
+            box_module,
+            Some((6, "TS2345")),
+        ),
+        (
+            "instance-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-export-inherited-instance-error/main.ts"
+            ),
+            box_module,
+            Some((7, "TS2345")),
+        ),
+        (
+            "static-error",
+            include_str!("fixtures/typescript_oracle/class-export-inherited-static-error/main.ts"),
+            box_module,
+            Some((6, "TS2345")),
+        ),
+        (
+            "result-error",
+            include_str!("fixtures/typescript_oracle/class-export-inherited-result-error/main.ts"),
+            box_module,
+            Some((6, "TS2322")),
+        ),
+    ];
+    assert_pinned_class_module_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

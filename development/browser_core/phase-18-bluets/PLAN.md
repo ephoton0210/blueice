@@ -5570,6 +5570,33 @@ TS2741/TS2345 lines. BlueTS, bridge, and full workspace suites, workspace
 all-target Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB
 Cargo target.
 
+### J.3.1.3.4.3.4 Closed-module inherited class surfaces
+
+The closed-module propagation is split into local-base derived class exports
+and derived classes whose bases are imported. The first step publishes the
+already checked local inheritance shape for direct and locally aliased value
+exports; the second carries that shape across imported bases and re-exports.
+Both keep class output refused until the shared emit and runtime paths close.
+
+### J.3.1.3.4.3.4.1 Local-base derived class exports
+
+The closed-module class export table now walks locally declared classes in
+source order and extends each derived export with unshadowed instance and
+static members from its resolved local base. An omitted derived constructor
+inherits the base overloads with the derived return type. The traversal is
+limited by the configured type-expansion depth; deeper or invalid heritage
+still has its checker diagnostic and class output refusal. Direct and local
+aliased value exports carry the same surface, and an importing name is
+specialized by the existing class import binder.
+
+Public checked-compile cases cover both export forms, accepted construction
+and method calls, rejected constructor/instance/static arguments, an
+incompatible selected result, exact spans, and no artifact. Six pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2345/TS2322
+lines. BlueTS, bridge, and full workspace suites, workspace all-target
+Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB Cargo
+target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

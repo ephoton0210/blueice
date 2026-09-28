@@ -1265,6 +1265,71 @@ fn omitted_derived_constructor_reuses_local_and_imported_base_signatures() {
 }
 
 #[test]
+fn exported_local_derived_classes_retain_inherited_surfaces_across_imports() {
+    for (main, box_module) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-export-inherited-direct/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-export-inherited-direct/box.ts"),
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-export-inherited-alias/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-export-inherited-alias/box.ts"),
+        ),
+    ] {
+        let accepted = compile_class_module_pair(main, box_module);
+        assert!(accepted.output.is_none());
+        assert!(
+            accepted
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{:#?}",
+            accepted.diagnostics
+        );
+    }
+    let box_module =
+        include_str!("fixtures/typescript_oracle/class-export-inherited-direct/box.ts");
+    for (main, expected_span) in [
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-export-inherited-constructor-error/main.ts"
+            ),
+            "new Child('wrong')",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-export-inherited-instance-error/main.ts"
+            ),
+            "child.label('wrong')",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-export-inherited-static-error/main.ts"),
+            "Child.parse('wrong')",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-export-inherited-result-error/main.ts"),
+            "const wrong: string = Child.parse(1);",
+        ),
+    ] {
+        let compilation = compile_class_module_pair(main, box_module);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+        assert_eq!(failures[0].span.module, ENTRY);
+        assert_eq!(
+            &main[failures[0].span.start..failures[0].span.end],
+            expected_span,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
 fn class_construction_scan_obeys_the_type_expansion_budget() {
     let source =
         "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";

@@ -181,19 +181,29 @@ pub(super) fn exported_types(
 
 pub(super) fn exported_classes(
     project: &Project,
+    max_type_expansions: usize,
 ) -> BTreeMap<String, BTreeMap<String, ExportedClass>> {
     let mut modules = BTreeMap::new();
     for (id, module) in &project.modules {
-        let declared = module
-            .declarations
-            .iter()
-            .filter_map(|declaration| match declaration {
-                Declaration::Class(class) => {
-                    Some((class.name.clone(), module::class_export(class)))
+        let mut declared = BTreeMap::new();
+        let mut depths = BTreeMap::new();
+        for declaration in &module.declarations {
+            let Declaration::Class(class) = declaration else {
+                continue;
+            };
+            let mut value = module::class_export(class);
+            let mut depth = 0usize;
+            if let Some(base_name) = &class.extends_name {
+                if let Some(base) = declared.get(base_name) {
+                    depth = depths.get(base_name).copied().unwrap_or(0) + 1;
+                    if depth <= max_type_expansions {
+                        inherit_exported_class_surface(&mut value, base);
+                    }
                 }
-                _ => None,
-            })
-            .collect::<BTreeMap<_, _>>();
+            }
+            depths.insert(class.name.clone(), depth);
+            declared.insert(class.name.clone(), value);
+        }
         let mut exports = BTreeMap::new();
         for declaration in &module.declarations {
             match declaration {
@@ -284,6 +294,43 @@ pub(super) fn exported_classes(
         }
     }
     modules
+}
+
+fn inherit_exported_class_surface(derived: &mut ExportedClass, base: &ExportedClass) {
+    fn append_unshadowed(own: &mut Type, inherited: &Type) {
+        let (Type::Record(own), Type::Record(inherited)) = (own, inherited) else {
+            return;
+        };
+        let names = own
+            .iter()
+            .map(|field| field.name.clone())
+            .collect::<BTreeSet<_>>();
+        own.extend(
+            inherited
+                .iter()
+                .filter(|field| !names.contains(&field.name))
+                .cloned(),
+        );
+    }
+
+    append_unshadowed(&mut derived.instance_type, &base.instance_type);
+    append_unshadowed(&mut derived.constructor_type, &base.constructor_type);
+    if derived.constructor_binding.inherited && !base.constructor_binding.inherited {
+        derived.constructor_binding.signatures = base
+            .constructor_binding
+            .signatures
+            .iter()
+            .cloned()
+            .map(|mut signature| {
+                signature.return_type = Type::Named {
+                    name: derived.source_name.clone(),
+                    arguments: Vec::new(),
+                };
+                signature
+            })
+            .collect();
+        derived.constructor_binding.inherited = false;
+    }
 }
 
 pub(super) fn local_type_definitions(module: &Module) -> BTreeMap<String, TypeDefinition> {

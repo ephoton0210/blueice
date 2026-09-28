@@ -138,7 +138,7 @@ pub(crate) fn check_incremental(
     diagnostics.append(&mut ambient_diagnostics);
     let exports = ProjectExports {
         types: project::exported_types(project),
-        classes: project::exported_classes(project),
+        classes: project::exported_classes(project, max_type_expansions),
     };
     let mut checked_modules = BTreeMap::new();
 
