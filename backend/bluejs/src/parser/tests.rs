@@ -60,6 +60,20 @@ fn template_placeholder_parser_rejects_tokens_after_one_expression() {
 }
 
 #[test]
+fn template_placeholder_errors_propagate_through_template_construction() {
+    let parser = Parser::new("value");
+    let direct = parser
+        .parse_template_placeholder("value +")
+        .expect_err("an incomplete placeholder is invalid");
+    assert!(direct.known_syntax, "{direct:?}");
+
+    let template = parser
+        .parse_template(vec!["head".into(), "tail".into()], vec!["value +".into()])
+        .expect_err("a template cannot contain an incomplete placeholder");
+    assert!(template.known_syntax, "{template:?}");
+}
+
+#[test]
 fn contextual_async_and_class_lookahead_accept_the_supported_forms() {
     let mut with_statement = Parser::new("with({value:1})value");
     assert!(with_statement.parse_with_stmt().is_ok());

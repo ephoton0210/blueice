@@ -74,3 +74,19 @@ fn a_template_placeholder_rejects_trailing_statements_as_known_syntax() {
     let error = parse("`head${value; other}tail`").expect_err("a placeholder is one expression");
     assert!(error.known_syntax, "{error:?}");
 }
+
+#[test]
+fn a_template_placeholder_rejects_an_incomplete_expression() {
+    for source in ["`head${+}tail`", "`head${value +}tail`"] {
+        let error = parse(source).expect_err(source);
+        assert!(error.known_syntax, "{source}: {error:?}");
+    }
+}
+
+#[test]
+fn yield_placeholder_syntax_uses_the_enclosing_script_context() {
+    for source in ["`head${yield 1}tail`", "'use strict'; `head${yield 1}tail`"] {
+        let error = parse(source).expect_err(source);
+        assert!(error.known_syntax, "{source}: {error:?}");
+    }
+}

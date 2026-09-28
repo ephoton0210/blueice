@@ -6,7 +6,8 @@
 
 The test suite is deliberately never filtered by source path: any integration
 test may exercise the requested file. Each invocation clears the previous LLVM
-execution profiles while reusing Cargo's instrumented build artifacts.
+execution profiles while reusing Cargo's instrumented build artifacts. On
+Linux, disposable DWARF sections are stripped from reusable test executables.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import date
 from pathlib import Path
 
@@ -38,9 +40,10 @@ LINUX_REPORT = (
 )
 METRICS = ("lines", "functions", "regions")
 TEST_GROWTH_LIMIT = 16 * 1024**3
-TEST_TARGET_LIMIT = 140 * 1024**3
+TEST_TARGET_LIMIT = 64 * 1024**3
 HOST_GROWTH_LIMIT = 16 * 1024**3
 HOST_FREE_FLOOR = 20 * 1024**3
+TEST_RECLAIM_THRESHOLD = 4 * 1024**3
 
 # Files without executable coverage targets are audited here. An unexpected
 # uninstrumented source file is an error rather than a silently omitted row.
@@ -296,7 +299,8 @@ def report_section(files: dict[Path, dict], totals: dict, update_option: str) ->
         "This measurement cleared prior LLVM execution profiles, reused instrumented Cargo "
         "build artifacts, ran the complete default BlueJS Rust test suite, "
         "exported fresh per-file JSON and source-line text, and released raw "
-        "profiles and incremental compilation caches afterward. "
+        "profiles and incremental compilation caches afterward. On Linux, "
+        "test-binary DWARF was removed while retaining the coverage maps. "
         "The opt-in Node "
         "oracle and external full Test262 runner were not included. "
         "Workspace coverage was not remeasured at this revision."
@@ -420,6 +424,68 @@ def prune_superseded_test_executables(target: Path) -> None:
                     path.unlink()
 
 
+def strip_test_binary_debug(target: Path, *, min_age_seconds: int = 0) -> None:
+    """Release Linux DWARF while keeping test binaries and LLVM coverage maps."""
+    if platform.system() != "Linux":
+        return
+    saved = 0
+    stripped = 0
+    for deps in (target / "llvm-cov-target/debug/deps", target / "debug/deps"):
+        if not deps.is_dir():
+            continue
+        for path in deps.iterdir():
+            try:
+                snapshot = path.stat()
+            except FileNotFoundError:
+                continue
+            if (
+                not re.fullmatch(r"[^/]+-[0-9a-f]{16}", path.name)
+                or not stat.S_ISREG(snapshot.st_mode)
+                or not stat.S_IMODE(snapshot.st_mode) & 0o111
+                or time.time_ns() - snapshot.st_mtime_ns < min_age_seconds * 1_000_000_000
+            ):
+                continue
+            sections = subprocess.run(
+                ["readelf", "--section-headers", "--wide", str(path)],
+                capture_output=True,
+                text=True,
+            )
+            if sections.returncode:
+                continue
+            if ".debug_info" not in sections.stdout:
+                continue
+            try:
+                current = path.stat()
+            except FileNotFoundError:
+                continue
+            if (current.st_size, current.st_mtime_ns) != (
+                snapshot.st_size,
+                snapshot.st_mtime_ns,
+            ):
+                continue
+            before = snapshot.st_size
+            result = subprocess.run(
+                ["strip", "--strip-debug", str(path)], capture_output=True, text=True
+            )
+            if result.returncode:
+                if any(
+                    transient in result.stderr
+                    for transient in (
+                        "Text file busy",
+                        "file truncated",
+                        "file format not recognized",
+                    )
+                ):
+                    continue
+                raise RuntimeError(
+                    f"could not strip test binary {path}: {result.stderr.strip()}"
+                )
+            saved += before - path.stat().st_size
+            stripped += 1
+    if stripped:
+        print(f"Released {saved / 1024**3:.1f} GiB of test DWARF from {stripped} binaries")
+
+
 def cargo_target() -> Path:
     target = Path(os.environ.get("CARGO_TARGET_DIR", REPO_ROOT / "target"))
     return (target if target.is_absolute() else REPO_ROOT / target).resolve()
@@ -472,6 +538,8 @@ def run_bounded_command(
     poll_interval: float = 5,
 ) -> None:
     """Stop a test and its children before target or host growth exceeds budget."""
+    if target.is_relative_to(cwd):
+        strip_test_binary_debug(target)
     starting_size = target_size_bytes(target)
     if starting_size > target_limit:
         raise RuntimeError("Cargo target already exceeds the test disk limit")
@@ -494,6 +562,16 @@ def run_bounded_command(
                 returncode = None
             growth = target_size_bytes(target) - starting_size
             free = shutil.disk_usage(cwd).free
+            if (
+                returncode is None
+                and target.is_relative_to(cwd)
+                and TEST_RECLAIM_THRESHOLD <= growth <= growth_limit
+                and starting_free - free <= host_growth_limit
+                and free >= free_floor
+            ):
+                strip_test_binary_debug(target, min_age_seconds=5)
+                growth = target_size_bytes(target) - starting_size
+                free = shutil.disk_usage(cwd).free
             if (
                 growth > growth_limit
                 or starting_size + growth > target_limit
@@ -575,6 +653,7 @@ def run_coverage() -> tuple[dict[Path, dict], dict]:
                         if path.exists():
                             shutil.rmtree(path)
                     prune_superseded_test_executables(target)
+                    strip_test_binary_debug(target)
 
 
 def main(argv: list[str] | None = None) -> int:

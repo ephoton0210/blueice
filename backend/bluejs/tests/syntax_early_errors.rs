@@ -56,6 +56,42 @@ fn no_line_terminator_may_precede_an_arrow() {
 }
 
 #[test]
+fn function_declarations_and_methods_require_a_body() {
+    assert_all_rejected(&[
+        "function missing()",
+        "async function missing()",
+        "function* missing()",
+        "({ missing() })",
+        "class C { missing() }",
+    ]);
+}
+
+#[test]
+fn malformed_private_name_tokens_are_known_syntax_errors() {
+    let error = parse("#").expect_err("a standalone private-name marker is invalid");
+    assert!(error.known_syntax, "{error:?}");
+}
+
+#[test]
+fn only_unescaped_bare_string_statements_are_use_strict_directives() {
+    assert_all_rejected(&["'use strict'; with({}) {}"]);
+    assert_all_accepted(&[
+        "('use strict'); with({}) {}",
+        "'use\\u0020strict'; with({}) {}",
+    ]);
+}
+
+#[test]
+fn script_super_and_invalid_for_in_heads_are_rejected() {
+    let super_error = parse("super.value").expect_err("super is invalid in script code");
+    assert!(super_error.known_syntax, "{super_error:?}");
+
+    let for_error =
+        parse("for (1 in object) ;").expect_err("a literal is not an assignment target");
+    assert!(for_error.known_syntax, "{for_error:?}");
+}
+
+#[test]
 fn yield_is_not_an_operand_of_a_binary_or_unary_operator() {
     assert_all_rejected(&[
         "function* g() { yield 3 + yield 4; }",

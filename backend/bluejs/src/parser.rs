@@ -643,17 +643,14 @@ impl Parser {
         }
     }
 
-    /// A token the grammar cannot accept at this point. Every production the
-    /// parser implements is complete for its goal, so a token that fails to
-    /// match a mandatory position is a specified SyntaxError. Only a lexical
-    /// placeholder for a construct this engine does not scan (see
-    /// `Token::Invalid`) stays unclassified, because the source may be valid.
+    /// A token the grammar cannot accept at this point. The tokenizer now
+    /// emits `Token::Invalid` only for malformed lexical input; grammar
+    /// productions with an unsupported valid form mark that error explicitly.
     fn error(&self, message: impl Into<String>) -> ParseError {
-        let known_syntax = !matches!(self.peek(), Token::Invalid(message) if message.contains("not supported") || message.contains("unexpected character '#'"));
         ParseError {
             message: format!("{} (found {:?})", message.into(), self.peek()),
             resource: None,
-            known_syntax,
+            known_syntax: true,
         }
     }
 
@@ -690,10 +687,7 @@ impl Parser {
         }
         let token = &self.tokens[start];
         let is_directive = matches!(&statement, Stmt::Expr(Expr::String(_)))
-            && matches!(token.token, Token::String(_))
-            && (self.pos == start + 1
-                || (self.pos == start + 2
-                    && matches!(self.tokens[start + 1].token, Token::Punct(Punct::Semicolon))));
+            && matches!(token.token, Token::String(_));
         if !is_directive {
             prologue.open = false;
         } else {

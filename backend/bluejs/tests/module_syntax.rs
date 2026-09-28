@@ -47,6 +47,23 @@ fn module_declarations_reject_nonbindings_and_ill_formed_export_names() {
 }
 
 #[test]
+fn module_specifiers_and_export_names_reject_legacy_octal_escapes() {
+    for source in [
+        "import '\\1';",
+        "import value from '\\8';",
+        "export { value as '\\1' }; const value = 1;",
+        "export * as '\\8' from './dependency.js';",
+    ] {
+        assert_module_syntax_error(source);
+    }
+}
+
+#[test]
+fn an_incomplete_import_reports_a_syntax_error_at_eof() {
+    assert_module_syntax_error("import");
+}
+
+#[test]
 fn contextual_keywords_in_import_and_export_declarations_reject_escapes() {
     for source in [
         "import {a \\u0061s b} from './m.js';",

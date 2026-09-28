@@ -6,6 +6,8 @@
 
 import importlib.util
 import json
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -225,6 +227,36 @@ class CoverageFileTests(unittest.TestCase):
                 free_floor=0,
                 poll_interval=0.05,
             )
+
+    @unittest.skipUnless(
+        sys.platform.startswith("linux") and shutil.which("readelf") and shutil.which("strip"),
+        "Linux ELF tools are required",
+    )
+    def test_releases_debug_data_without_discarding_a_reusable_executable(self):
+        deps = self.repo / "target/debug/deps"
+        deps.mkdir(parents=True)
+        source = self.repo / "probe.rs"
+        source.write_text('fn main() { print!("ready"); }\n')
+        binary = deps / "probe-0123456789abcdef"
+        subprocess.run(["rustc", "-g", str(source), "-o", str(binary)], check=True)
+        before = binary.stat().st_size
+        target = self.repo / "target"
+        target_limit = coverage_file.target_size_bytes(target) - 4096
+        sections = ["readelf", "--section-headers", "--wide", str(binary)]
+        self.assertIn(".debug_info", subprocess.check_output(sections, text=True))
+
+        coverage_file.run_bounded_command(
+            [sys.executable, "-c", "pass"],
+            cwd=self.repo,
+            target=target,
+            target_limit=target_limit,
+            free_floor=0,
+        )
+
+        self.assertLess(binary.stat().st_size, before)
+        self.assertLessEqual(coverage_file.target_size_bytes(target), target_limit)
+        self.assertNotIn(".debug_info", subprocess.check_output(sections, text=True))
+        self.assertEqual(subprocess.check_output([str(binary)]), b"ready")
 
     def test_disk_budget_rejects_an_oversized_existing_target(self):
         target = self.repo / "target"
