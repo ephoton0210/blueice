@@ -5053,6 +5053,23 @@ a following simple method. The BlueTS crate suite, workspace all-target
 Clippy with warnings denied, rustfmt, and whitespace checks pass; the single
 guarded Cargo target remains about 13 GiB with about 716 GiB free.
 
+### J.3.1.2.2 Constructor syntax and body items
+
+The existing function parameter parser is now shared with constructor
+members, preserving its bounded type, optional/default, and erasure behavior
+without a second grammar. A constructor shell retains parsed parameters and
+either a signature-only marker or structured function-body items; its member,
+parameter, and local-variable spans remain original source ranges. The
+parser rejects incomplete parameter/body forms and a constructor return-type
+annotation. This step does not make a class executable: the checker still
+returns `UnsupportedSyntax` with no BlueTSC output, and the direct bridge
+refuses the class. Public parser and compile regressions cover retained
+annotations, two erasure positions, body items, overload signatures, empty
+bodies, malformed shapes, and no output. The full BlueTS crate and bridge
+library suites, workspace all-target Clippy, rustfmt, and whitespace checks
+pass in the shared disk-budgeted target; the final body-span assertion has a
+focused passing rerun.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

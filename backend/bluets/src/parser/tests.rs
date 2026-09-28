@@ -222,6 +222,85 @@ fn partitions_constructor_method_and_opaque_class_members_at_source_spans() {
 }
 
 #[test]
+fn parses_constructor_parameters_and_body_without_accepting_class_execution() {
+    let source = "class Counter { constructor(value: number) { const next: number = value; return; } read() {} }";
+    let module = parse_module("memory:///counter.ts", source).unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    let constructor = class.members[0].constructor.as_ref().unwrap();
+    assert_eq!(constructor.parameters.len(), 1);
+    assert_eq!(constructor.parameters[0].name, "value");
+    assert_eq!(constructor.parameters[0].annotation, Some(Type::Number));
+    assert_eq!(
+        &source[constructor.parameters[0].span.start..constructor.parameters[0].span.end],
+        "value: number"
+    );
+    assert_eq!(constructor.body.as_ref().unwrap().len(), 2);
+    assert!(matches!(
+        constructor.body.as_ref().unwrap()[0],
+        FunctionBodyItem::Variable(_)
+    ));
+    assert!(matches!(
+        constructor.body.as_ref().unwrap()[1],
+        FunctionBodyItem::Return { .. }
+    ));
+    let FunctionBodyItem::Variable(local) = &constructor.body.as_ref().unwrap()[0] else {
+        unreachable!();
+    };
+    assert_eq!(
+        &source[local.span.start..local.span.end],
+        "const next: number = value;"
+    );
+    assert_eq!(
+        &source[constructor.span.start..constructor.span.end],
+        "constructor(value: number) { const next: number = value; return; }"
+    );
+    assert_eq!(module.edits.len(), 2);
+    assert!(class.members[1].constructor.is_none());
+    let compilation = crate::compile(
+        "memory:///counter.ts",
+        &crate::MapLoader::from([crate::ModuleSource::new("memory:///counter.ts", source)]),
+        crate::CompilerOptions::default(),
+    );
+    assert!(compilation.has_errors());
+    assert!(compilation.output.is_none());
+}
+
+#[test]
+fn constructor_signatures_and_incomplete_forms_keep_the_parser_closed() {
+    let module = parse_module(
+        "memory:///constructors.ts",
+        "class Box { constructor(value: number); constructor(value: number) {} }",
+    )
+    .unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert!(class.members[0]
+        .constructor
+        .as_ref()
+        .unwrap()
+        .body
+        .is_none());
+    assert_eq!(
+        class.members[1].constructor.as_ref().unwrap().body,
+        Some(vec![])
+    );
+    for source in [
+        "class Bad { constructor(value: ) {} }",
+        "class Bad { constructor(value: number): number {} }",
+        "class Bad { constructor(value: number) }",
+        "class Bad { constructor(value: number {} }",
+    ] {
+        assert!(
+            parse_module("memory:///bad.ts", source).is_err(),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn rejects_tsx_modules_even_when_they_contain_no_tag_tokens() {
     let diagnostics =
         parse_module("memory:///view.tsx", "const label: string = 'BlueIce';").unwrap_err();

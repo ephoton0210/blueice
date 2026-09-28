@@ -57,7 +57,23 @@ impl Parser {
             self.tokens[closing].end,
         );
         let body = self.tokens[opening + 1..closing].to_vec();
-        let members = class_member_shells(&self.id, &body);
+        let mut members = class_member_shells(&self.id, &body);
+        for member in &mut members {
+            if member.kind == ClassMemberKind::Constructor {
+                self.parse_class_constructor(opening + 1 + member.token_start, member);
+            } else if member.kind == ClassMemberKind::Opaque
+                && body[member.token_start].is("constructor")
+                && body
+                    .get(member.token_start + 1)
+                    .is_some_and(|token| token.is("("))
+            {
+                self.error_at(
+                    member.span.clone(),
+                    DiagnosticCode::ParseError,
+                    "incomplete constructor declaration",
+                );
+            }
+        }
         let span = SourceSpan::new(&self.id, start, self.tokens[closing].end);
         let name_span = name_token.span(&self.id);
         self.index = closing + 1;
@@ -72,6 +88,37 @@ impl Parser {
             exported,
             span,
         }));
+    }
+
+    fn parse_class_constructor(&mut self, start: usize, member: &mut ClassMemberShell) {
+        self.index = start + 1;
+        let parameters = self.parse_parameters();
+        let body = if self.consume("{") {
+            let body_start = self.previous().start;
+            let mut body = Vec::new();
+            let mut returns = Vec::new();
+            let mut locals = Vec::new();
+            self.parse_function_body(body_start, &mut body, &mut returns, &mut locals);
+            Some(body)
+        } else if self.consume(";") {
+            None
+        } else {
+            self.error_here(DiagnosticCode::ParseError, "expected a constructor body");
+            return;
+        };
+        if self.previous().end != member.span.end {
+            self.error_at(
+                member.span.clone(),
+                DiagnosticCode::ParseError,
+                "constructor body did not match its source boundary",
+            );
+            return;
+        }
+        member.constructor = Some(ClassConstructor {
+            parameters,
+            body,
+            span: member.span.clone(),
+        });
     }
 }
 
@@ -160,5 +207,6 @@ fn class_member_shell(
         token_start: start,
         token_end: end,
         span: SourceSpan::new(module, tokens[start].start, tokens[end - 1].end),
+        constructor: None,
     }
 }

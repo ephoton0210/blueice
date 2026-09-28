@@ -167,6 +167,18 @@ pub struct ClassMemberShell {
     pub token_start: usize,
     pub token_end: usize,
     pub span: SourceSpan,
+    /// Present only after the bounded constructor grammar has parsed this
+    /// shell. Method shells remain structural until the next class leaf.
+    pub constructor: Option<ClassConstructor>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassConstructor {
+    pub parameters: Vec<Parameter>,
+    /// `None` denotes a signature declaration; `Some` retains body items,
+    /// including an empty implementation body.
+    pub body: Option<Vec<FunctionBodyItem>>,
+    pub span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

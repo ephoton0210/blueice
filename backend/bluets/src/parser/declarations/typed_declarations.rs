@@ -190,6 +190,66 @@ impl Parser {
                 replacement: String::new(),
             });
         }
+        let parameters = self.parse_parameters();
+        let return_start = self.current().start;
+        let return_type = if self.consume(":") {
+            let value = self.parse_type_until(&["{", ";"]);
+            let return_end = self.current().start;
+            self.edits.push(TextEdit {
+                start: return_start,
+                end: return_end,
+                replacement: String::new(),
+            });
+            Some(value)
+        } else {
+            None
+        };
+
+        let mut body = Vec::new();
+        let mut returns = Vec::new();
+        let mut locals = Vec::new();
+        let body_open = self.peek("{").then(|| self.current().start);
+        let overload = if self.consume("{") {
+            let body_start = self.previous().start;
+            self.parse_function_body(body_start, &mut body, &mut returns, &mut locals);
+            false
+        } else if self.consume(";") {
+            !declared
+        } else if !declared {
+            self.error_here(DiagnosticCode::ParseError, "expected a function body");
+            false
+        } else {
+            self.expect(";");
+            false
+        };
+        let end = self.previous().end;
+        if declared || overload {
+            self.edits.push(TextEdit {
+                start,
+                end,
+                replacement: String::new(),
+            });
+        }
+        self.declarations
+            .push(Declaration::Function(FunctionDeclaration {
+                name,
+                async_function: async_start,
+                body_open,
+                type_parameters,
+                parameters,
+                return_type,
+                body,
+                returns,
+                locals,
+                exported,
+                default_export,
+                declared,
+                overload,
+                span: SourceSpan::new(&self.id, start, end),
+            }));
+    }
+
+    pub(in crate::parser::implementation) fn parse_parameters(&mut self) -> Vec<Parameter> {
         self.expect("(");
         let mut parameters = Vec::new();
         while !self.at_eof() && !self.consume(")") {
@@ -252,61 +312,6 @@ impl Parser {
                 break;
             }
         }
-        let return_start = self.current().start;
-        let return_type = if self.consume(":") {
-            let value = self.parse_type_until(&["{", ";"]);
-            let return_end = self.current().start;
-            self.edits.push(TextEdit {
-                start: return_start,
-                end: return_end,
-                replacement: String::new(),
-            });
-            Some(value)
-        } else {
-            None
-        };
-
-        let mut body = Vec::new();
-        let mut returns = Vec::new();
-        let mut locals = Vec::new();
-        let body_open = self.peek("{").then(|| self.current().start);
-        let overload = if self.consume("{") {
-            let body_start = self.previous().start;
-            self.parse_function_body(body_start, &mut body, &mut returns, &mut locals);
-            false
-        } else if self.consume(";") {
-            !declared
-        } else if !declared {
-            self.error_here(DiagnosticCode::ParseError, "expected a function body");
-            false
-        } else {
-            self.expect(";");
-            false
-        };
-        let end = self.previous().end;
-        if declared || overload {
-            self.edits.push(TextEdit {
-                start,
-                end,
-                replacement: String::new(),
-            });
-        }
-        self.declarations
-            .push(Declaration::Function(FunctionDeclaration {
-                name,
-                async_function: async_start,
-                body_open,
-                type_parameters,
-                parameters,
-                return_type,
-                body,
-                returns,
-                locals,
-                exported,
-                default_export,
-                declared,
-                overload,
-                span: SourceSpan::new(&self.id, start, end),
-            }));
+        parameters
     }
 }

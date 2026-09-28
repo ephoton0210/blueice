@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.2.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.2.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -864,8 +864,15 @@ exists. A passed first form does not close its whole feature family.
         method. The BlueTS crate suite, workspace all-target Clippy,
         rustfmt, and whitespace checks pass in the same 13 GiB guarded
         target with about 716 GiB host space free.
-      - [ ] **J.3.1.2.2** Parse constructor parameters and body items with
-        original spans and type-erasure edits; reject incomplete forms.
+      - [x] **J.3.1.2.2** Parse constructor parameters and body items with
+        original spans and type-erasure edits; reject incomplete forms. The
+        function and constructor parser now share one parameter grammar.
+        Class constructors retain checked parameter syntax, structured body
+        items or signature-only status, and exact source spans while class
+        checking remains fail-closed. Public tests cover local/parameter
+        erasure positions, empty bodies, signatures, and malformed forms.
+        BlueTS and bridge crate suites, workspace all-target Clippy,
+        rustfmt, and whitespace checks pass in the shared guarded target.
       - [ ] **J.3.1.2.3** Parse method parameters, return types, and bodies,
         including accepted overload signatures, with the same provenance
         and explicit unsupported-shape tests.
