@@ -57,6 +57,7 @@ impl Parser {
             self.tokens[closing].end,
         );
         let body = self.tokens[opening + 1..closing].to_vec();
+        let members = class_member_shells(&self.id, &body);
         let span = SourceSpan::new(&self.id, start, self.tokens[closing].end);
         let name_span = name_token.span(&self.id);
         self.index = closing + 1;
@@ -66,9 +67,98 @@ impl Parser {
             extends_name: heritage.as_ref().map(|token| token.text.clone()),
             extends_span: heritage.as_ref().map(|token| token.span(&self.id)),
             body,
+            members,
             body_span,
             exported,
             span,
         }));
+    }
+}
+
+fn class_member_shells(module: &str, tokens: &[Token]) -> Vec<ClassMemberShell> {
+    let mut members = Vec::new();
+    let mut index = 0;
+    while index < tokens.len() {
+        if tokens[index].is(";") {
+            index += 1;
+            continue;
+        }
+        let start = index;
+        let name_token = &tokens[index];
+        let method_head = matches!(name_token.kind, TokenKind::Identifier | TokenKind::Keyword)
+            && tokens.get(index + 1).is_some_and(|token| token.is("("));
+        if method_head {
+            if let Some(parameters_end) =
+                matching_closing_delimiter(tokens, index + 1, tokens.len(), "(", ")")
+            {
+                let mut after_signature = parameters_end + 1;
+                if tokens
+                    .get(after_signature)
+                    .is_some_and(|token| token.is(":"))
+                    && tokens.get(after_signature + 1).is_some_and(|token| {
+                        matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword)
+                    })
+                {
+                    after_signature += 2;
+                }
+                let member_end = match tokens.get(after_signature) {
+                    Some(token) if token.is("{") => {
+                        matching_closing_delimiter(tokens, after_signature, tokens.len(), "{", "}")
+                            .map(|end| end + 1)
+                    }
+                    Some(token) if token.is(";") => Some(after_signature + 1),
+                    _ => None,
+                };
+                if let Some(end) = member_end {
+                    members.push(class_member_shell(
+                        module,
+                        tokens,
+                        start,
+                        end,
+                        if name_token.is("constructor") {
+                            ClassMemberKind::Constructor
+                        } else {
+                            ClassMemberKind::Method
+                        },
+                        Some(name_token.text.clone()),
+                    ));
+                    index = end;
+                    continue;
+                }
+            }
+        }
+        let delimiter = find_balanced_delimiter(tokens, index, tokens.len(), &[";"]);
+        let end = if delimiter < tokens.len() {
+            delimiter + 1
+        } else {
+            tokens.len()
+        };
+        members.push(class_member_shell(
+            module,
+            tokens,
+            start,
+            end,
+            ClassMemberKind::Opaque,
+            None,
+        ));
+        index = end;
+    }
+    members
+}
+
+fn class_member_shell(
+    module: &str,
+    tokens: &[Token],
+    start: usize,
+    end: usize,
+    kind: ClassMemberKind,
+    name: Option<String>,
+) -> ClassMemberShell {
+    ClassMemberShell {
+        kind,
+        name,
+        token_start: start,
+        token_end: end,
+        span: SourceSpan::new(module, tokens[start].start, tokens[end - 1].end),
     }
 }

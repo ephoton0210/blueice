@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.2.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -855,6 +855,20 @@ exists. A passed first form does not close its whole feature family.
       13 GiB with about 716 GiB free on the host.
     - [ ] **J.3.1.2** Parse constructor and method signatures/bodies as
       structured members, retaining type-erasure edits and original spans.
+      - [x] **J.3.1.2.1** Partition bounded class-body tokens into exact
+        constructor/method member shells with original spans; retain
+        unsupported members as opaque and keep the checker fail-closed.
+        Constructor and simple named-method shells now index the original
+        class token vector without cloning each body. A public parser test
+        proves constructor/method spans and an opaque field followed by a
+        method. The BlueTS crate suite, workspace all-target Clippy,
+        rustfmt, and whitespace checks pass in the same 13 GiB guarded
+        target with about 716 GiB host space free.
+      - [ ] **J.3.1.2.2** Parse constructor parameters and body items with
+        original spans and type-erasure edits; reject incomplete forms.
+      - [ ] **J.3.1.2.3** Parse method parameters, return types, and bodies,
+        including accepted overload signatures, with the same provenance
+        and explicit unsupported-shape tests.
     - [ ] **J.3.1.3** Bind class instance/static types and check constructor,
       method, inheritance, `this`, and `super` uses against pinned `tsc`.
     - [ ] **J.3.1.4** Emit checked class JavaScript and declarations from the

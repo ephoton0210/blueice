@@ -187,6 +187,41 @@ fn class_header_errors_and_unimplemented_forms_fail_closed() {
 }
 
 #[test]
+fn partitions_constructor_method_and_opaque_class_members_at_source_spans() {
+    let source = "class Counter { constructor(value: number) { this.value = value; } read(): number { return this.value; } }";
+    let module = parse_module("memory:///counter.ts", source).unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members.len(), 2);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Constructor);
+    assert_eq!(class.members[0].name.as_deref(), Some("constructor"));
+    assert_eq!(class.members[1].kind, ClassMemberKind::Method);
+    assert_eq!(class.members[1].name.as_deref(), Some("read"));
+    for member in &class.members {
+        let tokens = &class.body[member.token_start..member.token_end];
+        assert_eq!(member.span.start, tokens[0].start);
+        assert_eq!(member.span.end, tokens.last().unwrap().end);
+    }
+    assert_eq!(
+        &source[class.members[1].span.start..class.members[1].span.end],
+        "read(): number { return this.value; }"
+    );
+
+    let module = parse_module(
+        "memory:///other.ts",
+        "class Other { field = 1; method() {} }",
+    )
+    .unwrap();
+    let Declaration::Class(class) = &module.declarations[0] else {
+        panic!("expected a class");
+    };
+    assert_eq!(class.members.len(), 2);
+    assert_eq!(class.members[0].kind, ClassMemberKind::Opaque);
+    assert_eq!(class.members[1].kind, ClassMemberKind::Method);
+}
+
+#[test]
 fn rejects_tsx_modules_even_when_they_contain_no_tag_tokens() {
     let diagnostics =
         parse_module("memory:///view.tsx", "const label: string = 'BlueIce';").unwrap_err();

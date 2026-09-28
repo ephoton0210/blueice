@@ -143,8 +143,29 @@ pub struct ClassDeclaration {
     pub extends_name: Option<String>,
     pub extends_span: Option<SourceSpan>,
     pub body: Vec<Token>,
+    /// Token-indexed member boundaries within `body`; opaque members remain
+    /// unavailable to the checker and direct bridge.
+    pub members: Vec<ClassMemberShell>,
     pub body_span: SourceSpan,
     pub exported: bool,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClassMemberKind {
+    Constructor,
+    Method,
+    Opaque,
+}
+
+/// One class member's original token and byte range. The token offsets index
+/// `ClassDeclaration::body` and avoid cloning a potentially large body again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassMemberShell {
+    pub kind: ClassMemberKind,
+    pub name: Option<String>,
+    pub token_start: usize,
+    pub token_end: usize,
     pub span: SourceSpan,
 }
 

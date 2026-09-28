@@ -5038,6 +5038,21 @@ access, workspace all-target Clippy, and rustfmt pass with one disk-budgeted
 Cargo target of about 13 GiB and about 716 GiB free. A final focused parser
 test covers the added computed-heritage refusal after the workspace run.
 
+### J.3.1.2.1 Class member boundaries
+
+The class shell now partitions its original body tokens into exact member
+ranges. A `constructor(...) { ... }` or simple named `method(...) { ... }`
+gets a constructor/method tag and original byte span; a one-token return
+annotation and signature semicolon are retained as part of the same range.
+Unimplemented fields and malformed or richer member forms remain opaque.
+Each shell stores indexes into the class's bounded token vector rather than
+another token copy. This is a parsing aid only: the checker still refuses
+every class before BlueTSC emission or direct execution. A public parser
+regression verifies two member spans and that an opaque field does not hide
+a following simple method. The BlueTS crate suite, workspace all-target
+Clippy with warnings denied, rustfmt, and whitespace checks pass; the single
+guarded Cargo target remains about 13 GiB with about 716 GiB free.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
