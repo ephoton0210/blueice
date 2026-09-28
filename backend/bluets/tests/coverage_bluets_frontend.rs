@@ -2534,6 +2534,60 @@ fn inherited_trailing_tuple_rest_overrides_compare_repeated_tail() {
 }
 
 #[test]
+fn both_trailing_tuple_rest_overrides_align_prefixes_and_tails() {
+    let valid = include_str!("fixtures/typescript_oracle/class-override-both-tail-valid/main.ts");
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
+        CompilerOptions::default(),
+    );
+    assert!(accepted.output.is_none());
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, member) in [
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-override-both-tail-element-error/main.ts"
+            ),
+            "read(...parts: [number, ...boolean[]]): number { return 1; }",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-override-both-tail-prefix-error/main.ts"
+            ),
+            "static parse(...parts: [number, boolean, ...boolean[]]): number { return parts[0]; }",
+        ),
+    ] {
+        let compilation = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+        assert_eq!(failures[0].span.module, ENTRY);
+        assert_eq!(
+            &source[failures[0].span.start..failures[0].span.end],
+            member,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
 fn class_construction_scan_obeys_the_type_expansion_budget() {
     let source =
         "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";

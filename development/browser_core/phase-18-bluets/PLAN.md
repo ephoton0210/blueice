@@ -6083,6 +6083,22 @@ incompatible instance and static element types at the original member spans
 without output. Four pinned TypeScript 5.9.3 `--noEmit` cases agree on
 acceptance and TS2416/TS2417 lines.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.3.3 Both-side trailing tuple rest overrides
+
+The override checker now admits trailing array-typed tuple rests on both
+sides. It aligns each finite fixed or tuple-prefix position with the other
+side's position or repeated tail, then compares the two repeated tail types
+once. Both signatures have unbounded maximum arity, so required prefixes do
+not impose a fixed upper arity cap; their aligned types must still agree
+under the existing bivariant method-parameter relation, and the result
+remains covariant. Prefixes may be shifted by ordinary fixed parameters.
+
+Public checked-compile cases cover accepted instance and shifted static
+forms, plus rejected tail and static prefix element mismatches at original
+member spans with no output. Three pinned TypeScript 5.9.3 `--noEmit` cases
+agree on acceptance and TS2416/TS2417 lines. Nontrailing tuple rests remain
+outside this relation until their separate leaves.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

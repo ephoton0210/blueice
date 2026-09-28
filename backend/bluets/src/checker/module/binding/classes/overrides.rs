@@ -47,6 +47,10 @@ enum RestShape {
         derived_fixed: usize,
         inherited_fixed: usize,
     },
+    BothTrailingTuples {
+        derived_fixed: usize,
+        inherited_fixed: usize,
+    },
 }
 
 impl ModuleChecker<'_> {
@@ -106,6 +110,7 @@ impl ModuleChecker<'_> {
                     RestShape::DerivedTuple { .. }
                         | RestShape::DerivedTrailingTuple { .. }
                         | RestShape::BothTuples { .. }
+                        | RestShape::BothTrailingTuples { .. }
                 ) {
                     let Some(Type::Tuple(elements)) = derived
                         .parameters
@@ -144,6 +149,7 @@ impl ModuleChecker<'_> {
                 RestShape::MatchingArrays
                     | RestShape::ShiftedArrays { .. }
                     | RestShape::InheritedTrailingTuple { .. }
+                    | RestShape::BothTrailingTuples { .. }
             ) || matches!(
                 rest_shape,
                 RestShape::DerivedTuple {
@@ -565,6 +571,68 @@ impl ModuleChecker<'_> {
                             )
                         })
                     }
+                    RestShape::BothTrailingTuples {
+                        derived_fixed,
+                        inherited_fixed,
+                    } => {
+                        let Some(Type::Tuple(derived_elements)) = derived
+                            .parameters
+                            .last()
+                            .and_then(|parameter| parameter.annotation.as_ref())
+                        else {
+                            unreachable!("rest shape requires a tuple annotation")
+                        };
+                        let Some(Type::Tuple(inherited_elements)) = inherited
+                            .parameters
+                            .last()
+                            .and_then(|parameter| parameter.annotation.as_ref())
+                        else {
+                            unreachable!("rest shape requires a tuple annotation")
+                        };
+                        let (derived_tail, derived_prefix) = derived_elements
+                            .split_last()
+                            .expect("trailing tuple rest requires a rest element");
+                        let (inherited_tail, inherited_prefix) = inherited_elements
+                            .split_last()
+                            .expect("trailing tuple rest requires a rest element");
+                        let derived_tail_type = derived_tail.indexed_type();
+                        let inherited_tail_type = inherited_tail.indexed_type();
+                        let positions = (derived_fixed + derived_prefix.len())
+                            .max(inherited_fixed + inherited_prefix.len());
+                        (0..positions).all(|index| {
+                            let derived_type = if index < derived_fixed {
+                                derived.parameters[index]
+                                    .annotation
+                                    .as_ref()
+                                    .unwrap_or(&Type::Unknown)
+                            } else if index - derived_fixed < derived_prefix.len() {
+                                &derived_prefix[index - derived_fixed].value_type()
+                            } else {
+                                &derived_tail_type
+                            };
+                            let inherited_type = if index < inherited_fixed {
+                                inherited.parameters[index]
+                                    .annotation
+                                    .as_ref()
+                                    .unwrap_or(&Type::Unknown)
+                            } else if index - inherited_fixed < inherited_prefix.len() {
+                                &inherited_prefix[index - inherited_fixed].value_type()
+                            } else {
+                                &inherited_tail_type
+                            };
+                            parameter_types_compatible(
+                                derived_type,
+                                inherited_type,
+                                &self.types,
+                                &mut budget,
+                            )
+                        }) && parameter_types_compatible(
+                            &derived_tail_type,
+                            &inherited_tail_type,
+                            &self.types,
+                            &mut budget,
+                        )
+                    }
                 };
             let compatible = parameters_compatible
                 && is_assignable(
@@ -687,7 +755,8 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
                 && matches!(parameter.annotation.as_ref(), Some(Type::Tuple(elements)) if elements.last().is_some_and(|element| element.rest))
         })
             || derived.last().is_some_and(|parameter| {
-                parameter.rest && matches!(parameter.annotation.as_ref(), Some(Type::Tuple(_)))
+                parameter.rest
+                    && matches!(parameter.annotation.as_ref(), Some(Type::Tuple(elements)) if !elements.last().is_some_and(|element| element.rest))
             }))
     {
         return None;
@@ -743,6 +812,15 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
             parameter.rest && matches!(parameter.annotation.as_ref(), Some(Type::Array(_)))
         });
         if elements.last().is_some_and(|element| element.rest) {
+            if inherited_variadic {
+                let (inherited_rest, inherited_fixed) = inherited.split_last()?;
+                return (inherited_rest.rest
+                    && !inherited_fixed.iter().any(|parameter| parameter.rest))
+                .then_some(RestShape::BothTrailingTuples {
+                    derived_fixed: derived_fixed.len(),
+                    inherited_fixed: inherited_fixed.len(),
+                });
+            }
             if inherited_has_rest && !inherited_array_rest {
                 return None;
             }
