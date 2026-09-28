@@ -101,8 +101,10 @@ impl<'a> ModuleChecker<'a> {
                     tokens.first().expect("member call has a receiver").start,
                     tokens.last().expect("member call has a closing token").end,
                 );
-                let diagnostic_span = if let [base] = call.receiver {
-                    if self.is_local_class_constructor_value(&base.text, scope) {
+                let diagnostic_span = if let [receiver] = call.receiver {
+                    if self.is_local_class_constructor_value(&receiver.text, scope)
+                        || self.is_local_class_instance_type(&base)
+                    {
                         &call_span
                     } else {
                         span
@@ -156,8 +158,36 @@ impl<'a> ModuleChecker<'a> {
             tokens.first().expect("member call has a receiver").start,
             tokens.last().expect("member call has a closing token").end,
         );
+        let local_class_member = self.is_local_class_instance_type(&base)
+            || matches!(call.receiver, [receiver] if self.is_local_class_constructor_value(&receiver.text, scope));
         let (parameters, selected_overload) = match member_type {
             Type::Function { parameters, .. } => (parameters, false),
+            Type::Intersection(overloads) if matches!(call.receiver, [receiver] if self.is_local_class_constructor_value(&receiver.text, scope)) =>
+            {
+                let Some(signatures) = method_overload_signatures(&overloads) else {
+                    return;
+                };
+                match self.select_function_signature(&signatures, &actuals, None) {
+                    Ok(Some(_)) => {}
+                    Ok(None) => self.type_error(
+                        &call_span,
+                        format!(
+                            "no overload of static method {} matches the supplied argument types",
+                            call.member.text
+                        ),
+                        DiagnosticCode::TypeMismatch,
+                    ),
+                    Err(()) => self.type_error(
+                        &call_span,
+                        format!(
+                            "static method overload selection exceeds the {} generic-expansion limit",
+                            self.max_type_expansions
+                        ),
+                        DiagnosticCode::ResourceLimit,
+                    ),
+                }
+                return;
+            }
             Type::Intersection(overloads) => {
                 if !supports_callback_method_receiver(&base, &self.types, self.max_type_expansions)
                 {
@@ -230,7 +260,11 @@ impl<'a> ModuleChecker<'a> {
                 return;
             }
         };
-        let argument_span = if selected_overload { &call_span } else { span };
+        let argument_span = if selected_overload || local_class_member {
+            &call_span
+        } else {
+            span
+        };
         let required = parameters
             .iter()
             .filter(|parameter| !parameter.optional)

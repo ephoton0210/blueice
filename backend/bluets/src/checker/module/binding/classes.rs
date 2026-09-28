@@ -19,6 +19,10 @@ impl ModuleChecker<'_> {
                 .is_some_and(|value| self.values.get(name) == Some(value))
     }
 
+    pub(in crate::checker::module) fn is_local_class_instance_type(&self, value: &Type) -> bool {
+        matches!(value, Type::Named { name, .. } if self.class_constructors.contains_key(name))
+    }
+
     pub(super) fn bind_class(&mut self, class: &ClassDeclaration) {
         let existing_type = self
             .types
@@ -345,9 +349,13 @@ fn class_constructor_signatures(class: &ClassDeclaration) -> Vec<FunctionSignatu
 }
 
 fn class_instance_type(class: &ClassDeclaration) -> Type {
+    Type::Record(class_method_fields(class, false))
+}
+
+fn class_method_fields(class: &ClassDeclaration, is_static: bool) -> Vec<TypeField> {
     let mut fields = Vec::new();
     for group in &class.method_groups {
-        if group.is_static {
+        if group.is_static != is_static {
             continue;
         }
         let members = group.signature_member_indices.iter().copied().chain(
@@ -374,11 +382,11 @@ fn class_instance_type(class: &ClassDeclaration) -> Type {
             });
         }
     }
-    Type::Record(fields)
+    fields
 }
 
 fn class_constructor_side_type(class: &ClassDeclaration) -> Type {
-    Type::Record(vec![TypeField {
+    let mut fields = vec![TypeField {
         name: "prototype".to_string(),
         readonly: true,
         optional: false,
@@ -387,7 +395,9 @@ fn class_constructor_side_type(class: &ClassDeclaration) -> Type {
             arguments: Vec::new(),
         },
         span: class.name_span.clone(),
-    }])
+    }];
+    fields.extend(class_method_fields(class, true));
+    Type::Record(fields)
 }
 
 fn class_method_overload_is_compatible(

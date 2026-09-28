@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.2.3.2.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.2.3.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -990,7 +990,7 @@ exists. A passed first form does not close its whole feature family.
             BlueTS and bridge crate suites, workspace all-target Clippy,
             rustfmt, and whitespace checks pass with the reused compact
             target.
-          - [ ] **J.3.1.3.2.3.2** Parse and bind bounded static method groups;
+          - [x] **J.3.1.3.2.3.2** Parse and bind bounded static method groups;
             check their lookup and calls against the constructor side while
             rejecting static methods on an instance.
             - [x] **J.3.1.3.2.3.2.1** Parse static method signatures and
@@ -1004,10 +1004,19 @@ exists. A passed first form does not close its whole feature family.
               accepts the same grammar. BlueTS and bridge crate suites,
               workspace all-target Clippy, rustfmt, and whitespace checks
               pass with the reused compact target.
-            - [ ] **J.3.1.3.2.3.2.2** Bind static method types to the
+            - [x] **J.3.1.3.2.3.2.2** Bind static method types to the
               constructor side, validate static and instance lookup and
               calls, and compare accepted/rejected cases with pinned
-              TypeScript without admitting class output.
+              TypeScript without admitting class output. Static signatures
+              join the constructor-side record and are absent from instances.
+              Single and overloaded static calls validate arguments and infer
+              selected returns; wrong-side instance reads/calls and invalid
+              arguments report exact member-call spans. Public boundary
+              tests cover two accepted and four rejected cases and no output.
+              Six pinned TypeScript 5.9.3 `--noEmit` cases match acceptance
+              and TS2576/TS2345/TS2769 lines. BlueTS and bridge crate
+              suites, workspace all-target Clippy, rustfmt, and whitespace
+              checks pass with the reused compact target.
           - [ ] **J.3.1.3.2.3.3** Carry class instance and constructor-side
             types through closed-module exports/imports, then verify both
             member sides and call refusals against pinned TypeScript.

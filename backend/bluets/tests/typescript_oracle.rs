@@ -1146,6 +1146,46 @@ fn pinned_static_class_method_shell_matches_typescript_without_emit() {
     );
 }
 
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_static_class_binding_matches_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 6] = [
+        (
+            "static-binding",
+            include_str!("fixtures/typescript_oracle/class-static-binding/main.ts"),
+            &[],
+        ),
+        (
+            "static-overload-binding",
+            include_str!("fixtures/typescript_oracle/class-static-overload-binding/main.ts"),
+            &[],
+        ),
+        (
+            "static-wrong-instance-call",
+            include_str!("fixtures/typescript_oracle/class-static-wrong-instance-call/main.ts"),
+            &[(7, "TS2576")],
+        ),
+        (
+            "static-wrong-instance-read",
+            include_str!("fixtures/typescript_oracle/class-static-wrong-instance-read/main.ts"),
+            &[(7, "TS2576")],
+        ),
+        (
+            "static-argument-error",
+            include_str!("fixtures/typescript_oracle/class-static-argument-error/main.ts"),
+            &[(6, "TS2345")],
+        ),
+        (
+            "static-overload-error",
+            include_str!("fixtures/typescript_oracle/class-static-overload-error/main.ts"),
+            &[(10, "TS2769")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
 fn assert_pinned_no_emit_cases(tsc: &Path, cases: &[NoEmitCase]) {
     for &(name, source, expected_errors) in cases {
         let temporary = TestDirectory::new();

@@ -574,6 +574,68 @@ fn static_class_method_shells_keep_sides_and_source_spans() {
 }
 
 #[test]
+fn static_class_methods_bind_to_constructor_side_and_check_calls() {
+    for accepted in [
+        include_str!("fixtures/typescript_oracle/class-static-binding/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-static-overload-binding/main.ts"),
+    ] {
+        let compilation = compile_with_helper(accepted);
+        assert!(compilation.output.is_none());
+        assert!(
+            compilation
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{:#?}",
+            compilation.diagnostics
+        );
+    }
+
+    for (source, expected_line, expected_span) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-static-wrong-instance-call/main.ts"),
+            7,
+            "counter.read(1)",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-static-wrong-instance-read/main.ts"),
+            7,
+            "counter.read",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-static-argument-error/main.ts"),
+            6,
+            "Counter.read('text')",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-static-overload-error/main.ts"),
+            10,
+            "Converter.parse(true)",
+        ),
+    ] {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{:#?}", compilation.diagnostics);
+        let failure = failures[0];
+        assert_eq!(failure.code, DiagnosticCode::TypeMismatch);
+        assert_eq!(
+            source[..failure.span.start]
+                .bytes()
+                .filter(|byte| *byte == b'\n')
+                .count()
+                + 1,
+            expected_line
+        );
+        assert_eq!(&source[failure.span.start..failure.span.end], expected_span);
+    }
+}
+
+#[test]
 fn braced_try_catch_finally_retains_the_catch_name_bodies_and_source_span() {
     let source =
         "function f(): void { try { throw 1; } catch (caught) { throw caught; } finally { 0; } }";

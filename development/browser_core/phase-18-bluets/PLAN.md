@@ -5235,6 +5235,26 @@ workspace all-target Clippy, rustfmt, and whitespace checks pass with the
 reused compact Cargo target. Static member type binding and call checks are
 the next leaf.
 
+### J.3.1.3.2.3.2.2 Constructor-side static method types and calls
+
+Static method signatures now extend a local class's constructor-side record
+beside its typed `prototype`; the instance record retains only instance
+methods. A single static method is checked through ordinary member-call
+validation. A multi-signature static group uses the existing bounded
+function-signature selector for argument checking and return inference.
+The implementation signature remains hidden when overloads exist. A missing
+static method on an instance, a missing instance method on the constructor,
+and bad static arguments report the original member expression or call span.
+No class artifact is admitted.
+
+Public checked-compile tests cover accepted static reads, single and
+overloaded calls, return inference, wrong-side reads and calls, invalid
+arguments, exact spans, and no output. Six pinned TypeScript 5.9.3 `--noEmit`
+fixtures match the accepted forms and TS2576, TS2345, and TS2769 rejection
+lines. The BlueTS and bridge crate suites, workspace all-target Clippy,
+rustfmt, and whitespace checks pass using the reused compact Cargo target.
+Closed-module class binding is the remaining J.3.1.3.2.3 leaf.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

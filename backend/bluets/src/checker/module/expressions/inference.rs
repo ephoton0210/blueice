@@ -114,6 +114,16 @@ impl<'a> ModuleChecker<'a> {
             if let PropertyType::Found { value, .. } = found {
                 match value {
                     Type::Function { result, .. } => return *result,
+                    Type::Intersection(overloads) if matches!(call.receiver, [receiver] if self.is_local_class_constructor_value(&receiver.text, scope)) => {
+                        if let Some(signatures) = method_overload_signatures(&overloads) {
+                            return self.infer_function_call(
+                                &signatures,
+                                call.arguments,
+                                scope,
+                                None,
+                            );
+                        }
+                    }
                     Type::Intersection(overloads)
                         if supports_callback_method_receiver(
                             &base,

@@ -18,6 +18,22 @@ use method_overloads::{
 };
 use optional_property::optional_property_type;
 
+fn method_overload_signatures(overloads: &[Type]) -> Option<Vec<FunctionSignature>> {
+    overloads
+        .iter()
+        .map(|overload| {
+            let Type::Function { parameters, result } = overload else {
+                return None;
+            };
+            Some(FunctionSignature {
+                parameters: parameters.clone(),
+                type_parameters: Vec::new(),
+                return_type: *result.clone(),
+            })
+        })
+        .collect()
+}
+
 impl<'a> ModuleChecker<'a> {
     pub(super) fn infer_function_call(
         &self,

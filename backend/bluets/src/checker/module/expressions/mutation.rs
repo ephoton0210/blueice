@@ -34,7 +34,9 @@ impl<'a> ModuleChecker<'a> {
             PropertyType::Found { .. } | PropertyType::Indeterminate => {}
             PropertyType::Missing => {
                 let direct_span = SourceSpan::new(&span.module, base.start, property.end);
-                let diagnostic_span = if self.is_local_class_constructor_value(&base.text, scope) {
+                let diagnostic_span = if self.is_local_class_constructor_value(&base.text, scope)
+                    || self.is_local_class_instance_type(&value)
+                {
                     &direct_span
                 } else {
                     span
