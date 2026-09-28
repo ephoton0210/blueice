@@ -1,6 +1,6 @@
 # Test262 verification
 
-This POSIX runner inventories every test in the pinned official snapshot, including staging/proposals and ECMA-402. It reports every requested execution mode. The 2026-09-25 complete macOS run recorded 102,921 passes, 0 failures, 1 `stale_corpus`, and 4 `excluded` modes: every dispatched mode passed, while the raw scheduled pass rate was 99.995%. **A full inventory run is not proof of full ECMAScript conformance.** See the [macOS report](../../../development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md) for the exact denominator and dispositions.
+This POSIX runner inventories every test in the pinned official snapshot, including staging/proposals and ECMA-402. It reports every requested execution mode. The 2026-09-28 complete macOS run recorded 102,921 passes, 0 failures, 1 `stale_corpus`, and 4 `excluded` modes: every dispatched mode passed, while the raw scheduled pass rate was 99.995%. **A full inventory run is not proof of full ECMAScript conformance.** See the [macOS report](../../../development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md) for the exact denominator and dispositions.
 
 Prerequisites: Rust, Python 3, and the pinned Python dependency below. Node is only required by the separate differential oracle. The default Rust subprocess fault tests also use Python 3 on POSIX.
 

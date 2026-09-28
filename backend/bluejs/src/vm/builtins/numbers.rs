@@ -4,6 +4,9 @@
 
 use super::*;
 
+#[cfg(test)]
+mod tests;
+
 fn normalized_exponential(number: f64, fraction_digits: Option<usize>) -> String {
     let rendered = if let Some(fraction_digits) = fraction_digits {
         format!("{number:.fraction_digits$e}")

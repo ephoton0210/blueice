@@ -25,6 +25,17 @@ fn rejects(source: &str) {
 }
 
 #[test]
+fn malformed_parenthesized_decorators_report_known_syntax() {
+    for source in [
+        "@(decorator class C {}",
+        "class C { @(decorator method() {} }",
+    ] {
+        let error = parse(source).expect_err(source);
+        assert!(error.known_syntax, "{source}: {error:?}");
+    }
+}
+
+#[test]
 fn a_class_declaration_keeps_its_decorators_in_source_order() {
     let class = class_of("@a @b.c @d(1, 2) @(e + f) class C {}");
     assert_eq!(class.decorators.len(), 4);

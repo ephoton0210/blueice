@@ -57,6 +57,7 @@ NO_COUNTER_REASONS = {
     "parser/tests.rs": "Test source; not a coverage target",
     "vm/builtins/execution.rs": "Declarations/re-exports only; no executable code",
     "vm/builtins/native_dispatch.rs": "Declarations/re-exports only; no executable code",
+    "vm/builtins/numbers/tests.rs": "Test source; not a coverage target",
     "vm/builtins/tests.rs": "Test source; not a coverage target",
     "vm/temporal/conversion.rs": "Declarations/re-exports only; no executable code",
     "vm/temporal/dates.rs": "Declarations/re-exports only; no executable code",

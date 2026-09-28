@@ -5,6 +5,35 @@
 use super::*;
 
 #[test]
+fn function_parser_rejects_malformed_direct_token_streams() {
+    let mut parser = Parser::new("");
+    assert!(parser.parse_params().is_err());
+
+    let mut parser = Parser::new("(...)");
+    assert!(parser.parse_params().is_err());
+
+    let mut parser = Parser::new("(...rest");
+    assert!(parser.parse_params().is_err());
+
+    let parser = Parser::new("(");
+    assert_eq!(parser.matching_close_paren(0), None);
+    let mut truncated = Parser::new("(");
+    truncated.tokens.pop();
+    assert_eq!(truncated.matching_close_paren(0), None);
+
+    let mut parser = Parser::new("function #");
+    parser.advance();
+    let error = parser.parse_function_declaration(false).unwrap_err();
+    assert!(
+        error
+            .message
+            .contains("a function cannot have a private name"),
+        "{error:?}"
+    );
+    assert!(error.known_syntax);
+}
+
+#[test]
 fn module_validation_rejects_invalid_super_private_names_and_duplicate_names() {
     for source in [
         "super.value;",
