@@ -157,22 +157,29 @@ struct Worker {
 impl Worker {
     fn start() -> io::Result<Self> {
         let path = match std::env::var_os("BLUEJS_REGEXP_WORKER") {
-            Some(path) => PathBuf::from(path),
-            None => {
-                let executable = std::env::current_exe()?;
-                let mut directory = executable.parent().unwrap();
-                if directory
-                    .file_name()
-                    .is_some_and(|name| name == "deps" || name == "examples")
-                {
-                    directory = directory.parent().unwrap();
-                }
-                directory.join(format!(
-                    "bluejs-regexp-worker{}",
-                    std::env::consts::EXE_SUFFIX
-                ))
-            }
+            Some(path) => Ok(PathBuf::from(path)),
+            None => Self::sibling_worker_path(std::env::current_exe()),
         };
+        Self::start_from_path(path)
+    }
+
+    fn sibling_worker_path(executable: io::Result<PathBuf>) -> io::Result<PathBuf> {
+        let executable = executable?;
+        let mut directory = executable.parent().unwrap();
+        if directory
+            .file_name()
+            .is_some_and(|name| name == "deps" || name == "examples")
+        {
+            directory = directory.parent().unwrap();
+        }
+        Ok(directory.join(format!(
+            "bluejs-regexp-worker{}",
+            std::env::consts::EXE_SUFFIX
+        )))
+    }
+
+    fn start_from_path(path: io::Result<PathBuf>) -> io::Result<Self> {
+        let path = path?;
         let mut child = Command::new(path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -224,14 +231,14 @@ impl Worker {
             .as_ref()
             .unwrap()
             .send(bytes)
-            .map_err(worker_error)?;
+            .map_err(|error| worker_error(error.to_string()))?;
         let reply = self.replies.recv_timeout(timeout);
         reply
             .map_err(|error| match error {
                 mpsc::RecvTimeoutError::Timeout => RuntimeError::RegexTimeout,
-                error => worker_error(error),
+                error => worker_error(error.to_string()),
             })?
-            .map_err(worker_error)
+            .map_err(|error| worker_error(error.to_string()))
     }
 
     fn request(
@@ -240,16 +247,18 @@ impl Worker {
         timeout: Duration,
         input_length: Option<usize>,
     ) -> Result<Reply, RuntimeError> {
-        let bytes = serde_json::to_vec(&request).map_err(worker_error)?;
+        let bytes = serde_json::to_vec(&request)
+            .expect("the regex request contains only JSON-compatible values");
         if bytes.len() > MAX_FRAME {
-            return Err(worker_error("regex request exceeds frame limit"));
+            return Err(worker_error("regex request exceeds frame limit".into()));
         }
         let bytes = self.transact(bytes, timeout)?;
-        let reply: Reply = serde_json::from_slice(&bytes).map_err(worker_error)?;
+        let reply: Reply =
+            serde_json::from_slice(&bytes).map_err(|error| worker_error(error.to_string()))?;
         if input_length.is_some_and(
             |length| matches!(&reply, Reply::Found(Some(matched)) if !matched.valid(length)),
         ) {
-            return Err(worker_error("invalid regex capture range"));
+            return Err(worker_error("invalid regex capture range".into()));
         }
         Ok(reply)
     }
@@ -349,9 +358,9 @@ impl Drop for Worker {
         // to exit explicitly, then close the channel and join its I/O thread
         // before reaping the private child on every platform.
         if let Some(requests) = self.requests.as_ref() {
-            if let Ok(shutdown) = serde_json::to_vec(&Request::Shutdown) {
-                let _ = requests.send(shutdown);
-            }
+            let shutdown = serde_json::to_vec(&Request::Shutdown)
+                .expect("the shutdown request contains only JSON-compatible values");
+            let _ = requests.send(shutdown);
         }
         drop(self.requests.take());
         if let Some(thread) = self.io_thread.take() {
@@ -361,8 +370,8 @@ impl Drop for Worker {
     }
 }
 
-fn worker_error(error: impl std::fmt::Display) -> RuntimeError {
-    RuntimeError::RegexWorker(error.to_string())
+fn worker_error(message: String) -> RuntimeError {
+    RuntimeError::RegexWorker(message)
 }
 
 /// The worker's compiled pattern.
@@ -422,7 +431,7 @@ fn with_worker<T>(
         if slot.is_none() {
             let worker = match Worker::start() {
                 Ok(worker) => worker,
-                Err(error) => return (Err(worker_error(error)), None),
+                Err(error) => return (Err(worker_error(error.to_string())), None),
             };
             *slot = Some(worker);
         }
@@ -433,10 +442,7 @@ fn with_worker<T>(
             // Joining an I/O thread from a Windows TLS destructor can hang.
             // Retire every worker outside `WORKER.with` instead, where the
             // normal shutdown path can join and reap it deterministically.
-            if result
-                .as_ref()
-                .is_err_and(|error| !matches!(error, RuntimeError::SyntaxError(_)))
-            {
+            if result.is_err() {
                 slot.as_mut().unwrap().failed = true;
             }
             (result, slot.take())
@@ -444,17 +450,13 @@ fn with_worker<T>(
 
         #[cfg(not(windows))]
         {
-            // A rejected pattern is an expected reply from a healthy worker.
-            // Keep that worker alive; transport and timeout failures require
-            // a fresh process for the next operation.
-            let worker_to_drop = result
-                .as_ref()
-                .is_err_and(|error| !matches!(error, RuntimeError::SyntaxError(_)))
-                .then(|| {
-                    let mut worker = slot.take().unwrap();
-                    worker.failed = true;
-                    worker
-                });
+            // A rejected pattern is an Ok(SyntaxError) reply; only transport
+            // and timeout errors require a fresh process for the next call.
+            let worker_to_drop = result.is_err().then(|| {
+                let mut worker = slot.take().unwrap();
+                worker.failed = true;
+                worker
+            });
             (result, worker_to_drop)
         }
     });
@@ -544,7 +546,8 @@ fn serve_on(stream_in: &mut dyn Read, stream_out: &mut dyn Write) -> io::Result<
                     if let Err(message) = cache_pattern(&mut cached, source, flags) {
                         frame_write(
                             stream_out,
-                            &serde_json::to_vec(&Reply::SyntaxError(message))?,
+                            &serde_json::to_vec(&Reply::SyntaxError(message))
+                                .expect("the regex reply contains only JSON-compatible values"),
                         )?;
                         continue;
                     }
@@ -595,7 +598,11 @@ fn serve_on(stream_in: &mut dyn Read, stream_out: &mut dyn Write) -> io::Result<
                     .collect(),
             ),
         };
-        frame_write(stream_out, &serde_json::to_vec(&reply)?)?;
+        frame_write(
+            stream_out,
+            &serde_json::to_vec(&reply)
+                .expect("the regex reply contains only JSON-compatible values"),
+        )?;
     }
 }
 

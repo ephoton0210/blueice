@@ -785,6 +785,71 @@ fn uri_globals_encode_decode_utf8_and_throw_uri_error_for_malformed_escapes() {
 }
 
 #[test]
+fn uri_globals_reject_broken_surrogates_and_utf8_sequences() {
+    for source in [
+        r"encodeURI('\ud800A')",
+        r"encodeURI('\udc00')",
+        "decodeURIComponent('%C3A9')",
+        "decodeURIComponent('%E0%41%A0')",
+        "decodeURIComponent('%E0%80%80')",
+        "decodeURIComponent('%F0%9F%98%A')",
+    ] {
+        let probe = format!(
+            "(function(){{try{{{source};return false}}catch(error){{return error instanceof URIError}}}})()"
+        );
+        assert_eq!(evaluate(&probe), Value::Bool(true), "{source}");
+    }
+    assert_eq!(
+        evaluate("decodeURIComponent('%C2%A0') === '\\u00a0'"),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate("decodeURI('A%23B') === 'A%23B'"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn uri_and_string_builders_enforce_the_runtime_utf16_limit() {
+    for (source, limit) in [
+        ("encodeURI('A')", 1),
+        ("encodeURI('é')", 4),
+        ("decodeURI('A')", 1),
+        ("decodeURI('%23')", 1),
+        ("decodeURIComponent('%41')", 1),
+        ("decodeURIComponent('%C3%A9')", 1),
+        ("escape('A')", 1),
+        ("escape('Ā')", 4),
+        ("unescape('%41')", 1),
+        ("unescape('A')", 1),
+        ("String.fromCharCode(65)", 1),
+        ("String.fromCodePoint(65)", 1),
+        ("'abc'.concat('d')", 6),
+        ("'abcd'.replace('abcd','$&$&')", 8),
+        ("''.link('')", 4),
+        ("''.link('x')", 18),
+        ("''.link('x')", 20),
+        ("''.link('')", 20),
+        ("'x'.link('')", 22),
+        ("''.link('')", 22),
+        (r"'\u0130\ud800'.toLowerCase()", 2),
+        (r"'\u0130\ud800'.toLowerCase()", 4),
+    ] {
+        let code = compile(&parse(source).unwrap()).unwrap();
+        let mut vm = Vm::new(VmConfig {
+            max_string_bytes: limit,
+            ..VmConfig::default()
+        })
+        .unwrap();
+        assert_eq!(
+            vm.execute(&code),
+            Err(RuntimeError::StringLimit { limit }),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn json_parse_and_stringify_preserve_data_properties_and_json_escapes() {
     for source in [
         "let value=JSON.parse('{\"a\":[true,null,3],\"b\":\"x\"}');value.a[0]&&value.a[1]===null&&value.a[2]===3&&value.b==='x'",

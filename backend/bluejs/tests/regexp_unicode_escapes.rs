@@ -43,6 +43,30 @@ fn check(body: &str) {
 }
 
 #[test]
+fn simple_character_class_escapes_scan_single_repeated_and_anchored_matches() {
+    check(
+        r#"
+        if (m("\\s+", "", " \t!") !== " \t") return "whitespace run";
+        if (m("\\w+", "", "!ab?") !== "ab") return "word run";
+        if (m("\\W+", "", "!?a") !== "!?") return "nonword run";
+        if (m("\\s", "", "x y") !== " ") return "single whitespace";
+        if (m("\\w", "", "!a") !== "a") return "single word";
+        if (m("^\\w+$", "", "abc") !== "abc") return "anchored run";
+        if (m("^\\w+$", "", "") !== null) return "anchored empty subject";
+        var global = new RegExp("^\\w+$", "g");
+        global.lastIndex = 1;
+        if (global.exec("abc") !== null) return "anchored nonzero start";
+        if (m("\\W", "u", "\uD800A") !== "\uD800") return "unpaired lead";
+        if (m("\\W", "u", "\uD800") !== "\uD800") return "terminal unpaired lead";
+        if (m("\\W", "u", "\u{1F438}a") !== "\u{1F438}") return "paired surrogate";
+        if (m("\\W+", "u", "\u{1F438}!a") !== "\u{1F438}!") return "unicode run";
+        if (m("\\q+", "", "qq") !== "qq") return "identity escape fallback";
+        if (m("^\\q+$", "", "qq") !== "qq") return "anchored identity escape fallback";
+        "#,
+    );
+}
+
+#[test]
 fn braced_unicode_escape_is_an_identity_escape_followed_by_text_without_the_u_flag() {
     check(
         r#"

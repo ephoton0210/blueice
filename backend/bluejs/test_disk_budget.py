@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Run tests with 16 GiB growth, 140 GiB total Cargo, and 20 GiB free space.
+"""Bound each run to 16 GiB target and host growth, 140 GiB target, and 20 GiB free.
 
 Usage: python3 backend/bluejs/test_disk_budget.py -- cargo test --workspace
 """

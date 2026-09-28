@@ -6,6 +6,125 @@ use super::*;
 use crate::heap::TemporalKind;
 
 #[test]
+fn native_uri_helpers_enforce_limits_for_each_decoded_output_shape() {
+    let limited = |result: Result<JsString, native::UriCodingError>, limit| {
+        assert_eq!(result, Err(native::UriCodingError::StringLimit { limit }));
+    };
+    limited(native::encode_uri(&"A".into(), false, 1), 1);
+    limited(native::decode_uri(&"A".into(), false, 1), 1);
+    limited(native::decode_uri(&"%23".into(), false, 1), 1);
+    limited(native::decode_uri(&"%41".into(), true, 1), 1);
+    limited(native::decode_uri(&"%C3%A9".into(), true, 1), 1);
+    limited(native::escape(&"A".into(), 1), 1);
+    limited(native::unescape(&"%41".into(), 1), 1);
+    limited(native::unescape(&"A".into(), 1), 1);
+}
+
+#[test]
+fn native_string_helpers_propagate_conversion_and_output_errors() {
+    use native::StringMethod;
+
+    let symbol = Value::Symbol(JsSymbol::new(None));
+    let receiver = Value::String("abc".into());
+    assert!(matches!(
+        native::integer(&symbol),
+        Err(RuntimeError::TypeError(_))
+    ));
+    assert!(matches!(
+        native::length(&symbol),
+        Err(RuntimeError::TypeError(_))
+    ));
+    assert!(matches!(
+        native::from_codes(std::slice::from_ref(&symbol), false, usize::MAX),
+        Err(RuntimeError::TypeError(_))
+    ));
+    assert_eq!(
+        native::from_codes(&[Value::Number(65.0)], false, 1),
+        Err(RuntimeError::StringLimit { limit: 1 })
+    );
+    assert!(matches!(
+        native::string_method(StringMethod::CharAt, &symbol, &[], usize::MAX),
+        Err(RuntimeError::TypeError(_))
+    ));
+
+    for (method, args) in [
+        (StringMethod::At, vec![symbol.clone()]),
+        (StringMethod::Slice, vec![symbol.clone()]),
+        (
+            StringMethod::Substring,
+            vec![Value::Number(0.0), symbol.clone()],
+        ),
+        (StringMethod::IndexOf, vec![symbol.clone()]),
+        (
+            StringMethod::LastIndexOf,
+            vec![Value::String("a".into()), symbol.clone()],
+        ),
+        (
+            StringMethod::Includes,
+            vec![Value::String("a".into()), symbol.clone()],
+        ),
+        (StringMethod::Concat, vec![symbol.clone()]),
+        (StringMethod::PadStart, vec![symbol.clone()]),
+        (
+            StringMethod::PadEnd,
+            vec![Value::Number(4.0), symbol.clone()],
+        ),
+        (StringMethod::Repeat, vec![symbol.clone()]),
+        (StringMethod::Normalize, vec![symbol.clone()]),
+        (StringMethod::Substr, vec![symbol.clone()]),
+        (
+            StringMethod::Substr,
+            vec![Value::Number(0.0), symbol.clone()],
+        ),
+        (
+            StringMethod::Html {
+                tag: "a",
+                attribute: "href",
+            },
+            vec![symbol.clone()],
+        ),
+    ] {
+        assert!(matches!(
+            native::string_method(method, &receiver, &args, usize::MAX),
+            Err(RuntimeError::TypeError(_))
+        ));
+    }
+
+    assert_eq!(
+        native::substitution(&"abcd".into(), &"abcd".into(), 0, &"$&$&".into(), 8),
+        Err(RuntimeError::StringLimit { limit: 8 })
+    );
+    assert_eq!(
+        native::string_method(
+            StringMethod::Concat,
+            &receiver,
+            &[Value::String("d".into())],
+            6
+        ),
+        Err(RuntimeError::StringLimit { limit: 6 })
+    );
+    assert_eq!(
+        native::string_method(
+            StringMethod::Html {
+                tag: "a",
+                attribute: "href",
+            },
+            &receiver,
+            &[Value::String("".into())],
+            4,
+        ),
+        Err(RuntimeError::StringLimit { limit: 4 })
+    );
+    let surrogate = Value::String(JsString::from_code_units(vec![0x0130, 0xd800]));
+    for limit in [2, 4] {
+        assert_eq!(
+            native::string_method(StringMethod::ToLowerCase, &surrogate, &[], limit),
+            Err(RuntimeError::StringLimit { limit })
+        );
+    }
+}
+
+#[test]
 fn vm_construction_reports_a_limit_that_cannot_hold_both_prototypes() {
     let mut probe = Heap::new(HeapConfig::default()).unwrap();
     probe.alloc_object(None).unwrap();

@@ -239,6 +239,26 @@ class CoverageFileTests(unittest.TestCase):
                 free_floor=0,
             )
 
+    def test_disk_budget_counts_temporary_files_outside_target(self):
+        target = self.repo / "target"
+        target.mkdir()
+        command = [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; import time; "
+            "Path('temporary-output').write_bytes(b'x' * 1048576); time.sleep(30)",
+        ]
+        with self.assertRaisesRegex(RuntimeError, "test disk budget exceeded"):
+            coverage_file.run_bounded_command(
+                command,
+                cwd=self.repo,
+                target=target,
+                growth_limit=2 * 1048576,
+                host_growth_limit=0,
+                free_floor=0,
+                poll_interval=0.05,
+            )
+
     def test_disk_measurement_tolerates_a_file_removed_during_the_scan(self):
         target = self.repo / "target"
         target.mkdir()

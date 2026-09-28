@@ -90,7 +90,7 @@ impl Vm {
         let limit = if matches!(limit, Value::Undefined) {
             u32::MAX
         } else {
-            native::uint32(&Value::Number(self.coerce_number(limit)?))?
+            native::uint32(self.coerce_number(limit)?)
         };
         // Even a zero limit converts the separator first (§22.1.3.23).
         let search = self.coerce_string(separator)?;

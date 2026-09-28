@@ -34,6 +34,13 @@ pub(super) fn ordered_stored_property_keys(
     keys
 }
 
+fn array_length_mut(object: &mut Object) -> Option<&mut u32> {
+    match &mut object.kind {
+        ObjectKind::Array { length } => Some(length),
+        _ => None,
+    }
+}
+
 impl Heap {
     pub(super) fn get_own_property_descriptor_key(
         &self,
@@ -46,7 +53,9 @@ impl Heap {
                     if let Some(value) = self.typed_array_index_value(object, index)? {
                         // An element of an immutable-buffer view is neither
                         // writable nor configurable.
-                        let mutable = !self.typed_array_is_immutable(object)?;
+                        let mutable = !self
+                            .typed_array_is_immutable(object)
+                            .expect("the element read validated its backing buffer");
                         return Ok(Some(PropertyDescriptor::data(
                             value, mutable, true, mutable,
                         )));
@@ -56,14 +65,19 @@ impl Heap {
             }
             return Ok(None);
         }
-        if let Some(cell) = self.module_namespace_export_cell(object, &key)? {
+        if let Some(cell) = self
+            .module_namespace_export_cell(object, &key)
+            .expect("the receiver was validated above")
+        {
             let value = self
                 .get_own(cell, "value")?
                 .ok_or(HeapError::UninitializedModuleExport)?;
             return Ok(Some(PropertyDescriptor::data(value, true, true, false)));
         }
-        let mapped_cell = self.arguments_parameter_cell(object, &key)?;
-        let obj = self.object(object)?;
+        let mapped_cell = self
+            .arguments_parameter_cell(object, &key)
+            .expect("the receiver was validated above");
+        let obj = &self.objects[&object];
         if let Some(descriptor) = obj.attributes.get(&key) {
             let mut descriptor = descriptor.clone();
             if !descriptor.accessor() {
@@ -83,8 +97,10 @@ impl Heap {
         };
         let string_virtual =
             matches!(&obj.kind, ObjectKind::String(s) if string_property(s, &key).is_some());
-        let length = key == "length"
-            && matches!(&obj.kind, ObjectKind::Array { .. } | ObjectKind::String(_));
+        let length = match &obj.kind {
+            ObjectKind::Array { .. } | ObjectKind::String(_) => key == "length",
+            _ => false,
+        };
         Ok(Some(PropertyDescriptor::data(
             value,
             !string_virtual,
@@ -130,28 +146,27 @@ impl Heap {
         if self.is_module_namespace(object)? && matches!(key, PropertyName::String(_)) {
             return Ok(false);
         }
-        let mapped_cell = self.arguments_parameter_cell(object, &key)?;
+        let mapped_cell = self
+            .arguments_parameter_cell(object, &key)
+            .expect("the receiver was validated above");
         let old = self.get_own_property_descriptor(object, &key)?;
-        if old.is_none() && !self.object(object)?.extensible {
+        if old.is_none() && !self.objects[&object].extensible {
             return Ok(false);
         }
-        let obj = self.object(object)?;
+        let obj = &self.objects[&object];
         if let ObjectKind::Array { length } = obj.kind {
-            if array_index(&key).is_some_and(|index| index >= length)
-                && obj
-                    .attributes
-                    .get(&"length".into())
-                    .is_some_and(|d| d.writable == Some(false))
-            {
+            let length_read_only = match obj.attributes.get(&"length".into()) {
+                Some(attributes) => attributes.writable == Some(false),
+                None => false,
+            };
+            if array_index(&key).is_some_and(|index| index >= length) && length_read_only {
                 return Ok(false);
             }
         }
         if let Some(old) = &old {
             if old.configurable == Some(false) {
                 if descriptor.configurable == Some(true)
-                    || descriptor
-                        .enumerable
-                        .is_some_and(|v| Some(v) != old.enumerable)
+                    || matches!(descriptor.enumerable, Some(value) if Some(value) != old.enumerable)
                 {
                     return Ok(false);
                 }
@@ -164,23 +179,14 @@ impl Heap {
                     return Ok(false);
                 }
                 if old.accessor() {
-                    if descriptor
-                        .get
-                        .as_ref()
-                        .is_some_and(|v| !same_value(v, old.get.as_ref().unwrap()))
-                        || descriptor
-                            .set
-                            .as_ref()
-                            .is_some_and(|v| !same_value(v, old.set.as_ref().unwrap()))
+                    if matches!(descriptor.get.as_ref(), Some(value) if !same_value(value, old.get.as_ref().unwrap()))
+                        || matches!(descriptor.set.as_ref(), Some(value) if !same_value(value, old.set.as_ref().unwrap()))
                     {
                         return Ok(false);
                     }
                 } else if old.writable == Some(false)
                     && (descriptor.writable == Some(true)
-                        || descriptor
-                            .value
-                            .as_ref()
-                            .is_some_and(|v| !same_value(v, old.value.as_ref().unwrap())))
+                        || matches!(descriptor.value.as_ref(), Some(value) if !same_value(value, old.value.as_ref().unwrap())))
                 {
                     return Ok(false);
                 }
@@ -206,7 +212,7 @@ impl Heap {
         }
         macro_rules! merge { ($($field:ident),*) => { $(if descriptor.$field.is_some() { merged.$field = descriptor.$field; })* }; }
         merge!(value, writable, get, set, enumerable, configurable);
-        let obj = self.object(object)?;
+        let obj = &self.objects[&object];
         if matches!(&obj.kind, ObjectKind::String(s) if string_property(s, &key).is_some()) {
             return Ok(true);
         }
@@ -272,17 +278,20 @@ impl Heap {
         obj.bytes = obj.bytes - old_property - old_attributes + new_property + new_attributes;
         self.managed_bytes =
             self.managed_bytes - old_property - old_attributes + new_property + new_attributes;
-        if !length_failed {
-            if let Some(cell) = mapped_cell {
-                if !descriptor_is_accessor {
-                    if let Some(value) = descriptor_value {
-                        self.set(cell, "value", value)?;
-                    }
-                }
-                if descriptor_is_accessor || descriptor_non_writable {
-                    self.unmap_arguments_property(object, &key)?;
-                }
-            }
+        let mapped_update = if length_failed || descriptor_is_accessor {
+            None
+        } else {
+            mapped_cell.zip(descriptor_value)
+        };
+        mapped_update
+            .map(|(cell, value)| self.set(cell, "value", value))
+            .transpose()?;
+        if !length_failed
+            && mapped_cell.is_some()
+            && (descriptor_is_accessor || descriptor_non_writable)
+        {
+            self.unmap_arguments_property(object, &key)
+                .expect("the receiver was protected across collection");
         }
         Ok(!length_failed)
     }
@@ -404,10 +413,13 @@ impl Heap {
                 ObjectKind::Arguments { parameter_map } => {
                     parameter_map.len() * size_of::<(PropertyName, ObjectId)>()
                 }
-                ObjectKind::ModuleNamespace { exports } => exports
-                    .iter()
-                    .map(|(name, _)| name.byte_len() + size_of::<(JsString, ObjectId)>())
-                    .sum(),
+                ObjectKind::ModuleNamespace { exports } => {
+                    let mut bytes = 0;
+                    for (name, _) in exports {
+                        bytes += name.byte_len() + size_of::<(JsString, ObjectId)>();
+                    }
+                    bytes
+                }
                 _ => 0,
             };
         if self
@@ -418,8 +430,6 @@ impl Heap {
             let protected =
                 protected.get_or_insert_with(|| allocation_references(&kind, prototype));
             self.ensure_room(bytes, protected)?;
-        } else {
-            self.ensure_room(bytes, &[])?;
         }
         let id = ObjectId {
             heap: self.identity,
@@ -480,20 +490,26 @@ impl Heap {
         object: ObjectId,
         key: impl Into<PropertyName>,
     ) -> Result<Option<Value>, HeapError> {
-        let key = key.into();
+        self.get_own_key(object, key.into())
+    }
+
+    fn get_own_key(&self, object: ObjectId, key: PropertyName) -> Result<Option<Value>, HeapError> {
         if let Some(numeric) = self.typed_array_numeric_key(object, &key)? {
             return match numeric {
                 TypedArrayNumericKey::Index(index) => self.typed_array_index_value(object, index),
                 TypedArrayNumericKey::Invalid => Ok(None),
             };
         }
-        if let Some(cell) = self.module_namespace_export_cell(object, &key)? {
+        if let Some(cell) = self
+            .module_namespace_export_cell(object, &key)
+            .expect("the receiver was validated above")
+        {
             return self
                 .get_own(cell, "value")?
                 .map(Some)
                 .ok_or(HeapError::UninitializedModuleExport);
         }
-        Ok(self.object(object)?.own_property(&key))
+        Ok(self.objects[&object].own_property(&key))
     }
 
     /// Ordinary data-property lookup through the prototype chain.
@@ -512,15 +528,21 @@ impl Heap {
                     TypedArrayNumericKey::Invalid => Ok(Value::Undefined),
                 };
             }
-            if let Some(cell) = self.module_namespace_export_cell(id, &key)? {
+            if let Some(cell) = self
+                .module_namespace_export_cell(id, &key)
+                .expect("the receiver was validated above")
+            {
                 return self
                     .get_own(cell, "value")?
                     .ok_or(HeapError::UninitializedModuleExport);
             }
-            if let Some(cell) = self.arguments_parameter_cell(id, &key)? {
+            if let Some(cell) = self
+                .arguments_parameter_cell(id, &key)
+                .expect("the receiver was validated above")
+            {
                 return Ok(self.get_own(cell, "value")?.unwrap_or(Value::Undefined));
             }
-            let obj = self.object(id)?;
+            let obj = &self.objects[&id];
             if let Some(value) = obj.own_property(&key) {
                 return Ok(value);
             }
@@ -553,11 +575,17 @@ impl Heap {
         if self.typed_array_numeric_key(object, &key)?.is_some() {
             return Err(HeapError::ReadOnlyProperty);
         }
-        if self.module_namespace_export_cell(object, &key)?.is_some() {
+        if self
+            .module_namespace_export_cell(object, &key)
+            .expect("the receiver was validated above")
+            .is_some()
+        {
             return Err(HeapError::ReadOnlyProperty);
         }
-        let mapped_cell = self.arguments_parameter_cell(object, &key)?;
-        let obj = self.object(object)?;
+        let mapped_cell = self
+            .arguments_parameter_cell(object, &key)
+            .expect("the receiver was validated above");
+        let obj = &self.objects[&object];
         if obj
             .attributes
             .get(&key)
@@ -569,12 +597,11 @@ impl Heap {
             return Err(HeapError::ReadOnlyProperty);
         }
         if let ObjectKind::Array { length } = obj.kind {
-            if array_index(&key).is_some_and(|index| index >= length)
-                && obj
-                    .attributes
-                    .get(&"length".into())
-                    .is_some_and(|d| d.writable == Some(false))
-            {
+            let length_read_only = match obj.attributes.get(&"length".into()) {
+                Some(attributes) => attributes.writable == Some(false),
+                None => false,
+            };
+            if array_index(&key).is_some_and(|index| index >= length) && length_read_only {
                 return Err(HeapError::ReadOnlyProperty);
             }
         }
@@ -597,7 +624,11 @@ impl Heap {
         let protected: Vec<_> = std::iter::once(object).chain(value_id).collect();
         self.ensure_room(new_bytes.saturating_sub(old_bytes), &protected)?;
         self.write_barrier(object, value_id);
-        let mapped_value = mapped_cell.map(|_| value.clone());
+        let mapped_value = if mapped_cell.is_some() {
+            Some(value.clone())
+        } else {
+            None
+        };
         {
             let obj = self
                 .objects
@@ -643,19 +674,32 @@ impl Heap {
                 return Ok(true);
             };
             let (buffer, _, length, _) = self.typed_array_info(object)?;
-            return Ok(self.buffer_is_detached(buffer)? || index >= length);
+            return Ok(self
+                .buffer_is_detached(buffer)
+                .expect("typed_array_info validated the backing buffer")
+                || index >= length);
         }
-        if self.module_namespace_export_cell(object, &key)?.is_some() {
+        if self
+            .module_namespace_export_cell(object, &key)
+            .expect("the receiver was validated above")
+            .is_some()
+        {
             return Ok(false);
         }
-        if self.is_module_namespace(object)? && matches!(key, PropertyName::String(_)) {
+        if self
+            .is_module_namespace(object)
+            .expect("the receiver was validated above")
+            && matches!(key, PropertyName::String(_))
+        {
             return Ok(true);
         }
-        let mapped_cell = self.arguments_parameter_cell(object, &key)?;
+        let mapped_cell = self
+            .arguments_parameter_cell(object, &key)
+            .expect("the receiver was validated above");
         let obj = self
             .objects
             .get_mut(&object)
-            .ok_or(HeapError::InvalidObject(object))?;
+            .expect("the receiver was validated above");
         if obj
             .attributes
             .get(&key)
@@ -671,18 +715,19 @@ impl Heap {
             return Ok(false);
         }
         if let Some(value) = obj.properties.remove(&key) {
-            let bytes = property_bytes(&key, &value)
-                + obj
-                    .attributes
-                    .remove(&key)
-                    .map_or(0, |d| attribute_bytes(&key, &d));
+            let removed_attributes = match obj.attributes.remove(&key) {
+                Some(descriptor) => attribute_bytes(&key, &descriptor),
+                None => 0,
+            };
+            let bytes = property_bytes(&key, &value) + removed_attributes;
             obj.order.retain(|name| name != &key);
             obj.bytes -= bytes;
             self.managed_bytes -= bytes;
             self.structure_epoch += 1;
         }
         if mapped_cell.is_some() {
-            self.unmap_arguments_property(object, &key)?;
+            self.unmap_arguments_property(object, &key)
+                .expect("the receiver was validated above");
         }
         Ok(true)
     }
@@ -694,16 +739,13 @@ impl Heap {
     pub fn own_property_keys(&self, object: ObjectId) -> Result<Vec<PropertyName>, HeapError> {
         let obj = self.object(object)?;
         if let ObjectKind::ModuleNamespace { exports } = &obj.kind {
-            let mut keys: Vec<_> = exports
-                .iter()
-                .map(|(export, _)| PropertyName::String(export.clone()))
-                .collect();
-            keys.extend(
-                obj.order
-                    .iter()
-                    .filter(|key| matches!(key, PropertyName::Symbol(_)))
-                    .cloned(),
-            );
+            let mut keys = Vec::with_capacity(exports.len() + obj.order.len());
+            for (export, _) in exports {
+                keys.push(PropertyName::String(export.clone()));
+            }
+            // Namespace string keys live in `exports`; its own stored keys
+            // are symbols, and the namespace is non-extensible after setup.
+            keys.extend(obj.order.iter().cloned());
             return Ok(keys);
         }
         let mut indices = Vec::new();
@@ -715,7 +757,9 @@ impl Heap {
         }
         if let ObjectKind::TypedArray { buffer, .. } = &obj.kind {
             if !self.buffer_is_detached(*buffer)? {
-                let (_, _, length, _) = self.typed_array_info(object)?;
+                let (_, _, length, _) = self
+                    .typed_array_info(object)
+                    .expect("the backing buffer was validated above");
                 for index in 0..length {
                     indices.push((index, index.to_string().into()));
                 }
@@ -774,17 +818,23 @@ impl Heap {
             self.object(object)?.kind,
             ObjectKind::Array { .. } | ObjectKind::String(_)
         );
-        Ok(self
-            .own_keys(object)?
-            .into_iter()
-            .filter(|key| {
-                (!virtual_length || key != "length")
-                    && self.objects[&object]
-                        .attributes
-                        .get(&PropertyName::from(key))
-                        .is_none_or(|d| d.enumerable == Some(true))
-            })
-            .collect())
+        let mut keys = Vec::new();
+        for key in self.own_keys(object)? {
+            if virtual_length && key == "length" {
+                continue;
+            }
+            let enumerable = match self.objects[&object]
+                .attributes
+                .get(&PropertyName::from(&key))
+            {
+                Some(descriptor) => descriptor.enumerable == Some(true),
+                None => true,
+            };
+            if enumerable {
+                keys.push(key);
+            }
+        }
+        Ok(keys)
     }
 
     pub(super) fn set_array_length(
@@ -802,11 +852,8 @@ impl Heap {
         let obj = self
             .objects
             .get_mut(&object)
-            .expect("validated array receiver");
-        let ObjectKind::Array { length } = &mut obj.kind else {
-            unreachable!("length dispatch checks object kind")
-        };
-        let old_length = *length;
+            .ok_or(HeapError::InvalidObject(object))?;
+        let old_length = *array_length_mut(obj).ok_or(HeapError::InvalidInternalSlot(object))?;
         if new_length < old_length {
             let mut indices = Vec::new();
             for key in &obj.order {
@@ -818,19 +865,18 @@ impl Heap {
             }
             indices.sort_unstable_by_key(|entry| std::cmp::Reverse(entry.0));
             for (index, key) in indices {
-                if !self.delete(object, &key)? {
-                    if let ObjectKind::Array { length } =
-                        &mut self.objects.get_mut(&object).unwrap().kind
-                    {
-                        *length = index + 1;
-                    }
+                if !self
+                    .delete(object, &key)
+                    .expect("the array remains live while truncating its properties")
+                {
+                    *array_length_mut(self.objects.get_mut(&object).unwrap())
+                        .expect("the receiver remains an array") = index + 1;
                     return Err(HeapError::ReadOnlyProperty);
                 }
             }
         }
-        if let ObjectKind::Array { length } = &mut self.objects.get_mut(&object).unwrap().kind {
-            *length = new_length;
-        }
+        *array_length_mut(self.objects.get_mut(&object).unwrap())
+            .expect("the receiver remains an array") = new_length;
         Ok(())
     }
 }

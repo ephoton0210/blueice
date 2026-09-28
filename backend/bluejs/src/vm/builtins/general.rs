@@ -324,7 +324,7 @@ impl Vm {
         // ArraySetLength performs ToUint32 followed by a separate ToNumber.
         // These must remain separate observable conversions: an object can
         // supply a stateful `valueOf` implementation.
-        let length = native::uint32(&Value::Number(self.coerce_number(value)?))?;
+        let length = native::uint32(self.coerce_number(value)?);
         let number = self.coerce_number(value)?;
         if f64::from(length) != number {
             return Err(RuntimeError::RangeError("invalid array length".into()));

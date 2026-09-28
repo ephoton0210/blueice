@@ -39,6 +39,7 @@ LINUX_REPORT = (
 METRICS = ("lines", "functions", "regions")
 TEST_GROWTH_LIMIT = 16 * 1024**3
 TEST_TARGET_LIMIT = 140 * 1024**3
+HOST_GROWTH_LIMIT = 16 * 1024**3
 HOST_FREE_FLOOR = 20 * 1024**3
 
 # Files without executable coverage targets are audited here. An unexpected
@@ -466,18 +467,21 @@ def run_bounded_command(
     target: Path,
     growth_limit: int = TEST_GROWTH_LIMIT,
     target_limit: int = TEST_TARGET_LIMIT,
+    host_growth_limit: int = HOST_GROWTH_LIMIT,
     free_floor: int = HOST_FREE_FLOOR,
     poll_interval: float = 5,
 ) -> None:
-    """Stop a test and its children before Cargo growth exhausts the host."""
+    """Stop a test and its children before target or host growth exceeds budget."""
     starting_size = target_size_bytes(target)
     if starting_size > target_limit:
         raise RuntimeError("Cargo target already exceeds the test disk limit")
-    if shutil.disk_usage(cwd).free < free_floor:
+    starting_free = shutil.disk_usage(cwd).free
+    if starting_free < free_floor:
         raise RuntimeError("insufficient free disk space to start tests")
     print(
         f"Test disk budget: {growth_limit // 1024**3} GiB target growth, "
         f"{target_limit // 1024**3} GiB total target, "
+        f"{host_growth_limit // 1024**3} GiB host growth, "
         f"{free_floor // 1024**3} GiB host reserve",
         flush=True,
     )
@@ -493,11 +497,13 @@ def run_bounded_command(
             if (
                 growth > growth_limit
                 or starting_size + growth > target_limit
+                or starting_free - free > host_growth_limit
                 or free < free_floor
             ):
                 stop_process_group(process)
                 raise RuntimeError(
                     f"test disk budget exceeded: target grew {growth / 1024**3:.1f} GiB, "
+                    f"host grew {(starting_free - free) / 1024**3:.1f} GiB, "
                     f"host free {free / 1024**3:.1f} GiB"
                 )
             if returncode is not None:

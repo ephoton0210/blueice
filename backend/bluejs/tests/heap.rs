@@ -7,7 +7,8 @@
 //! Heap::root or through properties on an already-rooted object.
 
 use blueice_bluejs::{
-    compile, parse, Heap, HeapConfig, HeapError, PropertyDescriptor, Value, Vm, VmConfig,
+    compile, parse, Heap, HeapConfig, HeapError, JsString, PropertyDescriptor, PropertyName, Value,
+    Vm, VmConfig,
 };
 
 #[test]
@@ -57,6 +58,26 @@ fn ordinary_properties_distinguish_missing_from_undefined_and_preserve_values() 
     assert!(heap.delete(object, "number").unwrap());
     assert!(heap.delete(object, "missing").unwrap());
     assert_eq!(heap.get_own(object, "number").unwrap(), None);
+}
+
+#[test]
+fn property_keys_accept_owned_strings_and_property_names_consistently() {
+    let mut heap = Heap::default();
+    let object = heap.alloc_object(None).unwrap();
+    let owned = String::from("owned");
+    let js = JsString::from("js");
+    let name = PropertyName::from("name");
+
+    heap.set(object, owned.clone(), Value::Number(1.0)).unwrap();
+    heap.set(object, js.clone(), Value::Number(2.0)).unwrap();
+    heap.set(object, name.clone(), Value::Number(3.0)).unwrap();
+
+    assert_eq!(heap.get(object, owned.clone()), Ok(Value::Number(1.0)));
+    assert_eq!(heap.get(object, js.clone()), Ok(Value::Number(2.0)));
+    assert_eq!(heap.get(object, "name"), Ok(Value::Number(3.0)));
+    assert_eq!(heap.get_own(object, owned), Ok(Some(Value::Number(1.0))));
+    assert_eq!(heap.get_own(object, js), Ok(Some(Value::Number(2.0))));
+    assert_eq!(heap.get_own(object, name), Ok(Some(Value::Number(3.0))));
 }
 
 #[test]

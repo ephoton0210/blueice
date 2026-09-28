@@ -582,6 +582,22 @@ fn property_storage_rejects_foreign_objects_and_exhausted_ids() {
         invalid!()
     );
     assert_eq!(heap.root(foreign), invalid!());
+    assert_eq!(
+        heap.define_own_property(
+            object,
+            "foreign",
+            PropertyDescriptor::data(Value::Object(foreign), true, true, true),
+        ),
+        invalid!()
+    );
+    assert_eq!(
+        heap.define_own_property(
+            foreign,
+            PropertyName::Symbol(JsSymbol::new(None)),
+            PropertyDescriptor::data(Value::Null, true, true, true),
+        ),
+        invalid!()
+    );
 
     heap.next_root = u64::MAX;
     assert_eq!(heap.root(object), Err(HeapError::IdExhausted));
@@ -656,6 +672,14 @@ fn non_extensible_objects_keep_their_prototype_and_reject_foreign_handles() {
     assert_eq!(heap.is_extensible(object), Ok(true));
     heap.prevent_extensions(object).unwrap();
     assert_eq!(heap.is_extensible(object), Ok(false));
+    assert_eq!(
+        heap.define_own_property(
+            object,
+            "new",
+            PropertyDescriptor::data(Value::Null, true, true, true),
+        ),
+        Ok(false)
+    );
     assert_eq!(heap.set_prototype(object, Some(parent)), Ok(()));
     assert_eq!(heap.prototype(object), Ok(Some(parent)));
     assert_eq!(
@@ -1731,6 +1755,13 @@ fn mapped_arguments_and_module_namespace_exports_follow_binding_cells() {
     let namespace = heap
         .alloc_module_namespace(vec![("export".into(), cell)], false)
         .unwrap();
+    assert_eq!(
+        heap.own_property_keys(namespace),
+        Ok(vec![
+            "export".into(),
+            PropertyName::Symbol(JsSymbol::well_known("toStringTag")),
+        ])
+    );
     assert_eq!(heap.is_module_namespace(namespace), Ok(true));
     assert_eq!(heap.is_module_namespace(ordinary), Ok(false));
     assert_eq!(
@@ -1771,6 +1802,18 @@ fn mapped_arguments_and_module_namespace_exports_follow_binding_cells() {
     assert_eq!(heap.delete(namespace, "export"), Ok(false));
     assert_eq!(heap.delete(namespace, "missing"), Ok(true));
     assert_eq!(
+        heap.delete(namespace, PropertyName::Symbol(JsSymbol::new(None))),
+        Ok(true)
+    );
+    assert_eq!(
+        heap.define_own_property(
+            namespace,
+            "missing",
+            PropertyDescriptor::data(Value::Null, true, true, true),
+        ),
+        Ok(false)
+    );
+    assert_eq!(
         heap.set(namespace, "export", Value::Number(4.0)),
         Err(HeapError::ReadOnlyProperty)
     );
@@ -1799,6 +1842,162 @@ fn mapped_arguments_and_module_namespace_exports_follow_binding_cells() {
         ),
         Err(HeapError::UninitializedModuleExport)
     );
+}
+
+#[test]
+fn malformed_property_links_report_errors_without_reading_other_heap_storage() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    let ordinary = heap.alloc_object(None).unwrap();
+    let cell = heap.alloc_object(None).unwrap();
+    heap.set(cell, "value", Value::Number(1.0)).unwrap();
+
+    let namespace = heap
+        .alloc_module_namespace(vec![("x".into(), cell)], false)
+        .unwrap();
+    let ObjectKind::ModuleNamespace { exports } =
+        &mut heap.objects.get_mut(&namespace).unwrap().kind
+    else {
+        panic!("expected module namespace");
+    };
+    exports[0].1 = foreign;
+    assert_eq!(
+        heap.get_own(namespace, "x"),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.get(namespace, "x"),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert!(matches!(
+        heap.get_own_property_descriptor(namespace, "x"),
+        Err(HeapError::InvalidObject(id)) if id == foreign
+    ));
+    assert_eq!(
+        heap.define_own_property(
+            namespace,
+            "x",
+            PropertyDescriptor::data(Value::Number(1.0), true, true, false),
+        ),
+        Err(HeapError::InvalidObject(foreign))
+    );
+
+    let arguments = heap
+        .alloc_arguments(
+            HashMap::from([
+                (PropertyName::from("0"), cell),
+                (PropertyName::from("1"), cell),
+            ]),
+            ordinary,
+        )
+        .unwrap();
+    heap.set(arguments, "0", Value::Number(2.0)).unwrap();
+    heap.define_own_property(
+        arguments,
+        "1",
+        PropertyDescriptor::data(Value::Number(3.0), true, true, true),
+    )
+    .unwrap();
+    let ObjectKind::Arguments { parameter_map } =
+        &mut heap.objects.get_mut(&arguments).unwrap().kind
+    else {
+        panic!("expected arguments object");
+    };
+    parameter_map.insert("0".into(), foreign);
+    parameter_map.insert("1".into(), foreign);
+    assert_eq!(
+        heap.get(arguments, "0"),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    for key in ["0", "1"] {
+        assert!(matches!(
+            heap.get_own_property_descriptor(arguments, key),
+            Err(HeapError::InvalidObject(id)) if id == foreign
+        ));
+    }
+    assert_eq!(
+        heap.define_own_property(
+            arguments,
+            "0",
+            PropertyDescriptor::data(Value::Number(4.0), true, true, true),
+        ),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(heap.unmap_arguments_property(ordinary, &"0".into()), Ok(()));
+
+    let buffer = heap.alloc_array_buffer(1, None).unwrap();
+    let view = heap
+        .alloc_typed_array(buffer, 0, 1, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    let ObjectKind::TypedArray { buffer, .. } = &mut heap.objects.get_mut(&view).unwrap().kind
+    else {
+        panic!("expected typed array");
+    };
+    *buffer = foreign;
+    assert_eq!(
+        heap.get_own(view, "0"),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(heap.get(view, "0"), Err(HeapError::InvalidObject(foreign)));
+    assert!(matches!(
+        heap.get_own_property_descriptor(view, "0"),
+        Err(HeapError::InvalidObject(id)) if id == foreign
+    ));
+    assert_eq!(
+        heap.delete(view, "0"),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.own_property_keys(view),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.enumerable_own_keys(view),
+        Err(HeapError::InvalidObject(foreign))
+    );
+}
+
+#[test]
+fn array_length_updates_reject_wrong_receivers_and_mapped_read_only_cells() {
+    let mut heap = Heap::default();
+    let mut other = Heap::default();
+    let foreign = other.alloc_object(None).unwrap();
+    let ordinary = heap.alloc_object(None).unwrap();
+    assert_eq!(
+        heap.set_array_length(foreign, Value::Number(0.0)),
+        Err(HeapError::InvalidObject(foreign))
+    );
+    assert_eq!(
+        heap.set_array_length(ordinary, Value::Number(0.0)),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+
+    let cell = heap.alloc_object(None).unwrap();
+    assert_eq!(
+        heap.define_own_property(
+            cell,
+            "value",
+            PropertyDescriptor::data(Value::Number(1.0), false, true, true),
+        ),
+        Ok(true)
+    );
+    let arguments = heap
+        .alloc_arguments(HashMap::from([(PropertyName::from("0"), cell)]), ordinary)
+        .unwrap();
+    assert_eq!(
+        heap.set(arguments, "0", Value::Number(2.0)),
+        Err(HeapError::ReadOnlyProperty)
+    );
+    assert_eq!(
+        heap.define_own_property(
+            arguments,
+            "0",
+            PropertyDescriptor::data(Value::Number(3.0), true, true, true),
+        ),
+        Err(HeapError::ReadOnlyProperty)
+    );
+    assert_eq!(heap.get_own(cell, "value"), Ok(Some(Value::Number(1.0))));
 }
 
 #[test]

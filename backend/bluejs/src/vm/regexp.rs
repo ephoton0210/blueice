@@ -1049,7 +1049,7 @@ impl Vm {
         let limit = if *limit == Value::Undefined {
             u32::MAX
         } else {
-            native::uint32(&Value::Number(self.coerce_number(limit)?))?
+            native::uint32(self.coerce_number(limit)?)
         } as usize;
         let mut values = Vec::new();
         if limit == 0 {
