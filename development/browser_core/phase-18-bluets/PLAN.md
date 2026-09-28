@@ -6258,6 +6258,26 @@ and a static method with one mismatch at the original member span and no
 output. Four pinned TypeScript 5.9.3 `--noEmit` cases agree on TS2416/TS2417
 diagnostic lines. Optional ordinary method parameters remain the next leaf.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.3.1 Optional ordinary prefixes with variable tuples
+
+For two variable tuple rest parameters with at least one nontrailing rest,
+ordinary optional parameters now remain in their declared prefix positions.
+The bounded witness relation starts at the larger of each side's ordinary
+prefix length plus its required tuple positions. A required suffix therefore
+retains the ordinary prefix slot even when that parameter's annotation is
+optional. At a fixed prefix position, an optional annotation also admits
+`undefined` for the existing bivariant method parameter comparison. This
+matches TypeScript's accepted interchange of an optional `number` prefix
+with a required `number` or `undefined` prefix before the same tuple rest.
+
+Public checked-compile cases cover both optional/required directions, a
+tuple prefix opposed by an ordinary optional prefix, mixed middle/trailing
+rests, and static methods. Wrong prefix, suffix, or shifted types report a
+single mismatch at the original member span with no output. Five pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/TS2417
+diagnostic lines. Optional ordinary prefixes against fixed or array rest
+signatures and fixed tuple rests remain separate leaves.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

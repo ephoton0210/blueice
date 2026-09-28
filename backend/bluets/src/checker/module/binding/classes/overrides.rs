@@ -873,12 +873,17 @@ impl ModuleChecker<'_> {
                         else {
                             unreachable!("rest shape requires a tuple annotation")
                         };
+                        let derived_required = derived_fixed
+                            + derived_elements
+                                .iter()
+                                .filter(|element| !element.optional && !element.rest)
+                                .count();
                         let inherited_required = inherited_fixed
                             + inherited_elements
                                 .iter()
                                 .filter(|element| !element.optional && !element.rest)
                                 .count();
-                        let minimum_length = required_derived.max(inherited_required);
+                        let minimum_length = derived_required.max(inherited_required);
                         let maximum_length = derived_fixed
                             + derived_elements.len()
                             + inherited_fixed
@@ -890,7 +895,7 @@ impl ModuleChecker<'_> {
                                     return false;
                                 }
                                 let derived_type = if index < derived_fixed {
-                                    derived.parameters[index].annotation.clone()
+                                    Some(override_parameter_type(&derived.parameters[index]))
                                 } else {
                                     tuple_type_at_length(
                                         derived_elements,
@@ -899,7 +904,7 @@ impl ModuleChecker<'_> {
                                     )
                                 };
                                 let inherited_type = if index < inherited_fixed {
-                                    inherited.parameters[index].annotation.clone()
+                                    Some(override_parameter_type(&inherited.parameters[index]))
                                 } else {
                                     tuple_type_at_length(
                                         inherited_elements,
@@ -1165,7 +1170,7 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
             && !derived_fixed
                 .iter()
                 .chain(inherited_fixed)
-                .any(|parameter| parameter.rest || parameter.optional)
+                .any(|parameter| parameter.rest)
             && variable_tuples
         {
             return Some(RestShape::BothVariableTuples {
@@ -1395,6 +1400,15 @@ fn middle_tuple_prefix(parameters: &[Parameter]) -> usize {
         .iter()
         .position(|element| element.rest)
         .expect("middle tuple rest shape requires a rest element")
+}
+
+fn override_parameter_type(parameter: &Parameter) -> Type {
+    let annotation = parameter.annotation.clone().unwrap_or(Type::Unknown);
+    if parameter.optional {
+        Type::Union(vec![annotation, Type::Undefined])
+    } else {
+        annotation
+    }
 }
 
 fn parameter_types_compatible(
