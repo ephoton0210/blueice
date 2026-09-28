@@ -23,6 +23,11 @@ enum RestShape {
         derived_fixed: usize,
         inherited_fixed: usize,
     },
+    DerivedTuple {
+        derived_fixed: usize,
+        inherited_fixed: usize,
+        inherited_array_rest: bool,
+    },
 }
 
 impl ModuleChecker<'_> {
@@ -51,8 +56,8 @@ impl ModuleChecker<'_> {
             ) else {
                 continue;
             };
-            // Align fixed positions and array rest elements where both
-            // signatures have a supported rest shape.
+            // Align fixed positions and rest elements where the signatures
+            // have a supported rest shape.
             let Some(rest_shape) = rest_shape(&derived.parameters, inherited.parameters) else {
                 continue;
             };
@@ -70,16 +75,34 @@ impl ModuleChecker<'_> {
             // TypeScript compares class-method parameters bivariantly, then
             // requires the overriding result to fit the inherited result.
             // An override may omit inherited positions or add omittable ones.
-            // With array rests on both sides, TypeScript also permits a
-            // longer required fixed prefix when aligned types agree.
+            // With rests on both sides, TypeScript also permits more required
+            // positions when aligned types agree, including tuple elements.
             let required_derived = derived
                 .parameters
                 .iter()
                 .filter(|parameter| !parameter.optional && !parameter.rest)
-                .count();
+                .count()
+                + if matches!(rest_shape, RestShape::DerivedTuple { .. }) {
+                    let Some(Type::Tuple(elements)) = derived
+                        .parameters
+                        .last()
+                        .and_then(|parameter| parameter.annotation.as_ref())
+                    else {
+                        unreachable!("rest shape requires a tuple annotation")
+                    };
+                    elements.len()
+                } else {
+                    0
+                };
             let arity_compatible = matches!(
                 rest_shape,
                 RestShape::MatchingArrays | RestShape::ShiftedArrays { .. }
+            ) || matches!(
+                rest_shape,
+                RestShape::DerivedTuple {
+                    inherited_array_rest: true,
+                    ..
+                }
             ) || required_derived <= inherited.parameters.len();
             let parameters_compatible = arity_compatible
                 && match rest_shape {
@@ -200,6 +223,61 @@ impl ModuleChecker<'_> {
                             &self.types,
                             &mut budget,
                         )
+                    }
+                    RestShape::DerivedTuple {
+                        derived_fixed,
+                        inherited_fixed,
+                        inherited_array_rest,
+                    } => {
+                        let Some(Type::Tuple(elements)) = derived
+                            .parameters
+                            .last()
+                            .and_then(|parameter| parameter.annotation.as_ref())
+                        else {
+                            unreachable!("rest shape requires a tuple annotation")
+                        };
+                        let inherited_element = if inherited_array_rest {
+                            let Some(Type::Array(element)) = inherited
+                                .parameters
+                                .last()
+                                .and_then(|parameter| parameter.annotation.as_ref())
+                            else {
+                                unreachable!("rest shape requires an array annotation")
+                            };
+                            Some(element.as_ref())
+                        } else {
+                            None
+                        };
+                        let derived_positions = derived_fixed + elements.len();
+                        let comparison_positions = if inherited_array_rest {
+                            derived_positions
+                        } else {
+                            derived_positions.min(inherited_fixed)
+                        };
+                        (0..comparison_positions).all(|index| {
+                            let derived_type = if index < derived_fixed {
+                                derived.parameters[index]
+                                    .annotation
+                                    .as_ref()
+                                    .unwrap_or(&Type::Unknown)
+                            } else {
+                                &elements[index - derived_fixed]
+                            };
+                            let inherited_type = if index < inherited_fixed {
+                                inherited.parameters[index]
+                                    .annotation
+                                    .as_ref()
+                                    .unwrap_or(&Type::Unknown)
+                            } else {
+                                inherited_element.expect("rest shape requires an array annotation")
+                            };
+                            parameter_types_compatible(
+                                derived_type,
+                                inherited_type,
+                                &self.types,
+                                &mut budget,
+                            )
+                        })
                     }
                 };
             let compatible = parameters_compatible
@@ -323,10 +401,23 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
         .then_some(RestShape::BaseCoversFixed(inherited_fixed.len()));
     }
     let (derived_rest, derived_fixed) = derived.split_last()?;
-    if !derived_rest.rest
-        || derived_fixed.iter().any(|parameter| parameter.rest)
-        || !matches!(derived_rest.annotation.as_ref(), Some(Type::Array(_)))
-    {
+    if !derived_rest.rest || derived_fixed.iter().any(|parameter| parameter.rest) {
+        return None;
+    }
+    if matches!(derived_rest.annotation.as_ref(), Some(Type::Tuple(_))) {
+        let inherited_array_rest = inherited.last().is_some_and(|parameter| {
+            parameter.rest && matches!(parameter.annotation.as_ref(), Some(Type::Array(_)))
+        });
+        if inherited_has_rest && !inherited_array_rest {
+            return None;
+        }
+        return Some(RestShape::DerivedTuple {
+            derived_fixed: derived_fixed.len(),
+            inherited_fixed: inherited.len() - usize::from(inherited_array_rest),
+            inherited_array_rest,
+        });
+    }
+    if !matches!(derived_rest.annotation.as_ref(), Some(Type::Array(_))) {
         return None;
     }
     if !inherited_has_rest && derived_fixed.len() <= inherited.len() {

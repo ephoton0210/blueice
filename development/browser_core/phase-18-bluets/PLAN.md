@@ -5819,6 +5819,24 @@ agree on acceptance and TS2370/TS2304 lines. BlueTS, bridge, and full
 workspace tests, workspace all-target Clippy, rustfmt, and whitespace checks
 pass with the reused 12 GiB Cargo target.
 
+### J.3.1.3.4.4.2.3.2.3.2.1 Derived fixed-length tuple rest overrides
+
+The bounded override relation now expands each required element of a
+derived method's fixed-length tuple rest into a positional parameter. It
+compares those positions with inherited fixed parameters or the inherited
+array rest element through the existing bivariant type relation, while
+retaining the covariant result check. A fixed inherited signature rejects
+additional required tuple positions; an inherited array rest can accept
+them when the element types agree. Unsupported inherited tuple shapes
+remain for the following leaves, and class output stays refused.
+
+Public checked-compile coverage accepts instance and static overrides,
+rejects fixed-position type, fixed arity, and later array-rest element
+mismatches at original member spans, and confirms no artifact. Four pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/TS2417
+lines. BlueTS, bridge, and full workspace tests, workspace all-target
+Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
