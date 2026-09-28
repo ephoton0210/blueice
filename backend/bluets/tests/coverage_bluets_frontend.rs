@@ -2807,6 +2807,73 @@ fn both_variable_tuple_rest_overrides_align_middle_and_suffixes() {
 }
 
 #[test]
+fn optional_trailing_tuple_prefixes_compare_with_middle_rests() {
+    let valid =
+        include_str!("fixtures/typescript_oracle/class-override-optional-variable-valid/main.ts");
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
+        CompilerOptions::default(),
+    );
+    assert!(accepted.output.is_none());
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, member) in [
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-override-optional-variable-base-error/main.ts"
+            ),
+            "read(...parts: [...string[], string]): number { return 1; }",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-override-optional-variable-derived-error/main.ts"
+            ),
+            "read(...parts: [number?, ...string[]]): number { return 1; }",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-override-optional-variable-shift-error/main.ts"
+            ),
+            "read(...parts: [...string[], string]): number { return 1; }",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-override-optional-variable-static-error/main.ts"
+            ),
+            "static parse(...parts: [number?, ...string[]]): number { return 1; }",
+        ),
+    ] {
+        let compilation = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+        assert_eq!(failures[0].span.module, ENTRY);
+        assert_eq!(
+            &source[failures[0].span.start..failures[0].span.end],
+            member,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
 fn middle_and_fixed_tuple_rest_overrides_align_total_arity() {
     let valid =
         include_str!("fixtures/typescript_oracle/class-override-middle-fixed-valid/main.ts");

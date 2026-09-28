@@ -6222,7 +6222,25 @@ tuples, both inheritance directions, and static methods, plus incompatible
 suffix or middle types and insufficient required arity at original member
 spans with no output. Eight pinned TypeScript 5.9.3 `--noEmit` cases agree
 on acceptance and TS2416/TS2417 diagnostic lines. Optional fixed positions
-remain the final nontrailing override subleaf.
+are handled in separate follow-up leaves.
+
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.3.1 Optional trailing tuple prefixes
+
+The both-side variable tuple rest relation now admits optional fixed tuple
+elements before a trailing array rest when the opposite tuple has a
+nontrailing rest. Its bounded common witness lengths begin at the larger
+minimum required count, so the optional prefix does not create a required
+argument. Existing tuple position selection retains the optional element's
+`undefined` alternative and checks the repeated tail beyond the prefix.
+Method parameters remain bivariant at each budgeted position.
+
+Public checked-compile cases cover a homogeneous optional prefix in both
+inheritance directions, two optional prefix elements, and a static method.
+Heterogeneous optional or shifted prefix positions report one mismatch at
+the original member span with no output. Five pinned TypeScript 5.9.3
+`--noEmit` cases agree on acceptance and TS2416/TS2417 diagnostic lines.
+Optional positions in a fixed tuple rest and ordinary method parameters
+remain separate leaves.
 
 ## Checklist
 

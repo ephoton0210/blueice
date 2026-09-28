@@ -1149,8 +1149,6 @@ fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShap
                     && (derived_rest_index.is_some_and(|index| index + 1 < derived_elements.len())
                         || inherited_rest_index
                             .is_some_and(|index| index + 1 < inherited_elements.len()))
-                    && !derived_elements.iter().any(|element| element.optional)
-                    && !inherited_elements.iter().any(|element| element.optional)
             }
             _ => false,
         };
