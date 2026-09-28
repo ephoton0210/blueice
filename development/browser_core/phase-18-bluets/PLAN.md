@@ -6183,6 +6183,28 @@ Eight pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
 TS2416/TS2417 diagnostic lines. Both-side middle-rest comparison remains
 the next separate leaf.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.5.3.1 Both-side variable tuple rest overrides
+
+When both class method rest parameters are variable tuples and at least one
+has a nontrailing array rest, the checker compares common witness lengths
+from the larger minimum arity through one beyond the combined declared
+shapes. Fixed method parameters, fixed tuple positions, repeated middle or
+trailing positions, and suffix positions are all selected from the total
+witness length. Class-method parameter bivariance applies at each position;
+each comparison consumes the shared type-expansion budget. This accepts
+compatible shifted prefixes and suffixes without assuming that either rest
+has a fixed expansion length.
+
+The first subleaf admits required-only fixed positions on both sides, which
+include mixed middle/trailing pairs. Tuple labels remain irrelevant to type
+comparison. Optional fixed positions and opposing fixed tuple rests remain
+separate leaves because their arity sets differ. Public checked-compile cases
+cover valid renamed labels, prefix/suffix shifts, both mixed trailing
+directions, and static methods, plus incompatible suffix, middle, shift,
+trailing, and static types at original member spans with no output. Six
+pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2416/
+TS2417 diagnostic lines.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
