@@ -3996,6 +3996,73 @@ fn labeled_tuple_elements_check_and_emit_at_public_boundary() {
 }
 
 #[test]
+fn trailing_tuple_rest_checks_and_emits_at_public_boundary() {
+    let source = include_str!("fixtures/typescript_oracle/tuple-rest-trailing-valid/main.ts");
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            declaration: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    let artifact = &accepted.output.unwrap().artifacts[ENTRY];
+    assert!(!artifact.javascript.contains("...tail: string[]"));
+    let declaration = artifact.declaration.as_deref().unwrap();
+    for expected in [
+        "Trail = [head: number, ...tail: string[]]",
+        "empty: [head: number, ...tail: string[]]",
+        "many: [head: number, ...tail: string[]]",
+        "optional: [head?: number, ...tail: string[]]",
+        "optionalFilled: [head?: number, ...tail: string[]]",
+        "optionalFromArray: [head?: number, ...tail: number[]]",
+    ] {
+        assert!(declaration.contains(expected), "{declaration}");
+    }
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/tuple-rest-trailing-type-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-rest-trailing-arity-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-rest-trailing-index-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/tuple-rest-trailing-optional-after-error/main.ts"
+            ),
+            DiagnosticCode::ParseError,
+        ),
+    ] {
+        let rejected = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code && diagnostic.span.module == ENTRY),
+            "{:#?}",
+            rejected.diagnostics
+        );
+    }
+}
+
+#[test]
 fn named_default_function_exports_preserve_esm_and_emit_a_public_declaration() {
     let source = "export default function greeting(name: string): string { return `Hello, ${name}`; }\nconsole.log(greeting('Ada'));\n";
     let compilation = compile_with_helper(source);

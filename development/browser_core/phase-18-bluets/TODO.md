@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1565,10 +1565,25 @@ exists. A passed first form does not close its whole feature family.
                         fixed positions plus one symbolic tail, and separate
                         trailing, nontrailing, and tuple-spread steps.
                         No new syntax is admitted by this design-only leaf.
-                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.2** Parse and check a
+                      - [x] **J.3.1.3.4.4.2.3.2.3.3.3.2** Parse and check a
                         trailing array-typed tuple rest across admitted type
                         uses, declarations, and pure contracts against pinned
-                        TypeScript.
+                        TypeScript. The parser keeps one trailing rest and
+                        labels; assignment compares finite positions and a
+                        symbolic repeated tail, including tuple/array
+                        interchange. Indexed reads use the tail element type;
+                        declarations retain `...`, and pure contracts check
+                        every present tail item under existing budgets.
+                        Nontrailing rests remain rejected until their leaf,
+                        and class override comparison remains fail-closed.
+                        Public checked-compile and contract cases cover
+                        required and optional prefixes, empty and repeated
+                        tails, wrong types, arity, and no error artifact.
+                        Five pinned TypeScript 5.9.3 `--noEmit` cases agree
+                        on acceptance and TS2322/TS1266 lines. BlueTS,
+                        bridge, and full workspace tests, all-target Clippy,
+                        rustfmt, and whitespace checks pass with the reused
+                        12 GiB target.
                       - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.3** Compare trailing
                         tuple rest tails and arity in class method overrides
                         against pinned TypeScript.

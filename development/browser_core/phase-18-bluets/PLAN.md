@@ -6018,6 +6018,32 @@ The pinned 5.9.3 oracle will determine acceptance and diagnostic lines for
 each implementation leaf. This design-only leaf admits no new syntax and
 changes no runtime behavior.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.2 Trailing array rest tuple semantics
+
+Tuple parsing now admits a single trailing `...T[]` or `...name: T[]`
+element and retains its rest flag and optional label. An optional prefix may
+precede the rest. Another element after the rest is still rejected: an
+optional one is a parse error, and a required suffix stays unsupported until
+the nontrailing leaf. Non-array rest annotations remain unsupported.
+
+Tuple assignability compares finite declared positions and at most one
+symbolic repeated tail relation. A fixed tuple can fit a compatible rest
+tuple, and `[...T[]]` interchanges with `T[]` where its element types fit.
+Indexed reads beyond the finite prefix use the tail element type; type
+identity, display, and declarations retain `...`, while JavaScript erases
+the type. Pure contracts lower the finite prefix plus one tail plan and
+validate every present item using the existing collection and node budgets.
+The launcher still reports this contract as a tuple. Tuple spreads in calls
+and tuple literals remain fail-closed, and class override comparison still
+skips rest-bearing tuples until the next leaf.
+
+Public checked-compile and pure contract cases cover named, required and
+optional prefixes; empty and repeated tails; tuple/array assignments;
+tail indexed reads; wrong element types; missing required positions; a
+forbidden optional after the rest; and no error artifact. Five pinned
+TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2322/TS1266
+lines.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

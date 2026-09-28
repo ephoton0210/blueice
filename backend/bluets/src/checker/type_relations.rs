@@ -67,6 +67,30 @@ pub(super) fn is_assignable(
         (Type::Array(actual), Type::Array(expected)) => {
             is_assignable(actual, expected, aliases, visited, budget)
         }
+        (Type::Tuple(actual), Type::Array(expected)) => actual.iter().all(|element| {
+            is_assignable(
+                &element.indexed_type(),
+                expected,
+                aliases,
+                &mut visited.clone(),
+                budget,
+            )
+        }),
+        (Type::Array(actual), Type::Tuple(expected))
+            if expected.last().is_some_and(|element| element.rest) =>
+        {
+            let fixed = &expected[..expected.len() - 1];
+            fixed.iter().all(|element| element.optional)
+                && expected.iter().all(|element| {
+                    is_assignable(
+                        actual,
+                        &element.indexed_type(),
+                        aliases,
+                        &mut visited.clone(),
+                        budget,
+                    )
+                })
+        }
         (
             Type::Function {
                 parameters: actual_parameters,
@@ -93,6 +117,11 @@ pub(super) fn is_assignable(
                 && is_assignable(actual_result, expected_result, aliases, visited, budget)
         }
         (Type::Tuple(actual), Type::Tuple(expected)) => {
+            if actual.iter().any(|element| element.rest)
+                || expected.iter().any(|element| element.rest)
+            {
+                return trailing_rest_tuple_assignable(actual, expected, aliases, visited, budget);
+            }
             let actual_required = actual.iter().filter(|element| !element.optional).count();
             let expected_required = expected.iter().filter(|element| !element.optional).count();
             actual_required >= expected_required
@@ -133,6 +162,81 @@ pub(super) fn is_assignable(
         }),
         _ => actual == expected,
     }
+}
+
+fn trailing_rest_tuple_assignable(
+    actual: &[crate::parser::TupleTypeElement],
+    expected: &[crate::parser::TupleTypeElement],
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> bool {
+    let actual_rest = actual.last().filter(|element| element.rest);
+    let expected_rest = expected.last().filter(|element| element.rest);
+    if actual
+        .iter()
+        .take(actual.len().saturating_sub(1))
+        .any(|element| element.rest)
+        || expected
+            .iter()
+            .take(expected.len().saturating_sub(1))
+            .any(|element| element.rest)
+        || (actual_rest.is_some() && expected_rest.is_none())
+    {
+        return false;
+    }
+    let actual_fixed = actual.len() - usize::from(actual_rest.is_some());
+    let expected_fixed = expected.len() - usize::from(expected_rest.is_some());
+    let actual_required = actual[..actual_fixed]
+        .iter()
+        .filter(|element| !element.optional)
+        .count();
+    let expected_required = expected[..expected_fixed]
+        .iter()
+        .filter(|element| !element.optional)
+        .count();
+    if actual_required < expected_required
+        || (expected_rest.is_none() && actual_fixed > expected_fixed)
+    {
+        return false;
+    }
+    let positions = if actual_rest.is_some() {
+        actual_fixed.max(expected_fixed)
+    } else {
+        actual_fixed
+    };
+    for index in 0..positions {
+        let Some(actual_type) = tuple_position_type(actual, index) else {
+            continue;
+        };
+        let Some(expected_type) = tuple_position_type(expected, index) else {
+            return false;
+        };
+        if !is_assignable(
+            &actual_type,
+            &expected_type,
+            aliases,
+            &mut visited.clone(),
+            budget,
+        ) {
+            return false;
+        }
+    }
+    if let (Some(Type::Array(actual_tail)), Some(Type::Array(expected_tail))) = (
+        actual_rest.map(|element| &element.annotation),
+        expected_rest.map(|element| &element.annotation),
+    ) {
+        is_assignable(actual_tail, expected_tail, aliases, visited, budget)
+    } else {
+        actual_rest.is_none()
+    }
+}
+
+fn tuple_position_type(elements: &[crate::parser::TupleTypeElement], index: usize) -> Option<Type> {
+    elements
+        .get(index)
+        .or_else(|| elements.last().filter(|element| element.rest))
+        .map(|element| element.indexed_type())
 }
 
 /// Catch bindings have TypeScript's strict `unknown` semantics. Other
@@ -294,7 +398,8 @@ pub(super) fn type_identity(value: &Type) -> String {
                 .iter()
                 .map(|value| {
                     format!(
-                        "{}{}",
+                        "{}{}{}",
+                        if value.rest { "..." } else { "" },
                         type_identity(&value.annotation),
                         if value.optional { "?" } else { "" }
                     )
@@ -338,7 +443,8 @@ pub(crate) fn type_label(value: &Type) -> String {
                 .iter()
                 .map(|value| {
                     format!(
-                        "{}{}",
+                        "{}{}{}",
+                        if value.rest { "..." } else { "" },
                         type_label(&value.annotation),
                         if value.optional { "?" } else { "" }
                     )

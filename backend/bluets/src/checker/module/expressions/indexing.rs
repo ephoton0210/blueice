@@ -19,11 +19,12 @@ pub(super) fn indexed_value_type(
     match value {
         Type::Array(element) => (**element).clone(),
         Type::Tuple(values) => index.map_or_else(
-            || alternatives_type(values.iter().map(|value| value.value_type()).collect()),
+            || alternatives_type(values.iter().map(|value| value.indexed_type()).collect()),
             |index| {
                 values
                     .get(index)
-                    .map(|value| value.value_type())
+                    .or_else(|| values.last().filter(|value| value.rest))
+                    .map(|value| value.indexed_type())
                     .unwrap_or(Type::Unknown)
             },
         ),

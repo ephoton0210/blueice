@@ -533,13 +533,15 @@ fn type_to_ts(value: &Type) -> String {
                 .map(|value| {
                     if let Some(label) = &value.label {
                         format!(
-                            "{label}{}: {}",
+                            "{}{label}{}: {}",
+                            if value.rest { "..." } else { "" },
                             if value.optional { "?" } else { "" },
                             type_to_ts(&value.annotation)
                         )
                     } else {
                         format!(
-                            "{}{}",
+                            "{}{}{}",
+                            if value.rest { "..." } else { "" },
                             type_to_ts(&value.annotation),
                             if value.optional { "?" } else { "" }
                         )

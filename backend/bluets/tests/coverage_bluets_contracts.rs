@@ -350,6 +350,35 @@ fn optional_tuple_contract_accepts_only_its_bounded_lengths_and_element_types() 
 }
 
 #[test]
+fn trailing_tuple_rest_contract_checks_every_present_tail_element() {
+    let types = named_types("type Trail = [head: number, ...tail: string[]];");
+    let plan = ContractPlan::from_type("Trail", &named("Trail"), &types).unwrap();
+    for value in [
+        array(vec![number(1.0)]),
+        array(vec![number(1.0), string("a")]),
+        array(vec![number(1.0), string("a"), string("b")]),
+    ] {
+        assert_eq!(plan.validate(&value), Ok(()));
+    }
+    assert!(plan.validate(&array(vec![])).is_err());
+    assert_error(
+        &rejected(&plan, &array(vec![number(1.0), string("a"), number(2.0)])),
+        "$[2]",
+        "string",
+        "number",
+    );
+
+    let optional = named_types("type MaybeTrail = [head?: number, ...tail: string[]];");
+    let plan = ContractPlan::from_type("MaybeTrail", &named("MaybeTrail"), &optional).unwrap();
+    assert_eq!(plan.validate(&array(vec![])), Ok(()));
+    assert_eq!(
+        plan.validate(&array(vec![number(1.0), string("a")])),
+        Ok(())
+    );
+    assert!(plan.validate(&array(vec![string("a")])).is_err());
+}
+
+#[test]
 fn records_check_required_optional_and_nested_fields() {
     let plan = plan_for("Address");
     assert_eq!(plan.validate(&address("Main")), Ok(()));

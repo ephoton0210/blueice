@@ -446,6 +446,17 @@ impl TupleTypeElement {
             self.annotation.clone()
         }
     }
+
+    pub(crate) fn indexed_type(&self) -> Type {
+        if self.rest {
+            match &self.annotation {
+                Type::Array(element) => (**element).clone(),
+                _ => Type::Unknown,
+            }
+        } else {
+            self.value_type()
+        }
+    }
 }
 
 /// The supported, reifiable portion of the TypeScript type grammar.

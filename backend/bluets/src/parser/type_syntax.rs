@@ -139,8 +139,10 @@ impl Parser {
         } else if self.consume("[") {
             let mut values = Vec::new();
             let mut saw_optional = false;
+            let mut saw_rest = false;
             while !self.at_eof() && !self.consume("]") {
                 let start = self.current().start;
+                let rest = self.consume("...");
                 let labeled = matches!(
                     self.current().kind,
                     TokenKind::Identifier | TokenKind::Keyword
@@ -171,7 +173,27 @@ impl Parser {
                 });
                 let end = self.previous().end;
                 let optional = optional || (!labeled && self.consume("?"));
-                if saw_optional && !optional {
+                if saw_rest {
+                    if optional {
+                        self.error_at(
+                            SourceSpan::new(&self.id, start, end),
+                            DiagnosticCode::ParseError,
+                            "an optional tuple element cannot follow a rest element",
+                        );
+                    } else {
+                        self.unsupported(
+                            SourceSpan::new(&self.id, start, end),
+                            "nontrailing tuple rest elements are not supported yet",
+                        );
+                    }
+                }
+                if rest && !matches!(annotation, Type::Array(_)) {
+                    self.unsupported(
+                        SourceSpan::new(&self.id, start, end),
+                        "tuple rest element must have an array annotation",
+                    );
+                }
+                if saw_optional && !optional && !rest {
                     self.error_at(
                         SourceSpan::new(&self.id, start, end),
                         DiagnosticCode::ParseError,
@@ -179,9 +201,11 @@ impl Parser {
                     );
                 }
                 saw_optional |= optional;
+                saw_rest |= rest;
                 values.push(TupleTypeElement {
                     optional,
                     label,
+                    rest,
                     ..TupleTypeElement::required(annotation)
                 });
                 if !self.consume(",") {

@@ -49,6 +49,11 @@ pub enum Contract {
         items: Vec<Contract>,
         required: usize,
     },
+    RestTuple {
+        items: Vec<Contract>,
+        required: usize,
+        rest: Box<Contract>,
+    },
     Record(Vec<ContractField>),
     Union(Vec<Contract>),
     /// Every component must validate. This keeps inherited record contracts
@@ -229,6 +234,17 @@ fn contract_heap_payload_bytes(contract: &Contract) -> Option<usize> {
             }
             Some(bytes)
         }
+        Contract::RestTuple { items, rest, .. } => {
+            let mut bytes = items
+                .capacity()
+                .checked_mul(std::mem::size_of::<Contract>())?;
+            for item in items {
+                bytes = bytes.checked_add(contract_heap_payload_bytes(item)?)?;
+            }
+            bytes
+                .checked_add(std::mem::size_of::<Contract>())?
+                .checked_add(contract_heap_payload_bytes(rest)?)
+        }
         Contract::Record(fields) => {
             let mut bytes = fields
                 .capacity()
@@ -324,12 +340,18 @@ fn lower(
             active,
         )?))),
         Type::Tuple(values) => {
-            if values.iter().any(|value| value.rest) {
+            if values
+                .iter()
+                .take(values.len().saturating_sub(1))
+                .any(|value| value.rest)
+            {
                 return Err(ContractError {
-                    message: "variadic tuple elements are not runtime contracts yet".to_string(),
+                    message: "nontrailing tuple rest contracts are not supported yet".to_string(),
                 });
             }
-            let items = values
+            let rest = values.last().filter(|value| value.rest);
+            let fixed = &values[..values.len() - usize::from(rest.is_some())];
+            let items = fixed
                 .iter()
                 .map(|value| {
                     let item = lower(&value.annotation, named_types, definitions, active)?;
@@ -340,7 +362,18 @@ fn lower(
                     })
                 })
                 .collect::<Result<Vec<_>, ContractError>>()?;
-            if values.iter().any(|value| value.optional) {
+            if let Some(rest) = rest {
+                let Type::Array(element) = &rest.annotation else {
+                    return Err(ContractError {
+                        message: "tuple rest contract requires an array type".to_string(),
+                    });
+                };
+                Ok(Contract::RestTuple {
+                    items,
+                    required: fixed.iter().filter(|value| !value.optional).count(),
+                    rest: Box::new(lower(element, named_types, definitions, active)?),
+                })
+            } else if values.iter().any(|value| value.optional) {
                 Ok(Contract::OptionalTuple {
                     items,
                     required: values.iter().filter(|value| !value.optional).count(),
@@ -488,6 +521,34 @@ fn validate_contract(
             }
             Ok(())
         }
+        Contract::RestTuple {
+            items,
+            required,
+            rest,
+        } => {
+            let ContractValue::Array(values) = value else {
+                return mismatch(path, "tuple", value);
+            };
+            if values.len() < *required {
+                return Err(ValidationError {
+                    path: path.to_string(),
+                    expected: format!("tuple of length at least {required}"),
+                    observed: format!("array of length {}", values.len()),
+                });
+            }
+            for (index, item_value) in values.iter().enumerate() {
+                let item = items.get(index).unwrap_or(rest);
+                validate_contract(
+                    item,
+                    item_value,
+                    definitions,
+                    &format!("{path}[{index}]"),
+                    depth + 1,
+                    state,
+                )?;
+            }
+            Ok(())
+        }
         Contract::Record(fields) => {
             let ContractValue::Object(values) = value else {
                 return mismatch(path, "object", value);
@@ -595,7 +656,7 @@ fn contract_label(contract: &Contract) -> String {
         Contract::String => "string",
         Contract::Literal(value) => value,
         Contract::Array(_) => "array",
-        Contract::Tuple(_) | Contract::OptionalTuple { .. } => "tuple",
+        Contract::Tuple(_) | Contract::OptionalTuple { .. } | Contract::RestTuple { .. } => "tuple",
         Contract::Record(_) => "object",
         Contract::Union(_) => "union",
         Contract::Intersection(_) => "intersection",

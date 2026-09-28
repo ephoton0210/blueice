@@ -224,12 +224,15 @@ fn access_candidates(
         }
         Type::Tuple(values) if property.is_none() || index.is_some() => {
             if let Some(index) = index {
-                if let Some(value) = values.get(index) {
-                    push_type(value.value_type(), result, budget)?;
+                if let Some(value) = values
+                    .get(index)
+                    .or_else(|| values.last().filter(|value| value.rest))
+                {
+                    push_type(value.indexed_type(), result, budget)?;
                 }
             } else {
                 for value in values {
-                    push_type(value.value_type(), result, budget)?;
+                    push_type(value.indexed_type(), result, budget)?;
                 }
             }
         }
