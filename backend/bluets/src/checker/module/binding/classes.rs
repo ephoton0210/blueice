@@ -8,6 +8,63 @@ use super::*;
 use crate::parser::{ClassDeclaration, ClassMethod};
 
 impl ModuleChecker<'_> {
+    pub(super) fn bind_imported_class(
+        &mut self,
+        local_name: &str,
+        class: &ExportedClass,
+        span: &SourceSpan,
+    ) {
+        if self.types.contains_key(local_name) || self.values.contains_key(local_name) {
+            self.duplicate(local_name, span.clone());
+            return;
+        }
+        self.types.insert(
+            local_name.to_string(),
+            TypeDefinition {
+                kind: TypeDefinitionKind::Class,
+                parameters: Vec::new(),
+                value: specialize_imported_class_type(
+                    &class.instance_type,
+                    &class.source_name,
+                    local_name,
+                ),
+            },
+        );
+        self.insert_value(
+            local_name,
+            specialize_imported_class_type(&class.constructor_type, &class.source_name, local_name),
+            span.clone(),
+            SymbolKind::Import,
+            false,
+        );
+        let signatures = class
+            .constructor_binding
+            .signatures
+            .iter()
+            .map(|signature| {
+                let mut signature = signature.clone();
+                for parameter in &mut signature.parameters {
+                    parameter.annotation = parameter.annotation.as_ref().map(|annotation| {
+                        specialize_imported_class_type(annotation, &class.source_name, local_name)
+                    });
+                }
+                signature.return_type = specialize_imported_class_type(
+                    &signature.return_type,
+                    &class.source_name,
+                    local_name,
+                );
+                signature
+            })
+            .collect();
+        self.class_constructors.insert(
+            local_name.to_string(),
+            ClassConstructorBinding {
+                signatures,
+                inherited: class.constructor_binding.inherited,
+            },
+        );
+    }
+
     pub(in crate::checker::module) fn is_local_class_constructor_value(
         &self,
         name: &str,
@@ -346,6 +403,19 @@ fn class_constructor_signatures(class: &ClassDeclaration) -> Vec<FunctionSignatu
             },
         })
         .collect()
+}
+
+pub(in crate::checker) fn class_export(class: &ClassDeclaration) -> ExportedClass {
+    ExportedClass {
+        source_name: class.name.clone(),
+        instance_type: class_instance_type(class),
+        constructor_type: class_constructor_side_type(class),
+        constructor_binding: ClassConstructorBinding {
+            signatures: class_constructor_signatures(class),
+            inherited: class.extends_name.is_some(),
+        },
+        value_exported: class.exported,
+    }
 }
 
 pub(in crate::checker) fn class_instance_type(class: &ClassDeclaration) -> Type {

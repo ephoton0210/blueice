@@ -16,7 +16,7 @@ enum RecordSpreadFailure {
 pub(super) struct ModuleChecker<'a> {
     project: &'a Project,
     module: &'a Module,
-    exported_types: &'a BTreeMap<String, BTreeMap<String, TypeDefinition>>,
+    exports: &'a ProjectExports,
     ambient: Option<&'a AmbientDeclarations>,
     enforce_types: bool,
     require_declared_global_calls: bool,
@@ -38,4 +38,4 @@ pub(super) struct ModuleChecker<'a> {
 
 mod binding;
 mod expressions;
-pub(in crate::checker) use binding::class_instance_type;
+pub(in crate::checker) use binding::{class_export, class_instance_type};

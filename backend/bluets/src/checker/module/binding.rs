@@ -8,7 +8,7 @@ use super::*;
 
 mod classes;
 mod functions;
-pub(in crate::checker) use classes::class_instance_type;
+pub(in crate::checker) use classes::{class_export, class_instance_type};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StructuredTermination {
@@ -17,11 +17,22 @@ enum StructuredTermination {
     Opaque,
 }
 
+fn specialize_imported_class_type(value: &Type, source_name: &str, local_name: &str) -> Type {
+    let substitution = BTreeMap::from([(
+        source_name.to_string(),
+        Type::Named {
+            name: local_name.to_string(),
+            arguments: Vec::new(),
+        },
+    )]);
+    substitute_type(value, &substitution)
+}
+
 impl<'a> ModuleChecker<'a> {
     pub(crate) fn new(
         project: &'a Project,
         module: &'a Module,
-        exported_types: &'a BTreeMap<String, BTreeMap<String, TypeDefinition>>,
+        exports: &'a ProjectExports,
         ambient: Option<&'a AmbientDeclarations>,
         enforce_types: bool,
         require_declared_global_calls: bool,
@@ -30,7 +41,7 @@ impl<'a> ModuleChecker<'a> {
         Self {
             project,
             module,
-            exported_types,
+            exports,
             ambient,
             enforce_types,
             require_declared_global_calls,
@@ -370,15 +381,27 @@ impl<'a> ModuleChecker<'a> {
         else {
             return;
         };
-        let exported = self.exported_types.get(resolved);
+        let exported = self.exports.types.get(resolved);
+        let exported_classes = self.exports.classes.get(resolved);
         for binding in &import.bindings {
             if binding.type_only {
                 if binding.imported == "*" {
                     if let Some(source_types) = exported {
                         for (name, definition) in source_types {
+                            let local = format!("{}.{}", binding.local, name);
+                            let mut definition = definition.clone();
+                            if let Some(class) =
+                                exported_classes.and_then(|classes| classes.get(name))
+                            {
+                                definition.value = specialize_imported_class_type(
+                                    &class.instance_type,
+                                    &class.source_name,
+                                    &local,
+                                );
+                            }
                             self.insert_type(
-                                &format!("{}.{}", binding.local, name),
-                                definition.clone(),
+                                &local,
+                                definition,
                                 import.span.clone(),
                                 SymbolKind::Import,
                                 false,
@@ -399,14 +422,32 @@ impl<'a> ModuleChecker<'a> {
                     ));
                     continue;
                 };
+                let mut source_type = source_type.clone();
+                if let Some(class) =
+                    exported_classes.and_then(|classes| classes.get(&binding.imported))
+                {
+                    source_type.value = specialize_imported_class_type(
+                        &class.instance_type,
+                        &class.source_name,
+                        &binding.local,
+                    );
+                }
                 self.insert_type(
                     &binding.local,
-                    source_type.clone(),
+                    source_type,
                     import.span.clone(),
                     SymbolKind::Import,
                     false,
                 );
             } else {
+                if let Some(class) = exported_classes
+                    .and_then(|classes| classes.get(&binding.imported))
+                    .filter(|class| class.value_exported)
+                    .cloned()
+                {
+                    self.bind_imported_class(&binding.local, &class, &import.span);
+                    continue;
+                }
                 self.insert_value(
                     &binding.local,
                     Type::Unknown,
@@ -423,7 +464,7 @@ impl<'a> ModuleChecker<'a> {
             self.project
                 .resolutions
                 .get(&(self.module.id.clone(), specifier.clone()))
-                .and_then(|resolved| self.exported_types.get(resolved))
+                .and_then(|resolved| self.exports.types.get(resolved))
         });
         for binding in &export.bindings {
             if binding == "*" {

@@ -22,7 +22,7 @@ fn compile_with_helper(source: &str) -> blueice_bluets::Compilation {
     compile(ENTRY, &loader, CompilerOptions::default())
 }
 
-fn compile_class_type_import(main: &str, box_module: &str) -> blueice_bluets::Compilation {
+fn compile_class_module_pair(main: &str, box_module: &str) -> blueice_bluets::Compilation {
     compile(
         ENTRY,
         &MapLoader::from([
@@ -661,8 +661,12 @@ fn closed_module_type_imports_retain_class_instance_method_shapes() {
             include_str!("fixtures/typescript_oracle/class-type-import-type-export/main.ts"),
             include_str!("fixtures/typescript_oracle/class-type-import-type-export/box.ts"),
         ),
+        (
+            include_str!("fixtures/typescript_oracle/class-type-import-self-reference/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-type-import-self-reference/box.ts"),
+        ),
     ] {
-        let compilation = compile_class_type_import(main, box_module);
+        let compilation = compile_class_module_pair(main, box_module);
         assert!(compilation.output.is_none());
         assert!(
             compilation
@@ -676,7 +680,7 @@ fn closed_module_type_imports_retain_class_instance_method_shapes() {
 
     let main = include_str!("fixtures/typescript_oracle/class-type-import-wrong-side/main.ts");
     let box_module = include_str!("fixtures/typescript_oracle/class-type-import-wrong-side/box.ts");
-    let compilation = compile_class_type_import(main, box_module);
+    let compilation = compile_class_module_pair(main, box_module);
     assert!(compilation.output.is_none());
     let failures = compilation
         .diagnostics
@@ -691,7 +695,7 @@ fn closed_module_type_imports_retain_class_instance_method_shapes() {
 
     let main = include_str!("fixtures/typescript_oracle/class-type-import-private/main.ts");
     let box_module = include_str!("fixtures/typescript_oracle/class-type-import-private/box.ts");
-    let compilation = compile_class_type_import(main, box_module);
+    let compilation = compile_class_module_pair(main, box_module);
     let failures = compilation
         .diagnostics
         .iter()
@@ -703,6 +707,50 @@ fn closed_module_type_imports_retain_class_instance_method_shapes() {
     assert_eq!(
         &main[failures[0].span.start..failures[0].span.end],
         "import type { Box } from './box.ts';"
+    );
+}
+
+#[test]
+fn closed_module_value_imports_bind_both_class_sides_with_local_names() {
+    for (main, box_module) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-value-import-binding/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-value-import-binding/box.ts"),
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-value-import-alias-binding/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-value-import-alias-binding/box.ts"),
+        ),
+    ] {
+        let compilation = compile_class_module_pair(main, box_module);
+        assert!(compilation.output.is_none());
+        assert!(
+            compilation
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{:#?}",
+            compilation.diagnostics
+        );
+    }
+
+    let main =
+        include_str!("fixtures/typescript_oracle/class-value-import-wrong-side-binding/main.ts");
+    let box_module =
+        include_str!("fixtures/typescript_oracle/class-value-import-wrong-side-binding/box.ts");
+    let compilation = compile_class_module_pair(main, box_module);
+    assert!(compilation.output.is_none());
+    let failures = compilation
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+        .collect::<Vec<_>>();
+    assert_eq!(failures.len(), 1, "{:#?}", compilation.diagnostics);
+    assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+    assert_eq!(failures[0].span.module, ENTRY);
+    assert_eq!(
+        &main[failures[0].span.start..failures[0].span.end],
+        "const invalid: LocalBox = LocalBox;"
     );
 }
 

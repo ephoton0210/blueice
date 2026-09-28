@@ -179,6 +179,113 @@ pub(super) fn exported_types(
     modules
 }
 
+pub(super) fn exported_classes(
+    project: &Project,
+) -> BTreeMap<String, BTreeMap<String, ExportedClass>> {
+    let mut modules = BTreeMap::new();
+    for (id, module) in &project.modules {
+        let declared = module
+            .declarations
+            .iter()
+            .filter_map(|declaration| match declaration {
+                Declaration::Class(class) => {
+                    Some((class.name.clone(), module::class_export(class)))
+                }
+                _ => None,
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut exports = BTreeMap::new();
+        for declaration in &module.declarations {
+            match declaration {
+                Declaration::Class(class) if class.exported => {
+                    if let Some(value) = declared.get(&class.name) {
+                        exports.insert(class.name.clone(), value.clone());
+                    }
+                }
+                Declaration::ValueExport(export) => {
+                    for binding in &export.bindings {
+                        if let Some(value) = declared.get(&binding.local) {
+                            let mut value = value.clone();
+                            value.value_exported = true;
+                            exports.insert(binding.exported.clone(), value);
+                        }
+                    }
+                }
+                Declaration::TypeExport(export) if export.specifier.is_none() => {
+                    for binding in &export.bindings {
+                        let (local, exported) = binding
+                            .split_once(" as ")
+                            .map_or((binding.as_str(), binding.as_str()), |(local, exported)| {
+                                (local, exported)
+                            });
+                        if let Some(value) = declared.get(local) {
+                            let mut value = value.clone();
+                            value.value_exported = false;
+                            exports.insert(exported.to_string(), value);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        modules.insert(id.clone(), exports);
+    }
+    for _ in 0..project.modules.len() {
+        let mut changed = false;
+        for (module_id, module) in &project.modules {
+            let mut additions = BTreeMap::new();
+            for declaration in &module.declarations {
+                let Declaration::TypeExport(export) = declaration else {
+                    continue;
+                };
+                let Some(specifier) = &export.specifier else {
+                    continue;
+                };
+                let Some(source_id) = project
+                    .resolutions
+                    .get(&(module_id.clone(), specifier.clone()))
+                else {
+                    continue;
+                };
+                let Some(source_classes) = modules.get(source_id) else {
+                    continue;
+                };
+                for binding in &export.bindings {
+                    if binding == "*" {
+                        additions.extend(source_classes.iter().map(|(name, value)| {
+                            let mut value = value.clone();
+                            value.value_exported = false;
+                            (name.clone(), value)
+                        }));
+                        continue;
+                    }
+                    let (local, exported) = binding
+                        .split_once(" as ")
+                        .map_or((binding.as_str(), binding.as_str()), |(local, exported)| {
+                            (local, exported)
+                        });
+                    if let Some(value) = source_classes.get(local) {
+                        let mut value = value.clone();
+                        value.value_exported = false;
+                        additions.insert(exported.to_string(), value);
+                    }
+                }
+            }
+            let target = modules.entry(module_id.clone()).or_default();
+            for (name, value) in additions {
+                if target.get(&name) != Some(&value) {
+                    target.insert(name, value);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    modules
+}
+
 pub(super) fn local_type_definitions(module: &Module) -> BTreeMap<String, TypeDefinition> {
     module
         .declarations

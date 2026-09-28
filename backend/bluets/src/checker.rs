@@ -80,16 +80,31 @@ enum TypeDefinitionKind {
     Class,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct FunctionSignature {
     parameters: Vec<Parameter>,
     type_parameters: Vec<TypeParameter>,
     return_type: Type,
 }
 
+#[derive(Clone, PartialEq, Eq)]
 struct ClassConstructorBinding {
     signatures: Vec<FunctionSignature>,
     inherited: bool,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct ExportedClass {
+    source_name: String,
+    instance_type: Type,
+    constructor_type: Type,
+    constructor_binding: ClassConstructorBinding,
+    value_exported: bool,
+}
+
+struct ProjectExports {
+    types: BTreeMap<String, BTreeMap<String, TypeDefinition>>,
+    classes: BTreeMap<String, BTreeMap<String, ExportedClass>>,
 }
 
 /// Static declarations selected by the host and injected into ordinary source
@@ -120,7 +135,10 @@ pub(crate) fn check_incremental(
     let mut diagnostics = project::declaration_module_diagnostics(project);
     let (ambient, mut ambient_diagnostics) = ambient_declarations(project);
     diagnostics.append(&mut ambient_diagnostics);
-    let exported_types = project::exported_types(project);
+    let exports = ProjectExports {
+        types: project::exported_types(project),
+        classes: project::exported_classes(project),
+    };
     let mut checked_modules = BTreeMap::new();
 
     for (module_id, module) in &project.modules {
@@ -133,7 +151,7 @@ pub(crate) fn check_incremental(
         let mut checker = module::ModuleChecker::new(
             project,
             module,
-            &exported_types,
+            &exports,
             (!project.ambient_declaration_modules.contains(module_id)).then_some(&ambient),
             enforce_types,
             require_declared_global_calls,

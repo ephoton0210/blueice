@@ -20,6 +20,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const PINNED_TYPESCRIPT_VERSION: &str = "5.9.3";
 static TEST_DIRECTORY_COUNTER: AtomicU64 = AtomicU64::new(0);
 type NoEmitCase = (&'static str, &'static str, &'static [(usize, &'static str)]);
+type NoEmitClassModuleCase = (
+    &'static str,
+    &'static str,
+    &'static str,
+    Option<(usize, &'static str)>,
+);
 
 struct OracleCase {
     name: &'static str,
@@ -1191,7 +1197,7 @@ fn pinned_static_class_binding_matches_typescript_without_emit() {
 fn pinned_class_type_imports_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);
-    let cases = [
+    let cases: [NoEmitClassModuleCase; 6] = [
         (
             "direct",
             include_str!("fixtures/typescript_oracle/class-type-import/main.ts"),
@@ -1211,6 +1217,12 @@ fn pinned_class_type_imports_match_typescript_without_emit() {
             None,
         ),
         (
+            "self-reference",
+            include_str!("fixtures/typescript_oracle/class-type-import-self-reference/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-type-import-self-reference/box.ts"),
+            None,
+        ),
+        (
             "wrong-side",
             include_str!("fixtures/typescript_oracle/class-type-import-wrong-side/main.ts"),
             include_str!("fixtures/typescript_oracle/class-type-import-wrong-side/box.ts"),
@@ -1223,12 +1235,46 @@ fn pinned_class_type_imports_match_typescript_without_emit() {
             Some((5, "TS2459")),
         ),
     ];
-    for (name, main, box_module, expected_error) in cases {
+    assert_pinned_class_module_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_class_value_import_bindings_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitClassModuleCase; 3] = [
+        (
+            "direct-value-import",
+            include_str!("fixtures/typescript_oracle/class-value-import-binding/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-value-import-binding/box.ts"),
+            None,
+        ),
+        (
+            "aliased-value-import",
+            include_str!("fixtures/typescript_oracle/class-value-import-alias-binding/main.ts"),
+            include_str!("fixtures/typescript_oracle/class-value-import-alias-binding/box.ts"),
+            None,
+        ),
+        (
+            "wrong-side-value",
+            include_str!(
+                "fixtures/typescript_oracle/class-value-import-wrong-side-binding/main.ts"
+            ),
+            include_str!("fixtures/typescript_oracle/class-value-import-wrong-side-binding/box.ts"),
+            Some((6, "TS2741")),
+        ),
+    ];
+    assert_pinned_class_module_cases(&tsc, &cases);
+}
+
+fn assert_pinned_class_module_cases(tsc: &Path, cases: &[NoEmitClassModuleCase]) {
+    for &(name, main, box_module, expected_error) in cases {
         let temporary = TestDirectory::new();
         let input = temporary.path().join("main.ts");
         fs::write(&input, main).unwrap();
         fs::write(temporary.path().join("box.ts"), box_module).unwrap();
-        let output = Command::new(&tsc)
+        let output = Command::new(tsc)
             .args([
                 "--target",
                 "ES2022",

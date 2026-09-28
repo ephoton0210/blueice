@@ -5274,6 +5274,27 @@ bridge crate suites, workspace all-target Clippy, rustfmt, and whitespace
 checks pass using the reused compact Cargo target. Value-imported class
 constructors and static sides are the next leaf.
 
+### J.3.1.3.2.3.3.2.1 Closed class value origin and alias binding
+
+A bounded project export table now retains each directly exported or locally
+aliased class's source name, instance shape, constructor-side shape, and
+constructor signatures without copying its body tokens. Value imports bind
+the class in both type and value namespaces. The imported name replaces the
+source class's self references inside method types, `prototype`, and
+constructor signatures. Type-only imports use the same origin to specialize
+their instance method returns under local aliases; type-only export and
+re-export edges retain no runtime value authority. Class output remains
+refused throughout the closed graph.
+
+Public two-module tests check direct and aliased class value imports against
+constructor and instance shape assignments, a wrong-side constructor-value
+assignment, exact source spans, and no output. Three pinned TypeScript 5.9.3
+`--noEmit` graphs match the accepted forms and TS2741 rejection. The prior
+type-only import oracle now covers an aliased self-return. The BlueTS and
+bridge crate suites, workspace all-target Clippy, rustfmt, and whitespace
+checks pass with the reused compact target. Imported construction and member
+calls are the next leaf.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
