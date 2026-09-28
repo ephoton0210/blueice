@@ -5880,6 +5880,25 @@ variadic elements. Parenthesized union arrays are separately tracked for
 heterogeneous tuple-to-array override comparisons because the current
 type parser interprets a leading `(` as a function type.
 
+### J.3.1.3.4.4.2.3.2.3.3.1 Optional tuple element rollout
+
+The existing `Type::Tuple(Vec<Type>)` cannot distinguish an omittable
+element from a required one. Replace its element vector with a shared
+tuple-element record containing the annotation, an optional flag, an
+optional label, and a rest flag. Labels will be retained for declaration
+output but ignored by structural type compatibility. Optional and rest
+flags will affect minimum/maximum arity, indexed element types, and
+runtime contracts. This one representation will also serve the following
+labeled and variadic leaves without introducing temporary tuple variants.
+
+First migrate existing required tuples to records with all flags clear and
+prove unchanged parser, checker, emitter, and contract behavior. Keep the
+parser rejecting optional tuple syntax during this migration. Then admit
+optional syntax only after its general type relation, declaration output,
+and contract behavior have public tests; class method override expansion
+follows as a separate leaf. This sequence prevents an optional tuple from
+being silently treated as a required tuple in another BlueTS use.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

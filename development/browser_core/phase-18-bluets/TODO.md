@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.1.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.1.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1476,6 +1476,24 @@ exists. A passed first form does not close its whole feature family.
                     - [ ] **J.3.1.3.4.4.2.3.2.3.3.1** Parse optional tuple
                       elements and compare their required and optional
                       override positions against pinned TypeScript.
+                      - [x] **J.3.1.3.4.4.2.3.2.3.3.1.1** Choose tuple-element
+                        metadata and a fail-closed rollout. PLAN.md records a
+                        shared tuple element with annotation, optional,
+                        label, and rest fields; the parser will first migrate
+                        required tuples without admitting new syntax, then
+                        admit optional forms only with type checking and
+                        emission support, followed by override comparison.
+                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.1.2** Migrate required
+                        tuple types to the shared element metadata while
+                        preserving current parser, checker, emitter, and
+                        runtime-contract behavior at public boundaries.
+                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.1.3** Parse and check
+                        optional tuple elements across admitted type uses,
+                        including output and contracts, against pinned
+                        TypeScript.
+                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.1.4** Compare optional
+                        tuple rest arity and element types in class method
+                        overrides against pinned TypeScript.
                     - [ ] **J.3.1.3.4.4.2.3.2.3.3.2** Parse labeled tuple
                       elements with erased labels and equivalent positional
                       override compatibility.
