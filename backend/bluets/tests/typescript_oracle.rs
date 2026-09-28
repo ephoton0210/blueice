@@ -1537,6 +1537,48 @@ fn pinned_local_class_heritage_cycles_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_inherited_instance_methods_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 3] = [
+        (
+            "local-valid",
+            include_str!("fixtures/typescript_oracle/class-inherited-instance-valid/main.ts"),
+            &[],
+        ),
+        (
+            "wrong-argument",
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-instance-argument-error/main.ts"
+            ),
+            &[(8, "TS2345")],
+        ),
+        (
+            "wrong-result",
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-instance-result-error/main.ts"
+            ),
+            &[(8, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+    assert_pinned_class_module_cases(
+        &tsc,
+        &[(
+            "imported-valid",
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-imported-instance-valid/main.ts"
+            ),
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-imported-instance-valid/box.ts"
+            ),
+            None,
+        )],
+    );
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

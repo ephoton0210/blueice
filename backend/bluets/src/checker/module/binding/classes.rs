@@ -276,6 +276,70 @@ impl ModuleChecker<'_> {
         }
     }
 
+    pub(super) fn bind_inherited_class_instance_methods(&mut self) {
+        let local_classes = self
+            .module
+            .declarations
+            .iter()
+            .filter_map(|declaration| match declaration {
+                Declaration::Class(class) => Some((class.name.as_str(), class)),
+                _ => None,
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut surfaces = Vec::new();
+        for class in local_classes.values() {
+            if !self
+                .types
+                .get(&class.name)
+                .is_some_and(|definition| definition.kind == TypeDefinitionKind::Class)
+            {
+                continue;
+            }
+            let mut fields = class_method_fields(class, false);
+            let mut names = fields
+                .iter()
+                .map(|field| field.name.clone())
+                .collect::<BTreeSet<_>>();
+            let mut visited = BTreeSet::new();
+            let mut base_name = class.extends_name.as_deref();
+            for _ in 0..self.max_type_expansions {
+                let Some(name) = base_name else {
+                    break;
+                };
+                if !visited.insert(name) {
+                    break;
+                }
+                let inherited = if let Some(base) = local_classes.get(name) {
+                    base_name = base.extends_name.as_deref();
+                    class_method_fields(base, false)
+                } else if let Some(TypeDefinition {
+                    kind: TypeDefinitionKind::Class,
+                    value: Type::Record(fields),
+                    ..
+                }) = self.types.get(name)
+                {
+                    base_name = None;
+                    fields.clone()
+                } else {
+                    break;
+                };
+                fields.extend(
+                    inherited
+                        .iter()
+                        .filter(|field| !names.contains(&field.name))
+                        .cloned(),
+                );
+                names.extend(inherited.iter().map(|field| field.name.clone()));
+            }
+            surfaces.push((class.name.clone(), Type::Record(fields)));
+        }
+        for (name, value) in surfaces {
+            if let Some(definition) = self.types.get_mut(&name) {
+                definition.value = value;
+            }
+        }
+    }
+
     pub(super) fn validate_class_constructor_group(&mut self, class: &ClassDeclaration) {
         let constructors = class
             .members
@@ -431,7 +495,12 @@ impl ModuleChecker<'_> {
     }
 
     pub(super) fn check_class_constructor_bodies(&mut self, class: &ClassDeclaration) {
-        let instance_type = class_instance_type(class);
+        let instance_type = self
+            .types
+            .get(&class.name)
+            .filter(|definition| definition.kind == TypeDefinitionKind::Class)
+            .map(|definition| definition.value.clone())
+            .unwrap_or_else(|| class_instance_type(class));
         for constructor in class
             .members
             .iter()

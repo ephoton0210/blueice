@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.3.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.3.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1200,6 +1200,30 @@ exists. A passed first form does not close its whole feature family.
         - [ ] **J.3.1.3.4.3** Include inherited instance and static members
           and inherited constructor signatures in bounded local class lookup
           and construction, including class imports.
+          - [x] **J.3.1.3.4.3.1** Inherit instance method surfaces from local
+            and value-imported named class bases through bounded property
+            lookup, preserving derived declarations' shadowing and selected
+            result inference against pinned TypeScript. The checker builds
+            each local class instance shape from its own methods followed by
+            unshadowed local/imported ancestor methods within the existing
+            expansion limit. Derived `this` and constructed values reuse
+            bounded member lookup, call checks, and inferred results. Public
+            checked-compile cases cover a multi-level local base, imported
+            base, invalid inherited call, incompatible inferred result,
+            original spans, and no class output. Four pinned TypeScript 5.9.3
+            `--noEmit` cases agree on acceptance and TS2345/TS2322 lines.
+            BlueTS, bridge, and full workspace tests, all-target Clippy,
+            rustfmt, and whitespace checks pass with the reused 12 GiB
+            target.
+          - [ ] **J.3.1.3.4.3.2** Inherit static method surfaces and
+            constructor-side lookups from local and imported class bases,
+            including static `this` and overload result inference.
+          - [ ] **J.3.1.3.4.3.3** Reuse inherited constructor signatures when
+            a derived class declares no constructor, with bounded argument
+            checking and selected instance inference.
+          - [ ] **J.3.1.3.4.3.4** Carry inherited instance/static and
+            constructor surfaces through closed-module exports and imports,
+            including locally aliased class exports.
         - [ ] **J.3.1.3.4.4** Validate inherited method overrides and overload
           compatibility at original member spans against pinned TypeScript.
         - [ ] **J.3.1.3.4.5** Check derived constructor `super` calls, arguments,

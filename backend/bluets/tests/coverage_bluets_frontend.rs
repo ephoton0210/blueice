@@ -1089,6 +1089,62 @@ fn local_class_heritage_cycle_scan_obeys_the_type_expansion_budget() {
 }
 
 #[test]
+fn inherited_instance_methods_work_through_local_and_imported_class_bases() {
+    for accepted in [
+        compile_with_helper(include_str!(
+            "fixtures/typescript_oracle/class-inherited-instance-valid/main.ts"
+        )),
+        compile_class_module_pair(
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-imported-instance-valid/main.ts"
+            ),
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-imported-instance-valid/box.ts"
+            ),
+        ),
+    ] {
+        assert!(accepted.output.is_none());
+        assert!(
+            accepted
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{:#?}",
+            accepted.diagnostics
+        );
+    }
+    for (source, expected_span) in [
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-instance-argument-error/main.ts"
+            ),
+            "child.label('wrong')",
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-inherited-instance-result-error/main.ts"
+            ),
+            "const wrong: number = child.label(1);",
+        ),
+    ] {
+        let compilation = compile_with_helper(source);
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+        assert_eq!(
+            &source[failures[0].span.start..failures[0].span.end],
+            expected_span,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
 fn class_construction_scan_obeys_the_type_expansion_budget() {
     let source =
         "class Box { constructor(value: number) {} } const pair = [new Box(1), new Box(2)];";

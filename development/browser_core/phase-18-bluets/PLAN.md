@@ -5508,6 +5508,32 @@ on TS2506/TS2449 lines. BlueTS, bridge, and full workspace suites, workspace
 all-target Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB
 Cargo target.
 
+### J.3.1.3.4.3 Inherited class surfaces
+
+The inherited lookup work is split into instance methods, static methods,
+constructor signatures, and closed-module export/import propagation. Local
+and value-imported named class bases must preserve derived method shadowing
+and the existing bounded property and call relations. The checker continues
+to refuse class output until the emit and runtime leaves close.
+
+### J.3.1.3.4.3.1 Inherited instance methods
+
+Before checking class bodies and runtime expressions, the checker builds each
+local class's instance method shape from its own parsed method groups and
+unshadowed ancestors. It follows local `extends` edges up to the configured
+type-expansion limit and can terminate at a value-imported class's already
+bound instance surface. The resulting record retains original method spans
+and overload groups. Derived `this` and `new` instance values reach those
+methods through the existing bounded property lookup, call relation, and
+selected-result inference. Class output remains refused.
+
+Public checked-compile cases cover a multi-level local base, an imported
+base, an invalid inherited call, an incompatible inferred result, exact
+spans, and no artifact. Four pinned TypeScript 5.9.3 `--noEmit` cases agree
+on acceptance and TS2345/TS2322 lines. BlueTS, bridge, and full workspace
+suites, workspace all-target Clippy, rustfmt, and whitespace checks pass with
+the reused 12 GiB Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
