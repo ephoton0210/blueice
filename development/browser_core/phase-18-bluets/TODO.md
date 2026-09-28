@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.5.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.5.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1654,6 +1654,28 @@ exists. A passed first form does not close its whole feature family.
                       - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5** Compare nontrailing
                         tuple rest positions and required suffixes in class
                         method overrides against pinned TypeScript.
+                        - [x] **J.3.1.3.4.4.2.3.2.3.3.3.5.1** Compare a derived
+                          nontrailing tuple rest with inherited fixed or
+                          array rest parameters. The checker aligns each
+                          possible fixed-base arity or bounded array-rest
+                          witness length, including end-aligned required
+                          suffixes and optional fixed-base arity. Public
+                          checked-compile cases cover accepted leading,
+                          middle, and shifted rest forms, and rejected
+                          suffix, middle, arity, static, and optional-base
+                          forms at original member spans with no output.
+                          Six pinned TypeScript 5.9.3 `--noEmit` cases agree
+                          on acceptance and TS2416/TS2417 lines. BlueTS,
+                          bridge, and full workspace tests, all-target
+                          Clippy, rustfmt, and whitespace checks pass with
+                          the reused 12 GiB target.
+                        - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5.2** Compare an
+                          inherited nontrailing tuple rest with derived fixed
+                          or array rest parameters, including the required
+                          suffix at bounded witness lengths.
+                        - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5.3** Compare
+                          nontrailing tuple rests on both sides, including
+                          shifted prefixes and suffixes.
                       - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6** Resolve concrete
                         and constrained generic tuple spreads in admitted
                         type uses and override comparison, with bounded

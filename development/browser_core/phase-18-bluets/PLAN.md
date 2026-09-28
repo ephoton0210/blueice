@@ -6132,6 +6132,31 @@ middle or suffix types, a second rest, and optional-before-required order.
 Ten pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2322,
 TS1265, and TS1257 diagnostic lines.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.5.1 Derived nontrailing tuple rest overrides
+
+The class override gate now recognizes a final rest parameter whose tuple
+contains one array-typed rest before a required suffix when the inherited
+method has fixed parameters or an array rest. Other nontrailing override
+directions remain separate leaves. This follows the documented TypeScript
+use of nontrailing rests to express variable arguments followed by fixed
+parameters.
+
+For a fixed inherited signature, the comparison checks every arity from its
+required count through its declared count. The derived tuple must accept the
+minimum inherited arity. For an inherited array rest, it checks bounded
+witness lengths past both fixed prefixes and the derived suffix boundary;
+matching positions use the existing bivariant method parameter relation.
+Tuple positions are calculated from the total witness length, so the suffix
+always aligns from the end, while the middle element repeats symbolically.
+Each positional comparison consumes the shared type-expansion budget.
+
+Public checked-compile cases cover accepted leading, middle, and shifted
+rests, rejected middle/suffix element types, too many required arguments,
+an optional inherited argument that cannot supply the required suffix, and
+a static mismatch. The original method member receives one type diagnostic
+and no output is emitted. Six pinned TypeScript 5.9.3 `--noEmit` cases agree
+on acceptance and TS2416/TS2417 diagnostic lines.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

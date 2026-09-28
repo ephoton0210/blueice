@@ -2480,6 +2480,69 @@ fn derived_trailing_tuple_rest_overrides_compare_repeated_tail() {
 }
 
 #[test]
+fn derived_middle_tuple_rest_overrides_align_required_suffixes() {
+    let valid =
+        include_str!("fixtures/typescript_oracle/class-override-derived-middle-valid/main.ts");
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, valid)]),
+        CompilerOptions::default(),
+    );
+    assert!(accepted.output.is_none());
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, member) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-override-derived-middle-suffix-error/main.ts"),
+            "read(...parts: [head: number, ...middle: string[], done: number]): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-derived-middle-element-error/main.ts"),
+            "read(...parts: [head: number, ...middle: boolean[], done: boolean]): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-derived-middle-arity-error/main.ts"),
+            "read(...parts: [head: number, ...middle: string[], done: boolean]): number { return 1; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-derived-middle-static-error/main.ts"),
+            "static parse(a: number, ...parts: [...middle: boolean[], end: string]): number { return a; }",
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-override-derived-middle-optional-error/main.ts"),
+            "read(...parts: [head: number, ...middle: string[], done: boolean]): number { return 1; }",
+        ),
+    ] {
+        let compilation = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(compilation.output.is_none());
+        let failures = compilation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code != DiagnosticCode::UnsupportedSyntax)
+            .collect::<Vec<_>>();
+        assert_eq!(failures.len(), 1, "{failures:#?}");
+        assert_eq!(failures[0].code, DiagnosticCode::TypeMismatch);
+        assert_eq!(failures[0].span.module, ENTRY);
+        assert_eq!(
+            &source[failures[0].span.start..failures[0].span.end],
+            member,
+            "{failures:#?}"
+        );
+    }
+}
+
+#[test]
 fn inherited_trailing_tuple_rest_overrides_compare_repeated_tail() {
     for valid in [
         include_str!("fixtures/typescript_oracle/class-override-base-tail-valid/main.ts"),

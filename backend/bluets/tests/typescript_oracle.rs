@@ -2756,6 +2756,56 @@ fn pinned_derived_trailing_tuple_rest_overrides_match_typescript_without_emit() 
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_derived_middle_tuple_rest_overrides_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 6] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-override-derived-middle-valid/main.ts"),
+            &[],
+        ),
+        (
+            "suffix-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-derived-middle-suffix-error/main.ts"
+            ),
+            &[(7, "TS2416")],
+        ),
+        (
+            "element-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-derived-middle-element-error/main.ts"
+            ),
+            &[(7, "TS2416")],
+        ),
+        (
+            "arity-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-derived-middle-arity-error/main.ts"
+            ),
+            &[(7, "TS2416")],
+        ),
+        (
+            "static-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-derived-middle-static-error/main.ts"
+            ),
+            &[(6, "TS2417")],
+        ),
+        (
+            "optional-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-override-derived-middle-optional-error/main.ts"
+            ),
+            &[(7, "TS2416")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_inherited_trailing_tuple_rest_overrides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

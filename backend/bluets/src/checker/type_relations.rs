@@ -232,7 +232,7 @@ fn middle_rest_tuple_assignable(
     true
 }
 
-fn tuple_type_at_length(
+pub(in crate::checker) fn tuple_type_at_length(
     elements: &[crate::parser::TupleTypeElement],
     length: usize,
     index: usize,
