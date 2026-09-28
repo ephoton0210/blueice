@@ -13,6 +13,13 @@ struct InheritedMethod<'a> {
     return_type: Option<&'a Type>,
 }
 
+#[derive(Clone, Copy)]
+enum RestShape {
+    None,
+    MatchingArrays,
+    DerivedCoversFixed(usize),
+}
+
 impl ModuleChecker<'_> {
     pub(in crate::checker::module) fn validate_class_method_overrides(
         &mut self,
@@ -39,11 +46,11 @@ impl ModuleChecker<'_> {
             ) else {
                 continue;
             };
-            // Different fixed prefixes or one-sided rests need positional
-            // expansion. Matching final array rests compare as array types.
-            if !matching_array_rests(&derived.parameters, inherited.parameters) {
+            // Compare matching array rests or expand a derived array rest
+            // against the base's remaining fixed positions.
+            let Some(rest_shape) = rest_shape(&derived.parameters, inherited.parameters) else {
                 continue;
-            }
+            };
             if derived.return_type.is_none()
                 || inherited.return_type.is_none()
                 || derived
@@ -65,22 +72,49 @@ impl ModuleChecker<'_> {
                 .filter(|parameter| !parameter.optional && !parameter.rest)
                 .count();
             let parameters_compatible = required_derived <= inherited.parameters.len()
-                && derived
-                    .parameters
-                    .iter()
-                    .zip(inherited.parameters)
-                    .all(|(derived, base)| {
-                        let derived = derived.annotation.as_ref().unwrap_or(&Type::Unknown);
-                        let base = base.annotation.as_ref().unwrap_or(&Type::Unknown);
-                        is_assignable(derived, base, &self.types, &mut HashSet::new(), &mut budget)
-                            || is_assignable(
-                                base,
-                                derived,
-                                &self.types,
-                                &mut HashSet::new(),
-                                &mut budget,
-                            )
-                    });
+                && match rest_shape {
+                    RestShape::None | RestShape::MatchingArrays => {
+                        derived.parameters.iter().zip(inherited.parameters).all(
+                            |(derived, base)| {
+                                parameter_types_compatible(
+                                    derived.annotation.as_ref().unwrap_or(&Type::Unknown),
+                                    base.annotation.as_ref().unwrap_or(&Type::Unknown),
+                                    &self.types,
+                                    &mut budget,
+                                )
+                            },
+                        )
+                    }
+                    RestShape::DerivedCoversFixed(prefix) => {
+                        let fixed_compatible = derived.parameters[..prefix]
+                            .iter()
+                            .zip(inherited.parameters)
+                            .all(|(derived, base)| {
+                                parameter_types_compatible(
+                                    derived.annotation.as_ref().unwrap_or(&Type::Unknown),
+                                    base.annotation.as_ref().unwrap_or(&Type::Unknown),
+                                    &self.types,
+                                    &mut budget,
+                                )
+                            });
+                        let Some(Type::Array(element)) = derived
+                            .parameters
+                            .last()
+                            .and_then(|parameter| parameter.annotation.as_ref())
+                        else {
+                            unreachable!("rest shape requires an array annotation")
+                        };
+                        fixed_compatible
+                            && inherited.parameters[prefix..].iter().all(|base| {
+                                parameter_types_compatible(
+                                    element,
+                                    base.annotation.as_ref().unwrap_or(&Type::Unknown),
+                                    &self.types,
+                                    &mut budget,
+                                )
+                            })
+                    }
+                };
             let compatible = parameters_compatible
                 && is_assignable(
                     derived.return_type.as_ref().unwrap_or(&Type::Unknown),
@@ -188,26 +222,36 @@ fn nearest_inherited_method<'a>(
     None
 }
 
-fn matching_array_rests(derived: &[Parameter], inherited: &[Parameter]) -> bool {
-    let has_rest = derived
-        .iter()
-        .chain(inherited)
-        .any(|parameter| parameter.rest);
-    if !has_rest {
-        return true;
+fn rest_shape(derived: &[Parameter], inherited: &[Parameter]) -> Option<RestShape> {
+    let derived_has_rest = derived.iter().any(|parameter| parameter.rest);
+    let inherited_has_rest = inherited.iter().any(|parameter| parameter.rest);
+    if !derived_has_rest && !inherited_has_rest {
+        return Some(RestShape::None);
     }
-    let (Some((derived_rest, derived_fixed)), Some((inherited_rest, inherited_fixed))) =
-        (derived.split_last(), inherited.split_last())
-    else {
-        return false;
-    };
-    derived_rest.rest
-        && inherited_rest.rest
-        && derived_fixed.len() == inherited_fixed.len()
-        && !derived_fixed
-            .iter()
-            .chain(inherited_fixed)
-            .any(|parameter| parameter.rest)
-        && matches!(derived_rest.annotation.as_ref(), Some(Type::Array(_)))
-        && matches!(inherited_rest.annotation.as_ref(), Some(Type::Array(_)))
+    let (derived_rest, derived_fixed) = derived.split_last()?;
+    if !derived_rest.rest
+        || derived_fixed.iter().any(|parameter| parameter.rest)
+        || !matches!(derived_rest.annotation.as_ref(), Some(Type::Array(_)))
+    {
+        return None;
+    }
+    if !inherited_has_rest && derived_fixed.len() <= inherited.len() {
+        return Some(RestShape::DerivedCoversFixed(derived_fixed.len()));
+    }
+    let (inherited_rest, inherited_fixed) = inherited.split_last()?;
+    (inherited_rest.rest
+        && inherited_fixed.len() == derived_fixed.len()
+        && !inherited_fixed.iter().any(|parameter| parameter.rest)
+        && matches!(inherited_rest.annotation.as_ref(), Some(Type::Array(_))))
+    .then_some(RestShape::MatchingArrays)
+}
+
+fn parameter_types_compatible(
+    derived: &Type,
+    inherited: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> bool {
+    is_assignable(derived, inherited, aliases, &mut HashSet::new(), budget)
+        || is_assignable(inherited, derived, aliases, &mut HashSet::new(), budget)
 }

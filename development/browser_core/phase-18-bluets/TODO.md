@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.2.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1374,6 +1374,25 @@ exists. A passed first form does not close its whole feature family.
                 - [ ] **J.3.1.3.4.4.2.3.2.2** Validate fixed/rest parameter
                   interactions and differing fixed prefixes against pinned
                   TypeScript.
+                  - [x] **J.3.1.3.4.4.2.3.2.2.1** Validate a derived array
+                    rest parameter against remaining fixed base parameters,
+                    including accepted and rejected instance/static forms.
+                    The bounded override comparison now maps each remaining
+                    inherited fixed parameter to the derived rest element
+                    type after comparing the fixed prefix. Public
+                    checked-compile cases cover accepted instance/static
+                    forms, three rejected element mismatches including a
+                    later fixed parameter, original member spans, and no
+                    output. Four pinned TypeScript 5.9.3 `--noEmit` cases
+                    agree on acceptance and TS2416/TS2417 lines. BlueTS,
+                    bridge, and full workspace tests, all-target Clippy,
+                    rustfmt, and whitespace checks pass with the reused
+                    12 GiB target.
+                  - [ ] **J.3.1.3.4.4.2.3.2.2.2** Validate a fixed derived
+                    signature against a base array rest parameter, including
+                    arity and type compatibility.
+                  - [ ] **J.3.1.3.4.4.2.3.2.2.3** Validate both-side array
+                    rests with differing fixed prefix lengths.
                 - [ ] **J.3.1.3.4.4.2.3.2.3** Validate tuple rest expansion
                   and bounded override compatibility against pinned
                   TypeScript.

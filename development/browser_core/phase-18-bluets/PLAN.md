@@ -5739,6 +5739,27 @@ acceptance and TS2416/TS2417 lines. BlueTS, bridge, and full workspace
 tests, workspace all-target Clippy, rustfmt, and whitespace checks pass with
 the reused 12 GiB Cargo target.
 
+J.3.1.3.4.4.2.3.2.2 is split by direction: a derived array rest against
+remaining fixed base parameters, a fixed derived signature against an
+inherited array rest, and differing fixed prefixes when both sides have
+array rest. Each comparison remains at the parsed method boundary.
+
+### J.3.1.3.4.4.2.3.2.2.1 Derived array rest over fixed base parameters
+
+The override comparison now aligns a derived method's fixed prefix with the
+base's fixed parameters and then compares every remaining inherited fixed
+parameter with the derived array rest element type. The same bounded
+bivariant type relation and covariant return check apply on instance and
+static sides. A base rest or a longer derived fixed prefix remains in the
+following rest leaves.
+
+Public checked-compile cases cover accepted instance/static methods, three
+rejected element mismatches including a later fixed base position, exact
+original member spans, and no artifact. Four pinned TypeScript 5.9.3
+`--noEmit` cases agree on acceptance and TS2416/TS2417 lines. BlueTS,
+bridge, and full workspace tests, workspace all-target Clippy, rustfmt, and
+whitespace checks pass with the reused 12 GiB Cargo target.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
