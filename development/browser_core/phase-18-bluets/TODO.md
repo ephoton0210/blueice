@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.6.5.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.6.5.2.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1893,6 +1893,30 @@ exists. A passed first form does not close its whole feature family.
                           constrained generic tuple spreads symbolically and
                           reject unresolved, cyclic, or unsupported shapes
                           before output.
+                          - [x] **J.3.1.3.4.4.2.3.2.3.3.3.6.5.1** Retain
+                            array and tuple constraints for symbolic tuple
+                            spreads in generic function type annotations;
+                            reject unconstrained parameters before output.
+                            Generic function scopes now carry constrained
+                            tuple spread parameters through annotation and
+                            type-argument validation, then restore the prior
+                            scope. Public checked compilation emits erased
+                            JavaScript and declarations for constrained
+                            direct and aliased tuple spreads, and rejects
+                            unconstrained or mismatched constraints without
+                            output. Three pinned TypeScript 5.9.3 `--noEmit`
+                            cases agree on acceptance and TS2344/TS2574
+                            lines. BlueTS, bridge, and full workspace tests,
+                            all-target Clippy, rustfmt, and whitespace checks
+                            pass with the reused 12 GiB target.
+                          - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.5.2** Compare
+                            identical symbolic tails and safe constraint
+                            widening in generic assignment and return types
+                            without treating distinct parameters as equal.
+                          - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.5.3** Close
+                            unresolved, cyclic, unsupported, and over-budget
+                            symbolic spread cases with public diagnostics
+                            and pinned TypeScript comparison.
                     - [ ] **J.3.1.3.4.4.2.3.2.3.3.4** Expand optional tuple
                       spreads in bounded call arguments and tuple literals
                       without inventing required positions.

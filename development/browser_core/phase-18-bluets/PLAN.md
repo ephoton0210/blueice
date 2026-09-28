@@ -6424,6 +6424,25 @@ and TS2416/TS2417 diagnostic lines. BlueTS, bridge, and full workspace tests,
 all-target Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB
 target. Constrained symbolic generic tuple spreads are next.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.6.5.1 Generic function tuple spread constraints
+
+Generic function checking now carries array- and tuple-constrained type
+parameters into tuple spread validation and generic alias type-argument
+checks. The parameter remains symbolic in the retained annotation and
+declaration output; its constraint is used only to establish an admissible
+tuple or array shape. Function scope restoration removes those constraints
+before checking later declarations. An unconstrained spread or a type
+argument whose bound cannot satisfy an alias constraint reports a diagnostic
+before JavaScript output.
+
+Public checked-compile cases cover constrained direct tuple spreads and a
+generic tuple alias used in a function parameter, JavaScript type erasure,
+declaration spelling, and rejected unconstrained or mismatched constraints.
+Three pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+TS2344/TS2574 diagnostic lines. BlueTS, bridge, and full workspace tests,
+all-target Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB
+target. Symbolic assignment and return relations follow in the next leaf.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

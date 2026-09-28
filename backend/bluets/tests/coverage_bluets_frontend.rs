@@ -5068,6 +5068,57 @@ fn named_tuple_spread_class_overrides_compare_expanded_positions() {
 }
 
 #[test]
+fn generic_functions_retain_symbolic_tuple_spread_constraints() {
+    let source =
+        include_str!("fixtures/typescript_oracle/tuple-spread-symbolic-function-valid/main.ts");
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            declaration: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    let artifact = &accepted.output.unwrap().artifacts[ENTRY];
+    assert!(!artifact.javascript.contains("extends string[]"));
+    let declaration = artifact.declaration.as_deref().unwrap();
+    assert!(
+        declaration.contains("consume<T extends string[]>"),
+        "{declaration}"
+    );
+    assert!(
+        declaration.contains("direct<T extends string[]>"),
+        "{declaration}"
+    );
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/tuple-spread-symbolic-function-unconstrained-error/main.ts"),
+            DiagnosticCode::UnsupportedSyntax,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-spread-symbolic-function-constraint-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+    ] {
+        let rejected = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(rejected.output.is_none());
+        assert!(rejected.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == code && diagnostic.span.module == ENTRY
+        }));
+    }
+}
+
+#[test]
 fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
     let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");
     let accepted = compile(

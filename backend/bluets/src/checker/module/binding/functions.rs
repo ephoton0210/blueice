@@ -13,6 +13,20 @@ impl<'a> ModuleChecker<'a> {
     pub(super) fn check_function(&mut self, function: &FunctionDeclaration) {
         let mut scope = self.values.clone();
         let previous_parameters = self.type_parameters.clone();
+        let previous_spreads = self.allowed_tuple_spread_parameters.clone();
+        self.allowed_tuple_spread_parameters = function
+            .type_parameters
+            .iter()
+            .filter(|parameter| {
+                matches!(parameter.constraint, Some(Type::Array(_) | Type::Tuple(_)))
+            })
+            .map(|parameter| {
+                (
+                    parameter.name.clone(),
+                    parameter.constraint.clone().expect("filtered constraint"),
+                )
+            })
+            .collect();
         self.check_type_parameters(&function.type_parameters);
         for (index, parameter) in function.parameters.iter().enumerate() {
             if parameter.rest && index + 1 != function.parameters.len() {
@@ -118,6 +132,7 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         self.type_parameters = previous_parameters;
+        self.allowed_tuple_spread_parameters = previous_spreads;
     }
 
     /// Whether an explicit return annotation permits the JavaScript
