@@ -6,6 +6,107 @@ use super::*;
 use crate::heap::TemporalKind;
 
 #[test]
+fn temporal_zone_helpers_reject_foreign_handles_and_invalid_stored_zones() {
+    let mut vm = Vm::default();
+    let mut other = Vm::default();
+    let foreign = Value::Object(other.heap.alloc_object(None).unwrap());
+    assert!(matches!(
+        vm.temporal_time_zone_identifier(&foreign),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+    assert!(matches!(
+        vm.temporal_time_zone(&foreign),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+
+    let code =
+        crate::compile(&crate::parse("new Temporal.ZonedDateTime(0n, 'UTC')").unwrap()).unwrap();
+    let valid = vm.execute(&code).unwrap();
+    let mut stored = vm
+        .heap
+        .temporal_value(valid.object_id().unwrap())
+        .unwrap()
+        .unwrap();
+    stored.time_zone = "not/a-zone".into();
+    let invalid = vm.alloc_temporal_value(stored, false).unwrap();
+    assert!(matches!(
+        vm.temporal_now_local_fields(&invalid),
+        Err(RuntimeError::RangeError(_))
+    ));
+    assert!(matches!(
+        vm.temporal_time_zone(&invalid),
+        Err(RuntimeError::RangeError(_))
+    ));
+    assert!(matches!(
+        vm.temporal_instant_to_zoned_date_time_iso(&Value::Null, &invalid),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn temporal_zone_helpers_complete_the_valid_instant_and_current_clock_paths() {
+    let mut vm = Vm::default();
+    let utc = Value::String("UTC".into());
+    assert_eq!(
+        vm.temporal_time_zone_identifier(&Value::Undefined).unwrap(),
+        "UTC"
+    );
+    assert_eq!(vm.temporal_time_zone_identifier(&utc).unwrap(), "UTC");
+    assert_eq!(vm.temporal_time_zone(&utc).unwrap().identifier(), "UTC");
+    let ((year, month, day), _) = vm.temporal_now_local_fields(&utc).unwrap();
+    assert!(
+        (1970..=275760).contains(&year) && (1..=12).contains(&month) && (1..=31).contains(&day)
+    );
+
+    let code = crate::compile(&crate::parse("new Temporal.Instant(0n)").unwrap()).unwrap();
+    let instant = vm.execute(&code).unwrap();
+    let zoned = vm
+        .temporal_instant_to_zoned_date_time_iso(&instant, &utc)
+        .unwrap();
+    let stored = vm
+        .heap
+        .temporal_value(zoned.object_id().unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.kind, TemporalKind::ZonedDateTime);
+    assert_eq!(stored.time_zone, "UTC");
+    assert_eq!(stored.epoch_nanoseconds, BigInt::from(0));
+}
+
+#[test]
+fn bound_function_and_instanceof_report_invalid_handles_and_instruction_limits() {
+    let mut vm = Vm::default();
+    let mut other = Vm::default();
+    let foreign = Value::Object(other.heap.alloc_object(None).unwrap());
+    assert!(matches!(
+        vm.bind_function(foreign.clone(), &[]),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+    vm.remaining_instructions = 100;
+    let hook_lookup = vm.has_instance(Value::Null, foreign.clone(), false);
+    assert!(
+        matches!(
+            hook_lookup,
+            Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+        ),
+        "{hook_lookup:?}"
+    );
+    assert!(matches!(
+        vm.has_instance(Value::Null, foreign, true),
+        Err(RuntimeError::Heap(HeapError::InvalidObject(_)))
+    ));
+    let mut limited = Vm::new(VmConfig {
+        instruction_budget: 0,
+        ..VmConfig::default()
+    })
+    .unwrap();
+    assert_eq!(
+        limited.has_instance(Value::Null, Value::Null, true),
+        Err(RuntimeError::InstructionLimit)
+    );
+}
+
+#[test]
 fn native_uri_helpers_enforce_limits_for_each_decoded_output_shape() {
     let limited = |result: Result<JsString, native::UriCodingError>, limit| {
         assert_eq!(result, Err(native::UriCodingError::StringLimit { limit }));

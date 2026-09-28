@@ -673,6 +673,13 @@ def run_test262_coverage(python: Path, output: Path, target: Path) -> None:
 
 
 def run_coverage(*, include_test262: bool = False) -> tuple[dict[Path, dict], dict]:
+    if include_test262:
+        try:
+            __import__("yaml")
+        except ImportError as error:
+            raise RuntimeError(
+                "--include-test262 requires PyYAML in the invoking Python environment"
+            ) from error
     with tempfile.TemporaryDirectory(prefix="bluejs-coverage-") as tmp:
         output = Path(tmp) / "coverage.json"
         text_output = Path(tmp) / "coverage.txt"

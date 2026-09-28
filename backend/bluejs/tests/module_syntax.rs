@@ -114,6 +114,29 @@ fn malformed_module_clause_tails_and_declarations_are_known_syntax_errors() {
 }
 
 #[test]
+fn import_and_export_dispatch_rejects_invalid_nested_declarations() {
+    for source in [
+        "import source 0 from './m.js';",
+        "import source name from;",
+        "import a, bad from './m.js';",
+        "import a, { value from './m.js';",
+        "import * as ns from './m.js' extra;",
+        "import './m.js' with { type: '\\1' };",
+        "export { value as other from './m.js';",
+        "export default async function* () {",
+        "export default @decorator class C {",
+        "export default @;",
+        "export default function (",
+        "export default ;",
+        "export var value = 1 extra;",
+        "@decorator export d\\u0065fault class C {}",
+        "@first export default @second class C {}",
+    ] {
+        assert_module_syntax_error(source);
+    }
+}
+
+#[test]
 fn contextual_keywords_in_import_and_export_declarations_reject_escapes() {
     for source in [
         "\\u0069mport {a} from './m.js';",

@@ -268,6 +268,51 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
 }
 
 #[test]
+fn adapter_exercises_temporal_and_module_error_paths_in_the_real_process() {
+    let cases = [
+        ("Temporal.PlainDate.from('\\ud800')", "sloppy", "RangeError"),
+        (
+            "Temporal.PlainDateTime.from('\\ud800')",
+            "sloppy",
+            "RangeError",
+        ),
+        (
+            "Temporal.Now.plainDateISO('Not/A_Zone')",
+            "sloppy",
+            "RangeError",
+        ),
+        (
+            "new Temporal.Instant(0n).toZonedDateTimeISO('Not/A_Zone')",
+            "sloppy",
+            "RangeError",
+        ),
+        (
+            "Temporal.PlainDate.from('2000-01-01').toZonedDateTime('Not/A_Zone')",
+            "sloppy",
+            "RangeError",
+        ),
+        ("import * as 0 from './m.js';", "module", "SyntaxError"),
+        ("export default function (", "module", "SyntaxError"),
+        ("export default ;", "module", "SyntaxError"),
+        ("export var value = 1 extra;", "module", "SyntaxError"),
+        (
+            "@decorator export d\\u0065fault class C {}",
+            "module",
+            "SyntaxError",
+        ),
+    ];
+    let requests: Vec<_> = cases
+        .iter()
+        .map(|(source, mode, _)| json!({"source":source,"mode":mode}))
+        .collect();
+    let replies = adapter(&requests, None);
+    assert_eq!(replies.len(), cases.len());
+    for (reply, (source, mode, kind)) in replies.iter().zip(cases) {
+        assert_eq!(reply["kind"], kind, "{mode}: {source}: {reply}");
+    }
+}
+
+#[test]
 fn adapter_reports_invalid_requested_modules_at_resolution() {
     for invalid_source in ["0++;", "break;"] {
         let replies = adapter(

@@ -122,6 +122,7 @@ fn bound_getter_errors_and_target_throws_propagate() {
     for (source, thrown) in [
         ("function f(){} Object.defineProperty(f,'length',{get(){throw 'length';}}); f.bind(null)", "length"),
         ("function f(){} Object.defineProperty(f,'name',{get(){throw 'name';}}); f.bind(null)", "name"),
+        ("Function.prototype.bind.call(new Proxy(function(){}, {getOwnPropertyDescriptor(){throw 'descriptor';}}), null)", "descriptor"),
         ("function f(){throw 'call';} f.bind(null)()", "call"),
         ("function F(){throw 'construct';} let B=F.bind(null); new B()", "construct"),
         ("1 instanceof {get [Symbol.hasInstance](){throw 'getter';}}", "getter"),
