@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.4.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.5.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1631,9 +1631,26 @@ exists. A passed first form does not close its whole feature family.
                           TS2417 lines. BlueTS, bridge, and full workspace
                           tests, all-target Clippy, rustfmt, and whitespace
                           checks pass with the reused 12 GiB target.
-                      - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.4** Parse and check a
+                      - [x] **J.3.1.3.4.4.2.3.2.3.3.3.4** Parse and check a
                         nontrailing array-typed tuple rest with a required
-                        suffix across admitted type uses and contracts.
+                        suffix across admitted type uses and contracts. The
+                        checker compares finite prefix/suffix positions at
+                        bounded witness lengths, preserving the repeated
+                        middle element without arbitrary expansion. Indexed
+                        reads union the middle and suffix candidates; pure
+                        contracts validate a required suffix from the end.
+                        A second rest, optional element after rest, and
+                        optional prefix before a required suffix are rejected.
+                        Class override comparison remains fail-closed until
+                        the next leaf. Public checked-compile and contract
+                        cases cover fixed/middle/trailing assignments,
+                        indexing, declarations, arity, and wrong middle or
+                        suffix types with no error artifact. Ten pinned
+                        TypeScript 5.9.3 `--noEmit` cases agree on acceptance
+                        and TS2322/TS1265/TS1257 lines. BlueTS, bridge, and
+                        full workspace tests, all-target Clippy, rustfmt,
+                        and whitespace checks pass with the reused 12 GiB
+                        target.
                       - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.5** Compare nontrailing
                         tuple rest positions and required suffixes in class
                         method overrides against pinned TypeScript.

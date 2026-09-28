@@ -223,17 +223,8 @@ fn access_candidates(
             push_type(*element, result, budget)?;
         }
         Type::Tuple(values) if property.is_none() || index.is_some() => {
-            if let Some(index) = index {
-                if let Some(value) = values
-                    .get(index)
-                    .or_else(|| values.last().filter(|value| value.rest))
-                {
-                    push_type(value.indexed_type(), result, budget)?;
-                }
-            } else {
-                for value in values {
-                    push_type(value.indexed_type(), result, budget)?;
-                }
+            for value in tuple_indexed_candidates(&values, index) {
+                push_type(value, result, budget)?;
             }
         }
         Type::Record(fields) if property.is_none() => {

@@ -379,6 +379,40 @@ fn trailing_tuple_rest_contract_checks_every_present_tail_element() {
 }
 
 #[test]
+fn middle_tuple_rest_contract_checks_required_suffix_from_the_end() {
+    let types = named_types("type Packet = [head: number, ...body: string[], done: boolean];");
+    let plan = ContractPlan::from_type("Packet", &named("Packet"), &types).unwrap();
+    for value in [
+        array(vec![number(1.0), ContractValue::Boolean(true)]),
+        array(vec![number(1.0), string("a"), ContractValue::Boolean(true)]),
+        array(vec![
+            number(1.0),
+            string("a"),
+            string("b"),
+            ContractValue::Boolean(false),
+        ]),
+    ] {
+        assert_eq!(plan.validate(&value), Ok(()));
+    }
+    assert!(plan.validate(&array(vec![number(1.0)])).is_err());
+    assert_error(
+        &rejected(&plan, &array(vec![number(1.0), string("a"), number(2.0)])),
+        "$[2]",
+        "boolean",
+        "number",
+    );
+    assert_error(
+        &rejected(
+            &plan,
+            &array(vec![number(1.0), number(2.0), ContractValue::Boolean(true)]),
+        ),
+        "$[1]",
+        "string",
+        "number",
+    );
+}
+
+#[test]
 fn records_check_required_optional_and_nested_fields() {
     let plan = plan_for("Address");
     assert_eq!(plan.validate(&address("Main")), Ok(()));

@@ -6099,6 +6099,39 @@ member spans with no output. Three pinned TypeScript 5.9.3 `--noEmit` cases
 agree on acceptance and TS2416/TS2417 lines. Nontrailing tuple rests remain
 outside this relation until their separate leaves.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.4 Nontrailing array rest tuple semantics
+
+Tuple parsing now admits one array-typed rest element followed by required
+suffix elements. A second rest and an optional element after a rest are
+parse errors. An optional prefix before a required suffix also remains a
+parse error, matching the pinned TypeScript relation. Labels and `...` stay
+in declarations and type displays, while JavaScript erases them.
+
+Tuple assignment with a middle rest checks finite witness lengths from the
+minimum admitted length through one beyond the combined declared shapes.
+That range includes every boundary where a prefix, repeated middle, or
+end-aligned suffix can change position. Each comparison consumes the shared
+type-expansion budget; no runtime-length vector is built. A fixed tuple can
+fit the required prefix and suffix, and two middle-rest tuples compare by
+position regardless of label spelling. A merely trailing rest cannot promise
+a required suffix. Existing trailing-only relations remain unchanged.
+
+At a fixed prefix index, tuple reads retain the exact declared type. At an
+index that can hold the middle or a suffix position, reads combine the
+repeated element with every suffix element that can occupy that index.
+The pure `RestTuple` contract now records a required suffix separately,
+checks minimum length, validates the finite prefix, each present middle
+item, and the suffix from the end under existing collection and node limits.
+Class override comparison still skips nontrailing tuple rest shapes until
+its separate leaf; tuple spreads in calls and literals remain fail-closed.
+
+Public checked-compile and pure contract cases cover leading and middle
+rests, empty and repeated middles, fixed/middle/trailing assignments, exact
+and uncertain indexed reads, declaration output, missing suffixes, wrong
+middle or suffix types, a second rest, and optional-before-required order.
+Ten pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2322,
+TS1265, and TS1257 diagnostic lines.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

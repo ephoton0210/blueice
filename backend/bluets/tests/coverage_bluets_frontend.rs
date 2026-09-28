@@ -4226,6 +4226,91 @@ fn trailing_tuple_rest_checks_and_emits_at_public_boundary() {
 }
 
 #[test]
+fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
+    let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            declaration: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    let artifact = &accepted.output.unwrap().artifacts[ENTRY];
+    assert!(!artifact.javascript.contains("...body: string[]"));
+    let declaration = artifact.declaration.as_deref().unwrap();
+    for expected in [
+        "Packet = [head: number, ...body: string[], done: boolean]",
+        "short: [head: number, ...body: string[], done: boolean]",
+        "long: [head: number, ...body: string[], done: boolean]",
+        "leading: [...names: string[], enabled: boolean]",
+    ] {
+        assert!(declaration.contains(expected), "{declaration}");
+    }
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-tail-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-rest-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-arity-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-index-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-index-narrow-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-guarantee-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-assignment-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-double-rest-error/main.ts"),
+            DiagnosticCode::ParseError,
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/tuple-rest-middle-optional-prefix-error/main.ts"
+            ),
+            DiagnosticCode::ParseError,
+        ),
+    ] {
+        let rejected = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code && diagnostic.span.module == ENTRY),
+            "{:#?}",
+            rejected.diagnostics
+        );
+    }
+}
+
+#[test]
 fn named_default_function_exports_preserve_esm_and_emit_a_public_declaration() {
     let source = "export default function greeting(name: string): string { return `Hello, ${name}`; }\nconsole.log(greeting('Ada'));\n";
     let compilation = compile_with_helper(source);

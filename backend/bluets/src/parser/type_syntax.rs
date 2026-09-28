@@ -174,16 +174,17 @@ impl Parser {
                 let end = self.previous().end;
                 let optional = optional || (!labeled && self.consume("?"));
                 if saw_rest {
-                    if optional {
+                    if rest {
+                        self.error_at(
+                            SourceSpan::new(&self.id, start, end),
+                            DiagnosticCode::ParseError,
+                            "a second tuple rest element is not allowed",
+                        );
+                    } else if optional {
                         self.error_at(
                             SourceSpan::new(&self.id, start, end),
                             DiagnosticCode::ParseError,
                             "an optional tuple element cannot follow a rest element",
-                        );
-                    } else {
-                        self.unsupported(
-                            SourceSpan::new(&self.id, start, end),
-                            "nontrailing tuple rest elements are not supported yet",
                         );
                     }
                 }

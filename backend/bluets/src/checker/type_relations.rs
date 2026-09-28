@@ -120,6 +120,11 @@ pub(super) fn is_assignable(
             if actual.iter().any(|element| element.rest)
                 || expected.iter().any(|element| element.rest)
             {
+                if has_nontrailing_rest(actual) || has_nontrailing_rest(expected) {
+                    return middle_rest_tuple_assignable(
+                        actual, expected, aliases, visited, budget,
+                    );
+                }
                 return trailing_rest_tuple_assignable(actual, expected, aliases, visited, budget);
             }
             let actual_required = actual.iter().filter(|element| !element.optional).count();
@@ -162,6 +167,90 @@ pub(super) fn is_assignable(
         }),
         _ => actual == expected,
     }
+}
+
+fn has_nontrailing_rest(elements: &[crate::parser::TupleTypeElement]) -> bool {
+    elements
+        .iter()
+        .position(|element| element.rest)
+        .is_some_and(|index| index + 1 < elements.len())
+}
+
+fn middle_rest_tuple_assignable(
+    actual: &[crate::parser::TupleTypeElement],
+    expected: &[crate::parser::TupleTypeElement],
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> bool {
+    let actual_rest = actual.iter().position(|element| element.rest);
+    let expected_rest = expected.iter().position(|element| element.rest);
+    if actual_rest.is_some() && expected_rest.is_none() {
+        return false;
+    }
+    let actual_required = actual
+        .iter()
+        .filter(|element| !element.optional && !element.rest)
+        .count();
+    let expected_required = expected
+        .iter()
+        .filter(|element| !element.optional && !element.rest)
+        .count();
+    if actual_required < expected_required {
+        return false;
+    }
+    let maximum_sample = if actual_rest.is_some() {
+        actual.len() + expected.len() + 1
+    } else {
+        actual.len()
+    };
+    for length in actual_required..=maximum_sample {
+        if expected_rest.is_none() && length > expected.len() {
+            return false;
+        }
+        for index in 0..length {
+            if !budget.consume() {
+                return false;
+            }
+            let Some(actual_type) = tuple_type_at_length(actual, length, index) else {
+                return false;
+            };
+            let Some(expected_type) = tuple_type_at_length(expected, length, index) else {
+                return false;
+            };
+            if !is_assignable(
+                &actual_type,
+                &expected_type,
+                aliases,
+                &mut visited.clone(),
+                budget,
+            ) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn tuple_type_at_length(
+    elements: &[crate::parser::TupleTypeElement],
+    length: usize,
+    index: usize,
+) -> Option<Type> {
+    let Some(rest_index) = elements.iter().position(|element| element.rest) else {
+        return elements.get(index).map(|element| element.value_type());
+    };
+    if index < rest_index {
+        return Some(elements[index].value_type());
+    }
+    let suffix_len = elements.len() - rest_index - 1;
+    let suffix_start = length.checked_sub(suffix_len)?;
+    if index >= suffix_start {
+        return elements
+            .get(rest_index + 1 + index - suffix_start)
+            .map(|element| element.value_type());
+    }
+    Some(elements[rest_index].indexed_type())
 }
 
 fn trailing_rest_tuple_assignable(

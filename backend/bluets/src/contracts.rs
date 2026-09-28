@@ -53,6 +53,7 @@ pub enum Contract {
         items: Vec<Contract>,
         required: usize,
         rest: Box<Contract>,
+        suffix: Vec<Contract>,
     },
     Record(Vec<ContractField>),
     Union(Vec<Contract>),
@@ -234,11 +235,24 @@ fn contract_heap_payload_bytes(contract: &Contract) -> Option<usize> {
             }
             Some(bytes)
         }
-        Contract::RestTuple { items, rest, .. } => {
+        Contract::RestTuple {
+            items,
+            rest,
+            suffix,
+            ..
+        } => {
             let mut bytes = items
                 .capacity()
                 .checked_mul(std::mem::size_of::<Contract>())?;
             for item in items {
+                bytes = bytes.checked_add(contract_heap_payload_bytes(item)?)?;
+            }
+            bytes = bytes.checked_add(
+                suffix
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<Contract>())?,
+            )?;
+            for item in suffix {
                 bytes = bytes.checked_add(contract_heap_payload_bytes(item)?)?;
             }
             bytes
@@ -340,17 +354,13 @@ fn lower(
             active,
         )?))),
         Type::Tuple(values) => {
-            if values
-                .iter()
-                .take(values.len().saturating_sub(1))
-                .any(|value| value.rest)
-            {
+            if values.iter().filter(|value| value.rest).count() > 1 {
                 return Err(ContractError {
-                    message: "nontrailing tuple rest contracts are not supported yet".to_string(),
+                    message: "a tuple contract cannot contain multiple rest elements".to_string(),
                 });
             }
-            let rest = values.last().filter(|value| value.rest);
-            let fixed = &values[..values.len() - usize::from(rest.is_some())];
+            let rest_index = values.iter().position(|value| value.rest);
+            let fixed = &values[..rest_index.unwrap_or(values.len())];
             let items = fixed
                 .iter()
                 .map(|value| {
@@ -362,16 +372,22 @@ fn lower(
                     })
                 })
                 .collect::<Result<Vec<_>, ContractError>>()?;
-            if let Some(rest) = rest {
+            if let Some(rest_index) = rest_index {
+                let rest = &values[rest_index];
                 let Type::Array(element) = &rest.annotation else {
                     return Err(ContractError {
                         message: "tuple rest contract requires an array type".to_string(),
                     });
                 };
+                let suffix = values[rest_index + 1..]
+                    .iter()
+                    .map(|value| lower(&value.annotation, named_types, definitions, active))
+                    .collect::<Result<Vec<_>, ContractError>>()?;
                 Ok(Contract::RestTuple {
                     items,
-                    required: fixed.iter().filter(|value| !value.optional).count(),
+                    required: fixed.iter().filter(|value| !value.optional).count() + suffix.len(),
                     rest: Box::new(lower(element, named_types, definitions, active)?),
+                    suffix,
                 })
             } else if values.iter().any(|value| value.optional) {
                 Ok(Contract::OptionalTuple {
@@ -525,6 +541,7 @@ fn validate_contract(
             items,
             required,
             rest,
+            suffix,
         } => {
             let ContractValue::Array(values) = value else {
                 return mismatch(path, "tuple", value);
@@ -536,8 +553,36 @@ fn validate_contract(
                     observed: format!("array of length {}", values.len()),
                 });
             }
-            for (index, item_value) in values.iter().enumerate() {
-                let item = items.get(index).unwrap_or(rest);
+            for (index, (item, item_value)) in items.iter().zip(values).enumerate() {
+                validate_contract(
+                    item,
+                    item_value,
+                    definitions,
+                    &format!("{path}[{index}]"),
+                    depth + 1,
+                    state,
+                )?;
+            }
+            let suffix_start = values.len() - suffix.len();
+            for (index, item_value) in values
+                .iter()
+                .enumerate()
+                .take(suffix_start)
+                .skip(items.len())
+            {
+                validate_contract(
+                    rest,
+                    item_value,
+                    definitions,
+                    &format!("{path}[{index}]"),
+                    depth + 1,
+                    state,
+                )?;
+            }
+            for (index, (item, item_value)) in
+                suffix.iter().zip(&values[suffix_start..]).enumerate()
+            {
+                let index = suffix_start + index;
                 validate_contract(
                     item,
                     item_value,

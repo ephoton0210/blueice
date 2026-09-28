@@ -2486,6 +2486,68 @@ fn pinned_trailing_tuple_rest_elements_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_middle_tuple_rest_elements_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 10] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts"),
+            &[],
+        ),
+        (
+            "tail-error",
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-tail-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "rest-error",
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-rest-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "arity-error",
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-arity-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "index-error",
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-index-error/main.ts"),
+            &[(6, "TS2322")],
+        ),
+        (
+            "index-narrow-error",
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-index-narrow-error/main.ts"),
+            &[(6, "TS2322")],
+        ),
+        (
+            "guarantee-error",
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-guarantee-error/main.ts"),
+            &[(6, "TS2322")],
+        ),
+        (
+            "assignment-error",
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-assignment-error/main.ts"),
+            &[(6, "TS2322")],
+        ),
+        (
+            "double-rest-error",
+            include_str!("fixtures/typescript_oracle/tuple-rest-middle-double-rest-error/main.ts"),
+            &[(5, "TS1265")],
+        ),
+        (
+            "optional-prefix-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-rest-middle-optional-prefix-error/main.ts"
+            ),
+            &[(5, "TS1257")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_derived_tuple_rest_overrides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);
