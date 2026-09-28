@@ -26,9 +26,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         // Native dispatch validated this Temporal receiver before entering
         // the arithmetic method.
-        let existing = self
-            .temporal_date_receiver(receiver)
-            .expect("native dispatch validated the Temporal date receiver");
+        let existing = self.temporal_date_receiver(receiver);
         let mut duration = self.temporal_duration_from_value(duration_value)?;
         if negate {
             duration.years = -duration.years;
@@ -132,9 +130,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         // Native dispatch validated this Temporal receiver before entering
         // the difference method.
-        let existing = self
-            .temporal_date_receiver(receiver)
-            .expect("native dispatch validated the Temporal date receiver");
+        let existing = self.temporal_date_receiver(receiver);
         let other = self.temporal_to_matching(other_value, existing.kind, &Value::Undefined)?;
         if existing.calendar != other.calendar {
             return Err(RuntimeError::RangeError(

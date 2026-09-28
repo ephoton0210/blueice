@@ -12,9 +12,7 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self
-            .temporal_date_receiver(receiver)
-            .expect("native dispatch validates the Temporal date-time receiver");
+        let existing = self.temporal_date_receiver(receiver);
         let value = Self::temporal_date_value(
             TemporalKind::PlainDate,
             existing.calendar,
@@ -27,9 +25,7 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self
-            .temporal_date_receiver(receiver)
-            .expect("native dispatch validates the Temporal date-time receiver");
+        let existing = self.temporal_date_receiver(receiver);
         let value = Self::plain_time_value((
             existing.hour,
             existing.minute,
@@ -46,9 +42,7 @@ impl Vm {
         receiver: &Value,
         time_like: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self
-            .temporal_date_receiver(receiver)
-            .expect("native dispatch validates the Temporal date-time receiver");
+        let existing = self.temporal_date_receiver(receiver);
         let time = if *time_like == Value::Undefined {
             (0, 0, 0, 0, 0, 0)
         } else {
@@ -68,9 +62,7 @@ impl Vm {
         receiver: &Value,
         round_to: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self
-            .temporal_date_receiver(receiver)
-            .expect("native dispatch validates the Temporal date-time receiver");
+        let existing = self.temporal_date_receiver(receiver);
         if *round_to == Value::Undefined {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainDateTime.round requires a smallestUnit or options argument".into(),

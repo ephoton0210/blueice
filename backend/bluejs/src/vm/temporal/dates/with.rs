@@ -18,9 +18,7 @@ impl Vm {
         options: &Value,
     ) -> Result<Value, RuntimeError> {
         // Native dispatch checked the PlainDate or PlainDateTime receiver.
-        let existing = self
-            .temporal_date_receiver(receiver)
-            .expect("native dispatch validated the Temporal date receiver");
+        let existing = self.temporal_date_receiver(receiver);
         let like_object = like
             .object_id()
             .ok_or_else(|| RuntimeError::TypeError("Temporal.with requires an object".into()))?;

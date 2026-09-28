@@ -13,9 +13,7 @@ impl Vm {
         receiver: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self
-            .temporal_date_receiver(receiver)
-            .expect("native dispatch validates the Temporal date receiver");
+        let existing = self.temporal_date_receiver(receiver);
         let resolved_options = self.temporal_options(options)?;
         // `calendarName` is read before the time-precision options
         // (`fractionalSecondDigits`, `roundingMode`, `smallestUnit`),
@@ -184,9 +182,7 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let existing = self
-            .temporal_date_receiver(receiver)
-            .expect("native dispatch validates the Temporal date receiver");
+        let existing = self.temporal_date_receiver(receiver);
         let stack_base = self.stack.len();
         let result = (|| {
             let formatter = self.create_date_time_format(

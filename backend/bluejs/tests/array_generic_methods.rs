@@ -162,6 +162,20 @@ fn a_getter_mutating_the_receiver_is_observed_by_the_scan() {
 }
 
 #[test]
+fn sparse_index_scan_propagates_forward_and_reverse_getter_errors() {
+    truthy(
+        "function Boom(){};var forward=[];forward.length=1000000;forward[1]=1;\
+         Object.defineProperty(forward,'900000',{get:function(){throw new Boom()}});\
+         var reverse=[];reverse.length=1000000;reverse[900000]=1;\
+         Object.defineProperty(reverse,'1',{get:function(){throw new Boom()}});\
+         var first=false,last=false;\
+         try{forward.forEach(function(){})}catch(e){first=e instanceof Boom}\
+         try{reverse.reduceRight(function(a,b){return a+b},0)}catch(e){last=e instanceof Boom}\
+         first&&last",
+    );
+}
+
+#[test]
 fn inherited_indices_and_prototype_swaps_are_visited() {
     truthy(
         "var proto=[];proto[700000]='p';var a=[];a.length=1000000;a[10]='own';Object.setPrototypeOf(a,proto);\

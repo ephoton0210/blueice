@@ -12,7 +12,7 @@ impl Vm {
         receiver: &Value,
         time_like: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        let existing = self.temporal_date_receiver(receiver);
         let time = if *time_like == Value::Undefined {
             (0, 0, 0, 0, 0, 0)
         } else {
@@ -36,7 +36,7 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        let existing = self.temporal_date_receiver(receiver);
         let fields = self.temporal_calendar_fields(&existing);
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
@@ -47,8 +47,11 @@ impl Vm {
             month_code: Some(&fields.month_code),
             ordinal_month: None,
         };
+        // These fields were just read from a valid date in this calendar. With
+        // no conflicting ordinal month and overflow constrained, the calendar
+        // resolver must be able to reconstruct its year and month.
         let date = plain_year_month::year_month_from_fields(calendar_kind, &ym_fields, false)
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
+            .expect("a valid Temporal date has resolvable calendar year-month fields");
         let value =
             Self::temporal_date_value(TemporalKind::PlainYearMonth, existing.calendar, date);
         self.alloc_temporal_value(value, false)
@@ -63,7 +66,7 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_date_receiver(receiver)?;
+        let existing = self.temporal_date_receiver(receiver);
         // `CalendarMonthDayFromFields` on the ISO calendar always uses the
         // reference ISO year 1972: the date's own year plays no part, since
         // `ISODateToFields(month-day)` carries just `monthCode` and `day`
@@ -75,7 +78,7 @@ impl Vm {
                 1972,
                 false,
             )
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar month-day".into()))?;
+            .expect("a valid ISO date has a month and day valid in reference year 1972");
             let value =
                 Self::temporal_date_value(TemporalKind::PlainMonthDay, existing.calendar, date);
             return self.alloc_temporal_value(value, false);
@@ -90,8 +93,11 @@ impl Vm {
             day: fields.day,
             ..Default::default()
         };
+        // The calendar fields came from this date, so their month code and
+        // day exist in the supplied year. Constrained reference-date lookup
+        // can then select a representable month-day in the same calendar.
         let date = plain_month_day::month_day_from_fields(calendar_kind, &md_fields, false)
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar month-day".into()))?;
+            .expect("a valid Temporal date has resolvable calendar month-day fields");
         let value = Self::temporal_date_value(TemporalKind::PlainMonthDay, existing.calendar, date);
         self.alloc_temporal_value(value, false)
     }

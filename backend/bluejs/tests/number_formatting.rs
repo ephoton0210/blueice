@@ -121,3 +121,31 @@ fn number_to_string_uses_decimal_by_default_and_coerces_an_explicit_radix() {
         })()"#,
     );
 }
+
+#[test]
+fn number_formatting_propagates_receiver_and_argument_errors() {
+    assert_true(
+        r#"(function() {
+          function throwsType(fn) {
+            try { fn(); return false; } catch (error) { return error instanceof TypeError; }
+          }
+          function throwsRange(fn) {
+            try { fn(); return false; } catch (error) { return error instanceof RangeError; }
+          }
+          const methods = ["toString", "toLocaleString", "toFixed", "toExponential", "toPrecision"];
+          for (const name of methods) {
+            if (!throwsType(() => Number.prototype[name].call({}))) return name + " accepted an object";
+            if (!throwsType(() => Number.prototype[name].call(Symbol("value")))) return name + " accepted a Symbol";
+          }
+          if (!throwsType(() => (1).toString(Symbol("radix")))) return "Symbol radix";
+          for (const name of ["toFixed", "toExponential", "toPrecision"]) {
+            if (!throwsType(() => (1)[name](Symbol("digits")))) return name + " Symbol digits";
+          }
+          if (!throwsRange(() => (1).toString(Infinity))) return "infinite radix";
+          if (!throwsRange(() => (1).toString(-Infinity))) return "negative infinite radix";
+          if (!throwsRange(() => (1).toString(37))) return "large radix";
+          if (!throwsRange(() => (1).toLocaleString("en--US"))) return "invalid locale";
+          return throwsRange(() => (1).toString(NaN));
+        })()"#,
+    );
+}
