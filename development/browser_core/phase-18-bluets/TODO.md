@@ -2103,6 +2103,21 @@ done to the page-runs-and-debugs goal at the top of this file.
     - [ ] **J.3.6.2** Object-literal properties (`{ p: [1, "a"] }`) against a
       record type, including nested records and tuples.
     - [ ] **J.3.6.3** Assignments (`p = [1, "a"]`) against the target type.
+  - [x] **J.3.7.0** Refuse TypeScript function annotations that survive
+    erasure, so none can reach emitted JavaScript. Found while scoping J.3.7:
+    an arrow with a return type, a function expression, an object method,
+    getter or generator, a function declared inside a body, and a typed
+    `catch (e: any)` binding all passed `check` and `build` and were copied
+    into the output with their annotations, which is invalid JavaScript. After
+    erasure no type position remains, so the parser now re-tokenizes the
+    erased text and refuses any parameter annotation, optional parameter,
+    return annotation or generic function that is still there, mapped back to
+    the original source span. `check`, `build` and direct lowering therefore
+    agree. Sixteen unannotated forms (ternaries with arrows, object literals,
+    `case`, labels, defaults) are covered as non-regressions, and all 69 pinned
+    TypeScript oracle tests still pass. A ternary whose alternate is
+    `(a) : b => c` is refused as a possible return annotation. Full workspace
+    tests, Clippy, rustfmt and whitespace checks pass.
   - [ ] **J.3.7** Check arrow-function and function-expression bodies. Their
     bodies are kept only as tokens today, so no return, parameter or scope
     check runs: every error `tsc` reports inside one (a wrong return type, a

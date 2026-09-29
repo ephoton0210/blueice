@@ -3704,7 +3704,6 @@ fn braced_try_catch_finally_retains_the_catch_name_bodies_and_source_span() {
 fn excluded_try_shapes_remain_opaque_to_the_bounded_function_parser() {
     for source in [
         "function f(): void { try { 1; } catch { 2; } }",
-        "function f(): void { try { 1; } catch (caught: any) { 2; } }",
         "function f(): void { try { 1; } }",
     ] {
         let module = parse_module(ENTRY, source).unwrap();
@@ -3716,6 +3715,16 @@ fn excluded_try_shapes_remain_opaque_to_the_bounded_function_parser() {
             Some(FunctionBodyItem::Opaque(_))
         ));
     }
+    // A typed catch binding is TypeScript syntax that is not erased, so it is
+    // refused instead of being copied into JavaScript.
+    let refused = parse_module(
+        ENTRY,
+        "function f(): void { try { 1; } catch (caught: any) { 2; } }",
+    )
+    .unwrap_err();
+    assert!(refused
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
 }
 
 #[test]
@@ -5795,6 +5804,78 @@ fn call_arguments_use_the_parameter_tuple_as_literal_context() {
             "{source}: {:#?}",
             rejected.diagnostics
         );
+    }
+}
+
+#[test]
+fn function_annotations_that_survive_erasure_are_refused_before_output() {
+    // Every form below is valid TypeScript whose annotation the parser does
+    // not structurally erase. Emitting it would produce invalid JavaScript, so
+    // it must be refused instead.
+    for source in [
+        "export const h = (a: number): number => a;",
+        "export const h = (): number => 1;",
+        "export const h = (a: number) : number => a, i = 1;",
+        "export const h = async (a: number): Promise<number> => a;",
+        "export const h = (a: number) => a;",
+        "export const h = function (a: number): number { return a; };",
+        "export const h = function named(a: number) { return a; };",
+        "export const h = function (a?) { return a; };",
+        "export function f(xs: number[]) { return xs.map(function (x: number) { return x; }); }",
+        "export function f() { function g(a: number): number { return a; } return g(1); }",
+        "export const o = { m(a: number): number { return a; } };",
+        "export const o = { get v(): number { return 1; } };",
+        "export const o = { async m(a: number) { return a; } };",
+        "export const o = { *m(a: number) { yield a; } };",
+    ] {
+        let result = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(result.output.is_none(), "{source}");
+        assert!(
+            result.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::UnsupportedSyntax
+                    && diagnostic.span.module == ENTRY
+            }),
+            "{source}: {:#?}",
+            result.diagnostics
+        );
+    }
+}
+
+#[test]
+fn unannotated_function_forms_and_colons_are_not_mistaken_for_annotations() {
+    for source in [
+        "export const h = (a) => a;",
+        "export const h = a => a;",
+        "export const h = (a, b = 1) => a + b;",
+        "export const h = async (a) => a;",
+        "export const h = function (a, b) { return a + b; };",
+        "export const c = true ? (x) => x : (y) => y;",
+        "export const o = { a: 1, b: 2, m(x) { return x; }, get v() { return 1; } };",
+        "export const o = { a: true ? 1 : 2, b: [1, 2].map((n) => n) };",
+        "export function f(flag: boolean) { return flag ? (1) : 2; }",
+        "export function f(a: number, b?: number): number { return a > 0 ? a : (b ?? 0); }",
+        "export function f(o: { a?: number }) { return o.a ? 1 : 2; }",
+        "export function f(x: number) { const y = (x) ? 1 : 2; return y; }",
+        "export function f(x: number) { switch (x) { case 1: return 1; default: return 2; } }",
+        "export function f(x: number) { outer: for (;;) { if (x) { break outer; } } return x; }",
+        "export function f(cb: (a: number) => number) { return cb(1); }",
+        "export function f(xs: number[]) { return xs.map((n) => n).filter(function (n) { return n; }); }",
+    ] {
+        let result = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(
+            result.diagnostics.is_empty(),
+            "{source}: {:#?}",
+            result.diagnostics
+        );
+        assert!(result.output.is_some(), "{source}");
     }
 }
 

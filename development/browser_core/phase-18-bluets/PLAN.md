@@ -2257,6 +2257,33 @@ parameter used at the wrong type) is accepted without a diagnostic. This is a
 missing check, not a context gap, and needs a structured body in the parser
 first.
 
+### J.3.7.0 Annotations that survive erasure
+
+The parser erases annotations on named functions, class methods and variable
+declarations through recorded edits, but keeps the tokens of a function nested
+inside an expression verbatim. An arrow with a return type, a function
+expression, an object method, getter or generator, a function declared inside a
+body, and a typed catch binding therefore reached the emitted JavaScript with
+their TypeScript annotations, and `check` and `build` both accepted them. Only
+an arrow with parameter annotations but no return type was already refused.
+
+Once edits are applied no type position remains in the text, so a leftover
+annotation can be found precisely. After the module parses cleanly, the parser
+applies its edits, tokenizes the result and flags: a parameter name inside
+parentheses, at the start of a parameter, followed by `:` or by an optional
+`?`; a destructured parameter followed by `:`; a `)` followed by `:` and a type
+that ends at `=>` or, on a `function` or method parameter list, at `{`; and a
+`function` followed by type parameters. Each flag is mapped back through the
+edits to its original span and reported as unsupported syntax, at most sixteen
+per module. Because it runs in the parser, `check`, `build` and the direct
+bridge agree.
+
+The rules are deliberately fail-closed. A return type that starts with `(` is
+skipped, so `c ? (1) : (b) => b` is not mistaken for an annotation, but
+`c ? (a) : b => d` is refused as a possible return annotation. This is a
+safety net, not the feature: J.3.7 replaces the refusal by structurally
+parsing, erasing and checking these forms.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

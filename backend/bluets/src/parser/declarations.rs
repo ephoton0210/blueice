@@ -206,6 +206,9 @@ impl Parser {
         }
 
         if self.diagnostics.is_empty() {
+            self.audit_erased_function_annotations();
+        }
+        if self.diagnostics.is_empty() {
             self.edits.sort_by_key(|edit| (edit.start, edit.end));
             Ok(Module {
                 id: self.id,
@@ -250,6 +253,8 @@ impl Parser {
 
 #[path = "declarations/class.rs"]
 mod class;
+#[path = "declarations/erasure_audit.rs"]
+mod erasure_audit;
 #[path = "declarations/function_body.rs"]
 mod function_body;
 #[path = "declarations/imports_exports.rs"]
