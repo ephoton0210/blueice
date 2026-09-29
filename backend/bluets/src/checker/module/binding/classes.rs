@@ -4,6 +4,7 @@
 
 //! Bounded class constructor and method checks before runtime admission.
 
+use super::functions::hoist_local_functions;
 use super::*;
 use crate::parser::{ClassConstructor, ClassDeclaration, ClassMemberKind, ClassMethod};
 
@@ -681,6 +682,7 @@ impl ModuleChecker<'_> {
             if let Some(base) = self.super_scope_type(class, false) {
                 scope.insert("super".to_string(), base);
             }
+            hoist_local_functions(body, &mut scope);
             self.check_constructor_super_placement(class, constructor, body);
             self.check_class_body_items(
                 body,
@@ -722,6 +724,7 @@ impl ModuleChecker<'_> {
                     scope.insert("super".to_string(), base);
                 }
                 self.check_method_super_placement(class, body);
+                hoist_local_functions(body, &mut scope);
                 scope.insert(
                     "this".to_string(),
                     if method.is_static {
@@ -892,6 +895,9 @@ impl ModuleChecker<'_> {
                     if let Some(finalizer) = &statement.finalizer {
                         self.check_class_body_items(finalizer, &scope, return_rule);
                     }
+                }
+                FunctionBodyItem::Function(function) => {
+                    self.check_function_in_scope(function, scope.clone());
                 }
                 FunctionBodyItem::Opaque(_) => {}
             }

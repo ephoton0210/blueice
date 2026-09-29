@@ -106,6 +106,7 @@ impl<'a> ModuleChecker<'a> {
                 .unwrap_or_else(|| self.infer_expression(&local.initializer, &scope));
             scope.insert(local.name.clone(), inferred);
         }
+        hoist_local_functions(&function.body, &mut scope);
         let selected_local = selected_guard_local(&function.body);
         self.check_function_body_expressions(&function.body, &scope, selected_local);
         let allows_implicit_undefined = if let Some(return_type) = &function.return_type {
@@ -182,6 +183,7 @@ impl<'a> ModuleChecker<'a> {
                 FunctionBodyItem::Opaque(_) => return StructuredTermination::Opaque,
                 FunctionBodyItem::Variable(_)
                 | FunctionBodyItem::Expression { .. }
+                | FunctionBodyItem::Function(_)
                 | FunctionBodyItem::While(_)
                 | FunctionBodyItem::Try(_) => {}
             }
@@ -320,8 +322,10 @@ impl<'a> ModuleChecker<'a> {
                         selected_local_is_declared = true;
                     }
                 }
+                // A nested function's returns belong to that function.
                 FunctionBodyItem::Expression { .. }
                 | FunctionBodyItem::Throw { .. }
+                | FunctionBodyItem::Function(_)
                 | FunctionBodyItem::Opaque(_) => {}
             }
         }
@@ -436,6 +440,10 @@ impl<'a> ModuleChecker<'a> {
                     }
                     continue;
                 }
+                FunctionBodyItem::Function(function) => {
+                    self.check_function_in_scope(function, current_scope.clone());
+                    continue;
+                }
                 FunctionBodyItem::If(statement) => {
                     let active_local =
                         selected_local.filter(|_| selected_local_is_declared && !guard_used);
@@ -499,5 +507,49 @@ impl<'a> ModuleChecker<'a> {
     ) {
         self.check_direct_runtime_expression(&statement.test, scope, &statement.span);
         self.check_function_body_expressions(&statement.body, scope, None);
+    }
+}
+
+/// Binds every function declared in `items`, at any block depth, to its
+/// function type in `scope`. Declarations are hoisted, so a body may call one
+/// before it appears, a declaration may call itself, and siblings may call each
+/// other.
+pub(in crate::checker::module) fn hoist_local_functions(
+    items: &[FunctionBodyItem],
+    scope: &mut BTreeMap<String, Type>,
+) {
+    for item in items {
+        match item {
+            FunctionBodyItem::Function(function) => {
+                scope.insert(
+                    function.name.clone(),
+                    Type::Function {
+                        parameters: function.parameters.clone(),
+                        result: Box::new(function.return_type.clone().unwrap_or(Type::Unknown)),
+                    },
+                );
+            }
+            FunctionBodyItem::If(statement) => hoist_from_if(statement, scope),
+            FunctionBodyItem::While(statement) => hoist_local_functions(&statement.body, scope),
+            FunctionBodyItem::Try(statement) => {
+                hoist_local_functions(&statement.block, scope);
+                if let Some(handler) = &statement.handler {
+                    hoist_local_functions(&handler.body, scope);
+                }
+                if let Some(finalizer) = &statement.finalizer {
+                    hoist_local_functions(finalizer, scope);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn hoist_from_if(statement: &FunctionIfStatement, scope: &mut BTreeMap<String, Type>) {
+    hoist_local_functions(&statement.consequent, scope);
+    match &statement.alternate {
+        Some(FunctionElseBranch::Braced(items)) => hoist_local_functions(items, scope),
+        Some(FunctionElseBranch::ElseIf(next)) => hoist_from_if(next, scope),
+        None => {}
     }
 }

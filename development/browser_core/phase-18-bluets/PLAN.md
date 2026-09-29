@@ -2360,6 +2360,30 @@ exists. Before this an object with a method fell out of inference as unknown, so
 neither the method body nor calls to it were checked. `this` inside a member is
 not typed. Getter-only properties are not treated as read-only.
 
+### J.3.7.5 Nested function declarations
+
+A `function` token at a statement position inside a function body (depth zero of
+parentheses and brackets, not preceded by `async`) with a name, a `(`, a
+simple parameter list and a braced body is parsed with the shared helper into a
+`FunctionDeclaration` and added to the body as `FunctionBodyItem::Function`.
+The body is parsed with fresh returns and locals, so a nested function's
+variables and returns never reach the enclosing function. Generators, generic
+declarations and destructured parameters fall through to the token path and are
+refused by the erasure audit when annotated.
+
+Before checking a body, the checker binds every nested declaration in it, at any
+block depth, to its function type in the body's scope, the same treatment the
+flattened `locals` already get. That gives JavaScript's hoisting: a call before
+the declaration, recursion and mutual calls between siblings type-check. Each
+nested body is then checked over the scope it appears in, and the enclosing
+function's return analysis treats the item as a no-op. The rule ignores block
+scoping (a declaration inside an `if` is visible to the whole body), which only
+makes the checker more permissive than `tsc`. Named functions, class methods and
+constructors all bind and check nested declarations.
+
+The direct bridge has no lowering for a nested declaration and refuses it in its
+statement, `try` and `while` paths.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

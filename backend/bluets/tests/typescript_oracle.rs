@@ -41,6 +41,15 @@ struct ExpectedDiagnostic {
 
 const CASES: &[OracleCase] = &[
     OracleCase {
+        name: "nested-function-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/nested-function-runtime/main.ts"),
+        )],
+        expected_stdout: Some("hi a!\n21\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "object-method-runtime",
         modules: &[(
             "memory:///main.ts",
@@ -3998,6 +4007,51 @@ fn pinned_object_methods_match_typescript_without_emit() {
             "getter-error",
             include_str!("fixtures/typescript_oracle/object-method-getter-error/main.ts"),
             &[(4, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_nested_function_declarations_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/nested-function-valid/main.ts"),
+            &[],
+        ),
+        (
+            "hoist",
+            include_str!("fixtures/typescript_oracle/nested-function-hoist/main.ts"),
+            &[],
+        ),
+        (
+            "result-error",
+            include_str!("fixtures/typescript_oracle/nested-function-result-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "parameter-use-error",
+            include_str!("fixtures/typescript_oracle/nested-function-parameter-use-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "closure-error",
+            include_str!("fixtures/typescript_oracle/nested-function-closure-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "missing-return-error",
+            include_str!("fixtures/typescript_oracle/nested-function-missing-return-error/main.ts"),
+            &[(4, "TS2366")],
+        ),
+        (
+            "call-error",
+            include_str!("fixtures/typescript_oracle/nested-function-call-error/main.ts"),
+            &[(4, "TS2345")],
         ),
     ];
     assert_pinned_no_emit_cases(&tsc, &cases);

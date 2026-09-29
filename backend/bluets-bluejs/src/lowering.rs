@@ -303,6 +303,12 @@ fn lower_function_body(
             FunctionBodyItem::Try(statement) => {
                 body.push(lower_function_try(module, statement)?);
             }
+            FunctionBodyItem::Function(function) => {
+                return Err(unsupported(
+                    function.span.clone(),
+                    "nested function declarations are not yet in the v1 direct bridge subset",
+                ));
+            }
             FunctionBodyItem::Opaque(span) => {
                 return Err(unsupported(
                     span.clone(),
@@ -408,6 +414,12 @@ fn ensure_supported_try_body(items: &[FunctionBodyItem]) -> Result<(), BridgeErr
                 ));
             }
             FunctionBodyItem::If(statement) => ensure_supported_try_if(statement)?,
+            FunctionBodyItem::Function(function) => {
+                return Err(unsupported(
+                    function.span.clone(),
+                    "a nested function declaration is outside the direct try subset",
+                ));
+            }
             FunctionBodyItem::Opaque(span) => {
                 return Err(unsupported(
                     span.clone(),
@@ -454,6 +466,12 @@ fn ensure_supported_while_body(items: &[FunctionBodyItem]) -> Result<(), BridgeE
             }
             FunctionBodyItem::If(statement) => {
                 ensure_supported_while_if(statement)?;
+            }
+            FunctionBodyItem::Function(function) => {
+                return Err(unsupported(
+                    function.span.clone(),
+                    "a nested function declaration is outside the direct while subset",
+                ));
             }
             FunctionBodyItem::Opaque(span) => {
                 return Err(unsupported(

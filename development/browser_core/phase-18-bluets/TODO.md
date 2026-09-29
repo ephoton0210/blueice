@@ -2162,8 +2162,21 @@ done to the page-runs-and-debugs goal at the top of this file.
       string-key members stay unstructured and refused. Seven pinned TypeScript
       5.9.3 `--noEmit` cases agree on acceptance and TS2322/TS2366/TS2345
       lines, and a Node run gives identical output for BlueTSC and `tsc`.
-    - [ ] **J.3.7.5** Function declarations nested inside a body, as local
-      functions callable from the rest of the body.
+    - [x] **J.3.7.5** Function declarations nested inside a body, as local
+      functions callable from the rest of the body. A `function name(..)
+      [: R] { .. }` at a statement position becomes a new body item,
+      `FunctionBodyItem::Function`, holding a `FunctionDeclaration` with its
+      own structured body, so its annotations are erased and its variables stay
+      its own. The checker hoists every nested declaration of a body, at any
+      block depth, into that body's scope as a function type, so a declaration
+      can be called before it appears, call itself and call its siblings, and
+      checks each body over that scope. The direct bridge refuses the new item
+      in all three lowering paths. Generator, `async` and generic declarations
+      and destructured parameters stay unstructured and refused. Seven pinned
+      TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+      TS2322/TS2366/TS2345 lines, and a Node run gives identical output for
+      BlueTSC and `tsc`. Hoisting ignores block scoping: a declaration inside
+      an `if` is visible to the whole body.
     - [ ] **J.3.7.6** A `catch` binding annotation (`catch (e: unknown)`),
       erased and typed.
     - [ ] **J.3.7.7** Destructured parameters, `async` and generic arrows and

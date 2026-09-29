@@ -391,6 +391,9 @@ pub enum FunctionBodyItem {
         tokens: Vec<Token>,
         span: SourceSpan,
     },
+    /// A function declared inside a body. It is hoisted to the top of that
+    /// body for the checker and keeps its own structured body.
+    Function(Box<FunctionDeclaration>),
     Opaque(SourceSpan),
 }
 

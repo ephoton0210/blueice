@@ -38,7 +38,8 @@ fn statements<'a>(items: &'a [FunctionBodyItem], out: &mut Vec<(&'a [Token], &'a
                     statements(finalizer, out);
                 }
             }
-            FunctionBodyItem::Opaque(_) => {}
+            // A nested function has its own `super` context.
+            FunctionBodyItem::Function(_) | FunctionBodyItem::Opaque(_) => {}
         }
     }
 }

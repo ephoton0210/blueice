@@ -30,6 +30,60 @@ impl Parser {
             .or_else(|| self.try_parse_object_member(range_start, index, end))
     }
 
+    /// `function name(parameters) [: result] { body }` at a statement position
+    /// inside a function body, returning the item to add. Generators, `async`
+    /// and generic declarations and destructured parameters are left to the
+    /// token path.
+    pub(in crate::parser::implementation) fn try_parse_local_function(
+        &mut self,
+    ) -> Option<FunctionBodyItem> {
+        let start_index = self.index;
+        if !self.tokens[start_index].is("function")
+            || start_index > 0 && self.tokens[start_index - 1].is("async")
+        {
+            return None;
+        }
+        let name_token = self.tokens.get(start_index + 1)?;
+        let open_token = self.tokens.get(start_index + 2)?;
+        if name_token.kind != TokenKind::Identifier || !open_token.is("(") {
+            return None;
+        }
+        let name = name_token.text.clone();
+        let open = start_index + 2;
+        let close = matching_close(&self.tokens, open, self.tokens.len() - 1)?;
+        if !self.simple_parameter_list(open, close) {
+            return None;
+        }
+        let (parameters, return_type, body, body_end, next) =
+            self.parse_parameters_result_and_block(open)?;
+        let NestedFunctionBody::Block {
+            items,
+            returns,
+            locals,
+        } = body
+        else {
+            return None;
+        };
+        let start_offset = self.tokens[start_index].start;
+        self.index = next;
+        Some(FunctionBodyItem::Function(Box::new(FunctionDeclaration {
+            name,
+            async_function: false,
+            body_open: None,
+            type_parameters: Vec::new(),
+            parameters,
+            return_type,
+            body: items,
+            returns,
+            locals,
+            exported: false,
+            default_export: false,
+            declared: false,
+            overload: false,
+            span: SourceSpan::new(&self.id, start_offset, body_end),
+        })))
+    }
+
     /// An object-literal method or accessor at a property position: `name(..)
     /// [: result] { .. }`, `get name() [: result] { .. }` or `set name(value)
     /// { .. }`. Computed and string keys, `async` and generator members are
@@ -111,7 +165,7 @@ impl Parser {
     /// `(` at `open`, returning the parts, the end offset of the body and the
     /// token index after it. The cursor is restored and `None` returned when no
     /// braced body follows.
-    fn parse_parameters_result_and_block(
+    pub(in crate::parser::implementation) fn parse_parameters_result_and_block(
         &mut self,
         open: usize,
     ) -> Option<(

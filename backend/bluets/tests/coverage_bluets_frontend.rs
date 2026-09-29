@@ -5812,7 +5812,6 @@ fn function_annotations_that_survive_erasure_are_refused_before_output() {
         "export const h = async (a: number): Promise<number> => a;",
         "export const h = async (a: number) => a;",
         "export const h = ({ x }: { x: number }) => x;",
-        "export function f() { function g(a: number): number { return a; } return g(1); }",
         "export const o = { async m(a: number) { return a; } };",
         "export const o = { *m(a: number) { yield a; } };",
     ] {
@@ -6161,6 +6160,102 @@ fn object_methods_and_accessors_are_parsed_erased_and_checked() {
         !normalized_javascript(&setter.output.unwrap().artifacts[ENTRY].javascript)
             .contains("number")
     );
+}
+
+#[test]
+fn nested_function_declarations_are_parsed_erased_hoisted_and_checked() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let compiled = compile_source(include_str!(
+        "fixtures/typescript_oracle/nested-function-runtime/main.ts"
+    ));
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:#?}",
+        compiled.diagnostics
+    );
+    let javascript = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+    assert_eq!(
+        normalized_javascript(&javascript),
+        "export function outer(base){ \
+         function add(n) { return n + base; } \
+         function twice(f, n) { return f(f(n)); } \
+         function greet(name, punct= \"!\") { return \"hi \" + name + punct; } \
+         console.log(greet(\"a\")); return twice(add, 1); } \
+         console.log(outer(10));"
+    );
+
+    for source in [
+        include_str!("fixtures/typescript_oracle/nested-function-valid/main.ts"),
+        // A declaration is hoisted, so it may be called before it appears.
+        include_str!("fixtures/typescript_oracle/nested-function-hoist/main.ts"),
+    ] {
+        let accepted = compile_source(source);
+        assert!(
+            accepted.diagnostics.is_empty(),
+            "{source}: {:#?}",
+            accepted.diagnostics
+        );
+    }
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/nested-function-result-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/nested-function-parameter-use-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/nested-function-closure-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/nested-function-missing-return-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/nested-function-call-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code && diagnostic.span.module == ENTRY),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    // A nested function's own variables do not leak into the enclosing
+    // function: the two `x` have different types, and each return is valid
+    // only against its own.
+    let scoped = compile_source(
+        "export function outer(): string { const x: string = \"s\"; \
+         function a(): number { const x: number = 1; \
+         function b(): number { return x; } return b(); } return x; }",
+    );
+    assert!(scoped.diagnostics.is_empty(), "{:#?}", scoped.diagnostics);
+
+    // Generators, async and generic declarations stay refused.
+    for source in [
+        "export function outer() { function* g(a: number) { yield a; } return g; }",
+        "export function outer() { async function g(a: number) { return a; } return g; }",
+        "export function outer() { function g<T>(a: T): T { return a; } return g; }",
+    ] {
+        let refused = compile_source(source);
+        assert!(refused.output.is_none(), "{source}");
+    }
 }
 
 #[test]

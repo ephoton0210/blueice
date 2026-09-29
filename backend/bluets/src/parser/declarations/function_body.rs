@@ -139,6 +139,12 @@ impl Parser {
                 });
                 continue;
             }
+            if parentheses == 0 && brackets == 0 && self.peek("function") {
+                if let Some(item) = self.try_parse_local_function() {
+                    body.push(item);
+                    continue;
+                }
+            }
             if self.peek("as") || self.peek("satisfies") {
                 body.push(FunctionBodyItem::Opaque(self.current().span(&self.id)));
                 let end = find_balanced_delimiter(
