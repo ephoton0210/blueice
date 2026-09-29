@@ -442,6 +442,121 @@ fn private_child_bluets_classic_returns_only_exact_paused_plain_values() {
 }
 
 #[test]
+fn private_child_bluets_value_snapshot_rejects_wrong_execution_state_and_program_identity() {
+    let mut host = BlueJsChildHost::default();
+    assert!(matches!(
+        host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: debugger_document(1, vec![blue_ts_classic(0, "let answer: number = 41;")]),
+        }),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let program = host.documents[&7]
+        .pending_debugger_executions
+        .front()
+        .unwrap()
+        .program
+        .unwrap();
+    let halt = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+        tab_id: 7,
+        document_generation: 1,
+        program,
+    }) {
+        PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points
+            .into_iter()
+            .filter(|point| point.code_unit_ordinal == 0)
+            .max_by_key(|point| point.bytecode_offset)
+            .unwrap(),
+        reply => panic!("expected BlueTS root points: {reply:?}"),
+    };
+    assert!(matches!(
+        host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+            tab_id: 7,
+            document_generation: 1,
+            safe_point: halt,
+        }),
+        PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+    ));
+    assert!(matches!(
+        host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 7,
+            document_generation: 1,
+        }),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+    ));
+    let target = paused_value_targets(&mut host, program, None, 0)[0];
+
+    // A live document that never armed/advanced its debugger (so it is not
+    // mid-pause at all) rejects a value-snapshot request for a target that
+    // otherwise looks well-formed.
+    let mut plain_host = BlueJsChildHost::default();
+    assert!(matches!(
+        plain_host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(1, vec![blue_ts_classic(0, "let answer: number = 41;")]),
+        }),
+        PageHostReply::Synchronized { .. }
+    ));
+    assert!(matches!(
+        plain_host.handle_request(PageHostRequest::GetDebuggerValueSnapshot { target }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        }
+    ));
+
+    // A target naming a program other than the one this document is
+    // actually paused on is rejected the same way -- the paused-program
+    // identity check does not merely compare handles, it requires the
+    // whole `PageHostDebuggerProgram` to match the live pending execution.
+    assert!(matches!(
+        host.handle_request(PageHostRequest::GetDebuggerValueSnapshot {
+            target: PageHostDebuggerValueTarget {
+                program: PageHostDebuggerProgram {
+                    program_handle: program.program_handle + 1,
+                    ..program
+                },
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_handle: program.program_handle + 1,
+                        ..program
+                    },
+                    ..target.safe_point
+                },
+                ..target
+            },
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        }
+    ));
+
+    // A stale generation for the same real program handle fails the same
+    // whole-`PageHostDebuggerProgram` identity check.
+    assert!(matches!(
+        host.handle_request(PageHostRequest::GetDebuggerValueSnapshot {
+            target: PageHostDebuggerValueTarget {
+                program: PageHostDebuggerProgram {
+                    program_generation: program.program_generation + 1,
+                    ..program
+                },
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_generation: program.program_generation + 1,
+                        ..program
+                    },
+                    ..target.safe_point
+                },
+                ..target
+            },
+        }),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn private_child_bluets_nested_preview_requires_its_active_frame() {
     let mut host = BlueJsChildHost::default();
     assert!(matches!(
