@@ -2078,6 +2078,31 @@ wide override, a missing overload, a wrong result, a static side, an ancestor
 past an intermediate class, and extra required parameters) agree on
 acceptance and TS2416/TS2417 lines.
 
+### J.3.1.3.4.5 Derived constructor `super` calls
+
+`super(...)` is now retained as a structured expression statement in function
+bodies (it was an opaque token), so the checker can see it. For a class with a
+bound base, its constructor must contain a `super(...)` call somewhere in its
+top-level or braced-block statements; the first such call may not be preceded
+by a statement that reads `this`, nor contain `this` in its own arguments.
+A statement containing an arrow or `function` is skipped for the `this`
+ordering, since evaluation of a nested function is deferred. A top-level
+`super(...)` statement is checked with the same argument selection used for
+`new`: the arguments must be accepted by one of the base constructor's
+signatures, so overload sets are honored and an exhausted expansion budget is a
+resource-limit diagnostic. A `super(...)` call in a class with no base is
+rejected. A base whose constructor signature is not yet bound (an omitted
+derived constructor) is skipped, since its heritage diagnostic already
+applies.
+
+Seven pinned TypeScript 5.9.3 `--noEmit` cases (a valid matrix with nested and
+repeated calls and overloads, a missing call, wrong argument count and type,
+`this` before `super`, an overload mismatch, and a call in a base class) agree
+on acceptance and the TS2377, TS2554, TS2345, TS17009, TS2769 and TS2335
+lines. Property initializers and parameter properties do not exist yet, so the
+stricter "first statement" rule they trigger is deferred to J.3.2. Classes are
+still refused before output by the class-runtime diagnostic.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

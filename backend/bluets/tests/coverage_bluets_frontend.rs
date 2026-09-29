@@ -5314,6 +5314,66 @@ fn class_overrides_compare_inherited_overload_sets() {
 }
 
 #[test]
+fn derived_constructors_check_super_calls_and_placement() {
+    let compile_source = |source: &str, max_type_expansions: usize| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions {
+                limits: CompilerLimits {
+                    max_type_expansions,
+                    ..CompilerLimits::default()
+                },
+                ..CompilerOptions::default()
+            },
+        )
+    };
+    let accepted = compile_source(
+        include_str!("fixtures/typescript_oracle/class-super-call-valid/main.ts"),
+        256,
+    );
+    assert!(accepted.output.is_none());
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for source in [
+        include_str!("fixtures/typescript_oracle/class-super-call-missing-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-super-call-count-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-super-call-type-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-super-call-this-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-super-call-overload-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/class-super-call-base-error/main.ts"),
+    ] {
+        let rejected = compile_source(source, 256);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::TypeMismatch
+                    && diagnostic.span.module == ENTRY
+                    && diagnostic.message.contains("`super`")
+            }),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    let bounded = compile_source(
+        "type N = number; class A { constructor(x: N, y: N, z: N) {} } \
+         class D extends A { constructor() { super(1, 2, 3); } }",
+        1,
+    );
+    assert!(bounded.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == DiagnosticCode::ResourceLimit && diagnostic.message.contains("`super`")
+    }));
+}
+
+#[test]
 fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
     let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");
     let accepted = compile(

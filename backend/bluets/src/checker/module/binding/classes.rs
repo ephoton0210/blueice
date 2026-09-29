@@ -8,12 +8,15 @@ use super::*;
 use crate::parser::{ClassConstructor, ClassDeclaration, ClassMethod};
 
 mod overrides;
+mod super_calls;
 
 #[derive(Clone, Copy)]
 enum ClassBodyReturnRule<'a> {
     Constructor {
         class_name: &'a str,
         instance_type: &'a Type,
+        /// The base whose constructor a `super(...)` call must satisfy.
+        super_base: Option<&'a str>,
     },
     Method {
         return_type: Option<&'a Type>,
@@ -675,12 +678,14 @@ impl ModuleChecker<'_> {
                     arguments: Vec::new(),
                 },
             );
+            self.check_constructor_super_placement(class, constructor, body);
             self.check_class_body_items(
                 body,
                 &scope,
                 ClassBodyReturnRule::Constructor {
                     class_name: &class.name,
                     instance_type: &instance_type,
+                    super_base: class.extends_name.as_deref(),
                 },
             );
         }
@@ -791,6 +796,16 @@ impl ModuleChecker<'_> {
                 FunctionBodyItem::Expression { tokens, span }
                 | FunctionBodyItem::Throw { tokens, span } => {
                     self.check_direct_runtime_expression(tokens, &scope, span);
+                    if let (
+                        FunctionBodyItem::Expression { .. },
+                        ClassBodyReturnRule::Constructor {
+                            super_base: Some(base),
+                            ..
+                        },
+                    ) = (item, return_rule)
+                    {
+                        self.check_super_call_arguments(base, tokens, &scope, span);
+                    }
                 }
                 FunctionBodyItem::Return { tokens, span } => {
                     if !tokens.is_empty() {
@@ -800,6 +815,7 @@ impl ModuleChecker<'_> {
                         ClassBodyReturnRule::Constructor {
                             class_name,
                             instance_type,
+                            ..
                         } if !tokens.is_empty() => {
                             let actual = self.infer_expression(tokens, &scope);
                             let primitive = Type::Union(vec![

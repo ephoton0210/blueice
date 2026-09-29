@@ -3508,6 +3508,51 @@ fn pinned_class_override_overload_sets_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_derived_constructor_super_calls_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-super-call-valid/main.ts"),
+            &[],
+        ),
+        (
+            "missing-error",
+            include_str!("fixtures/typescript_oracle/class-super-call-missing-error/main.ts"),
+            &[(5, "TS2377")],
+        ),
+        (
+            "count-error",
+            include_str!("fixtures/typescript_oracle/class-super-call-count-error/main.ts"),
+            &[(5, "TS2554")],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/class-super-call-type-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "this-error",
+            include_str!("fixtures/typescript_oracle/class-super-call-this-error/main.ts"),
+            &[(5, "TS17009")],
+        ),
+        (
+            "overload-error",
+            include_str!("fixtures/typescript_oracle/class-super-call-overload-error/main.ts"),
+            &[(5, "TS2769")],
+        ),
+        (
+            "base-error",
+            include_str!("fixtures/typescript_oracle/class-super-call-base-error/main.ts"),
+            &[(4, "TS2335")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

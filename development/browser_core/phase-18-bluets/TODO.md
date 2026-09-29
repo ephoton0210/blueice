@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.5.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.6.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1993,8 +1993,19 @@ done to the page-runs-and-debugs goal at the top of this file.
             not compared and stay with the existing single-signature check.
             BlueTS crate tests, crate Clippy, rustfmt and whitespace checks
             pass.
-        - [ ] **J.3.1.3.4.5** Check derived constructor `super` calls, arguments,
+        - [x] **J.3.1.3.4.5** Check derived constructor `super` calls, arguments,
           and required placement against pinned TypeScript.
+          A derived constructor must contain a `super(...)` call, may not read
+          `this` before it (including in its own arguments), and must supply
+          arguments accepted by one base constructor signature, including
+          overload selection; a `super(...)` call in a class with no base is
+          rejected. `super(...)` is now a structured expression statement in
+          function bodies instead of an opaque token. Seven pinned TypeScript
+          5.9.3 `--noEmit` cases agree on acceptance and TS2377/TS2554/TS2345/
+          TS17009/TS2769/TS2335 lines. Calls in nested functions or arrows and
+          `super` outside constructors are not checked here (J.3.1.3.4.6).
+          BlueTS and bridge crate tests, Clippy, rustfmt and whitespace checks
+          pass.
         - [ ] **J.3.1.3.4.6** Check instance and static `super` method reads and
           calls, selected results, and wrong-side uses against pinned
           TypeScript.
