@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.4.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.5.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -2033,8 +2033,21 @@ done to the page-runs-and-debugs goal at the top of this file.
         regenerate it. The direct script and module routes refuse
         checker-accepted classes. BlueTS and bridge crate tests, Clippy,
         rustfmt and whitespace checks pass.
-    - [ ] **J.3.1.4** Emit checked class JavaScript and declarations from the
+    - [x] **J.3.1.4** Emit checked class JavaScript and declarations from the
       shared IR with stable source maps and atomic build behavior.
+      A temporary, default-off `CompilerOptions::class_emit` switch admits a
+      class to output only when every member is a parsed constructor or method;
+      any other member keeps the class-runtime refusal. JavaScript is the
+      original text with annotations and overload signatures erased, so source
+      maps come from the existing provenance emitter. Declarations list
+      exported (or value-exported) classes as `declare class` with overload
+      signatures, `static` members and `extends`, and refuse a method with no
+      return type. A checker error still suppresses all output. Two pinned
+      TypeScript 5.9.3 cases run the emitted JavaScript in Node with identical
+      stdout and match `tsc`'s declaration byte for byte. BlueTSC and the
+      direct bridge keep refusing classes (the switch is off there) until
+      J.3.1.6 removes it. Full workspace tests, Clippy, rustfmt and whitespace
+      checks pass.
     - [ ] **J.3.1.5** Lower checked classes directly to BlueJS class AST;
       verify page-realm construction, method calls, inheritance, and `super`.
     - [ ] **J.3.1.6** Verify strict-boundary policy, original-source debugger

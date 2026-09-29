@@ -25,6 +25,8 @@ class-derived-own-constructor-argument-error/main.ts	reject
 class-dual-binding-wrong-side/main.ts	reject
 class-dual-binding/main.ts	accept
 class-duplicate-name/main.ts	reject
+class-emit-declaration/main.ts	accept
+class-emit-runtime/main.ts	accept
 class-export-inherited-alias/main.ts	accept
 class-export-inherited-constructor-error/main.ts	reject
 class-export-inherited-direct/main.ts	accept

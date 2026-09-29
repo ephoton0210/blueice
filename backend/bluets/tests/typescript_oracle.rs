@@ -41,6 +41,24 @@ struct ExpectedDiagnostic {
 
 const CASES: &[OracleCase] = &[
     OracleCase {
+        name: "class-emit-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-emit-runtime/main.ts"),
+        )],
+        expected_stdout: Some("shape square\nsquare\na shape square\n2\nmade x!\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "class-emit-declaration",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/class-emit-declaration/main.ts"),
+        )],
+        expected_stdout: Some(""),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-property",
         modules: &[(
             "memory:///main.ts",
@@ -3959,6 +3977,7 @@ fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
     let options = CompilerOptions {
         source_map: true,
         declaration: expected_declaration.is_some(),
+        class_emit: case.name.starts_with("class-emit"),
         ..CompilerOptions::default()
     };
     let compilation = compile("memory:///main.ts", &MapLoader::from(sources), options);
@@ -4072,6 +4091,14 @@ fn expected_declaration(case: &OracleCase) -> Option<&'static str> {
         "named-value-export" => {
             Some("declare const label: string;\nexport { label as greeting };\n")
         }
+        "class-emit-declaration" => Some(
+            "export declare class Shape {\n    constructor(name: string);\n    \
+             constructor(name: string, sides: number);\n    describe(prefix: string): string;\n    \
+             scale(factor: number): number;\n    scale(factor: string): string;\n    \
+             static create(name: string): string;\n}\n\
+             export declare class Square extends Shape {\n    constructor();\n    \
+             describe(prefix: string): string;\n}\n",
+        ),
         _ => None,
     }
 }

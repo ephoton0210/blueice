@@ -5,7 +5,7 @@
 //! Bounded class constructor and method checks before runtime admission.
 
 use super::*;
-use crate::parser::{ClassConstructor, ClassDeclaration, ClassMethod};
+use crate::parser::{ClassConstructor, ClassDeclaration, ClassMemberKind, ClassMethod};
 
 mod overrides;
 mod super_calls;
@@ -1207,6 +1207,16 @@ fn class_constructor_signatures(class: &ClassDeclaration) -> Vec<FunctionSignatu
             },
         })
         .collect()
+}
+
+/// Whether every class member is a parsed constructor or method, the only
+/// forms whose emission is fully erased and declared.
+pub(in crate::checker::module) fn class_is_fully_structured(class: &ClassDeclaration) -> bool {
+    class.members.iter().all(|member| match member.kind {
+        ClassMemberKind::Constructor => member.constructor.is_some(),
+        ClassMemberKind::Method => member.method.is_some(),
+        ClassMemberKind::Opaque => false,
+    })
 }
 
 fn class_declares_constructor(class: &ClassDeclaration) -> bool {

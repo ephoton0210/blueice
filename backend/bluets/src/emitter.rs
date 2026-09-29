@@ -11,6 +11,8 @@ use crate::parser::{Declaration, Module, TextEdit, Type, TypeParameter};
 use crate::strict_boundaries;
 use std::collections::BTreeMap;
 
+mod classes;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildOutput {
     pub fingerprint: String,
@@ -113,7 +115,8 @@ pub(crate) fn emit(
                 .then(|| source_map(id, &checked_module.module.source, &emitted));
             let declaration = options
                 .declaration
-                .then(|| emit_declaration(&checked_module.module));
+                .then(|| emit_declaration(&checked_module.module))
+                .transpose()?;
             Ok((
                 id.clone(),
                 BuildArtifact {
@@ -258,6 +261,7 @@ fn emit_javascript(
             replacement: format!("{quote}{emitted_specifier}{quote}"),
         });
     }
+    edits.extend(classes::overload_signature_erasures(module));
     let plan = strict_boundaries::plan_emission(module, options)?;
     let mut strict_runtime = None;
     if let Some((strict_edits, record)) = plan {
@@ -304,7 +308,7 @@ fn apply_edits(source: &str, mut edits: Vec<TextEdit>) -> EmittedJavaScript {
     emitted.finish()
 }
 
-fn emit_declaration(module: &Module) -> String {
+fn emit_declaration(module: &Module) -> Result<String, Diagnostic> {
     let mut output = String::new();
     for declaration in &module.declarations {
         match declaration {
@@ -431,6 +435,18 @@ fn emit_declaration(module: &Module) -> String {
                 );
                 output.push_str(";\n");
             }
+            Declaration::Class(class)
+                if class.exported
+                    || is_default_export_name(module, &class.name)
+                    || is_value_export_name(module, &class.name) =>
+            {
+                let prefix = if class.exported {
+                    "export declare "
+                } else {
+                    "declare "
+                };
+                classes::emit_class_declaration(class, prefix, &mut output)?;
+            }
             Declaration::TypeExport(export) => {
                 output.push_str("export type ");
                 if export.bindings.len() == 1 && export.bindings[0] == "*" {
@@ -468,7 +484,7 @@ fn emit_declaration(module: &Module) -> String {
             _ => {}
         }
     }
-    output
+    Ok(output)
 }
 
 fn is_default_export_name(module: &Module, name: &str) -> bool {

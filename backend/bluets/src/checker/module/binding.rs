@@ -34,8 +34,7 @@ impl<'a> ModuleChecker<'a> {
         module: &'a Module,
         exports: &'a ProjectExports,
         ambient: Option<&'a AmbientDeclarations>,
-        enforce_types: bool,
-        require_declared_global_calls: bool,
+        policy: CheckerPolicy,
         max_type_expansions: usize,
     ) -> Self {
         Self {
@@ -43,8 +42,9 @@ impl<'a> ModuleChecker<'a> {
             module,
             exports,
             ambient,
-            enforce_types,
-            require_declared_global_calls,
+            enforce_types: policy.enforce_types,
+            require_declared_global_calls: policy.require_declared_global_calls,
+            class_emit: policy.class_emit,
             diagnostics: Vec::new(),
             symbols: Vec::new(),
             types: BTreeMap::new(),
@@ -156,11 +156,16 @@ impl<'a> ModuleChecker<'a> {
                 }
                 Declaration::Class(class) => {
                     self.bind_class(class);
-                    self.diagnostics.push(Diagnostic::error(
-                        DiagnosticCode::UnsupportedSyntax,
-                        class.span.clone(),
-                        "class members and runtime semantics are not installed yet",
-                    ));
+                    // Output is admitted only under the staging switch and
+                    // only when every member has a structured form, so
+                    // emitted JavaScript never carries unerased TypeScript.
+                    if !(self.class_emit && classes::class_is_fully_structured(class)) {
+                        self.diagnostics.push(Diagnostic::error(
+                            DiagnosticCode::UnsupportedSyntax,
+                            class.span.clone(),
+                            "class members and runtime semantics are not installed yet",
+                        ));
+                    }
                 }
                 Declaration::Raw(_) => {}
             }

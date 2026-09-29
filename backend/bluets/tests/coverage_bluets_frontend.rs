@@ -5448,6 +5448,137 @@ fn super_member_reads_and_calls_use_the_base_side() {
     }
 }
 
+fn class_emit_options() -> CompilerOptions {
+    CompilerOptions {
+        class_emit: true,
+        source_map: true,
+        declaration: true,
+        ..CompilerOptions::default()
+    }
+}
+
+fn normalized_javascript(javascript: &str) -> String {
+    javascript
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[test]
+fn class_emit_erases_types_and_overload_signatures() {
+    let source = include_str!("fixtures/typescript_oracle/class-emit-runtime/main.ts");
+    // The staging switch is off by default: classes are still refused.
+    let refused = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    );
+    assert!(refused.output.is_none());
+    assert!(refused
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
+
+    let compiled = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        class_emit_options(),
+    );
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:#?}",
+        compiled.diagnostics
+    );
+    let artifact = &compiled.output.unwrap().artifacts[ENTRY];
+    assert_eq!(
+        normalized_javascript(&artifact.javascript),
+        "class Shape { constructor(name, sides) { console.log('shape ' + name); } \
+         describe(prefix){ return prefix + 'shape'; } scale(factor){ return factor; } \
+         static create(name){ return 'made ' + name; } } \
+         class Square extends Shape { constructor() { super('square', 4); console.log('square'); } \
+         describe(prefix){ return super.describe(prefix) + ' square'; } \
+         static create(name){ return super.create(name) + '!'; } } \
+         const square = new Square(); console.log(square.describe('a ')); \
+         console.log(square.scale(2)); console.log(Square.create('x'));"
+    );
+    let map = artifact.source_map.as_ref().expect("source map requested");
+    assert!(!map.mappings.is_empty());
+}
+
+#[test]
+fn class_declaration_emit_matches_typescript_shape() {
+    let source = include_str!("fixtures/typescript_oracle/class-emit-declaration/main.ts");
+    let compiled = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        class_emit_options(),
+    );
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:#?}",
+        compiled.diagnostics
+    );
+    let artifact = &compiled.output.unwrap().artifacts[ENTRY];
+    assert_eq!(
+        artifact.declaration.as_deref(),
+        Some(
+            "export declare class Shape {\n    constructor(name: string);\n    \
+             constructor(name: string, sides: number);\n    describe(prefix: string): string;\n    \
+             scale(factor: number): number;\n    scale(factor: string): string;\n    \
+             static create(name: string): string;\n}\n\
+             export declare class Square extends Shape {\n    constructor();\n    \
+             describe(prefix: string): string;\n}\n"
+        )
+    );
+}
+
+#[test]
+fn class_emit_stays_atomic_and_refuses_unstructured_classes() {
+    // A checker error suppresses all output, even with the switch on.
+    let rejected = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "class A { constructor(x: number) {} } \
+             class B extends A { constructor() { super('a'); } }",
+        )]),
+        class_emit_options(),
+    );
+    assert!(rejected.output.is_none());
+    assert!(rejected
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch));
+
+    // A class with a member outside the structured grammar cannot be emitted
+    // faithfully, so it stays refused.
+    let opaque = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, "class A { value = 1; }")]),
+        class_emit_options(),
+    );
+    assert!(opaque.output.is_none());
+    assert!(opaque
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
+
+    // Declaration output needs a stated result type for every method.
+    let untyped = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "export class A { m() { return 1; } }",
+        )]),
+        class_emit_options(),
+    );
+    assert!(untyped.output.is_none());
+}
+
 #[test]
 fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
     let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");

@@ -13,6 +13,14 @@ enum RecordSpreadFailure {
     UnprovenSource,
 }
 
+/// Per-project checking policy shared by every module checker.
+#[derive(Clone, Copy)]
+pub(super) struct CheckerPolicy {
+    pub(super) enforce_types: bool,
+    pub(super) require_declared_global_calls: bool,
+    pub(super) class_emit: bool,
+}
+
 pub(super) struct ModuleChecker<'a> {
     project: &'a Project,
     module: &'a Module,
@@ -20,6 +28,7 @@ pub(super) struct ModuleChecker<'a> {
     ambient: Option<&'a AmbientDeclarations>,
     enforce_types: bool,
     require_declared_global_calls: bool,
+    class_emit: bool,
     pub(super) diagnostics: Vec<Diagnostic>,
     pub(super) symbols: Vec<Symbol>,
     types: BTreeMap<String, TypeDefinition>,

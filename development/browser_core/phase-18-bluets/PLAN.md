@@ -2151,6 +2151,39 @@ line numbers (the per-feature oracle tests pin lines), and it covers only
 classes the checker binds today; fields, accessors and private members
 (J.3.2) extend it as they land.
 
+### J.3.1.4 Class JavaScript and declaration output
+
+Output is gated by a temporary, default-off `CompilerOptions::class_emit`
+switch (part of the build fingerprint). With it on, the checker drops the
+class-runtime refusal only for a class whose every member is a parsed
+constructor or method; a field, accessor or any other member still keeps the
+refusal, so emitted JavaScript can never carry unerased TypeScript. Direct
+lowering, the standalone CLI and every default caller leave the switch off, so
+classes remain refused there. J.3.1.6 removes the switch once strict-boundary
+policy, debugger mapping and stale-generation refusal are verified.
+
+JavaScript is the source text with parameter and return annotations erased by
+the parser and, new here, every constructor and method overload signature
+erased, since a declaration with no body has no JavaScript form. Source maps
+come from the same provenance emitter as functions, and the source-map segment
+limit applies unchanged. A checker error still produces no output, so the
+build stays atomic.
+
+Declarations render an exported class, or one named by a value or default
+export, as `declare class Name [extends Base]` followed by four-space members
+in source order: each constructor and method overload signature, or its single
+implementation signature when it has no overloads, with `static` on the
+constructor side. A parameter with a default renders as optional, a rest
+parameter keeps its `...`, and a method with no return annotation is refused
+because BlueTS does not infer one. Two new pinned TypeScript 5.9.3 cases run
+BlueTSC's and `tsc`'s JavaScript in Node with identical output and compare the
+declaration byte for byte.
+
+Limits: JavaScript keeps BlueTS's existing erased-annotation whitespace (an
+erased return type joins `)` and `{`), so its text differs from `tsc`'s while
+its behaviour matches. Fields, accessors, private members, parameter
+properties, generic classes and `implements` do not exist yet (J.3.2).
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process
