@@ -327,3 +327,291 @@ fn precompiled_bytecode_uses_the_same_generation_bound_validation() {
         .validate_safe_point(handle, compiled.safe_points().next().unwrap())
         .unwrap();
 }
+
+#[test]
+fn every_error_has_a_distinct_readable_message() {
+    let cases = [
+        (
+            BlueJsProgramDebugError::EmptyCanonicalModuleId,
+            "canonical module ID must not be empty",
+        ),
+        (
+            BlueJsProgramDebugError::EmptySourceHash,
+            "source hash must not be empty",
+        ),
+        (
+            BlueJsProgramDebugError::Compilation(CompileError::ProgramTooLarge),
+            "cannot compile structured program: BlueJS program exceeds the bytecode size limit or a metadata limit",
+        ),
+        (
+            BlueJsProgramDebugError::GenerationExhausted,
+            "BlueJS program generation space is exhausted",
+        ),
+        (
+            BlueJsProgramDebugError::CodeUnitLimitExceeded,
+            "BlueJS program has too many code units",
+        ),
+        (
+            BlueJsProgramDebugError::AstNodeLimitExceeded,
+            "BlueJS program has too many AST nodes",
+        ),
+        (
+            BlueJsProgramDebugError::UnknownProgram,
+            "BlueJS program handle is stale or unknown",
+        ),
+        (
+            BlueJsProgramDebugError::StaleSafePoint,
+            "BlueJS safe point belongs to another generation",
+        ),
+        (
+            BlueJsProgramDebugError::UnknownCodeUnit,
+            "BlueJS code unit is unknown for this generation",
+        ),
+        (
+            BlueJsProgramDebugError::InvalidInstructionBoundary,
+            "BlueJS offset is not an instruction boundary",
+        ),
+        (
+            BlueJsProgramDebugError::StaleAstNode,
+            "BlueJS AST node belongs to another generation",
+        ),
+        (
+            BlueJsProgramDebugError::UnknownAstNode,
+            "BlueJS AST node is unknown for this generation",
+        ),
+        (
+            BlueJsProgramDebugError::AstNodeUnbound,
+            "BlueJS AST node has no executable root safe point",
+        ),
+        (
+            BlueJsProgramDebugError::AstBytecodeShapeMismatch,
+            "BlueJS AST and bytecode top-level provenance disagree",
+        ),
+    ];
+    for (error, message) in cases {
+        assert_eq!(error.to_string(), message);
+    }
+    let converted: BlueJsProgramDebugError = CompileError::ProgramTooLarge.into();
+    assert_eq!(
+        converted,
+        BlueJsProgramDebugError::Compilation(CompileError::ProgramTooLarge)
+    );
+}
+
+#[test]
+fn handles_and_generations_expose_their_opaque_values() {
+    let mut registry = BlueJsProgramRegistry::default();
+    let first = registry
+        .install(source("page:///a.js", "sha256:a"), &script("1"))
+        .unwrap();
+    let second = registry
+        .install(source("page:///b.js", "sha256:b"), &script("2"))
+        .unwrap();
+    assert_eq!(first.generation().as_u64(), 1);
+    assert_eq!(second.generation().as_u64(), 2);
+    let compiled = registry.get(second).unwrap();
+    assert_eq!(compiled.handle(), second);
+    let root_node = compiled.ast_nodes()[0].id();
+    assert_eq!(root_node.generation(), second.generation());
+    assert_eq!(BlueJsProgramRegistry::ABI, BLUEJS_PROGRAM_DEBUG_ABI_V1);
+}
+
+#[test]
+fn the_generation_space_can_be_exhausted() {
+    let mut registry = BlueJsProgramRegistry {
+        next_generation: u64::MAX,
+        ..BlueJsProgramRegistry::default()
+    };
+    assert_eq!(
+        registry.install(source("page:///last.js", "sha256:last"), &script("1")),
+        Err(BlueJsProgramDebugError::GenerationExhausted)
+    );
+}
+
+#[test]
+fn identity_components_past_their_limits_are_rejected() {
+    let nested = script("function f(){return 1} f();");
+    let compile = |program: &BlueJsProgramV1| program.compile().unwrap();
+    let mut registry = BlueJsProgramRegistry::default();
+    let limits = |code_units, ast_nodes, instruction_offset| IdentityLimits {
+        code_units,
+        ast_nodes,
+        instruction_offset,
+    };
+    let install = |registry: &mut BlueJsProgramRegistry, limits| {
+        registry.install_limited(
+            source("page:///limit.js", "sha256:limit"),
+            compile(&nested),
+            collect_ast_nodes(&nested),
+            limits,
+        )
+    };
+    let all = usize::MAX;
+    assert_eq!(
+        install(&mut registry, limits(0, all, all)),
+        Err(BlueJsProgramDebugError::CodeUnitLimitExceeded)
+    );
+    assert_eq!(
+        install(&mut registry, limits(all, 0, all)),
+        Err(BlueJsProgramDebugError::AstNodeLimitExceeded)
+    );
+    assert_eq!(
+        install(&mut registry, limits(all, all, 0)),
+        Err(BlueJsProgramDebugError::InvalidInstructionBoundary)
+    );
+    assert!(install(&mut registry, limits(all, all, all)).is_ok());
+}
+
+#[test]
+fn identity_components_are_bounded_by_u32_even_without_a_smaller_limit() {
+    assert_eq!(
+        identity_component(7, usize::MAX, BlueJsProgramDebugError::UnknownProgram),
+        Ok(7)
+    );
+    assert_eq!(
+        identity_component(
+            u32::MAX as usize + 1,
+            usize::MAX,
+            BlueJsProgramDebugError::UnknownProgram
+        ),
+        Err(BlueJsProgramDebugError::UnknownProgram)
+    );
+}
+
+#[test]
+fn top_level_provenance_that_disagrees_with_the_bytecode_is_rejected() {
+    let program = script("1; 2;");
+    let mut registry = BlueJsProgramRegistry::default();
+
+    // One AST statement fewer than the bytecode's statement offsets.
+    let mut nodes = collect_ast_nodes(&program);
+    let last_statement = nodes.iter().rposition(|node| node.top_level_statement);
+    nodes.remove(last_statement.unwrap());
+    assert_eq!(
+        registry.install_with_ast_nodes(
+            source("page:///short.js", "sha256:short"),
+            program.compile().unwrap(),
+            nodes
+        ),
+        Err(BlueJsProgramDebugError::AstBytecodeShapeMismatch)
+    );
+
+    // An offset that is not the start of any instruction.
+    let mut bytecode = program.compile().unwrap();
+    bytecode.root_statement_offsets[0] = Some(u32::MAX);
+    assert_eq!(
+        registry.install_with_ast_nodes(
+            source("page:///bad.js", "sha256:bad"),
+            bytecode,
+            collect_ast_nodes(&program)
+        ),
+        Err(BlueJsProgramDebugError::AstBytecodeShapeMismatch)
+    );
+}
+
+#[test]
+fn replacing_an_unknown_program_fails_before_compiling() {
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install(source("page:///main.js", "sha256:one"), &script("1"))
+        .unwrap();
+    assert!(registry.invalidate(handle));
+    assert_eq!(
+        registry.replace(
+            handle,
+            source("page:///main.js", "sha256:two"),
+            &script("2")
+        ),
+        Err(BlueJsProgramDebugError::UnknownProgram)
+    );
+}
+
+#[test]
+fn safe_points_and_ast_nodes_of_another_generation_are_rejected_everywhere() {
+    let mut registry = BlueJsProgramRegistry::default();
+    let first = registry
+        .install(source("page:///a.js", "sha256:a"), &script("1"))
+        .unwrap();
+    let second = registry
+        .install(source("page:///b.js", "sha256:b"), &script("1; 2;"))
+        .unwrap();
+    let first_program = registry.get(first).unwrap().clone();
+    let second_program = registry.get(second).unwrap().clone();
+    let foreign_node = first_program.ast_nodes()[0].id();
+    let foreign_point = first_program.safe_points().next().unwrap();
+
+    // Through the registry and directly on the compiled program.
+    assert_eq!(
+        registry.safe_point_for_ast_node(second, foreign_node),
+        Err(BlueJsProgramDebugError::StaleAstNode)
+    );
+    assert_eq!(
+        second_program.safe_point_for_ast_node(foreign_node),
+        Err(BlueJsProgramDebugError::StaleAstNode)
+    );
+    assert_eq!(
+        second_program.validate_safe_point(foreign_point),
+        Err(BlueJsProgramDebugError::StaleSafePoint)
+    );
+
+    // A code unit ordinal beyond the inventory, and one naming a
+    // different unit than the inventory holds at that ordinal.
+    let mut beyond = second_program.safe_points().next().unwrap();
+    beyond.code_unit.ordinal = 99;
+    assert_eq!(
+        second_program.validate_safe_point(beyond),
+        Err(BlueJsProgramDebugError::UnknownCodeUnit)
+    );
+    let mut renamed = second_program.safe_points().next().unwrap();
+    renamed.code_unit = first_program.code_units()[0].id();
+    renamed.code_unit.generation = second.generation();
+    renamed.code_unit.ordinal = 0;
+    assert_eq!(second_program.validate_safe_point(renamed), Ok(()));
+    let mut mismatched = second_program.clone();
+    mismatched.code_units[0].id.ordinal = 5;
+    assert_eq!(
+        mismatched.validate_safe_point(renamed),
+        Err(BlueJsProgramDebugError::UnknownCodeUnit)
+    );
+}
+
+#[test]
+fn install_and_replace_report_compile_and_generation_failures() {
+    let mut registry = BlueJsProgramRegistry::default();
+    assert_eq!(
+        registry.install(
+            source("page:///bad.js", "sha256:bad"),
+            &script("let duplicate; let duplicate;")
+        ),
+        Err(BlueJsProgramDebugError::Compilation(
+            CompileError::DuplicateBinding("duplicate".into())
+        ))
+    );
+    let handle = registry
+        .install(source("page:///main.js", "sha256:one"), &script("1"))
+        .unwrap();
+    registry.next_generation = u64::MAX;
+    assert_eq!(
+        registry.replace(
+            handle,
+            source("page:///main.js", "sha256:two"),
+            &script("2")
+        ),
+        Err(BlueJsProgramDebugError::GenerationExhausted)
+    );
+    assert!(registry.get(handle).is_ok());
+}
+
+#[test]
+fn an_ast_node_of_an_invalidated_program_is_unknown() {
+    let mut registry = BlueJsProgramRegistry::default();
+    let handle = registry
+        .install(source("page:///main.js", "sha256:one"), &script("1"))
+        .unwrap();
+    let node = registry.get(handle).unwrap().ast_nodes()[0].id();
+    assert!(registry.invalidate(handle));
+    assert_eq!(
+        registry.safe_point_for_ast_node(handle, node),
+        Err(BlueJsProgramDebugError::UnknownProgram)
+    );
+}

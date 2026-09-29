@@ -311,6 +311,27 @@ fn unparenthesize(expr: Expr) -> Expr {
     }
 }
 
+/// Builds a `SourceText` for a source of `len` bytes: its offsets are `u32`,
+/// so a longer source keeps no per-function text (the default, empty one).
+#[cfg(test)]
+fn source_text_within(len: usize, build: impl FnOnce() -> SourceText) -> SourceText {
+    if len > u32::MAX as usize {
+        return SourceText::default();
+    }
+    build()
+}
+
+/// Wraps an expression statement's expression in `Expr::Parenthesized`, which
+/// evaluates the same but is no longer a bare string statement; any other
+/// statement is returned unchanged.
+#[cfg(test)]
+fn parenthesize_expression_statement(statement: Stmt) -> Stmt {
+    match statement {
+        Stmt::Expr(expression) => Stmt::Expr(Expr::Parenthesized(Box::new(expression))),
+        other => other,
+    }
+}
+
 fn is_assignment_operator(token: &Token) -> bool {
     matches!(
         token,
@@ -871,5 +892,33 @@ impl Parser {
             quasis,
             expressions,
         })
+    }
+}
+
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
+
+    #[test]
+    fn source_text_ranges_are_limited_to_u32_offsets() {
+        let source: std::sync::Arc<str> = "ab".into();
+        let build = || SourceText::range(&source, 0, 1);
+        let built = build();
+        assert_eq!(source_text_within(0, build), built);
+        assert_eq!(source_text_within(u32::MAX as usize, build), built);
+        // Too long a source keeps no range at all.
+        assert_eq!(
+            source_text_within(u32::MAX as usize + 1, build),
+            SourceText::default()
+        );
+    }
+
+    #[test]
+    fn only_expression_statements_are_parenthesized() {
+        assert_eq!(
+            parenthesize_expression_statement(Stmt::Expr(Expr::Null)),
+            Stmt::Expr(Expr::Parenthesized(Box::new(Expr::Null)))
+        );
+        assert_eq!(parenthesize_expression_statement(Stmt::Empty), Stmt::Empty);
     }
 }

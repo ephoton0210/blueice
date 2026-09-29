@@ -1851,3 +1851,211 @@ fn transform_run(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::JsSymbol;
+
+    const ROOMY: usize = 1 << 20;
+
+    fn text(value: &str) -> Value {
+        Value::String(value.into())
+    }
+
+    fn symbol() -> Value {
+        Value::Symbol(JsSymbol::well_known("iterator"))
+    }
+
+    fn units(code_units: &[u16]) -> JsString {
+        JsString::from_code_units(code_units.to_vec())
+    }
+
+    #[test]
+    fn numeric_argument_helpers_reject_symbols() {
+        for message in [
+            integer(&symbol()).unwrap_err().to_string(),
+            length(&symbol()).unwrap_err().to_string(),
+        ] {
+            assert!(message.starts_with("TypeError"), "{message}");
+        }
+        assert_eq!(integer(&Value::Number(f64::NAN)), Ok(0.0));
+        assert_eq!(integer(&Value::Number(-2.7)), Ok(-2.0));
+        assert_eq!(uint32(4294967297.0), 1);
+        assert_eq!(length(&Value::Number(-5.0)), Ok(0.0));
+    }
+
+    #[test]
+    fn from_codes_builds_units_and_points_and_rejects_invalid_points() {
+        let numbers = |values: &[f64]| values.iter().map(|v| Value::Number(*v)).collect::<Vec<_>>();
+        assert_eq!(
+            from_codes(
+                &numbers(&[65.0, 66.0, 65601.5, f64::NAN, f64::INFINITY]),
+                false,
+                ROOMY
+            ),
+            Ok(Value::String(units(&[65, 66, 65, 0, 0])))
+        );
+        assert_eq!(
+            from_codes(&numbers(&[65.0, 128512.0]), true, ROOMY),
+            Ok(Value::String(units(&[65, 0xd83d, 0xde00])))
+        );
+        for invalid in [-1.0, 1114112.0, 1.5, f64::NAN] {
+            assert_eq!(
+                from_codes(&numbers(&[invalid]), true, ROOMY),
+                Err(RuntimeError::RangeError("invalid String code point".into())),
+                "{invalid}"
+            );
+        }
+        assert_eq!(
+            from_codes(&numbers(&[65.0, 66.0]), false, 2),
+            Err(RuntimeError::StringLimit { limit: 2 })
+        );
+    }
+
+    #[test]
+    fn growing_a_string_past_the_limit_fails_at_every_step() {
+        use StringMethod::*;
+        let mixed = Value::String(units(&[0x73, 0xe9, 0xd800, 0x7a]));
+        let calls: Vec<(StringMethod, Vec<Value>)> = vec![
+            (
+                Html {
+                    tag: "a",
+                    attribute: "name",
+                },
+                vec![text("x\"y")],
+            ),
+            (
+                Html {
+                    tag: "b",
+                    attribute: "",
+                },
+                vec![],
+            ),
+            (Concat, vec![text("def"), text("ghi")]),
+            (Normalize, vec![text("NFD")]),
+            (ToLowerCase, vec![]),
+            (ToUpperCase, vec![]),
+        ];
+        for limit in 0..=90 {
+            for (method, args) in &calls {
+                let result = string_method(*method, &mixed, args, limit);
+                if let Err(error) = result {
+                    assert_eq!(error, RuntimeError::StringLimit { limit });
+                }
+            }
+        }
+        for limit in 0..=8 {
+            let result = from_codes(&[Value::Number(65.0), Value::Number(66.0)], false, limit);
+            if let Err(error) = result {
+                assert_eq!(error, RuntimeError::StringLimit { limit });
+            }
+        }
+    }
+
+    #[test]
+    fn uri_encoding_escapes_reserved_characters_only_for_components() {
+        let source = JsString::from("a b/\u{e9}\u{1F600}");
+        let encode = |component| encode_uri(&source, component, ROOMY).unwrap();
+        assert_eq!(encode(false), JsString::from("a%20b/%C3%A9%F0%9F%98%80"));
+        assert_eq!(encode(true), JsString::from("a%20b%2F%C3%A9%F0%9F%98%80"));
+    }
+
+    #[test]
+    fn uri_encoding_rejects_unpaired_surrogates() {
+        for malformed in [units(&[0xd800]), units(&[0xd800, 0x61]), units(&[0xdc00])] {
+            assert_eq!(
+                encode_uri(&malformed, false, ROOMY),
+                Err(UriCodingError::Malformed)
+            );
+        }
+    }
+
+    #[test]
+    fn uri_decoding_handles_every_utf8_width_and_reserved_set() {
+        let decode = |input: &str, component| decode_uri(&JsString::from(input), component, ROOMY);
+        assert_eq!(decode("abc", false), Ok(JsString::from("abc")));
+        assert_eq!(decode("%41", false), Ok(JsString::from("A")));
+        assert_eq!(decode("%2F%3b", false), Ok(JsString::from("%2F%3b")));
+        assert_eq!(decode("%2F%3b", true), Ok(JsString::from("/;")));
+        assert_eq!(decode("%C3%A9", false), Ok(JsString::from("\u{e9}")));
+        assert_eq!(decode("%E2%82%AC", false), Ok(JsString::from("\u{20ac}")));
+        assert_eq!(
+            decode("%F0%9F%98%80", false),
+            Ok(JsString::from("\u{1F600}"))
+        );
+    }
+
+    #[test]
+    fn uri_decoding_rejects_malformed_percent_sequences() {
+        for input in [
+            "%",
+            "%4",
+            "%4Z",
+            "%Z1",
+            "%80",
+            "%C0",
+            "%F8",
+            "%C3",
+            "%C3x",
+            "%C3%41",
+            "%E0%80%80",
+            "%F5%80%80%80",
+            "%ED%A0%80",
+        ] {
+            assert_eq!(
+                decode_uri(&JsString::from(input), false, ROOMY),
+                Err(UriCodingError::Malformed),
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn uri_coding_reports_the_string_limit_at_every_append() {
+        let encoded = JsString::from("a b\u{e9}%41%C3%A9%2F%zz");
+        let decodable = JsString::from("a%41%C3%A9%2F");
+        for limit in 0..=60 {
+            for result in [
+                encode_uri(&encoded, false, limit),
+                decode_uri(&decodable, false, limit),
+                decode_uri(&decodable, true, limit),
+                escape(&encoded, limit),
+                unescape(&encoded, limit),
+                escape(&JsString::from("\u{4e2d}"), limit),
+            ] {
+                if let Err(error) = result {
+                    assert_eq!(error, UriCodingError::StringLimit { limit });
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn escape_and_unescape_round_trip_annex_b_forms() {
+        let source = JsString::from("a b\u{e9}\u{4e2d}@*_+-./");
+        let escaped = escape(&source, ROOMY).unwrap();
+        assert_eq!(escaped, JsString::from("a%20b%E9%u4E2D@*_+-./"));
+        assert_eq!(unescape(&escaped, ROOMY), Ok(source));
+        assert_eq!(
+            unescape(&JsString::from("%u00e9%e9%zz%u12%"), ROOMY),
+            Ok(JsString::from("\u{e9}\u{e9}%zz%u12%"))
+        );
+    }
+
+    #[test]
+    fn replacement_patterns_expand_and_respect_the_limit() {
+        let string = JsString::from("xaby");
+        let matched = JsString::from("ab");
+        let template = JsString::from("$$|$&|$`|$'|$1|$");
+        assert_eq!(
+            substitution(&string, &matched, 1, &template, ROOMY),
+            Ok(JsString::from("$|ab|x|y|$1|$"))
+        );
+        for limit in 0..=40 {
+            if let Err(error) = substitution(&string, &matched, 1, &template, limit) {
+                assert_eq!(error, RuntimeError::StringLimit { limit });
+            }
+        }
+    }
+}

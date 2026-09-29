@@ -206,3 +206,92 @@ pub(crate) fn round_calendar_duration(
         (rounded_years, 0, 0, 0)
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use blueice_ecma402::NumberRoundingMode::{Expand, HalfEven, Trunc};
+
+    const ISO: AnyCalendarKind = AnyCalendarKind::Iso;
+
+    #[test]
+    fn equal_dates_have_an_empty_difference_at_any_granularity() {
+        for unit in [
+            DateUnit::Year,
+            DateUnit::Month,
+            DateUnit::Week,
+            DateUnit::Day,
+        ] {
+            assert_eq!(
+                round_calendar_duration(ISO, (2020, 5, 5), (2020, 5, 5), unit, unit, 3, Trunc),
+                Some((0, 0, 0, 0))
+            );
+        }
+    }
+
+    #[test]
+    fn an_increment_beyond_i64_leaves_the_range() {
+        assert_eq!(
+            round_calendar_duration(
+                ISO,
+                (1970, 1, 1),
+                (1971, 1, 1),
+                DateUnit::Year,
+                DateUnit::Month,
+                i128::MAX,
+                Trunc
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn half_even_ties_round_to_the_even_multiple() {
+        // 2019-01-01 to 2019-02-15 is 1 month 14 days, exactly half of
+        // February's 28 days: the odd month count rounds up to 2.
+        assert_eq!(
+            round_calendar_duration(
+                ISO,
+                (2019, 1, 1),
+                (2019, 2, 15),
+                DateUnit::Month,
+                DateUnit::Month,
+                1,
+                HalfEven
+            ),
+            Some((0, 2, 0, 0))
+        );
+        // 2019-02-01 to 2019-02-15 is 0 months 14 days, half of 28: the even
+        // count stays.
+        assert_eq!(
+            round_calendar_duration(
+                ISO,
+                (2019, 2, 1),
+                (2019, 2, 15),
+                DateUnit::Month,
+                DateUnit::Month,
+                1,
+                HalfEven
+            ),
+            Some((0, 0, 0, 0))
+        );
+    }
+
+    #[test]
+    fn expanded_months_that_stay_below_a_year_do_not_bubble() {
+        // 2 years 7 months rounded up to an increment of 5 months is 10
+        // months: still short of the next year.
+        assert_eq!(
+            round_calendar_duration(
+                ISO,
+                (2019, 1, 1),
+                (2021, 8, 1),
+                DateUnit::Year,
+                DateUnit::Month,
+                5,
+                Expand
+            ),
+            Some((2, 10, 0, 0))
+        );
+    }
+}

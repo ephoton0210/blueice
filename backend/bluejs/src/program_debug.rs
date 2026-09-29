@@ -284,6 +284,9 @@ impl BlueJsCompiledProgram {
             .get(safe_point.code_unit.ordinal as usize)
             .ok_or(BlueJsProgramDebugError::UnknownCodeUnit)?;
         // Generation and ordinal are the complete code-unit identity.
+        if unit.id.ordinal != safe_point.code_unit.ordinal {
+            return Err(BlueJsProgramDebugError::UnknownCodeUnit);
+        }
         if !unit
             .instruction_offsets
             .contains(&safe_point.bytecode_offset)
@@ -434,8 +437,18 @@ impl BlueJsProgramRegistry {
     fn install_with_ast_nodes(
         &mut self,
         source: BlueJsSourceIdentity,
+        bytecode: Bytecode,
+        ast_descriptors: Vec<AstNodeDescriptor>,
+    ) -> Result<BlueJsProgramHandle, BlueJsProgramDebugError> {
+        self.install_limited(source, bytecode, ast_descriptors, IdentityLimits::V1)
+    }
+
+    fn install_limited(
+        &mut self,
+        source: BlueJsSourceIdentity,
         mut bytecode: Bytecode,
         ast_descriptors: Vec<AstNodeDescriptor>,
+        limits: IdentityLimits,
     ) -> Result<BlueJsProgramHandle, BlueJsProgramDebugError> {
         let generation = BlueJsProgramGeneration(self.next_generation);
         self.next_generation = self
@@ -444,7 +457,7 @@ impl BlueJsProgramRegistry {
             .ok_or(BlueJsProgramDebugError::GenerationExhausted)?;
         let handle = BlueJsProgramHandle { generation };
         let mut code_units = Vec::new();
-        collect_code_units(&mut bytecode, generation, &mut code_units)?;
+        collect_code_units(&mut bytecode, generation, limits, &mut code_units)?;
         let ast_nodes = ast_descriptors
             .into_iter()
             .enumerate()
@@ -452,8 +465,11 @@ impl BlueJsProgramRegistry {
                 Ok(BlueJsAstNodeInfo {
                     id: BlueJsAstNodeId {
                         generation,
-                        ordinal: u32::try_from(ordinal)
-                            .map_err(|_| BlueJsProgramDebugError::AstNodeLimitExceeded)?,
+                        ordinal: identity_component(
+                            ordinal,
+                            limits.ast_nodes,
+                            BlueJsProgramDebugError::AstNodeLimitExceeded,
+                        )?,
                     },
                     kind: descriptor.kind,
                     top_level_statement: descriptor.top_level_statement,
@@ -583,20 +599,57 @@ impl BlueJsProgramRegistry {
     }
 }
 
+/// How many code units, AST nodes and bytes of one code unit a v1 identity can
+/// name: each is a `u32`. Kept as data so the limit paths can be exercised
+/// without generating billions of nodes.
+#[derive(Clone, Copy)]
+struct IdentityLimits {
+    code_units: usize,
+    ast_nodes: usize,
+    instruction_offset: usize,
+}
+
+impl IdentityLimits {
+    const V1: Self = Self {
+        code_units: u32::MAX as usize,
+        ast_nodes: u32::MAX as usize,
+        instruction_offset: u32::MAX as usize,
+    };
+}
+
+/// One `u32` component of an identity, or `error` once `value` is past `limit`.
+fn identity_component(
+    value: usize,
+    limit: usize,
+    error: BlueJsProgramDebugError,
+) -> Result<u32, BlueJsProgramDebugError> {
+    if value > limit.min(u32::MAX as usize) {
+        return Err(error);
+    }
+    Ok(value as u32)
+}
+
 fn collect_code_units(
     bytecode: &mut Bytecode,
     generation: BlueJsProgramGeneration,
+    limits: IdentityLimits,
     code_units: &mut Vec<BlueJsCodeUnitInfo>,
 ) -> Result<(), BlueJsProgramDebugError> {
-    let ordinal = u32::try_from(code_units.len())
-        .map_err(|_| BlueJsProgramDebugError::CodeUnitLimitExceeded)?;
+    let ordinal = identity_component(
+        code_units.len(),
+        limits.code_units,
+        BlueJsProgramDebugError::CodeUnitLimitExceeded,
+    )?;
     bytecode.debugger_code_unit_ordinal = Some(ordinal);
     bytecode.debugger_program_generation = Some(generation.0);
     let instruction_offsets = bytecode
         .instructions()
         .map(|instruction| {
-            u32::try_from(instruction.offset)
-                .map_err(|_| BlueJsProgramDebugError::InvalidInstructionBoundary)
+            identity_component(
+                instruction.offset,
+                limits.instruction_offset,
+                BlueJsProgramDebugError::InvalidInstructionBoundary,
+            )
         })
         .collect::<Result<Vec<_>, _>>()?;
     code_units.push(BlueJsCodeUnitInfo {
@@ -607,7 +660,7 @@ fn collect_code_units(
         instruction_offsets,
     });
     for child in &mut bytecode.functions {
-        collect_code_units(std::rc::Rc::make_mut(child), generation, code_units)?;
+        collect_code_units(std::rc::Rc::make_mut(child), generation, limits, code_units)?;
     }
     Ok(())
 }

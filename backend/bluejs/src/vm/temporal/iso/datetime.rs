@@ -246,4 +246,19 @@ mod tests {
         assert!(parse_date_time("2000-05-02T12:34+25:00").is_none());
         assert!(parse_year_month_only("2000-05[!foo=bar]").is_none());
     }
+
+    #[test]
+    fn a_malformed_annotation_after_a_time_or_month_day_rejects_the_string() {
+        // A critical annotation of an unknown key is an error, as is an
+        // annotation that is not `key=value` (after a leading time zone).
+        assert!(parse_time_only("12:00[!unknown=1]").is_none());
+        assert!(parse_time_only("12:00[bad zone]").is_none());
+        assert!(parse_month_day_only("01-15[!unknown=1]").is_none());
+        assert!(parse_month_day_only("01-15[bad zone]").is_none());
+        // A malformed UTC offset right after the time.
+        assert!(parse_time_only("12:00+").is_none());
+        assert!(parse_time_only("12:00-1").is_none());
+        assert!(parse_time_only("12:00[u-ca=iso8601]").is_some());
+        assert!(parse_month_day_only("01-15[u-ca=iso8601]").is_some());
+    }
 }
