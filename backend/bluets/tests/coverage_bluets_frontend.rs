@@ -5374,6 +5374,81 @@ fn derived_constructors_check_super_calls_and_placement() {
 }
 
 #[test]
+fn super_member_reads_and_calls_use_the_base_side() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/class-super-member-valid/main.ts"
+    ));
+    assert!(accepted.output.is_none());
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/class-super-member-result-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-super-member-argtype-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-super-member-argcount-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-super-member-missing-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/class-super-member-instance-side-error/main.ts"
+            ),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-super-member-static-side-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-super-member-overload-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-super-member-nobase-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/class-super-member-method-call-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == code && diagnostic.span.module == ENTRY }),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+}
+
+#[test]
 fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
     let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");
     let accepted = compile(

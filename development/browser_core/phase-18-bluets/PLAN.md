@@ -2103,6 +2103,27 @@ lines. Property initializers and parameter properties do not exist yet, so the
 stricter "first statement" rule they trigger is deferred to J.3.2. Classes are
 still refused before output by the class-runtime diagnostic.
 
+### J.3.1.3.4.6 `super` member reads and calls
+
+In a derived class with a bound base, `super` is added to each constructor and
+method scope: the base instance type in constructors and instance methods, and
+the base constructor side in static methods. Member calls on it then use the
+same lookup, argument, arity, overload-selection and result checks as `this`,
+so a call returns the selected overload's result, a member that the base side
+does not have is rejected, and an instance method cannot reach a static base
+member (or the reverse). `super` in a class with no base, and `super(...)`
+outside a constructor, are rejected before output.
+
+Ten pinned TypeScript 5.9.3 `--noEmit` cases (a valid matrix covering
+instance, static, overloaded and constructor uses, plus result, argument type,
+argument count, missing member, both wrong sides, overload result, no base and
+call-in-method errors) agree on acceptance and the TS2322, TS2345, TS2554,
+TS2339, TS2576, TS2335 and TS2337 lines. Non-call `super` property reads and
+assignments through `super` are not separately checked, and classes are still
+refused before output by the class-runtime diagnostic. `classes.rs` grew to
+about 1,380 lines; splitting it belongs to the modularity audit
+(C3.1.3.4.7.5).
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

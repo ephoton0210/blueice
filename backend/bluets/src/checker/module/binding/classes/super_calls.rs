@@ -69,6 +69,60 @@ fn is_deferred_this_context(tokens: &[Token]) -> bool {
 }
 
 impl ModuleChecker<'_> {
+    /// The type `super` has in a class body: the base instance type for
+    /// constructors and instance methods, the base constructor side for
+    /// static methods. `None` when there is no bound base.
+    pub(super) fn super_scope_type(
+        &self,
+        class: &ClassDeclaration,
+        is_static: bool,
+    ) -> Option<Type> {
+        let base = class.extends_name.as_ref()?;
+        if !self.class_constructors.contains_key(base) {
+            return None;
+        }
+        if is_static {
+            self.values.get(base).cloned()
+        } else {
+            Some(Type::Named {
+                name: base.clone(),
+                arguments: Vec::new(),
+            })
+        }
+    }
+
+    /// `super` is only valid in a derived class, and `super(...)` only in its
+    /// constructor.
+    pub(super) fn check_method_super_placement(
+        &mut self,
+        class: &ClassDeclaration,
+        body: &[FunctionBodyItem],
+    ) {
+        let mut flat = Vec::new();
+        statements(body, &mut flat);
+        for (tokens, span) in flat {
+            if contains_super_call(tokens) {
+                self.type_error(
+                    span,
+                    "a `super` call is only permitted in a constructor".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                );
+                return;
+            }
+            if class.extends_name.is_none() && tokens.iter().any(|token| token.is("super")) {
+                self.type_error(
+                    span,
+                    format!(
+                        "`super` can only be referenced in a derived class, and `{}` has no base",
+                        class.name
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+                return;
+            }
+        }
+    }
+
     /// Presence and ordering checks for one constructor body.
     pub(super) fn check_constructor_super_placement(
         &mut self,

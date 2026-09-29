@@ -3553,6 +3553,68 @@ fn pinned_derived_constructor_super_calls_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_super_member_reads_and_calls_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 10] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/class-super-member-valid/main.ts"),
+            &[],
+        ),
+        (
+            "result-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-result-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "argtype-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-argtype-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "argcount-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-argcount-error/main.ts"),
+            &[(5, "TS2554")],
+        ),
+        (
+            "missing-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-missing-error/main.ts"),
+            &[(5, "TS2339")],
+        ),
+        (
+            "instance-side-error",
+            include_str!(
+                "fixtures/typescript_oracle/class-super-member-instance-side-error/main.ts"
+            ),
+            &[(5, "TS2576")],
+        ),
+        (
+            "static-side-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-static-side-error/main.ts"),
+            &[(5, "TS2339")],
+        ),
+        (
+            "overload-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-overload-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "nobase-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-nobase-error/main.ts"),
+            &[(4, "TS2335")],
+        ),
+        (
+            "method-call-error",
+            include_str!("fixtures/typescript_oracle/class-super-member-method-call-error/main.ts"),
+            &[(5, "TS2337")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

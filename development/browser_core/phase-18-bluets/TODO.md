@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.6.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.5.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1216,7 +1216,7 @@ done to the page-runs-and-debugs goal at the top of this file.
             on acceptance and TS2769/TS2322 lines. BlueTS, bridge, and full
             workspace tests, all-target Clippy, rustfmt, and whitespace
             checks pass with the reused 12 GiB target.
-      - [ ] **J.3.1.3.4** Check named inheritance, overrides, cycles, and
+      - [x] **J.3.1.3.4** Check named inheritance, overrides, cycles, and
         `super` constructor/method uses with pinned-oracle fixtures.
         - [x] **J.3.1.3.4.1** Validate bounded local and imported named class
           heritage, unknown bases, known non-constructor values, and local
@@ -1243,7 +1243,7 @@ done to the page-runs-and-debugs goal at the top of this file.
           TS2506/TS2449 lines. BlueTS, bridge, and full workspace tests,
           all-target Clippy, rustfmt, and whitespace checks pass with the
           reused 12 GiB target.
-        - [ ] **J.3.1.3.4.3** Include inherited instance and static members
+        - [x] **J.3.1.3.4.3** Include inherited instance and static members
           and inherited constructor signatures in bounded local class lookup
           and construction, including class imports.
           - [x] **J.3.1.3.4.3.1** Inherit instance method surfaces from local
@@ -2006,9 +2006,19 @@ done to the page-runs-and-debugs goal at the top of this file.
           `super` outside constructors are not checked here (J.3.1.3.4.6).
           BlueTS and bridge crate tests, Clippy, rustfmt and whitespace checks
           pass.
-        - [ ] **J.3.1.3.4.6** Check instance and static `super` method reads and
+        - [x] **J.3.1.3.4.6** Check instance and static `super` method reads and
           calls, selected results, and wrong-side uses against pinned
           TypeScript.
+          In a derived class, `super` is the base instance type in
+          constructors and instance methods and the base constructor side in
+          static methods, so member calls use the existing argument, arity,
+          overload and result checks. A missing member or one on the other
+          side is rejected; `super` in a class with no base and `super(...)`
+          outside a constructor are rejected. Ten pinned TypeScript 5.9.3
+          `--noEmit` cases agree on acceptance and TS2322/TS2345/TS2554/
+          TS2339/TS2576/TS2335/TS2337 lines. Non-call `super` property reads
+          and assignments through `super` are not separately checked. BlueTS
+          and bridge crate tests, Clippy, rustfmt and whitespace checks pass.
       - [ ] **J.3.1.3.5** Close the accepted/rejected class checker matrix
         against pinned TypeScript 5.9.3 and prove BlueTSC/direct admission
         still refuse classes until emit and runtime leaves are complete.

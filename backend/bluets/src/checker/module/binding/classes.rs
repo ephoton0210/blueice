@@ -678,6 +678,9 @@ impl ModuleChecker<'_> {
                     arguments: Vec::new(),
                 },
             );
+            if let Some(base) = self.super_scope_type(class, false) {
+                scope.insert("super".to_string(), base);
+            }
             self.check_constructor_super_placement(class, constructor, body);
             self.check_class_body_items(
                 body,
@@ -715,6 +718,10 @@ impl ModuleChecker<'_> {
             });
             if let Some(body) = &method.body {
                 let mut scope = self.class_body_parameter_scope(&method.parameters);
+                if let Some(base) = self.super_scope_type(class, method.is_static) {
+                    scope.insert("super".to_string(), base);
+                }
+                self.check_method_super_placement(class, body);
                 scope.insert(
                     "this".to_string(),
                     if method.is_static {

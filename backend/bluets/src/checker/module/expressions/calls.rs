@@ -25,7 +25,9 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         for start in 0..tokens.len().saturating_sub(3) {
-            if tokens[start].kind != TokenKind::Identifier && !tokens[start].is("this")
+            if tokens[start].kind != TokenKind::Identifier
+                && !tokens[start].is("this")
+                && !tokens[start].is("super")
                 || !tokens[start + 1].is(".")
                 || tokens[start + 2].kind != TokenKind::Identifier
                 || !tokens[start + 3].is("(")
