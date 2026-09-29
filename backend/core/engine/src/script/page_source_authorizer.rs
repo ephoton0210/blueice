@@ -216,3 +216,6 @@ impl fmt::Display for OutOfProcessPageScriptSourceAuthorizationError {
 }
 
 impl std::error::Error for OutOfProcessPageScriptSourceAuthorizationError {}
+
+#[cfg(test)]
+mod tests;
