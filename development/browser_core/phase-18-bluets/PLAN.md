@@ -2194,11 +2194,9 @@ and `super` call checks unchanged, so each keeps its own arity, overload and
 type rules, and repeated diagnostics from the per-length passes are removed. A
 spread that is not a lone variable, is not the last argument, or names a
 variable another argument also uses keeps the fixed-length requirement, since
-replacing the variable would change that argument's type. Tuple literals in a
-tuple-annotated initializer keep the optional flag of a spread element, and a
-required element after an optional one is left unmodelled. Return statements do
-not use contextual tuple literals yet, so a tuple literal returned from a
-function is not covered here.
+replacing the variable would change that argument's type. Tuple literals keep
+the optional flag of a spread element, and a required element after an optional
+one is left unmodelled.
 
 ### J.3.1.3.4.4.2.3.2.3.4 Parenthesized types
 
@@ -2210,6 +2208,26 @@ keep the parentheses around an array element that is a union, intersection or
 function type; without them `(string | number)[]` and `string | number[]`
 produce the same text and would be treated as one type. Redundant parentheses
 around a non-array type are not preserved, unlike `tsc`.
+
+### J.3.1.3.6 Tuple literal context for returns
+
+An expression checked against an expected type is inferred by
+`infer_in_context`. When the expected type is a tuple (after alias expansion) and
+the expression is a bracketed literal, each element is inferred against the
+tuple element at the same position while positions are still known, so a nested
+`[[1, "a"], true]` works and `[1, 2]` is reported against `[number, string]`
+instead of as a widened array. A spread of a tuple contributes its elements with
+their optional flags; after a spread, later positions have no fixed context and
+fall back to plain inference. A rest element gives its array element type as
+context. Anything that is not a plain bracketed literal is inferred as before.
+
+The same method now serves tuple-annotated initializers (replacing a helper that
+typed elements from their first token only), function returns and class method
+returns. Class constructor returns keep their own primitive/instance rule.
+Before this, every `return [..]` against a tuple return type was rejected,
+because the literal was widened to an array. Positions other than these three
+(call arguments, object properties, assignments, arrow returns) still widen and
+are tracked as J.3.6.
 
 ## Checklist
 

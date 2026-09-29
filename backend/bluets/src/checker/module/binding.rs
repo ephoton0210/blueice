@@ -764,24 +764,7 @@ impl<'a> ModuleChecker<'a> {
         if variable.initializer.is_empty() || variable.declared {
             return;
         }
-        let mut contextual = annotation.clone();
-        let mut contextual_budget = TypeExpansionBudget::new(self.max_type_expansions);
-        let mut visited = HashSet::new();
-        while let Some(expanded) = instantiate_named(
-            &contextual,
-            &self.types,
-            &mut visited,
-            &mut contextual_budget,
-            "contextual tuple",
-        ) {
-            contextual = expanded;
-        }
-        let inferred = if matches!(contextual, Type::Tuple(_)) {
-            infer_contextual_tuple_literal(&variable.initializer, scope)
-                .unwrap_or_else(|| self.infer_expression(&variable.initializer, scope))
-        } else {
-            self.infer_expression(&variable.initializer, scope)
-        };
+        let inferred = self.infer_in_context(&variable.initializer, scope, annotation);
         if !self.is_assignable_bounded(&inferred, annotation, &variable.span) {
             self.type_error(
                 &variable.span,

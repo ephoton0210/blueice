@@ -759,73 +759,8 @@ fn infer_type_arguments(
     }
 }
 
-/// Infers an array literal against an explicit tuple annotation without
-/// changing ordinary array-literal inference. A tuple spread is expanded only
-/// when its source is itself known to be a tuple, preserving fixed arity.
-fn infer_contextual_tuple_literal(
-    tokens: &[Token],
-    scope: &BTreeMap<String, Type>,
-) -> Option<Type> {
-    if tokens.first().is_none_or(|token| !token.is("["))
-        || tokens.last().is_none_or(|token| !token.is("]"))
-    {
-        return None;
-    }
-    let mut values = Vec::new();
-    let mut start = 1usize;
-    let mut depth = 0usize;
-    for index in 1..tokens.len() {
-        match tokens[index].text.as_str() {
-            "[" | "(" | "{" => depth += 1,
-            "]" | ")" | "}" if depth > 0 => depth -= 1,
-            "," if depth == 0 => {
-                push_contextual_tuple_element(&tokens[start..index], scope, &mut values)?;
-                start = index + 1;
-            }
-            _ => {}
-        }
-    }
-    if start + 1 < tokens.len() {
-        push_contextual_tuple_element(&tokens[start..tokens.len() - 1], scope, &mut values)?;
-    }
-    Some(Type::Tuple(values))
-}
-
-fn push_contextual_tuple_element(
-    tokens: &[Token],
-    scope: &BTreeMap<String, Type>,
-    values: &mut Vec<TupleTypeElement>,
-) -> Option<()> {
-    if tokens.is_empty() {
-        return None;
-    }
-    if tokens.first().is_some_and(|token| token.is("...")) {
-        let Type::Tuple(spread) = infer_simple(&tokens[1..], scope) else {
-            return None;
-        };
-        if spread.iter().any(|element| element.rest) {
-            return None;
-        }
-        // Optional elements stay optional; a required element after one
-        // would need a length TypeScript does not model as a tuple.
-        for element in spread {
-            if values.last().is_some_and(|last| last.optional) && !element.optional {
-                return None;
-            }
-            values.push(TupleTypeElement {
-                label: None,
-                ..element
-            });
-        }
-    } else {
-        if values.last().is_some_and(|last| last.optional) {
-            return None;
-        }
-        values.push(TupleTypeElement::required(infer_simple(tokens, scope)));
-    }
-    Some(())
-}
-
+/// The type of a single-token element (a literal or a variable) inside a
+/// tuple literal, widening a string or template literal to `string`.
 fn infer_simple(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
     let Some(first) = tokens.first() else {
         return Type::Undefined;

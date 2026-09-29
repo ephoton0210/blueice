@@ -382,7 +382,7 @@ impl<'a> ModuleChecker<'a> {
         let Some(return_type) = return_type else {
             return;
         };
-        let actual = self.infer_expression(returned, scope);
+        let actual = self.infer_in_context(returned, scope, return_type);
         let return_is_assignable = (matches!(actual, Type::Undefined) && allows_implicit_undefined)
             || self.is_assignable_bounded(&actual, return_type, function_span);
         if !return_is_assignable {

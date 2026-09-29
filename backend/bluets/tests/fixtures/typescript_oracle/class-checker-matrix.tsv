@@ -312,3 +312,5 @@ class-value-import-wrong-instance-side/main.ts	reject
 class-value-import-wrong-side-binding/main.ts	reject
 paren-type-class-override-error/main.ts	reject
 paren-type-class-override-valid/main.ts	accept
+tuple-literal-return-class-error/main.ts	reject
+tuple-literal-return-class-valid/main.ts	accept

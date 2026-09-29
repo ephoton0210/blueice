@@ -853,7 +853,7 @@ impl ModuleChecker<'_> {
                             let actual = if tokens.is_empty() {
                                 Type::Undefined
                             } else {
-                                self.infer_expression(tokens, &scope)
+                                self.infer_in_context(tokens, &scope, return_type)
                             };
                             if (!tokens.is_empty() || !allows_implicit_undefined)
                                 && !self.is_assignable_bounded(&actual, return_type, span)

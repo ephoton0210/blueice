@@ -2047,6 +2047,16 @@ done to the page-runs-and-debugs goal at the top of this file.
         regenerate it. The direct script and module routes refuse
         checker-accepted classes. BlueTS and bridge crate tests, Clippy,
         rustfmt and whitespace checks pass.
+      - [x] **J.3.1.3.6** Use a declared tuple return type as the literal
+        context for `return`, in functions and class methods.
+        A bracketed literal takes its element positions from a tuple return
+        type (through aliases), so `return [1, "a"]` is a `[number, string]`
+        instead of a widened array that every tuple return rejected. Each
+        element is inferred against the element at its position, so nested
+        tuples work; a tuple spread keeps its optional flags. The same
+        inference now serves tuple-annotated initializers. Nine pinned
+        TypeScript 5.9.3 `--noEmit` cases agree on acceptance and TS2322 lines.
+        Full workspace tests, Clippy, rustfmt and whitespace checks pass.
     - [x] **J.3.1.4** Emit checked class JavaScript and declarations from the
       shared IR with stable source maps and atomic build behavior.
       A temporary, default-off `CompilerOptions::class_emit` switch admits a
@@ -2078,6 +2088,11 @@ done to the page-runs-and-debugs goal at the top of this file.
   - [ ] **J.3.5** Implement runtime namespaces/modules and declaration merging,
     including initialization order, export visibility, nested maps, direct
     execution, and oracle parity.
+  - [ ] **J.3.6** Extend tuple-literal context to the remaining positions:
+    call arguments (`take([1, "a"])`), object-literal properties, assignments
+    and arrow-function returns, each against pinned TypeScript. Today these
+    infer a widened array, so a valid tuple literal in one of them is
+    rejected.
 - [ ] **J.4** Implement the module and package ecosystem without widening
   page or MCP authority through type declarations.
   - [ ] **J.4.1** Add TypeScript 5.9.3 module-mode selection and CommonJS
