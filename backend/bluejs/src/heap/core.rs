@@ -6,6 +6,20 @@ use super::*;
 
 static NEXT_HEAP: AtomicU64 = AtomicU64::new(1);
 
+#[cfg(test)]
+impl Heap {
+    /// Test hook: from now on at most `extra` further bytes may be managed, and
+    /// no major collection runs to make room, so every later allocation counts
+    /// in full and each in turn is the first that no longer fits. Returns the
+    /// resulting limit.
+    pub(crate) fn allow_only(&mut self, extra: usize) -> usize {
+        let limit = self.managed_bytes + extra;
+        self.config.max_heap_bytes = limit;
+        self.next_major_bytes = usize::MAX;
+        limit
+    }
+}
+
 impl Heap {
     pub fn new(config: HeapConfig) -> Result<Self, HeapError> {
         Self::new_with_identity_source(config, &NEXT_HEAP)
@@ -949,5 +963,562 @@ impl Heap {
             ObjectKind::Temporal(value) => Some((**value).clone()),
             _ => None,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An object that belongs to a different heap, so it names nothing here.
+    fn foreign() -> ObjectId {
+        Heap::default().alloc_object(None).unwrap()
+    }
+
+    fn failure<T>(result: Result<T, HeapError>) -> Option<HeapError> {
+        result.err()
+    }
+
+    fn temporal_value() -> TemporalValue {
+        TemporalValue {
+            kind: TemporalKind::Instant,
+            duration: None,
+            year: 0,
+            month: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            millisecond: 0,
+            microsecond: 0,
+            nanosecond: 0,
+            epoch_nanoseconds: BigInt::from(0),
+            calendar: String::new(),
+            time_zone: String::new(),
+        }
+    }
+
+    #[test]
+    fn operations_on_an_object_of_another_heap_are_invalid() {
+        let mut heap = Heap::default();
+        let other = foreign();
+        let bad = Some(HeapError::InvalidObject(other));
+        let name = || JsString::from("p");
+        let cell = Value::Object(other);
+        assert_eq!(failure(heap.is_raw_json(other)), bad);
+        assert_eq!(failure(heap.is_map(other)), bad);
+        assert_eq!(failure(heap.is_set(other)), bad);
+        assert_eq!(failure(heap.map_size(other)), bad);
+        assert_eq!(failure(heap.map_get(other, &Value::Null)), bad);
+        assert_eq!(failure(heap.map_has(other, &Value::Null)), bad);
+        assert_eq!(failure(heap.map_delete(other, &Value::Null)), bad);
+        assert_eq!(failure(heap.set_size(other)), bad);
+        assert_eq!(failure(heap.set_has(other, &Value::Null)), bad);
+        assert_eq!(failure(heap.set_delete(other, &Value::Null)), bad);
+        assert_eq!(failure(heap.map_set(other, Value::Null, Value::Null)), bad);
+        assert_eq!(failure(heap.set_add(other, Value::Null)), bad);
+        assert_eq!(failure(heap.is_finalization_registry(other)), bad);
+        assert_eq!(failure(heap.weak_ref_target(other)), bad);
+        assert_eq!(failure(heap.is_weak_collection(other, true)), bad);
+        assert_eq!(failure(heap.weak_collection_get(other, &Value::Null)), bad);
+        assert_eq!(failure(heap.weak_collection_delete(other, &cell)), bad);
+        assert_eq!(failure(heap.is_html_dda(other)), bad);
+        assert_eq!(failure(heap.is_error(other)), bad);
+        assert_eq!(failure(heap.is_date(other)), bad);
+        assert_eq!(failure(heap.date_value(other)), bad);
+        assert_eq!(failure(heap.set_date_value(other, 0.0)), bad);
+        assert_eq!(failure(heap.temporal_kind(other)), bad);
+        assert_eq!(failure(heap.temporal_value(other)), bad);
+        assert_eq!(failure(heap.define_private_field(other, name())), bad);
+        assert_eq!(
+            failure(heap.define_private_accessor(other, name(), Value::Null, true)),
+            bad
+        );
+        assert_eq!(failure(heap.add_private_brand(other, other)), bad);
+        assert_eq!(failure(heap.has_private_brand(other, other)), bad);
+        assert_eq!(failure(heap.private_element(other, &name())), bad);
+        assert_eq!(failure(heap.private_slot(other, other, &name())), bad);
+        assert_eq!(
+            failure(heap.set_private_slot(other, other, name(), Value::Null)),
+            bad
+        );
+        assert_eq!(
+            failure(heap.finalization_registry_unregister(other, cell.clone())),
+            bad
+        );
+        assert_eq!(failure(heap.alloc_weak_ref(cell.clone(), None)), bad);
+        assert_eq!(
+            failure(heap.alloc_module_namespace(vec![(name(), other)], false)),
+            bad
+        );
+        assert_eq!(
+            failure(heap.initialize_module_namespace(other, Vec::new())),
+            bad
+        );
+        assert_eq!(
+            failure(heap.initialize_module_namespace(other, vec![(name(), other)])),
+            bad
+        );
+        assert_eq!(failure(heap.alloc_map(Some(other))), bad);
+    }
+
+    #[test]
+    fn references_to_objects_of_another_heap_are_invalid() {
+        let mut heap = Heap::default();
+        let other = foreign();
+        let bad = Some(HeapError::InvalidObject(other));
+        let foreign_value = || Value::Object(other);
+        let map = heap.alloc_map(None).unwrap();
+        let set = heap.alloc_set(None).unwrap();
+        let registry = heap.alloc_finalization_registry(Value::Null, None).unwrap();
+        let weak = heap.alloc_weak_collection(true, None).unwrap();
+        let object = heap.alloc_object(None).unwrap();
+        assert_eq!(
+            failure(heap.map_set(map, foreign_value(), Value::Null)),
+            bad
+        );
+        assert_eq!(
+            failure(heap.map_set(map, Value::Null, foreign_value())),
+            bad
+        );
+        assert_eq!(failure(heap.set_add(set, foreign_value())), bad);
+        assert_eq!(
+            failure(heap.finalization_registry_register(
+                registry,
+                foreign_value(),
+                Value::Null,
+                None
+            )),
+            bad
+        );
+        assert_eq!(
+            failure(heap.finalization_registry_register(
+                registry,
+                Value::Object(object),
+                Value::Null,
+                Some(foreign_value())
+            )),
+            bad
+        );
+        assert_eq!(
+            failure(heap.weak_collection_set(weak, foreign_value(), Value::Null)),
+            bad
+        );
+        assert_eq!(
+            failure(heap.define_private_method(object, "m".into(), foreign_value())),
+            bad
+        );
+        assert_eq!(failure(heap.add_private_brand(object, other)), bad);
+        assert_eq!(failure(heap.add_private_brand(other, object)), bad);
+        assert_eq!(
+            failure(heap.set_private_slot(object, other, "p".into(), Value::Null)),
+            bad
+        );
+        assert_eq!(
+            failure(heap.set_private_slot(object, object, "p".into(), foreign_value())),
+            bad
+        );
+    }
+
+    #[test]
+    fn operations_on_the_wrong_kind_of_object_lack_the_internal_slot() {
+        let mut heap = Heap::default();
+        let plain = heap.alloc_object(None).unwrap();
+        let map = heap.alloc_map(None).unwrap();
+        let set = heap.alloc_set(None).unwrap();
+        let registry = heap.alloc_finalization_registry(Value::Null, None).unwrap();
+        let weak_map = heap.alloc_weak_collection(true, None).unwrap();
+        let weak_ref = heap.alloc_weak_ref(Value::Object(plain), None).unwrap();
+        let bad = |id| Some(HeapError::InvalidInternalSlot(id));
+        let key = Value::Object(plain);
+        assert_eq!(failure(heap.map_size(set)), bad(set));
+        assert_eq!(failure(heap.map_get(set, &key)), bad(set));
+        assert_eq!(failure(heap.map_has(set, &key)), bad(set));
+        assert_eq!(
+            failure(heap.map_set(set, key.clone(), key.clone())),
+            bad(set)
+        );
+        assert_eq!(failure(heap.map_delete(set, &key)), bad(set));
+        assert_eq!(failure(heap.set_size(map)), bad(map));
+        assert_eq!(failure(heap.set_has(map, &key)), bad(map));
+        assert_eq!(failure(heap.set_add(map, key.clone())), bad(map));
+        assert_eq!(failure(heap.set_delete(map, &key)), bad(map));
+        assert_eq!(
+            failure(heap.finalization_registry_register(map, key.clone(), Value::Null, None)),
+            bad(map)
+        );
+        assert_eq!(
+            failure(heap.finalization_registry_unregister(map, key.clone())),
+            bad(map)
+        );
+        assert_eq!(failure(heap.weak_ref_target(plain)), bad(plain));
+        assert_eq!(failure(heap.weak_collection_get(plain, &key)), bad(plain));
+        assert_eq!(
+            failure(heap.weak_collection_set(plain, key.clone(), Value::Null)),
+            bad(plain)
+        );
+        assert_eq!(
+            failure(heap.weak_collection_delete(plain, &key)),
+            bad(plain)
+        );
+        // A weak collection key must be an object or symbol.
+        assert_eq!(
+            failure(heap.weak_collection_set(weak_map, Value::Number(1.0), Value::Null)),
+            bad(weak_map)
+        );
+        assert_eq!(failure(heap.date_value(plain)), bad(plain));
+        assert_eq!(failure(heap.set_date_value(plain, 0.0)), bad(plain));
+        assert_eq!(
+            failure(heap.initialize_module_namespace(plain, Vec::new())),
+            Some(HeapError::InvalidObject(plain))
+        );
+        // Neither a Date nor a weak collection of the other kind.
+        assert_eq!(heap.is_date(plain), Ok(false));
+        assert_eq!(heap.is_weak_collection(weak_map, false), Ok(false));
+        assert_eq!(heap.is_weak_collection(weak_map, true), Ok(true));
+        assert_eq!(heap.is_finalization_registry(registry), Ok(true));
+        assert_eq!(heap.is_finalization_registry(plain), Ok(false));
+        assert_eq!(
+            heap.weak_ref_target(weak_ref),
+            Ok(Some(Value::Object(plain)))
+        );
+    }
+
+    #[test]
+    fn weak_targets_must_be_objects_or_symbols() {
+        let mut heap = Heap::default();
+        let registry = heap.alloc_finalization_registry(Value::Null, None).unwrap();
+        let weak_map = heap.alloc_weak_collection(true, None).unwrap();
+        let invalid = Some(HeapError::InvalidWeakTarget);
+        assert_eq!(failure(heap.alloc_weak_ref(Value::Null, None)), invalid);
+        assert_eq!(
+            failure(heap.finalization_registry_unregister(registry, Value::Number(1.0))),
+            invalid
+        );
+        assert_eq!(
+            failure(heap.finalization_registry_register(
+                registry,
+                Value::Object(weak_map),
+                Value::Null,
+                Some(Value::Number(1.0))
+            )),
+            invalid
+        );
+        // Looking up or deleting a non-weak key finds nothing rather than failing.
+        assert_eq!(
+            heap.weak_collection_get(weak_map, &Value::Number(1.0)),
+            Ok(None)
+        );
+        assert_eq!(
+            heap.weak_collection_delete(weak_map, &Value::Number(1.0)),
+            Ok(false)
+        );
+    }
+
+    #[test]
+    fn deleting_an_absent_entry_reports_false() {
+        let mut heap = Heap::default();
+        let map = heap.alloc_map(None).unwrap();
+        let set = heap.alloc_set(None).unwrap();
+        let registry = heap.alloc_finalization_registry(Value::Null, None).unwrap();
+        let weak_map = heap.alloc_weak_collection(true, None).unwrap();
+        let key = heap.alloc_object(None).unwrap();
+        assert_eq!(heap.map_delete(map, &Value::Number(1.0)), Ok(false));
+        assert_eq!(heap.set_delete(set, &Value::Number(1.0)), Ok(false));
+        assert_eq!(
+            heap.weak_collection_delete(weak_map, &Value::Object(key)),
+            Ok(false)
+        );
+        assert_eq!(
+            heap.finalization_registry_unregister(registry, Value::Object(key)),
+            Ok(false)
+        );
+        heap.map_set(map, Value::Number(1.0), Value::Null).unwrap();
+        heap.set_add(set, Value::Number(1.0)).unwrap();
+        heap.weak_collection_set(weak_map, Value::Object(key), Value::Null)
+            .unwrap();
+        assert_eq!(heap.map_delete(map, &Value::Number(1.0)), Ok(true));
+        assert_eq!(heap.set_delete(set, &Value::Number(1.0)), Ok(true));
+        assert_eq!(
+            heap.weak_collection_delete(weak_map, &Value::Object(key)),
+            Ok(true)
+        );
+        assert_eq!(heap.map_size(map), Ok(0));
+        assert_eq!(heap.set_size(set), Ok(0));
+        assert_eq!(heap.map_get(map, &Value::Number(1.0)), Ok(None));
+        assert_eq!(heap.map_has(map, &Value::Number(1.0)), Ok(false));
+        assert_eq!(heap.set_has(set, &Value::Number(1.0)), Ok(false));
+    }
+
+    #[test]
+    fn brands_dates_temporal_values_and_flags_report_their_kind() {
+        let mut heap = Heap::default();
+        let owner = heap.alloc_object(None).unwrap();
+        let receiver = heap.alloc_object(None).unwrap();
+        let json = heap.alloc_raw_json().unwrap();
+        let date = heap.alloc_date(5.0, None).unwrap();
+        let error = heap.alloc_error(None).unwrap();
+        let temporal = heap.alloc_temporal(temporal_value(), None).unwrap();
+        let map = heap.alloc_map(None).unwrap();
+        let set = heap.alloc_set(None).unwrap();
+        assert_eq!(heap.has_private_brand(receiver, owner), Ok(false));
+        heap.add_private_brand(receiver, owner).unwrap();
+        // Adding the same brand again changes nothing.
+        heap.add_private_brand(receiver, owner).unwrap();
+        assert_eq!(heap.has_private_brand(receiver, owner), Ok(true));
+        assert_eq!(heap.is_raw_json(json), Ok(true));
+        assert_eq!(heap.is_raw_json(owner), Ok(false));
+        assert_eq!(heap.is_map(map), Ok(true));
+        assert_eq!(heap.is_map(set), Ok(false));
+        assert_eq!(heap.is_set(set), Ok(true));
+        assert_eq!(heap.is_set(map), Ok(false));
+        assert_eq!(heap.is_date(date), Ok(true));
+        assert_eq!(heap.date_value(date), Ok(5.0));
+        heap.set_date_value(date, 6.0).unwrap();
+        assert_eq!(heap.date_value(date), Ok(6.0));
+        assert_eq!(heap.is_error(error), Ok(true));
+        assert_eq!(heap.is_error(date), Ok(false));
+        assert_eq!(heap.is_html_dda(owner), Ok(false));
+        assert_eq!(
+            heap.temporal_kind(temporal),
+            Ok(Some(TemporalKind::Instant))
+        );
+        assert_eq!(heap.temporal_kind(owner), Ok(None));
+        assert!(heap.temporal_value(temporal).unwrap().is_some());
+        assert!(heap.temporal_value(owner).unwrap().is_none());
+    }
+
+    #[test]
+    fn private_accessors_merge_and_reject_other_element_kinds() {
+        let mut heap = Heap::default();
+        let owner = heap.alloc_object(None).unwrap();
+        let getter = Value::Object(heap.alloc_object(None).unwrap());
+        let setter = Value::Object(heap.alloc_object(None).unwrap());
+        heap.define_private_accessor(owner, "a".into(), getter, false)
+            .unwrap();
+        heap.define_private_accessor(owner, "a".into(), setter, true)
+            .unwrap();
+        heap.define_private_field(owner, "f".into()).unwrap();
+        assert_eq!(
+            failure(heap.define_private_accessor(owner, "f".into(), Value::Null, false)),
+            Some(HeapError::ReadOnlyProperty)
+        );
+    }
+
+    #[test]
+    fn module_namespaces_are_completed_exactly_once() {
+        let mut heap = Heap::default();
+        let cell = heap.alloc_object(None).unwrap();
+        let namespace = heap.alloc_module_namespace(Vec::new(), false).unwrap();
+        heap.initialize_module_namespace(namespace, vec![("x".into(), cell)])
+            .unwrap();
+        // A namespace that already has exports cannot be initialized again.
+        assert_eq!(
+            failure(heap.initialize_module_namespace(namespace, vec![("y".into(), cell)])),
+            Some(HeapError::InvalidObject(namespace))
+        );
+    }
+
+    /// Prepares a heap with `prepare`, then gives `operation` a budget that
+    /// grows a little at a time from "no room at all" until it succeeds; every
+    /// failure on the way must be the heap limit.
+    fn exhausts_then_succeeds(
+        prepare: fn(&mut Heap) -> [ObjectId; 3],
+        operation: fn(&mut Heap, [ObjectId; 3]) -> Result<(), HeapError>,
+    ) {
+        let mut extra = 0;
+        loop {
+            let mut heap = Heap::default();
+            let objects = prepare(&mut heap);
+            let limit = heap.stats().managed_bytes + extra;
+            heap.config.max_heap_bytes = limit;
+            let result = operation(&mut heap, objects);
+            if result.is_ok() {
+                return;
+            }
+            assert_eq!(result, Err(HeapError::HeapLimitExceeded { limit }));
+            extra += 8;
+        }
+    }
+
+    /// Three rooted plain objects.
+    fn three_objects(heap: &mut Heap) -> [ObjectId; 3] {
+        [(); 3].map(|()| {
+            let object = heap.alloc_object(None).unwrap();
+            heap.root(object).unwrap();
+            object
+        })
+    }
+
+    #[test]
+    fn a_full_heap_fails_map_and_set_growth() {
+        exhausts_then_succeeds(
+            |heap| {
+                let objects = three_objects(heap);
+                let map = heap.alloc_map(None).unwrap();
+                heap.root(map).unwrap();
+                [map, objects[1], objects[2]]
+            },
+            |heap, [map, ..]| {
+                heap.map_set(map, Value::Number(1.0), Value::String("payload".into()))
+            },
+        );
+        exhausts_then_succeeds(
+            |heap| {
+                let objects = three_objects(heap);
+                let set = heap.alloc_set(None).unwrap();
+                heap.root(set).unwrap();
+                [set, objects[1], objects[2]]
+            },
+            |heap, [set, ..]| heap.set_add(set, Value::Number(1.0)),
+        );
+    }
+
+    #[test]
+    fn a_full_heap_fails_weak_collection_and_finalization_growth() {
+        exhausts_then_succeeds(
+            |heap| {
+                let objects = three_objects(heap);
+                let weak = heap.alloc_weak_collection(true, None).unwrap();
+                heap.root(weak).unwrap();
+                [weak, objects[1], objects[2]]
+            },
+            |heap, [weak, key, _]| heap.weak_collection_set(weak, Value::Object(key), Value::Null),
+        );
+        exhausts_then_succeeds(
+            |heap| {
+                let objects = three_objects(heap);
+                let registry = heap.alloc_finalization_registry(Value::Null, None).unwrap();
+                heap.root(registry).unwrap();
+                [registry, objects[1], objects[2]]
+            },
+            |heap, [registry, target, _]| {
+                heap.finalization_registry_register(
+                    registry,
+                    Value::Object(target),
+                    Value::String("held".into()),
+                    Some(Value::Object(target)),
+                )
+            },
+        );
+    }
+
+    #[test]
+    fn a_full_heap_fails_private_state_growth() {
+        exhausts_then_succeeds(three_objects, |heap, [owner, ..]| {
+            heap.define_private_field(owner, "f".into())
+        });
+        exhausts_then_succeeds(three_objects, |heap, [owner, method, _]| {
+            heap.define_private_method(owner, "m".into(), Value::Object(method))
+        });
+        exhausts_then_succeeds(three_objects, |heap, [owner, getter, _]| {
+            heap.define_private_accessor(owner, "a".into(), Value::Object(getter), false)
+        });
+        exhausts_then_succeeds(three_objects, |heap, [owner, receiver, _]| {
+            heap.add_private_brand(receiver, owner)
+        });
+        exhausts_then_succeeds(three_objects, |heap, [owner, receiver, _]| {
+            heap.set_private_slot(receiver, owner, "p".into(), Value::String("v".into()))
+        });
+    }
+
+    #[test]
+    fn a_full_heap_fails_module_namespace_construction() {
+        exhausts_then_succeeds(three_objects, |heap, [first, second, _]| {
+            // Exports are kept sorted by name.
+            heap.alloc_module_namespace(vec![("b".into(), first), ("a".into(), second)], true)
+                .map(|_| ())
+        });
+        exhausts_then_succeeds(
+            |heap| {
+                let objects = three_objects(heap);
+                let namespace = heap.alloc_module_namespace(Vec::new(), false).unwrap();
+                heap.root(namespace).unwrap();
+                [namespace, objects[1], objects[2]]
+            },
+            |heap, [namespace, first, second]| {
+                heap.initialize_module_namespace(
+                    namespace,
+                    vec![("b".into(), first), ("a".into(), second)],
+                )
+            },
+        );
+        exhausts_then_succeeds(three_objects, |heap, [prototype, ..]| {
+            heap.alloc_html_dda_object(NativeFunction::Test262("gc"), prototype)
+                .map(|_| ())
+        });
+    }
+
+    #[test]
+    fn weak_collection_keys_and_registry_targets_are_checked_before_use() {
+        let mut heap = Heap::default();
+        let other = foreign();
+        let live = heap.alloc_object(None).unwrap();
+        let registry = heap.alloc_finalization_registry(Value::Null, None).unwrap();
+        let weak = heap.alloc_weak_collection(true, None).unwrap();
+        assert_eq!(
+            failure(heap.finalization_registry_register(
+                registry,
+                Value::Number(1.0),
+                Value::Null,
+                None
+            )),
+            Some(HeapError::InvalidWeakTarget)
+        );
+        assert_eq!(
+            failure(heap.weak_collection_set(other, Value::Object(live), Value::Null)),
+            Some(HeapError::InvalidObject(other))
+        );
+        assert_eq!(
+            heap.weak_collection_set(weak, Value::Object(live), Value::Null),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn re_adding_and_symbol_targets_take_the_non_growing_paths() {
+        let mut heap = Heap::default();
+        let set = heap.alloc_set(None).unwrap();
+        heap.set_add(set, Value::Number(1.0)).unwrap();
+        // An element that is already present neither grows nor charges.
+        heap.set_add(set, Value::Number(1.0)).unwrap();
+        assert_eq!(heap.set_size(set), Ok(1));
+
+        // Symbols can be weak targets too.
+        let symbol = Value::Symbol(JsSymbol::well_known("iterator"));
+        let weak_ref = heap.alloc_weak_ref(symbol.clone(), None).unwrap();
+        assert_eq!(heap.weak_ref_target(weak_ref), Ok(Some(symbol.clone())));
+        let registry = heap.alloc_finalization_registry(Value::Null, None).unwrap();
+        assert_eq!(
+            heap.finalization_registry_register(registry, symbol, Value::Null, None),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn a_weak_reference_to_a_collected_object_has_no_target() {
+        let mut heap = Heap::default();
+        let target = heap.alloc_object(None).unwrap();
+        let weak_ref = heap.alloc_weak_ref(Value::Object(target), None).unwrap();
+        heap.root(weak_ref).unwrap();
+        assert_eq!(
+            heap.weak_ref_target(weak_ref),
+            Ok(Some(Value::Object(target)))
+        );
+        // Nothing but the weak reference itself names the target.
+        heap.collect_major();
+        assert_eq!(heap.weak_ref_target(weak_ref), Ok(None));
+    }
+
+    #[test]
+    fn a_private_setter_may_come_before_its_getter() {
+        let mut heap = Heap::default();
+        let owner = heap.alloc_object(None).unwrap();
+        let setter = Value::Object(heap.alloc_object(None).unwrap());
+        let getter = Value::Object(heap.alloc_object(None).unwrap());
+        heap.define_private_accessor(owner, "a".into(), setter, true)
+            .unwrap();
+        heap.define_private_accessor(owner, "a".into(), getter, false)
+            .unwrap();
     }
 }

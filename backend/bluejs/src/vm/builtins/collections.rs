@@ -4,7 +4,59 @@
 
 use super::*;
 
+/// The largest index an iterator-consuming built-in may reach, 2^53 - 1.
+const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+
 impl Vm {
+    /// Steps `record` to completion, calling `visit(vm, value, index)` for
+    /// each value, and returns how many values there were. Reaching index
+    /// 2^53 - 1 is a TypeError carrying `too_large`. Every abrupt completion
+    /// (from a step, from `visit`, or the index limit) closes the iterator
+    /// while preserving that original completion.
+    fn iterate_and_close(
+        &mut self,
+        record: &Value,
+        too_large: &'static str,
+        visit: &mut dyn FnMut(&mut Vm, Value, u64) -> Result<(), RuntimeError>,
+    ) -> Result<u64, RuntimeError> {
+        let outcome = self.iterate_values_from(record, 0, too_large, visit);
+        if let Err(error) = &outcome {
+            // The thrown value is only reachable from `outcome`, and
+            // return() runs user code that can allocate and collect.
+            let error_base = self.stack.len();
+            if let RuntimeError::Thrown(value) = error {
+                self.stack.push(value.clone());
+            }
+            // An IteratorStep abrupt completion has already marked the
+            // record done, which makes IteratorClose a no-op in that case;
+            // otherwise the original error wins over a close failure.
+            let _ = self.iterator_close(record);
+            self.stack.truncate(error_base);
+        }
+        outcome
+    }
+
+    /// The stepping loop of [`Self::iterate_and_close`], starting at `first`.
+    fn iterate_values_from(
+        &mut self,
+        record: &Value,
+        first: u64,
+        too_large: &'static str,
+        visit: &mut dyn FnMut(&mut Vm, Value, u64) -> Result<(), RuntimeError>,
+    ) -> Result<u64, RuntimeError> {
+        let mut index = first;
+        loop {
+            if index >= MAX_SAFE_INTEGER {
+                return Err(RuntimeError::TypeError(too_large.into()));
+            }
+            let Some(value) = self.iterator_step(record, true)? else {
+                return Ok(index);
+            };
+            visit(self, value, index)?;
+            index += 1;
+        }
+    }
+
     /// Object.groupBy consumes its source as an iterator, rather than using
     /// array-like indexing. The callback result is converted to a property
     /// key before a group is created, and every callback/key/append abrupt
@@ -27,68 +79,61 @@ impl Vm {
             self.stack.push(record.clone());
             let groups = self.with_roots(|heap| heap.alloc_object(None))?;
             self.stack.push(Value::Object(groups));
-            let outcome = (|| {
-                let mut index = 0u64;
-                while let Some(value) = self.iterator_step(&record, true)? {
-                    if index >= 9_007_199_254_740_991 {
-                        return Err(RuntimeError::TypeError(
-                            "Object.groupBy iterator is too large".into(),
-                        ));
-                    }
-                    let item_base = self.stack.len();
-                    self.stack.push(value.clone());
-                    let key_value = self.call_native(
-                        callback.clone(),
-                        Value::Undefined,
-                        vec![value, Value::Number(index as f64)],
-                        false,
-                    )?;
-                    self.stack.push(key_value.clone());
-                    let key = self.coerce_property_key(&key_value)?;
-                    let group =
-                        if let Some(descriptor) = self.object_get_own_property(groups, &key)? {
-                            descriptor.value.ok_or_else(|| {
-                                RuntimeError::TypeError("Object.groupBy group is not data".into())
-                            })?
-                        } else {
-                            let group = self.array_from(Vec::new())?;
-                            self.stack.push(group.clone());
-                            let defined = self.object_define_own_property(
-                                groups,
-                                key,
-                                PropertyDescriptor::data(group.clone(), true, true, true),
-                            )?;
-                            self.stack.pop();
-                            if !defined {
-                                return Err(RuntimeError::TypeError(
-                                    "cannot create Object.groupBy group".into(),
-                                ));
-                            }
-                            group
-                        };
-                    self.stack.push(group.clone());
-                    let value = self.stack[item_base].clone();
-                    self.array_push(&group, &value, 0)?;
-                    self.stack.truncate(item_base);
-                    index += 1;
-                }
-                Ok(Value::Object(groups))
-            })();
-            if outcome.is_err() {
-                let error_base = self.stack.len();
-                if let Err(RuntimeError::Thrown(value)) = &outcome {
-                    self.stack.push(value.clone());
-                }
-                // An IteratorStep abrupt completion has already marked the
-                // record done; IteratorClose consequently becomes a no-op in
-                // that case and preserves its original error.
-                let _ = self.iterator_close(&record);
-                self.stack.truncate(error_base);
-            }
-            outcome
+            self.iterate_and_close(
+                &record,
+                "Object.groupBy iterator is too large",
+                &mut |vm, value, index| vm.object_group_by_step(callback, groups, value, index),
+            )?;
+            Ok(Value::Object(groups))
         })();
         self.stack.truncate(base);
         result
+    }
+
+    /// One element of Object.groupBy: calls the callback, converts its result
+    /// to a property key and appends the element to that key's group.
+    fn object_group_by_step(
+        &mut self,
+        callback: &Value,
+        groups: ObjectId,
+        value: Value,
+        index: u64,
+    ) -> Result<(), RuntimeError> {
+        let item_base = self.stack.len();
+        self.stack.push(value.clone());
+        let key_value = self.call_native(
+            callback.clone(),
+            Value::Undefined,
+            vec![value, Value::Number(index as f64)],
+            false,
+        )?;
+        self.stack.push(key_value.clone());
+        let key = self.coerce_property_key(&key_value)?;
+        // `groups` is an ordinary object, so this cannot run a Proxy trap.
+        let existing = self
+            .object_get_own_property(groups, &key)
+            .expect("an ordinary object's own property lookup cannot fail");
+        let group = if let Some(descriptor) = existing {
+            descriptor
+                .value
+                .expect("Object.groupBy groups are data properties")
+        } else {
+            let group = self.array_from(Vec::new())?;
+            self.stack.push(group.clone());
+            let defined = self.object_define_own_property(
+                groups,
+                key,
+                PropertyDescriptor::data(group.clone(), true, true, true),
+            )?;
+            self.stack.pop();
+            assert!(defined, "a group can always be added to the fresh result");
+            group
+        };
+        self.stack.push(group.clone());
+        let value = self.stack[item_base].clone();
+        self.array_push(&group, &value, 0)?;
+        self.stack.truncate(item_base);
+        Ok(())
     }
 
     /// `Map.groupBy` (GroupBy with zero key coercion): like `Object.groupBy`
@@ -118,54 +163,58 @@ impl Vm {
         let result = (|| {
             let record = self.get_iterator(items)?;
             self.stack.push(record.clone());
-            let prototype = self.collection_prototype(true)?;
+            // `Map.groupBy` is installed only after %Map.prototype% exists.
+            let prototype = self
+                .collection_prototype(true)
+                .expect("%Map.prototype% exists before Map.groupBy does");
             let groups = self.with_roots(|heap| heap.alloc_map(Some(prototype)))?;
             self.stack.push(Value::Object(groups));
-            let outcome = (|| {
-                let mut index = 0u64;
-                while let Some(value) = self.iterator_step(&record, true)? {
-                    if index >= 9_007_199_254_740_991 {
-                        return Err(RuntimeError::TypeError(
-                            "Map.groupBy iterator is too large".into(),
-                        ));
-                    }
-                    let item_base = self.stack.len();
-                    self.stack.push(value.clone());
-                    let key = self.call_native(
-                        callback.clone(),
-                        Value::Undefined,
-                        vec![value.clone(), Value::Number(index as f64)],
-                        false,
-                    )?;
-                    self.stack.push(key.clone());
-                    let group = match self.heap.map_get(groups, &key)? {
-                        Some(group) => group,
-                        None => {
-                            let group = self.array_from(Vec::new())?;
-                            self.stack.push(group.clone());
-                            self.with_roots(|heap| heap.map_set(groups, key, group.clone()))?;
-                            group
-                        }
-                    };
-                    self.stack.push(group.clone());
-                    self.array_push(&group, &value, 0)?;
-                    self.stack.truncate(item_base);
-                    index += 1;
-                }
-                Ok(Value::Object(groups))
-            })();
-            if outcome.is_err() {
-                let error_base = self.stack.len();
-                if let Err(RuntimeError::Thrown(value)) = &outcome {
-                    self.stack.push(value.clone());
-                }
-                let _ = self.iterator_close(&record);
-                self.stack.truncate(error_base);
-            }
-            outcome
+            self.iterate_and_close(
+                &record,
+                "Map.groupBy iterator is too large",
+                &mut |vm, value, index| vm.map_group_by_step(callback, groups, value, index),
+            )?;
+            Ok(Value::Object(groups))
         })();
         self.stack.truncate(base);
         result
+    }
+
+    /// One element of Map.groupBy: calls the callback and appends the element
+    /// to the group of the key it returned.
+    fn map_group_by_step(
+        &mut self,
+        callback: &Value,
+        groups: ObjectId,
+        value: Value,
+        index: u64,
+    ) -> Result<(), RuntimeError> {
+        let item_base = self.stack.len();
+        self.stack.push(value.clone());
+        let key = self.call_native(
+            callback.clone(),
+            Value::Undefined,
+            vec![value.clone(), Value::Number(index as f64)],
+            false,
+        )?;
+        self.stack.push(key.clone());
+        let existing = self
+            .heap
+            .map_get(groups, &key)
+            .expect("`groups` is a live Map");
+        let group = match existing {
+            Some(group) => group,
+            None => {
+                let group = self.array_from(Vec::new())?;
+                self.stack.push(group.clone());
+                self.with_roots(|heap| heap.map_set(groups, key, group.clone()))?;
+                group
+            }
+        };
+        self.stack.push(group.clone());
+        self.array_push(&group, &value, 0)?;
+        self.stack.truncate(item_base);
+        Ok(())
     }
 
     pub(in super::super) fn object_from_entries_method(
@@ -180,48 +229,47 @@ impl Vm {
             let prototype = self.object_prototype;
             let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
             self.stack.push(Value::Object(object));
-            let outcome = (|| {
-                while let Some(entry) = self.iterator_step(&record, true)? {
-                    let Value::Object(entry) = entry else {
-                        return Err(RuntimeError::TypeError(
-                            "Object.fromEntries entry must be an object".into(),
-                        ));
-                    };
-                    let entry_base = self.stack.len();
-                    self.stack.push(Value::Object(entry));
-                    let key_value = self.get_property(&Value::Object(entry), &"0".into())?;
-                    self.stack.push(key_value.clone());
-                    let value = self.get_property(&Value::Object(entry), &"1".into())?;
-                    self.stack.push(value.clone());
-                    let key = self.coerce_property_key(&key_value)?;
-                    let defined = self.object_define_own_property(
-                        object,
-                        key,
-                        PropertyDescriptor::data(value, true, true, true),
-                    )?;
-                    self.stack.truncate(entry_base);
-                    if !defined {
-                        return Err(RuntimeError::TypeError(
-                            "cannot define Object.fromEntries property".into(),
-                        ));
-                    }
-                }
-                Ok(Value::Object(object))
-            })();
-            if outcome.is_err() {
-                let error_base = self.stack.len();
-                if let Err(RuntimeError::Thrown(value)) = &outcome {
-                    self.stack.push(value.clone());
-                }
-                // IteratorClose is required for the side effect, but an
-                // existing abrupt completion wins over a close failure.
-                let _ = self.iterator_close(&record);
-                self.stack.truncate(error_base);
-            }
-            outcome
+            self.iterate_and_close(
+                &record,
+                "Object.fromEntries iterator is too large",
+                &mut |vm, entry, _| vm.object_from_entries_step(object, entry),
+            )?;
+            Ok(Value::Object(object))
         })();
         self.stack.truncate(base);
         result
+    }
+
+    /// One entry of Object.fromEntries: reads the entry's key and value and
+    /// defines the property.
+    fn object_from_entries_step(
+        &mut self,
+        object: ObjectId,
+        entry: Value,
+    ) -> Result<(), RuntimeError> {
+        let Value::Object(entry) = entry else {
+            return Err(RuntimeError::TypeError(
+                "Object.fromEntries entry must be an object".into(),
+            ));
+        };
+        let entry_base = self.stack.len();
+        self.stack.push(Value::Object(entry));
+        let key_value = self.get_property(&Value::Object(entry), &"0".into())?;
+        self.stack.push(key_value.clone());
+        let value = self.get_property(&Value::Object(entry), &"1".into())?;
+        self.stack.push(value.clone());
+        let key = self.coerce_property_key(&key_value)?;
+        let defined = self.object_define_own_property(
+            object,
+            key,
+            PropertyDescriptor::data(value, true, true, true),
+        )?;
+        self.stack.truncate(entry_base);
+        assert!(
+            defined,
+            "a property can always be added to the fresh result"
+        );
+        Ok(())
     }
 
     /// `Array.from(items, mapfn, thisArg)` with `this` as the constructor `C`
@@ -234,7 +282,6 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
         let source = native::argument(args, 0).clone();
         if matches!(source, Value::Null | Value::Undefined) {
             return Err(RuntimeError::TypeError(
@@ -309,58 +356,34 @@ impl Vm {
             self.stack.push(Value::Object(target));
             let record = self.get_iterator_from_method(&source, iterator)?;
             self.stack.push(record.clone());
-            let outcome = (|| {
-                let mut index = 0u64;
-                loop {
-                    if index >= MAX_SAFE_INTEGER {
-                        return Err(RuntimeError::TypeError(
-                            "Array.from result length is too large".into(),
-                        ));
-                    }
-                    let Some(value) = self.iterator_step(&record, true)? else {
-                        break;
-                    };
-                    let mark = self.stack.len();
+            let count = self.iterate_and_close(
+                &record,
+                "Array.from result length is too large",
+                &mut |vm, value, index| {
+                    let mark = vm.stack.len();
                     let value = if mapper == Value::Undefined {
                         value
                     } else {
-                        self.stack.push(value.clone());
-                        self.call_native(
+                        vm.stack.push(value.clone());
+                        vm.call_native(
                             mapper.clone(),
                             this_arg.clone(),
                             vec![value, Value::Number(index as f64)],
                             false,
                         )?
                     };
-                    self.stack.push(value.clone());
-                    self.array_create_data_property_or_throw(
+                    vm.stack.push(value.clone());
+                    vm.array_create_data_property_or_throw(
                         target,
                         index.to_string().into(),
                         value,
                     )?;
-                    self.stack.truncate(mark);
-                    index += 1;
-                }
-                self.array_set_or_throw(target, "length".into(), &Value::Number(index as f64))?;
-                Ok(Value::Object(target))
-            })();
-            if outcome.is_err() {
-                // IteratorClose retains an existing abrupt completion. The
-                // original mapper/iterator error must win over a return()
-                // failure, so close only for its required side effect here.
-                // The thrown value is only reachable from `outcome`, and
-                // return() runs user code that can allocate and collect.
-                // A finished or failed iterator is already marked done, which
-                // makes the close a no-op (spec: no close after IteratorStep
-                // or the final length Set fails).
-                let error_base = self.stack.len();
-                if let Err(RuntimeError::Thrown(value)) = &outcome {
-                    self.stack.push(value.clone());
-                }
-                let _ = self.iterator_close(&record);
-                self.stack.truncate(error_base);
-            }
-            outcome
+                    vm.stack.truncate(mark);
+                    Ok(())
+                },
+            )?;
+            self.array_set_or_throw(target, "length".into(), &Value::Number(count as f64))?;
+            Ok(Value::Object(target))
         })();
         self.stack.truncate(base);
         result
@@ -379,17 +402,16 @@ impl Vm {
             return self.array_create_exact(length.unwrap_or(0.0));
         }
         let args = length.map(Value::Number).into_iter().collect();
-        self.call_with_target(
-            receiver.clone(),
-            Value::Undefined,
-            args,
-            true,
-            receiver.clone(),
-        )?
-        .object_id()
-        .ok_or_else(|| {
-            RuntimeError::TypeError("Array.from constructor returned a primitive".into())
-        })
+        Ok(self
+            .call_with_target(
+                receiver.clone(),
+                Value::Undefined,
+                args,
+                true,
+                receiver.clone(),
+            )?
+            .object_id()
+            .expect("Construct returns an object"))
     }
 
     pub(in super::super) fn array_of_method(
@@ -410,9 +432,7 @@ impl Vm {
                     receiver.clone(),
                 )?
                 .object_id()
-                .ok_or_else(|| {
-                    RuntimeError::TypeError("Array.of constructor returned a primitive".into())
-                })?
+                .expect("Construct returns an object")
             } else {
                 let prototype = self.array_prototype;
                 self.with_roots(|heap| heap.alloc_array(0, Some(prototype)))?
@@ -426,5 +446,33 @@ impl Vm {
         })();
         self.stack.truncate(base);
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn iteration_refuses_to_pass_the_safe_integer_limit() {
+        // Outside `execute` there is no instruction budget yet.
+        let mut vm = Vm {
+            remaining_instructions: 1_000,
+            ..Vm::default()
+        };
+        let too_large = Err(RuntimeError::TypeError("too large".into()));
+        let mut visited = Vec::new();
+        for first in [MAX_SAFE_INTEGER - 1, MAX_SAFE_INTEGER] {
+            let items = vm.array_from(vec![Value::Number(1.0)]).unwrap();
+            let record = vm.get_iterator(&items).unwrap();
+            let result = vm.iterate_values_from(&record, first, "too large", &mut |_, _, index| {
+                visited.push(index);
+                Ok(())
+            });
+            // The last index below the limit is still visited, and the limit
+            // is enforced before the iterator is asked whether it has more.
+            assert_eq!(result, too_large);
+        }
+        assert_eq!(visited, vec![MAX_SAFE_INTEGER - 1]);
     }
 }
