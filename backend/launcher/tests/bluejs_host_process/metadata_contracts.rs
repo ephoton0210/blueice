@@ -384,5 +384,189 @@ fn isolated_child_answers_every_private_bluets_contract_and_relation_endpoint() 
         }
     ));
 
+    // -- lowering summary and per-symbol/type declaration locations: two more
+    // metadata-family endpoints this fixture can answer for real without a
+    // second subprocess.
+    let summary = match host
+        .request(PageHostRequest::DescribeDebuggerBlueTsMetadataLoweringSummary {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            metadata,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerBlueTsMetadataLoweringSummary { summary, .. } => summary,
+        reply => panic!("expected a private lowering summary, got {reply:?}"),
+    };
+    assert!(!summary.safe_point_map_abi.is_empty());
+    assert!(!summary.source_set_hash.is_empty());
+
+    let count_type_display = {
+        let mut display = None;
+        for r#type in &type_ids {
+            let reply = host
+                .request(PageHostRequest::DescribeDebuggerBlueTsMetadataType {
+                    tab_id: 41,
+                    document_generation: 1,
+                    program,
+                    metadata,
+                    type_id: r#type.type_id,
+                })
+                .unwrap();
+            if let PageHostReply::DebuggerBlueTsMetadataType { static_type, .. } = reply {
+                if static_type.display == "number" {
+                    display = Some(static_type);
+                }
+            }
+        }
+        display.expect("`count`'s static type must display as `number`")
+    };
+    assert_eq!(count_type_display.display, "number");
+
+    let count_location = match host
+        .request(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+            metadata,
+            symbol_id: count_symbol,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerBlueTsMetadataSymbolLocation { location, .. } => location,
+        reply => panic!("expected a private symbol location, got {reply:?}"),
+    };
+    assert_eq!(count_location.symbol_id, count_symbol);
+    assert!(count_location.start_byte < count_location.end_byte);
+    assert!(!format!("{count_location:?}").contains("count"));
+
+    // -- a malformed program or metadata handle is rejected up front by every
+    // one of these endpoints, before any registry lookup is attempted.
+    let malformed_program = blueice_ipc::page_host::PageHostDebuggerProgram {
+        program_handle: 0,
+        program_generation: program.program_generation,
+    };
+    let malformed_metadata = blueice_ipc::page_host::PageHostDebuggerMetadataHandle {
+        metadata_handle: 0,
+        metadata_generation: metadata.metadata_generation,
+    };
+    macro_rules! assert_rejects_malformed {
+        ($request:expr) => {
+            assert!(
+                matches!(
+                    host.request($request).unwrap(),
+                    PageHostReply::Error {
+                        code: PageHostErrorCode::InvalidRequest,
+                        ..
+                    }
+                ),
+                "expected a malformed-handle rejection for {}",
+                stringify!($request)
+            );
+        };
+    }
+    assert_rejects_malformed!(PageHostRequest::ListDebuggerBlueTsMetadata {
+        tab_id: 41,
+        document_generation: 1,
+        program: malformed_program,
+    });
+    assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataLoweringSummary {
+        tab_id: 41,
+        document_generation: 1,
+        program,
+        metadata: malformed_metadata,
+    });
+    assert_rejects_malformed!(PageHostRequest::ListDebuggerBlueTsMetadataSources {
+        tab_id: 41,
+        document_generation: 1,
+        program: malformed_program,
+        metadata,
+    });
+    assert_rejects_malformed!(PageHostRequest::ListDebuggerBlueTsMetadataTypes {
+        tab_id: 41,
+        document_generation: 1,
+        program,
+        metadata: malformed_metadata,
+    });
+    assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataType {
+        tab_id: 41,
+        document_generation: 1,
+        program: malformed_program,
+        metadata,
+        type_id: count_type_display.type_id,
+    });
+    assert_rejects_malformed!(PageHostRequest::ListDebuggerBlueTsMetadataSymbols {
+        tab_id: 41,
+        document_generation: 1,
+        program,
+        metadata: malformed_metadata,
+    });
+    assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbol {
+        tab_id: 41,
+        document_generation: 1,
+        program: malformed_program,
+        metadata,
+        symbol_id: count_symbol,
+    });
+    assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
+        tab_id: 41,
+        document_generation: 1,
+        program,
+        metadata: malformed_metadata,
+        symbol_id: count_symbol,
+    });
+    assert_rejects_malformed!(PageHostRequest::ListDebuggerBlueTsMetadataContracts {
+        tab_id: 41,
+        document_generation: 1,
+        program: malformed_program,
+        metadata,
+    });
+    assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataContract {
+        tab_id: 41,
+        document_generation: 1,
+        program,
+        metadata: malformed_metadata,
+        contract_id,
+    });
+    assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
+        tab_id: 41,
+        document_generation: 1,
+        program: malformed_program,
+        metadata,
+        contract_id,
+    });
+    assert_rejects_malformed!(PageHostRequest::ValidateDebuggerBlueTsMetadataContract {
+        tab_id: 41,
+        document_generation: 1,
+        program,
+        metadata: malformed_metadata,
+        contract_id,
+        value: CompilerContractValue::Null,
+    });
+    assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolType {
+        tab_id: 41,
+        document_generation: 1,
+        program: malformed_program,
+        metadata,
+        symbol_id: count_symbol,
+        type_id: count_type_display.type_id,
+    });
+    assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
+        tab_id: 41,
+        document_generation: 1,
+        program,
+        metadata: malformed_metadata,
+        symbol_id: settings_symbol,
+        contract_id,
+    });
+    assert_rejects_malformed!(PageHostRequest::DescribeDebuggerBlueTsMetadataSource {
+        tab_id: 41,
+        document_generation: 1,
+        program: malformed_program,
+        metadata,
+        source_id: location.source_id,
+    });
+
     host.shutdown().unwrap();
 }
