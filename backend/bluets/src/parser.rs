@@ -473,6 +473,22 @@ pub(crate) fn require_tuple_positions_before_suffix(elements: &mut [TupleTypeEle
 }
 
 /// The supported, reifiable portion of the TypeScript type grammar.
+impl Type {
+    /// Renders an array element type, parenthesized when its own syntax binds
+    /// looser than the postfix `[]` (a union, intersection or function type).
+    pub(crate) fn array_element_text(&self, render: impl Fn(&Type) -> String) -> String {
+        let text = render(self);
+        if matches!(
+            self,
+            Type::Union(_) | Type::Intersection(_) | Type::Function { .. }
+        ) {
+            format!("({text})[]")
+        } else {
+            format!("{text}[]")
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Any,

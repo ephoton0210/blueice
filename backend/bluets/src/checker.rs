@@ -788,15 +788,13 @@ fn infer_contextual_tuple_literal(
     if start + 1 < tokens.len() {
         push_contextual_tuple_element(&tokens[start..tokens.len() - 1], scope, &mut values)?;
     }
-    Some(Type::Tuple(
-        values.into_iter().map(TupleTypeElement::required).collect(),
-    ))
+    Some(Type::Tuple(values))
 }
 
 fn push_contextual_tuple_element(
     tokens: &[Token],
     scope: &BTreeMap<String, Type>,
-    values: &mut Vec<Type>,
+    values: &mut Vec<TupleTypeElement>,
 ) -> Option<()> {
     if tokens.is_empty() {
         return None;
@@ -805,15 +803,25 @@ fn push_contextual_tuple_element(
         let Type::Tuple(spread) = infer_simple(&tokens[1..], scope) else {
             return None;
         };
-        if spread
-            .iter()
-            .any(|element| element.optional || element.rest)
-        {
+        if spread.iter().any(|element| element.rest) {
             return None;
         }
-        values.extend(spread.into_iter().map(|element| element.annotation));
+        // Optional elements stay optional; a required element after one
+        // would need a length TypeScript does not model as a tuple.
+        for element in spread {
+            if values.last().is_some_and(|last| last.optional) && !element.optional {
+                return None;
+            }
+            values.push(TupleTypeElement {
+                label: None,
+                ..element
+            });
+        }
     } else {
-        values.push(infer_simple(tokens, scope));
+        if values.last().is_some_and(|last| last.optional) {
+            return None;
+        }
+        values.push(TupleTypeElement::required(infer_simple(tokens, scope)));
     }
     Some(())
 }

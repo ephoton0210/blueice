@@ -45,6 +45,17 @@ impl<'a> ModuleChecker<'a> {
         let Some(arguments) = split_call_arguments(tokens) else {
             return Type::Unknown;
         };
+        if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
+            let mut results = alternatives.iter().map(|alternative| {
+                self.infer_function_call(signatures, tokens, alternative, explicit_type_arguments)
+            });
+            let first = results.next().unwrap_or(Type::Unknown);
+            return if results.all(|result| result == first) {
+                first
+            } else {
+                Type::Unknown
+            };
+        }
         let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
             return Type::Unknown;
         };
@@ -91,6 +102,14 @@ impl<'a> ModuleChecker<'a> {
                 argument
             };
             self.check_direct_property_access(argument, scope, span);
+        }
+        if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
+            let before = self.diagnostics.len();
+            for alternative in &alternatives {
+                self.check_function_call(tokens, alternative, span);
+            }
+            self.dedupe_diagnostics_since(before);
+            return;
         }
         let actuals = match self.expanded_call_argument_types(&arguments, scope) {
             Ok(actuals) => actuals,
@@ -197,6 +216,80 @@ impl<'a> ModuleChecker<'a> {
                     ),
                     DiagnosticCode::TypeMismatch,
                 );
+            }
+        }
+    }
+
+    /// When the last call argument spreads a variable whose tuple type ends
+    /// in optional elements, the scopes to check: one per possible spread
+    /// length, with the variable replaced by that fixed-length prefix. The
+    /// call is valid only if every length is, so no position is invented.
+    /// `None` when there is no such spread, or when the variable is also used
+    /// by another argument (replacing it would change that argument's type).
+    pub(in crate::checker::module) fn optional_spread_scopes(
+        &self,
+        arguments: &[&[Token]],
+        scope: &BTreeMap<String, Type>,
+    ) -> Option<Vec<BTreeMap<String, Type>>> {
+        let (last, others) = arguments.split_last()?;
+        let [dots, name] = *last else {
+            return None;
+        };
+        if !dots.is("...") || name.kind != TokenKind::Identifier {
+            return None;
+        }
+        let Some(Type::Tuple(values)) = scope.get(&name.text) else {
+            return None;
+        };
+        if values.iter().any(|value| value.rest) || !values.iter().any(|value| value.optional) {
+            return None;
+        }
+        if others
+            .iter()
+            .any(|argument| argument.iter().any(|token| token.text == name.text))
+        {
+            return None;
+        }
+        let required = values.iter().filter(|value| !value.optional).count();
+        Some(
+            (required..=values.len())
+                .map(|length| {
+                    let mut alternative = scope.clone();
+                    alternative.insert(
+                        name.text.clone(),
+                        Type::Tuple(
+                            values[..length]
+                                .iter()
+                                .map(|value| TupleTypeElement {
+                                    optional: false,
+                                    ..value.clone()
+                                })
+                                .collect(),
+                        ),
+                    );
+                    alternative
+                })
+                .collect(),
+        )
+    }
+
+    /// Drops repeated diagnostics added since `before`, which the per-length
+    /// re-checks of an optional spread can produce.
+    pub(in crate::checker::module) fn dedupe_diagnostics_since(&mut self, before: usize) {
+        let mut seen = Vec::new();
+        let mut index = before;
+        while index < self.diagnostics.len() {
+            let diagnostic = &self.diagnostics[index];
+            let key = (
+                diagnostic.code,
+                diagnostic.span.clone(),
+                diagnostic.message.clone(),
+            );
+            if seen.contains(&key) {
+                self.diagnostics.remove(index);
+            } else {
+                seen.push(key);
+                index += 1;
             }
         }
     }

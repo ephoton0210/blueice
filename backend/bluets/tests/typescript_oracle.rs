@@ -3633,6 +3633,83 @@ fn pinned_super_member_reads_and_calls_match_typescript_without_emit() {
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_parenthesized_types_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 4] = [
+        (
+            "identity-error",
+            include_str!("fixtures/typescript_oracle/paren-type-identity-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/paren-type-valid/main.ts"),
+            &[],
+        ),
+        (
+            "class-override-valid",
+            include_str!("fixtures/typescript_oracle/paren-type-class-override-valid/main.ts"),
+            &[],
+        ),
+        (
+            "class-override-error",
+            include_str!("fixtures/typescript_oracle/paren-type-class-override-error/main.ts"),
+            &[(5, "TS2416")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_optional_tuple_spreads_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "super-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-optional-super-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-spread-optional-valid/main.ts"),
+            &[],
+        ),
+        (
+            "call-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-optional-call-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "multi-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-optional-multi-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "method-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-optional-method-error/main.ts"),
+            &[(5, "TS2345")],
+        ),
+        (
+            "constructor-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-spread-optional-constructor-error/main.ts"
+            ),
+            &[(5, "TS2345")],
+        ),
+        (
+            "literal-error",
+            include_str!("fixtures/typescript_oracle/tuple-spread-optional-literal-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

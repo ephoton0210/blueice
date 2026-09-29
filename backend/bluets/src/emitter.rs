@@ -541,7 +541,7 @@ fn type_to_ts(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        Type::Array(value) => format!("{}[]", type_to_ts(value)),
+        Type::Array(value) => value.array_element_text(type_to_ts),
         Type::Tuple(values) => format!(
             "[{}]",
             values

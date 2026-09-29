@@ -214,6 +214,14 @@ impl ModuleChecker<'_> {
             return;
         };
         let signatures = binding.signatures.clone();
+        if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
+            let before = self.diagnostics.len();
+            for alternative in &alternatives {
+                self.check_super_call_arguments(base, tokens, alternative, span);
+            }
+            self.dedupe_diagnostics_since(before);
+            return;
+        }
         let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
             self.type_error(
                 span,

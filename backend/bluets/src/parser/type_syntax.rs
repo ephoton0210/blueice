@@ -240,6 +240,12 @@ impl Parser {
                 self.consume(",");
             }
             Type::Record(fields)
+        } else if self.peek("(") && !self.parenthesis_starts_function_type() {
+            // A parenthesized type only groups: `(A | B)[]`.
+            self.bump();
+            let grouped = self.parse_type_until(&[")"]);
+            self.expect(")");
+            grouped
         } else if self.consume("(") {
             let mut parameters = Vec::new();
             while !self.at_eof() && !self.consume(")") {
@@ -315,6 +321,28 @@ impl Parser {
             value = Type::Array(Box::new(value));
         }
         value
+    }
+
+    /// Whether the `(` at the cursor opens a function type, that is, whether
+    /// its matching `)` is followed by `=>`.
+    fn parenthesis_starts_function_type(&self) -> bool {
+        let mut depth = 0usize;
+        for (offset, token) in self.tokens[self.index..].iter().enumerate() {
+            match token.text.as_str() {
+                "(" | "[" | "{" => depth += 1,
+                ")" | "]" | "}" => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return self
+                            .tokens
+                            .get(self.index + offset + 1)
+                            .is_some_and(|next| next.is("=>"));
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
     }
 
     pub(super) fn collect_until_statement_end(&mut self) -> Vec<Token> {

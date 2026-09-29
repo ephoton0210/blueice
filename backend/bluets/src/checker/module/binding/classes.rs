@@ -1036,6 +1036,14 @@ impl ModuleChecker<'_> {
         }
         let arguments = split_call_arguments(call.arguments)
             .expect("constructor call has a balanced argument list");
+        if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
+            let before = self.diagnostics.len();
+            for alternative in &alternatives {
+                self.check_class_construction(tokens, alternative, span);
+            }
+            self.dedupe_diagnostics_since(before);
+            return;
+        }
         let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
             self.type_error(
                 &call_span,

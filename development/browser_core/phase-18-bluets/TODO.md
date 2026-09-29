@@ -826,28 +826,19 @@ exists. A passed first form does not close its whole feature family.
 
 **Stop-loss (added 2026-09-29).** J.3.1.3.4.4.2.3.2.3 (tuple rest/spread
 overrides) reached 14 levels of nesting chasing `tsc` edge cases rather than
-page-facing behavior. It is now closed at J.3.1.3.4.4.2.3.2.3.3.3.6.5.3. Two
-sibling leaves were moved out of the required tree so their parents could
-close; they re-enter the backlog only if a real BlueTS page or an
-accepted/rejected-matrix case (J.3.1.3.5) needs them:
-
-- Deferred D1: expand optional tuple spreads in bounded call arguments and
-  tuple literals without inventing required positions (was `…3.3.4`).
-- Deferred D2: parse parenthesized union array annotations needed to compare
-  heterogeneous tuple rest elements with an array-rest counterpart (was
-  `…3.4`).
-
-Do not open a new tuple/spread leaf. Continue with J.3.1.3.4.4.3, then
-J.3.1.4 onward (emit, lowering, debugger evidence) before adding more checker
-breadth.
+page-facing behavior. It is closed at J.3.1.3.4.4.2.3.2.3.3.3.6.5.3, and its two
+remaining sibling leaves (optional tuple spread expansion and parenthesized
+union array annotations) were completed afterwards, so nothing is deferred.
+Do not open a new tuple/spread leaf. Continue with J.3.1.5 onward (lowering,
+debugger evidence) before adding more checker breadth.
 
 **J milestones (added 2026-09-29).** The remaining J leaves are too large and
 too open-ended to close as one block, so they are ordered into milestones with
 an observable exit. A milestone closes on its exit test, not on covering every
 `tsc` corner. Each keeps its existing leaf IDs.
 
-- **M1 — Classes run in a real page.** J.3.1.3.4.4.3, J.3.1.3.4.5,
-  J.3.1.3.4.6, J.3.1.3.5, J.3.1.4, J.3.1.5, J.3.1.6. Exit: a BlueTS page
+- **M1 — Classes run in a real page.** J.3.1.3 (checker) and J.3.1.4 (emit)
+  are done; J.3.1.5 and J.3.1.6 remain. Exit: a BlueTS page
   declaring a class with a constructor, methods, single inheritance and
   `super` builds with BlueTSC, runs through the real page runtime, hits a
   breakpoint mapped to the original source, and is refused after navigation;
@@ -1979,6 +1970,29 @@ done to the page-runs-and-debugs goal at the top of this file.
                             BlueTS; the generic-expansion budget reports a
                             resource-limit diagnostic. Existing behaviour, so
                             this leaf adds evidence only.
+                    - [x] **J.3.1.3.4.4.2.3.2.3.3.4** Expand optional tuple
+                      spreads in bounded call arguments and tuple literals
+                      without inventing required positions.
+                      When the last call argument spreads a variable whose
+                      tuple type ends in optional elements, the call is
+                      checked once per possible length with the variable
+                      replaced by that fixed-length prefix, so it is valid only
+                      if every length is; this covers function, method,
+                      constructor and `super` calls. Tuple literals keep the
+                      optional flag of a spread element. A spread that is not a
+                      lone variable, or is not last, keeps the fixed-length
+                      requirement. Eight pinned TypeScript 5.9.3 `--noEmit`
+                      cases agree on acceptance and TS2345/TS2322 lines.
+                  - [x] **J.3.1.3.4.4.2.3.2.3.4** Parse parenthesized union
+                    array annotations needed to compare heterogeneous tuple
+                    rest elements with an array-rest counterpart.
+                    A `(` now groups a type unless its matching `)` is
+                    followed by `=>`, so `(A | B)[]`, `((a: T) => R)[]` and
+                    tuple rests such as `...(string | number)[]` parse.
+                    Declaration output and type identity keep the
+                    parentheses, so `(string | number)[]` is never confused
+                    with `string | number[]`. Four pinned TypeScript 5.9.3
+                    `--noEmit` cases agree on acceptance and TS2416/TS2322.
           - [x] **J.3.1.3.4.4.3** Validate inherited method overload-set
             compatibility, including implementation and signature selection,
             against pinned TypeScript.

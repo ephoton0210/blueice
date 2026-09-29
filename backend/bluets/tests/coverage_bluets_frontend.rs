@@ -5580,6 +5580,123 @@ fn class_emit_stays_atomic_and_refuses_unstructured_classes() {
 }
 
 #[test]
+fn parenthesized_types_group_unions_and_function_types() {
+    let compiled = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            include_str!("fixtures/typescript_oracle/paren-type-valid/main.ts"),
+        )]),
+        CompilerOptions {
+            declaration: true,
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:#?}",
+        compiled.diagnostics
+    );
+    let declaration = compiled.output.unwrap().artifacts[ENTRY]
+        .declaration
+        .clone()
+        .unwrap();
+    for line in [
+        "export declare function f(v: (string | number)[]): void;",
+        "export declare function g(v: [boolean, ...(string | number)[]]): void;",
+        "export declare function h(v: ((a: number) => string)[]): void;",
+        "export type Mixed = (string | number)[];",
+        "export declare function m(v: Mixed): void;",
+    ] {
+        assert!(declaration.contains(line), "{line}\n{declaration}");
+    }
+
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            include_str!("fixtures/typescript_oracle/paren-type-class-override-valid/main.ts"),
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    let rejected = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            include_str!("fixtures/typescript_oracle/paren-type-class-override-error/main.ts"),
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(rejected
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch));
+
+    // A grouped element type is not the same type as an ungrouped union.
+    let identity = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            include_str!("fixtures/typescript_oracle/paren-type-identity-error/main.ts"),
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(identity.output.is_none());
+    assert!(identity
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::ReturnTypeMismatch));
+}
+
+#[test]
+fn optional_tuple_spreads_check_every_possible_length() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/tuple-spread-optional-valid/main.ts"
+    ));
+    assert!(
+        accepted
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    for source in [
+        include_str!("fixtures/typescript_oracle/tuple-spread-optional-call-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-spread-optional-multi-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-spread-optional-method-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-spread-optional-constructor-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-spread-optional-super-error/main.ts"),
+        include_str!("fixtures/typescript_oracle/tuple-spread-optional-literal-error/main.ts"),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::TypeMismatch && diagnostic.span.module == ENTRY
+            }),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+}
+
+#[test]
 fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
     let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");
     let accepted = compile(

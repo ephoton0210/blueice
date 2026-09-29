@@ -2184,6 +2184,33 @@ erased return type joins `)` and `{`), so its text differs from `tsc`'s while
 its behaviour matches. Fields, accessors, private members, parameter
 properties, generic classes and `implements` do not exist yet (J.3.2).
 
+### J.3.1.3.4.4.2.3.2.3.3.4 Optional tuple spreads
+
+A call whose last argument spreads a lone variable typed as a tuple ending in
+optional elements is checked once per possible spread length, with the variable
+replaced by that fixed-length prefix in a copy of the scope; the call is valid
+only if every length is. This reuses the existing function, method, constructor
+and `super` call checks unchanged, so each keeps its own arity, overload and
+type rules, and repeated diagnostics from the per-length passes are removed. A
+spread that is not a lone variable, is not the last argument, or names a
+variable another argument also uses keeps the fixed-length requirement, since
+replacing the variable would change that argument's type. Tuple literals in a
+tuple-annotated initializer keep the optional flag of a spread element, and a
+required element after an optional one is left unmodelled. Return statements do
+not use contextual tuple literals yet, so a tuple literal returned from a
+function is not covered here.
+
+### J.3.1.3.4.4.2.3.2.3.4 Parenthesized types
+
+A `(` in a type now groups unless its matching `)` is followed by `=>`, which
+makes it a function type. `(A | B)[]`, `((a: T) => R)[]` and tuple rests such as
+`...(string | number)[]` parse, and the class-override comparison of a tuple
+rest against an array rest works on them. Declaration output and type identity
+keep the parentheses around an array element that is a union, intersection or
+function type; without them `(string | number)[]` and `string | number[]`
+produce the same text and would be treated as one type. Redundant parentheses
+around a non-array type are not preserved, unlike `tsc`.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

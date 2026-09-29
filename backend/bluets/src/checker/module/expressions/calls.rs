@@ -145,6 +145,14 @@ impl<'a> ModuleChecker<'a> {
         for argument in &arguments {
             self.check_function_call(argument, scope, span);
         }
+        if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
+            let before = self.diagnostics.len();
+            for alternative in &alternatives {
+                self.check_member_call(tokens, alternative, span);
+            }
+            self.dedupe_diagnostics_since(before);
+            return;
+        }
         let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
             self.type_error(
                 span,

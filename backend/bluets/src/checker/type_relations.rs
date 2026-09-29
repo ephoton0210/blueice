@@ -614,7 +614,7 @@ pub(super) fn type_identity(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join(",")
         ),
-        Type::Array(value) => format!("{}[]", type_identity(value)),
+        Type::Array(value) => value.array_element_text(type_identity),
         Type::Tuple(values) => format!(
             "[{}]",
             values
@@ -659,7 +659,7 @@ pub(crate) fn type_label(value: &Type) -> String {
         Type::String => "string".to_string(),
         Type::Literal(value) => value.clone(),
         Type::Named { name, .. } => name.clone(),
-        Type::Array(value) => format!("{}[]", type_label(value)),
+        Type::Array(value) => value.array_element_text(type_label),
         Type::Tuple(values) => format!(
             "[{}]",
             values
