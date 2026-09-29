@@ -32,6 +32,8 @@ pub(super) struct ModuleChecker<'a> {
     /// Arrow functions already checked, by start offset, so an expression
     /// visited from several checks reports its body once.
     checked_nested_functions: BTreeSet<usize>,
+    /// Whether the function being checked is `async`; `None` at module level.
+    async_context: Option<bool>,
     pub(super) diagnostics: Vec<Diagnostic>,
     pub(super) symbols: Vec<Symbol>,
     types: BTreeMap<String, TypeDefinition>,

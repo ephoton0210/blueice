@@ -22,6 +22,7 @@ impl<'a> ModuleChecker<'a> {
         function: &FunctionDeclaration,
         mut scope: BTreeMap<String, Type>,
     ) {
+        let previous_async = self.async_context.replace(function.async_function);
         let previous_parameters = self.type_parameters.clone();
         let previous_spreads = self.allowed_tuple_spread_parameters.clone();
         self.allowed_tuple_spread_parameters = function
@@ -109,8 +110,26 @@ impl<'a> ModuleChecker<'a> {
         hoist_local_functions(&function.body, &mut scope);
         let selected_local = selected_guard_local(&function.body);
         self.check_function_body_expressions(&function.body, &scope, selected_local);
-        let allows_implicit_undefined = if let Some(return_type) = &function.return_type {
+        if let Some(return_type) = &function.return_type {
             self.check_type(return_type, &function.span);
+        }
+        // An `async` function's body returns the type inside its `Promise<T>`.
+        let body_return_type = match (&function.return_type, function.async_function) {
+            (Some(return_type), true) => match promise_value_type(return_type) {
+                Some(value) => Some(value),
+                None => {
+                    self.type_error(
+                        &function.span,
+                        "the return type of an async function must be the global `Promise<T>` type"
+                            .to_string(),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                    None
+                }
+            },
+            (return_type, _) => return_type.clone(),
+        };
+        let allows_implicit_undefined = if let Some(return_type) = &body_return_type {
             self.return_type_allows_implicit_undefined(return_type, &function.span)
         } else {
             true
@@ -118,12 +137,12 @@ impl<'a> ModuleChecker<'a> {
         self.check_function_body_returns(
             &function.body,
             &scope,
-            function.return_type.as_ref(),
+            body_return_type.as_ref(),
             allows_implicit_undefined,
             &function.span,
             selected_local,
         );
-        if let Some(return_type) = &function.return_type {
+        if let Some(return_type) = &body_return_type {
             if !function.declared
                 && !function.overload
                 && !allows_implicit_undefined
@@ -144,6 +163,7 @@ impl<'a> ModuleChecker<'a> {
         }
         self.type_parameters = previous_parameters;
         self.allowed_tuple_spread_parameters = previous_spreads;
+        self.async_context = previous_async;
     }
 
     /// Whether an explicit return annotation permits the JavaScript
@@ -591,5 +611,15 @@ fn hoist_from_if(statement: &FunctionIfStatement, scope: &mut BTreeMap<String, T
         Some(FunctionElseBranch::Braced(items)) => hoist_local_functions(items, scope),
         Some(FunctionElseBranch::ElseIf(next)) => hoist_from_if(next, scope),
         None => {}
+    }
+}
+
+/// The `T` of `Promise<T>`, when `value` is that type.
+pub(in crate::checker::module) fn promise_value_type(value: &Type) -> Option<Type> {
+    match value {
+        Type::Named { name, arguments } if name == "Promise" && arguments.len() == 1 => {
+            Some(arguments[0].clone())
+        }
+        _ => None,
     }
 }

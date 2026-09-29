@@ -2439,6 +2439,39 @@ missed a result annotation. It is removed, and the erasure audit now refuses a
 a shape that is not structured (`async <T>(a) => a`, a destructured parameter
 list) stays refused instead of reaching the output.
 
+### J.3.7.7.3.1 Promise, async functions and await
+
+Named `async function` declarations were already parsed and carry an
+`async_function` flag, but `Promise` did not exist as a type, so any annotation
+using it was reported as unknown, and `await` had no typing and no context
+check. A module's type table now gets a built-in generic interface `Promise<T>`
+when nothing local or ambient defines it, after ambient declarations are bound,
+so a host that supplies its own `Promise` keeps it. Its `then` takes a callback
+of `(value: T) => any`, `catch` a callback of `(reason: any) => any` and
+`finally` a callback of `() => any`, each returning `any`. `T` occurs only in the
+callback parameter of `then`, which makes a promise covariant in `T` under the
+existing function-type comparison, and no method returns a promise, so the
+definition is not self-referential. The price is that chaining loses precision.
+
+For an `async` function the checker requires the annotation to be `Promise<T>`
+(the error for anything else is TS1064's counterpart) and then checks the body
+against `T`: returns, the implicit-`undefined` rule and the can-complete-without-
+returning analysis all use `T`, so `Promise<void>` allows falling off the end. A
+function with no annotation is unchanged.
+
+`await x` is typed as the `T` of a `Promise<T>` operand, and as the operand's
+type for anything else. The checker records whether the function being checked
+is `async` (unset at module level) and refuses an `await` in a function that is
+not, and at the top level: JavaScript would reject both. Tokens that lie inside
+a structured nested function are judged in that function's own context, not the
+enclosing one, and an expression that also holds an `async` token is not judged
+because it may contain an unstructured async form. That last case is a known
+hole: `[async () => 1, await f()]` in a sync function is not refused.
+
+The result type of a call is the declared `Promise<T>`, so `run().then(..)`
+type-checks against the built-in methods. `Promise` values from other sources
+(`Promise.resolve`, `new Promise`) are not modeled and have unknown type.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

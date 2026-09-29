@@ -38,6 +38,53 @@ impl ModuleChecker<'_> {
         }
     }
 
+    /// `await` is only valid inside an `async` function. Tokens inside a
+    /// structured nested function are checked in that function's own context,
+    /// and an expression holding an `async` token may contain an `await` in an
+    /// async form the parser left unstructured, so it is not judged here.
+    pub(in crate::checker::module) fn check_await_context(
+        &mut self,
+        tokens: &[Token],
+        span: &SourceSpan,
+    ) {
+        if self.async_context == Some(true) || !tokens.iter().any(|token| token.is("await")) {
+            return;
+        }
+        if tokens.iter().any(|token| token.is("async")) {
+            return;
+        }
+        let module = self.module;
+        let range_start = tokens.first().map_or(0, |token| token.start);
+        // Only a function that starts inside the checked tokens is nested in
+        // them; one that encloses them is the function being checked.
+        let inside_nested = |offset: usize| {
+            module
+                .nested_functions
+                .range(range_start..=offset)
+                .next_back()
+                .is_some_and(|(_, nested)| offset < nested.span.end)
+        };
+        let Some(token) = tokens
+            .iter()
+            .find(|token| token.is("await") && !inside_nested(token.start))
+        else {
+            return;
+        };
+        let at = SourceSpan::new(&span.module, token.start, token.end);
+        match self.async_context {
+            None => self.type_error(
+                &at,
+                "top-level `await` is not supported yet".to_string(),
+                DiagnosticCode::UnsupportedSyntax,
+            ),
+            _ => self.type_error(
+                &at,
+                "`await` is only valid inside an async function".to_string(),
+                DiagnosticCode::TypeMismatch,
+            ),
+        }
+    }
+
     fn check_nested_function(&mut self, arrow: &NestedFunction, scope: &BTreeMap<String, Type>) {
         let (body, returns, locals) = match &arrow.body {
             NestedFunctionBody::Expression(tokens) => (

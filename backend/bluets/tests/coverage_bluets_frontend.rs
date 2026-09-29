@@ -6401,6 +6401,107 @@ fn generic_nested_functions_are_parsed_erased_and_checked() {
 }
 
 #[test]
+fn async_functions_and_await_are_typed_against_promise() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let compiled = compile_source(include_str!(
+        "fixtures/typescript_oracle/async-function-runtime/main.ts"
+    ));
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:#?}",
+        compiled.diagnostics
+    );
+    let javascript = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+    assert!(
+        javascript.contains("async function double(n)"),
+        "{javascript}"
+    );
+    assert!(!javascript.contains("Promise"), "{javascript}");
+
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/async-function-valid/main.ts"
+    ));
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/async-function-return-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/async-function-annotation-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/async-function-await-type-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/async-function-await-context-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/async-function-missing-return-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/async-function-promise-mismatch-error/main.ts"
+            ),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code && diagnostic.span.module == ENTRY),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    // Top-level await and await inside a nested non-async function are not
+    // valid in a classic function body, and must not reach the output.
+    for source in [
+        "async function f(): Promise<number> { return 1; } export const g = await f();",
+        "export async function f(): Promise<number> { const g = (): number => await f(); return g(); }",
+    ] {
+        let refused = compile_source(source);
+        assert!(refused.output.is_none(), "{source}");
+    }
+
+    // A host that declares its own Promise keeps it.
+    let hosted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "export async function f(): Promise<number> { return 1; }",
+        )]),
+        CompilerOptions {
+            ambient_declaration_modules: vec![ModuleSource::new(
+                "memory:///lib.d.ts",
+                "interface Promise<T> { readonly value: T; }",
+            )],
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(hosted.diagnostics.is_empty(), "{:#?}", hosted.diagnostics);
+}
+
+#[test]
 fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
     let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");
     let accepted = compile(

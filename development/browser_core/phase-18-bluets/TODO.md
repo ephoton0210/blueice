@@ -2212,8 +2212,24 @@ done to the page-runs-and-debugs goal at the top of this file.
         output for BlueTSC and `tsc`.
       - [ ] **J.3.7.7.2** Destructured parameters (`({ a, b }: T) => ..`), with
         the pattern's bindings typed from the annotation.
-      - [ ] **J.3.7.7.3** `async` functions and arrows, which need a `Promise`
-        type and `await`.
+      - [ ] **J.3.7.7.3** `async` functions and `await`, which need a
+        `Promise` type.
+        - [x] **J.3.7.7.3.1** A built-in generic `Promise<T>`, named `async`
+          functions and `await`. `Promise<T>` is added to a module's types
+          unless a local or host declaration defines it; its `then`, `catch`
+          and `finally` methods mention `T` only where a value is produced, so
+          `Promise<number>` and `Promise<string>` are not assignable to each
+          other, and their results are `any`. An `async` function's annotation
+          must be `Promise<T>` (TS1064) and its `return`s and missing-return
+          analysis use `T`. `await x` has the type inside a `Promise<T>` and
+          `x`'s type otherwise; it is refused outside an async function
+          (TS1308) and at the top level, since letting either through would
+          emit invalid JavaScript. Seven pinned TypeScript 5.9.3 `--noEmit`
+          cases agree on acceptance and TS2322/TS1064/TS1308/TS2366 lines, and
+          a Node run gives identical output for BlueTSC and `tsc`.
+        - [ ] **J.3.7.7.3.2** `async` arrows, function expressions, nested
+          declarations and object methods, and their function types.
+        - [ ] **J.3.7.7.3.3** Top-level `await` in a module.
       - [ ] **J.3.7.7.4** Generator functions, which need `Generator` and
         `yield`.
 - [ ] **J.4** Implement the module and package ecosystem without widening

@@ -8,6 +8,7 @@ use super::*;
 
 mod classes;
 mod functions;
+pub(in crate::checker::module) use functions::promise_value_type;
 mod nested_functions;
 pub(in crate::checker) use classes::{class_export, class_instance_type};
 
@@ -47,6 +48,7 @@ impl<'a> ModuleChecker<'a> {
             require_declared_global_calls: policy.require_declared_global_calls,
             class_emit: policy.class_emit,
             checked_nested_functions: BTreeSet::new(),
+            async_context: None,
             diagnostics: Vec::new(),
             symbols: Vec::new(),
             types: BTreeMap::new(),
@@ -173,9 +175,68 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         self.bind_ambient_declarations();
+        self.bind_builtin_promise();
         self.validate_function_overloads();
         self.validate_default_exports();
         self.validate_value_exports();
+    }
+
+    /// The global `Promise<T>` used by `async` functions and `await`, unless a
+    /// declaration (a local one or a host's) already defines it. Its methods
+    /// mention `T` only where a value of type `T` is produced, so a promise of
+    /// one type is not assignable to a promise of an unrelated type; their
+    /// results are `any`, which drops chaining precision.
+    fn bind_builtin_promise(&mut self) {
+        if self.types.contains_key("Promise") {
+            return;
+        }
+        let span = SourceSpan::new("<builtin>", 0, 0);
+        let parameter = |name: &str, annotation: Type| Parameter {
+            name: name.to_string(),
+            rest: false,
+            optional: false,
+            annotation: Some(annotation),
+            default: None,
+            span: span.clone(),
+        };
+        let callback = |value: Option<Type>| Type::Function {
+            parameters: value
+                .map(|value| parameter("value", value))
+                .into_iter()
+                .collect(),
+            result: Box::new(Type::Any),
+        };
+        let method = |name: &str, callback_name: &str, callback: Type| TypeField {
+            name: name.to_string(),
+            readonly: true,
+            optional: false,
+            value: Type::Function {
+                parameters: vec![parameter(callback_name, callback)],
+                result: Box::new(Type::Any),
+            },
+            span: span.clone(),
+        };
+        let value = Type::Named {
+            name: "T".to_string(),
+            arguments: Vec::new(),
+        };
+        self.types.insert(
+            "Promise".to_string(),
+            TypeDefinition {
+                kind: TypeDefinitionKind::Interface,
+                parameters: vec![TypeParameter {
+                    name: "T".to_string(),
+                    constraint: None,
+                    default: None,
+                    span: span.clone(),
+                }],
+                value: Type::Record(vec![
+                    method("then", "onfulfilled", callback(Some(value))),
+                    method("catch", "onrejected", callback(Some(Type::Any))),
+                    method("finally", "onfinally", callback(None)),
+                ]),
+            },
+        );
     }
 
     fn bind_ambient_declarations(&mut self) {
@@ -792,6 +853,7 @@ impl<'a> ModuleChecker<'a> {
         let before_arrows = self.diagnostics.len();
         self.check_nested_functions_in(tokens, scope);
         self.dedupe_diagnostics_since(before_arrows);
+        self.check_await_context(tokens, span);
         if tokens
             .iter()
             .filter(|token| token.is("[") || token.is("{"))

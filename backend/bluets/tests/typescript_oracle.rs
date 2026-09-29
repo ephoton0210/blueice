@@ -41,6 +41,15 @@ struct ExpectedDiagnostic {
 
 const CASES: &[OracleCase] = &[
     OracleCase {
+        name: "async-function-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/async-function-runtime/main.ts"),
+        )],
+        expected_stdout: Some("r8\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-nested-runtime",
         modules: &[(
             "memory:///main.ts",
@@ -4143,6 +4152,53 @@ fn pinned_generic_nested_functions_match_typescript_without_emit() {
         (
             "constraint-error",
             include_str!("fixtures/typescript_oracle/generic-nested-constraint-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_async_functions_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 7] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/async-function-valid/main.ts"),
+            &[],
+        ),
+        (
+            "return-error",
+            include_str!("fixtures/typescript_oracle/async-function-return-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "annotation-error",
+            include_str!("fixtures/typescript_oracle/async-function-annotation-error/main.ts"),
+            &[(4, "TS1064")],
+        ),
+        (
+            "await-type-error",
+            include_str!("fixtures/typescript_oracle/async-function-await-type-error/main.ts"),
+            &[(5, "TS2322")],
+        ),
+        (
+            "await-context-error",
+            include_str!("fixtures/typescript_oracle/async-function-await-context-error/main.ts"),
+            &[(5, "TS1308")],
+        ),
+        (
+            "missing-return-error",
+            include_str!("fixtures/typescript_oracle/async-function-missing-return-error/main.ts"),
+            &[(4, "TS2366")],
+        ),
+        (
+            "promise-mismatch-error",
+            include_str!(
+                "fixtures/typescript_oracle/async-function-promise-mismatch-error/main.ts"
+            ),
             &[(4, "TS2322")],
         ),
     ];

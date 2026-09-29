@@ -26,6 +26,11 @@ impl<'a> ModuleChecker<'a> {
         if let Some(function) = self.nested_function_type(strip_outer_parentheses(tokens), scope) {
             return function;
         }
+        // `await` of a `Promise<T>` is the `T`; of anything else, the operand.
+        if tokens.len() > 1 && tokens[0].is("await") {
+            let operand = self.infer_expression(&tokens[1..], scope);
+            return super::super::binding::promise_value_type(&operand).unwrap_or(operand);
+        }
         if tokens
             .iter()
             .filter(|token| INFERRED_LOGICAL_ASSIGNMENT_OPERATORS.contains(&token.text.as_str()))
