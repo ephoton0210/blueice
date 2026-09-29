@@ -55,6 +55,31 @@ fn generation_pinned_relay_close_is_idempotent_and_drop_calls_close() {
 }
 
 #[test]
+fn spawn_rejects_a_fixed_and_owner_selected_http_policy_before_spawning_anything() {
+    use blueice_ipc::owner_bootstrap::{OwnerHttpOriginRule, OwnerHttpResource};
+    let policy = OwnerHttpPolicyBootstrap {
+        origin_rule: OwnerHttpOriginRule::SameDocumentOrigin,
+        resources: vec![OwnerHttpResource {
+            canonical_url: "https://example.test/app.js".to_string(),
+            integrity: format!("sha256:{}", "a".repeat(64)),
+        }],
+    };
+    let options = CoreLaunchOptions::default()
+        .supervise_out_of_process_bluejs_with_owner_http_policy(policy)
+        .unwrap()
+        .supervise_out_of_process_bluejs_with_core_http_fixture();
+    let Err(error) = SpawnedCore::spawn_with_options(320.0, 200.0, &std::env::temp_dir(), options)
+    else {
+        panic!("a mutually exclusive HTTP page policy combination must be rejected");
+    };
+    assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(
+        error.to_string(),
+        "fixed and owner-selected HTTP page policies are mutually exclusive"
+    );
+}
+
+#[test]
 fn forward_client_to_core_relays_one_message_then_stops_on_disconnect() {
     let (client_side, mut client_observed) = UnixStream::pair().unwrap();
     let (core_side, mut core_observed) = UnixStream::pair().unwrap();
