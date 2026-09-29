@@ -239,6 +239,12 @@ mod tests {
     }
 
     #[test]
+    fn extension_registry_default_grants_nothing() {
+        let registry = ExtensionRegistry::default();
+        assert!(!registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ));
+    }
+
+    #[test]
     fn extension_registry_minimal_slice_grants_dom_read_but_not_dom_write() {
         let registry = ExtensionRegistry::minimal_slice();
         assert!(registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ));
