@@ -728,3 +728,495 @@ pub trait PageJavaScriptDebuggerLocations {
         Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Implements only this trait's 5 required methods, leaving every
+    /// optional method at its trait default -- the same "test doubles must
+    /// opt in" pattern this trait's own doc comments describe, and the same
+    /// approach `client.rs`'s `MinimalClient` uses so every default body in
+    /// this file is actually reachable from a test.
+    struct MinimalDebugger;
+
+    impl PageJavaScriptDebuggerLocations for MinimalDebugger {
+        fn debugger_has_live_realm(&mut self, _tab_id: TabId, _document_generation: u64) -> bool {
+            false
+        }
+
+        fn max_debugger_safe_points_per_program(&self) -> usize {
+            0
+        }
+
+        fn debugger_programs(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+        ) -> Result<Vec<JavaScriptPageDebuggerProgram>, JavaScriptPageDebuggerError> {
+            Ok(Vec::new())
+        }
+
+        fn debugger_safe_points(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            _program_handle: u64,
+            _program_generation: u64,
+        ) -> Result<Vec<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+            Ok(Vec::new())
+        }
+
+        fn validate_debugger_safe_point(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            _program_handle: u64,
+            _program_generation: u64,
+            _code_unit_ordinal: u32,
+            _bytecode_offset: u32,
+        ) -> Result<(), JavaScriptPageDebuggerError> {
+            Ok(())
+        }
+    }
+
+    fn tab() -> TabId {
+        TabId::from_u64(1)
+    }
+
+    fn safe_point() -> JavaScriptPageDebuggerSafePoint {
+        JavaScriptPageDebuggerSafePoint {
+            code_unit_ordinal: 0,
+            bytecode_offset: 0,
+        }
+    }
+
+    fn frame() -> JavaScriptPageDebuggerFrame {
+        JavaScriptPageDebuggerFrame {
+            tab_id: tab(),
+            document_generation: 1,
+            program_handle: 1,
+            program_generation: 1,
+            code_unit_ordinal: 0,
+            core_instance: [0; 16],
+            frame_handle: 1,
+        }
+    }
+
+    fn scope_entry() -> JavaScriptPageDebuggerScopeEntry {
+        JavaScriptPageDebuggerScopeEntry {
+            slot_ordinal: 0,
+            scope_depth: 0,
+        }
+    }
+
+    fn linked_stack_frame() -> JavaScriptPageDebuggerLinkedStackFrame {
+        JavaScriptPageDebuggerLinkedStackFrame {
+            frame: frame(),
+            safe_point: safe_point(),
+        }
+    }
+
+    fn linked_stack_snapshot() -> JavaScriptPageDebuggerLinkedStackSnapshot {
+        JavaScriptPageDebuggerLinkedStackSnapshot {
+            frames: [linked_stack_frame(), linked_stack_frame()],
+        }
+    }
+
+    fn safe_point_span_target() -> JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+        JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+            program_handle: 1,
+            program_generation: 1,
+            metadata_handle: 1,
+            metadata_generation: 1,
+            source_id: 1,
+            code_unit_ordinal: 0,
+            bytecode_offset: 0,
+        }
+    }
+
+    fn program() -> JavaScriptPageDebuggerProgram {
+        JavaScriptPageDebuggerProgram {
+            program_handle: 1,
+            program_generation: 1,
+        }
+    }
+
+    fn static_metadata() -> JavaScriptPageDebuggerStaticMetadata {
+        JavaScriptPageDebuggerStaticMetadata {
+            metadata_handle: 1,
+            metadata_generation: 1,
+        }
+    }
+
+    fn value_target() -> JavaScriptPageDebuggerValueTarget {
+        JavaScriptPageDebuggerValueTarget {
+            program: program(),
+            frame: None,
+            frame_index: 0,
+            safe_point: safe_point(),
+            scope_entry: scope_entry(),
+        }
+    }
+
+    #[test]
+    fn every_capability_flag_denies_by_default() {
+        let debugger = MinimalDebugger;
+        assert!(!debugger.debugger_breakpoint_configuration_available());
+        assert_eq!(debugger.max_debugger_breakpoints_per_realm(), 0);
+        assert!(!debugger.debugger_static_metadata_inventory_available());
+        assert!(!debugger.debugger_static_metadata_summary_available());
+        assert!(!debugger.debugger_static_metadata_lowering_summary_available());
+        assert!(!debugger.debugger_static_metadata_source_inventory_available());
+        assert!(!debugger.debugger_static_metadata_source_provenance_available());
+        assert!(!debugger.debugger_static_metadata_type_inventory_available());
+        assert!(!debugger.debugger_static_metadata_type_display_available());
+        assert!(!debugger.debugger_static_metadata_symbol_inventory_available());
+        assert!(!debugger.debugger_static_metadata_symbol_location_available());
+        assert!(!debugger.debugger_static_metadata_safe_point_span_available());
+        assert!(!debugger.debugger_exception_location_available());
+        assert!(!debugger.debugger_static_metadata_source_breakpoint_available());
+        assert!(!debugger.debugger_static_metadata_contract_location_available());
+        assert!(!debugger.debugger_static_metadata_symbol_type_available());
+        assert!(!debugger.debugger_static_metadata_symbol_contract_available());
+        assert!(!debugger.debugger_static_metadata_contract_inventory_available());
+        assert!(!debugger.debugger_static_metadata_contract_display_available());
+        assert!(!debugger.debugger_static_metadata_contract_validation_available());
+        assert!(!debugger.debugger_static_metadata_symbol_display_available());
+        assert!(!debugger.debugger_execution_control_available());
+        assert!(!debugger.debugger_nested_frames_available());
+        assert!(!debugger.debugger_linked_frames_available());
+        assert!(!debugger.debugger_values_available());
+        assert!(!debugger.debugger_stack_available());
+        assert!(!debugger.debugger_scopes_available());
+        assert!(!debugger.debugger_stepping_available());
+        assert!(!debugger.debugger_source_span_stepping_available());
+    }
+
+    #[test]
+    fn minimal_double_implements_its_5_required_methods_directly() {
+        let mut debugger = MinimalDebugger;
+        assert!(!debugger.debugger_has_live_realm(tab(), 1));
+        assert_eq!(debugger.max_debugger_safe_points_per_program(), 0);
+        assert_eq!(debugger.debugger_programs(tab(), 1), Ok(Vec::new()));
+        assert_eq!(debugger.debugger_safe_points(tab(), 1, 1, 1), Ok(Vec::new()));
+        assert_eq!(
+            debugger.validate_debugger_safe_point(tab(), 1, 1, 1, 0, 0),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn static_metadata_and_breakpoint_operations_default_to_no_live_realm() {
+        let mut debugger = MinimalDebugger;
+
+        assert_eq!(
+            debugger.debugger_static_metadata(tab(), 1, 1, 1),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_summary(tab(), 1, 1, 1, 1, 1),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_lowering_summary(tab(), 1, 1, 1, 1, 1),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_sources(tab(), 1, 1, 1, 1, 1),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_source_provenance(
+                tab(),
+                1,
+                JavaScriptPageDebuggerStaticMetadataSourceTarget {
+                    program_handle: 1,
+                    program_generation: 1,
+                    metadata_handle: 1,
+                    metadata_generation: 1,
+                    source_id: 1,
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_types(tab(), 1, 1, 1, 1, 1),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_type_display(
+                tab(),
+                1,
+                JavaScriptPageDebuggerStaticMetadataTypeTarget {
+                    program_handle: 1,
+                    program_generation: 1,
+                    metadata_handle: 1,
+                    metadata_generation: 1,
+                    type_id: 1,
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_symbols(tab(), 1, 1, 1, 1, 1),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_contracts(tab(), 1, 1, 1, 1, 1),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_contract_display(
+                tab(),
+                1,
+                JavaScriptPageDebuggerStaticMetadataContractTarget {
+                    program_handle: 1,
+                    program_generation: 1,
+                    metadata_handle: 1,
+                    metadata_generation: 1,
+                    contract_id: 1,
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_contract_validation(
+                tab(),
+                1,
+                JavaScriptPageDebuggerStaticMetadataContractTarget {
+                    program_handle: 1,
+                    program_generation: 1,
+                    metadata_handle: 1,
+                    metadata_generation: 1,
+                    contract_id: 1,
+                },
+                CompilerContractValue::Null,
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_symbol_display(
+                tab(),
+                1,
+                JavaScriptPageDebuggerStaticMetadataSymbolTarget {
+                    program_handle: 1,
+                    program_generation: 1,
+                    metadata_handle: 1,
+                    metadata_generation: 1,
+                    symbol_id: 1,
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_symbol_location(
+                tab(),
+                1,
+                JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
+                    program_handle: 1,
+                    program_generation: 1,
+                    metadata_handle: 1,
+                    metadata_generation: 1,
+                    symbol_id: 1,
+                    source_id: 1,
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_safe_point_span(tab(), 1, safe_point_span_target()),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_exception_location(
+                tab(),
+                1,
+                JavaScriptPageDebuggerExceptionLocationTarget {
+                    program_handle: 1,
+                    program_generation: 1,
+                    metadata_handle: 1,
+                    metadata_generation: 1,
+                    source_id: 1,
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_source_breakpoint(
+                tab(),
+                1,
+                JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget {
+                    program_handle: 1,
+                    program_generation: 1,
+                    metadata_handle: 1,
+                    metadata_generation: 1,
+                    source_id: 1,
+                    source_byte: 0,
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_contract_location(
+                tab(),
+                1,
+                JavaScriptPageDebuggerStaticMetadataContractLocationTarget {
+                    program_handle: 1,
+                    program_generation: 1,
+                    metadata_handle: 1,
+                    metadata_generation: 1,
+                    contract_id: 1,
+                    source_id: 1,
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_symbol_type(
+                tab(),
+                1,
+                JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget {
+                    program_handle: 1,
+                    program_generation: 1,
+                    metadata_handle: 1,
+                    metadata_generation: 1,
+                    symbol_id: 1,
+                    type_id: 1,
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.debugger_static_metadata_symbol_contract(
+                tab(),
+                1,
+                JavaScriptPageDebuggerStaticMetadataSymbolContractTarget {
+                    program_handle: 1,
+                    program_generation: 1,
+                    metadata_handle: 1,
+                    metadata_generation: 1,
+                    symbol_id: 1,
+                    contract_id: 1,
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            debugger.set_debugger_breakpoint(tab(), 1, 1, 1, 0, 0),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(debugger.debugger_breakpoints(tab(), 1), Err(JavaScriptPageDebuggerError::NoLiveRealm));
+        assert_eq!(
+            debugger.clear_debugger_breakpoint(tab(), 1, 1, 1, 0, 0),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+    }
+
+    #[test]
+    fn execution_control_operations_default_to_unavailable() {
+        let mut debugger = MinimalDebugger;
+
+        assert_eq!(
+            debugger.arm_debugger_linked_nested_safe_point_breakpoint(
+                tab(),
+                1,
+                program(),
+                program(),
+                safe_point(),
+            ),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.debugger_linked_execution_state(tab(), 1, program()),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.debugger_linked_stack_snapshot(frame(), 8),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.debugger_linked_scope_snapshot(linked_stack_snapshot()),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.resume_debugger_linked_nested_execution(frame()),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.debugger_linked_stack_spans(
+                linked_stack_snapshot(),
+                JavaScriptPageDebuggerLinkedSpanAccess {
+                    granted: false,
+                    metadata_receipted: [false, false],
+                    source_receipted: [false, false],
+                    targets: [safe_point_span_target(), safe_point_span_target()],
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.arm_debugger_nested_safe_point_breakpoint(tab(), 1, 1, 1, 0, 0),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.debugger_nested_execution_state(tab(), 1, 1, 1),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.step_debugger_nested_instruction(frame()),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.resume_debugger_nested_execution(frame()),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.debugger_stack_snapshot(tab(), 1, program(), None, 8, 8),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.debugger_value_snapshot(tab(), 1, value_target()),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.debugger_linked_value_snapshot(JavaScriptPageDebuggerLinkedValueTarget {
+                expected_stack: linked_stack_snapshot(),
+                frame_index: 0,
+                scope_entry: scope_entry(),
+            }),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.debugger_static_scope_relation(
+                tab(),
+                1,
+                JavaScriptPageDebuggerStaticScopeTarget::Ordinary {
+                    metadata: static_metadata(),
+                    target: value_target(),
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.arm_debugger_root_safe_point_breakpoint(tab(), 1, 1, 1, 0, 0),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.debugger_execution_state(tab(), 1, 1, 1),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.resume_debugger_execution(tab(), 1, 1, 1),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.step_debugger_bluets_source_span(tab(), 1, safe_point_span_target()),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+        assert_eq!(
+            debugger.step_debugger_root_instruction(tab(), 1, 1, 1),
+            Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+        );
+    }
+}
