@@ -122,6 +122,13 @@ Line coverage is a different measure from a Test262 pass rate and the two must n
 
 The compile break the source-text feature caused in `blueice-bluets-bluejs` (a `bluejs::Function` literal missing the new `source_text` field) was caught by this platform's workspace-level build, not by `cargo build -p blueice-bluejs` alone — the sibling crate isn't in that package's own dependency closure. This is the reason a per-crate build is never treated as sufficient before a push; see the coverage gate command above for the same principle applied to tests.
 
+## Differences from the other platforms (2026-09-21 source revision, `1947afb`)
+
+Recorded at the prior cross-platform comparison, before the 2026-09-25/2026-09-29 re-runs above; not re-verified at the current 0-failure commit.
+
+- **macOS**: 2 of 102,926 modes differ (1 file): `staging/sm/Math/acosh-approx.js` (this platform: fail; macOS: pass).
+- **Windows**: identical outcome for every one of the 102,926 modes.
+
 ## Later BlueJS per-file coverage (2026-09-28)
 
 This is a separate BlueJS coverage measurement at commit `3219e1fa` with uncommitted changes on Linux 6.6.87.2-microsoft-standard-WSL2 (`x86_64`), rustc 1.95.0 (59807616e 2026-04-14) and `cargo-llvm-cov 0.9.1`. It measures the Rust test suite independently of the Test262 inventory and historical verification above. Reproduce it with `python3 backend/bluejs/coverage_file.py --update-linux-report`. This measurement cleared prior LLVM execution profiles, reused instrumented Cargo build artifacts, ran the complete default BlueJS Rust test suite, exported fresh per-file JSON and source-line text, and released raw profiles and incremental compilation caches afterward. On Linux, test-binary DWARF was removed while retaining the coverage maps. The opt-in Node oracle and external full Test262 runner were not included. Workspace coverage was not remeasured at this revision.

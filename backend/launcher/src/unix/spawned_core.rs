@@ -321,7 +321,7 @@ impl SpawnedCore {
                 )));
             }
         }
-        let mut stream = match UnixStream::connect(&internal_socket_path) {
+        let mut stream = match connect_when_listening(&internal_socket_path, Duration::from_secs(5)) {
             Ok(stream) => stream,
             Err(error) => {
                 let _ = child.kill();

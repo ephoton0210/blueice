@@ -4,7 +4,7 @@
 
 use super::*;
 use blueice_ipc::{AiNode, Bounds, NameFrom, NodeState, Role};
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::thread;
 
 fn sample_snapshot(generation: u64) -> AiSnapshot {
@@ -471,6 +471,36 @@ fn wait_for_socket_times_out_if_the_path_never_appears() {
     let path = std::env::temp_dir().join("blueice-mcp-never-appears.sock");
     let _ = std::fs::remove_file(&path);
     assert!(!wait_for_socket(&path, Duration::from_millis(50)));
+}
+
+#[test]
+fn connect_when_listening_waits_for_a_socket_that_is_not_yet_bound() {
+    let path = std::env::temp_dir().join(format!(
+        "blueice-mcp-connect-wait-{}.sock",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    let binder = {
+        let path = path.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(100));
+            let listener = UnixListener::bind(&path).unwrap();
+            listener.accept().map(|_| ()).unwrap();
+        })
+    };
+    connect_when_listening(&path, Duration::from_secs(5)).unwrap();
+    binder.join().unwrap();
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn connect_when_listening_gives_up_after_the_timeout() {
+    let path = std::env::temp_dir().join(format!(
+        "blueice-mcp-connect-wait-missing-{}.sock",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    assert!(connect_when_listening(&path, Duration::from_millis(50)).is_err());
 }
 
 #[test]

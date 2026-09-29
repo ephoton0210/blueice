@@ -674,6 +674,30 @@ fn unique_socket_path() -> PathBuf {
     std::env::temp_dir().join(format!("blueice-mcp-{}-{n}.sock", std::process::id()))
 }
 
+/// Connects to a socket a child process is still setting up. The socket
+/// file appears at `bind` but only accepts connections after `listen`, so
+/// `wait_for_socket` seeing the path does not mean the child is ready: on a
+/// loaded machine a connect in between is refused. Retry that briefly.
+fn connect_when_listening(
+    path: &Path,
+    timeout: Duration,
+) -> io::Result<std::os::unix::net::UnixStream> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match std::os::unix::net::UnixStream::connect(path) {
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
+                ) && Instant::now() < deadline =>
+            {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            result => return result,
+        }
+    }
+}
+
 fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
@@ -777,7 +801,7 @@ impl CoreProcess {
                 socket_path.display()
             )));
         }
-        let stream = std::os::unix::net::UnixStream::connect(&socket_path)?;
+        let stream = connect_when_listening(&socket_path, Duration::from_secs(5))?;
         let mut conn = CoreConnection::new(stream);
         conn.handshake()?;
         Ok(CoreProcess {

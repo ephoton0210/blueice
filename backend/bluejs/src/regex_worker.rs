@@ -5,12 +5,14 @@
 //! Process-isolated regular expressions. The parent never executes regress.
 
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{self, Read, Write};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -24,6 +26,29 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(250);
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_FRAME: usize = 16 * 1024 * 1024;
 const READY: &[u8] = b"bluejs-regexp-worker/1";
+
+/// Helper processes this process has started so far.
+static STARTED: AtomicU64 = AtomicU64::new(0);
+
+/// How many helper processes this process has started. A diagnostic for tests:
+/// a healthy process keeps one worker per concurrently matching thread rather
+/// than starting one per operation.
+#[doc(hidden)]
+pub fn workers_started() -> u64 {
+    STARTED.load(Ordering::Relaxed)
+}
+
+/// Requests sent to helper processes so far (every operation that crossed the
+/// pipe, whichever process served it).
+static ROUND_TRIPS: AtomicU64 = AtomicU64::new(0);
+
+/// How many requests this process has sent to helper processes. A diagnostic
+/// for tests: repeating an identical match must be answered from the parent's
+/// memo rather than by another round trip.
+#[doc(hidden)]
+pub fn round_trips() -> u64 {
+    ROUND_TRIPS.load(Ordering::Relaxed)
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case")]
@@ -75,7 +100,7 @@ pub(crate) enum Reply {
     SyntaxError(String),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Match {
     captures: Vec<Option<Range<usize>>>,
     names: Vec<(String, Option<Range<usize>>)>,
@@ -214,6 +239,7 @@ impl Worker {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()?;
+        STARTED.fetch_add(1, Ordering::Relaxed);
         let mut input = child.stdin.take().unwrap();
         let mut output = child.stdout.take().unwrap();
         let (requests, incoming) = mpsc::channel::<Vec<u8>>();
@@ -256,6 +282,7 @@ impl Worker {
     }
 
     fn transact(&mut self, bytes: Vec<u8>, timeout: Duration) -> Result<Vec<u8>, RuntimeError> {
+        ROUND_TRIPS.fetch_add(1, Ordering::Relaxed);
         self.requests
             .as_ref()
             .unwrap()
@@ -381,10 +408,11 @@ impl Drop for Worker {
             let _ = self.child.kill();
         }
 
-        // Closing stdin alone does not reliably wake a Windows pipe reader
-        // while a thread-local destructor is running. Ask a healthy worker
-        // to exit explicitly, then close the channel and join its I/O thread
-        // before reaping the private child on every platform.
+        // Closing stdin alone does not reliably wake a Windows pipe reader.
+        // Ask a healthy worker to exit explicitly, then close the channel and
+        // join its I/O thread before reaping the private child on every
+        // platform. Workers are only dropped from ordinary code (never from a
+        // thread's exit destructor; see `IDLE`), where that join is safe.
         if let Some(requests) = self.requests.as_ref() {
             let shutdown =
                 serde_json::to_vec(&Request::Shutdown).expect("a shutdown request serializes");
@@ -449,56 +477,141 @@ fn cache_pattern(
     Ok(())
 }
 
-thread_local! { static WORKER: RefCell<Option<Worker>> = const { RefCell::new(None) }; }
+/// Most idle helper processes kept for reuse. A helper is started only when no
+/// idle one exists, so this bounds the processes left behind by a burst of
+/// concurrent matching threads rather than limiting concurrency itself.
+const MAX_IDLE_WORKERS: usize = 8;
+
+/// Idle helpers, shared by every thread. They are deliberately not
+/// thread-local: a thread-local `Worker` would be torn down by the thread's
+/// exit destructor, and on Windows waiting for an I/O thread there can hang or
+/// abort. Retiring the worker after every operation avoided that, at the price
+/// of one process start per RegExp operation (milliseconds each, and a
+/// Test262 case makes thousands). A static is never destructed, and every
+/// worker is dropped from ordinary code outside any lock, so both the process
+/// reuse and a deterministic shutdown are kept.
+static IDLE: Mutex<Vec<Worker>> = Mutex::new(Vec::new());
 
 fn with_worker<T>(
     operation: impl FnOnce(&mut Worker) -> Result<T, RuntimeError>,
 ) -> Result<T, RuntimeError> {
-    let (result, worker_to_drop) = WORKER.with(|slot| {
-        let mut slot = slot.borrow_mut();
-        if slot.is_none() {
-            let worker = match Worker::start() {
-                Ok(worker) => worker,
-                Err(error) => return (Err(worker_error(error.to_string())), None),
-            };
-            *slot = Some(worker);
+    let idle = IDLE.lock().unwrap_or_else(PoisonError::into_inner).pop();
+    let mut worker = match idle {
+        Some(worker) => worker,
+        None => Worker::start().map_err(|error| worker_error(error.to_string()))?,
+    };
+    let result = operation(&mut worker);
+    // A rejected pattern is an expected reply from a healthy worker. Keep it;
+    // transport and timeout failures require a fresh process for the next
+    // operation.
+    if result
+        .as_ref()
+        .is_err_and(|error| !matches!(error, RuntimeError::SyntaxError(_)))
+    {
+        worker.failed = true;
+    } else {
+        let mut idle = IDLE.lock().unwrap_or_else(PoisonError::into_inner);
+        if idle.len() < MAX_IDLE_WORKERS {
+            idle.push(worker);
+            return result;
         }
-        let result = operation(slot.as_mut().unwrap());
-
-        #[cfg(windows)]
-        {
-            // Joining an I/O thread from a Windows TLS destructor can hang.
-            // Retire every worker outside `WORKER.with` instead, where the
-            // normal shutdown path can join and reap it deterministically.
-            if result.is_err() {
-                slot.as_mut().unwrap().failed = true;
-            }
-            (result, slot.take())
-        }
-
-        #[cfg(not(windows))]
-        {
-            // A rejected pattern is an Ok(SyntaxError) reply; only transport
-            // and timeout errors require a fresh process for the next call.
-            let worker_to_drop = result.is_err().then(|| {
-                let mut worker = slot.take().unwrap();
-                worker.failed = true;
-                worker
-            });
-            (result, worker_to_drop)
-        }
-    });
-    drop(worker_to_drop);
+    }
+    drop(worker);
     result
 }
+
+/// Patterns the helper has already accepted. A regular expression literal in a
+/// loop body is compiled on every iteration, and acceptance depends only on the
+/// pattern and its flags. Rejected patterns are not kept: they are rare, and
+/// their message must come from the helper. Cleared wholesale when full.
+type Pattern = (Vec<u16>, String);
+static ACCEPTED: Mutex<Option<HashSet<Pattern>>> = Mutex::new(None);
+const ACCEPTED_ENTRIES: usize = 1024;
+const ACCEPTED_KEY_UNITS: usize = 16 * 1024;
 
 pub(crate) fn compile(
     source: Vec<u16>,
     flags: String,
     timeout: Duration,
 ) -> Result<Reply, RuntimeError> {
-    with_worker(|worker| worker.compile(source, flags, timeout))
+    let key = (source, flags);
+    if ACCEPTED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .is_some_and(|accepted| accepted.contains(&key))
+    {
+        return Ok(Reply::Compiled);
+    }
+    let (source, flags) = key.clone();
+    let reply = with_worker(|worker| worker.compile(source, flags, timeout))?;
+    if matches!(reply, Reply::Compiled) && key.0.len() <= ACCEPTED_KEY_UNITS {
+        let mut accepted = ACCEPTED.lock().unwrap_or_else(PoisonError::into_inner);
+        let accepted = accepted.get_or_insert_with(Default::default);
+        if accepted.len() >= ACCEPTED_ENTRIES {
+            accepted.clear();
+        }
+        accepted.insert(key);
+    }
+    Ok(reply)
 }
+
+/// A match request, as the memo keys it.
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct FindKey {
+    source: Vec<u16>,
+    flags: String,
+    input: Vec<u16>,
+    start: usize,
+}
+
+/// Results of recent `find` requests. Matching is a pure function of the
+/// pattern, its flags, the subject and the start index, and scripts (Test262's
+/// harness matrices in particular) ask the same question many times: one case
+/// sent 167,000 requests of which 263 were distinct. Each request that reaches
+/// the helper costs a pipe round trip (tens of microseconds on Unix, about half
+/// a millisecond on Windows), so answering repeats here is what keeps such a
+/// case inside its deadline on every platform.
+///
+/// Only answers the helper actually gave are kept: a timeout or transport
+/// failure is never recorded, so a pattern that is slow only under load is not
+/// remembered as slow.
+#[derive(Default)]
+struct FindMemo {
+    results: HashMap<FindKey, Option<Match>>,
+    order: VecDeque<FindKey>,
+    /// UTF-16 code units held by the keys, to bound memory.
+    units: usize,
+}
+
+/// Most results remembered.
+const MEMO_ENTRIES: usize = 1024;
+/// Most UTF-16 code units of pattern and subject text remembered across all
+/// entries (4 MiB), and the most one request may contribute.
+const MEMO_UNITS: usize = 2 * 1024 * 1024;
+const MEMO_KEY_UNITS: usize = 16 * 1024;
+
+impl FindMemo {
+    fn remember(&mut self, key: FindKey, result: Option<Match>) {
+        let size = key.source.len() + key.input.len();
+        if size > MEMO_KEY_UNITS || self.results.contains_key(&key) {
+            return;
+        }
+        while self.results.len() >= MEMO_ENTRIES || self.units + size > MEMO_UNITS {
+            let Some(oldest) = self.order.pop_front() else {
+                break;
+            };
+            if self.results.remove(&oldest).is_some() {
+                self.units -= oldest.source.len() + oldest.input.len();
+            }
+        }
+        self.units += size;
+        self.order.push_back(key.clone());
+        self.results.insert(key, result);
+    }
+}
+
+static MEMO: Mutex<Option<FindMemo>> = Mutex::new(None);
 
 pub(crate) fn find(
     source: Vec<u16>,
@@ -507,7 +620,32 @@ pub(crate) fn find(
     start: usize,
     timeout: Duration,
 ) -> Result<Option<Match>, RuntimeError> {
-    with_worker(|worker| worker.find(source, flags, input, start, timeout))
+    let key = FindKey {
+        source,
+        flags,
+        input,
+        start,
+    };
+    if let Some(known) = MEMO
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .and_then(|memo| memo.results.get(&key))
+    {
+        return Ok(known.clone());
+    }
+    let FindKey {
+        source,
+        flags,
+        input,
+        start,
+    } = key.clone();
+    let result = with_worker(|worker| worker.find(source, flags, input, start, timeout))?;
+    MEMO.lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get_or_insert_with(FindMemo::default)
+        .remember(key, result.clone());
+    Ok(result)
 }
 
 pub(crate) fn validate(

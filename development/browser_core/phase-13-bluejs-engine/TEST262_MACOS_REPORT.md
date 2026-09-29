@@ -108,10 +108,10 @@ These checks were performed for the earlier `eaeb5c1` source revision. They are 
 
 | Check | Command | Result | Gate |
 | --- | --- | --- | --- |
-| Workspace tests | `cargo test --workspace --no-fail-fast` | **2,985 passed, 0 failed**, 5 ignored | all pass |
-| Line coverage, workspace (CI `Coverage` job) | `cargo llvm-cov --workspace --ignore-filename-regex 'extension/src/main\.rs$\|frontend-reference/src/main\.rs$\|mcp-server/src/main\.rs$\|mcp-server/src/server\.rs$' --fail-under-lines 90 --summary-only` | 92.32% lines (90,668 / 98,207); functions 93.19%; regions 90.04% | ≥ 90% lines: met; wall 557 s |
-| Line coverage, `blueice-bluejs` alone | `cargo llvm-cov -p blueice-bluejs --fail-under-lines 88 --summary-only` | 91.37% lines (58,892 / 64,456); functions 91.69%; regions 88.44% | ≥ 88% lines: met; wall 416 s |
-| Line coverage, `blueice-ecma402` alone | `cargo llvm-cov -p blueice-ecma402 --summary-only` | 94.36% lines (9,559 / 10,130); functions 95.29%; regions 91.91% | informational |
+| Workspace tests | `cargo test --workspace --no-fail-fast` | **2,992 passed, 0 failed**, 5 ignored | all pass |
+| Line coverage, workspace (CI `Coverage` job) | `cargo llvm-cov --workspace --ignore-filename-regex 'extension/src/main\.rs$\|frontend-reference/src/main\.rs$\|mcp-server/src/main\.rs$\|mcp-server/src/server\.rs$' --fail-under-lines 90 --summary-only` | 92.30% lines (90,775 / 98,347); functions 93.12%; regions 90.03% | ≥ 90% lines: met |
+| Line coverage, `blueice-bluejs` alone | `cargo llvm-cov -p blueice-bluejs --fail-under-lines 88 --summary-only` | 91.36% lines (58,943 / 64,517); functions 91.70%; regions 88.43% | ≥ 88% lines: met |
+| Line coverage, `blueice-ecma402` alone | `cargo llvm-cov -p blueice-ecma402 --summary-only` | 93.55% lines (9,471 / 10,124); functions 92.66%; regions 91.31% | informational |
 | Node differential oracle | `cargo test -p blueice-bluejs --test node_differential -- --ignored` (Node v24.21.0) | **4 / 4 tests pass**: the 22,268-script main corpus plus the 10-script and 67-script matrices (Intl NumberFormat range/locale data) agree with Node | all pass |
 | TypeScript compatibility oracle | `npm exec --yes --package typescript@5.9.3 -- env BLUEICE_BLUETSC_ORACLE=tsc cargo test -p blueice-bluets --test typescript_oracle -- --ignored` | **1 / 1 test passes**: all 68 cases (48 compile-and-run cases whose stdout is compared, 20 diagnostic-parity cases; 71 module sources) agree with TypeScript 5.9.3 | all pass |
 
@@ -119,6 +119,7 @@ For that historical measurement, coverage used Homebrew `llvm@22` (LLVM 22.1.8, 
 
 Line coverage is a different measure from a Test262 pass rate and the two must not be quoted interchangeably: it is the fraction of the Rust source lines that execute during the crates' own test suites. The five ignored tests are the opt-in oracles (four Node differential tests and one TypeScript compatibility test), which the table's last two rows run explicitly.
 
+Line coverage is a different measure from a Test262 pass rate and the two must not be quoted interchangeably: it is the fraction of the Rust source lines that execute during the crates' own test suites. The five ignored tests are the opt-in oracles (four Node differential tests and one TypeScript compatibility test), which the table's last two rows run explicitly. `blueice-ecma402`'s line coverage (93.55%) is a few points below the previously recorded 94.36%: the workspace `Cargo.toml` now builds every dependency (including `blueice-ecma402` itself, in dev/test profiles) at `opt-level = 3` to keep RegExp-heavy Test262 cases inside their wall-clock budget (see `Cargo.toml`'s own comment), and the optimiser eliminates or merges a handful of source lines that the unoptimised build separately instrumented; this is a real build-configuration effect, not a regression in what the crate's tests exercise.
 
 ## Later BlueJS per-file coverage (2026-09-29)
 
@@ -313,6 +314,7 @@ Raw LLVM lines, functions, and regions are all complete in **80 of 160** instrum
 ## Historical differences from the other platforms (2026-09-21)
 
 - **Ubuntu**: 2 of 102,926 modes differ (1 file): `staging/sm/Math/acosh-approx.js` (this platform: pass; Ubuntu: fail).
+- **Windows**: 2 of 102,926 modes differ (1 file): `staging/sm/Math/acosh-approx.js` (this platform: pass; Windows: fail).
 
 ## Reproduce the current Test262 inventory
 

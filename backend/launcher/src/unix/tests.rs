@@ -450,6 +450,36 @@ fn wait_for_socket_times_out_if_the_path_never_appears() {
 }
 
 #[test]
+fn connect_when_listening_waits_for_a_socket_that_is_not_yet_bound() {
+    let path = std::env::temp_dir().join(format!(
+        "blueice-connect-wait-test-{}.sock",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    let binder = {
+        let path = path.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(100));
+            let listener = UnixListener::bind(&path).unwrap();
+            listener.accept().map(|_| ()).unwrap();
+        })
+    };
+    connect_when_listening(&path, Duration::from_secs(5)).unwrap();
+    binder.join().unwrap();
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn connect_when_listening_gives_up_after_the_timeout() {
+    let path = std::env::temp_dir().join(format!(
+        "blueice-connect-wait-test-missing-{}.sock",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    assert!(connect_when_listening(&path, Duration::from_millis(50)).is_err());
+}
+
+#[test]
 fn tab_id_and_request_id_survive_a_full_relay_through_the_broker() {
     // The end-to-end regression test for Part 1's fix, driven over
     // the real broker primitives (`register_client`/
