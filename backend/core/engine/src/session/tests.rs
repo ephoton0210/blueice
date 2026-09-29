@@ -1220,3 +1220,5 @@ fn get_dom_returns_the_full_tree_unfiltered_by_the_ai_representation() {
 mod navigation;
 #[path = "tests/session_actions.rs"]
 mod session_actions;
+#[path = "tests/session_wrappers.rs"]
+mod session_wrappers;
