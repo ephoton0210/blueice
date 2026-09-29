@@ -317,6 +317,38 @@ fn module_function_source_breakpoint_selects_child_entry_over_declaration_root()
 }
 
 #[test]
+fn direct_admission_refuses_checker_accepted_classes() {
+    // Sources the class checker accepts, and that pinned TypeScript accepts
+    // (see BlueTS `class-checker-matrix.tsv`). Emit and runtime are not
+    // installed, so every direct route must still refuse them.
+    for source in [
+        include_str!("../../../bluets/tests/fixtures/typescript_oracle/class-super-call-valid/main.ts"),
+        include_str!("../../../bluets/tests/fixtures/typescript_oracle/class-super-member-valid/main.ts"),
+        include_str!("../../../bluets/tests/fixtures/typescript_oracle/class-override-overload-valid/main.ts"),
+    ] {
+        let loader = MapLoader::from([ModuleSource::new(ENTRY, source)]);
+        for result in [
+            compile_direct_script(ENTRY, &loader, CompilerOptions::default()).map(|_| ()),
+            compile_direct_module(ENTRY, &loader, CompilerOptions::default()).map(|_| ()),
+        ] {
+            let Err(error) = result else {
+                panic!("a class must not reach BlueJS before emit and runtime exist");
+            };
+            let refused = match &error {
+                BridgeError::BlueTs(diagnostics) => diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.message.contains("class members")),
+                BridgeError::UnsupportedRuntimeTarget { message, .. } => {
+                    message.contains("class members")
+                }
+                _ => false,
+            };
+            assert!(refused, "{error:?}");
+        }
+    }
+}
+
+#[test]
 fn rejects_object_methods_without_reparsing_emitted_javascript() {
     let result = compile_direct_script(
         ENTRY,

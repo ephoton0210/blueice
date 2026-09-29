@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.5.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.4.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -969,7 +969,7 @@ done to the page-runs-and-debugs goal at the top of this file.
             full BlueTS crate suite, pinned oracle leaf, workspace all-target
             Clippy, rustfmt, and whitespace checks pass using one shared
             compact Cargo target.
-    - [ ] **J.3.1.3** Bind class instance/static types and check constructor,
+    - [x] **J.3.1.3** Bind class instance/static types and check constructor,
       method, inheritance, `this`, and `super` uses against pinned `tsc`.
       - [x] **J.3.1.3.1** Validate bounded class method groups before any
         class can type-check: missing/interrupted implementations, duplicate
@@ -2019,9 +2019,20 @@ done to the page-runs-and-debugs goal at the top of this file.
           TS2339/TS2576/TS2335/TS2337 lines. Non-call `super` property reads
           and assignments through `super` are not separately checked. BlueTS
           and bridge crate tests, Clippy, rustfmt and whitespace checks pass.
-      - [ ] **J.3.1.3.5** Close the accepted/rejected class checker matrix
+      - [x] **J.3.1.3.5** Close the accepted/rejected class checker matrix
         against pinned TypeScript 5.9.3 and prove BlueTSC/direct admission
         still refuse classes until emit and runtime leaves are complete.
+        `class-checker-matrix.tsv` records pinned TypeScript's verdict for all
+        310 class fixture entries (78 accepted, 232 rejected). A full sweep
+        found no disagreement: BlueTSC reports a checker diagnostic on every
+        rejected entry and only the class-runtime refusal on every accepted
+        one. Ordinary tests compare BlueTSC with that record, check that the
+        record lists every class fixture, and prove `check` and `build` never
+        succeed or write output on any class; an ignored oracle test
+        re-derives the record from `tsc` 5.9.3 (all 310 match) and can
+        regenerate it. The direct script and module routes refuse
+        checker-accepted classes. BlueTS and bridge crate tests, Clippy,
+        rustfmt and whitespace checks pass.
     - [ ] **J.3.1.4** Emit checked class JavaScript and declarations from the
       shared IR with stable source maps and atomic build behavior.
     - [ ] **J.3.1.5** Lower checked classes directly to BlueJS class AST;

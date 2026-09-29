@@ -2124,6 +2124,33 @@ refused before output by the class-runtime diagnostic. `classes.rs` grew to
 about 1,380 lines; splitting it belongs to the modularity audit
 (C3.1.3.4.7.5).
 
+### J.3.1.3.5 Class checker matrix
+
+`backend/bluets/tests/fixtures/typescript_oracle/class-checker-matrix.tsv`
+lists every class fixture entry with pinned TypeScript 5.9.3's verdict, using
+the same compiler options as the oracle tests (`main.ts`, or each `*valid.ts`
+and `*error.ts` file in a directory of several entry modules). It holds 310
+entries, 78 accepted and 232 rejected.
+
+A full sweep found no disagreement. For every rejected entry BlueTSC reports at
+least one checker diagnostic; for every accepted entry it reports only the
+class-runtime refusal (BTS1001). `bluetsc check` never succeeds on a class and
+`bluetsc build` writes no output for any accepted class, so classes remain
+refused until the emit and runtime leaves are complete. The direct script and
+module routes also refuse checker-accepted classes.
+
+Ordinary tests compare BlueTSC with the record, require the record to list
+every class fixture (regenerate it with the ignored oracle test and
+`BLUEICE_WRITE_CLASS_MATRIX=1`), and cover refused builds. The ignored oracle
+test re-derives all 310 verdicts from the pinned compiler, so the two
+compilers agree transitively. Flipping one recorded verdict makes the ordinary
+test fail, which confirms the comparison is discriminating.
+
+Two limits: the matrix compares accepted versus rejected, not message text or
+line numbers (the per-feature oracle tests pin lines), and it covers only
+classes the checker binds today; fields, accessors and private members
+(J.3.2) extend it as they land.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

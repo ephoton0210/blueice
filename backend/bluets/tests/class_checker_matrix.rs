@@ -1,0 +1,203 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! The accepted/rejected class checker matrix (J.3.1.3.5).
+//!
+//! `class-checker-matrix.tsv` records, for every class fixture entry, whether
+//! pinned TypeScript 5.9.3 accepts or rejects it. The ordinary test compares
+//! BlueTSC's verdict with that record, and the ignored oracle test re-derives
+//! the record from the pinned compiler, so the two compilers agree
+//! transitively. Class output stays refused until the emit and runtime leaves
+//! are complete, so BlueTSC must never succeed on any entry.
+//!
+//! To regenerate the record after adding a class fixture, run the oracle test
+//! with `BLUEICE_WRITE_CLASS_MATRIX=1`.
+
+use std::collections::BTreeSet;
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+
+const MATRIX: &str = include_str!("fixtures/typescript_oracle/class-checker-matrix.tsv");
+const CLASS_UNSUPPORTED_CODE: &str = "BTS1001";
+
+fn fixtures() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/typescript_oracle")
+}
+
+/// `(relative entry path, pinned TypeScript accepts it)`.
+fn recorded_rows() -> Vec<(String, bool)> {
+    MATRIX
+        .lines()
+        .map(|line| {
+            let (path, verdict) = line.split_once('\t').expect("tab-separated row");
+            let accepts = match verdict {
+                "accept" => true,
+                "reject" => false,
+                other => panic!("unknown verdict {other:?} for {path}"),
+            };
+            (path.to_string(), accepts)
+        })
+        .collect()
+}
+
+/// Every class fixture directory contributes `main.ts`, or else each
+/// `*valid.ts` / `*error.ts` file when it holds several entry modules.
+fn discovered_entries() -> BTreeSet<String> {
+    let mut entries = BTreeSet::new();
+    for directory in fs::read_dir(fixtures()).unwrap() {
+        let directory = directory.unwrap();
+        let name = directory.file_name().into_string().unwrap();
+        if !name.contains("class") || !directory.path().is_dir() {
+            continue;
+        }
+        if directory.path().join("main.ts").is_file() {
+            entries.insert(format!("{name}/main.ts"));
+            continue;
+        }
+        for file in fs::read_dir(directory.path()).unwrap() {
+            let file = file.unwrap().file_name().into_string().unwrap();
+            if file.ends_with("valid.ts") || file.ends_with("error.ts") {
+                entries.insert(format!("{name}/{file}"));
+            }
+        }
+    }
+    entries
+}
+
+fn diagnostic_codes(output: &Output) -> BTreeSet<String> {
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut codes = BTreeSet::new();
+    let mut rest = text.as_str();
+    while let Some(position) = rest.find("BTS") {
+        let candidate = &rest[position..];
+        if candidate.len() >= 7 && candidate[3..7].bytes().all(|byte| byte.is_ascii_digit()) {
+            codes.insert(candidate[..7].to_string());
+        }
+        rest = &rest[position + 3..];
+    }
+    codes
+}
+
+#[test]
+fn matrix_lists_every_class_fixture_entry() {
+    let recorded: BTreeSet<String> = recorded_rows().into_iter().map(|(path, _)| path).collect();
+    let discovered = discovered_entries();
+    let missing: Vec<_> = discovered.difference(&recorded).collect();
+    let stale: Vec<_> = recorded.difference(&discovered).collect();
+    assert!(
+        missing.is_empty() && stale.is_empty(),
+        "class-checker-matrix.tsv is out of date (regenerate with the ignored oracle test and \
+         BLUEICE_WRITE_CLASS_MATRIX=1); missing: {missing:?}; stale: {stale:?}"
+    );
+}
+
+#[test]
+fn bluetsc_verdicts_match_the_recorded_pinned_typescript_verdicts() {
+    for (path, accepts) in recorded_rows() {
+        let output = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .arg("check")
+            .arg(fixtures().join(&path))
+            .output()
+            .unwrap();
+        let codes = diagnostic_codes(&output);
+        assert!(
+            !output.status.success(),
+            "{path}: classes must stay refused before output"
+        );
+        assert!(
+            codes.contains(CLASS_UNSUPPORTED_CODE) || !accepts,
+            "{path}: an accepted class must report only the class-runtime refusal, got {codes:?}"
+        );
+        let checker_rejects = codes.iter().any(|code| code != CLASS_UNSUPPORTED_CODE);
+        assert_eq!(
+            checker_rejects, !accepts,
+            "{path}: BlueTSC {codes:?} disagrees with pinned TypeScript (accepts: {accepts})"
+        );
+    }
+}
+
+#[test]
+fn bluetsc_build_refuses_every_accepted_class_fixture_without_output() {
+    let root = env::temp_dir().join(format!("bluets-class-matrix-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    for (index, (path, _)) in recorded_rows()
+        .into_iter()
+        .filter(|(_, accepts)| *accepts)
+        .enumerate()
+    {
+        let out_dir = root.join(index.to_string());
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .arg("build")
+            .arg(fixtures().join(&path))
+            .arg("--out-dir")
+            .arg(&out_dir)
+            .output()
+            .unwrap();
+        assert!(!built.status.success(), "{path}: build must be refused");
+        let produced = out_dir.exists()
+            && fs::read_dir(&out_dir)
+                .map(|mut entries| entries.next().is_some())
+                .unwrap_or(true);
+        assert!(!produced, "{path}: a refused build must leave no output");
+    }
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn recorded_verdicts_match_the_pinned_typescript_compiler() {
+    let tsc = PathBuf::from(
+        env::var_os("BLUEICE_BLUETSC_ORACLE")
+            .expect("set BLUEICE_BLUETSC_ORACLE to the TypeScript 5.9.3 tsc executable"),
+    );
+    let version = Command::new(&tsc).arg("--version").output().unwrap();
+    assert!(
+        String::from_utf8_lossy(&version.stdout).contains("5.9.3"),
+        "BLUEICE_BLUETSC_ORACLE must be the pinned TypeScript 5.9.3 compiler"
+    );
+    let mut fresh = Vec::new();
+    for path in discovered_entries() {
+        let output = Command::new(&tsc)
+            .args([
+                "--target",
+                "ES2022",
+                "--module",
+                "ES2022",
+                "--strict",
+                "--pretty",
+                "false",
+                "--allowImportingTsExtensions",
+                "--noEmit",
+            ])
+            .arg(fixtures().join(&path))
+            .output()
+            .unwrap();
+        fresh.push((path, output.status.success()));
+    }
+    if env::var_os("BLUEICE_WRITE_CLASS_MATRIX").is_some() {
+        let text: String = fresh
+            .iter()
+            .map(|(path, accepts)| {
+                format!("{path}\t{}\n", if *accepts { "accept" } else { "reject" })
+            })
+            .collect();
+        fs::write(
+            fixtures().join("class-checker-matrix.tsv"),
+            text.trim_end_matches('\n').to_string() + "\n",
+        )
+        .unwrap();
+        return;
+    }
+    assert_eq!(
+        fresh,
+        recorded_rows(),
+        "recorded verdicts differ from the pinned compiler"
+    );
+}
