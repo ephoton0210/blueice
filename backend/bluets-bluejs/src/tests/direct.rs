@@ -349,6 +349,25 @@ fn direct_admission_refuses_checker_accepted_classes() {
 }
 
 #[test]
+fn direct_route_refuses_arrow_functions_instead_of_lowering_their_tokens() {
+    // The direct expression grammar has no arrow node, so a structured typed
+    // arrow must be refused, never lowered from tokens that still hold its
+    // annotations.
+    for source in [
+        "const f = (a: number): number => a; f(1);",
+        "const f = (a: number) => a; f(1);",
+        "const f = (a) => a; f(1);",
+    ] {
+        let result = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(result.is_err(), "{source}: {:?}", result.map(|_| ()));
+    }
+}
+
+#[test]
 fn rejects_object_methods_without_reparsing_emitted_javascript() {
     let result = compile_direct_script(
         ENTRY,

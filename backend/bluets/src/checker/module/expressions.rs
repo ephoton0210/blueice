@@ -35,6 +35,24 @@ fn method_overload_signatures(overloads: &[Type]) -> Option<Vec<FunctionSignatur
 }
 
 impl<'a> ModuleChecker<'a> {
+    /// The single signature of a call through a function-typed value that is in
+    /// scope (a parameter, a local or an arrow), if `callee` names one. A value
+    /// in scope shadows a module function of the same name.
+    pub(in crate::checker::module) fn function_value_signature(
+        &self,
+        callee: &str,
+        scope: &BTreeMap<String, Type>,
+    ) -> Option<FunctionSignature> {
+        let Type::Function { parameters, result } = scope.get(callee)? else {
+            return None;
+        };
+        Some(FunctionSignature {
+            parameters: parameters.clone(),
+            type_parameters: Vec::new(),
+            return_type: (**result).clone(),
+        })
+    }
+
     pub(super) fn infer_function_call(
         &self,
         signatures: &[FunctionSignature],
@@ -80,7 +98,11 @@ impl<'a> ModuleChecker<'a> {
         let Some(call) = direct_call_parts(tokens) else {
             return;
         };
-        let Some(signatures) = self.functions.get(&call.callee.text).cloned() else {
+        let value_signature = self.function_value_signature(&call.callee.text, scope);
+        let Some(signatures) = value_signature
+            .map(|signature| vec![signature])
+            .or_else(|| self.functions.get(&call.callee.text).cloned())
+        else {
             if self.require_declared_global_calls && !scope.contains_key(&call.callee.text) {
                 self.type_error(
                     span,

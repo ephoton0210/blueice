@@ -14,6 +14,7 @@ pub(super) struct Parser {
     declarations: Vec<Declaration>,
     edits: Vec<TextEdit>,
     generic_call_type_arguments: BTreeMap<usize, Vec<Type>>,
+    arrow_functions: BTreeMap<usize, ArrowFunction>,
     diagnostics: Vec<Diagnostic>,
     max_type_depth: usize,
     type_depth: usize,

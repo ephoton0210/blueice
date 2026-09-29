@@ -6,6 +6,7 @@
 
 use super::*;
 
+mod arrows;
 mod classes;
 mod functions;
 pub(in crate::checker) use classes::{class_export, class_instance_type};
@@ -45,6 +46,7 @@ impl<'a> ModuleChecker<'a> {
             enforce_types: policy.enforce_types,
             require_declared_global_calls: policy.require_declared_global_calls,
             class_emit: policy.class_emit,
+            checked_arrows: BTreeSet::new(),
             diagnostics: Vec::new(),
             symbols: Vec::new(),
             types: BTreeMap::new(),
@@ -787,6 +789,9 @@ impl<'a> ModuleChecker<'a> {
         if tokens.is_empty() {
             return;
         }
+        let before_arrows = self.diagnostics.len();
+        self.check_arrow_functions_in(tokens, scope);
+        self.dedupe_diagnostics_since(before_arrows);
         if tokens
             .iter()
             .filter(|token| token.is("[") || token.is("{"))

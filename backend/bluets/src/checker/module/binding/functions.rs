@@ -11,7 +11,17 @@ use narrowing::{narrowed_guard_scopes, selected_guard_local};
 
 impl<'a> ModuleChecker<'a> {
     pub(super) fn check_function(&mut self, function: &FunctionDeclaration) {
-        let mut scope = self.values.clone();
+        self.check_function_in_scope(function, self.values.clone());
+    }
+
+    /// Checks a function whose body sees `scope`: the module values for a
+    /// named function, or the enclosing scope for a function nested in an
+    /// expression.
+    pub(in crate::checker::module) fn check_function_in_scope(
+        &mut self,
+        function: &FunctionDeclaration,
+        mut scope: BTreeMap<String, Type>,
+    ) {
         let previous_parameters = self.type_parameters.clone();
         let previous_spreads = self.allowed_tuple_spread_parameters.clone();
         self.allowed_tuple_spread_parameters = function

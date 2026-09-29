@@ -4241,10 +4241,6 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "optional variables are not valid TypeScript declarations",
         ),
         (
-            "const x = (a: number) => a;",
-            "typed arrow parameters are not in the initial BlueTS matrix",
-        ),
-        (
             "const identity = <T>(value) => value;",
             "generic arrow functions are not in the initial BlueTS matrix",
         ),
@@ -5813,11 +5809,9 @@ fn function_annotations_that_survive_erasure_are_refused_before_output() {
     // not structurally erase. Emitting it would produce invalid JavaScript, so
     // it must be refused instead.
     for source in [
-        "export const h = (a: number): number => a;",
-        "export const h = (): number => 1;",
-        "export const h = (a: number) : number => a, i = 1;",
         "export const h = async (a: number): Promise<number> => a;",
-        "export const h = (a: number) => a;",
+        "export const h = async (a: number) => a;",
+        "export const h = ({ x }: { x: number }) => x;",
         "export const h = function (a: number): number { return a; };",
         "export const h = function named(a: number) { return a; };",
         "export const h = function (a?) { return a; };",
@@ -5876,6 +5870,115 @@ fn unannotated_function_forms_and_colons_are_not_mistaken_for_annotations() {
             result.diagnostics
         );
         assert!(result.output.is_some(), "{source}");
+    }
+}
+
+#[test]
+fn typed_arrow_functions_are_parsed_erased_and_checked() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let compiled = compile_source(include_str!(
+        "fixtures/typescript_oracle/arrow-typed-runtime/main.ts"
+    ));
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:#?}",
+        compiled.diagnostics
+    );
+    let javascript = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+    assert_eq!(
+        normalized_javascript(&javascript),
+        "const double = (n) => n * 2; \
+         const greet = (name, punct= \"!\") => { return \"hi \" + name + punct; }; \
+         const twice = (f, n) => f(f(n)); \
+         const add = (a) => (b) => a + b; \
+         const label = (n) => { if (n) { return \"n\"; } return \"none\"; }; \
+         const pair = () => [1, \"a\"]; \
+         console.log(double(4)); console.log(greet(\"a\")); console.log(greet(\"a\", \"?\")); \
+         console.log(twice(double, 3)); console.log(add(1)(2)); console.log(label()); \
+         console.log(pair()[1]);"
+    );
+
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/arrow-typed-valid/main.ts"
+    ));
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/arrow-typed-result-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/arrow-typed-block-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/arrow-typed-missing-return-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/arrow-typed-parameter-use-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/arrow-typed-closure-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/arrow-typed-default-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/arrow-typed-nested-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/arrow-typed-tuple-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/arrow-typed-assign-error/main.ts"),
+            DiagnosticCode::TypeMismatch,
+        ),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code && diagnostic.span.module == ENTRY),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
+    }
+
+    // Shapes the structured parser does not take stay refused rather than
+    // reaching the output with their annotations.
+    for source in [
+        "export const h = ({ x }: { x: number }) => x;",
+        "export const h = async (a: number): Promise<number> => a;",
+        "export const h = <T>(a: T) => a;",
+    ] {
+        let refused = compile_source(source);
+        assert!(refused.output.is_none(), "{source}");
+        assert!(
+            refused
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax),
+            "{source}"
+        );
     }
 }
 

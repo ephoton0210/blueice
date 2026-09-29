@@ -29,6 +29,9 @@ pub(super) struct ModuleChecker<'a> {
     enforce_types: bool,
     require_declared_global_calls: bool,
     class_emit: bool,
+    /// Arrow functions already checked, by start offset, so an expression
+    /// visited from several checks reports its body once.
+    checked_arrows: BTreeSet<usize>,
     pub(super) diagnostics: Vec<Diagnostic>,
     pub(super) symbols: Vec<Symbol>,
     types: BTreeMap<String, TypeDefinition>,

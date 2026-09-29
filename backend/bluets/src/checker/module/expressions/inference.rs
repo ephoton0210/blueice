@@ -23,6 +23,9 @@ impl<'a> ModuleChecker<'a> {
         {
             return Type::Unknown;
         }
+        if let Some(function) = self.arrow_function_type(strip_outer_parentheses(tokens), scope) {
+            return function;
+        }
         if tokens
             .iter()
             .filter(|token| INFERRED_LOGICAL_ASSIGNMENT_OPERATORS.contains(&token.text.as_str()))
@@ -154,6 +157,9 @@ impl<'a> ModuleChecker<'a> {
         if let Some(call) =
             direct_call_parts(tokens).filter(|call| split_call_arguments(call.arguments).is_some())
         {
+            if let Some(signature) = self.function_value_signature(&call.callee.text, scope) {
+                return self.infer_function_call(&[signature], call.arguments, scope, None);
+            }
             if let Some(signatures) = self.functions.get(&call.callee.text) {
                 let explicit = call.generic.then(|| {
                     self.module
@@ -164,10 +170,9 @@ impl<'a> ModuleChecker<'a> {
                 });
                 return self.infer_function_call(signatures, call.arguments, scope, explicit);
             }
-            return scope
-                .get(&call.callee.text)
-                .cloned()
-                .unwrap_or(Type::Unknown);
+            // A call through a value that is not a known function type has no
+            // known result.
+            return Type::Unknown;
         }
         if let Some((_, consequent, alternate)) = conditional_expression_parts(tokens) {
             return merge_conditional_branch_types(

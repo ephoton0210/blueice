@@ -28,6 +28,7 @@ impl Parser {
             declarations: Vec::new(),
             edits: Vec::new(),
             generic_call_type_arguments: BTreeMap::new(),
+            arrow_functions: BTreeMap::new(),
             diagnostics: Vec::new(),
             max_type_depth,
             type_depth: 0,
@@ -216,6 +217,7 @@ impl Parser {
                 declarations: self.declarations,
                 edits: self.edits,
                 generic_call_type_arguments: self.generic_call_type_arguments,
+                arrow_functions: self.arrow_functions,
             })
         } else {
             Err(self.diagnostics)
@@ -251,6 +253,8 @@ impl Parser {
     }
 }
 
+#[path = "declarations/arrows.rs"]
+mod arrows;
 #[path = "declarations/class.rs"]
 mod class;
 #[path = "declarations/erasure_audit.rs"]

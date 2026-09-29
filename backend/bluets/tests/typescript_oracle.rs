@@ -41,6 +41,15 @@ struct ExpectedDiagnostic {
 
 const CASES: &[OracleCase] = &[
     OracleCase {
+        name: "arrow-typed-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/arrow-typed-runtime/main.ts"),
+        )],
+        expected_stdout: Some("8\nhi a!\nhi a?\n12\n3\nnone\na\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "class-emit-runtime",
         modules: &[(
             "memory:///main.ts",
@@ -3812,6 +3821,66 @@ fn pinned_tuple_literal_arguments_match_typescript_without_emit() {
             "super-error",
             include_str!("fixtures/typescript_oracle/tuple-literal-argument-super-error/main.ts"),
             &[(5, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_typed_arrow_functions_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 10] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/arrow-typed-valid/main.ts"),
+            &[],
+        ),
+        (
+            "result-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-result-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "block-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-block-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "missing-return-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-missing-return-error/main.ts"),
+            &[(4, "TS2366")],
+        ),
+        (
+            "parameter-use-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-parameter-use-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "closure-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-closure-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "default-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-default-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "nested-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-nested-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "tuple-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-tuple-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "assign-error",
+            include_str!("fixtures/typescript_oracle/arrow-typed-assign-error/main.ts"),
+            &[(4, "TS2322")],
         ),
     ];
     assert_pinned_no_emit_cases(&tsc, &cases);

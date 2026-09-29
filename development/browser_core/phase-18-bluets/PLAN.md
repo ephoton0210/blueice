@@ -2284,6 +2284,46 @@ skipped, so `c ? (1) : (b) => b` is not mistaken for an annotation, but
 safety net, not the feature: J.3.7 replaces the refusal by structurally
 parsing, erasing and checking these forms.
 
+### J.3.7.1 Structured arrow functions
+
+The scan over a runtime expression range stops at an arrow head at the start of
+an operand: a `(`, or a lone name followed by `=>`, whose previous token does
+not end a primary expression. The parameter list is parsed with the named
+function's `parse_parameters`, so annotations, optional markers and defaults are
+erased through the same edits; a result annotation is parsed as a type up to
+`=>` and erased through the last token of the type, keeping the space before
+the arrow. A braced body is parsed with `parse_function_body` into the same
+structured items, returns and locals as a named function; a concise body keeps
+its expression tokens and the scan continues inside it, so an arrow inside an
+arrow is found by the same pass. Each arrow is stored in `Module::arrow_functions`
+by the byte offset of its first token, spanning the head to the end of the body.
+
+A parameter list is left unstructured when any parameter is a destructuring
+pattern, when the arrow is `async` (its result is a Promise, which BlueTS does
+not model), or when a result annotation appears inside a conditional's
+consequent, where `c ? (a) : b => d` is more likely a conditional than an arrow
+with a result type. The erasure audit of J.3.7.0 still refuses such an arrow if
+it carries an annotation.
+
+The checker checks each outermost arrow inside an expression once, through a
+`FunctionDeclaration` built from it and `check_function_in_scope`, which now
+takes the scope the body sees: the module values for a named function, the
+enclosing scope for an arrow. A concise body becomes a single return. So the
+result annotation, missing-return detection, default initializers, parameter
+scope and closed-over variables use the named-function rules unchanged, and a
+tuple result is read against its declared tuple. An arrow expression is typed as
+a function type from its parameters and result annotation (or its concise body).
+
+### J.3.7.2 Calls through function-typed values
+
+A callee that is in scope with a function type (a parameter, a local, an arrow)
+is treated as a single-signature function: its arguments are checked for arity
+and type, the result is its result type, and it shadows a module function of the
+same name. A callee in scope with any other type has an unknown result; before,
+its own type was returned as the call result. The direct bridge has no arrow
+node in its expression grammar and refuses every arrow, which a bridge test now
+pins.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

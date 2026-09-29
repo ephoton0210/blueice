@@ -2118,11 +2118,37 @@ done to the page-runs-and-debugs goal at the top of this file.
     TypeScript oracle tests still pass. A ternary whose alternate is
     `(a) : b => c` is refused as a possible return annotation. Full workspace
     tests, Clippy, rustfmt and whitespace checks pass.
-  - [ ] **J.3.7** Check arrow-function and function-expression bodies. Their
-    bodies are kept only as tokens today, so no return, parameter or scope
-    check runs: every error `tsc` reports inside one (a wrong return type, a
-    parameter misuse) is silently accepted. This needs a structured body in
-    the parser and the same return/scope checks named functions get.
+  - [ ] **J.3.7** Structure, erase and check function forms nested in
+    expressions. They were kept only as tokens, so no return, parameter or
+    scope check ran on them, and (before J.3.7.0) their annotations could reach
+    the emitted JavaScript.
+    - [x] **J.3.7.1** Arrow functions with parenthesized or single-name
+      parameters, parameter and result annotations, optional and default
+      parameters, and expression or block bodies. The parser reuses the named
+      function routines to parse and erase annotations and stores the arrow in
+      a side table keyed by its start offset; the checker checks each
+      outermost arrow as an anonymous function over the scope it appears in
+      (closures, nested arrows, result type, missing-return, defaults) and
+      gives it a function type. `async`, destructured-parameter and generic
+      arrows stay unstructured and refused. The old refusal of typed arrow
+      parameters is removed. Ten pinned TypeScript 5.9.3 `--noEmit` cases agree
+      on acceptance and TS2322/TS2366 lines, and one runtime case runs
+      BlueTSC's and `tsc`'s JavaScript in Node with identical output.
+    - [x] **J.3.7.2** Calls through a function-typed value in scope (a
+      parameter, local or arrow). Such a call used to take the variable's own
+      type as its result and skipped argument checks; it now checks arity and
+      argument types against the function type and yields its result type. A
+      value in scope shadows a module function of the same name.
+    - [ ] **J.3.7.3** Function expressions (`function (a: T): R { .. }`,
+      named or anonymous), including as call arguments.
+    - [ ] **J.3.7.4** Object-literal methods, getters and setters.
+    - [ ] **J.3.7.5** Function declarations nested inside a body, as local
+      functions callable from the rest of the body.
+    - [ ] **J.3.7.6** A `catch` binding annotation (`catch (e: unknown)`),
+      erased and typed.
+    - [ ] **J.3.7.7** Destructured parameters, `async` and generic arrows and
+      functions, each with its own result-type model (`async` needs a Promise
+      type).
 - [ ] **J.4** Implement the module and package ecosystem without widening
   page or MCP authority through type declarations.
   - [ ] **J.4.1** Add TypeScript 5.9.3 module-mode selection and CommonJS
