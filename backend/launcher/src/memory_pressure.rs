@@ -247,6 +247,16 @@ mod tests {
     }
 
     #[test]
+    fn system_memory_source_default_constructs_like_new() {
+        let source = SystemMemorySource::default();
+        let ratio = source.available_ratio();
+        assert!(
+            (0.0..=1.0).contains(&ratio),
+            "expected a ratio in 0.0..=1.0, got {ratio}"
+        );
+    }
+
+    #[test]
     fn system_memory_source_reports_a_ratio_between_zero_and_one() {
         // The one test that touches the real `sysinfo`-backed source --
         // proves it doesn't panic and returns a sane value on this
