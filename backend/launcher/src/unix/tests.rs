@@ -15,6 +15,20 @@ fn bounded_values_policy_is_independent_of_static_metadata() {
 }
 
 #[test]
+fn supervise_out_of_process_bluejs_builders_set_their_own_fields() {
+    let limits = BlueJsHostRuntimeLimits::default();
+    let options =
+        CoreLaunchOptions::default().supervise_out_of_process_bluejs_with_runtime_limits(limits);
+    assert!(options.supervise_out_of_process_bluejs);
+    assert_eq!(options.bluejs_host_runtime_limits, limits);
+
+    let options =
+        CoreLaunchOptions::default().supervise_out_of_process_bluejs_with_core_http_fixture();
+    assert!(options.supervise_out_of_process_bluejs);
+    assert!(options.core_http_page_script_fixture);
+}
+
+#[test]
 fn forward_client_to_core_relays_one_message_then_stops_on_disconnect() {
     let (client_side, mut client_observed) = UnixStream::pair().unwrap();
     let (core_side, mut core_observed) = UnixStream::pair().unwrap();
