@@ -628,6 +628,40 @@ fn lowers_braced_try_catch_finally_to_bluejs_ast() {
 }
 
 #[test]
+fn direct_try_lowers_a_typed_catch_binding_without_its_annotation() {
+    for annotation in ["any", "unknown"] {
+        let source = format!(
+            "function f(): void {{ try {{ throw 1; }} catch (error: {annotation}) {{ 1; }} }} f();"
+        );
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source.as_str())]),
+            CompilerOptions::default(),
+        )
+        .unwrap_or_else(|error| panic!("{source}: {error:?}"));
+        let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+            panic!("expected a script program");
+        };
+        let bluejs::Stmt::FunctionDecl(function) = &program.body[0] else {
+            panic!("expected the function declaration");
+        };
+        assert!(
+            matches!(
+                function.body.as_slice(),
+                [bluejs::Stmt::Try {
+                    handler: Some(bluejs::CatchClause {
+                        param: Some(bluejs::Pattern::Identifier(binding)),
+                        ..
+                    }),
+                    ..
+                }] if binding == "error"
+            ),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn direct_try_rejects_excluded_blocks_without_reparsing_javascript() {
     for source in [
         "function f(): void { try { let inner = 1; } finally { 0; } } f();",
@@ -639,7 +673,6 @@ fn direct_try_rejects_excluded_blocks_without_reparsing_javascript() {
         "function f(): void { try { try { 0; } finally { 1; } } finally { 2; } } f();",
         "function f(): void { try { 0; } catch (error) { if (true) { try { 1; } finally { 2; } } } } f();",
         "function f(): void { try { 0; } catch { 1; } } f();",
-        "function f(): void { try { 0; } catch (error: any) { 1; } } f();",
         "function f(): void { try { 0; } catch ({error}) { 1; } } f();",
         "function f(): void { try { 0; } catch (first) { 1; } catch (second) { 2; } } f();",
         "function f(): void { try { 0; } } f();",

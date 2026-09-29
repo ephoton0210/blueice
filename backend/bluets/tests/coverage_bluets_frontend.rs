@@ -3715,16 +3715,19 @@ fn excluded_try_shapes_remain_opaque_to_the_bounded_function_parser() {
             Some(FunctionBodyItem::Opaque(_))
         ));
     }
-    // A typed catch binding is TypeScript syntax that is not erased, so it is
-    // refused instead of being copied into JavaScript.
-    let refused = parse_module(
+    // A typed catch binding is parsed structurally and its annotation erased.
+    let module = parse_module(
         ENTRY,
         "function f(): void { try { 1; } catch (caught: any) { 2; } }",
     )
-    .unwrap_err();
-    assert!(refused
-        .iter()
-        .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
+    .unwrap();
+    let [Declaration::Function(function)] = module.declarations.as_slice() else {
+        panic!("expected one named function");
+    };
+    let [FunctionBodyItem::Try(statement)] = function.body.as_slice() else {
+        panic!("expected a structured try");
+    };
+    assert_eq!(statement.handler.as_ref().unwrap().binding, "caught");
 }
 
 #[test]
@@ -3757,8 +3760,11 @@ fn catch_return_uses_unknown_instead_of_the_shadowed_outer_type() {
     assert_accepted(
         "type Maybe = number | unknown; function f(): Maybe { try { throw 1; } catch (caught) { return caught; } }",
     );
+    // A `try` whose block returns ends every path even with a `finally` that
+    // falls through, as in `tsc`; only when nothing in it returns can it end.
+    assert_accepted("function f(): number { try { return 1; } finally { 0; } }");
     assert_rejected(
-        "function f(): number { try { return 1; } finally { 0; } }",
+        "function f(): number { try { 0; } finally { 0; } }",
         "BTS3004",
         "can complete without returning a value",
     );
@@ -6255,6 +6261,69 @@ fn nested_function_declarations_are_parsed_erased_hoisted_and_checked() {
     ] {
         let refused = compile_source(source);
         assert!(refused.output.is_none(), "{source}");
+    }
+}
+
+#[test]
+fn catch_binding_annotations_are_erased_and_try_termination_is_analyzed() {
+    let compile_source = |source: &str| {
+        compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        )
+    };
+    let compiled = compile_source(include_str!(
+        "fixtures/typescript_oracle/catch-annotation-runtime/main.ts"
+    ));
+    assert!(
+        compiled.diagnostics.is_empty(),
+        "{:#?}",
+        compiled.diagnostics
+    );
+    let javascript = compiled.output.unwrap().artifacts[ENTRY].javascript.clone();
+    assert!(javascript.contains("catch (e)"), "{javascript}");
+    assert!(!javascript.contains("unknown"), "{javascript}");
+
+    let accepted = compile_source(include_str!(
+        "fixtures/typescript_oracle/catch-annotation-valid/main.ts"
+    ));
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+
+    for (source, code) in [
+        (
+            include_str!("fixtures/typescript_oracle/catch-annotation-type-error/main.ts"),
+            DiagnosticCode::ParseError,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/catch-annotation-unknown-use-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!("fixtures/typescript_oracle/catch-annotation-fallthrough-error/main.ts"),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+        (
+            include_str!(
+                "fixtures/typescript_oracle/catch-annotation-try-fallthrough-error/main.ts"
+            ),
+            DiagnosticCode::ReturnTypeMismatch,
+        ),
+    ] {
+        let rejected = compile_source(source);
+        assert!(rejected.output.is_none());
+        assert!(
+            rejected
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code && diagnostic.span.module == ENTRY),
+            "{source}: {:#?}",
+            rejected.diagnostics
+        );
     }
 }
 

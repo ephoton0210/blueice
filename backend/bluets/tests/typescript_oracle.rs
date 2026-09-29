@@ -41,6 +41,15 @@ struct ExpectedDiagnostic {
 
 const CASES: &[OracleCase] = &[
     OracleCase {
+        name: "catch-annotation-runtime",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/catch-annotation-runtime/main.ts"),
+        )],
+        expected_stdout: Some("done\nok\ndone\ncaught\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "nested-function-runtime",
         modules: &[(
             "memory:///main.ts",
@@ -4052,6 +4061,43 @@ fn pinned_nested_function_declarations_match_typescript_without_emit() {
             "call-error",
             include_str!("fixtures/typescript_oracle/nested-function-call-error/main.ts"),
             &[(4, "TS2345")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_catch_annotations_match_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 5] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/catch-annotation-valid/main.ts"),
+            &[],
+        ),
+        (
+            "type-error",
+            include_str!("fixtures/typescript_oracle/catch-annotation-type-error/main.ts"),
+            &[(4, "TS1196")],
+        ),
+        (
+            "unknown-use-error",
+            include_str!("fixtures/typescript_oracle/catch-annotation-unknown-use-error/main.ts"),
+            &[(4, "TS2322")],
+        ),
+        (
+            "fallthrough-error",
+            include_str!("fixtures/typescript_oracle/catch-annotation-fallthrough-error/main.ts"),
+            &[(4, "TS2366")],
+        ),
+        (
+            "try-fallthrough-error",
+            include_str!(
+                "fixtures/typescript_oracle/catch-annotation-try-fallthrough-error/main.ts"
+            ),
+            &[(4, "TS2366")],
         ),
     ];
     assert_pinned_no_emit_cases(&tsc, &cases);

@@ -257,10 +257,32 @@ impl Parser {
             self.expect("(");
             let binding = self.current().text.clone();
             self.bump();
+            let annotation_start = self.current().start;
+            let annotation = if self.consume(":") {
+                let span_start = self.previous().start;
+                let value = self.parse_type_until(&[")"]);
+                let span_end = self.previous().end;
+                self.edits.push(TextEdit {
+                    start: annotation_start,
+                    end: span_end,
+                    replacement: String::new(),
+                });
+                if !matches!(value, Type::Any | Type::Unknown) {
+                    self.error_at(
+                        SourceSpan::new(&self.id, span_start, span_end),
+                        DiagnosticCode::ParseError,
+                        "a catch clause variable type annotation must be `any` or `unknown`",
+                    );
+                }
+                Some(value)
+            } else {
+                None
+            };
             self.expect(")");
             let body = self.parse_direct_function_block(returns, locals);
             Some(FunctionCatchClause {
                 binding,
+                annotation,
                 body,
                 span: SourceSpan::new(&self.id, catch_start, self.previous().end),
             })

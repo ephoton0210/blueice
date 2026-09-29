@@ -336,12 +336,25 @@ pub(super) fn is_direct_braced_try_statement(tokens: &[Token], start: usize) -> 
             || !tokens
                 .get(next + 2)
                 .is_some_and(|token| token.kind == TokenKind::Identifier)
-            || !tokens.get(next + 3).is_some_and(|token| token.is(")"))
-            || !tokens.get(next + 4).is_some_and(|token| token.is("{"))
         {
             return false;
         }
-        let Some(catch_end) = matching_closing_delimiter(tokens, next + 4, limit, "{", "}") else {
+        // `(name)` or `(name: Type)`; the annotation is erased by the parser.
+        let Some(catch_close) = matching_closing_delimiter(tokens, next + 1, limit, "(", ")")
+        else {
+            return false;
+        };
+        let bare = catch_close == next + 3;
+        let annotated = catch_close > next + 4 && tokens[next + 3].is(":");
+        if !(bare || annotated)
+            || !tokens
+                .get(catch_close + 1)
+                .is_some_and(|token| token.is("{"))
+        {
+            return false;
+        }
+        let Some(catch_end) = matching_closing_delimiter(tokens, catch_close + 1, limit, "{", "}")
+        else {
             return false;
         };
         next = catch_end + 1;

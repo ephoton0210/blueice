@@ -2177,8 +2177,22 @@ done to the page-runs-and-debugs goal at the top of this file.
       TS2322/TS2366/TS2345 lines, and a Node run gives identical output for
       BlueTSC and `tsc`. Hoisting ignores block scoping: a declaration inside
       an `if` is visible to the whole body.
-    - [ ] **J.3.7.6** A `catch` binding annotation (`catch (e: unknown)`),
-      erased and typed.
+    - [x] **J.3.7.6** A `catch` binding annotation (`catch (e: unknown)`),
+      erased and typed. The `try` shape detector now accepts `catch (name)` and
+      `catch (name: Type)`; the annotation is parsed, erased and kept on the
+      clause, `any` types the binding as `any` and `unknown` (or none) as the
+      strict `unknown`, and any other annotation is a parse error like `tsc`'s
+      TS1196. Found and fixed with it: a `try` was never counted as ending a
+      path, so `try { return a; } catch { return b; }` was falsely reported as
+      able to complete without returning; a `try` now terminates when its
+      `finally` does, or when its block and its `catch` both do. The direct
+      bridge lowers a typed catch binding as a plain one. Known gap, not fixed
+      here: identifier inference prefers a module function over a parameter,
+      local or catch binding of the same name (an attempted fix broke callback
+      checking, because module function names also appear in scope). Five pinned
+      TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+      TS1196/TS2322/TS2366 lines, and a Node run gives identical output for
+      BlueTSC and `tsc`.
     - [ ] **J.3.7.7** Destructured parameters, `async` and generic arrows and
       functions, each with its own result-type model (`async` needs a Promise
       type).

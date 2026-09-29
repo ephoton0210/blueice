@@ -2384,6 +2384,36 @@ constructors all bind and check nested declarations.
 The direct bridge has no lowering for a nested declaration and refuses it in its
 statement, `try` and `while` paths.
 
+### J.3.7.6 Catch binding annotations and try termination
+
+The shape detector for a structured `try` accepted only `catch ( name ) {`, so
+`catch (e: unknown)` fell to the token path, where its annotation was copied into
+the emitted JavaScript until the erasure audit refused it. It now matches the
+parenthesized binding as either a bare name or `name : Type`. The parser parses
+the annotation, erases it through the end of the type and stores it on the
+clause; `any` and `unknown` are the only annotations TypeScript allows, and any
+other is a parse error. `any` types the binding as `any`; `unknown`, or no
+annotation, keeps the existing strict `unknown` that holds only inside the catch
+body. All three catch-scope sites (return traversal, expression traversal and
+class bodies) share one helper.
+
+A `try` used to be a no-op in the termination analysis, so a function whose last
+statement was `try { return a; } catch { return b; }` was reported as able to
+complete without returning. A `try` now ends every path when its `finally` does,
+or when its block does and its `catch` clause, if present, does as well;
+unknown syntax anywhere keeps the result opaque as before.
+
+The direct bridge lowers a structured typed catch binding as a plain one, since
+the annotation has no runtime meaning; its old test that listed the typed form
+as excluded now asserts the lowering.
+
+Known gap, not fixed here: identifier inference looks at module functions before
+the local scope, so a catch binding, parameter or local named like a module
+function is typed as that function. Preferring the scope was tried and broke
+callback checking, because module function names also appear in the scope
+map, so the two cannot be told apart that way; a fix needs to know which scope
+entries are real locals.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

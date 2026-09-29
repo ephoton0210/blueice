@@ -15,6 +15,17 @@
 
 use super::*;
 
+/// The parts of `(parameters) [: result] { body }`, with where the body ends.
+pub(in crate::parser::implementation) struct ParsedFunctionTail {
+    pub(in crate::parser::implementation) parameters: Vec<Parameter>,
+    pub(in crate::parser::implementation) return_type: Option<Type>,
+    pub(in crate::parser::implementation) body: NestedFunctionBody,
+    /// Source offset of the end of the body.
+    pub(in crate::parser::implementation) body_end: usize,
+    /// Token index after the body.
+    pub(in crate::parser::implementation) next_index: usize,
+}
+
 impl Parser {
     /// Parses the arrow function whose head is at `index`, returning the token
     /// index where the enclosing scan continues, or `None` when there is no
@@ -54,8 +65,13 @@ impl Parser {
         if !self.simple_parameter_list(open, close) {
             return None;
         }
-        let (parameters, return_type, body, body_end, next) =
-            self.parse_parameters_result_and_block(open)?;
+        let ParsedFunctionTail {
+            parameters,
+            return_type,
+            body,
+            body_end,
+            next_index: next,
+        } = self.parse_parameters_result_and_block(open)?;
         let NestedFunctionBody::Block {
             items,
             returns,
@@ -129,8 +145,13 @@ impl Parser {
             return None;
         }
         let saved_index = self.index;
-        let (parameters, return_type, body, body_end, next_index) =
-            self.parse_parameters_result_and_block(open)?;
+        let ParsedFunctionTail {
+            parameters,
+            return_type,
+            body,
+            body_end,
+            next_index,
+        } = self.parse_parameters_result_and_block(open)?;
         let start_offset = self.tokens[index].start;
         match kind {
             NestedFunctionKind::Getter if !parameters.is_empty() => self.error_at(
@@ -168,13 +189,7 @@ impl Parser {
     pub(in crate::parser::implementation) fn parse_parameters_result_and_block(
         &mut self,
         open: usize,
-    ) -> Option<(
-        Vec<Parameter>,
-        Option<Type>,
-        NestedFunctionBody,
-        usize,
-        usize,
-    )> {
+    ) -> Option<ParsedFunctionTail> {
         let saved_index = self.index;
         self.index = open;
         let parameters = self.parse_parameters();
@@ -204,17 +219,17 @@ impl Parser {
         let body_end = self.previous().end;
         let next_index = self.index;
         self.index = saved_index;
-        Some((
+        Some(ParsedFunctionTail {
             parameters,
             return_type,
-            NestedFunctionBody::Block {
+            body: NestedFunctionBody::Block {
                 items,
                 returns,
                 locals,
             },
             body_end,
             next_index,
-        ))
+        })
     }
 
     /// Whether the nearest enclosing bracket of `index` within the range is a
@@ -272,8 +287,13 @@ impl Parser {
             return None;
         }
         let saved_index = self.index;
-        let (parameters, return_type, body, body_end, next) =
-            self.parse_parameters_result_and_block(open)?;
+        let ParsedFunctionTail {
+            parameters,
+            return_type,
+            body,
+            body_end,
+            next_index: next,
+        } = self.parse_parameters_result_and_block(open)?;
         let start_offset = self.tokens[index].start;
         self.nested_functions.insert(
             start_offset,

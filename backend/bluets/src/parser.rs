@@ -427,6 +427,8 @@ pub struct FunctionTryStatement {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionCatchClause {
     pub binding: String,
+    /// The erased `: any` or `: unknown` on the binding, when written.
+    pub annotation: Option<Type>,
     pub body: Vec<FunctionBodyItem>,
     pub span: SourceSpan,
 }

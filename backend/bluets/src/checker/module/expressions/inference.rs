@@ -369,6 +369,8 @@ impl<'a> ModuleChecker<'a> {
             "[" => self.infer_array(tokens, scope),
             "{" => self.infer_record(tokens, scope),
             _ if first.kind == TokenKind::Identifier => {
+                // A value in scope (a parameter, a local, a catch binding)
+                // shadows a module function of the same name.
                 if tokens.len() == 1 {
                     if let Some(signature) =
                         self.functions.get(&first.text).and_then(|set| set.first())

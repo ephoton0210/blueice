@@ -167,6 +167,36 @@ impl<'a> ModuleChecker<'a> {
     /// sequential path. An `if` does so only when both structured branches do.
     /// The unknown result preserves the standalone parser's existing opaque
     /// syntax behavior; the direct bridge rejects that syntax independently.
+    /// A `try` cannot reach its end when its `finally` cannot, or when its
+    /// block cannot and its `catch` clause, if any, cannot either.
+    fn function_try_termination(statement: &FunctionTryStatement) -> StructuredTermination {
+        let finalizer = statement
+            .finalizer
+            .as_deref()
+            .map(Self::function_body_termination);
+        if matches!(finalizer, Some(StructuredTermination::Terminates)) {
+            return StructuredTermination::Terminates;
+        }
+        let block = Self::function_body_termination(&statement.block);
+        let handler = statement
+            .handler
+            .as_ref()
+            .map(|handler| Self::function_body_termination(&handler.body));
+        if matches!(finalizer, Some(StructuredTermination::Opaque))
+            || matches!(block, StructuredTermination::Opaque)
+            || matches!(handler, Some(StructuredTermination::Opaque))
+        {
+            return StructuredTermination::Opaque;
+        }
+        if matches!(block, StructuredTermination::Terminates)
+            && matches!(handler, None | Some(StructuredTermination::Terminates))
+        {
+            StructuredTermination::Terminates
+        } else {
+            StructuredTermination::FallsThrough
+        }
+    }
+
     pub(super) fn function_body_termination(items: &[FunctionBodyItem]) -> StructuredTermination {
         for item in items {
             match item {
@@ -181,11 +211,18 @@ impl<'a> ModuleChecker<'a> {
                     StructuredTermination::Opaque => return StructuredTermination::Opaque,
                 },
                 FunctionBodyItem::Opaque(_) => return StructuredTermination::Opaque,
+                FunctionBodyItem::Try(statement) => match Self::function_try_termination(statement)
+                {
+                    StructuredTermination::Terminates => {
+                        return StructuredTermination::Terminates;
+                    }
+                    StructuredTermination::FallsThrough => {}
+                    StructuredTermination::Opaque => return StructuredTermination::Opaque,
+                },
                 FunctionBodyItem::Variable(_)
                 | FunctionBodyItem::Expression { .. }
                 | FunctionBodyItem::Function(_)
-                | FunctionBodyItem::While(_)
-                | FunctionBodyItem::Try(_) => {}
+                | FunctionBodyItem::While(_) => {}
             }
         }
         StructuredTermination::FallsThrough
@@ -292,8 +329,7 @@ impl<'a> ModuleChecker<'a> {
                         None,
                     );
                     if let Some(handler) = &statement.handler {
-                        let catch_scope =
-                            Self::catch_binding_scope(&current_scope, &handler.binding);
+                        let catch_scope = Self::catch_binding_scope(&current_scope, handler);
                         let previous_strictness = self.strict_catch_unknown;
                         self.strict_catch_unknown = true;
                         self.check_function_body_returns(
@@ -412,12 +448,16 @@ impl<'a> ModuleChecker<'a> {
         }
     }
 
-    fn catch_binding_scope(
+    pub(in crate::checker::module) fn catch_binding_scope(
         scope: &BTreeMap<String, Type>,
-        binding: &str,
+        handler: &FunctionCatchClause,
     ) -> BTreeMap<String, Type> {
         let mut catch_scope = scope.clone();
-        catch_scope.insert(binding.to_string(), Type::Unknown);
+        let binding_type = match handler.annotation {
+            Some(Type::Any) => Type::Any,
+            _ => Type::Unknown,
+        };
+        catch_scope.insert(handler.binding.clone(), binding_type);
         catch_scope
     }
 
@@ -461,8 +501,7 @@ impl<'a> ModuleChecker<'a> {
                 FunctionBodyItem::Try(statement) => {
                     self.check_function_body_expressions(&statement.block, &current_scope, None);
                     if let Some(handler) = &statement.handler {
-                        let catch_scope =
-                            Self::catch_binding_scope(&current_scope, &handler.binding);
+                        let catch_scope = Self::catch_binding_scope(&current_scope, handler);
                         let previous_strictness = self.strict_catch_unknown;
                         self.strict_catch_unknown = true;
                         self.check_function_body_expressions(&handler.body, &catch_scope, None);
