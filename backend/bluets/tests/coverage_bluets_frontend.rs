@@ -5119,6 +5119,42 @@ fn generic_functions_retain_symbolic_tuple_spread_constraints() {
 }
 
 #[test]
+fn symbolic_tuple_spreads_compare_identical_tails_and_safe_widening() {
+    let source =
+        include_str!("fixtures/typescript_oracle/tuple-spread-symbolic-compare-valid/main.ts");
+    let accepted = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions::default(),
+    );
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:#?}",
+        accepted.diagnostics
+    );
+    assert!(accepted.output.is_some());
+
+    for source in [
+        include_str!(
+            "fixtures/typescript_oracle/tuple-spread-symbolic-compare-distinct-error/main.ts"
+        ),
+        include_str!(
+            "fixtures/typescript_oracle/tuple-spread-symbolic-compare-narrowing-error/main.ts"
+        ),
+    ] {
+        let rejected = compile(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        );
+        assert!(rejected.output.is_none());
+        assert!(rejected.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::ReturnTypeMismatch && diagnostic.span.module == ENTRY
+        }));
+    }
+}
+
+#[test]
 fn middle_tuple_rest_checks_suffix_and_emits_at_public_boundary() {
     let source = include_str!("fixtures/typescript_oracle/tuple-rest-middle-valid/main.ts");
     let accepted = compile(

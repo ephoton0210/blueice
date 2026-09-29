@@ -3383,6 +3383,35 @@ fn pinned_symbolic_tuple_spread_function_annotations_match_typescript_without_em
 
 #[test]
 #[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_symbolic_tuple_spread_comparison_matches_typescript_without_emit() {
+    let tsc = pinned_bluetsc_oracle();
+    assert_pinned_version(&tsc);
+    let cases: [NoEmitCase; 3] = [
+        (
+            "valid",
+            include_str!("fixtures/typescript_oracle/tuple-spread-symbolic-compare-valid/main.ts"),
+            &[],
+        ),
+        (
+            "distinct-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-spread-symbolic-compare-distinct-error/main.ts"
+            ),
+            &[(4, "TS2322")],
+        ),
+        (
+            "narrowing-error",
+            include_str!(
+                "fixtures/typescript_oracle/tuple-spread-symbolic-compare-narrowing-error/main.ts"
+            ),
+            &[(4, "TS2322")],
+        ),
+    ];
+    assert_pinned_no_emit_cases(&tsc, &cases);
+}
+
+#[test]
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
 fn pinned_local_class_method_sides_match_typescript_without_emit() {
     let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);

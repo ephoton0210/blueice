@@ -2021,6 +2021,27 @@ TS2344/TS2574 diagnostic lines. BlueTS, bridge, and full workspace tests,
 all-target Clippy, rustfmt, and whitespace checks pass with the reused 12 GiB
 target. Symbolic assignment and return relations follow in the next leaf.
 
+### J.3.1.3.4.4.2.3.2.3.3.3.6.5.2 Symbolic tuple spread assignment and return comparison
+
+Assignment, initializer and return checks now compare a tuple whose rest is a
+symbolic type parameter. An unresolved spread name (already admitted by
+annotation validation) stays opaque, so only an identical tail compares equal;
+a tail that differs by parameter is rejected even when both share a
+constraint. When the direct comparison fails, only the source side may widen a
+symbolic parameter to its array or tuple constraint, so `[number, ...T]` with
+`T extends [string]` is assignable to `[number, ...string[]]` while a target
+that names another parameter, or requires a fixed length, is not. The target
+side is never widened. Rejections use the existing type and return mismatch
+diagnostics before output.
+
+Public checked-compile cases cover identical tails through an alias, a local
+initializer and a return, safe widening, distinct parameters and a fixed-length
+target. Three pinned TypeScript 5.9.3 `--noEmit` cases agree on acceptance and
+the TS2322 lines. The BlueTS crate tests, all-target Clippy for the crate,
+rustfmt and whitespace checks pass; a full workspace run was not repeated for
+this leaf. Unresolved, cyclic, unsupported and over-budget symbolic cases
+close in the next leaf.
+
 ## Checklist
 
 - [x] Decide that BlueTS is a BlueJS front end, not a second VM or a `tsc` runtime process

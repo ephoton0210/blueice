@@ -258,13 +258,26 @@ impl<'a> ModuleChecker<'a> {
         let assignable = if self.strict_catch_unknown && matches!(actual, Type::Unknown) {
             accepts_strict_unknown(expected, &self.types, &mut HashSet::new(), &mut budget)
         } else {
-            is_assignable(
+            let direct = is_assignable(
                 actual,
                 expected,
                 &self.types,
                 &mut HashSet::new(),
                 &mut budget,
-            )
+            );
+            // A symbolic tuple spread is assignable to a wider target through
+            // its constraint; only the source side may widen, so distinct
+            // parameters are never treated as equal.
+            direct
+                || (!budget.exhausted
+                    && !self.allowed_tuple_spread_parameters.is_empty()
+                    && is_assignable(
+                        &substitute_type(actual, &self.allowed_tuple_spread_parameters),
+                        expected,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ))
         };
         if budget.exhausted {
             self.type_error(

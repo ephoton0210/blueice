@@ -18,7 +18,7 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.6.5.2.** H and I are complete. The requested class, enum,
+**Current leaf: J.3.1.3.4.4.2.3.2.3.3.3.6.5.3.** H and I are complete. The requested class, enum,
 decorator, namespace, JSX, CommonJS, and package-resolution expansion has
 passed J.1/J.2 planning; implementation and pinned-`tsc` parity remain open.
 Every item has an ID (`<section>.<item>[.<step>]`, e.g. `B4.2.2`); commit
@@ -1919,10 +1919,18 @@ checker breadth.
                             lines. BlueTS, bridge, and full workspace tests,
                             all-target Clippy, rustfmt, and whitespace checks
                             pass with the reused 12 GiB target.
-                          - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.5.2** Compare
+                          - [x] **J.3.1.3.4.4.2.3.2.3.3.3.6.5.2** Compare
                             identical symbolic tails and safe constraint
                             widening in generic assignment and return types
                             without treating distinct parameters as equal.
+                            Unresolved spread names stay opaque in tuple
+                            comparison, and only the source side widens a
+                            symbolic parameter to its constraint. Three pinned
+                            TypeScript 5.9.3 `--noEmit` cases agree on
+                            acceptance and TS2322 lines. BlueTS crate tests,
+                            crate Clippy, rustfmt and whitespace checks pass;
+                            the full workspace run is not repeated for this
+                            leaf.
                           - [ ] **J.3.1.3.4.4.2.3.2.3.3.3.6.5.3** Close
                             unresolved, cyclic, unsupported, and over-budget
                             symbolic spread cases with public diagnostics

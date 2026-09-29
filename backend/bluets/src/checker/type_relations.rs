@@ -114,24 +114,35 @@ pub(super) fn is_assignable(
         if elements.iter().any(|element| {
             element.rest && matches!(element.annotation, Type::Named { .. } | Type::Tuple(_))
         }) {
-            let Ok(expanded) =
-                expand_concrete_tuple_spreads(elements, aliases, &mut HashSet::new(), budget)
-            else {
-                return false;
-            };
-            return is_assignable(&Type::Tuple(expanded), expected, aliases, visited, budget);
+            match expand_concrete_tuple_spreads(elements, aliases, &mut HashSet::new(), budget) {
+                Ok(expanded) => {
+                    return is_assignable(
+                        &Type::Tuple(expanded),
+                        expected,
+                        aliases,
+                        visited,
+                        budget,
+                    )
+                }
+                // An unresolved spread name is a symbolic type parameter that
+                // annotation validation already accepted; keep it opaque so
+                // only an identical tail compares equal.
+                Err(TupleSpreadError::Unresolved) => {}
+                Err(_) => return false,
+            }
         }
     }
     if let Type::Tuple(elements) = expected {
         if elements.iter().any(|element| {
             element.rest && matches!(element.annotation, Type::Named { .. } | Type::Tuple(_))
         }) {
-            let Ok(expanded) =
-                expand_concrete_tuple_spreads(elements, aliases, &mut HashSet::new(), budget)
-            else {
-                return false;
-            };
-            return is_assignable(actual, &Type::Tuple(expanded), aliases, visited, budget);
+            match expand_concrete_tuple_spreads(elements, aliases, &mut HashSet::new(), budget) {
+                Ok(expanded) => {
+                    return is_assignable(actual, &Type::Tuple(expanded), aliases, visited, budget)
+                }
+                Err(TupleSpreadError::Unresolved) => {}
+                Err(_) => return false,
+            }
         }
     }
     if matches!(actual, Type::Any | Type::Unknown) || matches!(expected, Type::Any | Type::Unknown)
