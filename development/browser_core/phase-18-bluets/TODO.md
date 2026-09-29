@@ -824,6 +824,16 @@ records their lowering, authority, debugger, contract, and conformance plans.
 All implementation leaves below remain open until public-boundary evidence
 exists. A passed first form does not close its whole feature family.
 
+**Stop-loss (added 2026-09-29).** J.3.1.3.4.4.2.3.2.3 (tuple rest/spread
+overrides) has reached 14 levels of nesting and is chasing `tsc` edge cases
+rather than page-facing behavior. Finish the open leaves through
+J.3.1.3.4.4.2.3.2.3.3.3.6.5.3 to close the concrete-spread comparison, then
+stop deepening tuple work. The remaining sibling leaves
+(`…3.3.4`, `…3.4`) and any new tuple/spread leaf enter the backlog only if a
+real BlueTS page or an accepted/rejected-matrix case (J.3.1.3.5) needs them.
+Resume J.3.1.4 onward (emit, lowering, debugger evidence) before adding more
+checker breadth.
+
 - [x] **J.1** Record runtime lowering and host authority impact for each
   requested feature before implementation.
   - [x] **J.1.1** Record runtime lowering for classes, enums, decorators,
